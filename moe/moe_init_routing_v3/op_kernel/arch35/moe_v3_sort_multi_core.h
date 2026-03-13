@@ -26,7 +26,7 @@ class MoeSortMultiCore : public MoeSortBase {
 public:
     __aicore__ inline MoeSortMultiCore(){};
     __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR workspace,
-                                const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -44,9 +44,9 @@ private:
 private:
     GlobalTensor<float> workspaceGms[2];
 
-    const MoeV3VBSComputeTilingData *vbsTilingData;
-    const MoeV3VMSMiddleComputeTilingData *vmsTilingData;
-    const MoeV3SortOutComputeTilingData *sortOutTilingData;
+    const MoeV3Arch35VBSComputeTilingData *vbsTilingData;
+    const MoeV3Arch35VMSMiddleComputeTilingData *vmsTilingData;
+    const MoeV3Arch35SortOutComputeTilingData *sortOutTilingData;
 
     // for MoeMrgsort
     MoeMrgsort mrgsorter;
@@ -193,11 +193,11 @@ __aicore__ inline void MoeSortMultiCore::OneCoreVMSProcess(int64_t listNum, int6
     mrgsortParam.oneLoopMaxElements = this->sortOutTilingData->oneLoopMaxElements;
 
     for (int64_t i = 0; listNum >= 1; i++) {
-        int64_t loops = (listNum + MAX_MRGSORT_LIST - 1) / MAX_MRGSORT_LIST;
-        int64_t remainListNum = listNum - (loops - 1) * MAX_MRGSORT_LIST;
-
         mrgsortParam.perListElements = perListElements;
         mrgsortParam.lastListElements = perListElements;
+
+        int64_t loops = (listNum + MAX_MRGSORT_LIST - 1) / MAX_MRGSORT_LIST;
+        int64_t remainListNum = listNum - (loops - 1) * MAX_MRGSORT_LIST;
 
         int64_t loopOffset = GetSortLen<float>(mrgsortParam.perListElements * MAX_MRGSORT_LIST);
         for (int64_t loop = 0; loop < loops - 1; loop++) {
@@ -206,15 +206,15 @@ __aicore__ inline void MoeSortMultiCore::OneCoreVMSProcess(int64_t listNum, int6
             mrgsorter.Process();
         }
 
-        mrgsortParam.perListElements = perListElements;
         mrgsortParam.lastListElements = lastListElements;
+        mrgsortParam.perListElements = perListElements;
         InitMoeMrgSort(&mrgsorter, remainListNum, coreOffset, (loops - 1) * loopOffset);
         mrgsorter.Init(&mrgsortParam);
         mrgsorter.Process();
 
-        listNum = loops;
         lastListElements = perListElements * (remainListNum - 1) + lastListElements;
         perListElements = perListElements * MAX_MRGSORT_LIST;
+        listNum = loops;
         srcWsIndex = (srcWsIndex + 1) % WORK_GM_NUM;
         if (loops == 1) {
             break;
@@ -301,7 +301,7 @@ __aicore__ inline void MoeSortMultiCore::SortOutProcess()
 }
 
 __aicore__ inline void MoeSortMultiCore::Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR workspace,
-                                              const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                              const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     this->totalLength = tilingData->n * tilingData->k;
     this->coreNum = tilingData->coreNum;

@@ -16,8 +16,8 @@
 #include "securec.h"
 
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
@@ -27,15 +27,13 @@
 #include "opdev/platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
 aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,

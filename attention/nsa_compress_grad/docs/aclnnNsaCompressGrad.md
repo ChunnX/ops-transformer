@@ -4,10 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
-
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -23,7 +25,6 @@
     $$
     \text{dk} = W^\top \cdot \text{dk\_cmp}
     $$
-
 
 ## 函数原型
 
@@ -44,6 +45,7 @@ aclnnStatus aclnnNsaCompressGradGetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnNsaCompressGrad(
   void          *workspace,
@@ -51,213 +53,214 @@ aclnnStatus aclnnNsaCompressGrad(
   aclOpExecutor *executor,
   aclrtStream    stream)
 ```
-### aclnnNsaCompressGradGetWorkspaceSize
 
-- **参数说明：**
+## aclnnNsaCompressGradGetWorkspaceSize
 
-<table style="undefined;table-layout: fixed; width: 1565px">
-  <colgroup>
-    <col style="width: 146px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>query</td>
-      <td>输入</td>
-      <td>公式中的query。</td>
-      <td>-</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>key</td>
-      <td>输入</td>
-      <td>公式中的key。</td>
-      <td>-</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>value</td>
-      <td>输入</td>
-      <td>公式中的value。</td>
-      <td>-</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>attenMaskOptional</td>
-      <td>输入</td>
-      <td>公式中的atten_mask。</td>
-      <td>
-        <ul>
-          <li>输入shape需为[S,S]。</li>
-          <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmqSkv)。</li>
-        </ul>
-      </td>
-      <td>BOOL</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>actualSeqQLenOptional</td>
-      <td>输入</td>
-      <td>描述每个Batch对应的query S大小(Sq)。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>ND</td>
-      <td>1</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>outputGrad</td>
-      <td>输入</td>
-      <td>正向算子输出的反向梯度。</td>
-      <td>-</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>input</td>
-      <td>输入</td>
-      <td>待压缩张量。</td>
-      <td>-</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>weight</td>
-      <td>输入</td>
-      <td>压缩的权重，与input的shape满足broadcast关系。</td>
-      <td>数据类型与input一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>actSeqLenOptional</td>
-      <td>输入</td>
-      <td>描述每个Batch对应的S大小，各batch长度不等时需要输入。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>ND</td>
-      <td>1</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>compressBlockSize</td>
-      <td>输入</td>
-      <td>压缩滑窗大小。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>compressStride</td>
-      <td>输入</td>
-      <td>两次压缩滑窗间隔大小。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>actSeqLenType</td>
-      <td>输入</td>
-      <td>取值0或1，当前仅支持0。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>layoutOptional</td>
-      <td>输入</td>
-      <td>代表输入input的数据排布格式，支持TND。</td>
-      <td>-</td>
-      <td>string</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>inputGrad</td>
-      <td>输出</td>
-      <td>input的梯度，与input shape一致。</td>
-      <td>数据类型与input一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>weightGrad</td>
-      <td>输出</td>
-      <td>weight的梯度，与weight shape一致。</td>
-      <td>数据类型与weight一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    </tr>
-  </tbody>
-</table>
+- **参数说明**
 
-- **返回值：**
+  <table style="undefined;table-layout: fixed; width: 1565px">
+    <colgroup>
+      <col style="width: 146px">
+      <col style="width: 135px">
+      <col style="width: 326px">
+      <col style="width: 246px">
+      <col style="width: 275px">
+      <col style="width: 101px">
+      <col style="width: 190px">
+      <col style="width: 146px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>query</td>
+        <td>输入</td>
+        <td>公式中的query。</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>key</td>
+        <td>输入</td>
+        <td>公式中的key。</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>value</td>
+        <td>输入</td>
+        <td>公式中的value。</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>attenMaskOptional</td>
+        <td>输入</td>
+        <td>公式中的atten_mask。</td>
+        <td>
+          <ul>
+            <li>输入shape需为[S,S]。</li>
+            <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmqSkv)。</li>
+          </ul>
+        </td>
+        <td>BOOL</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>actualSeqQLenOptional</td>
+        <td>输入</td>
+        <td>描述每个Batch对应的query S大小(Sq)。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>1</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>outputGrad</td>
+        <td>输入</td>
+        <td>正向算子输出的反向梯度。</td>
+        <td>-</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>input</td>
+        <td>输入</td>
+        <td>待压缩张量。</td>
+        <td>-</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>weight</td>
+        <td>输入</td>
+        <td>压缩的权重，与input的shape满足broadcast关系。</td>
+        <td>数据类型与input一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>actSeqLenOptional</td>
+        <td>输入</td>
+        <td>描述每个Batch对应的S大小，各batch长度不等时需要输入。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>1</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>compressBlockSize</td>
+        <td>输入</td>
+        <td>压缩滑窗大小。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>compressStride</td>
+        <td>输入</td>
+        <td>两次压缩滑窗间隔大小。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>actSeqLenType</td>
+        <td>输入</td>
+        <td>取值0或1，当前仅支持0。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>layoutOptional</td>
+        <td>输入</td>
+        <td>代表输入input的数据排布格式，支持TND。</td>
+        <td>-</td>
+        <td>string</td>
+        <td>-</td>
+        <td>-</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>inputGrad</td>
+        <td>输出</td>
+        <td>input的梯度，与input shape一致。</td>
+        <td>数据类型与input一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>weightGrad</td>
+        <td>输出</td>
+        <td>weight的梯度，与weight shape一致。</td>
+        <td>数据类型与weight一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -270,7 +273,7 @@ aclnnStatus aclnnNsaCompressGrad(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -295,10 +298,9 @@ aclnnStatus aclnnNsaCompressGrad(
   </tbody>
   </table>
 
+## aclnnNsaCompressGrad
 
-### aclnnNsaCompressGrad
-
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -335,7 +337,7 @@ aclnnStatus aclnnNsaCompressGrad(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -344,7 +346,6 @@ aclnnStatus aclnnNsaCompressGrad(
 - 确定性计算：
   - aclnnNsaCompressGrad默认确定性实现。
 - compressBlockSize和compressStride要是16的整数倍，且compressBlockSize > compressStride
-
 
 ## 调用示例
 

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file distribute_barrier_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef DISTRIBUTE_BARRIER_PROTO_H_
+#define DISTRIBUTE_BARRIER_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -36,10 +36,12 @@ namespace ge {
 * @li x_ref: A tensor. reserved. Support dtype:bfloat16, float16, float32, bool, int8, int16, int32, int64, uint8, uint16, uint32, uint64. Support format: ND.
 */
 REG_OP(DistributeBarrier)
-    .INPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64}))
+    .INPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64,
+           DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1, DT_HIFLOAT8, DT_INT4}))
     .OPTIONAL_INPUT(time_out, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(elastic_info, TensorType({DT_INT32}))
-    .OUTPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64}))
+    .OUTPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64,
+            DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1, DT_HIFLOAT8, DT_INT4}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
     .OP_END_FACTORY_REG(DistributeBarrier)
@@ -47,4 +49,4 @@ REG_OP(DistributeBarrier)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // DISTRIBUTE_BARRIER_PROTO_H_

@@ -25,8 +25,10 @@ enum class LI_LAYOUT {
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
-          LI_LAYOUT LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
+          LI_LAYOUT LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND,
+          bool DT_W_FLAG = false, typename... Args>
 struct LIType {
+    static constexpr bool weightsTypeFlag = DT_W_FLAG;   // weight的dtype是否为FP32
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
@@ -82,6 +84,7 @@ struct ConstInfo {
 
     // 基本块大小
     uint32_t mBaseSize = 1ULL;
+    uint32_t mBaseSizeAlign = 1ULL;
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
@@ -105,6 +108,7 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;    // 是否累加模式
     bool isAccumSeqS2 = false;    // 是否累加模式
+    bool isSparseCountOver2K = false; //sparseCount小于等于2048为false
 };
 
 struct SplitCoreInfo {

@@ -110,6 +110,44 @@ static aclnnStatus InputDtypeCheck(const aclTensor *input, const aclTensor *weig
     return ACLNN_SUCCESS;
 }
 
+static bool IsSupportedFormat(ge::Format format)
+{
+    return format == ge::FORMAT_ND ||
+           format == ge::FORMAT_NCL ||
+           format == ge::FORMAT_NCHW ||
+           format == ge::FORMAT_NCDHW;
+}
+
+static aclnnStatus CheckNDFormat(const aclTensor *input, const aclTensor *weight, const aclTensor *slotMapping,
+              const aclTensor *blockTableOptional, const aclTensor *outputCache)
+{
+    auto inputFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(input->GetStorageFormat()));
+    auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weight->GetStorageFormat()));
+    auto slotMappingFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(slotMapping->GetStorageFormat()));
+    ge::Format blockTableOptionalFormat = ge::FORMAT_ND;
+    if (blockTableOptional != nullptr) {
+        blockTableOptionalFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockTableOptional->GetStorageFormat()));
+    }
+    auto outputCacheFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(outputCache->GetStorageFormat()));
+    if (!IsSupportedFormat(inputFormat) || !IsSupportedFormat(weightFormat) ||
+        !IsSupportedFormat(slotMappingFormat) || !IsSupportedFormat(blockTableOptionalFormat) ||
+        !IsSupportedFormat(outputCacheFormat)) {
+        return false;
+    }
+    return true;
+}
+
+static bool CheckIsEmptyTensor(const aclTensor *input, const aclTensor *weight, const aclTensor *outputCache)
+{
+    int64_t inputShapeSize = input->GetViewShape().GetShapeSize();
+    int64_t weightShapeSize = weight->GetViewShape().GetShapeSize();
+    int64_t outputCacheShapeSize = outputCache->GetViewShape().GetShapeSize();
+    if (inputShapeSize == 0 || weightShapeSize == 0 || outputCacheShapeSize == 0) {
+        return true;
+    }
+    return false;
+}
+
 aclnnStatus
 aclnnNsaCompressWithCacheGetWorkspaceSize(const aclTensor *input, const aclTensor *weight, const aclTensor *slotMapping,
                                           const aclIntArray *actSeqLenOptional, const aclTensor *blockTableOptional,
@@ -117,15 +155,26 @@ aclnnNsaCompressWithCacheGetWorkspaceSize(const aclTensor *input, const aclTenso
                                           int64_t actSeqLenType, int64_t pageBlockSize, aclTensor *outputCache,
                                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    // 检查入参
-    CHECK_RET(CheckNsaCompressWithCacheParam(input, weight, slotMapping, outputCache, workspaceSize, executor) ==
-                  ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
     // L2接口阶段1
     L2_DFX_PHASE_1(aclnnNsaCompressWithCache,
                    DFX_IN(input, weight, slotMapping, outputCache, actSeqLenOptional, blockTableOptional,
                           layoutOptional, compressBlockSize, compressStride, actSeqLenType, pageBlockSize),
                    DFX_OUT(outputCache));
+    // 检查入参
+    CHECK_RET(CheckNsaCompressWithCacheParam(input, weight, slotMapping, outputCache, workspaceSize, executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+        // 检查空tensor
+    if (CheckIsEmptyTensor(input, weight, outputCache)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[NSACompressWithCache] do not support empty input/weight/outputCache.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 检查是否支持格式
+    if (!CheckNDFormat(input, weight, slotMapping, blockTableOptional, outputCache)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "[NSACompressWithCache] All input tensors must be in ND, NCL, NCHW or NCDHW format");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     CHECK_RET(InputDtypeCheck(input, weight, slotMapping, blockTableOptional, outputCache) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     // 获取executor

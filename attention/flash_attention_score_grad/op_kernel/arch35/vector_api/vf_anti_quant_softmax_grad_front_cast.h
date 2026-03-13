@@ -785,7 +785,7 @@ __aicore__ inline void MyAntiQuantSoftmaxGradFrontCast(const LocalTensor<T> &dst
 #else
 template <typename T1, typename T, typename OUTDTYPE, uint32_t srcN>
 __aicore__ inline void MyAntiQuantSoftmaxGradFrontCast(const LocalTensor<T> &dstTensor,
-                                                       const LocalTensor<T1> &gradTensor,
+                                                       const LocalTensor<OUTDTYPE> &gradTensor,
                                                        const LocalTensor<T1> &srcTensor, float scaleDx,
                                                        uint32_t srcM, uint32_t realN = srcN)
 {

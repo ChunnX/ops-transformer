@@ -27,8 +27,10 @@ template <typename T>
 class MoeGatherOut {
 public:
     __aicore__ inline MoeGatherOut(){};
+    __aicore__ inline void InitBaseData(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                        TPipe *tPipe);
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                GM_ADDR expandedScale, const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                GM_ADDR expandedScale, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyExpertIn(int64_t curExpertLoopOffset, int64_t curLoopElements);
     __aicore__ inline void CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols);
@@ -43,6 +45,7 @@ private:
     TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> expandedRowIdxCopyInQueue_;
 
     GlobalTensor<T> xGm_;
+    GlobalTensor<uint8_t> xUint8tGm_;
     GlobalTensor<float> xGscaleGm_;
     GlobalTensor<int32_t> sortedExpertIdxGm_;
     GlobalTensor<T> expandedXGm_;
@@ -78,9 +81,9 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
-                                             GM_ADDR expandedX, GM_ADDR expandedScale,
-                                             const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOut<T>::InitBaseData(GM_ADDR workspace,
+                                                     const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                     TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -119,10 +122,21 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
     }
     indicesLoops_ = Ceil(curCoreIndicesElements_, curCorePerLoopIndicesElements_);
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
+}
 
-    xGm_.SetGlobalBuffer((__gm__ T *)x, n_ * cols_);
+template <typename T>
+__aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
+                                             GM_ADDR expandedX, GM_ADDR expandedScale,
+                                             const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+{
+    InitBaseData(workspace, tilingData, tPipe);
+
     xGscaleGm_.SetGlobalBuffer((__gm__ float *)scale, n_);
-
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x, n_ * cols_);
+    } else {
+        xGm_.SetGlobalBuffer((__gm__ T *)x, n_ * cols_);
+    }
     expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
                                  curCoreIndicesElements_ * cols_);
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale + blockIdx_ * perCoreIndicesElements_,
@@ -130,7 +144,9 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
                       AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
-    pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
+    int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutComputeParamsOp.xCopyInQueueBufferNum,
+                                            GATHER_OUT_BUFFER_NUM);
+    pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, AlignBytes(perLoopCols_, sizeof(T)));
     pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(1, sizeof(float)));
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
@@ -159,11 +175,19 @@ __aicore__ inline void MoeGatherOut<T>::CopyExpertIn(int64_t curExpertLoopOffset
 template <typename T>
 __aicore__ inline void MoeGatherOut<T>::CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols)
 {
-    LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
-    DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-    DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
-    DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
-    xCopyInQueue_.EnQue(xLocal);
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        LocalTensor<uint8_t> xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
+        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
+        DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
+        DataCopyPad(xLocal, xUint8tGm_[xSrcOffset], copyParams0, padParams0);
+        xCopyInQueue_.EnQue(xLocal);
+    } else {
+        LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
+        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+        DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
+        DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
+        xCopyInQueue_.EnQue(xLocal);
+    }
 }
 
 template <typename T>

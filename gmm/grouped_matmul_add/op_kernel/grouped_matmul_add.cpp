@@ -19,12 +19,16 @@
 #include "stub_fun.h"
 #endif
 
-#if defined(__DAV_C310__)
-#include "arch35/grouped_matmul_add_basic_act.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#include "arch35/grouped_matmul_add_basic_cgmct.h"
 #else
 #include "grouped_matmul_add.h"
 #endif
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 using namespace AscendC;
 using namespace matmul;
@@ -32,7 +36,7 @@ using namespace matmul;
 /* pour changement co */
 
 namespace AscendC {
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #else
 constexpr uint32_t thresholdBlockNum = 8;
 constexpr uint32_t thresholdDimM = 5;
@@ -69,8 +73,7 @@ struct MNConfig {
 };
 
 template <typename ComputeType>
-class GmmAddProcess
-{
+class GmmAddProcess {
 protected:
     ComputeType& computeOp; // inernal computation operator
     const GmmBaseParams* __restrict gmmBaseParams;
@@ -82,15 +85,12 @@ protected:
     int32_t preOffset;
     GM_ADDR groupListPtr;
     GlobalTensor<int64_t> groupListGm;
-    GlobalTensor<int64_t> mListGm;
-    GlobalTensor<int64_t> kListGm;
-    GlobalTensor<int64_t> nListGm;
     MNConfig lastMnConfig;
     uint32_t lastGroupIdx;
+    uint32_t groupListType;
 
 public:
-    __aicore__ inline GmmAddProcess(ComputeType& computeOp_) : computeOp(computeOp_)
-    {}
+    __aicore__ inline GmmAddProcess(ComputeType& computeOp_) : computeOp(computeOp_) {}
 
     __aicore__ inline void Init(
         const GmmBaseParams* __restrict gmmBaseParamsIn, const TCubeTiling* __restrict mmTilingDataIn,
@@ -144,10 +144,7 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Init(
     groupNum = static_cast<uint32_t>(gmmBaseParams->groupNum);
     groupListPtr = groupList;
     groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupList);
-    GET_TILING_DATA_MEMBER_ADDR(GroupedMatmulAddTilingData, gmmArray, gmmArrayAddr, tiling); // custom macro
-    mListGm.SetGlobalBuffer((__gm__ int64_t*)gmmArrayAddr);
-    kListGm.SetGlobalBuffer((__gm__ int64_t*)(gmmArrayAddr + sizeof(int64_t) * MKN_LIST_LEN));
-    nListGm.SetGlobalBuffer((__gm__ int64_t*)(gmmArrayAddr + sizeof(int64_t) * MKN_LIST_LEN * 2));
+    groupListType = static_cast<uint32_t>(gmmBaseParams->groupListType);
 }
 
 template <typename ComputeType>
@@ -163,9 +160,9 @@ __aicore__ inline void GmmAddProcess<ComputeType>::SetMNConfig(const int32_t spl
 template <typename ComputeType>
 __aicore__ inline void GmmAddProcess<ComputeType>::SetMKN(const int32_t splitValue, MNConfig& mnConfig)
 {
-    mnConfig.m = mListGm.GetValue(0);
+    mnConfig.m = mmTilingData->M;
     mnConfig.k = splitValue;
-    mnConfig.n = nListGm.GetValue(0);
+    mnConfig.n = mmTilingData->N;
     return;
 }
 
@@ -218,7 +215,7 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Process()
     }
 
     for (uint32_t groupIdx = 0, count = 0; groupIdx < groupNum; ++groupIdx) {
-        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, groupListGm);
+        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, groupListType, groupListGm);
         SetMNConfig(splitValue, mnConfig);
         uint32_t dimM = Ceil(mnConfig.m, mnConfig.singleM);
         uint32_t dimN = Ceil(mnConfig.n, mnConfig.singleN);
@@ -251,8 +248,7 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Process()
 }
 
 template <class mmType, bool sync = false>
-class GmmAddCompute
-{
+class GmmAddCompute {
 public:
     using AT = typename mmType::AT::T;
     using BT = typename mmType::BT::T;
@@ -261,8 +257,7 @@ public:
     constexpr static bool transposeW = mmType::BT::isTrans;
 
     /** @brief constructor */
-    __aicore__ inline GmmAddCompute(typename mmType::MT& mm_) : mm(mm_)
-    {}
+    __aicore__ inline GmmAddCompute(typename mmType::MT& mm_) : mm(mm_) {}
 
     __aicore__ inline ~GmmAddCompute()
     {
@@ -390,17 +385,17 @@ __aicore__ inline void GmmAddCompute<mmType, sync>::MmComputePrepare(uint32_t gr
 }
 #endif
 
-extern "C" __global__ __aicore__ void grouped_matmul_add(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR yRef, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void grouped_matmul_add(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y,
+                                                         GM_ADDR yRef, GM_ADDR workspace, GM_ADDR tiling)
 {
     TPipe tPipe;
     AscendCUtils::SetOverflow(1);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     REGISTER_TILING_DEFAULT(GroupedMatmulAdd::GmmAddTilingDataParams);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     if (TILING_KEY_IS(10000900009000090001UL)) { // split_k
-        GroupedMatmulAdd::GmmAddAct<layout::ColumnMajor, layout::RowMajor>(x, weight, groupList, y, tiling);
+        GroupedMatmulAdd::GmmAddCgmct<layout::ColumnMajor, layout::RowMajor>(x, weight, groupList, y, tiling);
     }
 #else
 #ifndef __CCE_UT_TEST__

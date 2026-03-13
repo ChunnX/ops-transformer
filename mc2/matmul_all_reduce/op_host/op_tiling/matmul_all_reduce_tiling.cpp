@@ -13,13 +13,13 @@
  * \brief
  */
 
-
+#include <register/op_def_registry.h>
+#include <register/op_impl_registry.h>
 #include "matmul_all_reduce_tiling_base.h"
-#include "register/op_def_registry.h"
-#include "register/op_impl_registry.h"
 
 using namespace ge;
 using Ops::Transformer::OpTiling::TilingRegistryNew;
+using Ops::Transformer::OpTiling::TilingRegistryArch;
 
 namespace optiling {
 
@@ -28,6 +28,12 @@ ge::graphStatus TilingParseForMatmulAllReduce(gert::TilingParseContext* context)
 
 ge::graphStatus MatmulAllReduceTilingFunc(gert::TilingContext* context)
 {
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_3510) {
+        return TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);
 }
 

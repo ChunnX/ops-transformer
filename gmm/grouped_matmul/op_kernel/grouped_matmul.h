@@ -16,6 +16,7 @@
 #define ASCENDC_GROUPED_MATMUL_H
 
 #include "grouped_matmul_utils.h"
+#include "kernel_operator.h"
 
 namespace GROUPED_MATMUL {
 
@@ -444,6 +445,11 @@ __aicore__ inline void GMMCompute<mmType, sync>::Init(GM_ADDR x, GM_ADDR weight,
     pipe->InitBuffer(ubBuf, TOTAL_UB_SIZE / 2);
     LocalTensor<uint8_t> buf = ubBuf.template Get<uint8_t>();
     mm.SetLocalWorkspace(buf);
+#endif
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+    if (gmmBaseParams->isOutputDisableL2Cache != 0) {
+        yGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    }
 #endif
 }
 

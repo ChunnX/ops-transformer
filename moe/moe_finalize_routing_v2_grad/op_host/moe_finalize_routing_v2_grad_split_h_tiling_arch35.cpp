@@ -13,6 +13,7 @@
  * \brief
  */
 #include "moe_finalize_routing_v2_grad_tiling.h"
+#include "tiling_base/tiling_util.h"
 
 namespace optiling {
 constexpr int64_t TILING_KEY_WITH_SCALE_CUT_H_WITHOUT_BIAS = 20012;
@@ -28,25 +29,26 @@ public:
     explicit MoeFinalizeRoutingV2GradRegbaseSplitH(gert::TilingContext* context)
         : MoeFinalizeRoutingV2GradTiling(context)
     {}
-    ~MoeFinalizeRoutingV2GradRegbaseSplitH() override = default;
 
     void Reset(gert::TilingContext* context) override
     {
         MoeFinalizeRoutingV2GradTiling::Reset(context);
     }
 
+    ~MoeFinalizeRoutingV2GradRegbaseSplitH() override = default;
+
 protected:
-    ge::graphStatus CalcTilingKey() override;
-
-    ge::graphStatus PostTiling() override;
-
     bool IsCapable() override
     {
-        if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
             return false;
         }
         return true;
     }
+
+    ge::graphStatus CalcTilingKey() override;
+
+    ge::graphStatus PostTiling() override;
 
     ge::graphStatus CheckOptionalInputDtype() override;
 

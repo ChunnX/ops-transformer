@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include <tiling/platform/platform_ascendc.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
@@ -164,7 +165,11 @@ TILING_DATA_FIELD_DEF(uint32_t, outputLayout)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
+TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 END_TILING_DATA_DEF
+
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionBaseParamsMlaOp, KvQuantSparseFlashAttentionBaseParamsMla)
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSingleCoreParamsMla)
@@ -238,7 +243,8 @@ struct QSFATilingInfo {
     QSFAParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
+    bool isA5 = false;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -266,6 +272,7 @@ struct QSFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
+    bool actualQSeqLenFlag = false;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
@@ -297,6 +304,7 @@ struct QSFATilingInfo {
     ge::DataType inputKRopeType = ge::DT_FLOAT16;
 
     uint64_t l2CacheSize = 0;
+    int64_t dSizeVInput = 0;
 };
 
 // ---------------算子Tiling类---------------
@@ -497,7 +505,8 @@ private:
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
+    bool isA5_ = false;
     uint64_t l2CacheSize_ = 0;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
@@ -548,6 +557,7 @@ public:
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
     ge::graphStatus GetValueHeadDim();
+    ge::graphStatus GetDSizeKV();
     ge::graphStatus GetRopeHeadDim();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetTopkLayout();
@@ -581,6 +591,7 @@ public:
     uint32_t kHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     int32_t ropeHeadDim_ = 0;
+    int64_t dSizeKV_ = 0;
     uint32_t qTSize_ = 0; // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
@@ -594,7 +605,8 @@ public:
     uint32_t maxBlockNumPerBatch_ = 0;
     uint32_t blockSize_ = 0;
 
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
+    bool isA5_ = false;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;

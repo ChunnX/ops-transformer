@@ -192,8 +192,8 @@ protected:
 
     bool IsCapable() override
     {
-        if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
-            OP_LOGD(opName, "Current soc version is not platform_ascendc::SocVersion::ASCEND910_95.");
+        if (npuArch != NpuArch::DAV_3510) {
+            OP_LOGD(opName, "Current npu arch is not dav-3510.");
             return false;
         }
         if (tilingKeyLayout != LayoutType::LAYOUT_TND) {
@@ -506,11 +506,61 @@ protected:
         return true;
     }
 
+    bool IsUseSplitCoreMode(SparseMode inputSparseMode) override
+    {
+        if (inputSparseMode == SparseMode::LEFT_UP_CAUSAL || inputSparseMode == SparseMode::RIGHT_DOWN_CAUSAL ||
+            inputSparseMode == SparseMode::ALL_MASK) {
+            for (auto i = 0; i < bSize; i++) {
+                // 当前采用保守判断条件，当同batch中S1、S2均超过阈值时开启分核优化
+                int compareValue = actualSeqLenKvData[i];
+                if (inputSparseMode == SparseMode::LEFT_UP_CAUSAL) {
+                    compareValue = std::min(actualSeqLenData[i], actualSeqLenKvData[i]);
+                }
+                if (compareValue > thresholdS2Size) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    void SetSplitCoreModeParam() override
+    {
+        CalcThresholdForS2Size();
+
+        // 索引从0开始，需要将基本块个数减1
+        if ((sparseMode == static_cast<int64_t>(SparseMode::LEFT_UP_CAUSAL)) &&
+            IsUseSplitCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        } else if ((sparseMode == static_cast<int64_t>(SparseMode::RIGHT_DOWN_CAUSAL)) &&
+            IsUseSplitCoreMode(SparseMode::RIGHT_DOWN_CAUSAL)) {
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        } else if (sparseMode == static_cast<int64_t>(SparseMode::ALL_MASK) &&
+            IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        } else if (sparseMode == static_cast<int64_t>(SparseMode::NO_MASK)) {
+            if (!hasAttenMask && IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
+                splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+            } else if (preTokens >= s1Size && nextTokens == 0 && IsUseSplitCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
+                splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+            }
+        }
+
+        multiCoreParamsRegbase_->set_splitCoreMode(static_cast<uint8_t>(splitCoreMode));
+        multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(firstFullLoadS1OuterIdx);
+
+        OP_LOGD(context_, "sparseMode: %ld, firstFullLoadS1OuterIdx: %ld, splitCoreMode: %d, s2SizeThreshold: %d.",
+            sparseMode, firstFullLoadS1OuterIdx, splitCoreMode, thresholdS2Size);
+    }
+
     int64_t GetS2RealSize(uint8_t sparseType, int32_t bOutIdx, int64_t s1OutIdx)
     {
         int64_t s2RealSize = s2Size;
-        if (sparseType == static_cast<uint8_t>(SparseEnum::CAUSAL) && s1Size == s2Size) {
+        if (sparseType == static_cast<uint8_t>(SparseEnum::CAUSAL)) {
             s2RealSize = s1BasicBlock * (s1OutIdx + 1);
+        } else if (sparseType == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL)) {
+            s2RealSize = s1BasicBlock * (s1OutIdx + 1) + actualSeqLenKvData[bOutIdx] - actualSeqLenData[bOutIdx];
         } else if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX)) {
             s2RealSize = std::max(s1BasicBlock * (s1OutIdx + 1) - s1Size + s2Size, prefixNData[bOutIdx]);
         }
@@ -708,6 +758,6 @@ protected:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingVarLen, (int32_t)platform_ascendc::SocVersion::ASCEND910_95, 82);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingVarLen, static_cast<int32_t>(NpuArch::DAV_3510), 82);
 } // namespace FA
 } // namespace optiling

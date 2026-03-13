@@ -39,13 +39,17 @@ public:
         hasX2 = x2 != nullptr;
         hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
         hasScales = scales != nullptr;
-        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+
         x1Gm.SetGlobalBuffer((__gm__ T*)x1);
         x2Gm.SetGlobalBuffer((__gm__ T*)x2);
+
+        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
         expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
+        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
+        
         yGm.SetGlobalBuffer((__gm__ T*)y);
 
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->h);
@@ -97,12 +101,14 @@ public:
             ProcessYWithInput(rowOuterIdx, rowInnerLoop);
             yQue.EnQue(yLocal);
 
-            if (hasX1) {
-                x1Que.FreeTensor(x1Local);
-            }
             if (hasX2) {
                 x2Que.FreeTensor(x2Local);
             }
+
+            if (hasX1) {
+                x1Que.FreeTensor(x1Local);
+            }
+
             yLocal = yQue.DeQue<float>();
             int64_t yGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
                                 rowOuterIdx * tilingData->rowFactor * tilingData->h;
@@ -165,21 +171,21 @@ private:
         validK = 0;
         for (int64_t kInnerIdx = 0; kInnerIdx < curKFactor; kInnerIdx += 1) {
             SetExpandedRowIdxOffset(rowOuterIdx, rowInnerIdx, kOuterIdx, kInnerIdx);
-            int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
-            if constexpr (dropPadMode == DROP_PAD_COLUMN || dropPadMode == DROP_PAD_ROW) {
-                if (expandedRowIdxGmValue == INVALID_IDX) {
+            int64_t gmValueOfExpandedRowIdx = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
+            if constexpr (dropPadMode != DROP_PAD_ROW && dropPadMode != DROP_PAD_COLUMN) {
+                if (tilingData->activeNum <= gmValueOfExpandedRowIdx) {
                     continue;
                 }
             } else {
-                if (expandedRowIdxGmValue >= tilingData->activeNum) {
+                if (gmValueOfExpandedRowIdx == INVALID_IDX) {
                     continue;
                 }
             }
             CopyIn(
-                expandedXGm[expandedRowIdxGmValue * tilingData->h], expandedXLocal[validK * tilingData->hAligned], 1,
+                expandedXGm[gmValueOfExpandedRowIdx * tilingData->h], expandedXLocal[validK * tilingData->hAligned], 1,
                 tilingData->h);
             if (hasBiasAndExpertIdx) {
-                SetExpertIdxOffset(rowOuterIdx, rowInnerIdx, kOuterIdx, kInnerIdx);
+                SetOffsetForExpertIdx(kOuterIdx, rowOuterIdx, rowInnerIdx, kInnerIdx);
                 int64_t biasGmOffset = expertIdxGm.GetValue(expertIdxOffset) * tilingData->h;
                 CopyIn(biasGm[biasGmOffset], biasLocal[validK * tilingData->hAligned], 1, tilingData->h);
             }
@@ -204,21 +210,28 @@ private:
         }
     }
 
-    __aicore__ inline void SetExpertIdxOffset(
-        int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kOuterIdx, int64_t kInnerIdx)
+    __aicore__ inline void SetOffsetForExpertIdx(
+        int64_t kOuterIdx, int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kInnerIdx)
     {
         if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROP_PAD_COLUMN) {
-            expertIdxOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
-                              rowOuterIdx * tilingData->rowFactor * tilingData->k + rowInnerIdx * tilingData->k +
-                              kOuterIdx * tilingData->kFactor + kInnerIdx;
-        } else {
-            expertIdxOffset = expandedRowIdxOffset;
+            expertIdxOffset = rowInnerIdx * tilingData->k + kOuterIdx * tilingData->kFactor + kInnerIdx + 
+                GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
+                rowOuterIdx * tilingData->rowFactor * tilingData->k;
+            return;
         }
+        expertIdxOffset = expandedRowIdxOffset;
+        return;
     }
 
 private:
     TPipe* pipe;
     const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
+
+    int64_t expandedRowIdxOffset{0};
+    int64_t expertIdxOffset{0};
+    int64_t scaleOffset{0};
+    int16_t validK{0};
+
     GlobalTensor<T> expandedXGm;
     GlobalTensor<int32_t> expandedRowIdxGm;
     GlobalTensor<T> x1Gm;
@@ -228,30 +241,28 @@ private:
     GlobalTensor<int32_t> expertIdxGm;
     GlobalTensor<T> yGm;
 
-    LocalTensor<T> expandedXLocal;
-    LocalTensor<T> x1Local;
-    LocalTensor<T> x2Local;
-    LocalTensor<T> biasLocal;
-    LocalTensor<S> scalesLocal;
-    LocalTensor<float> yLocal;
-
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> expandedXQue;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> biasQue;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> x1Que;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> x2Que;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> scalesQue;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> yQue;
-
     S scale;
     bool hasX1{false};
     bool hasX2{false};
     bool hasBiasAndExpertIdx{false};
     bool hasScales{false};
 
-    int64_t expandedRowIdxOffset{0};
-    int64_t expertIdxOffset{0};
-    int64_t scaleOffset{0};
-    int16_t validK{0};
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> expandedXQue;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> x1Que;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> x2Que;
+
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> scalesQue;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> biasQue;
+    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> yQue;
+
+    LocalTensor<T> expandedXLocal;
+    LocalTensor<T> biasLocal;
+    LocalTensor<S> scalesLocal;
+
+    LocalTensor<T> x1Local;
+    LocalTensor<T> x2Local;
+
+    LocalTensor<float> yLocal;
 };
 } // namespace MoeFinalizeRoutingV2Regbase
 

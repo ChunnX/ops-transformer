@@ -49,8 +49,8 @@ struct Args {
     aclrtContext context;
 };
 
-constexpr uint32_t EP_WORLD_SIZE = 8;
-constexpr uint32_t TP_WORLD_SIZE = 2;
+constexpr uint32_t EP_WORLD_SIZE = 2;
+constexpr uint32_t TP_WORLD_SIZE = 1;
 constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -92,21 +92,19 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
     char hcomTpName[128] = {0};
-    ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed, ret %d\n", ret); return -1);
     LOG_PRINT(
-        "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, hcomEpBarrierName = %s, dispatchStream = %p, combineStream = %p, \
-              context = %p\n",
+        "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, hcomEpBarrierName = %s, dispatchStream = %p, \
+        barrierStream = %p, combineStream = %p, context = %p\n",
         args.rankId, hcomEpName, hcomTpName, hcomEpBarrierName, args.dispatchStream, args.barrierStream,
         args.combineStream, args.context);
 
     int64_t Bs = 8;
     int64_t H = 7168;
-    int64_t K = 3;
+    int64_t K = 1;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 1;
     int64_t sharedExpertRankNum = 1;
-    int64_t moeExpertNum = 7;
+    int64_t moeExpertNum = 1;
     int64_t quantMode = 0;
     int64_t globalBs = Bs * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 1;

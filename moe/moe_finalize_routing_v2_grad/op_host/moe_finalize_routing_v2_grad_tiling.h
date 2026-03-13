@@ -23,6 +23,7 @@
 #include "util/math_util.h" 
 #include "op_common/op_host/util/platform_util.h"
 #include "tiling_base/tiling_util.h"
+
 namespace optiling {
 // 基础tiling数据，为保证兼容性，延用旧tiling
 BEGIN_TILING_DATA_DEF(MoeFinalizeRoutingV2GradTilingData)
@@ -91,8 +92,8 @@ REGISTER_TILING_DATA_CLASS(MoeFinalizeRoutingV2Grad_20012, MoeFinalizeRoutingV2G
 REGISTER_TILING_DATA_CLASS(MoeFinalizeRoutingV2Grad_20022, MoeFinalizeRoutingV2GradSplitHTilingData);
 
 struct MoeFinalizeRoutingV2GradCompileInfo {
-    int64_t totalCoreNum = 0;
-    int64_t totalUbSize = 0;
+    int64_t aivNum = 0;
+    int64_t ubSize = 0;
 };
 
 constexpr int64_t BUFFER_NUM_WITH_BIAS = 4;    // gradY + expandedX + gradExpandedX + bias
@@ -129,12 +130,9 @@ protected:
     ge::graphStatus GetAttrInfo();
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckRequiredInput();
-    ge::graphStatus CheckBiasExist();
     ge::graphStatus CheckOptionalInputShape();
     virtual ge::graphStatus CheckOptionalInputDtype();
-    ge::graphStatus CheckExpandedXDims();
     ge::graphStatus CheckOutput();
-    ge::graphStatus CheckScaleExist();
     ge::graphStatus CheckParams();
 
 protected:

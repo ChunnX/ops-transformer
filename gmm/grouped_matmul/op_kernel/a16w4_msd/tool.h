@@ -15,9 +15,7 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 
-#include "kernel_log.h"
 #include "kernel_operator.h"
-#include "kernel_utils.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -57,8 +55,10 @@ __aicore__ inline void DataCopyPad2D(const LocalTensor<T> &dst, const GlobalTens
     params.srcStride = (srcInnerLength - blockLen) * sizeof(T);
     params.dstStride = (dstInnerLength - blockLen) * sizeof(T) / ONE_BLK_SIZE;
     DataCopyPadExtParams<T> padParams;
+    // blkLen字段需要做32B对齐
     if (blockLen % (32 / sizeof(T)) != 0) {
         padParams.isPad = true;
+        // pad接口只能pad到32B, 此处需要求差值
         padParams.rightPadding = CeilAlign(blockLen, static_cast<uint32_t>(32 / sizeof(T))) - blockLen;
         padParams.paddingValue = 0;
     }

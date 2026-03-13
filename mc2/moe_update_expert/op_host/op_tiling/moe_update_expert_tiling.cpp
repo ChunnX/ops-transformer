@@ -21,10 +21,12 @@
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
 #include "../../op_kernel/moe_update_expert_tiling.h"
+#include "../../op_kernel/moe_update_expert_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
 using namespace MoeUpdateExpertNamespace;
+using namespace Mc2Tiling;
 
 namespace optiling {
 constexpr uint32_t EXPERT_IDS_INDEX = 0U;
@@ -460,8 +462,15 @@ ge::graphStatus MoeUpdateExpertTiling::Init(gert::TilingContext* context)
 
 uint64_t MoeUpdateExpertTiling::GetTilingKey() const
 {
-    uint64_t tilingKey = (tailorCfg_ == TAILOR_NONE) ? 0ULL : 1ULL;
-    tilingKey += keyScales_;
+    uint32_t tilingKeyBalanceMode = (tailorCfg_ == TAILOR_NONE) ? RANK_ID_BALANCING_MODE : TOKEN_ID_BALANCING_MODE;
+    uint32_t tilingKeyDataType = TILINGKEY_FLOAT;
+    if (keyScales_ == KEY_SCALES_FP16) {
+        tilingKeyDataType = TILINGKEY_HALF;
+    } else if (keyScales_ == KEY_SCALES_BF16) {
+        tilingKeyDataType = TILINGKEY_BFLOAT16;
+    }
+    
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingKeyBalanceMode, tilingKeyDataType);
     return tilingKey;
 }
 
@@ -472,13 +481,13 @@ ge::graphStatus MoeUpdateExpertTiling::RunFusionKernelTiling(gert::TilingContext
     auto platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
 
-    uint32_t blockDim = 1U;
+    uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(blockDim);
+    numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetBlockDim(numBlocks);
     tilingData->aivCoreNum = aivNum;
 
     size_t* workspaces = context->GetWorkspaceSizes(1);

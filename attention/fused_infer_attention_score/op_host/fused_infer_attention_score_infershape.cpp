@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -64,6 +64,10 @@ static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_
     {15, ge::DT_BF16},
     {24, ge::DT_FLOAT8_E4M3FN},
     {290, ge::DT_HIFLOAT8}
+};
+
+static const std::map<int64_t, std::string> TORCH_DTYOE_NOT_SUPPORT_MAP = {
+    {23,  "DT_FLOAT8_E5M2"}, 
 };
 
 static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
@@ -374,11 +378,16 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
     // 10 is quant_scale2's index, if not instantiated or illegal return ge::DT_UNDEFINED
     if (context->GetOptionalInputDataType(FIA_QUANT_SCALE2_INDEX) != ge::DT_UNDEFINED) {
         outputType = ge::DT_INT8;
-
+        
         auto attrs = context->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
+            auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
+            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
+                OP_LOGE("FusedInferAttentionScore", "Fia graph mode do not support post quant output data type: %s.", it->second.c_str());
+                return ge::GRAPH_FAILED;
+            }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);
             if (iter != TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.end()) {
                 outputType = iter->second;

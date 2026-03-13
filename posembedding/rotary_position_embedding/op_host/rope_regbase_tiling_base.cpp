@@ -43,7 +43,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
+        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
         aicoreParams_.ubSize = ubSizePlatForm;
@@ -51,7 +51,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
     } else {
         auto compileInfoPtr = reinterpret_cast<const RotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
-        aicoreParams_.blockDim = compileInfoPtr->blockDim;
+        aicoreParams_.numBlocks = compileInfoPtr->numBlocks;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         socVersion_ = compileInfoPtr->socVersion;
     }
@@ -214,7 +214,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckParam()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "platform info is nullptr."), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check nullptr fail."), return ge::GRAPH_FAILED);

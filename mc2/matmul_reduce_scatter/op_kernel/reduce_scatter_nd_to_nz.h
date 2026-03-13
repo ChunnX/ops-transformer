@@ -18,22 +18,22 @@
 #define ENALBE_ND2NZ 1
 
 #if defined(__CCE_KT_TEST__)
-#define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
 #define SET_G_CORE_TYPE_IS_AIC thread_local int g_coreType = 1
+#define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
 #define DTYPE_X1 half
 #define DTYPE_Y half
 #else
-#define SET_G_CORE_TYPE_IS_AIV
 #define SET_G_CORE_TYPE_IS_AIC
+#define SET_G_CORE_TYPE_IS_AIV
 #endif
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../common/inc/kernel/mc2_tiling_struct.h")
-#include "../../common/inc/kernel/mc2_tiling_struct.h"
+#if __has_include("../../common/op_kernel/mc2_tiling_struct.h")
+#include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
 #else
-#include "../common/inc/kernel/mc2_tiling_struct.h"
+#include "../common/op_kernel/mc2_tiling_struct.h"
 #include "../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
 #endif
 

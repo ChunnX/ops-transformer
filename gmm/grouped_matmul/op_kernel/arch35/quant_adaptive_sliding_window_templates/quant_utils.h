@@ -15,7 +15,11 @@
 #ifndef ASCENDC_QUANT_UTILS_H
 #define ASCENDC_QUANT_UTILS_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 
 #define LOCAL_TEMPLATE_CLASS_PARAMS                                                                              \
@@ -34,8 +38,21 @@ const uint32_t FP32_OUTPUT_TIMES = 4;
 constexpr uint8_t BUFFER_SWITCH = 2;
 constexpr uint8_t SPLIT_M = 0;
 constexpr uint8_t SPLIT_K = 2;
+constexpr uint8_t GROUP_LIST_TYPE_SPARSE = 2;
+constexpr uint32_t SPARSE_GROUP_LIST_ITEM_STRIDE = 2;
+constexpr uint32_t SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET = 1;
 constexpr uint64_t CUBE_BLOCK = 16;
 constexpr uint64_t INNER_AXIS_MIN_SPLIT_VAL = 128; // ND2NZ cacheline 128
+
+constexpr uint32_t WEIGHTNZ_K0_16 = 16;
+constexpr uint32_t WEIGHTNZ_N0_16 = 16;
+constexpr uint32_t WEIGHTNZ_K0_32 = 32;
+constexpr uint32_t WEIGHTNZ_N0_32 = 32;
+constexpr uint32_t WEIGHTNZ_N0_K0 = 512;
+
+constexpr float NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715;
+constexpr float TANH_APPROX_FACTOR = 1 / 0.044715;
+constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, true};
 
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t FLAG_ID_MAX = 16;
@@ -83,7 +100,7 @@ __aicore__ inline constexpr bool IsMxType()
 template <typename T>
 __aicore__ inline constexpr bool IsFp4()
 {
-    return (AscendC::IsSameType<T, fp4x2_e2m1_t>::value || AscendC::IsSameType<T, fp4x2_e1m2_t>::value);
+    return AscendC::IsSameType<T, fp4x2_e2m1_t>::value;
 }
 
 template <typename aType, typename biasType>
@@ -122,13 +139,16 @@ __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t 
                                                      int32_t groupType, uint32_t groupListType,
                                                      const AscendC::GlobalTensor<int64_t> &groupListGm) {
     int32_t splitValue = 0;
-    if (likely(groupType != -1)) {  // -1: no  need to split
+    if (likely(groupType != -1)) { // -1: no  need to split
         if (groupListType == 0) {
             int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
             splitValue = offset - preOffset;
             preOffset = offset;
-        } else {
+        } else if (groupListType == 1) {
             splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
+        } else {
+            splitValue = static_cast<int32_t>(
+                groupListGm.GetValue(groupIdx * SPARSE_GROUP_LIST_ITEM_STRIDE + SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
         }
     }
     return splitValue;

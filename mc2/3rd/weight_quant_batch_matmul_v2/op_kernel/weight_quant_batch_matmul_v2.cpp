@@ -66,7 +66,7 @@ using namespace Mc2WeightQuantBatchMatmulV2;
 
 #include "weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
-#if !defined(__DAV_C310__)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
 #define INVOKE_WEIGHT_QUANT_BMM_OP_IMPL(templateClass, ...)                                                      \
     do {                                                                                                         \
         GET_TILING_DATA_WITH_STRUCT(Mc2WeightQuantBatchMatmulV2TilingData, tilingDataIn, tiling);                   \

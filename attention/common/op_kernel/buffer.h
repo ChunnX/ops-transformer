@@ -16,13 +16,15 @@
 #define BUFFER_H
 #include<type_traits>
 #include"lib/matmul_intf.h"
-#include"kernel_event.h"
-#include"kernel_common.h"
-#include"kernel_tpipe.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
-#define MAKE_ID ((++idCounterNum) % 16)
+#define MAKE_ID ((++idCounterNum) % 11)
 
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
 #define AIV0_AIV1_OFFSET 16
@@ -34,6 +36,7 @@ enum class BufferType {
     L0C = 3,
     UB = 4,
     GM = 5,
+    C2 = 6,
 };
 
 enum class SyncType {
@@ -58,6 +61,8 @@ struct BufferInfo{
             return HardEvent::MTE1_M;
         } else if constexpr (Type == BufferType::L0C) {
             return HardEvent::M_FIX;
+        } else if constexpr (Type == BufferType::C2) {
+            return HardEvent::MTE1_M;
         }
     }
 
@@ -70,6 +75,8 @@ struct BufferInfo{
             return HardEvent::M_MTE1;
         } else if constexpr (Type == BufferType::L0C) {
             return HardEvent::FIX_M;
+        } else if constexpr (Type == BufferType::C2) {
+            return HardEvent::M_MTE1;
         }
     }
 
@@ -86,6 +93,8 @@ struct BufferInfo{
             return TPosition::VECIN;
         } else if constexpr (Type == BufferType::GM) {
             return TPosition::GM;
+        } else if constexpr (Type == BufferType::C2) {
+            return TPosition::C2;
         }
     }
 
@@ -168,6 +177,25 @@ public:
         }
     }
 
+    __aicore__ inline void SetEventID() {
+        if ASCEND_IS_AIC {
+            p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
+            c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
+        }
+    }
+
+    template<HardEvent EventType>
+    __aicore__ inline TEventID GetEventID() {
+        if ASCEND_IS_AIC {
+            if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
+                return p2cEventId_; // 生产者通知消费者已完成生产
+            } else {
+                return c2pEventId_; // 消费者通知生产者已完成消费
+            }
+        }
+    }
+
+    template<bool isReuse = false>
     __aicore__ inline void WaitCrossCore() {
         if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -175,7 +203,11 @@ public:
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_);
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_ + AIV0_AIV1_OFFSET);
             } else {
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+                if constexpr (isReuse) {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
+                } else {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+                }
             }
         } else if constexpr (bufferType == BufferType::L1) {
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
@@ -190,6 +222,7 @@ public:
         }
     }
 
+    template<bool isReuse = false>
     __aicore__ inline void SetCrossCore() {
         if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -197,7 +230,11 @@ public:
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_);
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
             } else {
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                if constexpr (isReuse) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
+                } else {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                }
             }
         } else if constexpr (bufferType == BufferType::L1) {
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV

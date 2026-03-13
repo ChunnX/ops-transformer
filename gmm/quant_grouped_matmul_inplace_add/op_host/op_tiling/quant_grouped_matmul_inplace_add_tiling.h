@@ -26,9 +26,9 @@
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
-class QuantGroupedInplaceAddTiling : public GroupedQbmmTiling {
+class QuantGroupedInplaceAddTiling : public GroupedQmmTiling {
 public:
-    explicit QuantGroupedInplaceAddTiling(gert::TilingContext *context) : GroupedQbmmTiling(context)
+    explicit QuantGroupedInplaceAddTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
     {
         Reset();
     }
@@ -36,11 +36,13 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQbmmTiling::Reset(context);
+        GroupedQmmTiling::Reset(context);
         Reset();
     }
 
 protected:
+    // 2、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
@@ -60,6 +62,7 @@ private:
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckShapeForTCQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
+    bool CheckCoreNum() const override;
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams tilingData_;
 };
 } // namespace optiling

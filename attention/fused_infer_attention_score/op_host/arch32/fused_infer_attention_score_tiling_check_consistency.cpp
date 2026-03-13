@@ -368,13 +368,13 @@ ge::graphStatus FiaTilingCheck::CheckActualSeqLensKv() const
         if (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
             opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr &&
             actualSeqLengthsKvSize_ != actualSeqLengthsQSize_) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be equal to %s shape size(%u).",
+            OP_LOGE(opName_, "when key/value's layout is TND, %s shape size is %u, it should be equal to %s shape size(%u).",
                 ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_,
                 ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_);
             return ge::GRAPH_FAILED;
         }
         if (actualSeqLengthsKvSize_ != bSize_ && actualSeqLengthsKvSize_ != 1U) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
+            OP_LOGE(opName_, "when key/value's layout is TND, %s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
                 ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, bSize_);
             return ge::GRAPH_FAILED;
         }
@@ -491,11 +491,7 @@ ge::graphStatus FiaTilingCheck::CheckSystemPrefixShape()
     }
     auto prefixKShape = opParamInfo_.keySharedPrefix.tensor->GetStorageShape();
     auto prefixVShape = opParamInfo_.valueSharedPrefix.tensor->GetStorageShape();
-    prefixKeyShapeCmp_ = std::make_shared<FiaTilingShapeCompare>(prefixKShape, kvLayout_, KEY_NAME, opName_);
-    if (fiaInfo_.systemPrefixLen > fiaInfo_.systemPrefixMaxLen) {
-        OP_LOGE(opName_, "actual prefix len should be less than or equal to prefixlen");
-        return ge::GRAPH_FAILED;
-    }
+    prefixKeyShapeCmp_ = std::make_shared<FiaTilingShapeCompare>(prefixKShape, kvLayout_, KEY_SHARED_PREFIX_NAME, opName_);
 
     if (prefixKShape != prefixVShape) {
         OP_LOGE(opName_, "Prefix shapes mismatch: prefix key shape and prefix value shape");
@@ -514,7 +510,15 @@ ge::graphStatus FiaTilingCheck::CheckSystemPrefixShape()
     // 前缀的B和S2和正常的没关系
     shapeParams.compareTypeMap = {{FiaAxis::S, FiaCompareType::IGNORE_INPUT},
                                   {FiaAxis::B, FiaCompareType::IGNORE_INPUT}};
-    return prefixKeyShapeCmp_->CompareShape(shapeParams, __func__);
+    
+    if (ge::GRAPH_SUCCESS != prefixKeyShapeCmp_->CompareShape(shapeParams, __func__)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (fiaInfo_.systemPrefixLen > fiaInfo_.systemPrefixMaxLen) {
+        OP_LOGE(opName_, "actual prefix len should be less than or equal to prefixlen");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaTilingCheck::CheckMask()
@@ -551,6 +555,16 @@ ge::graphStatus FiaTilingCheck::SetAttenMaskCompare()
         } else {
             OP_LOGE(opName_, "%s dim num only support %zu, %zu, %zu, but got %zu",
                 ATTEN_MASK_NAME.c_str(), DIM_NUM_TWO, DIM_NUM_THREE, DIM_NUM_FOUR, maskDimNum);
+            return ge::GRAPH_FAILED;
+        }
+    } else if (sparseMode == SPARSE_MODE_TREE) {
+        if (maskDimNum == DIM_NUM_ONE) {
+            maskLayout = FiaLayout::S1S1;
+        } else if (maskDimNum == DIM_NUM_THREE) {
+            maskLayout = FiaLayout::BS1S2;
+        } else {
+            OP_LOGE(opName_, "%s dim num only support %zu, %zu, but got %zu",
+                ATTEN_MASK_NAME.c_str(), DIM_NUM_ONE, DIM_NUM_THREE, maskDimNum);
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -605,8 +619,28 @@ ge::graphStatus FiaTilingCheck::CheckAttentionMask()
     } else if (sparseMode == SPARSE_MODE_LEFT_UP || sparseMode == SPARSE_MODE_RIGHT_DOWN || sparseMode == SPARSE_MODE_BAND){
         shapeParams.S1 = OPT_ATTEN_MASK_LEN;
         shapeParams.S2 = OPT_ATTEN_MASK_LEN;
-    }
+    } else if (sparseMode == SPARSE_MODE_TREE) {
+        uint64_t sSize = 0;
+        if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+            // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
+            if (fiaInfo_.isMaxWorkspace) {
+                return ge::GRAPH_SUCCESS;
+            }
 
+            for (uint32_t i = 0; i < qSize.size(); i++) {
+                sSize += qSize[i] * qSize[i];
+            }
+        } else {
+            sSize = s1Size_;
+        }
+        shapeParams.B = static_cast<int64_t>(bSize_);
+        shapeParams.S1 = static_cast<int64_t>(sSize);
+        shapeParams.S2 = static_cast<int64_t>(sSize);
+        shapeParams.compareTypeMap = {
+            {FiaAxis::S1, FiaCompareType::GREATER_EQUAL},
+            {FiaAxis::S2, FiaCompareType::GREATER_EQUAL},
+        };
+    }
     return attenMaskShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
@@ -682,6 +716,58 @@ ge::graphStatus FiaTilingCheck::CheckSoftmaxLseShape()
     return softmaxLseShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
+ge::graphStatus FiaTilingCheck::CheckPostQuant()
+{
+    if (fiaInfo_.isOutQuantEnable) {
+        OP_CHECK_IF(opParamInfo_.attenOut.desc->GetDataType() != ge::DT_INT8, 
+            OP_LOGE(opName_, "the quantScale2 exist, output data type should be INT8!"), 
+            return ge::GRAPH_FAILED);
+        const ge::DataType queryDataType_ = opParamInfo_.query.desc->GetDataType();
+        const ge::DataType quantScale2Datatype_ = opParamInfo_.quantScale2.desc->GetDataType();
+        auto quantScale2Shape_ = opParamInfo_.quantScale2.tensor->GetStorageShape();
+
+        //scale2 and offset2 should have same dtype and shape
+        if (opParamInfo_.quantOffset2.tensor != nullptr && opParamInfo_.quantOffset2.desc != nullptr) {
+            const ge::DataType quantOffset2Datatype_ = opParamInfo_.quantOffset2.desc->GetDataType();
+            OP_CHECK_IF(quantOffset2Datatype_ != quantScale2Datatype_,
+                OP_LOGE(opName_, "quantScale2 and quantOffset2 should have same dtype!"),
+                return ge::GRAPH_FAILED);
+            auto quantOffset2Shape_ = opParamInfo_.quantOffset2.tensor->GetStorageShape();
+            OP_CHECK_IF(quantOffset2Shape_ != quantScale2Shape_,
+                OP_LOGE(opName_, "quantScale2 and quantOffset2 should have same shape!"),
+                return ge::GRAPH_FAILED);
+        }
+
+        // scale2 dtype verification
+        OP_CHECK_IF((queryDataType_ != ge::DT_FLOAT16 && queryDataType_ != ge::DT_BF16),
+            OP_LOGE(opName_, "in postquant situation, query type should be FP16 or BF16"),
+            return ge::GRAPH_FAILED);
+ 
+        OP_CHECK_IF((queryDataType_ == ge::DT_FLOAT16 && quantScale2Datatype_ != ge::DT_FLOAT),
+            OP_LOGE(opName_, "inputQ dtype is FP16, quantScale2 dtype should be FP32"),
+            return ge::GRAPH_FAILED);
+
+        //scale2 shape verfication
+        std::string layout(opParamInfo_.layOut);
+        if (quantScale2Shape_.GetShapeSize() != 1) {
+            if (layout == "BSH" || layout == "BSND" || layout == "BNSD" || layout == "BNSD_BSND") {
+                int64_t currentShapeSize = quantScale2Shape_.GetShapeSize();
+                int64_t expectShapeSize = gert::Shape({n1Size_, vHeadDim_}).GetShapeSize();
+                OP_CHECK_IF(currentShapeSize != expectShapeSize,
+                    OP_LOGE(opName_, "when input_layout is %s, the shape size of quantScale2 should be %lld(Q_N * V_D), but current is %u, shape is %s",
+                        layout.c_str(), expectShapeSize, currentShapeSize, GetShapeStr(quantScale2Shape_).c_str()),
+                    return ge::GRAPH_FAILED);
+            } else {
+                OP_CHECK_IF(quantScale2Shape_ != gert::Shape({n1Size_, vHeadDim_}),
+                    OP_LOGE(opName_, "when input_layout is %s, quantScale2 expectshape is [Q_N, V_D], it is [%u, %u], but current shape is %s",
+                        layout.c_str(), n1Size_, vHeadDim_, GetShapeStr(quantScale2Shape_).c_str()),
+                    return ge::GRAPH_FAILED);
+            }
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaTilingCheck::CheckMultiParaConsistency()
 {
     SetFiaShapeCompare();
@@ -694,10 +780,10 @@ ge::graphStatus FiaTilingCheck::CheckMultiParaConsistency()
         ge::GRAPH_SUCCESS != CheckPseShift() ||
         ge::GRAPH_SUCCESS != CheckMask() ||
         ge::GRAPH_SUCCESS != CheckSoftmaxLse()||
-        ge::GRAPH_SUCCESS != CheckSystemPrefix()) {
+        ge::GRAPH_SUCCESS != CheckSystemPrefix() ||
+        ge::GRAPH_SUCCESS != CheckPostQuant()) {
         return ge::GRAPH_FAILED;
     }
-
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling

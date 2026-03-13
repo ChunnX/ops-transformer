@@ -23,7 +23,7 @@ public:
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, 
         ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
-        ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
+        ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("expert_ids")
@@ -35,7 +35,7 @@ public:
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
         ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
+        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("x_active_mask")
@@ -63,14 +63,16 @@ public:
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, 
         ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
-        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN})
+        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,
+        ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
         .FormatList({ge::FORMAT_ND});
 
     this->Output("dynamic_scales")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, 
         ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, 
-        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
+        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND});
 
     this->Output("assist_info_for_combine")
@@ -91,9 +93,7 @@ public:
         .FormatList({ge::FORMAT_ND});
     this->Output("expand_scales")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-        ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+        .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND});
         
     this->Attr("group_ep").AttrType(REQUIRED).String();
@@ -113,6 +113,7 @@ public:
     this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
+    this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
 
     OpAICoreConfig aicore_config_A2;
     aicore_config_A2.DynamicCompileStaticFlag(true)
@@ -138,6 +139,7 @@ public:
         .ExtendCfgInfo("jitCompile.flag", "static_true")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
+    this->AICore().AddConfig("ascend950", aicore_config);
     this->AICore().AddConfig("ascend910_93", aicore_config);
     this->AICore().AddConfig("ascend910b", aicore_config_A2);
     this->MC2().HcclGroup({"group_ep", "group_tp"});

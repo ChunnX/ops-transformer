@@ -2,11 +2,14 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -19,16 +22,14 @@
   在这个过程中，门控单元会决定有多少新信息存入隐藏状态，以及有多少旧信息需要被遗忘。
 
   $$
-  S_t := S_{t-1}(\alpha_t(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1}k_t)k_t^T
+  S_t := S_{t-1}(\alpha_t Diag(\alpha_{kt})(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t Diag(\alpha_{kt})S_{t-1} + \beta_t (v_t - \alpha_t Diag(\alpha_{kt})S_{t-1}k_t)k_t^T
   $$
-
 
   $$
   o_t := \frac{S_t q_t}{\sqrt{d_k}}
   $$
 
-  其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\beta_t \in R$，$o \in R^{d_v}$。
-
+  其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\alpha_k \in R^{d_k}$，$\beta_t \in R$，$o \in R^{d_v}$。
 
 ## 参数说明
 
@@ -91,6 +92,13 @@
     <td>ND</td>
   </tr>
   <tr>
+    <td>gk</td>
+    <td>输入</td>
+    <td>衰减系数，公式中的αk=e^gk</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
     <td>out</td>
     <td>输出</td>
     <td>公式中的o。</td>
@@ -101,8 +109,8 @@
 </table>
 
 ## 约束说明
-- 输入tensor的shape大小需满足一定约束，具体见[aclnnRecurrentGatedDeltaRule](./docs/aclnnRecurrentGatedDeltaRule.md)。
 
+- 输入tensor的shape大小需满足一定约束，具体见[aclnnRecurrentGatedDeltaRule](./docs/aclnnRecurrentGatedDeltaRule.md)。
 
 ## 调用说明
 

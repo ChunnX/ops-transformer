@@ -1,18 +1,17 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace AttentionToFFNUT {
@@ -28,26 +27,27 @@ protected:
     }
 };
 
-TEST_F(AttentionToFFNInferShapeTest, basic) {
-    gert::StorageShape x_shape = {{1, 16, 7168}, {}};
-    gert::StorageShape session_id_shape = {{1}, {}};
-    gert::StorageShape micro_batch_id_shape = {{1}, {}};
-    gert::StorageShape layer_id_shape = {{1}, {}};
-    gert::StorageShape expert_ids_shape = {{1, 16, 8}, {}};
-    gert::StorageShape expert_rank_table_shape = {{1, 9, 4}, {}};
-    gert::StorageShape scales_shape = {{9, 7168}, {}};
-    gert::StorageShape active_mask_shape = {{1, 16}, {}};
+TEST_F(AttentionToFFNInferShapeTest, Basic)
+{
+    gert::StorageShape xShape = {{1, 16, 7168}, {}};
+    gert::StorageShape sessionIdShape = {{1}, {}};
+    gert::StorageShape microBatchIdShape = {{1}, {}};
+    gert::StorageShape layerIdShape = {{1}, {}};
+    gert::StorageShape expertIdsShape = {{1, 16, 8}, {}};
+    gert::StorageShape expertRankTableShape = {{1, 9, 4}, {}};
+    gert::StorageShape scalesShape = {{9, 7168}, {}};
+    gert::StorageShape activeMaskShape = {{1, 16}, {}};
 
     gert::InfershapeContextPara infershapeContextPara("AttentionToFFN",
         {
-            {x_shape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {session_id_shape, ge::DT_INT32, ge::FORMAT_ND},
-            {micro_batch_id_shape, ge::DT_INT32, ge::FORMAT_ND},
-            {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND},
-            {expert_ids_shape, ge::DT_INT32, ge::FORMAT_ND},
-            {expert_rank_table_shape, ge::DT_INT32, ge::FORMAT_ND},
-            {scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {active_mask_shape, ge::DT_BOOL, ge::FORMAT_ND}
+            {xShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {sessionIdShape, ge::DT_INT32, ge::FORMAT_ND},
+            {microBatchIdShape, ge::DT_INT32, ge::FORMAT_ND},
+            {layerIdShape, ge::DT_INT32, ge::FORMAT_ND},
+            {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND},
+            {expertRankTableShape, ge::DT_INT32, ge::FORMAT_ND},
+            {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {activeMaskShape, ge::DT_BOOL, ge::FORMAT_ND}
         },
         {
             {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
@@ -64,9 +64,12 @@ TEST_F(AttentionToFFNInferShapeTest, basic) {
             {"ffn_start_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expectOutputShape = {};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 } // AttentionToFFNUT

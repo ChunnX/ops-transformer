@@ -17,7 +17,7 @@
 #define __ALL_TO_ALL_ALL_GATHER_FORMULAIC_TILING_H__
 
 #pragma once
-#include "tiling/one_calc_two_comm_tiling.h"
+#include "op_host/op_tiling/one_calc_two_comm_tiling.h"
 
 class All2AllAllGatherBMM : public OneCalcTwoCommBase {
 public:

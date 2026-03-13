@@ -16,7 +16,7 @@
 
 #include "register/op_impl_registry.h"
 #include "mc2_hcom_topo_info.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_moe_utils.h"
 
 using namespace ge;

@@ -1,6 +1,6 @@
 # GroupedMatmulFinalizeRouting
 
-##  产品支持情况
+## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
@@ -10,8 +10,6 @@
 ## 功能说明
 
 - 算子功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作
-
-
 
 ## 参数说明
 
@@ -191,7 +189,6 @@
   </tbody>
   </table>
 
-
 ## 约束说明
 
 输入和输出支持以下数据类型组合：
@@ -204,8 +201,6 @@
 | INT8 | INT8（NZ） | FLOAT32       | null         | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT   |
 | INT8 | INT4（NZ） | INT64         | FLOAT32      | FLOAT32        | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT   |
 | INT8 | INT4（NZ） | INT64         | FLOAT32      | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT   |
-
-
 
 ## 调用说明
 

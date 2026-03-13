@@ -19,8 +19,6 @@
 #define DT_BF16 bfloat16_t
 #define __CCE_UT_TEST__
 
-#define __aicore__
-
 inline void InitNormRopeConcatGradTilingData(uint8_t *tiling, NormRopeConcatGradTilingData *const_data)
 {
     memcpy(const_data, tiling, sizeof(NormRopeConcatGradTilingData));

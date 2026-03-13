@@ -93,3 +93,26 @@ TEST_F(ApplyRotaryPosEmbTest, apply_rotary_pos_emb_infer_shape_fp32)
     std::vector<std::vector<int64_t>> expectOutputShape = {{24, 1, 11, 128}, {24, 1, 1, 128}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
+
+TEST_F(ApplyRotaryPosEmbTest, apply_rotary_pos_emb_infer_shape_fp32_c64)
+{
+    gert::InfershapeContextPara infershapeContextPara("ApplyRotaryPosEmb",
+    { // input info
+        {{{24, 1, 11, 128}, {24, 1, 11, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{24, 1, 1, 64}, {24, 1, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{24, 1, 1, 64}, {24, 1, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+    }, 
+    { // output info
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+    }, 
+    { // attr
+        {"layout",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"rotary_mode",Ops::Transformer::AnyValue::CreateFrom<std::string>("half")}
+    }
+    );
+    std::vector<std::vector<int64_t>> expectOutputShape = {{24, 1, 11, 128}, {24, 1, 1, 128}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+

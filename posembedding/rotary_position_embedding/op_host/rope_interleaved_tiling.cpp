@@ -197,14 +197,14 @@ ge::graphStatus TilingSplitS(gert::TilingContext *context, uint64_t coreNum, uin
     // block split
     uint64_t frontCoreNum = GetDivRem(seqLen, coreNum) != 0 ? GetDivRem(seqLen, coreNum) : coreNum;
     uint64_t tailCoreNum = seqLen <= coreNum ? 0 : coreNum - frontCoreNum;
-    uint64_t blockDim = frontCoreNum + tailCoreNum;
+    uint64_t numBlocks = frontCoreNum + tailCoreNum;
     uint64_t coreCalcNum = GetCeilInt(seqLen, coreNum);
     uint64_t coreCalcTail = GetDiv(seqLen, coreNum);
     tiling.ropeInterleavedParams.set_frontCoreNum(frontCoreNum);
     tiling.ropeInterleavedParams.set_tailCoreNum(tailCoreNum);
     tiling.ropeInterleavedParams.set_coreCalcNum(coreCalcNum);
     tiling.ropeInterleavedParams.set_coreCalcTail(coreCalcTail);
-    context->SetBlockDim(blockDim);
+    context->SetBlockDim(numBlocks);
     uint64_t alignFactor = (dataDtype == ge::DT_FLOAT) ? ALIGN_32 : ALIGN_16;
     uint64_t headDimAlign;
     if (GetDivRem(headDim, alignFactor) == 0) {
@@ -333,6 +333,10 @@ ge::graphStatus TilingSplit(gert::TilingContext *context, const gert::StorageSha
 
 ge::graphStatus RopeInterLeavedTilingClass::DoOpTiling()
 {
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+    OP_CHECK_IF(ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P,
+                OP_LOGE(context_, "current soc does not support interleaved."), return ge::GRAPH_FAILED);
+    
     const gert::StorageShape *xShape = context_->GetInputShape(INPUT_X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
     const gert::StorageShape *cosShape = context_->GetInputShape(INPUT_COS_IDX);

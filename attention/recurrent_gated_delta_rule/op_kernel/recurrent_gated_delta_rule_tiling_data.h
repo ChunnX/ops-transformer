@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file recurrent_gated_delta_rule.cpp
+ * \file recurrent_gated_delta_rule_tiling_data.h
  * \brief
  */
 #ifndef RECURRENT_GATED_DELTA_RULE_TILING_DATA_H
@@ -33,6 +33,7 @@ struct alignas(8) RecurrentGatedDeltaRuleTilingData { // alignas(8)确保8字节
     uint32_t vStep;
     float scale;
     uint32_t hasGama;
+    uint32_t hasGamaK;
     uint32_t hasAcceptedTokens;
 };
 #pragma pack(pop)

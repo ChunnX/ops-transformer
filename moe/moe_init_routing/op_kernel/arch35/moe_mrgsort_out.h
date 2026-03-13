@@ -58,10 +58,10 @@ class MoeMrgsortOut {
   LocalTensor<int32_t> ubOutputInt1;
   LocalTensor<int32_t> ubOutputInt2;
 
-  int64_t listNum{0};
-  int64_t remainListNum{0};
   int64_t outOffset{0};
   int64_t offsets[4];
+  int64_t listNum{0};
+  int64_t remainListNum{0};
   int64_t listRemainElements[4];
   int64_t lengths[4];
   int64_t allRemainElements{0};
@@ -125,8 +125,8 @@ __aicore__ inline void MoeMrgsortOut::CopyIn() {
     lengths[i] = Min(param->oneLoopMaxElements, listRemainElements[i]);
     if (lengths[i] > 0) {
       DataCopy(this->ubInputs[i], this->gmInputs[i][offsets[i]], Align(GetSortLen<float>(lengths[i]), sizeof(float)));
-      tmpUbInputs[j] = this->ubInputs[i];
       elementCountListTail[j] = lengths[i];
+      tmpUbInputs[j] = this->ubInputs[i];
       this->remainListNum += 1;
       j++;
     }
@@ -175,14 +175,14 @@ __aicore__ inline void MoeMrgsortOut::Extract() {
 }
 
 __aicore__ inline void MoeMrgsortOut::CopyOut() {
-  DataCopyParams intriParams;
-  intriParams.blockCount = 1;
-  intriParams.blockLen = curLoopSortedNum * sizeof(int32_t);
+  DataCopyParams dataCopyParams;
+  dataCopyParams.blockCount = 1;
+  dataCopyParams.blockLen = curLoopSortedNum * sizeof(int32_t);
   event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
   SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
   WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-  DataCopyPad(this->gmOutput1[outOffset], this->ubOutputInt1, intriParams);
-  DataCopyPad(this->gmOutput2[outOffset], this->ubOutputInt2, intriParams);
+  DataCopyPad(this->gmOutput1[outOffset], this->ubOutputInt1, dataCopyParams);
+  DataCopyPad(this->gmOutput2[outOffset], this->ubOutputInt2, dataCopyParams);
   outOffset += curLoopSortedNum;
 }
 

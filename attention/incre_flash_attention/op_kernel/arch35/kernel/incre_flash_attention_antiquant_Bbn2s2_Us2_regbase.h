@@ -16,7 +16,12 @@
 #ifndef INCRE_FLASH_ATTENTION_ANTIQUANT_BBN2S2_US2_H
 #define INCRE_FLASH_ATTENTION_ANTIQUANT_BBN2S2_US2_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -82,12 +87,12 @@ class IncreFlashAttentionAntiqSplitBbn2s2Us2
 {
 public:
     __aicore__ inline IncreFlashAttentionAntiqSplitBbn2s2Us2(
-        const optiling::IncreFlashAttentionTilingData& __restrict tilingData);
+        const optiling::IncreFlashAttentionTilingDataRegbase& __restrict tilingData);
     __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pseShift,
                                 __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
                                 __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
                                 __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-                                const optiling::IncreFlashAttentionTilingData* __restrict tiling, TPipe* tPipe);
+                                const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void InitQuant(__gm__ uint8_t* deqScale1, __gm__ uint8_t* quantScale1, __gm__ uint8_t* deqScale2,
                                      __gm__ uint8_t* quantScale2, __gm__ uint8_t* quantOffset2,
                                      __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
@@ -185,7 +190,7 @@ public:
     Vec2Processor<IFAT> vec2Processor;
 
 protected:
-    const optiling::IncreFlashAttentionTilingData* __restrict tilingData;
+    const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tilingData;
     TPipe* pipe;
 
     __gm__ uint8_t* keyPtr;
@@ -437,7 +442,7 @@ protected:
 
 template <typename IFAT>
 __aicore__ inline IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::IncreFlashAttentionAntiqSplitBbn2s2Us2(
-    const optiling::IncreFlashAttentionTilingData& __restrict tilingData)
+    const optiling::IncreFlashAttentionTilingDataRegbase& __restrict tilingData)
     : singleProcessSInnerSize(tilingData.increFlashAttentionSingleCoreParams.singleProcessSInnerSize),
       usedCoreNum(tilingData.increFlashAttentionSingleCoreParams.usedCoreNum),
       formerCoreNum(tilingData.increFlashAttentionSingleCoreParams.formerCoreNum),
@@ -495,7 +500,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Init(
     __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
     __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
     __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-    const optiling::IncreFlashAttentionTilingData* __restrict tiling, TPipe* tPipe)
+    const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tiling, TPipe* tPipe)
 {
     tmpBlockIdx = GetBlockIdx();
     subBlockIdx = tmpBlockIdx % 2;
@@ -1615,7 +1620,9 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputeScal
     if (softmaxLseFlag) {
         lseOutputUb = softmaxLseOutputQue.template AllocTensor<T>();
     }
-    FaVectorApi::ComputeScaleValue_VF(lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize, softmaxLseFlag);
+    LocalTensor<bfloat16_t> tmpSinkUb;
+    bool learnableSinkFlag = false;
+    FaVectorApi::ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
     if (softmaxLseFlag) {
         softmaxLseOutputQue.template EnQue<T>(lseOutputUb);
         softmaxLseOutputQue.DeQue<T>();

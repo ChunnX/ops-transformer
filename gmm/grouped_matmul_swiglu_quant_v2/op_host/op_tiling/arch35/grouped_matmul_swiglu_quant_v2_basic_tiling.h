@@ -27,21 +27,23 @@
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
-class GroupedMatmulSwigluQuantDavidV2Tiling : public GroupedQbmmTiling {
+class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQmmTiling {
 public:
-    explicit GroupedMatmulSwigluQuantDavidV2Tiling(gert::TilingContext *context) : GroupedQbmmTiling(context)
+    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context) : GroupedQmmTiling(context)
     {
         Reset();
     }
-    ~GroupedMatmulSwigluQuantDavidV2Tiling() override = default;
+    ~GroupedMatmulSwigluQuantV2Tiling950() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQbmmTiling::Reset(context);
+        GroupedQmmTiling::Reset(context);
         Reset();
     }
 
 protected:
+    // 0、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 2、计算高阶API的TilingData
@@ -51,21 +53,34 @@ protected:
     // 4、保存Tiling数据
     ge::graphStatus PostTiling() override;
     void Reset() override;
+    void SetKernelType();
+    ge::graphStatus GetWorkspaceSize() override;
 
 private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
     void PrintQuantParams() override;
-    bool SetQuantModeForGMMSwigluQuant();
+    bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
-
-    bool IsFp4(ge::DataType dtype);
-    bool IsFp8(ge::DataType dtype);
-    bool IsFp4Input();
+    bool CheckDims() const;
+    bool IsFp4(ge::DataType dtype) const;
+    bool IsFp8(ge::DataType dtype) const;
+    bool IsFp4Input() const;
     bool IsFp8Input();
+    // add for pertoken quant mode
+    bool AnalyzeAttrsPertoken();
+    bool IsB8(ge::DataType dtype);
+    bool CheckDtypePertoken();
+    bool AnalyzeInputsPertoken();
+    ge::graphStatus DoOpTilingPertoken();
+    void PrintPertokenQuantParams();
+    bool CheckCoreNum() const override;
     GMMSwigluQuantTilingDataParams tilingData_;
+
+    const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
+                                                             ge::DT_FLOAT4_E2M1};
 };
 } // namespace optiling
 

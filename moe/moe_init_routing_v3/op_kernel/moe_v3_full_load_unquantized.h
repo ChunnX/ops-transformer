@@ -21,7 +21,7 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 template <typename T>
-class MoeV3FullLoadUnquantized : public MoeV3FullLoadBase<T>{
+class MoeV3FullLoadUnquantized : public MoeV3FullLoadBase<T> {
 public:
     __aicore__ inline MoeV3FullLoadUnquantized(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
@@ -46,12 +46,12 @@ protected:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                              GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR workspace,
-                                              const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
+                                                         GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
+                                                         GM_ADDR expandedScale, GM_ADDR workspace,
+                                                         const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
 {
-    MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, 
-                                workspace, tilingData, tPipe);
+    MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
     xGm_.SetGlobalBuffer((__gm__ T *)x);
     if (this->isInputScale_) {
         scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
@@ -60,9 +60,10 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expe
 
     expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);
-    int64_t row_length = (this->curIndexStart_ + this->coreIndicesElements_ - 1) / this->k_ - this->curIndexStart_ / this->k_ + 1; 
+    int64_t row_length =
+        (this->curIndexStart_ + this->coreIndicesElements_ - 1) / this->k_ - this->curIndexStart_ / this->k_ + 1;
 
-    if (this->epFullload_) {
+    if (this->ep_) {
         this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(T)));
     } else {
         this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(T)) * row_length);
@@ -72,30 +73,39 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expe
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
-{   
+{
     if (this->blockIdx_ < this->needCoreNum_) {
         this->CopyIn();
         this->Compute();
+
         // vaild expert equal zero
         if (this->needCoreNum_ < 1) {
-            if (this->rowIdxType_ == GATHER) {
-                this->CopyOutDefaultGatherIdx();
+            if (this->blockIdx_ == 0) {
+                if (this->rowIdxType_ == GATHER) {
+                    this->CopyOutDefaultGatherIdx();
+                }
+                if (this->expertTokensNumFlag_ == 1) {
+                    this->CopyOutDefaultTokenCountOrCumsum();
+                }
             }
-            this->CopyOutDefaultTokenCountOrCumsum();
             return;
         }
+
         if (this->blockIdx_ == 0) {
             this->CopyOutIdx();
         }
+
         if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
             this->ComputeExpertTokenCountOrCumsum();
         }
+
         if (this->blockIdx_ < this->needCoreNum_) {
             this->GatherOutX();
             if (this->isInputScale_) {
                 this->CopyOutScale();
             }
         }
+
         this->FreeLocalTensor();
     }
 }
@@ -103,7 +113,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
 {
-    if (this->epFullload_) {
+    if (this->ep_) {
         LocalTensor<int32_t> expandedExpertIdx = this->expandedExpertIdxCopyOutQueue_.template DeQue<int32_t>();
         LocalTensor<int32_t> expandDstToSrcRowLocal = this->expandDstToSrcRowQueue_.template DeQue<int32_t>();
         int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
@@ -130,7 +140,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
     } else {
         LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
         DataCopyExtParams dataXCopyParams{static_cast<uint16_t>(this->endXRow_ - this->startXRow_ + 1),
-                                        static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
+                                          static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
         DataCopyPadExtParams<T> dataXCopyPadParams{false, 0, 0, 0};
         DataCopyPad(xLocal, xGm_[this->startXRow_ * this->cols_], dataXCopyParams, dataXCopyPadParams);
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
@@ -143,7 +153,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
             for (; k < this->coreIndicesElements_ && curIndexStart / this->k_ == i; curIndexStart++, k++) {
                 int32_t outIndex = expandedRowIdx.GetValue(curIndexStart);
                 if (outIndex < this->activeNum_) {
-                    DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor], copyParams);
+                    DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor],
+                                copyParams);
                 }
             }
         }
@@ -159,7 +170,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::FreeLocalTensor()
     LocalTensor<int32_t> expandDstToSrcRowLocal = this->expandDstToSrcRowQueue_.template DeQue<int32_t>();
     this->expandedExpertIdxCopyOutQueue_.FreeTensor(expandedExpertIdx);
     this->expandDstToSrcRowQueue_.FreeTensor(expandDstToSrcRowLocal);
-    if (!this->epFullload_) {
+    if (!this->ep_) {
         LocalTensor<int32_t> expandedRowIdx = this->expandedRowIdxCopyOutQueue_.template DeQue<int32_t>();
         this->expandedRowIdxCopyOutQueue_.FreeTensor(expandedRowIdx);
     }
@@ -171,7 +182,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::CopyOutScale()
     LocalTensor<float> scaleLocal = scaleCopyInQueue_.AllocTensor<float>();
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-    if (this->epFullload_) {
+    if (this->ep_) {
         LocalTensor<int32_t> expandedExpertIdx = this->expandedExpertIdxCopyOutQueue_.template DeQue<int32_t>();
         LocalTensor<int32_t> expandDstToSrcRowLocal = this->expandDstToSrcRowQueue_.template DeQue<int32_t>();
         int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;

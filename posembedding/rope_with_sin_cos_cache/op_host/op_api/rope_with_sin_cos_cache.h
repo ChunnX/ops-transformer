@@ -22,7 +22,7 @@ const std::tuple<aclTensor*, aclTensor*> RopeWithSinCosCache(const aclTensor* po
                                                              const aclTensor* keyIn, const aclTensor* cosSinCache,
                                                              const aclIntArray *mropeSection, int64_t headSize,
                                                              bool isNeoxStyle, int64_t qStride, int64_t kStride,
-                                                             int64_t numQHeads, int64_t numKHeads,
+                                                             int64_t numQHeads, int64_t numKHeads, int64_t cacheMode,
                                                              aclOpExecutor *executor);
 }
 #endif // OP_API_INC_LEVEL0_OP_ROPE_WITH_SIN_COS_CACHE_OP_H_

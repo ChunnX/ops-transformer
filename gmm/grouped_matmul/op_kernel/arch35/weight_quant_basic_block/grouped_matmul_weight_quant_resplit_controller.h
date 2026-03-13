@@ -31,6 +31,7 @@ using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::WeightQuantVcvMatmulBasicBlockBaseClass;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
+using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
 using GMMWeightQuantParam = GroupedMatmulTilingData::GMMWeightQuantParam;
 
 namespace GROUPED_MATMUL {
@@ -85,6 +86,12 @@ private:
         basicBlock_;
 
     uint64_t preOffset_ = 0;
+    static constexpr uint64_t MX_A8W4_L1_K_CONFIG_256 = 256;
+    static constexpr uint64_t MX_A8W4_L1_K_CONFIG_512 = 512;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 = 256;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 = 240;
+    uint64_t mxA8W4L1KDynamicConfigMThreshold_; // m轴依赖空间划分，无法静态配置
 };
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -110,6 +117,8 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Init(
     }
     basicBlock_.Init(gmmBaseTiling_->hasBias, gmmBaseTiling_->groupSize, 0, mmTiling_,
                      tPipe);  // gmm场景不确定group是否激活，Init中的prefetch size设定为0，在Process中做prefetch
+    mxA8W4L1KDynamicConfigMThreshold_ = gmmBaseTiling_->hasBias ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 :
+                                                                  MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
 }
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -133,18 +142,9 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     ctrlParam.processId = 0;
     for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
         ctrlParam.mSize = GetSplitValueFromGroupList(groupIdx);
-        if (ctrlParam.mSize > 0) {
-            /*
-             * 1.在mSize小于mmTiling_.baseM或者mSize大于mmTiling_.baseM * 4时，mL1Size设置为mmTiling_.baseM
-             * 2.在mSize大于mmTiling_.baseM且小于等于mmTiling_.baseM * 2时，mL1Size使用mSize / 2向上取整
-             * 3.在mSize大于mmTiling_.baseM * 2且小于等于mmTiling_.baseM * 4时，mL1Size使用mSize / 4向上取整
-             */
-            ctrlParam.mL1Size =
-                ctrlParam.mSize <= mmTiling_->baseM || ctrlParam.mSize >= mmTiling_->baseM * QUADRUPLE_BUFFER_NUM
-                    ? mmTiling_->baseM
-                    : (ctrlParam.mSize <= DOUBLE_BUFFER_NUM * mmTiling_->baseM
-                           ? CeilDivide(ctrlParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM)
-                           : CeilDivide(ctrlParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
+        if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
+            uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, static_cast<uint64_t>(mmTiling_->baseM));
+            ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
             basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, antiquantOffsetGm_, scaleGm_,
                                          perTokenScaleGm_, biasGm_, yGm_, mmTiling_->isBias,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
@@ -195,11 +195,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::InitOffsetParam(
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         offsetParam[0].nAlign = CeilAlign(gmmBaseTiling_->nSize, static_cast<uint64_t>(BLOCK_CUBE));
-        offsetParam[0].scaleAFactor = mmTiling_->mxTypePara & 0xff;
-        offsetParam[0].scaleBFactor = (mmTiling_->mxTypePara >> SCALE_FACTOR_B_BIT) & 0xff;
         offsetParam[1].nAlign = offsetParam[0].nAlign;
-        offsetParam[1].scaleAFactor = offsetParam[0].scaleAFactor;
-        offsetParam[1].scaleBFactor = offsetParam[0].scaleBFactor;
     }
 }
 
@@ -223,6 +219,25 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
                 ? gmmBaseTiling_->nSize - offsetParam[ctrlParam.processId].nOffset
                 : basicBlockSize;
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
+        if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+            // MxA8W4场景，切换低阶api，支持kernel内动态调整k轴切分
+            offsetParam[ctrlParam.processId].kbL1Size =
+                (offsetParam[ctrlParam.processId].mL1Size <= mxA8W4L1KDynamicConfigMThreshold_ &&
+                 offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
+                    MX_A8W4_L1_K_CONFIG_512 :
+                    MX_A8W4_L1_K_CONFIG_256;
+            if (offsetParam[ctrlParam.processId].mL1Size < offsetParam[ctrlParam.processId].nL1Size) {
+                // L1的空间，在有Bias时，预留124 Kb, 其他场景预留128 Kb
+                uint64_t aL1Size = gmmBaseTiling_->hasBias ? 124 * GetKBUnit<xType>() : 128 * GetKBUnit<xType>();
+                uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
+                // 当前切分mL1比nL1小的场景，可以尝试L1上多倍载入kaL1,提升A矩阵载入效率 
+                offsetParam[ctrlParam.processId].kaL1Size = aL1Size /
+                                                            (mL1Align * offsetParam[ctrlParam.processId].kbL1Size) *
+                                                            offsetParam[ctrlParam.processId].kbL1Size;
+            } else {
+                offsetParam[ctrlParam.processId].kaL1Size = offsetParam[ctrlParam.processId].kbL1Size;
+            }
+        }
         basicBlock_.ComputeBasicBlock(offsetParam[ctrlParam.processId], offsetParam[GetSwitchedProcessId(ctrlParam)]);
         ctrlParam.processId = GetSwitchedProcessId(ctrlParam);
     }
@@ -266,19 +281,26 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
     if ASCEND_IS_AIV {
         return;
     }
-
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        // mxA8W4场景，Dn2nz严重阻塞流水，在weight较小的时候不启用prefetch策略
+        if (gmmBaseTiling_->mainBlockCount == 0 &&
+            gmmBaseTiling_->firstTailBlockCount + gmmBaseTiling_->secondTailBlockCount <
+                gmmBaseTiling_->cubeNumBlocksN) {
+            return;
+        }
+    }
     uint64_t aSize = mSize * kSize * sizeof(xType);
 
     /*
      * 准入条件：
      * 1. m <= 512
-     * 2. A的大小在cubeBlockDimN上可被一条mte2指令均分载入
+     * 2. A的大小在cubeNumBlocksN上可被一条mte2指令均分载入
      * 3. 核数是N分核数的倍数
      */
-    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeBlockDimN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
-        (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeBlockDimN == 0)) {
+    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
+        (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
-            CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeBlockDimN)),
+            CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
                       64UL); // 64 表示128B的cacheline对齐
         basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
     }

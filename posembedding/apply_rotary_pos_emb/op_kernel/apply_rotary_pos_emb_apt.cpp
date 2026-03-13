@@ -32,7 +32,14 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
         return;
     }
     AscendC::TPipe pipe;
-    if (TILING_KEY_IS(TILING_KEY_BAB)) {
+    if (TILING_KEY_IS(TILING_KEY_AB)) {
+        GET_TILING_DATA_WITH_STRUCT(ApplyRotaryPosEmbRegbaseABTilingData, tiling_data_in, tiling);
+        const ApplyRotaryPosEmbRegbaseABTilingData* __restrict tilingData = &tiling_data_in;
+        ApplyRotaryPosEmbAB<DTYPE_QUERY> op;
+        op.Init(q, k, cos, sin, q_out, k_out, workspace, tilingData, &pipe);
+        op.Process();
+        return;
+    } else if (TILING_KEY_IS(TILING_KEY_BAB)) {
         GET_TILING_DATA_WITH_STRUCT(ApplyRotaryPosEmbRegbaseTilingData, tiling_data_in, tiling);
         const ApplyRotaryPosEmbRegbaseTilingData* __restrict tilingData = &tiling_data_in;
         ApplyRotaryPosEmb::ApplyRotaryPosEmbBAB<DTYPE_QUERY> op(&pipe, tilingData);
@@ -50,12 +57,5 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
         ApplyRotaryPosEmb::ApplyRotaryPosEmbABAAndBA<DTYPE_QUERY, true> op;
         op.Init(q, k, cos, sin, q_out, k_out, workspace, tilingData, &pipe);
         op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_AB)) {
-        GET_TILING_DATA_WITH_STRUCT(ApplyRotaryPosEmbRegbaseABTilingData, tiling_data_in, tiling);
-        const ApplyRotaryPosEmbRegbaseABTilingData* __restrict tilingData = &tiling_data_in;
-        ApplyRotaryPosEmbAB<DTYPE_QUERY> op;
-        op.Init(q, k, cos, sin, q_out, k_out, workspace, tilingData, &pipe);
-        op.Process();
-        return;
     }
 }

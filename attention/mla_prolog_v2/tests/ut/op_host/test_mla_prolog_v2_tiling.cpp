@@ -1,11 +1,11 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <iostream>
 #include <gtest/gtest.h>
@@ -14,7 +14,7 @@
 #include "tiling_case_executor.h"
 
 using namespace std;
-// 构造芯片版本
+// 构造版本
 std::string MlaPrologV2_tiling_A2SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"
@@ -35,6 +35,7 @@ std::string MlaPrologV2_tiling_A2SocInfo =
     "    \"socVersion\": \"Ascend910_B3\"\n"
     "  }\n"
     "}";
+
 
 class MlaPrologV2 : public testing::Test
 {
@@ -224,4 +225,3 @@ TEST_F(MlaPrologV2, MlaProlog_tiling_test3) {
     int64_t expectTilingKey = 1836129;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
-

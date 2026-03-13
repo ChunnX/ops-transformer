@@ -14,17 +14,33 @@
  */
 #ifndef FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_PRE_KERNEL_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_PRE_KERNEL_REGBASE_H_
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 using namespace AscendC;
 
-template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE = 0, const uint32_t IS_TND = 0, const uint8_t SPLIT_AXIS = 0> class FlashAttentionScoreGradS1S2BNGS1S2PreRegbase {
+#define FAG_PRE_CLASS_TEMPLATE                                                                                         \
+    template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE = 0, const uint32_t IS_TND = 0,                \
+        const uint8_t SPLIT_AXIS = 0, const bool IS_TND_SWIZZLE = 0,                           \
+        const bool IS_ATTEN_MASK = 0>
+#define FAG_PRE_FUNCTION_TEMPLATE                                                                                      \
+    template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE,                                               \
+        const uint32_t IS_TND, const uint8_t SPLIT_AXIS, const bool IS_TND_SWIZZLE,                \
+        const bool IS_ATTEN_MASK>
+#define FAG_PRE_FUNCTION_PARAMS_TEMPLATE T1, T2, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE,       \
+    IS_ATTEN_MASK
+
+FAG_PRE_CLASS_TEMPLATE
+class FlashAttentionScoreGradS1S2BNGS1S2PreRegbase {
 public:
     __aicore__ inline FlashAttentionScoreGradS1S2BNGS1S2PreRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
                                 __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *drop_mask, __gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *ordTilingData,
-                                TPipe *pipe_in);
+                                FagTilingType ordTilingData,
+                                TPipe *pipeIn);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
 
@@ -34,12 +50,12 @@ public:
     TQue<QuePosition::VECIN, 1> castQue;
     TQue<QuePosition::VECOUT, 1> outQue;
 
-    GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
+    GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, dsinkWorkSpaceGm;
     GlobalTensor<T1> dqGm, dkGm, dvGm;
     GlobalTensor<uint8_t> maskWorkSpaceGm;
     GlobalTensor<uint8_t> drop_maskGm;
 
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *TilingData;
+    FagTilingType tilingData;
     constexpr static uint32_t ADDR_ALIGN_SIZE = 512;
     constexpr static uint32_t HELP_LEN = 256;
     constexpr static uint32_t BIT8 = 8;
@@ -49,19 +65,23 @@ public:
 
     uint32_t cBlockIdx;
     // query
-    uint32_t ubBaseSize;
-    uint32_t qPreBlockFactor;
-    uint32_t qPreBlockTotal;
-    uint32_t qPreBlockTail;
-    uint32_t qPostBlockTotal;
-    uint32_t kPreBlockFactor;
-    uint32_t kPreBlockTotal;
-    uint32_t kPreBlockTail;
-    uint32_t kPostBlockTotal;
-    uint32_t vPreBlockFactor;
-    uint32_t vPreBlockTotal;
-    uint32_t vPreBlockTail;
-    uint32_t vPostBlockTotal;
+    uint64_t ubBaseSize;
+    uint64_t qPreBlockFactor;
+    uint64_t qPreBlockTotal;
+    uint64_t qPreBlockTail;
+    uint64_t qPostBlockTotal;
+    uint64_t kPreBlockFactor;
+    uint64_t kPreBlockTotal;
+    uint64_t kPreBlockTail;
+    uint64_t kPostBlockTotal;
+    uint64_t vPreBlockFactor;
+    uint64_t vPreBlockTotal;
+    uint64_t vPreBlockTail;
+    uint64_t vPostBlockTotal;
+    uint32_t isSink = 0;
+    uint64_t sinkPreBlockFactor = 0;
+    uint64_t sinkPreBlockTotal = 0;
+    uint64_t sinkPreBlockTail = 0;
 
     uint64_t initdqSize;
     uint64_t dqOffset;
@@ -69,12 +89,14 @@ public:
     uint64_t dkOffset;
     uint64_t initdvSize;
     uint64_t dvOffset;
+    uint64_t initdsinkSize = 0;
+    uint64_t dsinkOffset = 0;
 
     bool isDropBoolMode;
-    uint32_t maskUsedCoreNum;
-    uint32_t maskUBProcessNum;
-    uint32_t maskTailUBProcessNum;
-    uint32_t maskUBLoop;
+    uint64_t maskUsedCoreNum;
+    uint64_t maskUBProcessNum;
+    uint64_t maskTailUBProcessNum;
+    uint64_t maskUBLoop;
 
     DataCopyParams copyParams;
     DataCopyPadParams padParams;
@@ -82,41 +104,51 @@ public:
     half padValue{1.0};
 };
 
-template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE, const uint32_t IS_TND, const uint8_t SPLIT_AXIS>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS>::Init(
+FAG_PRE_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNCTION_PARAMS_TEMPLATE>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_kvlen,
     __gm__ uint8_t *drop_mask, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *orgTilingData, TPipe *pipe_in)
+    FagTilingType orgTilingData, TPipe *pipeIn)
 {
     cBlockIdx = GetBlockIdx();
 
-    TilingData = orgTilingData;
-    pipe = pipe_in;
+    tilingData = orgTilingData;
+    pipe = pipeIn;
 
     // tiling_data
-    qPreBlockFactor = TilingData->preTilingData.qPreBlockFactor;
-    qPreBlockTotal = TilingData->preTilingData.qPreBlockTotal;
-    qPreBlockTail = TilingData->preTilingData.qPreBlockTail;
-    qPostBlockTotal = TilingData->postTilingData.qPostBlockTotal;
-    kPreBlockFactor = TilingData->preTilingData.kPreBlockFactor;
-    kPreBlockTotal = TilingData->preTilingData.kPreBlockTotal;
-    kPreBlockTail = TilingData->preTilingData.kPreBlockTail;
-    kPostBlockTotal = TilingData->postTilingData.kPostBlockTotal;
-    vPreBlockFactor = TilingData->preTilingData.vPreBlockFactor;
-    vPreBlockTotal = TilingData->preTilingData.vPreBlockTotal;
-    vPreBlockTail = TilingData->preTilingData.vPreBlockTail;
-    vPostBlockTotal = TilingData->postTilingData.vPostBlockTotal;
+    qPreBlockFactor = tilingData->preTilingData.qPreBlockFactor;
+    qPreBlockTotal = tilingData->preTilingData.qPreBlockTotal;
+    qPreBlockTail = tilingData->preTilingData.qPreBlockTail;
+    qPostBlockTotal = tilingData->postTilingData.qPostBlockTotal;
+    kPreBlockFactor = tilingData->preTilingData.kPreBlockFactor;
+    kPreBlockTotal = tilingData->preTilingData.kPreBlockTotal;
+    kPreBlockTail = tilingData->preTilingData.kPreBlockTail;
+    kPostBlockTotal = tilingData->postTilingData.kPostBlockTotal;
+    vPreBlockFactor = tilingData->preTilingData.vPreBlockFactor;
+    vPreBlockTotal = tilingData->preTilingData.vPreBlockTotal;
+    vPreBlockTail = tilingData->preTilingData.vPreBlockTail;
+    vPostBlockTotal = tilingData->postTilingData.vPostBlockTotal;
+    isSink = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
+    if (unlikely(isSink)) {
+        sinkPreBlockFactor = tilingData->preTilingData.sinkPreBlockFactor;
+        sinkPreBlockTotal = tilingData->preTilingData.sinkPreBlockTotal;
+        sinkPreBlockTail = tilingData->preTilingData.sinkPreBlockTail;
+        dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+            tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
+        initdsinkSize = cBlockIdx == sinkPreBlockTotal - 1 ? sinkPreBlockTail : sinkPreBlockFactor;
+        dsinkOffset = ((uint64_t)cBlockIdx) * sinkPreBlockFactor;
+    }
 
-    maskUsedCoreNum = TilingData->preTilingData.maskCoreNum;
+    maskUsedCoreNum = tilingData->preTilingData.maskCoreNum;
 
     drop_maskGm.SetGlobalBuffer((__gm__ uint8_t *)drop_mask);
     dqGm.SetGlobalBuffer((__gm__ T1 *)dq);
     dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
     dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
 
-    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + TilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
-    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + TilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
-    dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + TilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
+    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
+    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
+    dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
 
     initdqSize = cBlockIdx == qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
     dqOffset = ((uint64_t)cBlockIdx) * qPreBlockFactor;
@@ -126,24 +158,24 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETE
     dvOffset = ((uint64_t)cBlockIdx) * vPreBlockFactor;
 
     // dropMask params init
-    isDropBoolMode = TilingData->preTilingData.dropoutIsDivisibleBy8 == 0;
+    isDropBoolMode = tilingData->preTilingData.dropoutIsDivisibleBy8 == 0;
     if constexpr (IS_TND) {
-        if (!isDropBoolMode && TilingData->s1s2BNGS1S2BaseParams.keepProb < 1) {
+        if (!isDropBoolMode && tilingData->s1s2BNGS1S2BaseParams.keepProb < 1) {
             isDropBoolMode = (((__gm__ int64_t *)actual_seq_kvlen)[0] % 8 != 0);
-            for (uint32_t i = 0; i + 1 < TilingData->s1s2BNGS1S2BaseParams.b; i++) {
+            for (uint32_t i = 0; i + 1 < tilingData->s1s2BNGS1S2BaseParams.b; i++) {
                 const int64_t seqS2iplus1 =
                     ((__gm__ int64_t *)actual_seq_kvlen)[i + 1] - ((__gm__ int64_t *)actual_seq_kvlen)[i];
                 isDropBoolMode = (isDropBoolMode || (seqS2iplus1 % 8 != 0));
             }
         }
     }
-    if (TilingData->s1s2BNGS1S2BaseParams.dropMaskOuter && isDropBoolMode) {
-        maskWorkSpaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + TilingData->postTilingData.dropMaskGmOffset);
+    if (tilingData->s1s2BNGS1S2BaseParams.dropMaskOuter && isDropBoolMode) {
+        maskWorkSpaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + tilingData->postTilingData.dropMaskGmOffset);
 
         pipe->InitBuffer(helpQue, 1, HELP_LEN);
-        pipe->InitBuffer(inputQue, 1, TilingData->preTilingData.inputBufferLen);
-        pipe->InitBuffer(castQue, 1, TilingData->preTilingData.castBufferLen);
-        pipe->InitBuffer(outQue, 1, TilingData->preTilingData.outputBufferLen);
+        pipe->InitBuffer(inputQue, 1, tilingData->preTilingData.inputBufferLen);
+        pipe->InitBuffer(castQue, 1, tilingData->preTilingData.castBufferLen);
+        pipe->InitBuffer(outQue, 1, tilingData->preTilingData.outputBufferLen);
 
         // reset params
         repParams.src0BlkStride = 1;
@@ -159,31 +191,23 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETE
     }
 }
 
-template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE, const uint32_t IS_TND, const uint8_t SPLIT_AXIS>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS>::Process()
+FAG_PRE_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNCTION_PARAMS_TEMPLATE>::Process()
 {
     // process
-    if (g_coreType == AIV && cBlockIdx < TilingData->preTilingData.maskCoreNum) {
+    if (g_coreType == AIV && cBlockIdx < tilingData->preTilingData.maskCoreNum) {
         // clear dq dk dv workspace
         if constexpr (IsSameType<T1, float>::value) {
             InitOutput<T1>(dqGm[dqOffset], initdqSize, 0);
             InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
             InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
-        } else {
-            if constexpr (SPLIT_AXIS == 1) {
-                if (TilingData->preTilingData.sValueZeroUnderTND) {
-                    // BN2 MULTIBLK针对TND中有S为0的场景，增加gm清零
-                    InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
-                    InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
-                }
-                return;
-            }
+        } else if constexpr (SPLIT_AXIS != 1) {
             InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
             if constexpr (SPLIT_AXIS == 0) {
                 InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
                 InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);    
             } else if constexpr (SPLIT_AXIS == 5) {
-                if (TilingData->preTilingData.sValueZeroUnderTND) {
+                if (tilingData->preTilingData.sValueZeroUnderTND) {
                     // BN2S2针对TND中有S为0的场景，增加gm清零
                     InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
                     InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
@@ -191,27 +215,30 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETE
             }
         }
 
-        if (!(TilingData->s1s2BNGS1S2BaseParams.dropMaskOuter && isDropBoolMode)) {
+        if (unlikely(isSink && (IS_ATTEN_MASK || IS_TND))) {
+            InitOutput<float>(dsinkWorkSpaceGm[dsinkOffset], initdsinkSize, 0);
+        }
+        if (!(tilingData->s1s2BNGS1S2BaseParams.dropMaskOuter && isDropBoolMode)) {
             return;
         }
 
-        maskUBLoop = TilingData->preTilingData.maskSingleCoreLoop;
-        maskTailUBProcessNum = TilingData->preTilingData.maskLastLoopNum;
+        maskUBLoop = tilingData->preTilingData.maskSingleCoreLoop;
+        maskTailUBProcessNum = tilingData->preTilingData.maskLastLoopNum;
         if (unlikely(cBlockIdx == maskUsedCoreNum - 1)) {
-            maskUBLoop = TilingData->preTilingData.maskTailCoreLoop;
-            maskTailUBProcessNum = TilingData->preTilingData.maskTailCoreLastLoopNum;
+            maskUBLoop = tilingData->preTilingData.maskTailCoreLoop;
+            maskTailUBProcessNum = tilingData->preTilingData.maskTailCoreLastLoopNum;
         }
 
         // malloc tensor filled by 1.0
         auto helpTensor = helpQue.AllocTensor<half>();
         Duplicate<half>(helpTensor, padValue, HELP_LEN / sizeof(half));
 
-        uint64_t outputAddr = cBlockIdx * TilingData->preTilingData.maskSingleCoreNum;
-        uint64_t inputAddr = cBlockIdx * TilingData->preTilingData.maskSingleCoreNum / BIT8;
+        uint64_t outputAddr = cBlockIdx * tilingData->preTilingData.maskSingleCoreNum;
+        uint64_t inputAddr = cBlockIdx * tilingData->preTilingData.maskSingleCoreNum / BIT8;
 
         // process
         for (uint64_t idx = 0; idx < maskUBLoop; idx++) {
-            maskUBProcessNum = TilingData->preTilingData.singleUBProcessNum;
+            maskUBProcessNum = tilingData->preTilingData.singleUBProcessNum;
             uint64_t outputOffset = idx * maskUBProcessNum;
             uint64_t inputOffset = idx * maskUBProcessNum / BIT8;
             if (unlikely(idx == maskUBLoop - 1)) {
@@ -248,8 +275,8 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETE
     }
 }
 
-template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE, const uint32_t IS_TND, const uint8_t SPLIT_AXIS>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<T1, T2, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS>::SyncALLCores()
+FAG_PRE_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNCTION_PARAMS_TEMPLATE>::SyncALLCores()
 {
     SyncAll<false>();
 }

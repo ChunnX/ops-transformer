@@ -101,6 +101,9 @@ function(add_opapi_modules)
       $<BUILD_INTERFACE:adump_headers>
       $<BUILD_INTERFACE:dlog_headers>)
   endif()
+  if(NOT BUILD_OPEN_PROJECT)
+    add_dependencies(${OPHOST_NAME}_opapi_obj opbuild_gen_inner)
+  endif()
 endfunction()
 
 # 添加gentask object
@@ -150,6 +153,9 @@ function(add_opmaster_ct_gentask_modules)
         error_manager
         ops_utils_tiling
       -Wl,--as-needed
+      -Wl,--whole-archive
+        tiling_api
+      -Wl,--no-whole-archive
         c_sec
         json
         platform
@@ -212,7 +218,7 @@ function(add_aicpu_cust_kernel_modules target_name)
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
               $<BUILD_INTERFACE:dlog_headers>
               -Wl,--no-whole-archive
-              Eigen3::EigenCv
+              Eigen3::EigenTransformer
       )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
@@ -225,7 +231,7 @@ endfunction()
 # OPTYPE 和 ACLNNTYPE 需一一对应
 macro(add_modules_sources)
   set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR)
-  set(multiValueArgs OPTYPE ACLNNTYPE)
+  set(multiValueArgs OPTYPE ACLNNTYPE ACLNN_EXTRA_VERSION)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})

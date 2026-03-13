@@ -9,6 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(QUANT_LIGHTNING_INDEXER_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for this operator")
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         quant_lightning_indexer_def.cpp

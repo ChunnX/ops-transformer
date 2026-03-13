@@ -25,8 +25,6 @@
 
 #define __CCE_UT_TEST__
 
-#define __aicore__
-
 inline void InitMoeTokenUnpermuteWithEpGradTilingData(
     uint8_t* tiling, MoeTokenUnpermuteWithEpGradTilingData* const_data)
 {

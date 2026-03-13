@@ -47,6 +47,8 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
+constexpr uint32_t FP8_E4M3_BLOCK_SIZE = 32; // Mxfp8全量化场景下 block_size = 32
+
 struct MlaPrologProtoShapeParam {
     bool isBsMerge { false };
     int64_t B { 0 };

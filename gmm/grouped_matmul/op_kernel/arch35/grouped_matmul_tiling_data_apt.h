@@ -27,7 +27,7 @@ struct GMMArray {
 };
 #pragma pack(pop)
 
-#pragma pack(push, 8) 
+#pragma pack(push, 8)
 struct GMMNoQuantBaseParams {
     uint32_t groupNum = 0;
     uint32_t coreNum = 0;
@@ -39,10 +39,12 @@ struct GMMNoQuantBaseParams {
     uint32_t hasBias = 0;
     uint32_t mTailCnt = 0;
     uint32_t nTailCnt = 0;
+    uint32_t weightNoL2Cache = 0;
+    uint32_t placeHolder = 0;
 };
 #pragma pack(pop)
 
-#pragma pack(push, 8) 
+#pragma pack(push, 8)
 struct GMMQuantParams {
     uint32_t groupNum = 0;
     uint32_t activeType = 0;
@@ -59,6 +61,25 @@ struct GMMQuantParams {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
+struct QuantBasicApiMMTiling {
+    uint32_t m = 0;
+    uint32_t n = 0;
+    uint32_t k = 0;
+    uint32_t baseM = 0;
+    uint32_t baseN = 0;
+    uint32_t baseK = 0;
+    uint32_t kAL1 = 0;
+    uint32_t kBL1 = 0;
+    uint32_t scaleKAL1 = 0;
+    uint32_t scaleKBL1 = 0;
+    uint8_t isBias = 0;
+    uint8_t dbL0C = 0;
+    uint16_t reserved1 = 0;
+    uint32_t reserved2 = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
 struct GMMWeightQuantParam {
     uint32_t groupNum = 0;
     uint32_t coreNum = 0;
@@ -70,7 +91,7 @@ struct GMMWeightQuantParam {
     int8_t groupType = 0;
     uint8_t groupListType = 0;
     uint8_t hasBias = 0;
-    uint8_t cubeBlockDimN = 0;
+    uint8_t cubeNumBlocksN = 0;
     uint8_t reserved = 0;
     uint32_t groupSize = 0;
     uint32_t mainBlockSize = 0;
@@ -91,9 +112,15 @@ struct GMMQuantTilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
+struct GMMQuantBasicApiTilingData {
+    GMMQuantParams gmmQuantParams;
+    QuantBasicApiMMTiling mmTilingData;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
 struct GMMNoQuantTilingData {
     GMMNoQuantBaseParams gmmNoQuantParam;
-    GMMArray gmmArray;
     TCubeTiling mmTilingData;
 };
 #pragma pack(pop)

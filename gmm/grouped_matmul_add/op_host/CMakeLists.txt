@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend910_95")
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
     endif()
     target_sources(op_host_aclnnExc PRIVATE
@@ -24,14 +24,17 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
                     -Wno-deprecated-declarations
                     -Werror
     )
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend910_95")
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
         add_ops_compile_options(
             OP_NAME GroupedMatmulAdd
-            COMPUTE_UNIT ascend910_9599
+            COMPUTE_UNIT Ascend950PR_9599
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     endif()
 else() # custom
-    add_modules_sources(OPTYPE grouped_matmul_add ACLNNTYPE aclnn_exclude)
+    add_modules_sources(
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OPTYPE grouped_matmul_add ACLNNTYPE aclnn_exclude)
 endif()

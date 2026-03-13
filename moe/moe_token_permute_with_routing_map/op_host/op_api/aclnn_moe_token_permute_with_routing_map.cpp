@@ -27,15 +27,14 @@
 #else
     #include "level0/gather_v2.h"
 #endif
+#include "external/aclnn_kernels/aclnn_platform.h"
 
 using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
 namespace {
-static constexpr int64_t GRAD_Y_SHAPE_WITH_GROUP_IDX = 2;
-static constexpr int64_t GRAD_Y_SHAPE_NO_GROUP_IDX = 3;
-static constexpr int64_t GROUP_INDEX_SHAPE = 1;
+static constexpr int64_t TOKENS_SHAPE_SIZE = 2;
 static constexpr int64_t TRANSPOSE_SHAPE_SIZE = 2;
 static constexpr int64_t INPUT_MAX_GROUP = 2048;
 static constexpr int64_t SORT_LIMIT_LENGTH = 16777215;
@@ -80,7 +79,9 @@ static inline bool CheckDtypeValid(
     if (probsOptional != nullptr) {
         // 检查groupIdxOptional的数据类型是否在支持列表内
         OP_CHECK_DTYPE_NOT_SUPPORT(probsOptional, dtype_list, return false);
-        OP_CHECK_DTYPE_NOT_MATCH(tokens, probsOptional->GetDataType(), return false);
+        if (probsOptional->GetDataType() != op::DataType::DT_FLOAT || tokens->GetDataType() != op::DataType::DT_BF16) {
+            OP_CHECK_DTYPE_NOT_MATCH(tokens, probsOptional->GetDataType(), return false);
+        }
     }
     if (permuteProbsOutOptional != nullptr) {
         // 检查groupIdxOptional的数据类型是否在支持列表内
@@ -107,8 +108,34 @@ static bool CheckShapeValid(const aclTensor* routingMap, const aclTensor* probsO
                 ACLNN_ERR_PARAM_INVALID, "The dimensions of probs should be two, but got %ld.",
                 static_cast<int64_t>(probsDimNum)),
             return false);
+        OP_CHECK(
+            probsOptional->GetViewShape().GetDim(1) == routingMap->GetViewShape().GetDim(1),
+            OP_LOGE(
+                ACLNN_ERR_PARAM_INVALID, "The dim 1 of probs %ld should be same with routingMap's dim 0 %ld.",
+                static_cast<int64_t>(probsOptional->GetViewShape().GetDim(1)),
+                static_cast<int64_t>(routingMap->GetViewShape().GetDim(1))),
+            return false);
+        OP_CHECK(
+            probsOptional->GetViewShape().GetDim(0) == routingMap->GetViewShape().GetDim(0),
+            OP_LOGE(
+                ACLNN_ERR_PARAM_INVALID, "The dim 0 of probs %ld should be same with routingMap's dim 0 %ld.",
+                static_cast<int64_t>(probsOptional->GetViewShape().GetDim(0)),
+                static_cast<int64_t>(routingMap->GetViewShape().GetDim(0))),
+            return false);
     }
 
+    return true;
+}
+
+static bool CheckTokensValid(const aclTensor* tokens)
+{
+    auto tokensDimNum = tokens->GetViewShape().GetDimNum();
+    OP_CHECK(
+        tokensDimNum == TOKENS_SHAPE_SIZE,
+        OP_LOGE(
+            ACLNN_ERR_PARAM_INVALID, "The dimensions of tokens should be two, but got %ld.",
+            static_cast<int64_t>(tokensDimNum)),
+        return false);
     return true;
 }
 
@@ -132,6 +159,7 @@ static aclnnStatus CheckParams(
 
     int64_t alignNum = (dropAndPad == true) ? expertNum : tokenNum;
     alignNum = (alignNum == 0) ? 1 : alignNum;
+    CHECK_RET(CheckTokensValid(tokens), ACLNN_ERR_PARAM_INVALID);
     OP_CHECK(
         numOutTokens >= 0,
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "numOutTokens should great than %ld, but got %ld.", int64_t(0), numOutTokens),
@@ -205,7 +233,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     // 空Tensor处理
-    if (routingMap->IsEmpty() || permuteTokensOut->IsEmpty()) {
+    if (routingMap->IsEmpty()) {
         *workspaceSize = uniqueExecutor->GetWorkspaceSize();
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
@@ -244,24 +272,34 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
     auto sortedIndicesResult = l0op::ViewCopy(sortedIndicesOpOut, sortedIndicesOut, uniqueExecutor.get());
     CHECK_RET(sortedIndicesResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    CHECK_RET(ProbsOptionalHandler(probsOptional,  MoeTokenPermuteWithRoutingMapOut[1], permuteProbsOutOptional,
-                                   uniqueExecutor.get()) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    if (probsOptional != nullptr) {
+        auto permuteProbsOpOut = MoeTokenPermuteWithRoutingMapOut[1];
+        CHECK_RET(permuteProbsOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+        // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+        auto permuteProbsResult = l0op::ViewCopy(permuteProbsOpOut, permuteProbsOutOptional, uniqueExecutor.get());
+        CHECK_RET(permuteProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     const aclTensor* permuteTokensOpOut;
-    #ifdef BUILD_OPEN_PROJECT_API
-        if (dropAndPad) {
-            permuteTokensOpOut = l0op::MoeGatherV2(tokensContiguous, 0, sortedIndicesOut, uniqueExecutor.get());
-        } else {
-            permuteTokensOpOut = MoeTokenPermuteWithRoutingMapOut[0];
-        }
-    #else
-        if (dropAndPad) {
-            permuteTokensOpOut = l0op::GatherV2(tokensContiguous, 0, sortedIndicesOut, uniqueExecutor.get());
-        } else {
-            permuteTokensOpOut = MoeTokenPermuteWithRoutingMapOut[0];
-        }
-    #endif
+    bool isRegbase = Ops::Transformer::AclnnUtil::IsRegbase();
+    if (isRegbase) {// regbase 场景在算子内部进行gather，其余场景由gather算子计算
+        permuteTokensOpOut = MoeTokenPermuteWithRoutingMapOut[0];
+    } else {
+        #ifdef BUILD_OPEN_PROJECT_API
+            if (dropAndPad) {
+                permuteTokensOpOut = l0op::MoeGatherV2(tokensContiguous, 0, sortedIndicesOut, uniqueExecutor.get());
+            } else {
+                permuteTokensOpOut = MoeTokenPermuteWithRoutingMapOut[0];
+            }
+        #else
+            if (dropAndPad) {
+                permuteTokensOpOut = l0op::GatherV2(tokensContiguous, 0, sortedIndicesOut, uniqueExecutor.get());
+            } else {
+                permuteTokensOpOut = MoeTokenPermuteWithRoutingMapOut[0];
+            }
+        #endif
+    }
 
     CHECK_RET(permuteTokensOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto permuteTokensResult = l0op::ViewCopy(permuteTokensOpOut, permuteTokensOut, uniqueExecutor.get());

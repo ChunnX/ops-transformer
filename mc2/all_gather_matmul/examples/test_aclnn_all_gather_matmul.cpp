@@ -17,6 +17,7 @@
 #include <iostream>
 #include <vector>
 #include "hccl/hccl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_all_gather_matmul.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -31,7 +32,7 @@
         printf(message, ##__VA_ARGS__); \
     } while(0)
 
-constexpr int DEV_NUM = 8;
+constexpr int DEV_NUM = 2;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -105,11 +106,11 @@ int launchOneThread_AllGatherMm(Args &args)
     long long outShapeSize = GetShapeSize(outShape);
     long long gatherOutShapeSize = GetShapeSize(gatherOutShape);
 
-    std::vector<int16_t> x1HostData(x1ShapeSize, 0);
-    std::vector<int16_t> x2HostData(x2ShapeSize, 0);
-    std::vector<int16_t> biasHostData(biasShapeSize, 0);
-    std::vector<int16_t> outHostData(outShapeSize, 0);
-    std::vector<int16_t> gatherOutHostData(gatherOutShapeSize, 0);
+    std::vector<op::fp16_t> x1HostData(x1ShapeSize, 0);
+    std::vector<op::fp16_t> x2HostData(x2ShapeSize, 0);
+    std::vector<op::fp16_t> biasHostData(biasShapeSize, 0);
+    std::vector<op::fp16_t> outHostData(outShapeSize, 0);
+    std::vector<op::fp16_t> gatherOutHostData(gatherOutShapeSize, 0);
 
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

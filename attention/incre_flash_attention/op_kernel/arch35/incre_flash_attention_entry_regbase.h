@@ -19,20 +19,28 @@
 #include "kernel/incre_flash_attention_normal_Bbn2s2_Us2_regbase.h"
 #include "kernel/incre_flash_attention_antiquant_Bbn2s2_Us2_regbase.h"
 namespace optiling {};
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h"
 #include "incre_flash_attention_dummy.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_entry_regbase.h"
+#else
+#include "../../common/arch35/flash_attention_score_antiquant_kernel.h"
+#include "incre_flash_attention_dummy.h"
+#include "../../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../prompt_flash_attention/arch35/prompt_flash_attention_entry_regbase.h"
+#endif
 
 using namespace AscendC;
 
-#define REGBASE_COPY_TILING_DATA_ASCEND910_95_ANTIQUANT_BASEAPI(tiling)                                                         \
+#define REGBASE_COPY_TILING_DATA_ASCEND950_ANTIQUANT_BASEAPI(tiling)                                                         \
     GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                                 \
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;                                       \
 
-#define INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(templateClass, ...)                                                          \
+#define INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(templateClass, ...)                                                          \
   do {                                                                                                                                \
     if (query == nullptr) {return;}                                                                                                   \
-    REGBASE_COPY_TILING_DATA_ASCEND910_95_ANTIQUANT_BASEAPI(tiling);                                                                  \
+    REGBASE_COPY_TILING_DATA_ASCEND950_ANTIQUANT_BASEAPI(tiling);                                                                  \
     TPipe tPipe;                                                                                                                      \
     __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                                               \
     using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                                                       \
@@ -41,14 +49,15 @@ using namespace AscendC;
     BaseApi::FABlockVecAntiquantDummy<__VA_ARGS__>, BaseApi::FABlockVecAntiquant<__VA_ARGS__>>::type;                                 \
     templateClass<CubeBlockType, VecBlockType> op;                                                                                    \
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable,                                  \
-      queryPaddingSize, kvPaddingSize, softmaxLse, attentionOut, user, tilingData, &tPipe, antiquantScale, antiquantOffset,           \
+      queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen,                                     \
+      softmaxLse, attentionOut, user, tilingData, &tPipe, antiquantScale, antiquantOffset,                                            \
       keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, quantScale2, quantOffset2);                   \
     op.Process();                                                                                                                     \
   } while(0)
 
 #define INVOKE_IFA_DUMMY(templateClass, ...)                                                            \
     TPipe tPipe1;                                                                                        \
-    REGBASE_COPY_TILING_DATA_ASCEND910_95_ANTIQUANT_BASEAPI(tiling);                                    \
+    REGBASE_COPY_TILING_DATA_ASCEND950_ANTIQUANT_BASEAPI(tiling);                                    \
     IncreFlashAttentionDummy<half> op;                                                                  \
     op.Init(attentionOut, tilingData);                                                                  \
     op.Process();                                                                                       \
@@ -62,9 +71,9 @@ using namespace AscendC;
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm1TilingData, bmm1TilingDataVar, tiling);   \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm2TilingData, bmm2TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingDataVar;                                      \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingDataVar;
 
@@ -75,27 +84,27 @@ using namespace AscendC;
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm1TilingData, bmm1TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingDataVar;
 
 #define COPY_BMM2_TILING_DATA(tiling, need_cube)                                                        \
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm2TilingData, bmm2TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingDataVar;
 #else
 #define COPY_TILING_DATA(tiling, need_cube)                                                             \
-    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingData, tiling_data_in, tiling);                 \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;                      \
+    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingDataRegbase, tiling_data_in, tiling);                 \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = &tiling_data_in;                      \
     const TCubeTiling* __restrict bmm1tiling = &(tiling_data->bmm1TilingData);                          \
     const TCubeTiling* __restrict bmm2tiling = &(tiling_data->bmm2TilingData);
 
 #define COPY_TILING_DATA_NO_CUBE(tiling)                                                                \
-    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingData, tiling_data_in, tiling);                 \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;
+    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingDataRegbase, tiling_data_in, tiling);                 \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = &tiling_data_in;
 
 #define COPY_BMM1_TILING_DATA(tiling, need_cube) COPY_TILING_DATA(tiling, need_cube)
 #define COPY_BMM2_TILING_DATA(tiling, need_cube) COPY_TILING_DATA(tiling, need_cube)
@@ -105,7 +114,7 @@ using namespace AscendC;
 
 #define REGBASE_COPY_TILING_DATA(tiling)                            \
 
-#define INVOKE_IFA_GENERAL_OP_IMPL_ASCEND910_95_FA(templateClass, vec1ResultSize, qkvSize, ...)                   \
+#define INVOKE_IFA_GENERAL_OP_IMPL_ASCEND950_FA(templateClass, vec1ResultSize, qkvSize, ...)                   \
   do {                                                                                                    \
     templateClass<__VA_ARGS__> op;                                                                        \
     AscendC::Impl::Detail::GlobalTscmArray tscmArray;                                                     \
@@ -128,7 +137,7 @@ using namespace AscendC;
   GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                               \
   const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;                                     \
 
-#define INVOKE_IFA_GENERAL_OP_IMPL_ASCEND910_95_FA(templateClass, vec1ResultSize, qkvSize, ...)                             \
+#define INVOKE_IFA_GENERAL_OP_IMPL_ASCEND950_FA(templateClass, vec1ResultSize, qkvSize, ...)                             \
   do {                                                                                                                      \
     if (query == nullptr) {return;}                                                                                         \
     REGBASE_COPY_TILING_DATA(tiling);                                                                                       \
@@ -154,7 +163,7 @@ using namespace AscendC;
 #endif
 
 template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope, 
-  bool isPa, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix>
+  bool isPa, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
   inline __aicore__ void incre_flash_attention_FIAS_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key,
                                                             __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
                                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
@@ -180,149 +189,142 @@ template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quan
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #endif
 
-REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 24) & 0x1f) < 15", IncreFlashAttentionTilingDataV2);
+REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) < 15", FlashAttentionScoreSimplifiedTilingData);
+
+if constexpr (emptyTensor == true) {
+    # if (ORIG_DTYPE_ATTENTION_OUT != DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT != DT_BF16)
+        INVOKE_PFA_ZERO_OP_IMPL_V2(fp8_e4m3fn_t);
+    #else
+        INVOKE_PFA_ZERO_OP_IMPL_V2(half);
+    #endif
+    return;
+}
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int8_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int8_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int4b_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int4b_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, hifloat8_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, hifloat8_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp8_e4m3fn_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp8_e4m3fn_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp4x2_e2m1_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
-#endif
-
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT4_E1M2 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp4x2_e1m2_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp4x2_e2m1_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int4b_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int4b_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, hifloat8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, hifloat8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp4x2_e2m1_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
-#endif
-
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT4_E1M2 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp4x2_e1m2_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp4x2_e2m1_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int8_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int8_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int8_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int8_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, hifloat8_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, hifloat8_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, hifloat8_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, hifloat8_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp8_e4m3fn_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp8_e4m3fn_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-    INVOKE_FA_OP_IMPL_ASCEND910_95_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp8_e4m3fn_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION,
-    outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+    INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp8_e4m3fn_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION,
+    inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
     static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
 #endif
 

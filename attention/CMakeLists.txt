@@ -18,6 +18,13 @@ foreach(SUB_DIR ${CURRENT_DIRS})
             endif ()
         endif ()
     endif ()
+    
+    if (NOT ENABLE_AICPU)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/op_kernel_aicpu" AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/op_kernel_aicpu")
+            MESSAGE(STATUS "disable aicpu kernel ${SUB_DIR}, skip it.")
+            continue()
+        endif()
+    endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
         add_subdirectory(${SUB_DIR})

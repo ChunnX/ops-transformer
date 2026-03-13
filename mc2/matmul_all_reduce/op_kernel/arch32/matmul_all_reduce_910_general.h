@@ -15,7 +15,11 @@
 #ifndef MATMUL_ALL_REDUCE_910_GENERAL_H
 #define MATMUL_ALL_REDUCE_910_GENERAL_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #include "matmul_all_reduce_base.h"
@@ -45,7 +49,7 @@ public:
         MC2GmAddrs* addrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
         : MatmulAllReduceBase<xType, yType, coreType>(addrs, nullptr, arnAddrs, tilingData, tPipe)
     {
-        mc2TilingData_ = (MatmulAllReduce910TilingData*)tilingData;
+        mc2TilingData_ = (Mc2Tiling::MatmulAllReduce910TilingData*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
         this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
     }
@@ -90,7 +94,7 @@ protected:
     }
 
 private:
-    MatmulAllReduce910TilingData* mc2TilingData_;
+    Mc2Tiling::MatmulAllReduce910TilingData* mc2TilingData_;
 };
 
 #define INVOKE_MC2_910_OP_IMPL_HELPER(opTemplateClass, bTransFlag, coreType)                               \
@@ -109,7 +113,7 @@ private:
 
 #define INVOKE_MC2_910_OP_IMPL(opTemplateClass, coreType)                                \
     do {                                                                                 \
-        GET_TILING_DATA_WITH_STRUCT(MatmulAllReduce910TilingData, tilingData, tilingGM); \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingData, tilingData, tilingGM); \
         if (tilingData.tilematmulTiling.matmulRunInfo.transB != 0U) {                    \
             INVOKE_MC2_910_OP_IMPL_HELPER(opTemplateClass, true, coreType);              \
         } else {                                                                         \

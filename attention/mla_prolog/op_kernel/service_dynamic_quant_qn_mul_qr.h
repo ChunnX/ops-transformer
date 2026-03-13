@@ -60,7 +60,7 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
         LocalTensor<O> output = outputLocal.template ReinterpretCast<O>();
         WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
         AscendC::PipeBarrier<PIPE_V>();
-        DynamicQuantQnVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
+        DynamicQuantPerTokenVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
         AscendC::PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
         SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
@@ -187,6 +187,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Mul Qr 入参
     const GlobalTensor<T>& inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
     uint32_t cvRatio) {
+    if (row == 0 || col == 0) { return; }
     // 常量
     constexpr uint32_t MUL_QR = EVENT_ID1; // 用于控制Mul_Qr的同步
     constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0; //dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
@@ -200,7 +201,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant 局部变量
     uint64_t rowStepSize = 16; // 单次处理最大行数
 
-    if (cvRatio == 1) { // cv1:1场景改为8行进行计算，降低UB使用
+    if (cvRatio == 1) { // cv1:1场景，改为8行进行计算，降低UB使用
         rowStepSize = 8;
     }
 

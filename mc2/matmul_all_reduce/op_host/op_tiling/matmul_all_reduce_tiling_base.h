@@ -12,54 +12,31 @@
  * \file matmul_all_reduce_tiling_base.h
  * \brief
  */
-#ifndef MC2_MM_ALLREDUCE_TILING_H
-#define MC2_MM_ALLREDUCE_TILING_H
+#ifndef MC2_MM_ALLREDUCE_TILING_ARCH35_H
+#define MC2_MM_ALLREDUCE_TILING_ARCH35_H
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "all_reduce_formulaic_tiling.h"
+#include "weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_split_tiling.h"
+#include "weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.h"
 #include "weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h"
 #include "weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_struct.h"
-#include "tiling/matmul_formulaic_tiling.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
+#include "op_kernel/mc2_tiling_struct.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "context_transfer.h"
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
+#include "../../op_kernel/arch32/unquant_matmul_all_reduce_tiling_data.h"
+#include "../../op_kernel/arch32/weight_quant_matmul_all_reduce_tiling_data.h"
+#include "../../op_kernel/arch32/quant_matmul_all_reduce_tiling_data.h"
+#include "../../op_kernel/arch35/matmul_all_reduce_tiling_struct_ar35.h"
 
 namespace optiling {
-
-BEGIN_TILING_DATA_DEF(MatmulAllReduceTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(Mc2Msg, msg);
-TILING_DATA_FIELD_DEF_STRUCT(RCSTiling, param);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, tailTiling);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling2);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2L2cacheTilePara, tileL2cacheTiling);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2L2cacheTilePara, tailL2cacheTiling);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce, MatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceTilingDataOp, MatmulAllReduceTilingData);
-
-BEGIN_TILING_DATA_DEF(WeightQuantMatmulAllReduceNzTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(Mc2Msg, msg);
-TILING_DATA_FIELD_DEF_STRUCT(RCSTiling, param);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2WeightQuantBatchMatmulV2NzTilingData, tilematmulTiling);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2WeightQuantBatchMatmulV2NzTilingData, tailmatmulTiling);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_136314893, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_169869325, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_138412045, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_171966477, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_137363469, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_170917901, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_139460621, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_173015053, WeightQuantMatmulAllReduceNzTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217757, WeightQuantMatmulAllReduceNzTilingData);
 
 using AntiQuantType = Mc2QuantType;
 
@@ -70,11 +47,10 @@ constexpr uint8_t DIM_NUM_TWO = 2;
 constexpr uint8_t DIM_NUM_ONE = 1;
 constexpr int64_t SUPPORTED_BLOCK_SIZE = 128;
 constexpr uint64_t MX_GROUP_SIZE = 64;
-constexpr uint64_t MX_FP4_GROUP_SIZE = 32;
-constexpr uint64_t EMPTY_TENSOR_KEY = 10000000000000000009UL;
-constexpr uint64_t WEIGHT_QUANT_EMPTY_TENSOR_KEY = 10000000000000000008UL;
-constexpr uint64_t CUBE_ONLY_KEY = 10000000000000001100UL;
-constexpr uint64_t MM_ALINGNED_TILING_KEY = 10000000000000000001UL;
+constexpr uint64_t MX_GROUP_SIZE_K = 32;
+constexpr uint64_t MX_GROUP_SIZE_M = 1;
+constexpr uint64_t MX_GROUP_SIZE_N = 1;
+constexpr uint64_t MM_UN_ALINGNED_TILING_KEY_A2 = 65535UL;
 constexpr uint64_t MM_ALINGNED_TILING_KEY_A2 = 65536UL;
 constexpr uint64_t TILING_KEY_BASE_VALUE = 10000000000000000000UL;
 constexpr uint64_t MM_TRANSB_TILING_KEY = 10000000000000002001UL;
@@ -106,7 +82,6 @@ const std::map<ge::DataType, uint64_t> D_TYPE_SIZE_MAP = {
     {ge::DT_FLOAT8_E4M3FN, 1},
     {ge::DT_FLOAT8_E5M2, 1},
     {ge::DT_INT4, ge::GetSizeByDataType(ge::DT_INT4)},
-    {ge::DT_FLOAT4_E1M2, ge::GetSizeByDataType(ge::DT_FLOAT4_E1M2)},
     {ge::DT_FLOAT4_E2M1, ge::GetSizeByDataType(ge::DT_FLOAT4_E2M1)},
 };
 
@@ -122,7 +97,6 @@ const std::map<matmul_tiling::DataType, uint64_t> D_MTYPE_SIZE_MAP = {
     // DT_INT4的key值代码里面保证有效
     {matmul_tiling::DataType::DT_INT4, D_TYPE_SIZE_MAP.at(ge::DT_INT4)},
     {matmul_tiling::DataType::DT_FLOAT4_E2M1, D_TYPE_SIZE_MAP.at(ge::DT_FLOAT4_E2M1)},
-    {matmul_tiling::DataType::DT_FLOAT4_E1M2, D_TYPE_SIZE_MAP.at(ge::DT_FLOAT4_E1M2)},
 };
 
 enum class AllReduceScenario
@@ -155,8 +129,8 @@ public:
         : TilingBaseClass(context), mmrCtxInfo_(mmrCtxInfoSelf_), tilingData_(tilingDataSelf_)
     {
         Reset();
-        // 持有self代表作为独立个体工作，这个时候进行初始化设置tilingdata指向context内存
-        tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+        // tilingdata作为类的成员随构造函数实例化，使用引用来统一数据访问接口，同时用实体对象来管理数据的生命周期
+        // 在PostTiling中memcpy到device
         OP_TILING_CHECK(memset_s(
                             context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                             context_->GetRawTilingData()->GetCapacity()) != EOK,
@@ -167,8 +141,8 @@ public:
     {
         Reset();
     }
-    MatmulAllReduceTilingBase(
-        gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, MatmulAllReduceTilingData* tilingData)
+    MatmulAllReduceTilingBase(gert::TilingContext* context,
+        MMRCtxInfo* mmrCtxInfo, Mc2Tiling::MatmulAllReduceTilingData* tilingData)
         : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(*tilingData)
     {
         Reset();
@@ -188,19 +162,19 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
-    virtual RCSTiling& MutableRCSTilingData()
+    virtual Mc2Tiling::RCSTiling& MutableRCSTilingData()
     {
         return tilingData_.param;
     }
-    virtual Mc2Msg& MutableMc2MsgData()
+    virtual Mc2Tiling::Mc2Msg& MutableMc2MsgData()
     {
         return tilingData_.msg;
     }
-    virtual TCubeTiling& MutableTCubeTileTilingData()
+    virtual AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData()
     {
         return tilingData_.matmulTiling;
     }
-    virtual TCubeTiling& MutableTCubeTailTilingData()
+    virtual AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData()
     {
         return tilingData_.tailTiling;
     }
@@ -212,8 +186,9 @@ protected:
     void DoRCSTiling();
     void SetMCutSocVersion(SocVersion& inputSocVersion);
     void DoSplitMTiling();
-    ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling);
-    void DoL2CacheTiling(Mc2L2cacheTilePara& l2cacheTiling);
+    virtual CutResult GetTilingResult();
+    ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling& mm1, AscendC::tiling::TCubeTiling& cubeTiling);
+    void DoL2CacheTiling(Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
     void setUseBufferType();
 
     void Reset();
@@ -283,6 +258,7 @@ protected:
     uint32_t rankSize_{0U};
     uint32_t libApiWorkSpaceSize_{0U};
     platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
     bool supportL0c2Out_{false};
     mc2tiling::TilingArgs args_;
     bool isWeightNz_{false};
@@ -293,8 +269,8 @@ protected:
     AllReduceScenario scenario_{AllReduceScenario::INVALID};
     MMRCtxInfo mmrCtxInfoSelf_{};
     MMRCtxInfo& mmrCtxInfo_;
-    MatmulAllReduceTilingData tilingDataSelf_;
-    MatmulAllReduceTilingData& tilingData_;
+    Mc2Tiling::MatmulAllReduceTilingData tilingDataSelf_{};
+    Mc2Tiling::MatmulAllReduceTilingData& tilingData_;
 };
 } // namespace optiling
-#endif // MC2_MM_ALLREDUCE_TILING_H
+#endif // MC2_MM_ALLREDUCE_TILING_ARCH35_H

@@ -18,10 +18,10 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
     add_ops_compile_options(
         OP_NAME FusedInferAttentionScore
-        COMPUTE_UNIT ascend910_9599
+        COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
                 --cce-auto-sync=off
                 -Wno-deprecated-declarations
@@ -42,10 +42,19 @@ else()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources_with_soc(OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
+    add_modules_sources_with_soc(
+        # 该变量用于判断op_api目录是否从op_host移出
+        OP_API_INDEPENDENT ON
+        # op_api新的地址
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
 endif()
 
-if(NOT BUILD_OPS_RTY_KERNEL) #
+file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
+    ../op_host/checkers/*checker*.cpp
+)
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ../../common/op_host/fia_tiling_shape.cpp
@@ -54,14 +63,16 @@ if(NOT BUILD_OPS_RTY_KERNEL) #
     ../../common/op_host/arch32/fia_tiling_nonquant_mla.cpp
     ../../common/op_host/arch32/fia_tiling_nonquant.cpp
     ../../common/op_host/arch32/fia_tiling_empty_tensor.cpp
-    ../op_host/arch35/fused_infer_attention_score_tiling_v2.cpp
+    ../op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
+    ../op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
+    ../op_host/fused_infer_attention_score_tiling_info_parser.cpp
+    ${ARCH35_CHECKER_SRC_FILES}
     ../op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_info_parser.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
-    fallback_fused_infer_attention_score.cpp
+    ../op_graph/fallback_fused_infer_attention_score.cpp
     )
 endif()

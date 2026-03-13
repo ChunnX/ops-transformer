@@ -25,6 +25,8 @@ constexpr float MIN_FP32 = -3.4e38f;
 constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
 constexpr int64_t BLOCK_BYTES = 32;
 constexpr int64_t INT32_ONE_BLOCK_NUM = 8;
+constexpr float DYNAMIC_QUANT_INT4_SYM_SCALE = 7.0;
+constexpr uint32_t MAX_VALUE_NUM = 8;
 
 constexpr int64_t ASSIST_NUM = 256;
 constexpr int64_t ASSIST_INDEX_NUM = 32;

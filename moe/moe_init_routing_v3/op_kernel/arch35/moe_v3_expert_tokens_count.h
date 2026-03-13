@@ -21,6 +21,8 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
+constexpr int64_t CUMSUM_MODE = 0LL;
+constexpr int64_t COUNT_MODE = 1LL;
 constexpr int64_t KEY_VALUE_MODE = 2LL;
 constexpr int64_t KEY_VALUE_MODE_DIM_NUM = 2LL;
 
@@ -28,7 +30,7 @@ class ExpertTokensCount {
 public:
     __aicore__ inline ExpertTokensCount(){};
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -52,7 +54,7 @@ private:
     TQue<QuePosition::VECOUT, 1> expertIdxCountOutQueue_;
     TQue<QuePosition::VECOUT, 1> expertTotalCountQueue_;
 
-    const MoeV3ExpertTokensCountTilingData *expertTokensCountTilingData_;
+    const MoeV3Arch35ExpertTokensCountTilingData *expertTokensCountTilingData_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
     int64_t perCoreElements_;
@@ -106,7 +108,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeExpertCo
 }
 
 __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                               const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                               const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);
@@ -238,10 +240,18 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
             }
         }
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
-    } else {
+    } else if (expertTokensNumType_ == COUNT_MODE) {
         for (int64_t i = 0; i < actualExpertNum_; i++) {
             int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
             expertCountOutLocal.SetValue(i, expertCount);
+            actualExpertTotalNum_ += expertCount;
+        }
+    } else if (expertTokensNumType_ == CUMSUM_MODE) {
+        int64_t cumsumCount = 0;
+        for (int64_t i = 0; i < actualExpertNum_; i++) {
+            int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
+            cumsumCount += expertCount;
+            expertCountOutLocal.SetValue(i, cumsumCount);
             actualExpertTotalNum_ += expertCount;
         }
     }

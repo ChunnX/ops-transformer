@@ -16,8 +16,7 @@ using namespace std;
 
 extern "C" __global__ __aicore__ void grouped_matmul_add(
     GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR yRef, GM_ADDR workspace, GM_ADDR tiling);
-class grouped_matmul_add_test : public testing::Test
-{
+class grouped_matmul_add_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -45,16 +44,12 @@ TEST_F(grouped_matmul_add_test, test_case_bf16)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t blockDim = 40;
+    uint32_t NumBlocks = 40;
 
     GroupedMatmulAddTilingData* tilingData = reinterpret_cast<GroupedMatmulAddTilingData*>(tiling);
     tilingData->gmmBaseParams.groupNum = 2;
-    tilingData->gmmBaseParams.coreNum = blockDim;
+    tilingData->gmmBaseParams.coreNum = NumBlocks;
     tilingData->gmmBaseParams.groupType = 2;
-
-    tilingData->gmmArray.mList[0] = 345;
-    tilingData->gmmArray.kList[0] = -1;
-    tilingData->gmmArray.nList[0] = 567;
 
     tilingData->mmTilingData.usedCoreNum = 1;
     tilingData->mmTilingData.M = 345;
@@ -81,7 +76,11 @@ TEST_F(grouped_matmul_add_test, test_case_bf16)
     tilingData->mmTilingData.dbL0C = false;
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(grouped_matmul_add, blockDim, x, weight, groupedList, y, y, workspace, tiling);
+    int groupedListTypeMode = 2;
+    for (int i = 0; i < groupedListTypeMode; i++) {
+        tilingData->gmmBaseParams.groupListType = i;
+        ICPU_RUN_KF(grouped_matmul_add, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+    }
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
@@ -107,16 +106,12 @@ TEST_F(grouped_matmul_add_test, test_case_fp16)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t blockDim = 40;
+    uint32_t NumBlocks = 40;
 
     GroupedMatmulAddTilingData* tilingData = reinterpret_cast<GroupedMatmulAddTilingData*>(tiling);
     tilingData->gmmBaseParams.groupNum = 2;
-    tilingData->gmmBaseParams.coreNum = blockDim;
+    tilingData->gmmBaseParams.coreNum = NumBlocks;
     tilingData->gmmBaseParams.groupType = 2;
-
-    tilingData->gmmArray.mList[0] = 345;
-    tilingData->gmmArray.kList[0] = -1;
-    tilingData->gmmArray.nList[0] = 567;
 
     tilingData->mmTilingData.usedCoreNum = 1;
     tilingData->mmTilingData.M = 345;
@@ -144,7 +139,11 @@ TEST_F(grouped_matmul_add_test, test_case_fp16)
 
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(grouped_matmul_add, blockDim, x, weight, groupedList, y, y, workspace, tiling);
+    int groupedListTypeMode = 2;
+    for (int i = 0; i < groupedListTypeMode; i++) {
+        tilingData->gmmBaseParams.groupListType = i;
+        ICPU_RUN_KF(grouped_matmul_add, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+    }
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);

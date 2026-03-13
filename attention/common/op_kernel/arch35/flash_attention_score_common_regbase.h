@@ -8,16 +8,19 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file flash_attention_score_common.h
+ * \file flash_attention_score_common_regbase.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
 #define FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "lib/matrix/matmul/tiling.h"
 #include "stdarg.h"
 #include "pse.h"
 #include "util_regbase.h"
@@ -26,41 +29,17 @@ using matmul::MatmulType;
 using namespace AscendC;
 using namespace regbaseutil;
 
-__aicore__ inline constexpr MatmulConfig GetFACustomCfg(bool enableSetTail = true,
-    const IterateMode iterateMode = IterateMode::ITERATE_MODE_DEFAULT, bool isC1Shared = false,
-    uint32_t sharedC1BufferSize = 64 * 1024, uint32_t singleM = 0, uint32_t singleN = 0, uint32_t singleK = 0,
-    uint32_t baseM = 0, uint32_t baseN = 0, uint32_t baseK = 0, bool enableSetDefineData = false,
-    bool isA2B2Shared = false)
-{
-    MatmulShapeParams shapeParams = {singleM, singleN, singleK, baseM, baseN, baseK};
-    auto mmCfg = GetMMConfig<MatmulConfigMode::CONFIG_NORM>(shapeParams);
-    mmCfg.intrinsicsCheck = false;
-    mmCfg.enUnitFlag = false;
-    mmCfg.enableInit = false;
-    mmCfg.enableSetBias = false;
-    mmCfg.enableQuantVector = false;
-    mmCfg.isBiasBatch = false;
-
-    mmCfg.isCO1Shared = isC1Shared;
-    mmCfg.iterateMode = iterateMode;
-    mmCfg.enableSetTail = enableSetTail;
-    mmCfg.enableSetDefineData = enableSetDefineData;
-    mmCfg.isA2B2Shared = isA2B2Shared;
-    mmCfg.sharedCO1BufferSize = sharedC1BufferSize;
-    return mmCfg;    
-}
-
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr int32_t SOFTMAX_M_ALIGNED_SIZE = 8;
 constexpr int32_t SOFTMAX_K_ALIGNED_SIZE = 64;
 constexpr uint64_t DATACOPYPAD_PADDING_VALUE_ZERO = 0;
-constexpr uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
-constexpr uint32_t NEGATIVE_MIN_VAULE_FP16 = 0xFBFF;
+constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+constexpr uint32_t NEGATIVE_MIN_VALUE_FP16 = 0xFBFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP16 = 0x7BFF;
 constexpr int64_t pse1NS1S2 = 2;
 constexpr int64_t FP8_QUANT_BLOCK_SIZE = 128;
-// 0级接口的block间隔范围需要满足32B对齐
+
 constexpr int64_t attenMaskBN2GS1S2 = 0;
 constexpr int64_t attenMaskBS1S2 = 1;
 constexpr int64_t attenMaskS1S2 = 2;
@@ -77,11 +56,7 @@ constexpr uint16_t ADD_NUM_63 = 63;
 
 constexpr uint32_t L0C_SHARED_SIZE_64K = 64 * 1024;
 constexpr uint32_t L0C_SHARED_SIZE_128K = 128 * 1024;
-#if (__NPU_ARCH__ == 5102)
-constexpr uint32_t CV_RATIO = 1;
-#else
 constexpr uint32_t CV_RATIO = 2;
-#endif
 constexpr uint64_t SYNC_MODE = 4;
 constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8}; // mm2ResIntraEvent
 constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; //mm1ResIntraEvent
@@ -91,6 +66,9 @@ constexpr uint64_t MLA_L0A_SIZE = 64;
 constexpr uint64_t MLA_L0B_SIZE = 64; 
 constexpr uint64_t BASE_SIZE_128 = 128;
 constexpr uint64_t FLOAT_BYTES = 4;
+constexpr uint64_t BT_PP_SIZE = 4;
+constexpr uint64_t BT_AVAL_SIZE = 16;
+constexpr uint64_t BT_BVAL_SIZE = 16;
 enum class SparseModeEnum {
     ALL = 0,
     NONE = 1,
@@ -125,7 +103,20 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
+                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+                  !IsSameType<INPUT_T, hifloat8_t>::value) {
+        return false;
+    }
+    if (hasRope) {
+        return true;
+    }
+    return false;
+}
+
+template <typename INPUT_T>
+__aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
+    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
         return false;
     }
     if (hasRope) {
@@ -148,6 +139,18 @@ __aicore__ constexpr bool IsFp8OnlyWithAttenMask(
     return false;
 }
 
+template <typename INPUT_T>
+__aicore__ constexpr bool IsInt8OnlyWithAttenMask(
+    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
+    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
+        return false;
+    }
+    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
+        return true;
+    }
+    return false;
+}
+
 __aicore__ constexpr bool ContainOptionalInput(
     regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
     if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && !hasAtten && !hasDrop) {
@@ -159,8 +162,11 @@ __aicore__ constexpr bool ContainOptionalInput(
 
 __aicore__ constexpr bool IsDn(
     bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS1Base64,
-    regbaseutil::DTemplateType dTemplateType, bool hasRope, bool enableKVPrefix) {
+    regbaseutil::DTemplateType dTemplateType, bool hasRope, bool enableKVPrefix, bool isInfer, bool isHiFp8) {
     if (enableKVPrefix) {
+        return false;
+    }
+    if (!isInfer && isHiFp8) {
         return false;
     }
     if (((!isFp32 && !ContainOptionalInput(pseMode, hasAtten, hasDrop)) ||
@@ -174,10 +180,10 @@ __aicore__ constexpr bool IsDn(
 template <typename INPUT_T>
 __aicore__ constexpr bool UbOutCondition(
     bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope, bool isS2Base64) {
-    if (IsFp8WithRope<INPUT_T>(hasRope)) {
+    if (IsFp8WithRope<INPUT_T>(hasRope) || IsInt8WithRope<INPUT_T>(hasRope)) {
         return true;
     }
-    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
+    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop) || IsInt8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
         return true;
     }
     if (!ContainOptionalInput(pseMode, hasAtten, hasDrop)) {
@@ -188,7 +194,10 @@ __aicore__ constexpr bool UbOutCondition(
     return false;
 }
 
-__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType, bool ubOutCondition, bool isNdS2Size256, bool isMlaFullQuant) {
+__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType, bool ubOutCondition, bool isNdS2Size256, bool isMlaFullQuant, bool isMlaNoQuant = false) {
+    if (isMlaNoQuant) {
+        return TPosition::VECCALC;
+    }
     if ((uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned128 ||
         (ubOutCondition && (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned192) ||
         (ubOutCondition && isMlaFullQuant) ||

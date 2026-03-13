@@ -12,7 +12,7 @@
  * \file moe_finalize_routing_v2_tiling_arch35.cpp
  * \brief
  */
-
+#include "tiling_base/tiling_util.h"
 #include "moe_finalize_routing_v2_tiling.h"
 #include "moe_finalize_routing_v2_tiling_arch35.h"
 
@@ -73,6 +73,8 @@ protected:
     bool IsKHFullLoad();
     bool IsHFullLoad();
     ge::graphStatus CheckShapeAndDtypeIsValid();
+    ge::graphStatus CheckPartShapeAndDtypeIsValid();
+    ge::graphStatus FinalCheckShapeAndDtypeIsValid();
     ge::graphStatus GetRow(const gert::StorageShape* expandedRowIdxShape);
     ge::graphStatus CheckBiasShape(const gert::StorageShape* biasShape);
     ge::graphStatus GetECH(const gert::StorageShape* expandedXShape);
@@ -115,8 +117,8 @@ protected:
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
 {
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
+    auto compileInfoPtr = reinterpret_cast<const MoeFinalizeRoutingCompileInfoV2*>(context_->GetCompileInfo());
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
 
     blockSize_ = Ops::Base::GetUbBlockSize(context_);
     OP_CHECK_IF(
@@ -128,14 +130,12 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
         vlFp32_ == 0, OP_LOGE(context_->GetNodeName(), "Get VL32 failed, VL32: %lu", vlFp32_),
         return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    coreNum_ = ascendcPlatform.GetCoreNumAiv();
+    coreNum_ = static_cast<uint32_t>(compileInfoPtr->aivNum);
     OP_CHECK_IF(
         coreNum_ == 0,
         OP_LOGE(context_->GetNodeName(), "Get core num failed, core num: %u", coreNum_),
         return ge::GRAPH_FAILED);
-    uint64_t ubSize = 0;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    uint64_t ubSize = compileInfoPtr->ubSize;
     OP_CHECK_IF(
         ubSize == 0, OP_LOGE(context_->GetNodeName(), "Get ubSize failed, ubSize: %lu", ubSize),
         return ge::GRAPH_FAILED);
@@ -233,7 +233,6 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckBiasShape(const gert::StorageS
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
 {
-    gert::Shape bsk = {row, k};
     gert::Shape rowIdxShape = {row * k};
     gert::Shape bsh = {row, h};
 
@@ -272,6 +271,23 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
             OP_LOGE(context_->GetNodeName(), "dtype of x2 is invalid."),
             return ge::GRAPH_FAILED);
     }
+
+    OP_CHECK_IF(
+            CheckPartShapeAndDtypeIsValid() != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "CheckPartShapeAndDtypeIsValid failed."),
+            return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(
+            FinalCheckShapeAndDtypeIsValid() != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "FinalCheckShapeAndDtypeIsValid failed."),
+            return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckPartShapeAndDtypeIsValid()
+{
+    gert::Shape bsh = {row, h};
+
     auto x2Shape = context_->GetOptionalInputShape(X2_IDX);
     if (x2Shape) {
         OP_CHECK_IF(
@@ -315,6 +331,14 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
             scaleDtypeKey = BFLOAT16_TILING_KEY;
         }
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
+{
+    gert::Shape bsk = {row, k};
+    gert::Shape bsh = {row, h};
+
     auto scalesShape = context_->GetOptionalInputShape(SCALES_IDX);
     if (scalesShape) {
         OP_CHECK_IF(
@@ -423,10 +447,9 @@ int64_t MoeFinalizeRoutingV2Regbase::RowsHSizeForKHFullLoad(int64_t rowFactor, b
                Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * h * dtypeSize), blockSize_) * blockSize_ +
            (scalesInUb && hasScales_ ? 1 : 0) *
                Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * scaleDtypeSize), blockSize_) * blockSize_ +
-           (hasBias_ ? 1 : 0) * 
-               (Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * h * dtypeSize), blockSize_) * blockSize_ +
-               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * sizeof(int32_t)), blockSize_) * blockSize_) +
-               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * h * dtypeSize), blockSize_) * blockSize_ +
+           (hasBias_ ? 1 : 0) * rowFactor * k * hAligned * dtypeSize + 
+               rowFactor * k * hAligned * dtypeSize +
+               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * sizeof(int32_t)), blockSize_) * blockSize_ +
                Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * sizeof(int32_t)), blockSize_) * blockSize_ +
                Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * h * sizeof(float)), blockSize_) * blockSize_;
 }
@@ -588,7 +611,7 @@ void MoeFinalizeRoutingV2Regbase::PrintTilingData()
 {
     OP_LOGI(
         context_->GetNodeName(),
-        "MoeFinalizeRoutingV2 tiling data: blockDim[%ld] row[%ld] e[%ld] c[%ld] h[%ld] hAligned[%ld] k[%ld]"
+        "MoeFinalizeRoutingV2 tiling data: numBlocks[%ld] row[%ld] e[%ld] c[%ld] h[%ld] hAligned[%ld] k[%ld]"
         "rowOfFormerBlock[%ld] rowOfTailBlock[%ld] rowLoopOfFormerBlock[%ld] rowLoopOfTailBlock[%ld] "
         "rowFactor[%ld] tailRowFactorOfFormerBlock[%ld] tailRowFactorOfTailBlock[%ld] "
         "hLoop[%ld] hFactor[%ld] tailHFactor[%ld]",
@@ -693,7 +716,7 @@ bool MoeFinalizeRoutingV2Regbase::IsHFullLoad()
 
 bool MoeFinalizeRoutingV2Regbase::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return false;
     }
 

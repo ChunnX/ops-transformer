@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
  * \file legacy_common_manager.h
  * \brief
@@ -39,7 +40,7 @@ public:
      * @return 函数指针
      */
     template<typename FuncType>
-    FuncType GetFunc(const char * symbolName)
+    FuncType GetFunc(const char * symbolName) const
     {
         if (symbolName == nullptr || strlen(symbolName) == 0) {
             OP_LOGW("LegacyCommonMgr", "Invalid symbol name (null or empty).");

@@ -15,7 +15,7 @@
 
 #ifndef FLASH_ATTENTION_SCORE_KERNEL_INFER_MLA_FULLQUANT_H_
 #define FLASH_ATTENTION_SCORE_KERNEL_INFER_MLA_FULLQUANT_H_
-#include "flash_attention_score_kernel_base.h"
+#include "flash_attention_score_kernel_base_fullquant.h"
 #include "vf/vf_flash_decode.h"
 #include "infer_flash_attention_comm.h"
 #include "infer_flash_attention_kvcache.h"
@@ -23,11 +23,11 @@
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
-class FlashAttentionScoreKernelInferMlaFullquant : public FlashAttentionScoreKernelBase<FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType> {
+class FlashAttentionScoreKernelInferMlaFullquant : public FlashAttentionScoreKernelBaseFullquant<FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType> {
 public:
     ARGS_TRAITS;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value && !IsSameType<OUTPUT_T, float>::value;
-    using BaseClass = FlashAttentionScoreKernelBase<FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
+    using BaseClass = FlashAttentionScoreKernelBaseFullquant<FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
     /* =====================UB变量==================== */
     __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, 
@@ -46,7 +46,7 @@ FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::InitUni
 {
     if constexpr (isFd) {
         this->constInfo.splitKVNum = this->sharedParams.splitKVNum;
-        this->constInfo.sInnerLoopSize = CeilDivision(this->constInfo.s2Size, this->constInfo.splitKVNum);
+        this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
     }
     if constexpr (POST_QUANT) {
         this->constInfo.isPostQuantPerChnl = this->sharedParams.isPostQuantPerChnl;
@@ -71,8 +71,8 @@ FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::InitUni
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
     }
 
-    this->constInfo.isBSNDOut = this->sharedParams.isBSNDOut;
-    if (this->constInfo.isBSNDOut == 1) {
+    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
+    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {
         this->constInfo.attentionOutStride =
             (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
     }

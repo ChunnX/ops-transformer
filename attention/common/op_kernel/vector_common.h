@@ -15,7 +15,12 @@
 #ifndef VECTOR_COMMON_H
 #define VECTOR_COMMON_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 using namespace AttentionCommon;
 using namespace AscendC;
@@ -31,6 +36,8 @@ constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);
 constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
 // repeat stride不能超过256
 constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
+// 最大repeat次数
+constexpr uint32_t MAX_REPEAT_TIMES = 255;
 constexpr int64_t HALF_NUM = 2;
 constexpr int64_t STRIDE_LENGTH = 8;
 constexpr int64_t MAX_VALID_LENGTH = 1024;
@@ -40,6 +47,7 @@ enum SparseMode : uint8_t {
     LEFT_UP_CAUSAL,
     RIGHT_DOWN_CAUSAL,
     BAND,
+    TREE = 9,
 };
  
 __aicore__ inline bool IsExistInvalidRows(int64_t nextTokensPerBatch, int64_t preTokensPerBatch, uint32_t mode,
@@ -108,6 +116,21 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
             Mul(dstUb[offset], src0Ub, src1Ub[offset], actualColumnCount);
             offset += columnCount;
         }
+    }
+}
+
+__aicore__ inline void VecMulMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
+                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+{
+    // vec add by row
+    // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
+    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, columnCount] dstUb:[dealRowCount, columnCount]
+    uint32_t repeatTimes = MAX_REPEAT_TIMES;
+    for (uint32_t i = 0; i < dealRowCount; i += MAX_REPEAT_TIMES) {
+        if (i + MAX_REPEAT_TIMES > dealRowCount) {
+            repeatTimes = dealRowCount - i;
+        }
+        VecMulMat(dstUb[i * columnCount], src0Ub, src1Ub[i * columnCount], repeatTimes, columnCount, actualColumnCount);
     }
 }
 
@@ -223,6 +246,21 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
             Add(dstUb[offset], src0Ub, src1Ub[offset], actualColumnCount);
             offset += columnCount;
         }
+    }
+}
+
+__aicore__ inline void VecAddMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
+                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+{
+    // vec add by row
+    // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
+    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, columnCount] dstUb:[dealRowCount, columnCount]
+    uint32_t repeatTimes = MAX_REPEAT_TIMES;
+    for (uint32_t i = 0; i < dealRowCount; i += MAX_REPEAT_TIMES) {
+        if (i + MAX_REPEAT_TIMES > dealRowCount) {
+            repeatTimes = dealRowCount - i;
+        }
+        VecAddMat(dstUb[i * columnCount], src0Ub, src1Ub[i * columnCount], repeatTimes, columnCount, actualColumnCount);
     }
 }
 
@@ -639,7 +677,7 @@ __aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTens
                                         uint32_t dealRowCount)
 {
     uint32_t blockNum = fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
-    if (std::is_same<T, half>::value) {
+    if constexpr (std::is_same<T, half>::value) {
         blockNum = fa_base_vector::FP32_BLOCK_ELEMENT_NUM * 2;
     }
     uint64_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
@@ -796,7 +834,7 @@ struct MaskInfo {
 
     // for bss & bs
     uint32_t batchIdx;
-    uint32_t batchOffset;
+    uint32_t attenMaskBatchStride;
     uint32_t attenMaskStride;
 
     LAYOUT_Q layout;
@@ -810,9 +848,17 @@ struct MaskInfo {
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
-    uint64_t bOffset = static_cast<uint64_t>(info.batchIdx) * static_cast<uint64_t>(info.batchOffset);
+    uint64_t bOffset = static_cast<uint64_t>(info.batchIdx) * static_cast<uint64_t>(info.attenMaskBatchStride);
     uint64_t s1Offset = (info.s1LeftPaddingSize + s1StartIdx % info.s1Size) * info.attenMaskStride;
     uint64_t s2Offset = info.s2LeftPaddingSize + info.s2StartIdx;
+    return bOffset + s1Offset + s2Offset;
+}
+
+__aicore__ inline uint64_t ComputeAttenMaskOffsetTree(MaskInfo &info, uint32_t s1StartIdx, uint64_t treeMaskStart)
+{
+    uint64_t bOffset = info.attenMaskBatchStride;
+    uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
+    uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
     return bOffset + s1Offset + s2Offset;
 }
 
@@ -849,24 +895,58 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uin
     return offset;
 }
 
-__aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1StartIdx = 0, bool isPre = false)
+template <bool ENABLE_TREE = false>
+__aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1StartIdx = 0, uint64_t treeMaskStart = 0, bool isPre = false)
 {
     if (isPre) {
         return ComputeAttenMaskOffsetCompressPre(info, s1StartIdx);
     } else {
         if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
             return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
-        } else {
-            return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
         }
+        if constexpr (ENABLE_TREE) {
+            if (info.sparseMode == TREE) {
+                return ComputeAttenMaskOffsetTree(info, s1StartIdx, treeMaskStart);
+            }
+        }
+        return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
     }
 }
 
-template <typename T>
+template <typename T, bool ENABLE_TREE = false>
 __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info, uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
 {
+    uint32_t treeMaskStart = 0;
+    if constexpr (ENABLE_TREE) {
+        treeMaskStart = info.s2Size - info.s1Size;
+        uint32_t curS2EnsPos = info.s2StartIdx + info.s2dealNum;
+        // 只有info.s2StartIdx + info.s2dealNum > treeMaskStart时，才会进入此流程；
+        // 当info.s2StartIdx > treeMaskStart，mask拷贝也是全量拷贝，和其余sparse过程相同
+        if (info.s2StartIdx < treeMaskStart) {
+            if (curS2EnsPos <= treeMaskStart) {
+                return; // 整个 tile 在零区，UB 已初始化为 0，无需拷贝
+            }
+            // 由于sparse9 mask只有一部分，不能合并处理
+            uint32_t attenMaskSize = curS2EnsPos - treeMaskStart;
+            uint32_t attenMaskSizeAlign = Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
+            uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, s1StartIdx, treeMaskStart, isPre);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
+            dataCopyParams.blockLen = curS2EnsPos - treeMaskStart;
+            dataCopyParams.srcStride = info.attenMaskStride - (curS2EnsPos - treeMaskStart);
+            dataCopyParams.dstStride = (treeMaskStart - info.s2StartIdx) / 32; // dst在UB上，单位为32字节，同时左侧不对齐场景会进行左padding
+            DataCopyPadExtParams<bool> padParams;
+            padParams.isPad = true;
+            padParams.leftPadding = static_cast<uint8_t>(treeMaskStart % 32);
+            padParams.rightPadding = static_cast<uint8_t>(attenMaskSizeAlign - (attenMaskSize + treeMaskStart % 32));
+            padParams.paddingValue = 0;
+            DataCopyPad(attenMaskUb[(treeMaskStart - info.s2StartIdx) / 32 * 32], srcGmAddr[maskOffset], dataCopyParams, padParams);
+            return;
+        }
+    }
+    // 标准拷贝路径（非TREE模式，或TREE模式但s2StartIdx >= treeMaskStart时）
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
-    uint64_t maskOffset = ComputeAttenMaskOffset(info, s1StartIdx, isPre);
+    uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, s1StartIdx, treeMaskStart, isPre);
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
     dataCopyParams.blockLen = info.s2dealNum;
@@ -877,7 +957,7 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
     DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
 }
 
-template <typename T, typename U>
+template <typename T, typename U, bool ENABLE_TREE = false>
 __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
@@ -885,17 +965,17 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
-            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
+            AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskSizeAlign];
-            AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
+            AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
         } else {
-            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
+            AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
     } else {
-        AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, 0, info.s1Size, isPre);
+        AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, 0, info.s1Size, isPre);
         LocalTensor<T> attenMaskUbDst = tmpBuf.template ReinterpretCast<T>();
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
@@ -927,7 +1007,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
     }
 }
 
-template <typename T, typename U>
+template <typename T, typename U, bool ENABLE_TREE = false>
 __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     uint32_t s1StartIdx = info.gs1StartIdx / info.gSize;
@@ -935,7 +1015,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t s1Count = s1EndIdx - s1StartIdx + 1;
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
 
-    AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx + 1, isPre);
+    AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx + 1, isPre);
 
     event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(enQueEvtID);
@@ -975,10 +1055,23 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     attenMaskUb = attenMaskUbDst.template ReinterpretCast<bool>();
 }
 
+template <bool ENABLE_TREE = false>
 __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 {
     if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
         return false;
+    }
+
+    // 增加sparse = 9的处理
+    if constexpr (ENABLE_TREE) {
+        if (info.sparseMode == TREE) {
+            // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
+            if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) > static_cast<int64_t>(info.s2Size - info.s1Size)) {
+                return false;
+            } else {
+                return true;
+            }
+        }
     }
 
     int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
@@ -1019,36 +1112,75 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
     return false;
 }
 
-template <typename T, typename U>
+template <typename T, typename U, bool ENABLE_TREE = false>
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     if (info.layout == GS) {
-        AttentionmaskCopyInForGsLayout(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+        AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
     } else if(info.layout == SG) { // sg
-        AttentionmaskCopyInForSgLayout(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+        AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
     } else if (info.layout == S1_EQUAL1) {
-        uint64_t maskOffset = ComputeAttenMaskOffset(info, 0, isPre);
-        uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = 1;
-        dataCopyParams.blockLen = info.s2dealNum;
-        dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum ;
-        dataCopyParams.dstStride = 0;
-        DataCopyPadExtParams<bool> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
-        DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+        uint32_t treeMaskStart = 0;
+        if constexpr (ENABLE_TREE) {
+            treeMaskStart = info.s2Size - info.s1Size;
+            uint32_t curS2EndPos = info.s2StartIdx + info.s2dealNum;
+            if (info.s2StartIdx >= treeMaskStart) {
+                // TREE 但 s2StartIdx >= treeMaskStart：全量拷贝
+                uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, treeMaskStart, isPre);
+                uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+                DataCopyExtParams dataCopyParams;
+                dataCopyParams.blockCount = 1;
+                dataCopyParams.blockLen = info.s2dealNum;
+                dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
+                dataCopyParams.dstStride = 0;
+                DataCopyPadExtParams<bool> padParams{true, 0,
+                    static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
+                DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+            } else if (curS2EndPos > treeMaskStart) {
+                // 部分拷贝：只拷贝 [treeMaskStart, curS2EndPos) 区域
+                uint32_t attenMaskSize = curS2EndPos - treeMaskStart;
+                uint32_t attenMaskSizeAlign = Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
+                uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, treeMaskStart, isPre);
+                DataCopyExtParams dataCopyParams;
+                dataCopyParams.blockCount = 1;
+                dataCopyParams.blockLen = curS2EndPos - treeMaskStart;
+                dataCopyParams.srcStride = 0;
+                dataCopyParams.dstStride = 0;
+                DataCopyPadExtParams<bool> padParams;
+                padParams.isPad = true;
+                padParams.leftPadding = static_cast<uint8_t>(treeMaskStart % 32);
+                padParams.rightPadding = static_cast<uint8_t>(attenMaskSizeAlign - (attenMaskSize + treeMaskStart % 32));
+                padParams.paddingValue = 0;
+                DataCopyPad(attenMaskUb[(treeMaskStart - info.s2StartIdx) / 32 * 32],
+                            srcGmAddr[maskOffset], dataCopyParams, padParams);
+            }
+            // else: curS2EndPos <= treeMaskStart，整个 tile 在零区，UB 已初始化为 0，无需拷贝
+        } else {
+            // 非 TREE：全量拷贝
+            uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, 0, isPre);
+            uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = info.s2dealNum;
+            dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
+            dataCopyParams.dstStride = 0;
+            DataCopyPadExtParams<bool> padParams{true, 0,
+                static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
+            DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+        }
 
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
         for (uint32_t i = 1; i < info.gs1dealNum; i++) {
-            uint32_t offset = i * attenMaskSizeAlign;
-            DataCopy(attenMaskUb[offset], attenMaskUb, attenMaskSizeAlign);
+            uint32_t offset = i * Align(info.s2dealNum, 32U);
+            DataCopy(attenMaskUb[offset], attenMaskUb, Align(info.s2dealNum, 32U));
         }
     }
 }
 
 template <typename T, typename M, typename U>
-__aicore__ inline void AttentionmaskCompute(LocalTensor<T> &dstUb, LocalTensor<T> &srcUb, LocalTensor<M> &attenMaskUb, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
+__aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T> &srcUb, LocalTensor<M> &attenMaskUb, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     uint32_t dealRowCount = info.gs1dealNum;
     uint32_t columnCount = Align(info.s2dealNum, 32U);
@@ -1147,32 +1279,24 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
         int32_t s1BottomTok = params.actS1Size + params.preTokensPerBatch;
         uint32_t s1 = params.gS1Idx / params.gSize;
         uint32_t gIdx = params.gS1Idx % params.gSize;
-        
-        uint8_t s1Stride = params.dealRowCount / params.gSize;
-
-        for (uint32_t i = 0; i < params.dealRowCount;) {
-            while (s1 + s1Stride > s1BottomTok && s1 < s1BottomTok) {
-                if (s1 == s1BottomTok) {
-                    break;
-                }
-                s1++;
-                i += params.gSize;
+        uint64_t dealRowOffset = 0;
+        if (s1 < s1BottomTok) {
+            // 如果s1 < 行无效开始行，偏移s1到行无效开始行
+            s1 = s1BottomTok;
+            dealRowOffset = s1BottomTok * params.gSize - params.gS1Idx;
+            gIdx = 0;
+        }
+        while (s1 < params.actS1Size && dealRowOffset < params.dealRowCount) {
+            uint32_t gNum = params.gSize - gIdx;
+            if (dealRowOffset + gNum > params.dealRowCount) {
+                gNum = params.dealRowCount - dealRowOffset;
             }
-
-            if (s1 >= s1BottomTok && s1 < params.actS1Size)
-            {
-                uint32_t gNum = params.gSize - gIdx;
-                if (i + gNum > params.dealRowCount) {
-                    gNum = params.dealRowCount - i;
-                }
-                Duplicate(attenOutUb[i * params.columnCount], static_cast<T>(FLOAT_ZERO), params.columnCount * gNum);
-                AscendC::PipeBarrier<PIPE_V>();
-                i += gNum;
-                s1++;
-                gIdx = 0;
-                continue;
-            }
-            break;
+            Duplicate(attenOutUb[dealRowOffset * params.columnCount],
+                      static_cast<T>(FLOAT_ZERO), params.columnCount * gNum);
+            AscendC::PipeBarrier<PIPE_V>();
+            dealRowOffset += gNum;
+            s1++;
+            gIdx = 0;
         }
     }
 }

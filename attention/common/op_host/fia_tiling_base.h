@@ -71,9 +71,9 @@ protected:
     virtual bool IsCapable() = 0;
     virtual ge::graphStatus DoOpTiling() = 0;
 
-    [[nodiscard]] ge::graphStatus SetBlockDim(uint32_t blockDim) const
+    [[nodiscard]] ge::graphStatus SetNumBlocks(uint32_t numBlocks) const
     {
-        context_->SetBlockDim(blockDim);
+        context_->SetBlockDim(numBlocks);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -86,7 +86,7 @@ protected:
     [[nodiscard]] ge::graphStatus SetWorkspaceSize(uint64_t workspaceSize) const
     {
         OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
-            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "workSpaceSize got from ge is nullptr"),
+            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "WorkSpaceSize got from ge is nullptr"),
             return ge::GRAPH_FAILED);
         size_t *workSpaces = context_->GetWorkspaceSizes(1);
         workSpaces[0] = workspaceSize;

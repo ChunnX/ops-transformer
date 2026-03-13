@@ -82,7 +82,10 @@ TILING_DATA_FIELD_DEF_STRUCT(MoeV2GatherOutComputeTilingData, srcToDstCapacityCo
 TILING_DATA_FIELD_DEF_STRUCT(MoeV2GatherOutComputeTilingData, gatherOutComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2, MoeInitRoutingV2TilingData)
-struct MoeInitRoutingV2CompileInfo {};
+struct MoeInitRoutingV2CompileInfo {
+    int32_t aivNum = 0;
+    uint64_t ubSize = 0;
+};
 
 class MoeInitRoutingV2TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -128,13 +131,6 @@ protected:
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
     void Tiling4VBSCompute();
-    void ShowMoeInitRoutingTilingData();
-    void ShowMoeV2VBSComputeTilingData();
-    void ShowVMSMiddleComputeTilingData();
-    void ShowSortOutComputeTilingData();
-    void ShowSrcToDstComputeTilingData();
-    void ShowSrcToDstComputeCapacityTilingData();
-    void ShowGatherOutComputeTilingData();
     void ShowTilingData();
     void Tiling4VBSMultiCoreCompute(MoeV2VBSComputeTilingData *tilingData);
     void Tiling4VBSOneCoreCompute(MoeV2VBSComputeTilingData *tilingData);

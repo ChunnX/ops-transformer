@@ -16,8 +16,7 @@
 #define ALL_GATHER_MATMUL_FULL_MESH_H
 
 #include "all_gather_matmul_base.h"
-#include "kernel_operator_intf.h"
-
+#include "adv_api/hccl/hccl.h"
 
 namespace AscendC {
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
@@ -33,12 +32,12 @@ private:
     __aicore__ inline void HcclPrepare();
     __aicore__ inline void InnerProcess();
 
-    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
-        HcclHandle &handleId, uint32_t tileCnt);
+    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void MatmulKernelComputeL2Cache(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
         Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
-    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
-        HcclHandle &handleId, uint32_t tileCnt);
+    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
 
     __aicore__ inline void HcclFinalize();
 

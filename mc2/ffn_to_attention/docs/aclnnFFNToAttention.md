@@ -4,21 +4,20 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-接口功能：将FFN节点上的数据发往Attention节点。
+将FFN节点上的数据发往Attention节点。
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
@@ -36,6 +35,7 @@ aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnFFNToAttention(
     void           *workspace,
@@ -48,15 +48,15 @@ aclnnStatus aclnnFFNToAttention(
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-      <col style="width: 176px">
-      <col style="width: 100px">
-      <col style="width: 200px">
-      <col style="width: 200px">
-      <col style="width: 150px">
-      <col style="width: 90px"> 
-      <col style="width: 100px">
-      <col style="width: 150px">
+    <table style="undefined;table-layout: fixed; width: 1484px"><colgroup>
+    <col style="width: 186px">
+    <col style="width: 123px">
+    <col style="width: 283px">
+    <col style="width: 295px">
+    <col style="width: 181px">
+    <col style="width: 122px">
+    <col style="width: 147px">
+    <col style="width: 147px">
       </colgroup>
   <thead>
     <tr>
@@ -208,6 +208,7 @@ aclnnStatus aclnnFFNToAttention(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
+
     <table style="undefined;table-layout: fixed; width: 1166px">
     <colgroup>
     <col style="width: 166px">
@@ -235,17 +236,14 @@ aclnnStatus aclnnFFNToAttention(
     </tbody>
     </table>
 
-
-
 ## aclnnFFNToAttention
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1166px">
-    <colgroup>
-    <col style="width: 166px">
-    <col style="width: 100px">
-    <col style="width: 900px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     </colgroup>
     <thead>
     <tr>
@@ -278,9 +276,9 @@ aclnnStatus aclnnFFNToAttention(
     </tbody>
     </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 
 ## 约束说明
@@ -295,25 +293,24 @@ aclnnStatus aclnnFFNToAttention(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
 
 - **Shape变量约束**：
+
   | 变量         | 定义与取值范围                                                                           |
   | :----------- | :------------------------------------------------------------------------------------- |
   | Y            | 表示本卡需要分发的最大token数量。|
-  | Bs           | 表示各Attention节点上的发送token数。<ul></li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>0 < Bs ≤ 512 </code>。</li></ul> |
-  | H（hidden size） | 表示hidden size隐藏层大小。<ul></li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
-  | HS（hidden and scale size） | 表示hidden与scale 隐藏层大小。<ul></li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
+  | Bs           | 表示各Attention节点上的发送token数。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>0 < Bs ≤ 512 </code>。</li></ul> |
+  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
+  | HS（hidden and scale size） | 表示hidden与scale 隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
   | MircoBatchNum    | 表示microBatch的大小，目前仅支持<code>MircoBatchNum = 1</code>。 |  
   | ExpertNumPerToken    | 表示每个Token对应的发送的Expert数量，<code>ExpertNumPerToken = K + sharedExpertNum</code>。 |  
   | K    | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16 </code>。 |  
   | ffnRankNum    | 表示选取ffnRankNum个卡作为FFnWorker，取值范围为<code>0 < ffnRankNum < worldSize </code>。 | 
   | attnRankNum    | 表示选取attnRankNum个卡作为AttnWorker，取值范围为<code>0 < attnRankNum < worldSize </code>。 | 
   | sharedExpertNum    | 表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），当前取值范围[0, 4]。 |  
-
   
 - **通信域使用约束**：
   - FFNToAttention算子的通信域中不允许有其他算子。
 
 ## 调用示例
-
 
 - 文件准备：
   
@@ -321,13 +318,15 @@ aclnnStatus aclnnFFNToAttention(
 
   2.安装cann包，并根据下方指导编译运行FFNtoAttentionDemo。
 
--  FFNtoAttention.sh编译脚本
+- FFNtoAttention.sh编译脚本
+
     ```bash
     #!/bin/bash
     cann_path="/path/to/cann_env" # 更改cann包环境的路径
     g++ "aclnnFFNtoAttentionDemo.cpp" -o FFNtoAttentionDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
                         -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi_math -lop_common -lpthread -lhccl
     ```
+
 - 编译与运行：
 
     ```bash
@@ -341,6 +340,7 @@ aclnnStatus aclnnFFNToAttention(
     ```
 
 - 示例代码如下，仅供参考
+
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -449,7 +449,7 @@ aclnnStatus aclnnFFNToAttention(
         std::vector<int64_t> tokenIdsShape{Y};
         std::vector<int64_t> expertOffsetsShape{Y};
         std::vector<int64_t> actualTokenNumShape{1};
-        std::vector<int64_t> attnRankTableShape{attention_worker_num};   // todo
+        std::vector<int64_t> attnRankTableShape{attention_worker_num};
 
 
         int64_t xShapeSize = GetShapeSize(xShape);

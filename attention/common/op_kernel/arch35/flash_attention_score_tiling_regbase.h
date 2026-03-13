@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 
-#include <cstdint>
 
 namespace optiling {
 class FlashAttentionScoreEmptyInputTilingDataRegbase {
@@ -61,6 +60,8 @@ public:
 class InputParamsRegbase {
 public:
     int64_t bSize;
+    int64_t t1Size;
+    int64_t t2Size;
     int64_t n2Size;
     int64_t gSize;
     int64_t s1Size;
@@ -87,7 +88,8 @@ public:
     uint8_t needDropMaskOp;
     uint8_t dropMaskOuter;
     uint8_t pseEncodeType;
-    uint16_t remain;
+    uint8_t tndSoftmaxOut;
+    uint8_t remain;
     uint32_t attenMaskS2Size;
     uint32_t pseType;
     uint32_t rsv1;
@@ -111,6 +113,7 @@ public:
     uint8_t isKvContinuous;
     uint8_t fromFused;
     uint8_t isBSNDOut;
+    uint8_t transposeLayout;
     uint8_t isGqa;
     uint8_t isSoftMaxLseEnable;
     uint8_t isActualSharedPrefixLenNull;
@@ -136,6 +139,10 @@ public:
 
     int64_t get_bSize() const {return bSize;}
     void set_bSize(int64_t bSizeParam) {this->bSize = bSizeParam;}
+    int64_t get_t1Size() const {return t1Size;}
+    void set_t1Size(int64_t t1SizeParam) {this->t1Size = t1SizeParam;}
+    int64_t get_t2Size() const {return t2Size;}
+    void set_t2Size(int64_t t2SizeParam) {this->t2Size = t2SizeParam;}
     int64_t get_n2Size() const {return n2Size;}
     void set_n2Size(int64_t n2SizeParam) {this->n2Size = n2SizeParam;}
     int64_t get_gSize() const {return gSize;}
@@ -232,6 +239,8 @@ public:
     void set_fromFused(uint8_t fromFusedParam) {this->fromFused = fromFusedParam;}
     uint8_t get_isBSNDOut() const {return isBSNDOut;}
     void set_isBSNDOut(uint8_t isBSNDOutParam) {this->isBSNDOut = isBSNDOutParam;}
+    uint8_t get_transposeLayout() const {return transposeLayout;}
+    void set_transposeLayout(uint8_t transposeLayoutParam) {this->transposeLayout = transposeLayoutParam;}
     uint8_t get_isGqa() const {return isGqa;}
     void set_isGqa(uint8_t isGqaParam) {this->isGqa = isGqaParam;}
     uint8_t get_isSoftMaxLseEnable() const {return isSoftMaxLseEnable;}
@@ -276,6 +285,8 @@ public:
     void set_antiquantPerHeadFlag(uint16_t antiquantPerHeadFlagParam) {this->antiquantPerHeadFlag = antiquantPerHeadFlagParam;}
     uint32_t get_antiquantParaSeqSize() const {return antiquantParaSeqSize;}
     void set_antiquantParaSeqSize(uint32_t antiquantParaSeqSizeParam) {this->antiquantParaSeqSize = antiquantParaSeqSizeParam;}
+    uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}
+    void set_tndSoftmaxOut(uint8_t tndSoftmaxOutParam) {this->tndSoftmaxOut = tndSoftmaxOutParam;}
 };
 
 class MultiCoreParamsRegbase {

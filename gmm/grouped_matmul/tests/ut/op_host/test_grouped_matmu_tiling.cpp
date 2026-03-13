@@ -54,6 +54,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_autotiling_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -94,7 +95,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_autotiling_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 ";
+        "1 0 ";
     std::vector<size_t> expectWorkspaces = {67108864}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,250);
 }
@@ -114,6 +115,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_autotiling_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -154,7 +156,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_autotiling_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 ";
+        "1 0 ";
     std::vector<size_t> expectWorkspaces = {67108864}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,250);
 }
@@ -174,6 +176,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_pergroup_antiqunt_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -214,7 +217,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_pergroup_antiqunt_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {121634816}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -234,6 +237,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_pergroup_antiqunt_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -274,7 +278,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_pergroup_antiqunt_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {121634816}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -294,6 +298,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_perchannel_antiqunt_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -334,7 +339,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_perchannel_antiqunt_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {33562624}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -354,6 +359,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_perchannel_antiqunt_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -394,7 +400,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_perchannel_antiqunt_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {33562624}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -414,6 +420,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_msd_vec_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -454,7 +461,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_msd_vec_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -474,6 +481,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_vec_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -514,7 +522,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_vec_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -534,6 +542,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_msd_api_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -574,7 +583,68 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_msd_api_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {117440512}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+TEST_F(GroupedMatmulTiling, test_tiling_a8w4obf16_msd_api_1aic1aiv)
+{
+    size_t M = 128;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},                 //x
+                                                    {{{E, K, N}, {E, K, N}}, ge::DT_INT4, ge::FORMAT_ND},           //weight
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //bias
+                                                    {{{E, 1, N}, {E, 1, N}}, ge::DT_UINT64, ge::FORMAT_ND},          //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                      //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                      //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                      //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT8, // D_T_A
+        DT_INT4, // D_T_B
+        DT_BF16, // D_T_Y
+        0, // TRANS_A
+        0, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_1, // AIV_AIC_RATIO
+        0 //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {117440512}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -594,6 +664,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_api_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -634,7 +705,68 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_api_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {117440512}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_api_1aic1aiv)
+{
+    size_t M = 128;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},                 //x
+                                                    {{{E, K, N}, {E, K, N}}, ge::DT_INT4, ge::FORMAT_ND},           //weight
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //bias
+                                                    {{{E, 1, N}, {E, 1, N}}, ge::DT_UINT64, ge::FORMAT_ND},          //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                      //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                      //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                      //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT8, // D_T_A
+        DT_INT4, // D_T_B
+        DT_FLOAT16, // D_T_Y
+        0, // TRANS_A
+        0, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_1, // AIV_AIC_RATIO
+        0 //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {117440512}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -654,6 +786,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_api_withoffset_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -694,7 +827,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4ofp16_msd_api_withoffset_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {117440512}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -716,6 +849,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_perchannel_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -756,7 +890,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_perchannel_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {83886080}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -776,6 +910,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_perchannel_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -816,7 +951,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_perchannel_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {83886080}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -836,6 +971,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_pergroup_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -876,7 +1012,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_pergroup_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {83886080}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -896,6 +1032,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_pergroup_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -936,7 +1073,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_pergroup_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {83886080}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -956,6 +1093,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_perchannel_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -996,7 +1134,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_perchannel_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1016,6 +1154,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_perchannel_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1056,7 +1195,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_perchannel_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1076,6 +1215,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_pergroup_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1116,7 +1256,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_pergroup_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1136,6 +1276,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_pergroup_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1176,7 +1317,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_pergroup_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1196,6 +1337,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_perchannel_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1236,7 +1378,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_perchannel_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {75497472}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1256,6 +1398,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_perchannel_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1296,7 +1439,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_perchannel_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {75497472}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1316,6 +1459,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_pergroup_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1356,7 +1500,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4ofp16_pergroup_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {75497472}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1376,6 +1520,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_pergroup_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1416,7 +1561,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w4obf16_pergroup_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {75497472}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1439,6 +1584,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_antiquant_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1479,7 +1625,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_antiquant_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {75497472}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1499,6 +1645,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_antiquant_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1539,7 +1686,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_antiquant_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {75497472}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1559,6 +1706,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_msd_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1599,7 +1747,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_msd_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {23134208}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1619,6 +1767,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_msd_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1659,7 +1808,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_msd_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {23134208}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1679,6 +1828,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_antiquant_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1719,7 +1869,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_antiquant_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {33554432}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1739,6 +1889,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_antiquant_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1779,7 +1930,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_antiquant_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {33554432}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1800,6 +1951,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_msd_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1840,7 +1992,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_msd_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {27328512}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1860,6 +2012,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_msd_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1900,7 +2053,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_msd_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {27328512}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1920,6 +2073,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_antiquant_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -1960,7 +2114,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8ofp16_antiquant_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -1980,6 +2134,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_antiquant_transw_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2020,7 +2175,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a16w8obf16_antiquant_transw_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2042,6 +2197,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2082,7 +2238,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2102,6 +2258,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2142,7 +2299,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic2aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2162,6 +2319,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2202,7 +2360,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2222,6 +2380,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2262,7 +2421,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic1aiv)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2282,6 +2441,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic1aiv_static)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2322,7 +2482,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic1aiv_static)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2342,6 +2502,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic1aiv_static)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2382,7 +2543,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic1aiv_static)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2402,6 +2563,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic1aiv_sparse)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2442,7 +2604,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_notrans_1aic1aiv_sparse)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2462,6 +2624,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic1aiv_sparse)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2502,7 +2665,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8obf16_notrans_1aic1aiv_sparse)
         0 //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2526,6 +2689,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_fixed_axis)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2566,7 +2730,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_fixed_axis)
         true //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {26669056}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2589,6 +2753,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a4w4ofp16_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2629,7 +2794,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a4w4ofp16_notrans_1aic2aiv)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {23068672}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2650,6 +2815,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a4w4obf16_notrans_1aic2aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2690,7 +2856,318 @@ TEST_F(GroupedMatmulTiling, test_tiling_a4w4obf16_notrans_1aic2aiv)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {23068672}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a4w4ofp16_trans_1aic2aiv)
+{
+    size_t M = 350;
+    size_t K = 1280;
+    size_t N = 640;//must align to 64
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT4, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K/64, N/16, 16, 64}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},        //weight
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT4, // D_T_A
+        DT_INT4, // D_T_B
+        DT_FLOAT16, // D_T_Y
+        0, // TRANS_A
+        1, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_CUMSUM, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_2, // AIV_AIC_RATIO
+        false //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {23068672}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a4w4obf16_trans_1aic2aiv)
+{
+    size_t M = 350;
+    size_t K = 1280;
+    size_t N = 640;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT4, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K/64, N/16, 16, 64}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},        //weight
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT4, // D_T_A
+        DT_INT4, // D_T_B
+        DT_BF16, // D_T_Y
+        0, // TRANS_A
+        1, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_CUMSUM, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_2, // AIV_AIC_RATIO
+        false //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {23068672}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a4w4ofp16_trans_dynamic_tiling_1aic2aiv)
+{
+    size_t M = 8000;
+    size_t K = 1024;
+    size_t N = 2048;//must align to 64
+    size_t E = 80;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT4, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K/64, N/16, 16, 64}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},        //weight
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT4, // D_T_A
+        DT_INT4, // D_T_B
+        DT_FLOAT16, // D_T_Y
+        0, // TRANS_A
+        1, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_CUMSUM, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_2, // AIV_AIC_RATIO
+        false //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {23068672}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a4w4obf16_trans_dynamic_tiling_1aic2aiv)
+{
+    size_t M = 8000;
+    size_t K = 1024;
+    size_t N = 2048;
+    size_t E = 80;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT4, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K/64, N/16, 16, 64}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},        //weight
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT4, // D_T_A
+        DT_INT4, // D_T_B
+        DT_BF16, // D_T_Y
+        0, // TRANS_A
+        1, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_CUMSUM, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_2, // AIV_AIC_RATIO
+        false //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {23068672}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+
+// QUANT_A4W4优化
+TEST_F(GroupedMatmulTiling, test_tiling_a4w4ofp16_optimize)
+{
+    size_t M = 256;
+    size_t K = 2048;
+    size_t N = 7168;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT4, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K/64, N/16, 16, 64}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},        //weight
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = gmmTestUtils::GMMEncodeTilingKey(
+        DT_INT4, // D_T_A
+        DT_INT4, // D_T_B
+        DT_FLOAT16, // D_T_Y
+        0, // TRANS_A
+        0, // TRANS_B
+        GROUPED_MATMUL_GROUP_LIST_TYPE_CUMSUM, // GROUP_LIST_TYPE
+        0, // IS_STATIC_TILING_API
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE, // A8W4_KERNEL_TEMPLATE
+        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, // A16W8_KERNEL_TEMPLATE
+        GROUPED_MATMUL_AIV_AIC_RATIO_2, // AIV_AIC_RATIO
+        false //IS_ENABLE_FIXED_AXIS
+    ); // tilngkey
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {23068672}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2712,6 +3189,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_notrans_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2752,7 +3230,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_notrans_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2773,6 +3251,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_transw_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2813,7 +3292,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_transw_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2834,6 +3313,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_notrans_static_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2874,7 +3354,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_notrans_static_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2895,6 +3375,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_transw_static_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2935,7 +3416,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_transw_static_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -2957,6 +3438,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_notrans_sparse_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -2997,7 +3479,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_notrans_sparse_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3018,6 +3500,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_transw_sparse_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3058,7 +3541,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_transw_sparse_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {29360128}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3083,6 +3566,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_notrans_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3123,7 +3607,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_notrans_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3144,6 +3628,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_transw_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3184,7 +3669,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_transw_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3205,6 +3690,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_notrans_1aic_sparse)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3245,7 +3731,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_notrans_1aic_sparse)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3266,6 +3752,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_transw_1aic_sparse)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3306,7 +3793,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_transw_1aic_sparse)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3328,6 +3815,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp16_notrans_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3368,7 +3856,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp16_notrans_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3389,6 +3877,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_bf16_notrans_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3429,7 +3918,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_bf16_notrans_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3450,6 +3939,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_notrans_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3490,7 +3980,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_notrans_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3511,6 +4001,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp16_transw_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3551,7 +4042,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp16_transw_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3572,6 +4063,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_bf16_transw_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3612,7 +4104,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_bf16_transw_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3633,6 +4125,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_transw_1aic)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3673,7 +4166,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_transw_1aic)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3694,6 +4187,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp16_transx_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3734,7 +4228,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp16_transx_1aic1aiv)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3755,6 +4249,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_bf16_transx_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3795,7 +4290,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_bf16_transx_1aic1aiv)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
@@ -3816,6 +4311,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_transx_1aic1aiv)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3856,11 +4352,254 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_transx_1aic1aiv)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
 
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_notrans)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_wtrans)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K/32, N/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 17L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_pertensor)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_illegal_dtype)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_FLOAT, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_illegal_wshape)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_FLOAT, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
 
 //其余ut（历史出过问题的补充ut）
 
@@ -3880,6 +4619,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8)
         65536,//l0ASize
         65536,//l0BSize
         platform_ascendc::SocVersion::ASCEND910B,//ASCEND910B
+        NpuArch::DAV_2201,
     };
     gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
                                                 { // input info
@@ -3920,7 +4660,1149 @@ TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8)
         false //IS_ENABLE_FIXED_AXIS
     ); // tilngkey
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {18350080}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_illegal_group_num_size)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 1205;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_FLOAT, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_weightnz_tc_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_weightnz_kc_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_tc_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},         //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_kc_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},         //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_illegal_tt_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},         //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{E}, {E}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_illegal_acttype_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},         //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_illegal_xdtype_case)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},         //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT16, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_activation_tc_case_n_equal_1)
+{
+    size_t M = 190;
+    size_t K = 15;
+    size_t N = 1;
+    size_t E = 1;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},         //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_kerneltype_1_corenum_check_fail_nonzero)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        50,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_kerneltype_1_corenum_check_fail_zero)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        0,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8_3510)
+{
+    size_t M = 8;
+    size_t K = 4096;
+    size_t N = 1792;
+    size_t E = 8;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},               //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 1L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8_sparse_2d_grouplist_3510)
+{
+    size_t M = 8;
+    size_t K = 4096;
+    size_t N = 1792;
+    size_t E = 8;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},               //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E, 2}, {E, 2}}, ge::DT_INT64, ge::FORMAT_ND},                //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                },
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                },
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 1L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_3510)
+{
+    size_t M = 345;
+    size_t K = 1280;
+    size_t N = 567;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{E, N}, {E, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT32, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 0L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_weightnz_notrans)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{E, N}, {E, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT32, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 0L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_weightnz_sparse_2d_grouplist)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{E, N}, {E, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E, 2}, {E, 2}}, ge::DT_INT64, ge::FORMAT_ND},                //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                },
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT32, ge::FORMAT_ND}
+                                                },
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 0L;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8_sparse_1d_grouplist_3510_error)
+{
+    size_t M = 8;
+    size_t K = 4096;
+    size_t N = 1792;
+    size_t E = 8;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},               //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                },
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                },
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_weightnz_sparse_1d_grouplist_error)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{E, N}, {E, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                },
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT32, ge::FORMAT_ND}
+                                                },
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8_sparse_3d_grouplist_3510_error)
+{
+    size_t M = 8;
+    size_t K = 4096;
+    size_t N = 1792;
+    size_t E = 8;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},               //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E, 2, 2}, {E, 2, 2}}, ge::DT_INT64, ge::FORMAT_ND},          //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                },
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                },
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8_3510_bias_not_int32_error)
+{
+    size_t M = 8;
+    size_t K = 4096;
+    size_t N = 1792;
+    size_t E = 8;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},               //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_3510_bias_not_int32_error)
+{
+    size_t M = 345;
+    size_t K = 1280;
+    size_t N = 567;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //bias
+                                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT32, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8_3510_scale_not_perchannel_error)
+{
+    size_t M = 8;
+    size_t K = 4096;
+    size_t N = 1792;
+    size_t E = 8;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, N, K}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_ND},        //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, 1}, {E, 1}}, ge::DT_UINT64, ge::FORMAT_ND},               //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w8o8_weightnz_error)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        48,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_INT8, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_tiling_a8w4_950_aic_aiv_invalid_ratio)
+{
+    size_t M = 512;
+    size_t K = 1024;
+    size_t N = 1024;
+    size_t E = 2;
+    size_t quantGroupNum = K / 256;
+
+    optiling::GMMCompileInfo compileInfo = {
+        24,                                      // aicNum
+        24,                                      // aivNum
+        196608,                                  // ubSize
+        524288,                                  // l1Size
+        196608,                                  // l2Size
+        131072,                                  // l0CSize
+        65536,                                   // l0ASize
+        65536,                                   // l0BSize
+        platform_ascendc::SocVersion::ASCEND950, // ASCEND950
+        NpuArch::DAV_3510,
+    };
+
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", // op_name
+        {
+            // input info
+            {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},                                     // x
+            {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},         // weight
+            {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                                    // bias
+            {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                                   // scale  
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                            // offset
+            {{{E, quantGroupNum, N}, {E, quantGroupNum, N}}, ge::DT_FLOAT16, ge::FORMAT_ND},    // antiquantScale
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // antiquantOffset
+            {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                                          // groupList
+            {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                                          // perTokenScale
+        },
+        {// output info
+         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            // attr
+            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({256})},
+        },
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }

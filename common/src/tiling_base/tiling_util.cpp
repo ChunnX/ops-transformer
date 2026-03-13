@@ -21,33 +21,33 @@ namespace Transformer {
 namespace OpTiling {
 static const gert::Shape g_vec_1_shape = {1};
 
-static bool IsRegbaseSocVersion(platform_ascendc::SocVersion version)
+static bool IsRegbaseSocVersion(NpuArch npuArch)
 {
-    const static std::set<platform_ascendc::SocVersion> regbaseSocVersions = {
-        platform_ascendc::SocVersion::ASCEND910_95};
+    const static std::set<NpuArch> regbaseArch = {NpuArch::DAV_3510, NpuArch::DAV_5102};
 
-    return regbaseSocVersions.find(version) != regbaseSocVersions.end();
+    return regbaseArch.find(npuArch) != regbaseArch.end();
 }
 
-bool IsRegbaseSocVersion(const gert::TilingParseContext* context)
-{
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    auto socVersion = ascendcPlatform.GetSocVersion();
-    return IsRegbaseSocVersion(socVersion);
-}
-
-bool IsRegbaseSocVersion(const gert::TilingContext* context)
+bool IsRegbaseSocVersion(const gert::TilingParseContext *context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    auto socVersion = ascendcPlatform.GetSocVersion();
-    return IsRegbaseSocVersion(socVersion);
+    auto arch = ascendcPlatform.GetCurNpuArch();
+    return IsRegbaseSocVersion(arch);
 }
 
-const gert::Shape &EnsureNotScalar(const gert::Shape &inShape) {
-  if (inShape.IsScalar()) {
-    return g_vec_1_shape;
-  }
-  return inShape;
+bool IsRegbaseSocVersion(const gert::TilingContext *context)
+{
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto arch = ascendcPlatform.GetCurNpuArch();
+    return IsRegbaseSocVersion(arch);
+}
+
+const gert::Shape &EnsureNotScalar(const gert::Shape &inShape)
+{
+    if (inShape.IsScalar()) {
+        return g_vec_1_shape;
+    }
+    return inShape;
 }
 } // namespace OpTiling
 } // namespace Transformer

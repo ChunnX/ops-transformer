@@ -39,6 +39,7 @@ static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::B1S1S2, {FiaAxis::B, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::IS1S2, {FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::I1S1S2, {FiaAxis::CONST, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
+    {FiaLayout::S1S1, {FiaAxis::S1}},
 };
 
 static bool equal_to(const int64_t& a, const int64_t& b)
@@ -101,20 +102,6 @@ const std::map<FiaCompareType, CompareFunc<int64_t>> FiaTilingShapeCompare::comp
     {FiaCompareType::IGNORE_INPUT, ignore_input}
     
 };
-
-static std::string GetShapeStr(gert::Shape shape)
-{
-    std::ostringstream oss;
-    oss << "[";
-    if (shape.GetDimNum() > 0) {
-        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
-            oss << shape.GetDim(i) << ", ";
-        }
-        oss << shape.GetDim(shape.GetDimNum() - 1);
-    }
-    oss << "]";
-    return oss.str();
-}
 
 bool FiaTilingShape::HasAxis(const FiaAxis &axis) const
 {   
@@ -257,6 +244,8 @@ ge::graphStatus FiaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shap
         shapeExpected = gert::Shape({param.CONST, param.S1, param.S2});
     } else if (layout_ == FiaLayout::I1S1S2) {
         shapeExpected = gert::Shape({param.CONST, param.CONST, param.S1, param.S2});
+    } else if (layout_ == FiaLayout::S1S1) {
+        shapeExpected = gert::Shape({param.S1});
     } else {
         OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
         return ge::GRAPH_FAILED;

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file experiment_ops.h
+ * \file moe_distribute_dispatch_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_EXPERIMENT_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_EXPERIMENT_OPS_H_
+#ifndef MOE_DISTRIBUTE_DISPATCH_PROTO_H_
+#define MOE_DISTRIBUTE_DISPATCH_PROTO_H_
 
 #include "graph/operator_reg.h"
 namespace ge {
@@ -83,4 +83,4 @@ REG_OP(MoeDistributeDispatch)
     .OP_END_FACTORY_REG(MoeDistributeDispatch)
 
 }  // namespace ge
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_EXPERIMENT_OPS_H_
+#endif  // MOE_DISTRIBUTE_DISPATCH_PROTO_H_

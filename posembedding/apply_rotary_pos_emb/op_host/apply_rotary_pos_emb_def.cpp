@@ -66,7 +66,8 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "apply_rotary_pos_emb_apt");
-        this->AICore().AddConfig("ascend910_95", regbaseCfg);
+        this->AICore().AddConfig("ascend950", regbaseCfg);
+        this->AICore().AddConfig("mc62cm12a", regbaseCfg);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(false)
@@ -106,6 +107,7 @@ public:
         aicore_config.ExtendCfgInfo("opFile.value", "apply_rotary_pos_emb");
         this->AICore().AddConfig("ascend310p", aicore_config);
         this->AICore().AddConfig("kirinx90", aicore_config);
+        this->AICore().AddConfig("kirin9030", aicore_config);
     }
 };
 

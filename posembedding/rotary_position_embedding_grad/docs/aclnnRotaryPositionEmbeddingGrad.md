@@ -1,5 +1,7 @@
 # aclnnRotaryPositionEmbeddingGrad
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/rotary_position_embedding_grad)
+
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
@@ -7,10 +9,14 @@
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
--  接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
--  计算公式：
+
+- 接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
+- 计算公式：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
@@ -137,6 +143,7 @@
     $$
 
 ## 函数原型
+
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
 
 ```c++
@@ -152,6 +159,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
+
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     void          *workspace,
@@ -159,6 +167,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     aclOpExecutor *executor,
     aclrtStream    stream)
 ```
+
 ## aclnnRotaryPositionEmbeddingGradGetWorkspaceSize
 
 - **参数说明**
@@ -293,7 +302,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：0=half，1=interleave。
     - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -306,7 +315,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -335,7 +344,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 
 ## aclnnRotaryPositionEmbeddingGrad
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 173px">
@@ -372,7 +381,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

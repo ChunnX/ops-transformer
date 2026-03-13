@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file allto_allv_grouped_mat_mul_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef ALLTO_ALLV_GROUPED_MAT_MUL_PROTO_H_
+#define ALLTO_ALLV_GROUPED_MAT_MUL_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -67,4 +67,4 @@ REG_OP(AlltoAllvGroupedMatMul)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // ALLTO_ALLV_GROUPED_MAT_MUL_PROTO_H_

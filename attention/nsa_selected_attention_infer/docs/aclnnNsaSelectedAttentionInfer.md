@@ -1,13 +1,17 @@
 # aclnnNsaSelectedAttentionInfer
 
-# 产品支持情况
+## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
-# 功能说明
+## 功能说明
 
 - 接口功能：Native Sparse Attention推理过程中，Selected Attention的计算。
 - 计算公式：
@@ -22,7 +26,7 @@
   
   其中$query$和$key_{topk}^T$乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$value_{topk}$相乘后得到一个$n*d$的矩阵。
 
-# 函数原型
+## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaSelectedAttentionInferGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttentionInfer”接口执行计算。
 
@@ -57,7 +61,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
     const aclrtStream    stream)
 ```
 
-# aclnnNsaSelectedAttentionInferGetWorkspaceSize
+## aclnnNsaSelectedAttentionInferGetWorkspaceSize
 
 - **参数说明**
   
@@ -381,7 +385,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
   </table>
   </div>
 
-# aclnnNsaSelectedAttentionInfer
+## aclnnNsaSelectedAttentionInfer
 
 - **参数说明**
   
@@ -423,11 +427,12 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
       </tbody>
     </table>
   </div>
+
 - **返回值**
   
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-# 约束说明
+## 约束说明
 
 - 确定性计算：
   - aclnnNsaSelectedAttentionInfer默认确定性实现。
@@ -435,7 +440,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 - 仅支持paged attention。
 - 多token推理场景下，仅支持query的S轴最大等于4，并且此时要求每个batch单独的actualQSeqLen <= actualSelKvSeqLen。
 
-# 调用示例
+## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -449,7 +454,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 #include <cstring>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "aclnnop/aclnn_nsa_select_attention_infer.h"
+#include "aclnnop/aclnn_nsa_selected_attention_infer.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \

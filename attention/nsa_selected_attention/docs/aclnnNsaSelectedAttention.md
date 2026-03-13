@@ -4,14 +4,16 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
-
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
-- 算子功能：训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。
+- 接口功能：训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。
 
 - 计算公式：
   选择注意力的正向计算公式如下：
@@ -50,6 +52,7 @@ aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnNsaSelectedAttention(
   void             *workspace,
@@ -57,224 +60,224 @@ aclnnStatus aclnnNsaSelectedAttention(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-### aclnnNsaSelectedAttentionGetWorkspaceSize
 
-- **参数说明：**
+## aclnnNsaSelectedAttentionGetWorkspaceSize
 
-<table style="undefined;table-layout: fixed; width: 1565px">
-  <colgroup>
-    <col style="width: 146px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>query</td>
-      <td>输入</td>
-      <td>公式中的query。</td>
-      <td>数据类型需与key/value一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>key</td>
-      <td>输入</td>
-      <td>公式中的key。</td>
-      <td>数据类型需与query/value一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>value</td>
-      <td>输入</td>
-      <td>公式中的value。</td>
-      <td>数据类型需与query/key一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>topkIndices</td>
-      <td>输入</td>
-      <td>公式中的topk_indices。</td>
-      <td>shape需为[T_q, N_kv, selected_block_count], 表示所选数据的索引。</td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>attenMaskOptional</td>
-      <td>输入</td>
-      <td>公式中的atten_mask。</td>
-      <td>
-        <ul>
-          <li>取值true/1表示不参与计算。</li>
-          <li>取值false/0表示参与计算。</li>
-        </ul>
-      </td>
-      <td>BOOL、UINT8</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>actualSeqQLenOptional</td>
-      <td>输入</td>
-      <td>表示query每个Batch S的累加和长度。</td>
-      <td>TND排布时需要输入，其余场景输入nullptr。</td>
-      <td>INT64</td>
-      <td>ND</td>
-      <td>1</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>actualSeqKvLenOptional</td>
-      <td>输入</td>
-      <td>表示key/value每个Batch S的累加和长度。</td>
-      <td>TND排布时需要输入，其余场景输入nullptr。</td>
-      <td>INT64</td>
-      <td>ND</td>
-      <td>1</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>scaleValue</td>
-      <td>输入</td>
-      <td>公式中的scale，代表缩放系数。</td>
-      <td>一般设置为D^-0.5，其中D为query的head维度。</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>headNum</td>
-      <td>输入</td>
-      <td>代表head个数。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>inputLayout</td>
-      <td>输入</td>
-      <td>代表query/key/value的数据排布格式。</td>
-      <td>当前仅支持TND。</td>
-      <td>String</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>selectedBlockSize</td>
-      <td>输入</td>
-      <td>表示select的每个block长度。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>selectedBlockCount</td>
-      <td>输入</td>
-      <td>表示select block的数量。</td>
-      <td>-</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>sparseMode</td>
-      <td>输入</td>
-      <td>表示sparse模式。</td>
-      <td>支持取值0或2。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>softmaxMaxOut</td>
-      <td>输出</td>
-      <td>Softmax计算的Max中间结果。</td>
-      <td>用于反向计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>softmaxSumOut</td>
-      <td>输出</td>
-      <td>Softmax计算的Sum中间结果。</td>
-      <td>用于反向计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>attentionOut</td>
-      <td>输出</td>
-      <td>计算公式的最终输出。</td>
-      <td>数据类型与query一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody>
-</table>
+- **参数说明**
 
+  <table style="undefined;table-layout: fixed; width: 1565px">
+    <colgroup>
+      <col style="width: 146px">
+      <col style="width: 135px">
+      <col style="width: 326px">
+      <col style="width: 246px">
+      <col style="width: 275px">
+      <col style="width: 101px">
+      <col style="width: 190px">
+      <col style="width: 146px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>query</td>
+        <td>输入</td>
+        <td>公式中的query。</td>
+        <td>数据类型需与key/value一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>key</td>
+        <td>输入</td>
+        <td>公式中的key。</td>
+        <td>数据类型需与query/value一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>value</td>
+        <td>输入</td>
+        <td>公式中的value。</td>
+        <td>数据类型需与query/key一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>topkIndices</td>
+        <td>输入</td>
+        <td>公式中的topk_indices。</td>
+        <td>shape需为[T_q, N_kv, selected_block_count], 表示所选数据的索引。</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>attenMaskOptional</td>
+        <td>输入</td>
+        <td>公式中的atten_mask。</td>
+        <td>
+          <ul>
+            <li>取值true/1表示不参与计算。</li>
+            <li>取值false/0表示参与计算。</li>
+          </ul>
+        </td>
+        <td>BOOL、UINT8</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>actualSeqQLenOptional</td>
+        <td>输入</td>
+        <td>表示query每个Batch S的累加和长度。</td>
+        <td>TND排布时需要输入，其余场景输入nullptr。</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>actualSeqKvLenOptional</td>
+        <td>输入</td>
+        <td>表示key/value每个Batch S的累加和长度。</td>
+        <td>TND排布时需要输入，其余场景输入nullptr。</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>scaleValue</td>
+        <td>输入</td>
+        <td>公式中的scale，代表缩放系数。</td>
+        <td>一般设置为D^-0.5，其中D为query的head维度。</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>headNum</td>
+        <td>输入</td>
+        <td>代表head个数。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>inputLayout</td>
+        <td>输入</td>
+        <td>代表query/key/value的数据排布格式。</td>
+        <td>当前仅支持TND。</td>
+        <td>String</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>selectedBlockSize</td>
+        <td>输入</td>
+        <td>表示select的每个block长度。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>selectedBlockCount</td>
+        <td>输入</td>
+        <td>表示select block的数量。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>sparseMode</td>
+        <td>输入</td>
+        <td>表示sparse模式。</td>
+        <td>支持取值0或2。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>softmaxMaxOut</td>
+        <td>输出</td>
+        <td>Softmax计算的Max中间结果。</td>
+        <td>用于反向计算。</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>softmaxSumOut</td>
+        <td>输出</td>
+        <td>Softmax计算的Sum中间结果。</td>
+        <td>用于反向计算。</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>attentionOut</td>
+        <td>输出</td>
+        <td>计算公式的最终输出。</td>
+        <td>数据类型与query一致。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    </tbody>
+  </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -287,7 +290,7 @@ aclnnStatus aclnnNsaSelectedAttention(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -309,10 +312,9 @@ aclnnStatus aclnnNsaSelectedAttention(
   </tbody>
   </table>
 
+## aclnnNsaSelectedAttention
 
-### aclnnNsaSelectedAttention
-
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -349,10 +351,9 @@ aclnnStatus aclnnNsaSelectedAttention(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
 
 ## 约束说明
 
@@ -365,8 +366,8 @@ aclnnStatus aclnnNsaSelectedAttention(
 - 输入query、key、value的inputLayout必须一致。
 - sparseMode目前支持0和2。
 - selectedBlockSize支持<=128且满足16的整数倍。
-- selectBlockCount：支持[1~128]。 总计选择的大小`selectBlockCount * selctBlockSize` < 128*64(8K)
-- Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectBlockCount * selctBlockSize`
+- selectedBlockCount：支持[1~128]。 总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
+- Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
 - inputLayout目前仅支持TND。
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即N_q / N_kv必须是非0整数，称为G（group），且需满足G <= 32。
 - 当attenMaskOptional输入为nullptr时，sparseMode参数不生效，固定为全计算。
@@ -377,7 +378,6 @@ aclnnStatus aclnnNsaSelectedAttention(
   - G（Group）：取值范围为1\~32。
   - S（Seq-Length）：取值范围为1\~128K。同时需要满足S_kv >= selectedBlockSize * selectedBlockCount，且S_kv长度为selectedBlockSize的整数倍。
   - D（Head-Dim）：D_qk=192，D_v=128。
-
 
 ## 调用示例
 

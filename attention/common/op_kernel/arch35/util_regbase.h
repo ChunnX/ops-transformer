@@ -24,7 +24,7 @@ using AscendC::QuePosition;
 namespace regbaseutil {
 constexpr uint16_t regBytes = 256;
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
-enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2};
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2, NZ_INDEX = 3};
 enum class DTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,
@@ -47,6 +47,7 @@ enum class S1TemplateType {
     Aligned64 = 64,
     Aligned128 = 128,
     Aligned256 = 256,
+    Aligned512 = 512,
     NotAligned,
 };
 
@@ -103,6 +104,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
     int64_t s1LoopTimes;
+    int64_t gS1Idx;
     // BN循环生产的数据
     int64_t s2InCurrentBatch;                 // Tensorlist场景，不同batch的S2长度，后续用计算KvStride
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
@@ -131,6 +133,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     // IFA_MLA
     int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
     int64_t nextTokensOfMlaPerBatch = 0;   // 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效
+    int64_t preTokensOfMlaPerBatch = 0;   // 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效
 
     // prefix
     int64_t prefixCoreOffset = 0;       // 保存当前循环，prefix在bn维度的地址偏移
@@ -164,6 +167,8 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0; \
     \
     int64_t attentionOutOffset; \
+    uint64_t s1ScaleNumAcc; \
+    uint64_t s2ScaleNumAcc; \
     int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t s2SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
@@ -176,6 +181,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t b1SSOffsetAlign; /* TND场景s2 16对齐之后，前面batch的s1*s2之和 */ \
     int64_t deScaleKvOffset; /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, 1, Ceil(S2, 128), 1] */ \
     int64_t nextTokensOfMlaPerBatch = 0; /* 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效 */ \
+    int64_t preTokensOfMlaPerBatch = 0; /* 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效 */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \
@@ -189,9 +195,11 @@ template <>
 struct RunInfo<true> {
     COMMON_RUN_INFO;
     // 推理新增
+    int64_t gS1Idx;
     uint64_t pseShiftOffset;              // vector1 pse 的 offset
     int64_t queryLeftPaddingSize;
     int64_t kvLeftPaddingSize;
+    int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
     // lse 输出offset
     int64_t softmaxLseOffset;
 
@@ -214,6 +222,9 @@ struct RunInfo<false> {
     /* 全局的基本块信息 */ \
     uint32_t s1BaseSize; \
     uint32_t s2BaseSize; \
+    int64_t bSize; \
+    int64_t t1Size; \
+    int64_t t2Size; \
     int64_t dSize; \
     int64_t dSizeV; \
     int64_t dBasicBlock; \
@@ -282,7 +293,10 @@ struct RunInfo<false> {
     bool softMaxCheckRes; \
     float keepProb; \
     float scaleValue; \
-    int64_t matmulMSize     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */
+    int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
+    bool learnableSinkFlag = false; /* attentionsink */ \
+    float pScale;\
+    float sinkValue = 0.0f;
 
 
 #define ROPE_INFO \
@@ -329,8 +343,7 @@ struct RunInfo<false> {
     uint32_t blockSize; \
     uint32_t paLayoutType; \
     uint32_t paBlockNumSum; \
-    /* LAYOUT是否为BNSD_BSND */ \
-    uint32_t isBSNDOut; \
+    uint32_t transposeLayout; \
     /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
     /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
     uint32_t headNumRatio; \
@@ -355,6 +368,8 @@ struct RunInfo<false> {
 #define CV_SHARED_PARAMS \
     /* base params */ \
     uint32_t bSize;  \
+    int64_t t1Size;  \
+    int64_t t2Size;  \
     uint32_t n2Size;  \
     uint32_t gSize;  \
     uint32_t s1Size;  \
@@ -379,7 +394,7 @@ struct RunInfo<false> {
     uint32_t sparseType : 8;  \
     uint32_t dSizeRope : 11; \
     uint32_t splitCoreMode : 1; \
-    uint32_t coreNum;
+    uint32_t coreNum
 
 #define FAG_CV_SHARED_PARAMS \
     /* base params */ \
@@ -431,6 +446,7 @@ struct CVSharedParams<false, false> {
     CV_SHARED_PARAMS;
     int64_t firstFullLoadS1OuterIdx;
     int64_t totalSize;
+    float scaleValue;
 };
 
 /* CVSharedParams需要小于等于CacheLine的大小：128Bytes */
@@ -446,12 +462,12 @@ struct CVSharedParams<true, false> {
     uint32_t isActualSeqLengthsKVNull : 1;
     uint32_t isQHasLeftPadding : 1;
     uint32_t isKVHasLeftPadding : 1;
-    uint32_t isBSNDOut : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
     uint32_t headNumRatio : 20;
 
+    uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
     uint32_t actualSeqLengthsKVSize;
     uint32_t splitKVNum;
@@ -465,6 +481,8 @@ struct CVSharedParams<true, false> {
     // prefix
     bool isActualSharedPrefixLenNull;
     int64_t kvPrefixSize;
+
+    int64_t totalSize;
 };
 
 template<>
@@ -479,12 +497,12 @@ struct CVSharedParams<true, true> {
     uint32_t isActualSeqLengthsKVNull : 1;
     uint32_t isQHasLeftPadding : 1;
     uint32_t isKVHasLeftPadding : 1;
-    uint32_t isBSNDOut : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
     uint32_t headNumRatio : 20;
 
+    uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
     uint32_t actualSeqLengthsKVSize;
     uint32_t splitKVNum;
@@ -503,6 +521,8 @@ struct CVSharedParams<true, true> {
     // prefix
     bool isActualSharedPrefixLenNull;
     int64_t kvPrefixSize;
+
+    int64_t totalSize;
 };
 }
 

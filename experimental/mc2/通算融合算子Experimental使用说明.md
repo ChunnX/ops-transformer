@@ -19,7 +19,7 @@
     # bash build.sh --pkg --experimental --soc=ascend910b
     ```
 
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件使用"ascend910b"（默认），Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas A2 推理系列产品使用"ascend910b"（默认），Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。同一环境中如需要安装多个自定义算子包，则必须使用不同的\$\{vendor\_name\}加以区分。
     - --ops：自定义算子名称。
 
@@ -42,7 +42,7 @@
     ./cann-ops-transformer-${vendor_name}_linux-${arch}.run
     ```
 
-    自定义单算子包安装时可指定参数`--install-path=${ASCEND_HOME_PATH}/opp`，并存放于`${ASCEND_HOME_PATH}/opp/vendors`目录下，全量包安装路径为`--install-path=${ASCEND_HOME_PATH}`，并存放于`${ASCEND_HOME_PATH}/opp`目录下，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。注意自定义算子包不支持卸载。安装完成后，需要激活自定义算子包环境变量，激活方式如下：
+    自定义单算子包安装时可指定参数`--install-path=${ASCEND_HOME_PATH}/opp`，并存放于```${ASCEND_HOME_PATH}/opp/vendors```目录下，全量包安装路径为`--install-path=${ASCEND_HOME_PATH}`，并存放于```${ASCEND_HOME_PATH}/opp```目录下，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。注意自定义算子包不支持卸载。安装完成后，需要激活自定义算子包环境变量，激活方式如下：
 
     ```bash
     # experimental自定义单算子包

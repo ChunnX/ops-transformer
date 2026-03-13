@@ -15,7 +15,12 @@
 #ifndef PROMPT_FLASH_ATTENTION_KVCACHE_H
 #define PROMPT_FLASH_ATTENTION_KVCACHE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "prompt_flash_attention_comm.h"
 #include "prompt_flash_attention_sparse.h"
@@ -25,10 +30,10 @@ using namespace matmul;
 
 template<typename PFAT>
 __aicore__ inline void InitConstParam(ConstParam &constParam, 
-    const optiling::PromptFlashAttentionTilingData* tilingData)
+    const optiling::PromptFlashAttentionTilingDataV2* tilingData)
 {
     constParam.tmpBlockIdx = GetBlockIdx();
-    constParam.subBlockIdx = constParam.tmpBlockIdx % 2; // 2: One blockDim has 2 vectorCore
+    constParam.subBlockIdx = constParam.tmpBlockIdx % 2; // 2: One numBlocks has 2 vectorCore
 
     constParam.preTokens = tilingData->promptAttentionBaseParams.preTokens;
     constParam.nextTokens = tilingData->promptAttentionBaseParams.nextTokens;
@@ -121,7 +126,7 @@ __aicore__ inline void InitConstParam(ConstParam &constParam,
 
 template<typename PFAT>
 __aicore__ inline void ComputeParamCore(RunParam& runParam, ConstParam& constParam,
-    const optiling::PromptFlashAttentionTilingData* tilingData, uint32_t coreIdx)
+    const optiling::PromptFlashAttentionTilingDataV2* tilingData, uint32_t coreIdx)
 {
     constParam.sNum = tilingData->promptAttentionBaseParams.dimNumOfseq;
     uint32_t splitCoreIdx = coreIdx;

@@ -4,14 +4,16 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
 算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
-
-
 
 ## 参数说明
 
@@ -53,7 +55,6 @@
    <td>ND（支持非连续Tensor）</td>
   </tr>
   <tr>
-  <tr>
    <td>group</td>
    <td>输入</td>
    <td>通信域名称，进行所有卡同步的通信域。</td>
@@ -68,9 +69,6 @@
    <td>ND</td>
   </tr>
  </tbody></table>
-
-
-
 
 ## 约束说明
 

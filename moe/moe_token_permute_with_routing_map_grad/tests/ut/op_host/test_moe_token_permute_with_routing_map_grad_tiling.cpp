@@ -116,3 +116,32 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_bf16)
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
+
+TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_bf16_mix)
+{
+    optiling::MoeTokenPermuteWithRoutingMapGradCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad", // op_name
+                                              {
+                                                  // input info
+                                                  // shape都需要重复一次，比如shape为{16,16}，要填入{{16, 16}, {16, 16}}
+                                                  {{{1024, 7168}, {1024, 7168}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{512, 512}, {512, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              // output info
+                                              {
+                                                  {{{512, 7168}, {512, 7168}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{512, 512}, {512, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              // attr
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                              &compileInfo);
+    int64_t expectTilingKey = 0; // tilngkey
+    string expectTilingData =
+        "7168 2 1024 7168 1 0 8 0 8 1 0 4 0 0 0 0 0 "; 
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}

@@ -18,10 +18,10 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
-#include "tiling/mc2_tiling_struct.h"
-#include "tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_struct.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace optiling {
 
@@ -31,13 +31,13 @@ public:
     explicit AlltoAllvGmmTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
-    ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetPlatformInfo() override;
 
-    platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
 };
 } // namespace optiling
 

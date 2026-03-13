@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_proto.cpp
+ * \file sparse_flash_attention_grad_infershape.cpp
  * \brief
  */
 
@@ -74,6 +74,16 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleValue);
     OP_CHECK_NULL_WITH_CONTEXT(context, selectedBlockSize);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayout);
+
+    std::string inputLayoutSfag = std::string(inputLayout);
+    for (auto &c : inputLayoutSfag) {
+        c = toupper(c);
+    }
+    if (inputLayoutSfag != "BSND" && inputLayoutSfag != "TND") {
+        OP_LOGE(context, "The SparseFlashAttentionGrad inputLayout should be BSND/TND, but got %s.",
+                  inputLayoutSfag.c_str());
+        return GRAPH_FAILED;
+    }
 
     gert::Shape *dqShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DQ));
     gert::Shape *dkShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DK));

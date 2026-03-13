@@ -7,10 +7,15 @@
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
--  **算子功能**：执行单路旋转位置编码[RotaryPositionEmbedding](../rotary_position_embedding/README.md)的反向计算。
--  **计算公式**：
+
+- **算子功能**：执行单路旋转位置编码[RotaryPositionEmbedding](../rotary_position_embedding/README.md)的反向计算。
+
+- **计算公式**：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
@@ -133,7 +138,6 @@
     dsin = sum(dy * cat((-x2, x1), dim=-1), dims)
     $$
 
-
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1200px">
@@ -213,8 +217,8 @@
 </tbody>
 </table>
 
-
 ## 约束说明
+
   - <term>Ascend 950PR/Ascend 950DT</term>：
     
     输入张量x共有四维，各参数的shape约束可以描述如下：

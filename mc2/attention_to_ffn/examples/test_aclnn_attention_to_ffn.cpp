@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_attention_to_ffn.cpp
@@ -198,7 +198,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     if (args.rankId < FFN_WORKER_NUM) {  // FFN Worker
         // 等待 Attention Worker 任务执行结束
         LOG_PRINT("[INFO] device_%d is FFN worker, skipping aclnnAttentionToFFN execute.\n", args.rankId);
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(std::chrono::seconds(30));
     } else {    // Attention Worker
         // 调用第二阶段接口
         ret = aclnnAttentionToFFN(attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize,
@@ -302,11 +302,9 @@ int main(int argc, char *argv[])
     }
 
     HcclComm comms[WORLD_SIZE];
-    for (int32_t id = 0; id < WORLD_SIZE; id++) {
-        ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
-        CHECK_RET(ret == ACL_SUCCESS,
-                  LOG_PRINT("[ERROR] HcclCommInitAll ep %d failed, ret %d\n", id, ret); return ret);
-    }
+    ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] HcclCommInitAll failed, ret %d\n", ret); return ret);
 
     Args args[WORLD_SIZE];
     std::vector<std::unique_ptr<std::thread>> threads(WORLD_SIZE);

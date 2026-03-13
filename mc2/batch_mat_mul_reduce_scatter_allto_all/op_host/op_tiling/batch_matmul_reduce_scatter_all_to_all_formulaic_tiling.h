@@ -17,7 +17,7 @@
 #define __BATCH_MATMUL_REDUCE_SCATTER_ALL_TO_ALL_FORMULAIC_TILING_H__
 
 #pragma once
-#include "inc/tiling/one_calc_two_comm_tiling.h"
+#include "op_host/op_tiling/one_calc_two_comm_tiling.h"
 
 class ReduceScatterAll2AllBMM : public OneCalcTwoCommBase {
 public:

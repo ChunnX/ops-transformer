@@ -49,7 +49,7 @@ nsa_selected_attention_infer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ 
                 LAYOUT::TND);
     }
     #endif
-    #if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003) && (ORIG_DTYPE_QUERY == DT_BF16)
+    #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) && (ORIG_DTYPE_QUERY == DT_BF16)
         if (TILING_KEY_IS(0)) {
             INVOKE_NSA_NO_KFC_OP_IMPL(NsaSelectAttentionInfer, bfloat16_t, bfloat16_t, bfloat16_t, bfloat16_t, false, false,
                 LAYOUT::BSND);

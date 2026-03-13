@@ -115,6 +115,7 @@ public:
                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->AICore().AddConfig("ascend310p",config310p);
         this->AICore().AddConfig("kirinx90",config310p);
+        this->AICore().AddConfig("kirin9030",config310p);
     }
 };
 

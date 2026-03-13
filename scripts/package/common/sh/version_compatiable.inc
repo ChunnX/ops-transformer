@@ -132,7 +132,7 @@ _check_version_compatiable() {
     if [ -d "$install_path/share/info" ]; then
         err_msgs="$(
             ls "$install_path/share/info" | grep -v "^${package}$" | while read src_pkg; do
-                get_formal_package_name "src_pkg_formal" "$package"
+                get_formal_package_name "src_pkg_formal" "$src_pkg"
                 installed_version_info="$install_path/share/info/$src_pkg/version.info"
                 grep "^required_package_${package_formal}_version=" "$installed_version_info" | cut -d= -f2- | tr -d '"' | while read required; do
                     _check_version_required "$self_version" "$required" "$script_dir" "$src_pkg_formal" "$package_formal"
@@ -141,11 +141,10 @@ _check_version_compatiable() {
     )"
         if [ "$err_msgs" != "" ]; then
             while read err_msg; do
-                comm_log "ERROR" "$err_msg"
+                comm_log "WARNING" "$err_msg"
             done <<EOF
 $err_msgs
 EOF
-            return 1
         fi
     fi
     err_msgs="$(
@@ -164,11 +163,10 @@ EOF
     )"
     if [ "$err_msgs" != "" ]; then
         while read err_msg; do
-            comm_log "ERROR" "$err_msg"
+            comm_log "WARNING" "$err_msg"
         done <<EOF
 $err_msgs
 EOF
-        return 1
     fi
     return 0
 }

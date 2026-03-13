@@ -52,6 +52,8 @@ protected:
     int64_t expertEnd_ = 0;
     int64_t n;
     int64_t k;
+    int64_t ep_ = 0;
+    int64_t oneLoopMaxElements_;
     int64_t rowIdxType_ = 0;
 
     static constexpr int64_t SYNC_GM_NUM = 2;

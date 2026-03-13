@@ -16,7 +16,11 @@
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2_REGBASE_H_
 
 #include "../../../common/op_kernel/arch35/dropmask.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "matmul_modules/fag_custom_matmul_policy.h"
 #include "vector_api/cast_softmax_grad.h"
@@ -65,7 +69,7 @@ public:
                                 __gm__ uint8_t *prefixN, __gm__ uint8_t *actualSeqQlen, __gm__ uint8_t *actualSeqKvlen,
                                 __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
                                 __gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData,
+                                FagOldTilingType ordTilingData,
                                 TPipe *pipeIn, TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &dsScmIn,
                                 TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &pScmIn);
     __aicore__ inline void SetConstInfo();
@@ -202,7 +206,7 @@ protected:
     uint8_t kvPingPong = 1;
     bool isLastLoop = false;
 
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict tilingData;
+    FagOldTilingType tilingData;
     // input
     GlobalTensor<T1> keyGm, valueGm, dxGm, queryGm, yGm, pseGm;
     GlobalTensor<uint8_t> dropMaskGm, attenMaskU8Gm;
@@ -226,7 +230,7 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2StaticRegbase<FAG_BN2_FUN
     __gm__ uint8_t *dropMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *y, __gm__ uint8_t *softmaxMax,
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *prefixN, __gm__ uint8_t *actualSeqQlen, __gm__ uint8_t *actualSeqKvlen,
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData, TPipe *pipeIn,
+    FagOldTilingType ordTilingData, TPipe *pipeIn,
     TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &dsScmIn, TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &pScmIn)
 {
     keyGm.SetGlobalBuffer((__gm__ T1 *)key);

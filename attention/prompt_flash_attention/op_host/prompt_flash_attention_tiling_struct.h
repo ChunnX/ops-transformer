@@ -24,6 +24,7 @@ enum class InputLayout {
     BSND,
     BNSD_BSND,
     TND,
+    NTD,
     NTD_TND,
     NZ,
     BBH,
@@ -45,6 +46,7 @@ enum class SplitCoreMode {
     SPLIT_ONEN_CUBE,
     BALANCE_VECTOR,
     BALANCE_CUBE,
+    SPLIT_S1OUT_CUBE,
 };
 } // namespace optiling
 

@@ -99,7 +99,10 @@ public:
 
     /// Construct
     __aicore__ inline
-    BlockMmad(Arch::Resource<ArchTag> &resource,uint32_t nDyn, uint32_t kDyn, uint32_t KVStackLen = 512, uint32_t l1BufAddrStart = 0)
+    BlockMmad() {}
+
+    __aicore__ inline
+    void init(Arch::Resource<ArchTag> &resource, uint32_t nDyn, uint32_t kDyn, uint32_t KVStackLen = 512, uint32_t l1BufAddrStart = 0)
     {
         maxKVStackLen = KVStackLen;
         // Allocate L1 memory space
@@ -121,8 +124,9 @@ public:
     ~BlockMmad() {}
 
     __aicore__ inline
-    void resetBlockStart(){
-        blockStartOffset = 0;
+    void resetBlockStart(uint32_t kvStart, uint32_t pagedBlockSize)
+    {
+        blockStartOffset = kvStart * maxKVStackLen % pagedBlockSize;
     }
 
     __aicore__ inline

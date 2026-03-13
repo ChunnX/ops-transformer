@@ -29,7 +29,7 @@ def match_op_proto(file_path):
         return op_name, op_def
     else:
         return None, None
-    
+
 
 def merge_op_proto(protos_path, output_file):
     op_defs = []

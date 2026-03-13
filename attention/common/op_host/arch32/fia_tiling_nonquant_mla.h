@@ -20,8 +20,6 @@
 #include "../fia_tiling_base.h"
 #include "../fia_tiling_info.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
-#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h"
-#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_base.h"
 #include "../split_core.h"
 
 namespace optiling {
@@ -41,7 +39,7 @@ private:
     void GenTilingKey();
     bool DealSameSeqEachBatch() const;
 
-    void ZeroTensorProcess() const;
+    void EmptyTensorProcess() const;
     void InitParams();
 
     void CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitParam) const;
@@ -63,12 +61,13 @@ private:
     void FillTiling();
 
     uint32_t CalcFlashDecodeParamNums(const uint32_t coreNum) const;
-    uint64_t CalcNormalWorkspaceSize(uint32_t coreNum, int64_t mm1ResSize, int64_t mm2ResSize, uint32_t mBaseSize) const;
+    uint64_t CalcNormalWorkspaceSize(uint32_t coreNum, int64_t mm1ResSize, int64_t mm2ResSize,
+        uint32_t mBaseSize) const;
     uint64_t CalcFlashDecodeWorkspace(const uint32_t coreNum) const;
     void CalcScheduleMode();
     void CalcWorkspaceSize();
     void CalcMaxWorkspaceSize();
-    void CalcBlockDim(uint32_t coreNum);
+    void CalcNumBlocks(uint32_t coreNum);
 
     bool splitKVFlag_ = false;
 
@@ -92,7 +91,7 @@ private:
 
     // set info to context
     FusedInferAttentionScoreTilingData tilingData_;
-    uint32_t blockDim_{0};
+    uint32_t numBlocks_{0};
     ScheduleMode scheduleMode_{ScheduleMode::NORMAL_MODE};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};

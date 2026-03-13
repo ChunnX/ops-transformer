@@ -151,6 +151,63 @@ inline void InitTilingData(uint8_t *tiling, MoeV3ExpertTokensCountTilingData *co
 #endif
 
 #pragma pack(1)
+struct MoeV3SrcToDstCapacityComputeTilingData {
+  int64_t needCoreNum = 0;
+  int64_t perCoreRows = 0;
+  int64_t perCorePerLoopRows = 0;
+  int64_t perCoreLastLoopRows = 0;
+  int64_t lastCoreRows = 0;
+  int64_t lastCorePerLoopRows = 0;
+  int64_t lastCoreLastLoopRows = 0;
+  int64_t perCoreLoops = 0;
+  int64_t lastCoreLoops = 0;
+  int64_t perLoopCols = 0;
+  int64_t lastLoopCols = 0;
+  int64_t colLoops = 0;
+};
+#pragma pack()
+
+#ifdef __NPU_TILING__
+inline[aicore] void InitTilingData(const __gm__ uint8_t* tiling, MoeV3SrcToDstCapacityComputeTilingData* const_data) {
+  const __gm__ uint32_t* src = (const __gm__ uint32_t*)tiling;
+  uint32_t* dst = (uint32_t*)const_data;
+  for (auto i = 0; i < sizeof(MoeV3SrcToDstCapacityComputeTilingData) / 4; i++)
+    *(dst + i) = *(src + i);
+}
+#else
+inline void InitTilingData(uint8_t* tiling, MoeV3SrcToDstCapacityComputeTilingData* const_data) {
+  memcpy(const_data, tiling, sizeof(MoeV3SrcToDstCapacityComputeTilingData));
+}
+#endif
+
+#pragma pack(1)
+struct MoeV3SrcToDstComputeTilingData {
+  int64_t needCoreNum = 0;
+  int64_t perCoreElements = 0;
+  int64_t perCorePerLoopElements = 0;
+  int64_t perCoreLastLoopElements = 0;
+  int64_t lastCoreElements = 0;
+  int64_t lastCorePerLoopElements = 0;
+  int64_t lastCoreLastLoopElements = 0;
+  int64_t perCoreLoops = 0;
+  int64_t lastCoreLoops = 0;
+};
+#pragma pack()
+
+#ifdef __NPU_TILING__
+inline[aicore] void InitTilingData(const __gm__ uint8_t* tiling, MoeV3SrcToDstComputeTilingData* const_data) {
+  const __gm__ uint32_t* src = (const __gm__ uint32_t*)tiling;
+  uint32_t* dst = (uint32_t*)const_data;
+  for (auto i = 0; i < sizeof(MoeV3SrcToDstComputeTilingData) / 4; i++)
+    *(dst + i) = *(src + i);
+}
+#else
+inline void InitTilingData(uint8_t* tiling, MoeV3SrcToDstComputeTilingData* const_data) {
+  memcpy(const_data, tiling, sizeof(MoeV3SrcToDstComputeTilingData));
+}
+#endif
+
+#pragma pack(1)
 struct MoeInitRoutingV3TilingData {
     int64_t coreNum = 0;
     int64_t n = 0;
@@ -167,15 +224,20 @@ struct MoeInitRoutingV3TilingData {
     int64_t expertTokensNumType = -1;
     int64_t expertTokensNumFlag = 1;
     int64_t gatherFirstFullload = 0;
-    int64_t epFullload = 1;
+    int64_t ep = 1;
     int64_t activeNum = 0;
     int64_t dropPadMode = 0;
     int64_t smoothType = 2;
+    int64_t expertCountElements = 0;
+    int64_t expertCapacity = 2;
     MoeV3VBSComputeTilingData vbsComputeParamsOp;
     MoeV3VMSMiddleComputeTilingData vmsMiddleComputeParamsOp;
     MoeV3SortOutComputeTilingData sortOutComputeParamsOp;
     MoeV3ExpertTokensCountTilingData expertTokensCountTilingDataOp;
     MoeV3GatherOutComputeTilingData gatherOutComputeParamsOp;
+    MoeV3SrcToDstCapacityComputeTilingData srcToDstDropPadParamsOp;
+    MoeV3SrcToDstCapacityComputeTilingData srcToDstDropPadDynamicParamsOp;
+    MoeV3SrcToDstComputeTilingData srcToDstComputeParamsOp;
 };
 #pragma pack()
 

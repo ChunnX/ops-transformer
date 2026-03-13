@@ -269,7 +269,10 @@ ge::graphStatus Mc2MatMulV3Tiling::DoTiling()
     OPS_CHECK_NULL_WITH_CONTEXT(context_, tilingCfg.compileInfo);
     platform_ascendc::SocVersion socVersion =
         reinterpret_cast<const Mc2MatmulV3CompileInfo *>(tilingCfg.compileInfo)->socVersion;
-    Mc2MMRegisterCfg registerCfg{ "Mc2MatMulV3", socVersion, strategy::GetMatMulV3Priorities(socVersion) };
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    Mc2MMRegisterCfg registerCfg{ "Mc2MatMulV3", npuArch, strategy::GetMatMulV3Priorities(npuArch) };
     return Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg);
 }
 }

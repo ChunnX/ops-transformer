@@ -15,12 +15,15 @@
 
 #include <iostream>
 #include "log/log.h"
+#include "tiling_base/tiling_util.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
-#include "platform/platform_ascendc.h"
+#include "tiling/platform/platform_ascendc.h"
 #include "util/math_util.h"
 #include "util/shape_util.h"
 #include "ring_attention_update_tiling.h"
+#include "ring_attention_update_tiling_arch35.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 
@@ -46,7 +49,7 @@ constexpr size_t SOFTMAX_TAIL = 8;
 
 constexpr uint64_t HEAD_DIM_ALIGN_TND = 64;
 constexpr uint64_t TND_BUFFER_NUM = 2;
-#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
 constexpr uint64_t MAX_UB_SIZE = 98304;
 #else
 constexpr uint64_t MAX_UB_SIZE = 196608;
@@ -525,6 +528,16 @@ static ge::graphStatus Tiling4RingAttentionUpdateTND(const gert::TilingContext* 
 
 static ge::graphStatus Tiling4RingAttentionUpdate(gert::TilingContext* context) {
   OP_LOGD(context->GetNodeName(), "RingAttentionUpdateTiling tiling start");
+
+  auto platformInfoPtr = context->GetPlatformInfo();
+  OP_CHECK_IF(platformInfoPtr == nullptr,
+    OP_LOGE(context, "platformInfoPtr is null"),
+    return ge::GRAPH_FAILED);
+  if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
+    OP_LOGD(context->GetNodeName(), "RingAttentionUpdateRegbaseTiling tiling start");
+    return Tiling4RingAttentionUpdateRegbase(context);
+  }
+
   // init tiling data
   RingAttentionUpdateTilingData tiling;
   InitTilingData(tiling);

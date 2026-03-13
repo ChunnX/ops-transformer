@@ -288,7 +288,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnRainFusionAttention(
     aclOpExecutor *executor,
     const aclrtStream stream)
 {
-    CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    L2_DFX_PHASE_2(aclnnRainFusionAttention);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

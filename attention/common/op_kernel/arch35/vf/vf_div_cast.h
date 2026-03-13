@@ -187,7 +187,7 @@ __aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T>& dstTensor
     __ubuf__ float * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
     __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
-    DivCastImpl128VF<T, OUTPUT_T, srcD>(dstUb, srcUb, expSumUb, m);
+    DivCastImplGeneralVF<T, OUTPUT_T, srcD>(dstUb, srcUb, expSumUb, m);
 }
 
 /*

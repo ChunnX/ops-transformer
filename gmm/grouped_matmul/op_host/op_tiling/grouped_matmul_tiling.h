@@ -49,6 +49,8 @@ TILING_DATA_FIELD_DEF(uint64_t, parallNum);            // for A8W4 MSD
 TILING_DATA_FIELD_DEF(uint64_t, quantGroupNum);        // for A8W4 MSD
 TILING_DATA_FIELD_DEF(uint64_t, isPreTiling);
 TILING_DATA_FIELD_DEF(uint32_t, withOffset);
+TILING_DATA_FIELD_DEF(uint32_t, isOutputDisableL2Cache);
+TILING_DATA_FIELD_DEF(uint64_t, isA4W4Optimize);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMBaseParamsOp, GMMBaseParams)
 
@@ -105,6 +107,7 @@ struct GMMCompileInfo {
     uint64_t l0ASize;
     uint64_t l0BSize;
     platform_ascendc::SocVersion socVersion;
+    NpuArch npuArch;
 };
 
 class GMMTiling {
@@ -143,6 +146,7 @@ protected:
     const gert::Shape &wShape);
     ge::graphStatus DivideUbAndSetWorkspace(gert::TilingContext *context, const uint32_t &aicNum);
     ge::graphStatus DynamicTilingSingleN(gert::TilingContext *context, const uint32_t &aicNum, const GMMCompileInfo *compileInfoPtr);
+    ge::graphStatus IsOutputDisableL2Cache(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     int32_t FindBestSingleN(const uint32_t &aicNum);
     bool TryFullLoadA(int32_t baseM, const GMMCompileInfo *compileInfoPtr);
     void DivideUbAndSetWorkspaceAntiquant(size_t *workspaces, const uint32_t &aicNum, uint32_t &ubSize);
@@ -165,6 +169,9 @@ protected:
     ge::graphStatus CheckA16W4MsdEnable(uint64_t mSize, uint64_t antiquantGroupNum, const gert::TilingContext *context,
                                         const GMMCompileInfo *compileInfoPtr);
     uint64_t GetWithOffset(const gert::TilingContext *context);
+    bool CheckTensorListLength(const gert::TilingContext *context);
+	bool IsA4W4OptimizeCondition();
+
 private:
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
@@ -190,7 +197,7 @@ private:
     bool isSingleY_ = false;
     bool isAllSingleTensor_ = false;
     bool hasBias_ = false;
-    int32_t groupType_ = 0;
+    int64_t groupType_ = 0;
     int64_t splitItem_ = 0L;
     uint32_t groupListType_ = 0;
     uint32_t xKDim_ = 0;
@@ -204,6 +211,7 @@ private:
     int64_t tuningConfigWorkspace_ = 0L;
     uint64_t FixedAxisMoveWorkspace_ = 0L;
     bool isA4W4_ = false;
+    bool isA16W16_ = false;
     bool isA8W4FakeA8W8_ = false;
     bool isFixedAxisMove_ = false;
     uint64_t A8W4noMsdSpace_ = 0;
@@ -221,6 +229,9 @@ private:
     uint32_t totalM_ = 0;
     matmul_tiling::CubeFormat wFormat_;
     int32_t nzFactor_;  // for weight nz format
+    int64_t quantGroupSize_ = 0;
+    bool isPerGroup_ = false;
+    bool isA4W4Optimize_ = false;
 };
 }  // namespace optiling
 

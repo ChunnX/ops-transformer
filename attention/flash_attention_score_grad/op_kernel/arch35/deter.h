@@ -16,7 +16,11 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_DETER_H_
 #define FLASH_ATTENTION_SCORE_GRAD_DETER_H_
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "common.h"
 
 
@@ -28,6 +32,8 @@ constexpr uint32_t NUM_EIGHT = 8;
 
 constexpr int64_t DETER_PREFIX_NUM = 132;
 constexpr int64_t DETER_PREFIX_THRESHOLD = 128;
+constexpr int64_t M_BASE_64 = 64;
+constexpr int64_t N_BASE_128 = 128;
 
 __aicore__ inline int64_t Square(int64_t num) { return num * num; }
 
@@ -70,6 +76,60 @@ struct CoordinateInfo {
     int64_t p = 0;
     int64_t q = 0;
 };
+
+template <uint8_t mode = 0>
+__aicore__ inline void TransDeterRound(int64_t &r, bool &useEvenCol, int64_t rMax)
+{
+    if constexpr(mode == 0) {
+        return;
+    } else if constexpr(mode == 1) {
+        useEvenCol = r % NUM_TWO == 1;
+        r = (r + 1) / NUM_TWO;
+        return;
+    } else {
+        if (r > rMax) {
+            r = r - rMax;
+            useEvenCol = true;
+        }
+        return;
+    }
+}
+
+template <uint8_t mode = 0>
+__aicore__ inline void TransTilingSplitMode(int64_t &m, int64_t &n, int64_t &r, bool &useEvenCol, int64_t rMax)
+{
+    if constexpr(mode == 0) {
+        return;
+    } else if constexpr(mode == 1) {
+        m = Ceil<int64_t>(m, static_cast<int64_t>(NUM_TWO));
+        TransDeterRound<mode>(r, useEvenCol, rMax);
+        return;
+    } else {
+        n = Ceil<int64_t>(n, static_cast<int64_t>(NUM_TWO));
+        TransDeterRound<mode>(r, useEvenCol, rMax);
+        return;
+    }
+}
+
+template <uint8_t mode = 0, const bool IS_TND = false>
+__aicore__ inline void TransTilingSplitModeBack(CoordinateInfo &coordinateInfo, bool useEvenCol)
+{
+    if constexpr (mode == 0) {
+        return;
+    } else if constexpr (mode == 1) {
+        coordinateInfo.s1Idx = useEvenCol ? coordinateInfo.s1Idx * NUM_TWO - 1 : coordinateInfo.s1Idx * NUM_TWO;
+        if constexpr (IS_TND) {
+            coordinateInfo.s1Outer = Ceil<int64_t>(coordinateInfo.actualS1Len, M_BASE_64);
+        }
+        return;
+    } else {
+        coordinateInfo.s2Idx = useEvenCol ? NUM_TWO * coordinateInfo.s2Idx : NUM_TWO * coordinateInfo.s2Idx - 1;
+        if constexpr (IS_TND) {
+            coordinateInfo.s2Outer = Ceil<int64_t>(coordinateInfo.actualS2Len, N_BASE_128);
+        }
+        return;
+    }
+}
 
 __aicore__ inline void InitCoordinateInfo(int64_t s1Outer, int64_t s2Outer, int64_t mOffset, int64_t nOffset,
                                           CoordinateInfo &coordinateInfo)
@@ -114,6 +174,41 @@ __aicore__ inline void CalDenseIndex(int64_t k, int64_t m, int64_t n, int64_t b,
         coordinate.batchId = -1;
     }
     return;
+}
+
+__aicore__ inline void CalDenseIndexForSingleN(int64_t k, int64_t m, int64_t b, int64_t j, int64_t r, int64_t R, CoordinateInfo &coordinate)
+{
+    int64_t n = 1;
+    int64_t ID = (j - 1) * R + r;
+    int64_t num = m * n;
+    
+    int64_t delta1 = (ID -1) / num + 1;
+    int64_t delta = ID % num;
+    delta = delta == 0 ? num : delta;
+
+    int64_t g = Gcd(m, R);
+    int64_t t1 = R / g;
+    int64_t t2 = m / g;
+
+    int64_t x = ((delta - 1) % m) + 1;
+    int64_t y = (delta - 1) / m + 1;
+
+    if (t1 < n) {
+        int64_t n1 = (n % t1);
+        n1 = n1 == 0 ? t1 : n1;
+        if (y <= n - n1) {
+            int64_t delta_adj = Ceil<int64_t>(y, t1);
+            delta += delta_adj;
+            if (delta > delta_adj * t2 * R) {
+                delta -= t2 * R;
+            }
+            x = ((delta - 1) % m) + 1;
+            y = (delta - 1) / m + 1;
+        }
+    }
+    coordinate.batchId = delta1;
+    coordinate.s1Idx = x;
+    coordinate.s2Idx = y;
 }
 
 __aicore__ inline void CalGQADenseIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t core_id, int64_t round_id,
@@ -161,6 +256,9 @@ __aicore__ inline void CalGQADenseIndex(int64_t k, int64_t m, int64_t n, int64_t
             if (ID > (delta - 1) * t2 * m * R + offset * t2 * R) {
                 ID -= t2 * R;
             }
+            b_id = ID % N;
+            b_id = b_id != 0 ? b_id : N;
+            b_id = Ceil<int64_t>(b_id, g);
             w = ID % g;
             w = w != 0 ? w : g;
             y = Ceil<int64_t>(ID, N);
@@ -717,26 +815,26 @@ __aicore__ inline void CalGQACausalIndex(int64_t k, int64_t m, int64_t n, int64_
         // 情况 B
         w = (k * ((a4 - 1) / (ell1 + NUM_TWO * delta)) + j) % b2;
         w = w != 0 ? w : b2;
-        int64_t g = Ceil<int64_t>((k * ((a4 - 1) / (ell1 + NUM_TWO * delta)) + j), b2);
-        if (g >= 1 && g <= p) {
+        int64_t gTail = Ceil<int64_t>((k * ((a4 - 1) / (ell1 + NUM_TWO * delta)) + j), b2);
+        if (gTail >= 1 && gTail <= p) {
             int64_t a5 = a4 % (ell1 + NUM_TWO * delta);
             a5 = a5 != 0 ? a5 : (ell1 + NUM_TWO * delta);
             int64_t x0, y0 = 0;
-            if (g % NUM_TWO == 1) {
-                if (a5 <= ell - g + 1 + delta) {
-                    x0 = g + a5 - 1;
-                    y0 = g;
+            if (gTail % NUM_TWO == 1) {
+                if (a5 <= ell - gTail + 1 + delta) {
+                    x0 = gTail + a5 - 1;
+                    y0 = gTail;
                 } else {
-                    x0 = NUM_TWO * ell + NUM_TWO * delta + NUM_TWO - g - a5;
-                    y0 = ell + 1 + (ell % NUM_TWO) - g;
+                    x0 = NUM_TWO * ell + NUM_TWO * delta + NUM_TWO - gTail - a5;
+                    y0 = ell + 1 + (ell % NUM_TWO) - gTail;
                 }
             } else {
-                if (a5 >= (g + 1 + delta - (ell % NUM_TWO))) {
-                    x0 = g + ell + NUM_TWO * delta + 1 - (ell % NUM_TWO) - a5;
-                    y0 = g;
+                if (a5 >= (gTail + 1 + delta - (ell % NUM_TWO))) {
+                    x0 = gTail + ell + NUM_TWO * delta + 1 - (ell % NUM_TWO) - a5;
+                    y0 = gTail;
                 } else {
-                    x0 = a5 + ell - g + (ell % NUM_TWO);
-                    y0 = ell + 1 + (ell % NUM_TWO) - g;
+                    x0 = a5 + ell - gTail + (ell % NUM_TWO);
+                    y0 = ell + 1 + (ell % NUM_TWO) - gTail;
                 }
             }
 
@@ -1182,6 +1280,9 @@ __aicore__ inline void GetSeqQlenKvlenByBidx(const __gm__ uint8_t *actualSeqQlen
 
 __aicore__ inline void CalVirtualIndex(int64_t flag, int64_t &m, int64_t &n)
 {
+    if (m < n) {
+        n = m;
+    }
     if (flag == 0) {
         m = NUM_TWO * m - n + 1;
     } else if (flag == 1) {
@@ -1193,7 +1294,7 @@ __aicore__ inline void CalVirtualIndex(int64_t flag, int64_t &m, int64_t &n)
     }
 }
 
-template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN, const bool isDense>
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN, const bool isDense, const bool IS_N_EQUAL>
 __aicore__ inline void UpdateMNPQ(int64_t actualCalcS1Token, int64_t actualCalcS2Token, CoordinateInfo &coordinateInfo,
                                   int64_t &actualM, int64_t &actualN)
 {
@@ -1256,7 +1357,7 @@ __aicore__ inline void UpdateMNPQ(int64_t actualCalcS1Token, int64_t actualCalcS
     }
 
     if (p + q <= actualM) {
-        if (actualN > actualM) {
+        if (actualN > actualM || (IS_N_EQUAL && actualN == actualM)) {
             actualN = p + q - 1;
         } else {
             actualM = p + q - 1;
@@ -1307,7 +1408,7 @@ CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *
     int64_t m, n, p, q;
     int64_t actualS1Len = 0;
     int64_t actualS2Len = 0;
-    GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, batchId, actualS1Len, actualS2Len);
+    GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, w, actualS1Len, actualS2Len);
 
     m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
     n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
@@ -1319,7 +1420,7 @@ CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *
     int64_t actualCalcS2Token = coordinateInfo.q;
 
     if constexpr (DETER_SPARSE_TYPE == DETER_BAND) {
-        UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, true>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
+        UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, true, IS_N_EQUAL>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
         p = coordinateInfo.p;
         q = coordinateInfo.q;
     }
@@ -1336,7 +1437,7 @@ CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *
             if (w >= b) {
                 return;
             }
-            GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, batchId, actualS1Len, actualS2Len);
+            GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, w, actualS1Len, actualS2Len);
             m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
             n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
             coordinateInfo.s1Outer = m;
@@ -1344,7 +1445,9 @@ CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *
             if constexpr (DETER_SPARSE_TYPE == DETER_CAUSAL) {
                 CalVirtualIndex(flag, m, n);
             } else if constexpr (DETER_SPARSE_TYPE == DETER_BAND) {
-                UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, true>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
+                coordinateInfo.actualS1Len = actualS1Len;
+                coordinateInfo.actualS2Len = actualS2Len;
+                UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, true, IS_N_EQUAL>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
                 p = coordinateInfo.p;
                 q = coordinateInfo.q;
             }
@@ -1449,6 +1552,12 @@ __aicore__ inline void CalCausalPosWholeBatch(int64_t m, int64_t n, int64_t a, C
     return;
 }
 
+__aicore__ inline void UpdataCausalMN(CoordinateInfo &coordinateInfo, int64_t &m, int64_t &n) {
+    coordinateInfo.s1Outer = m;
+    coordinateInfo.s2Outer = n;
+    n = m < n ? m : n;
+}
+
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void
 CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
@@ -1484,6 +1593,7 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
         GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, batch_id, actualS1Len, actualS2Len);
         m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
         n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
+        UpdataCausalMN(coordinateInfo, m, n);
         round_batch = (NUM_TWO * m - n + 1) * n / NUM_TWO;
 
         while (a > round_batch * N10) {
@@ -1494,6 +1604,7 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
             GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, batch_id, actualS1Len, actualS2Len);
             m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
             n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
+            UpdataCausalMN(coordinateInfo, m, n);
             a = a - round_batch * N10;
             round_batch = (NUM_TWO * m - n + 1) * n / NUM_TWO;
         }
@@ -1509,8 +1620,6 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
         w = ((w - 1) / k) * k + ((y - 1 + (w - 1)) % k) + 1;
         batch_id = batch_id * N1 + w;
         coordinateInfo.batchId = batch_id;
-        coordinateInfo.s1Outer = m;
-        coordinateInfo.s2Outer = n;
         coordinateInfo.actualS1Len = actualS1Len;
         coordinateInfo.actualS2Len = actualS2Len;
         return;
@@ -1522,6 +1631,7 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
             return;
         }
         int64_t m{coordinateInfo.s1Outer}, n{coordinateInfo.s2Outer}, x{coordinateInfo.s1Idx}, y{coordinateInfo.s2Idx};
+        n = m < n ? m : n;
         int64_t batch_id1 = Ceil<int64_t>(coordinateInfo.batchId, N11);
         int64_t batch_id2 = coordinateInfo.batchId % N11;
         batch_id2 = batch_id2 != 0 ? batch_id2 : N11;
@@ -1546,6 +1656,7 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
             return;
         }
         int64_t m{coordinateInfo.s1Outer}, n{coordinateInfo.s2Outer}, x{coordinateInfo.s1Idx}, y{coordinateInfo.s2Idx};
+        n = m < n ? m : n;
         int64_t x_new;
         if (x >= y + m - n + 1) {
             x_new = x - (m - n + 1);
@@ -1564,7 +1675,9 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
         if (coordinateInfo.batchId < 0) {
             return;
         }
-        coordinateInfo.s1Idx += coordinateInfo.s2Outer / NUM_TWO;
+        int64_t m{coordinateInfo.s1Outer}, n{coordinateInfo.s2Outer};
+        n = m < n ? m : n;
+        coordinateInfo.s1Idx += n / NUM_TWO;
 
         coordinateInfo.batchId = coordinateInfo.batchId * N1;
         coordinateInfo.s1Idx = coordinateInfo.s1Idx;
@@ -1610,6 +1723,7 @@ CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8
             return;
         }
         int64_t m{coordinateInfo.s1Outer}, n{coordinateInfo.s2Outer}, x{coordinateInfo.s1Idx}, y{coordinateInfo.s2Idx};
+        n = m < n ? m : n;
         int64_t x_new;
         if (x >= y + m - n + 1) {
             x_new = x - (m - n + 1);
@@ -1630,6 +1744,7 @@ CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8
         }
         int64_t x_new;
         int64_t m{coordinateInfo.s1Outer}, n{coordinateInfo.s2Outer}, x{coordinateInfo.s1Idx}, y{coordinateInfo.s2Idx};
+        n = m < n ? m : n;
         if (x >= y + m - n + 1) {
             x_new = x - (m - n + 1);
         } else {
@@ -1647,7 +1762,9 @@ CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8
         if (coordinateInfo.batchId < 0) {
             return;
         }
-        coordinateInfo.s1Idx += coordinateInfo.s2Outer / NUM_TWO;
+        int64_t m{coordinateInfo.s1Outer}, n{coordinateInfo.s2Outer};
+        n = m < n ? m : n;
+        coordinateInfo.s1Idx += n / NUM_TWO;
 
         coordinateInfo.n2Idx = N2;
         coordinateInfo.s1Idx = coordinateInfo.s1Idx;
@@ -1820,7 +1937,7 @@ CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *a
             coordinateInfo.s1Outer = (coordinateInfo.actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
             coordinateInfo.s2Outer = (coordinateInfo.actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
             // 重新计算m、n、p、q
-            UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, false>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
+            UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, false, true>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
             p = coordinateInfo.p;
             q = coordinateInfo.q;
             round_batch = m * n - (m - p) * (m - p + 1) / NUM_TWO - (n - q) * (n - q + 1) / NUM_TWO;
@@ -2022,7 +2139,7 @@ __aicore__ inline void CalGQABandIndex(const BandInfo &bandInfo, int64_t j, int6
         int64_t R1 = bandInfo.R1;
         int64_t R2 = bandInfo.R2;
         // 对称性好的情况特殊处理
-        if (NUM_TWO * b2 == k && L1 == L3) {
+        if (NUM_TWO * b2 == k && L1 == L3 && m > 1) {
             b_id = (j + 1) / NUM_TWO;
             if (L2 % NUM_TWO == 1) {
                 int64_t R0 = Max(NUM_TWO * p, m);
@@ -2126,8 +2243,9 @@ __aicore__ inline void CalGQABandIndex(const BandInfo &bandInfo, int64_t j, int6
                     if (x > m) {
                         x = x - m;
                     }
+                } else {
+                    x = L3 + y + x - n;
                 }
-                x = L3 + y + x - n;
             }
             coordinate.batchId = b1*k * N1 + (b_id-1) * N1 + N1_id;
             coordinate.s1Idx = x;

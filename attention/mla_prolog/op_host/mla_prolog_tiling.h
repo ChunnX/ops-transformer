@@ -31,6 +31,7 @@
 #include "register/op_def_registry.h"
 #include "../op_kernel/mla_prolog_template_tiling_key.h"
 #include "../op_kernel/mla_prolog_tiling_data.h"
+#include "platform/soc_spec.h"
 
 #ifdef ASCENDC_OP_TEST
 #define MLA_EXTERN_C extern "C"
@@ -176,14 +177,23 @@ enum class QUANT_MODE:int8_t {
     PARTIAL_QUANT_KV_QUANT_PER_TILE = 5,
     FULL_QUANT_KV_QUANT_PER_TILE = 6,
     MXFP8_FULL_QUANT_KV_NO_QUANT = 7,
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 8
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 8,
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = 9,
+    FP8_FULL_QUANT_KV_NO_QUANT = 10,
+    FP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 11,
+    HIF8_FULL_QUANT_KV_NO_QUANT = 12,
+    HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR = 13,
+    FP8_FULL_QUANT_KV_QUANT_PER_TILE = 14,
+    HIF8_FULL_QUANT_KV_QUANT_PER_TILE = 15
 };
 
 enum class WEIGHT_QUANT_MODE:uint8_t {
     NO_QUANT = 0,
     PARTIAL_QUANT = 1,
     FULL_QUANT = 2,
-    MXFP8_FULL_QUANT = 3
+    MXFP8_FULL_QUANT = 3,
+    FP8_FULL_QUANT = 4,
+    HIF8_FULL_QUANT = 5
 };
 
 enum class KV_QUANT_MODE:uint8_t {
@@ -285,12 +295,12 @@ struct MlaPrologContext {
     const char *cacheMode;
     const bool *queryNormFlag;
 
-    const int *weightQuantMode;
-    const int *kvQuantMode;
-    const int *queryQuantMode;
-    const int *ckvkrRepoMode;
-    const int *quantScaleRepoMode;
-    const int *tileSize;
+    const int64_t *weightQuantMode;
+    const int64_t *kvQuantMode;
+    const int64_t *queryQuantMode;
+    const int64_t *ckvkrRepoMode;
+    const int64_t *quantScaleRepoMode;
+    const int64_t *tileSize;
 
     const float *qcQrScale;
     const float *kcScale;
@@ -329,7 +339,7 @@ private:
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
 
-    platform_ascendc::SocVersion GetSocVersionShortName() const;
+    NpuArch GetCurNpuArch() const;
 
     MlaPrologBaseShapeInfo baseShapeInfo_;
     MlaPrologScenarioInfo scenarioInfo_;
