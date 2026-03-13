@@ -30,16 +30,16 @@ gert::StorageShape alltoallKcQuantStorageShape = gert::StorageShape();
  */
 bool AllToAllKcQuantMatmulTilingBase::IsCapable()
 {
-    int x1QuantMode = 0;
-    int x2QuantMode = 0;
+    int64_t x1QuantModeValue = 0;
+    int64_t x2QuantModeValue = 0;
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    if (const int *ptr = attrs->GetAttrPointer<int>(ATTR_X1_QUANTMODE_INDEX)) {
-        x1QuantMode = *ptr;
+    if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX)) {
+        x1QuantModeValue = *ptr;
     }
-    if (const int *ptr = attrs->GetAttrPointer<int>(ATTR_X2_QUANTMODE_INDEX)) {
-        x2QuantMode = *ptr;
+    if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX)) {
+        x2QuantModeValue = *ptr;
     }
-    if (x1QuantMode == X1_QUANTMODE_VALUES && x2QuantMode == X2_QUANTMODE_VALUES) {
+    if (x1QuantModeValue == X1_QUANTMODE_VALUES && x2QuantModeValue == X2_QUANTMODE_VALUES) {
         OP_LOGI(opName_, "Start with AlltoAllKcQuantMatmul tiling.");
         return true;
     }
@@ -74,7 +74,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::T
                                                                    const char *opName, TilingContextInfo &contextInfo)
 {
     const gert::StorageShape *matrixBias = context->GetOptionalInputShape(INPUT_BIAS_INDEX);
-    int aDTypeNum = *context_->GetAttrs()->GetAttrPointer<uint64_t>(ALLTOALLMATMUL_ATTR_X1_QUANTDTYPE_INDEX);
+    int64_t aDTypeNum = *context_->GetAttrs()->GetAttrPointer<int64_t>(ALLTOALLMATMUL_ATTR_X1_QUANTDTYPE_INDEX);
     ge::DataType biasType;
     // 这是针对matmul的数据类型
     ge::DataType aType = static_cast<ge::DataType>(aDTypeNum);
@@ -90,7 +90,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::T
     }
 
     OP_TILING_CHECK(aDTypeNum != FP8_E5M2_VALUES && aDTypeNum != FP8_E4M3_VALUES,
-    OP_LOGE(opName, "aDTypeNum %d is invalid, only 35(fp8e5m2) or 36(fp8e4m3) is supported.", aDTypeNum),
+    OP_LOGE(opName, "aDTypeNum %ld is invalid, only 35(fp8e5m2) or 36(fp8e4m3) is supported.", aDTypeNum),
     return ge::GRAPH_FAILED);
     contextInfo.x1KcDynQuantDTypeVal = aDTypeNum;
 
@@ -248,7 +248,7 @@ ge::graphStatus AlltoAllKcQuantMatmulHelper::GetShapeAttrsInfo()
     inputParams_.libApiWorkSpaceSize = tilingProcesser_.libApiWorkSpaceSize_;
     inputParams_.aDtype = tilingArgs.geAType;
     inputParams_.bDtype = tilingArgs.geBType;
-    int yDType = *context_->GetAttrs()->GetAttrPointer<uint64_t>(ATTR_Y_DTYPE_INDEX);
+    int64_t yDType = *context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr),
                     VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the scale tensor is invalid"),
@@ -484,7 +484,7 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
-    uint32_t x1QuantDtype = static_cast<int>(contextInfo.args_.geAType);
+    uint32_t x1QuantDtype = static_cast<uint32_t>(contextInfo.args_.geAType);
     // 35代表float8_e5m2,36代表float8e4m3
     uint32_t QUANT_MODE = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(QUANT_MODE, x2TransposeFlag, biasDType);

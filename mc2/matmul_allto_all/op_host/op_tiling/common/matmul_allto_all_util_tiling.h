@@ -21,7 +21,7 @@ using namespace ge;
 using namespace gert;
 
 // 参数范围
-const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16};
+const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16};
 constexpr uint64_t K_MAX_VALUE = 65535UL;
 constexpr uint64_t MAX_INT32_VALUE = 2147483647UL;
 constexpr size_t MAX_GROUP_NAME_LEN = 127;
