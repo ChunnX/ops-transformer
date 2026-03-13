@@ -501,7 +501,15 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     DataCopyPad(xInTensor, xGMTensor_[srcTokenIndex * axisH_], hCopyParams_, copyPadExtParams);
     inQueue.EnQue(xInTensor);
     xInTensor = inQueue.DeQue<XType>();
-    quantInst_.QuantProcess(tempTensor_, xInTensor, quantExpertIdx, scalesCount_, scalesGMTensor_);
+    if constexpr (QuantMode > UNQUANT) {
+        quantInst_.QuantProcess(tempTensor_, xInTensor, quantExpertIdx, scalesCount_, scalesGMTensor_);
+    }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    else { // 非量化直转hifp8
+        Cast(floatLocalTemp_, xInTensor, RoundMode::CAST_NONE, axisH_);
+        Cast(tempTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
+    }
+#endif
     FillTriple(tempTensor_, srcTokenIndex, fillExpertIdx);
     inQueue.FreeTensor<XType>(xInTensor);
     SyncFunc<AscendC::HardEvent::S_V>();
@@ -524,6 +532,15 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
     LocalTensor<XType> xInTensor = inQueue.AllocTensor<XType>();
     DataCopyPad(xInTensor, xGMTensor_[srcTokenIndex * axisH_], expandXCopyParams_, copyPadExtParams);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    if constexpr (IsSmoothScaleExist) {
+        DataCopyParams scaleInParams = {1U, static_cast<uint16_t>(scaleInBytes_), 0U, 0U};
+        DataCopyPadParams padParams = {true, 0, 0, 0};
+        auto tmp = scalesGMTensor_.ReinterpretCast<uint8_t>();
+        DataCopyPad(xInTensor[Align32(axisH_)].template ReinterpretCast<uint8_t>(),
+            tmp[srcTokenIndex * scaleInBytes_], scaleInParams, padParams);
+    }
+#endif
     inQueue.EnQue(xInTensor);
     xInTensor = inQueue.DeQue<XType>();
     FillTriple(xInTensor, srcTokenIndex, toExpertIndex);
@@ -590,7 +607,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (isExpertMaskFlag_) {
             srcTokenIndex = validBsIndexTensor_.GetValue(sendTokenIndex);
         }
-        if constexpr (QuantMode > UNQUANT) {
+        if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
             uint32_t fillExpertIdx = axisK_ + toSharedExpertIndex;
             uint32_t quantExpertIdx = toSharedExpertIndex;
             TokenToExpertInQuant(dstWinGMTensor, inQueue, srcTokenIndex, fillExpertIdx, quantExpertIdx);
@@ -685,7 +702,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                                                 hCommuSize_ * dstTokenPreCnt); // 计算地址偏移
                 dstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType*)rankGM);
                 if (!((expertIndex == sendNum_ - 1) && (remainderExpertNum_ != 0) && (dstTokenPreCnt % delCurExpertGroupNum != groupIdx))) {
-                    if constexpr (QuantMode > UNQUANT) {
+                    if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
                         uint32_t quantExpertIdx = dstExpertId + sharedExpertNum_;
                         TokenToExpertInQuant(dstWinGMTensor, inQueue, srcTokenIndex, topKIndex, quantExpertIdx);
                     } else {
@@ -717,7 +734,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     if (needMaskCalFlag) {
         tpipe_->InitBuffer(gatherMaskTBuf_, expertIdsBufSize_);
     }
-    if constexpr (QuantMode > UNQUANT) {
+    if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
         hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(tempBuf, hOutAlignUbSize_);
         tpipe_->InitBuffer(receiveDataCastFloatBuf, maxSize_);

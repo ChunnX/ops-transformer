@@ -432,7 +432,8 @@ static bool CheckTensorDataTypeNonQuant(const gert::TilingContext *context,
         "x datatype is invalid, datatype should be one of bf16/fp16/e5m2/e4m3fn/hif8, but is %s.",
         Ops::Base::ToString(xDesc->GetDataType()).c_str()), return false);
     // ExpandX: the same as X
-    OP_TILING_CHECK(expandXDesc->GetDataType() != xDesc->GetDataType(),
+    OP_TILING_CHECK((expandXDesc->GetDataType() != xDesc->GetDataType()
+                    && (expandXDesc->GetDataType() != ge::DT_HIFLOAT8)),
         OP_LOGE(nodeName, "expandX dataType is invalid, dataType should be equal to x dataType %s, but is %s.",
         Ops::Base::ToString(xDesc->GetDataType()).c_str(), Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
         return false);
@@ -1162,9 +1163,12 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
             scalesCol = ONE_DIM_SCALE_COL_NUM;
             scalesCount = static_cast<uint64_t>(scalesDim0);
         } else if (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
+            const int64_t scalesDim1 = scalesStorageShape->GetStorageShape().GetDim(1);
             OP_TILING_CHECK(scalesDim0 != bs,
                 OP_LOGE(nodeName, "The expected scalesDim0 is %u when scales is not null in non-quant, but got %ld", 
                 bs, scalesDim0), return ge::GRAPH_FAILED);
+            scalesCol = static_cast<uint64_t>(scalesDim1);
+            scalesCount = static_cast<uint64_t>(scalesDim0 * scalesDim1);
         } else {
             const int64_t scalesDim1 = scalesStorageShape->GetStorageShape().GetDim(1);
             OP_TILING_CHECK(

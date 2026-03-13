@@ -91,7 +91,8 @@ static bool IsTargetNpuArchInfershape(const char *nodeName, const std::set<std::
     return (targetPlatform.count(versionValNpuArch) > 0); 
 }
 
-static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, int64_t quantMode, int64_t a, int64_t h)
+static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const gert::Shape *scalesShape,
+                                      int64_t quantMode, int64_t a, int64_t h)
 {
     if (quantMode == QuantMode::QUANT_MODE_PERGROUP) {
         dynamicScalesShape->SetDimNum(DIM_TWO);
@@ -101,17 +102,24 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, int64_t q
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, ((h + MX_QUANT_SIZE - 1) / MX_QUANT_SIZE + 1) / NUM_EVEN * NUM_EVEN);
+    } else if ((quantMode == QuantMode::QUANT_MODE_NO_QUANT) && (scalesShape != nullptr)) {
+        dynamicScalesShape->SetDimNum(DIM_TWO);
+        dynamicScalesShape->SetDim(0U, a);
+        dynamicScalesShape->SetDim(1U, scalesShape->GetDim(1));
     } else {
         dynamicScalesShape->SetDimNum(DIM_ONE);
         dynamicScalesShape->SetDim(0U, a);
     }
 }
 
-static ge::DataType InferDataTypeDynamicScales(int64_t quantMode)
+static ge::DataType InferDataTypeDynamicScales(int64_t quantMode, ge::DataType scalesType, bool quantFlag)
 {
     ge::DataType dynamicScalesDtype = ge::DT_FLOAT;
     if (quantMode == QuantMode::QUANT_MODE_MX) {
         dynamicScalesDtype = ge::DT_FLOAT8_E8M0;
+    }
+    if (quantFlag && quantMode == QuantMode::QUANT_MODE_NO_QUANT) {
+        dynamicScalesDtype = scalesType;
     }
     return dynamicScalesDtype;
 }
@@ -127,6 +135,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
     const gert::Shape *expertIdsShape = context->GetInputShape(DISPATCH_INPUT_EXPERT_IDS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
+    const gert::Shape *scalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_SCALES_IDX_INDEX);
     const gert::Shape *expertScalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_EXPERT_SCALES_IDX_INDEX);
     const gert::Shape *elasticInfoShape = context->GetOptionalInputShape(DISPATCH_INPUT_ELASTIC_INFO_IDX_INDEX);
 
@@ -249,7 +258,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         Ops::Base::ToString(*expandXShape).c_str());
 
     if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
-        InferShapeDynamicScalesA5(dynamicScalesShape, *quantMode, a, h);
+        InferShapeDynamicScalesA5(dynamicScalesShape, scalesShape, *quantMode, a, h);
     } else {
         dynamicScalesShape->SetDimNum(DIM_ONE);
         dynamicScalesShape->SetDim(0U, realA);
@@ -345,7 +354,8 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     ge::DataType expandXDtype = ge::DT_INT8;
     if (!quantFlag && (*quantMode == QuantMode::QUANT_MODE_NO_QUANT)) {
         expandXDtype = xDtype;
-    } else if ((yDtypePtr != nullptr) && (*yDtypePtr != ge::DT_UNDEFINED)) {
+    }
+    if ((yDtypePtr != nullptr) && (*yDtypePtr != ge::DT_UNDEFINED)) {
         int64_t yDtype = *yDtypePtr;
         OP_LOGD(context->GetNodeName(), "specified y_dtype = %lld.", yDtype);
         OP_CHECK_IF(CheckQuantMode(context, quantMode, yDtype) == ge::GRAPH_FAILED,
@@ -355,7 +365,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     }
     context->SetOutputDataType(DISPATCH_OUTPUT_EXPAND_X_INDEX, expandXDtype);
     context->SetOutputDataType(DISPATCH_OUTPUT_DYNAMIC_SCALES_INDEX,
-                               InferDataTypeDynamicScales(*quantMode));
+                               InferDataTypeDynamicScales(*quantMode, scalesType, quantFlag));
     context->SetOutputDataType(DISPATCH_OUTPUT_ASSIST_INFO_IDX_INDEX, ge::DT_INT32);
     context->SetOutputDataType(DISPATCH_OUTPUT_EXPERT_TOKEN_NUMS_INDEX, ge::DT_INT64);
     context->SetOutputDataType(DISPATCH_OUTPUT_EP_RECV_COUNTS_INDEX, ge::DT_INT32);

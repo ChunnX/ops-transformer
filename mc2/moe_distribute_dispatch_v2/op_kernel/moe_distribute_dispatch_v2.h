@@ -503,7 +503,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         validBsIndexTensor_ = validBsIndexTBuf_.Get<int32_t>();
     }
 
-    if constexpr (QuantMode > UNQUANT) {
+    if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
         tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
         totalUsedUB_ += maxSize_;
         floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
@@ -582,7 +582,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
             GlobalTensor<ExpandXOutType>& outTokenGT, uint32_t tokenIndex, uint32_t topKIndex,
             DataCopyPadParams& padParams, DataCopyParams& scaleInParams, uint32_t expertIndex)
 {
-    if constexpr (QuantMode > UNQUANT) {
+    if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
         xInTensor_ = xInQueue_.AllocTensor<XType>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         LocalTensor<uint8_t> singleByteTok = xInTensor_.template ReinterpretCast<uint8_t>();
@@ -596,7 +596,15 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xInQueue_.EnQue(xInTensor_);
         xInTensor_ = xInQueue_.DeQue<XType>();
         xOutTensor_ = xOutQueue_.AllocTensor<ExpandXOutType>();
-        quantInst_.QuantProcess(xOutTensor_, xInTensor_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
+        if constexpr (QuantMode > UNQUANT) {
+            quantInst_.QuantProcess(xOutTensor_, xInTensor_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
+        }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        else { // 非量化直转hifp8
+            Cast(floatLocalTemp_, xInTensor_, RoundMode::CAST_NONE, axisH_);
+            Cast(xOutTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
+        }
+#endif
         xOutQueue_.EnQue(xOutTensor_);
         xInQueue_.FreeTensor<XType>(xInTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
@@ -609,8 +617,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if constexpr (IsSmoothScaleExist) {
             auto tmp = scalesGMTensor_.ReinterpretCast<uint8_t>();
-            DataCopyPad(xTmpTensor_[axisH_].template ReinterpretCast<uint8_t>(), tmp[tokenIndex * scaleInBytes_],
-                scaleInParams, padParams);
+            DataCopyPad(xTmpTensor_[Align32(axisH_)].template ReinterpretCast<uint8_t>(),
+                tmp[tokenIndex * scaleInBytes_], scaleInParams, padParams);
         }
 #endif
         xQueue_.EnQue(xTmpTensor_);
