@@ -87,8 +87,7 @@ template <
 __global__ __aicore__ void grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
-    GM_ADDR gmmXOffsetOptinalGM, GM_ADDR gmmWeightOffsetOptinalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM,
-    GM_ADDR mmXOffsetOptinalGM, GM_ADDR mmWeightOffsetOptinalGM, GM_ADDR commQuantScaleGM,
+    GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM,
     GM_ADDR yGM, GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

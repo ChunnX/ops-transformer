@@ -29,8 +29,6 @@ extern "C" {
  * 数据格式支持ND，GroupedMatMul计算的右矩阵
  * @param [in] gmmXScale: 左矩阵的量化参数，数据类型为FLOAT32。
  * @param [in] gmmWeightScale: 右矩阵的量化参数，数据类型为FLOAT32。
- * @param [in] gmmXOffsetOptional: 可选输入，左矩阵的量化偏置，暂不支持。
- * @param [in] gmmWeightOffsetOptional: 可选输入，右矩阵的的量化偏置，暂不支持。
  * @param [in] sendCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32,
  * int64，shape为(e*epWorldSize)，数据格式支持ND，当前版本不支持，传入nullptr。
  * @param [in] recvCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32,
@@ -41,8 +39,6 @@ extern "C" {
  * 可选入参，计算输入，并行进行的共享专家matmul计算中的右矩阵，需与mmXOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(H2,N2)。
  * @param [in] mmXScaleOptional: 可选入参，共享专家matmul计算中左矩阵的量化参数，数据类型为FLOAT32。
  * @param [in] mmWeightScaleOptional: 可选入参，共享专家matmul计算中的右矩阵中的量化参数，数据类型为FLOAT32。
- * @param [in] mmXOffsetOptional: 可选输入，共享专家matmul计算中左矩阵的量化偏置，暂不支持。
- * @param [in] mmWeightOffsetOptional: 可选输入，共享专家matmul计算中的右矩阵的量化偏置，暂不支持。
  * @param [in] commQuantScaleOptional: 可选输入，低比特通信的量化参数，暂不支持。
  * @param [in] gmmXQuantMode: 左矩阵的量化模式，支持以下模式：
  *         - 0：无量化
@@ -93,10 +89,8 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
-    const aclTensor *gmmXOffsetOptional, const aclTensor *gmmWeightOffsetOptional,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-    const aclTensor *mmXOffsetOptional, const aclTensor *mmWeightOffsetOptional,
     const aclTensor *commQuantScaleOptional, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode,
     int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional,
     int64_t groupSize, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,

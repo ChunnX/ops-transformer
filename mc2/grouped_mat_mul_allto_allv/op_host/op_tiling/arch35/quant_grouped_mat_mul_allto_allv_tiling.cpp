@@ -77,24 +77,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTenso
                 sendCountsTensorDescNotNull, recvCountsTensorDescNotNull),
         return ge::GRAPH_FAILED);
 
-    auto gmmXOffsetTensorDesc = context_->GetOptionalInputDesc(GMM_X_OFFSET_OPTIONAL_INDEX);
-    auto gmmWeightOffsetTensorDesc = context_->GetOptionalInputDesc(GMM_WEIGHT_OFFSET_OPTIONAL_INDEX);
-    bool gmmXOffsetTensorDescNotNull = gmmXOffsetTensorDesc != nullptr;
-    bool gmmWeightOffsetTensorDescNotNull = gmmWeightOffsetTensorDesc != nullptr;
-    OP_TILING_CHECK(gmmXOffsetTensorDescNotNull || gmmWeightOffsetTensorDescNotNull,
-        OP_LOGE(opName_, "gmmXOffsetTensorNotNull=%d and gmmWeightOffsetTensorNotNull=%d, should all be nullptr now!",
-                gmmXOffsetTensorDescNotNull, gmmWeightOffsetTensorDescNotNull),
-        return ge::GRAPH_FAILED);
-
-    auto mmXOffsetTensorDesc = context_->GetOptionalInputDesc(MM_X_OFFSET_OPTIONAL_INDEX);
-    auto mmWeightOffsetTensorDesc = context_->GetOptionalInputDesc(MM_WEIGHT_OFFSET_OPTIONAL_INDEX);
-    bool mmXOffsetTensorDescNotNull = mmXOffsetTensorDesc != nullptr;
-    bool mmWeightOffsetTensorDescNotNull = mmWeightOffsetTensorDesc != nullptr;
-    OP_TILING_CHECK(mmXOffsetTensorDescNotNull || mmWeightOffsetTensorDescNotNull,
-        OP_LOGE(opName_, "mmXOffsetTensorNotNull=%d and mmWeightOffsetTensorNotNull=%d, should all be nullptr now!",
-                mmXOffsetTensorDescNotNull, mmWeightOffsetTensorDescNotNull),
-        return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 

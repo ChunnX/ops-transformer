@@ -240,11 +240,9 @@ static void TestQuantParamCase(const QuantGroupedMatmulAlltoAllvAclnnTestParam &
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, 
                         nullptr, nullptr,       // scale
-                        nullptr, nullptr,       // offset
                         nullptr, nullptr,       // counts tensor
                         mmX_, mmWeight_,            
                         nullptr, nullptr,       // mm scale
-                        nullptr, nullptr,       // mm weight
                         nullptr,                // commQuantScale
                         0, 0, 0, 0, 0,          // quantmode
                         -1, 0, group, epWorldSize, sendCounts,
@@ -294,11 +292,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode0
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         gmmXScale_, nullptr,     // gmmXScale 非空, gmmWeightScale 空
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,           // gmmXQM=0, 其余=0
                         -1, 0,
@@ -334,11 +330,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode1
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // gmmXScale=nullptr
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         1, 0, 0, 0, 0,           // gmmXQM=1, 其余=0
                         -1, 0,
@@ -375,11 +369,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quant
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, gmmWeightScale_, // gmmWeightScale 非空
-                        nullptr, nullptr,         // offset
                         nullptr, nullptr,         // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,         // mm scale
-                        nullptr, nullptr,         // mm offset
                         nullptr,                  // commQuantScale
                         0, 0, 0, 0, 0,            // gmmWQM=0
                         -1, 0,
@@ -415,11 +407,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quant
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // gmmWeightScale=nullptr
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 1, 0, 0, 0,           // gmmWQM=1
                         -1, 0,
@@ -456,11 +446,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode0_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // gmm scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         mmXScale_, nullptr,       // mmXScale 非空
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,           // mmXQM=0
                         -1, 0,
@@ -496,11 +484,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode1_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // gmm scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mmXScale=nullptr
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 1, 0, 0,           // mmXQM=1
                         -1, 0,
@@ -537,11 +523,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantm
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // gmm scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, mmWeightScale_, // mmWeightScale 非空
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,           // mmWQM=0
                         -1, 0,
@@ -577,181 +561,11 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantm
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // gmm scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mmWeightScale=nullptr
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 1, 0,           // mmWQM=1
-                        -1, 0,
-                        "test_grouped_mat_mul_allto_allv_ep_group",
-                        epWorldSize, sendCounts,
-                        recvCounts, false, false),
-                        OUTPUT(y_, mmY_));
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-}
-
-// ============================================================================
-// Group 2: Offset 不支持 (CheckNotSupportNull)
-// ============================================================================
-
-// gmmXOffsetOptional 非空 → PARAM_INVALID
-TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmXOffset_not_null)
-{
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmXOffset_({1}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    constexpr int64_t epWorldSize = 8;
-    constexpr int64_t e = 4;
-    constexpr int64_t BS = 4096;
-    constexpr int64_t K = 2;
-    std::vector<int64_t> sendCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    std::vector<int64_t> recvCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-    aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-    uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-
-    auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
-                        INPUT(gmmX_, gmmWeight_,
-                        nullptr, nullptr,        // scale
-                        gmmXOffset_, nullptr,     // gmmXOffset 非空
-                        nullptr, nullptr,        // counts tensor
-                        mmX_, mmWeight_,
-                        nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
-                        nullptr,                 // commQuantScale
-                        0, 0, 0, 0, 0,
-                        -1, 0,
-                        "test_grouped_mat_mul_allto_allv_ep_group",
-                        epWorldSize, sendCounts,
-                        recvCounts, false, false),
-                        OUTPUT(y_, mmY_));
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-}
-
-// gmmWeightOffsetOptional 非空 → PARAM_INVALID
-TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeightOffset_not_null)
-{
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeightOffset_({1}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    constexpr int64_t epWorldSize = 8;
-    constexpr int64_t e = 4;
-    constexpr int64_t BS = 4096;
-    constexpr int64_t K = 2;
-    std::vector<int64_t> sendCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    std::vector<int64_t> recvCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-    aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-    uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-
-    auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
-                        INPUT(gmmX_, gmmWeight_,
-                        nullptr, nullptr,        // scale
-                        nullptr, gmmWeightOffset_, // gmmWeightOffset 非空
-                        nullptr, nullptr,        // counts tensor
-                        mmX_, mmWeight_,
-                        nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
-                        nullptr,                 // commQuantScale
-                        0, 0, 0, 0, 0,
-                        -1, 0,
-                        "test_grouped_mat_mul_allto_allv_ep_group",
-                        epWorldSize, sendCounts,
-                        recvCounts, false, false),
-                        OUTPUT(y_, mmY_));
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-}
-
-// mmXOffsetOptional 非空 → PARAM_INVALID
-TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mmXOffset_not_null)
-{
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmXOffset_({1}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    constexpr int64_t epWorldSize = 8;
-    constexpr int64_t e = 4;
-    constexpr int64_t BS = 4096;
-    constexpr int64_t K = 2;
-    std::vector<int64_t> sendCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    std::vector<int64_t> recvCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-    aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-    uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-
-    auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
-                        INPUT(gmmX_, gmmWeight_,
-                        nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // gmm offset
-                        nullptr, nullptr,        // counts tensor
-                        mmX_, mmWeight_,
-                        nullptr, nullptr,        // mm scale
-                        mmXOffset_, nullptr,      // mmXOffset 非空
-                        nullptr,                 // commQuantScale
-                        0, 0, 0, 0, 0,
-                        -1, 0,
-                        "test_grouped_mat_mul_allto_allv_ep_group",
-                        epWorldSize, sendCounts,
-                        recvCounts, false, false),
-                        OUTPUT(y_, mmY_));
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-}
-
-// mmWeightOffsetOptional 非空 → PARAM_INVALID
-TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeightOffset_not_null)
-{
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeightOffset_({1}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    constexpr int64_t epWorldSize = 8;
-    constexpr int64_t e = 4;
-    constexpr int64_t BS = 4096;
-    constexpr int64_t K = 2;
-    std::vector<int64_t> sendCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    std::vector<int64_t> recvCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
-    aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-    aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-    uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-
-    auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
-                        INPUT(gmmX_, gmmWeight_,
-                        nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // gmm offset
-                        nullptr, nullptr,        // counts tensor
-                        mmX_, mmWeight_,
-                        nullptr, nullptr,        // mm scale
-                        nullptr, mmWeightOffset_, // mmWeightOffset 非空
-                        nullptr,                 // commQuantScale
-                        0, 0, 0, 0, 0,
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
                         epWorldSize, sendCounts,
@@ -790,11 +604,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCountsTenso
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         sendCountsTensor_, nullptr, // sendCountsTensor 非空
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -831,11 +643,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCountsTenso
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, recvCountsTensor_, // recvCountsTensor 非空
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -874,11 +684,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCounts_empt
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -913,11 +721,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCounts_empt
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -951,11 +757,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_sendRecvCounts_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -995,11 +799,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_group_nullptr)
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -1044,11 +846,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_sendRecvCounts_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 0,
                         -1, 0,
@@ -1084,11 +884,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_n
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,        // scale
-                        nullptr, nullptr,        // offset
                         nullptr, nullptr,        // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,        // mm scale
-                        nullptr, nullptr,        // mm offset
                         nullptr,                 // commQuantScale
                         0, 0, 0, 0, 1,           // commQuantMode=1
                         -1, 0,
@@ -1126,11 +924,9 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_quant_normal
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_,
                         gmmXScale_, gmmWeightScale_, // TT: 双 scale 非空
-                        nullptr, nullptr,            // offset
                         nullptr, nullptr,            // counts tensor
                         mmX_, mmWeight_,
                         nullptr, nullptr,            // mm scale
-                        nullptr, nullptr,            // mm offset
                         nullptr,                     // commQuantScale
                         1, 1, 0, 0, 0,               // gmmXQM=1, gmmWQM=1
                         -1, 0,
@@ -1173,9 +969,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_empty_dim1
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
@@ -1213,9 +1007,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_empty
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
@@ -1253,9 +1045,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_empty
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
@@ -1293,9 +1083,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_y_empty_dim0)
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
@@ -1333,9 +1121,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_y_empty_dim1)
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
@@ -1373,9 +1159,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_mm_empty_incons
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
@@ -1413,9 +1197,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_r
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 1,           // commQuantMode=1
@@ -1453,9 +1235,7 @@ TEST_F(DISABLED_test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_dim0_zero)
                         INPUT(gmmX_, gmmWeight_,
                         nullptr, nullptr,
                         nullptr, nullptr,
-                        nullptr, nullptr,
                         mmX_, mmWeight_,
-                        nullptr, nullptr,
                         nullptr, nullptr,
                         nullptr,
                         0, 0, 0, 0, 0,
