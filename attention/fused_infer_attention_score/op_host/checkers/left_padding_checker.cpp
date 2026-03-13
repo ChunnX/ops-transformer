@@ -86,7 +86,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &f
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckFeatureLayOut(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInfo)
 {
     // When left-padding is enabled for Query and Key/Value, TND/NTD scenarios are not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
@@ -158,7 +158,6 @@ ge::graphStatus LeftPaddingChecker::CheckMultiParaShapeAndDim(const FiaTilingInf
 
 ge::graphStatus LeftPaddingChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LeftPaddingChecker::CheckSinglePara!");
     if (ge::GRAPH_SUCCESS != CheckSingleDesc(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -169,13 +168,11 @@ ge::graphStatus LeftPaddingChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LeftPaddingChecker::CheckSinglePara!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LeftPaddingChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LeftPaddingChecker::CheckParaExistence!");
     if (enableNonQuant_) {
         ;
     } else if (enableFullQuant_) {
@@ -183,14 +180,12 @@ ge::graphStatus LeftPaddingChecker::CheckParaExistence(const FiaTilingInfo &fiaI
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LeftPaddingChecker::CheckParaExistence!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LeftPaddingChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LeftPaddingChecker::CheckFeature!");
-    if (ge::GRAPH_SUCCESS != CheckFeatureActualLen(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeatureLayOut(fiaInfo) ||
+    if (ge::GRAPH_SUCCESS != CheckFeatureActualLen(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeatureLayout(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureAlibiPse(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeaturePageAttention(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -201,13 +196,11 @@ ge::graphStatus LeftPaddingChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LeftPaddingChecker::CheckFeature!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LeftPaddingChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LeftPaddingChecker::CheckMultiPara!");
     if (enableNonQuant_) {
         if (ge::GRAPH_SUCCESS != CheckMultiParaShapeAndDim(fiaInfo)) {
             return ge::GRAPH_FAILED;
@@ -217,7 +210,6 @@ ge::graphStatus LeftPaddingChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LeftPaddingChecker::CheckMultiPara!");
     return ge::GRAPH_SUCCESS;
 }
 

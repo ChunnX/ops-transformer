@@ -30,8 +30,6 @@ using namespace AscendC;
 
 ge::graphStatus FIAChecker::Init(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin FIAChecker::Init!");
-
     if (fiaInfo.inputQType != fiaInfo.inputKvType) {
         enableAntiQuant_ = true;
     } else if (fiaInfo.inputQType == ge::DT_FLOAT16 || fiaInfo.inputQType == ge::DT_BF16) {
@@ -54,14 +52,11 @@ ge::graphStatus FIAChecker::Init(const FiaTilingInfo &fiaInfo)
     softmaxLSEChecker_ = std::make_unique<SoftmaxLSEChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     systemPrefixChecker_ = std::make_unique<SystemPrefixChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
 
-    OP_LOGI(fiaInfo.opName, "End FIAChecker::Init!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin FIAChecker::CheckSinglePara!");
     if (ge::GRAPH_SUCCESS != shapeChecker_->CheckSinglePara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -98,15 +93,11 @@ ge::graphStatus FIAChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != dequantChecker_->CheckSinglePara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
-
-    OP_LOGI(fiaInfo.opName, "End FIAChecker::CheckSinglePara!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin FIAChecker::CheckParaExistence!");
     if (ge::GRAPH_SUCCESS != shapeChecker_->CheckParaExistence(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -143,15 +134,11 @@ ge::graphStatus FIAChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != dequantChecker_->CheckParaExistence(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
-
-    OP_LOGI(fiaInfo.opName, "End FIAChecker::CheckParaExistence!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin FIAChecker::CheckFeature!");
     if (ge::GRAPH_SUCCESS != shapeChecker_->CheckFeature(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -189,14 +176,11 @@ ge::graphStatus FIAChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    OP_LOGI(fiaInfo.opName, "End FIAChecker::CheckFeature!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin FIAChecker::CheckMultiPara!");
     if (ge::GRAPH_SUCCESS != shapeChecker_->CheckMultiPara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -233,16 +217,11 @@ ge::graphStatus FIAChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != dequantChecker_->CheckMultiPara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
-
-    OP_LOGI(fiaInfo.opName, "End FIAChecker::CheckMultiPara!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::Process(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin FIAChecker::Process!");
-
     if (ge::GRAPH_SUCCESS != CheckSinglePara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -255,8 +234,6 @@ ge::graphStatus FIAChecker::Process(const FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != CheckMultiPara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
-
-    OP_LOGI(fiaInfo.opName, "End FIAChecker::Process!");
 
     return ge::GRAPH_SUCCESS;
 }

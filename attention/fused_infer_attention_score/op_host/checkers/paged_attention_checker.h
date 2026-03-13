@@ -39,7 +39,7 @@ private:
     // 公共校验函数
 
     ge::graphStatus CheckBlockTableDtype(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKVDtypeSupport(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckQDtypeSupport(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureExistence(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo);
@@ -54,7 +54,6 @@ private:
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
         const std::string& inputName);
 
-private:
 };
 
 } // namespace optiling

@@ -52,8 +52,6 @@ private:
     ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo);
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckNoMaskPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBandPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
 
     // enableNonQuant 相关校验函数
 

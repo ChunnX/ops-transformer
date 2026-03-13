@@ -49,7 +49,6 @@ private:
     ge::graphStatus CheckAxis(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryOutConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKeyValueConsistency(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKeyValueTensorlistConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
     ge::graphStatus CheckKeyDVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
@@ -58,7 +57,7 @@ private:
     ge::graphStatus CheckQueryKeyTensorlistConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMultiAttr(const FiaTilingInfo &fiaInfo);
     void GetQueryDimAndOutDim(const gert::StorageShape* queryShape, const gert::StorageShape* outShape,
-        const std::string &layoutStr, int64_t &tmpqueryDim, int64_t &outDim, uint32_t i);
+        const std::string &layoutStr, int64_t &tmpQueryDim, int64_t &outDim, uint32_t i);
 
     // enableNonQuant 相关校验函数
     ge::graphStatus CheckNonQuantDataType(const FiaTilingInfo &fiaInfo);
@@ -66,6 +65,9 @@ private:
     ge::graphStatus CheckNonQuantHeadNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckNonQuantInputLayout(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckNonQuantInnerPrecise(const FiaTilingInfo &fiaInfo);
+    bool CheckTNDLayoutCrossover(const FiaTilingInfo &fiaInfo);
+    bool CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo);
+    bool CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo);
 
     // enableFullQuant 相关校验函数
 

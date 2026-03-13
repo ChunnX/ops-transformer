@@ -67,7 +67,7 @@ ge::graphStatus DequantChecker::CheckDataTypeFullquant(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
-// MLA dequnatscale dtype:fp32
+// MLA dequantscale dtype:fp32
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeMLAFullquant(const FiaTilingInfo &fiaInfo)
 {
     if (!enableIFAMLAFullQuant_) {
@@ -92,7 +92,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeMLAFullquant(const FiaTili
     return ge::GRAPH_SUCCESS;
 }
 
-// GQA perblock dequnatscale dtype:fp32
+// GQA perblock dequantscale dtype:fp32
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilingInfo &fiaInfo)
 {
     if (!enablePerblockQuant_) {
@@ -277,14 +277,14 @@ ge::graphStatus DequantChecker::CheckExistencePertensorFullquant(const FiaTiling
     if (!enablePertensorQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-    string qunatModeName = "per-tensor quant";
+    string quantModeName = "per-tensor quant";
     const gert::Tensor *quantScale1Tensor = fiaInfo.opParamInfo.quantScale1.tensor;
     const gert::Tensor *deqScale1Tensor = fiaInfo.opParamInfo.deqScale1.tensor;
     const gert::Tensor *deqScale2Tensor = fiaInfo.opParamInfo.deqScale2.tensor;
     // Q/K/V antiquantScale
-    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, quantScale1Tensor, qunatModeName, "quantScale1") ||
-        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, deqScale1Tensor, qunatModeName, "deqScale1") ||
-        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, deqScale2Tensor, qunatModeName, "deqScale2")) {
+    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, quantScale1Tensor, quantModeName, "quantScale1") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, deqScale1Tensor, quantModeName, "deqScale1") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, deqScale2Tensor, quantModeName, "deqScale2")) {
         return ge::GRAPH_FAILED;
     }
 
@@ -294,26 +294,26 @@ ge::graphStatus DequantChecker::CheckExistencePertensorFullquant(const FiaTiling
          deqScale1Tensor->GetStorageShape().GetShapeSize() == 0 ||
          deqScale2Tensor->GetStorageShape().GetShapeSize() == 0),
         OP_LOGE(fiaInfo.opName, "In %s scenario, deqScale1, quantScale1 or deqScale2 should not be empty tensor.",
-                qunatModeName.c_str()),
+                quantModeName.c_str()),
         return ge::GRAPH_FAILED);
 
     // 其他量化方式参数不能存在
     if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
-                                                          qunatModeName, "antiquantOffset") ||
+                                                          quantModeName, "antiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
-                                                          qunatModeName, "keyAntiquantOffset") ||
+                                                          quantModeName, "keyAntiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
-                                                          qunatModeName, "valueAntiquantOffset") ||
+                                                          quantModeName, "valueAntiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
-                                                          qunatModeName, "antiquantScale") ||
+                                                          quantModeName, "antiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
-                                                          qunatModeName, "keyAntiquantScale") ||
+                                                          quantModeName, "keyAntiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
-                                                          qunatModeName, "valueAntiquantScale") ||
+                                                          quantModeName, "valueAntiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
-                                                          qunatModeName, "dequantScaleQuery") ||
+                                                          quantModeName, "dequantScaleQuery") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
-                                                          qunatModeName, "keyRopeAntiquantScale")) {
+                                                          quantModeName, "keyRopeAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -324,38 +324,38 @@ ge::graphStatus DequantChecker::CheckExistenceMLAFullquant(const FiaTilingInfo &
     if (!enableIFAMLAFullQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-    string qunatModeName = "MLA fullquant";
+    string quantModeName = "MLA fullquant";
     // Q/K/V antiquantScale
     if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
-                                                       qunatModeName, "dequantScaleQuery") ||
+                                                       quantModeName, "dequantScaleQuery") ||
         ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
-                                                       qunatModeName, "keyAntiquantScale") ||
+                                                       quantModeName, "keyAntiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
-                                                       qunatModeName, "valueAntiquantScale")) {
+                                                       quantModeName, "valueAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
 
     // 不支持offset
     if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
-                                                          qunatModeName, "antiquantOffset") ||
+                                                          quantModeName, "antiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
-                                                          qunatModeName, "keyAntiquantOffset") ||
+                                                          quantModeName, "keyAntiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
-                                                          qunatModeName, "valueAntiquantOffset")) {
+                                                          quantModeName, "valueAntiquantOffset")) {
         return ge::GRAPH_FAILED;
     }
 
     // 其他量化方式参数不能存在
     if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantScale1.tensor,
-                                                          qunatModeName, "quantScale1") ||
-        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, qunatModeName,
+                                                          quantModeName, "quantScale1") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, quantModeName,
                                                           "deqScale1") ||
-        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, qunatModeName,
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, quantModeName,
                                                           "deqScale2") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
-                                                          qunatModeName, "antiquantScale") ||
+                                                          quantModeName, "antiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
-                                                          qunatModeName, "keyRopeAntiquantScale")) {
+                                                          quantModeName, "keyRopeAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -366,38 +366,38 @@ ge::graphStatus DequantChecker::CheckExistencePerblockFullquant(const FiaTilingI
     if (!enablePerblockQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-    string qunatModeName = "per-block quant";
+    string quantModeName = "per-block quant";
     // Q/K/V antiquantScale
     if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
-                                                       qunatModeName, "dequantScaleQuery") ||
+                                                       quantModeName, "dequantScaleQuery") ||
         ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
-                                                       qunatModeName, "keyAntiquantScale") ||
+                                                       quantModeName, "keyAntiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
-                                                       qunatModeName, "valueAntiquantScale")) {
+                                                       quantModeName, "valueAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
 
     // 不支持offset
     if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
-                                                          qunatModeName, "antiquantOffset") ||
+                                                          quantModeName, "antiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
-                                                          qunatModeName, "keyAntiquantOffset") ||
+                                                          quantModeName, "keyAntiquantOffset") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
-                                                          qunatModeName, "valueAntiquantOffset")) {
+                                                          quantModeName, "valueAntiquantOffset")) {
         return ge::GRAPH_FAILED;
     }
 
     // 其他量化方式参数不能存在
     if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantScale1.tensor,
-                                                          qunatModeName, "quantScale1") ||
-        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, qunatModeName,
+                                                          quantModeName, "quantScale1") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, quantModeName,
                                                           "deqScale1") ||
-        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, qunatModeName,
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, quantModeName,
                                                           "deqScale2") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
-                                                          qunatModeName, "antiquantScale") ||
+                                                          quantModeName, "antiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
-                                                          qunatModeName, "keyRopeAntiquantScale")) {
+                                                          quantModeName, "keyRopeAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -971,211 +971,177 @@ ge::graphStatus DequantChecker::CheckAntiquantModeForAntiquant(const FiaTilingIn
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
 
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
-    }
+    // 只支持KV分离场景，key和value的antiquantScaleTensor都应非空
+    OP_CHECK_IF(keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr,
+                    OP_LOGE(fiaInfo.opName,
+                            "In antiquant scenario, keyAntiquantScale and valueAntiquantScale must exist!"),
+                    return ge::GRAPH_FAILED);
+    // 不支持KV不分离场景
+    OP_CHECK_IF(*fiaInfo.opParamInfo.antiquantMode != 0 || fiaInfo.opParamInfo.antiquantScale.tensor != nullptr ||
+                    fiaInfo.opParamInfo.antiquantOffset.tensor != nullptr,
+                OP_LOGE(fiaInfo.opName, "Antiquant scenario only supports key/value split mode, antiquantMode, "
+                                        "antiquantScale and antiquantOffset are not supported!"),
+                return ge::GRAPH_FAILED);
 
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景，校验antiquantMode
-        int64_t antiquantMode = 0;
-        if (fiaInfo.opParamInfo.antiquantMode != nullptr) {
-            antiquantMode = *fiaInfo.opParamInfo.antiquantMode;
-        }
-        OP_LOGI(fiaInfo.opName, "antiquantMode is %ld.", antiquantMode);
-        // 910_95支持antiquantMode范围
-        OP_CHECK_IF(((antiquantMode != PER_CHANNEL_MODE) && (antiquantMode != PER_TOKEN_MODE) &&
-                     (antiquantMode != PER_TENSOR_HEAD_MODE) && (antiquantMode != PER_TOKEN_HEAD_MODE) &&
-                     (antiquantMode != PER_TOKEN_PA_MODE) && (antiquantMode != PER_TOKEN_HEAD_PA_MODE) &&
-                     (antiquantMode != PER_TOKEN_GROUP_MODE)),
-                    OP_LOGE(fiaInfo.opName,
-                            "antiquantMode(%ld) is invalid."
-                            "It should be per-channel(0), per-token(1), per-tensor-head(2), per-token-head(3), "
-                            "per-token-PA(4), per-token-head-PA(5), per-token-group(6).",
-                            antiquantMode),
-                    return ge::GRAPH_FAILED);
-    } else {
-        // KV分离场景，校验keyAntiquantMode和valueAntiquantMode
-        // keyAntiquantMode
-        int64_t keyAntiquantMode = 0;
-        int64_t valueAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
-        if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
-            valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
-        }
-        OP_LOGI(fiaInfo.opName, "keyAntiquantMode is %ld.", keyAntiquantMode);
-        OP_LOGI(fiaInfo.opName, "valueAntiquantMode is %ld.", valueAntiquantMode);
-        OP_CHECK_IF(((keyAntiquantMode != PER_CHANNEL_MODE) && (keyAntiquantMode != PER_TOKEN_MODE) &&
-                     (keyAntiquantMode != PER_TENSOR_HEAD_MODE) && (keyAntiquantMode != PER_TOKEN_HEAD_MODE) &&
-                     (keyAntiquantMode != PER_TOKEN_PA_MODE) && (keyAntiquantMode != PER_TOKEN_HEAD_PA_MODE) &&
-                     (keyAntiquantMode != PER_TOKEN_GROUP_MODE)),
-                    OP_LOGE(fiaInfo.opName,
-                            "keyAntiquantMode(%ld) is invalid. "
-                            "It should be per-channel(0), per-token(1), per-tensor-head(2), per-token-head(3), "
-                            "per-token-PA(4), per-token-head-PA(5), per-token-group(6).",
-                            keyAntiquantMode),
-                    return ge::GRAPH_FAILED);
-        // valueAntiquantMode
-        OP_CHECK_IF(((valueAntiquantMode != PER_CHANNEL_MODE) && (valueAntiquantMode != PER_TOKEN_MODE) &&
-                     (valueAntiquantMode != PER_TENSOR_HEAD_MODE) && (valueAntiquantMode != PER_TOKEN_HEAD_MODE) &&
-                     (valueAntiquantMode != PER_TOKEN_PA_MODE) && (valueAntiquantMode != PER_TOKEN_HEAD_PA_MODE) &&
-                     (valueAntiquantMode != PER_TOKEN_GROUP_MODE)),
-                    OP_LOGE(fiaInfo.opName,
-                            "valueAntiquantMode(%ld) is invalid. "
-                            "It should be per-channel(0), per-token(1), per-tensor-head(2), per-token-head(3), "
-                            "per-token-PA(4), per-token-head-PA(5), per-token-group(6).",
-                            valueAntiquantMode),
-                    return ge::GRAPH_FAILED);
-        bool kPerChnVPerTokFlag = (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE);
-        // KV分离场景
-        OP_CHECK_IF((!kPerChnVPerTokFlag && (keyAntiquantMode != valueAntiquantMode)),
-                    OP_LOGE(fiaInfo.opName,
-                            "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) are not equal. "
-                            "keyAntiquantMode and valueAntiquantMode must be equal when keyAntiquantMode is not 0 "
-                            "and valueAntiquantMode is not 1.",
-                            keyAntiquantMode, valueAntiquantMode),
-                    return ge::GRAPH_FAILED);
+    // 校验keyAntiquantMode和valueAntiquantMode
+    // keyAntiquantMode
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     }
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+    OP_LOGI(fiaInfo.opName, "keyAntiquantMode is %ld.", keyAntiquantMode);
+    OP_LOGI(fiaInfo.opName, "valueAntiquantMode is %ld.", valueAntiquantMode);
+    OP_CHECK_IF(((keyAntiquantMode != PER_CHANNEL_MODE) && (keyAntiquantMode != PER_TOKEN_MODE) &&
+                 (keyAntiquantMode != PER_TENSOR_HEAD_MODE) && (keyAntiquantMode != PER_TOKEN_HEAD_MODE) &&
+                 (keyAntiquantMode != PER_TOKEN_PA_MODE) && (keyAntiquantMode != PER_TOKEN_HEAD_PA_MODE) &&
+                 (keyAntiquantMode != PER_TOKEN_GROUP_MODE)),
+                OP_LOGE(fiaInfo.opName,
+                        "keyAntiquantMode(%ld) is invalid. "
+                        "It should be per-channel(0), per-token(1), per-tensor-head(2), per-token-head(3), "
+                        "per-token-PA(4), per-token-head-PA(5), per-token-group(6).",
+                        keyAntiquantMode),
+                return ge::GRAPH_FAILED);
+    // valueAntiquantMode
+    OP_CHECK_IF(((valueAntiquantMode != PER_CHANNEL_MODE) && (valueAntiquantMode != PER_TOKEN_MODE) &&
+                 (valueAntiquantMode != PER_TENSOR_HEAD_MODE) && (valueAntiquantMode != PER_TOKEN_HEAD_MODE) &&
+                 (valueAntiquantMode != PER_TOKEN_PA_MODE) && (valueAntiquantMode != PER_TOKEN_HEAD_PA_MODE) &&
+                 (valueAntiquantMode != PER_TOKEN_GROUP_MODE)),
+                OP_LOGE(fiaInfo.opName,
+                        "valueAntiquantMode(%ld) is invalid. "
+                        "It should be per-channel(0), per-token(1), per-tensor-head(2), per-token-head(3), "
+                        "per-token-PA(4), per-token-head-PA(5), per-token-group(6).",
+                        valueAntiquantMode),
+                return ge::GRAPH_FAILED);
+    bool kPerChnVPerTokFlag = (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE);
+    // KV分离场景
+    OP_CHECK_IF((!kPerChnVPerTokFlag && (keyAntiquantMode != valueAntiquantMode)),
+                OP_LOGE(fiaInfo.opName,
+                        "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) are not equal. "
+                        "keyAntiquantMode and valueAntiquantMode must be equal when keyAntiquantMode is not 0 "
+                        "and valueAntiquantMode is not 1.",
+                        keyAntiquantMode, valueAntiquantMode),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo &fiaInfo)
 {
-    // 根据antiquantMode、keyAntiquantMode和valueAntiquantMode，校验输入key、value的datatype的合法性
+    // 根据keyAntiquantMode和valueAntiquantMode，校验输入key、value的datatype的合法性
     auto inputKvType = fiaInfo.inputKvType;
-    auto &antiquantScaleTensor = fiaInfo.opParamInfo.antiquantScale.tensor;
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
+
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     }
-    if (!kvAntiParamSplitFlag) {
-        if (antiquantScaleTensor == nullptr) {
-            return ge::GRAPH_SUCCESS;
-        }
-        // KV不分离场景，key、value的datatype仅支持INT8
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
+        // per-channel/per-tensor模式，支持key/value的数据类型为INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
+        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_HIFLOAT8 &&
+                     inputKvType != ge::DT_FLOAT8_E4M3FN),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8, INT4(INT32), HIFLOAT8 or FLOAT8_E4M3FN when "
+                            "keyAntiquantMode is per-channel(per-tensor) mode and "
+                            "valueAntiquantMode is per-channel(per-tensor) mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+        // per-tensor模式，仅当key/value的数类型为INT8时支持
+        gert::Shape expectedShape1 = gert::Shape({1});
+        auto keyAntiquantScaleShape = keyAntiquantScaleTensor->GetStorageShape();
+        OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1) && inputKvType != ge::DT_INT8,
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8 when "
+                            "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        // per-token模式，支持key/value的数据类型为INT8、INT4(INT32)
+        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8 or INT4(INT32) when "
+                            "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
+        // per-tensor-head模式，支持key/value的数据类型为INT8
         OP_CHECK_IF((inputKvType != ge::DT_INT8),
                     OP_LOGE(fiaInfo.opName,
                             "datatype of key and value(%s) is not supported. "
                             "datatype of key and value must be INT8 when "
-                            "keyAntiquant/valueAntiquant is not in split mode.",
+                            "keyAntiquantMode is per-tensor-head mode and "
+                            "valueAntiquantMode is per-tensor-head mode.",
                             DataTypeToSerialString(inputKvType).c_str()),
                     return ge::GRAPH_FAILED);
-    } else {
-        if (keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr) {
-            return ge::GRAPH_SUCCESS;
-        }
-        int64_t keyAntiquantMode = 0;
-        int64_t valueAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
-        if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
-            valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
-        }
-        bool kPerChnVPerTokFlag = (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE);
-        // KV分离场景
-        if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
-            // per-channel/per-tensor模式，支持key/value的数据类型为INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
-            OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_HIFLOAT8 &&
-                         inputKvType != ge::DT_FLOAT8_E4M3FN),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8, INT4(INT32), HIFLOAT8 or FLOAT8_E4M3FN when "
-                                "keyAntiquantMode is per-channel(per-tensor) mode and "
-                                "valueAntiquantMode is per-channel(per-tensor) mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-            // per-tensor模式，仅当key/value的数类型为INT8时支持
-            gert::Shape expectedShape1 = gert::Shape({1});
-            auto keyAntiquantScaleShape = keyAntiquantScaleTensor->GetStorageShape();
-            OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1) && inputKvType != ge::DT_INT8,
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 when "
-                                "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            // per-token模式，支持key/value的数据类型为INT8、INT4(INT32)
-            OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 or INT4(INT32) when "
-                                "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
-            // per-tensor-head模式，支持key/value的数据类型为INT8
-            OP_CHECK_IF((inputKvType != ge::DT_INT8),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 when "
-                                "keyAntiquantMode is per-tensor-head mode and "
-                                "valueAntiquantMode is per-tensor-head mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
-            // per-token-head模式，支持key/value的数据类型为INT8、INT4(INT32)
-            OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 or INT4(INT32) when "
-                                "keyAntiquantMode is per-token-head mode and "
-                                "valueAntiquantMode is per-token-head mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
-            // per-token模式使用page attention管理scale/offset，支持key/value数据类型为INT8
-            OP_CHECK_IF((inputKvType != ge::DT_INT8),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 when "
-                                "keyAntiquantMode is per-token-PA mode and "
-                                "valueAntiquantMode is per-token-PA mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
-            // per-token-head模式使用page attention管理scale/offset，支持key/value的数据类型为INT8
-            OP_CHECK_IF((inputKvType != ge::DT_INT8),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 when "
-                                "keyAntiquantMode is per-token-head-PA mode and "
-                                "valueAntiquantMode is per-token-head-PA mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            // key支持per-channel叠加value支持per-token，支持key/value的数据类型为INT8、INT4(INT32)
-            OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be INT8 or INT4(INT32) when "
-                                "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-            // per-token-group模式，支持key/value的数据类型为FLOAT4_E2M1
-            OP_CHECK_IF((inputKvType != ge::DT_FLOAT4_E2M1),
-                        OP_LOGE(fiaInfo.opName,
-                                "datatype of key and value(%s) is not supported. "
-                                "datatype of key and value must be FLOAT4_E2M1 when "
-                                "keyAntiquantMode is per-token-group mode and "
-                                "valueAntiquantMode is per-token-group mode.",
-                                DataTypeToSerialString(inputKvType).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
     }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
+        // per-token-head模式，支持key/value的数据类型为INT8、INT4(INT32)
+        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8 or INT4(INT32) when "
+                            "keyAntiquantMode is per-token-head mode and "
+                            "valueAntiquantMode is per-token-head mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
+        // per-token模式使用page attention管理scale/offset，支持key/value数据类型为INT8
+        OP_CHECK_IF((inputKvType != ge::DT_INT8),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8 when "
+                            "keyAntiquantMode is per-token-PA mode and "
+                            "valueAntiquantMode is per-token-PA mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
+        // per-token-head模式使用page attention管理scale/offset，支持key/value的数据类型为INT8
+        OP_CHECK_IF((inputKvType != ge::DT_INT8),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8 when "
+                            "keyAntiquantMode is per-token-head-PA mode and "
+                            "valueAntiquantMode is per-token-head-PA mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        // key支持per-channel叠加value支持per-token，支持key/value的数据类型为INT8、INT4(INT32)
+        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be INT8 or INT4(INT32) when "
+                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
+        // per-token-group模式，支持key/value的数据类型为FLOAT4_E2M1
+        OP_CHECK_IF((inputKvType != ge::DT_FLOAT4_E2M1),
+                    OP_LOGE(fiaInfo.opName,
+                            "datatype of key and value(%s) is not supported. "
+                            "datatype of key and value must be FLOAT4_E2M1 when "
+                            "keyAntiquantMode is per-token-group mode and "
+                            "valueAntiquantMode is per-token-group mode.",
+                            DataTypeToSerialString(inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1183,7 +1149,6 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
 ge::graphStatus DequantChecker::CheckExistenceForAntiquant(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckDescExistenceForAntiquant(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckScaleExistenceForAntiquant(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckOffsetExistenceForAntiquant(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -1193,11 +1158,6 @@ ge::graphStatus DequantChecker::CheckExistenceForAntiquant(const FiaTilingInfo &
 ge::graphStatus DequantChecker::CheckDescExistenceForAntiquant(const FiaTilingInfo &fiaInfo)
 {
     // 所有输入若Tensor存在，则Desc必须存在
-    // antiquantScale
-    OP_CHECK_IF(
-        (fiaInfo.opParamInfo.antiquantScale.tensor != nullptr && fiaInfo.opParamInfo.antiquantScale.desc == nullptr),
-        OP_LOGE(fiaInfo.opName, "antiqauntScaleTensor exists, but antiquantScaleDesc does not exist."),
-        return ge::GRAPH_FAILED);
     // keyantiquantScale
     OP_CHECK_IF((fiaInfo.opParamInfo.keyAntiquantScale.tensor != nullptr &&
                  fiaInfo.opParamInfo.keyAntiquantScale.desc == nullptr),
@@ -1208,11 +1168,6 @@ ge::graphStatus DequantChecker::CheckDescExistenceForAntiquant(const FiaTilingIn
         (fiaInfo.opParamInfo.valueAntiquantScale.tensor != nullptr &&
          fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr),
         OP_LOGE(fiaInfo.opName, "valueAntiqauntScaleTensor exists, but valueAntiquantScaleDesc does not exist."),
-        return ge::GRAPH_FAILED);
-    // antiquantOffset
-    OP_CHECK_IF(
-        (fiaInfo.opParamInfo.antiquantOffset.tensor != nullptr && fiaInfo.opParamInfo.antiquantOffset.desc == nullptr),
-        OP_LOGE(fiaInfo.opName, "antiqauntOffsetTensor exists, but antiquantOffsetDesc does not exist."),
         return ge::GRAPH_FAILED);
     // keyAntiquantOffset
     OP_CHECK_IF((fiaInfo.opParamInfo.keyAntiquantOffset.tensor != nullptr &&
@@ -1228,95 +1183,82 @@ ge::graphStatus DequantChecker::CheckDescExistenceForAntiquant(const FiaTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus DequantChecker::CheckScaleExistenceForAntiquant(const FiaTilingInfo &fiaInfo)
-{
-    // 校验Scale的存在性
-    auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
-    auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-
-    bool kvAntiParamSplitFlag = true;
-    if (keyAntiquantScaleTensor == nullptr && valueAntiquantScaleTensor == nullptr) {
-        kvAntiParamSplitFlag = false;  // keyAntiquantScale和valueAntiquantScale均为空，则为合并场景
-    }
-
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        // antiquantScaleTensor必须存在
-        OP_CHECK_IF((fiaInfo.opParamInfo.antiquantScale.tensor == nullptr),
-                    OP_LOGE(fiaInfo.opName, "antiquantScale does not exist. "
-                                            "antiquantScale must exist when "
-                                            "keyAntiquant/valueAntiquant is not in split mode."),
-                    return ge::GRAPH_FAILED);
-    } else {
-        // keyAntiquantScaleTensor必须存在
-        OP_CHECK_IF(
-            (fiaInfo.opParamInfo.keyAntiquantScale.tensor == nullptr),
-            OP_LOGE(fiaInfo.opName, "keyAntiquantScale does not exist. "
-                                    "keyAntiquantScale must exist when keyAntiquant/valueAntiquant is splited."),
-            return ge::GRAPH_FAILED);
-        // valueAntiquantScaleTensor必须存在
-        OP_CHECK_IF(
-            (fiaInfo.opParamInfo.valueAntiquantScale.tensor == nullptr),
-            OP_LOGE(fiaInfo.opName, "valueAntiquantScale does not exist. "
-                                    "valueAntiquantScale must exist when keyAntiquant/valueAntiquant is splited."),
-            return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus DequantChecker::CheckOffsetExistenceForAntiquant(const FiaTilingInfo &fiaInfo)
 {
     // 校验Offset的存在性
-    auto &antiquantScaleTensor = fiaInfo.opParamInfo.antiquantScale.tensor;
-    auto &antiquantOffsetTensor = fiaInfo.opParamInfo.antiquantOffset.tensor;
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     auto &keyAntiquantOffsetTensor = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
     auto &valueAntiquantOffsetTensor = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
     auto inputKvType = fiaInfo.opParamInfo.key.desc->GetDataType();
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
+
+    // keyAntiquantOffset和valueAntiquantOffset要么同时存在，要么同时不存在
+    OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr && valueAntiquantOffsetTensor == nullptr),
+                OP_LOGE(fiaInfo.opName, "keyAntiquantOffset does not exist, but valueAntiquantOffset exists."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((valueAntiquantOffsetTensor != nullptr && keyAntiquantOffsetTensor == nullptr),
+                OP_LOGE(fiaInfo.opName, "valueAntiquantOffset does not exist, but keyAntiquantOffset exists."),
+                return ge::GRAPH_FAILED);
+    // key、value的datatype为FLOAT8_E4M3FN、HIFLOAT8和FLOAT4_E2M1时，不支持Offset
+    if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 || inputKvType == ge::DT_FLOAT4_E2M1) {
+        OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr),
+                    OP_LOGE(fiaInfo.opName, "When the datatype is FLOAT8_E4M3FN, HIFLOAT8 or FLOAT4_E2M1, "
+                                            "keyAntiquantOffsetTensor is not supported."),
+                    return ge::GRAPH_FAILED);
     }
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        // antiquantOffset的存在性与antiquantScale一致
-        OP_CHECK_IF((antiquantOffsetTensor != nullptr && antiquantScaleTensor == nullptr),
-                    OP_LOGE(fiaInfo.opName, "antiquantOffset exists, but antiquantScale does not exist."),
+    if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 || inputKvType == ge::DT_FLOAT4_E2M1) {
+        OP_CHECK_IF((valueAntiquantOffsetTensor != nullptr),
+                    OP_LOGE(fiaInfo.opName, "When the datatype is FLOAT8_E4M3FN, HIFLOAT8 or FLOAT4_E2M1, "
+                                            "valueAntiquantOffsetTensor is not supported."),
                     return ge::GRAPH_FAILED);
-    } else {
-        // KV分离场景
-        // keyAntiquantOffset和valueAntiquantOffset要么同时存在，要么同时不存在
-        OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr && valueAntiquantOffsetTensor == nullptr),
-                    OP_LOGE(fiaInfo.opName, "keyAntiquantOffset does not exist, but valueAntiquantOffset exists."),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((valueAntiquantOffsetTensor != nullptr && keyAntiquantOffsetTensor == nullptr),
-                    OP_LOGE(fiaInfo.opName, "valueAntiquantOffset does not exist, but keyAntiquantOffset exists."),
-                    return ge::GRAPH_FAILED);
-        // key、value的datatype为FLOAT8_E4M3FN、HIFLOAT8和FLOAT4_E2M1时，不支持Offset
-        if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 ||
-            inputKvType == ge::DT_FLOAT4_E2M1) {
-            OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr),
-                        OP_LOGE(fiaInfo.opName, "When the datatype is FLOAT8_E4M3FN, HIFLOAT8 or FLOAT4_E2M1, "
-                                                "keyAntiquantOffsetTensor is not supported."),
-                        return ge::GRAPH_FAILED);
-        }
-        if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 ||
-            inputKvType == ge::DT_FLOAT4_E2M1) {
-            OP_CHECK_IF((valueAntiquantOffsetTensor != nullptr),
-                        OP_LOGE(fiaInfo.opName, "When the datatype is FLOAT8_E4M3FN, HIFLOAT8 or FLOAT4_E2M1, "
-                                                "valueAntiquantOffsetTensor is not supported."),
-                        return ge::GRAPH_FAILED);
-        }
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
 // feature
 ge::graphStatus DequantChecker::CheckFeatureForAntiquant(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeaturePAForAntiquant(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckFeatureExtendForAntiquant(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckFeaturePAForAntiquant(fiaInfo)) {
         return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckFeatureExtendForAntiquant(const FiaTilingInfo &fiaInfo)
+{
+    OP_CHECK_IF(
+        (fiaInfo.inputKvType == ge::DT_INT8 &&fiaInfo.qLayout == FiaLayout::TND),
+        OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                                "the layout of input does not support TND."),
+        return ge::GRAPH_FAILED);
+    if (fiaInfo.s1Size > 1) {
+        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 &&
+                     (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                            "the data type of query and output only support BF16."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 && !fiaInfo.batchContinuousFlag),
+                    OP_LOGE(fiaInfo.opName,
+                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                            "tensorlist is not supported."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 && (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                            "leftpadding is not supported."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.pageAttentionFlag),
+                    OP_LOGE(fiaInfo.opName,
+                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                            "page attention is not supported."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32),
+                    OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode scenario, int4 and int32 data "
+                                            "types are not supported for the key and value."),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1331,121 +1273,88 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     auto &keyAntiquantOffsetTensor = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
     auto &valueAntiquantOffsetTensor = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
-    }
     int32_t blockSize = fiaInfo.blockSize;
     uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        int64_t antiquantMode = 0;
-        if (fiaInfo.opParamInfo.antiquantMode != nullptr) {
-            antiquantMode = *fiaInfo.opParamInfo.antiquantMode;
-        }
-        // per-token模式，antiquantScale和antiquantOffset输入最后一维需要大于等于maxBlockNumPerSeq * blockSize
-        if (antiquantMode == PER_TOKEN_MODE) {
-            auto &antiquantScaleTensor = fiaInfo.opParamInfo.antiquantScale.tensor;
-            auto &antiquantOffsetTensor = fiaInfo.opParamInfo.antiquantOffset.tensor;
-            if (antiquantScaleTensor == nullptr) {
-                // 若不存在antiquantScale，则放弃后续校验
-                return ge::GRAPH_SUCCESS;
-            }
-            auto antiquantScaleTensorShape = antiquantScaleTensor->GetStorageShape();
-            // antiquantScale的最后一维需要大于等于maxBlockNumPerSeq * blockSize
-            OP_CHECK_IF((antiquantScaleTensorShape.GetDim(DIM_NUM_2) < maxBlockNumPerBatch * blockSize),
-                        OP_LOGE(fiaInfo.opName,
-                                "The last dimension(%u) of antiquantScale is less than "
-                                "maxBlockNumPerBatch(%u) * blockSize(%u). "
-                                "The last dimension of antiquantScale should be larger than or equal to "
-                                "maxBlockNumPerBatch * blockSize when "
-                                "antiquantMode is per-token mode and keyAntiquant/valuAntiquant is not splited.",
-                                antiquantScaleTensorShape.GetDim(DIM_NUM_2), maxBlockNumPerBatch, blockSize),
-                        return ge::GRAPH_FAILED);
-        }
-    } else {
-        // KV分离场景
-        int64_t keyAntiquantMode = 0;
-        int64_t valueAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
-        if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
-            valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
-        }
-        // per-token模式，per-token叠加per-head模式，antiquantScale输入的最后一维需要大于等于maxBlockNumPerBatch * blockSize
-        // per-token模式
-        if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            // shape 可能为(1, B, S)或(B, S)
-            uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
-            OP_CHECK_IF(
-                (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
-                OP_LOGE(fiaInfo.opName,
-                        "The last dimension(%u) of keyAntiquantScale is less than "
-                        "maxBlockNumPerBatch(%u) * blockSize(%u). "
-                        "The last dimension of keyAntiquantScale should be larger than or equal to "
-                        "maxBlockNumPerBatch * blockSize when "
-                        "keyAntiquantMode, valueAntiquantMode are per-token mode and "
-                        "keyAntiquant/valuAntiquant is splited.",
-                        keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
-                return ge::GRAPH_FAILED);
-            OP_CHECK_IF(
-                (valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
-                OP_LOGE(fiaInfo.opName,
-                        "The last dimension(%u) of valueAntiquantScale is less than "
-                        "maxBlockNumPerBatch(%u) * blockSize(%u). "
-                        "The last dimension of valueAntiquantScale should be larger than or equal to "
-                        "maxBlockNumPerBatch * blockSize when "
-                        "keyAntiquantMode, valueAntiquantMode are per-token mode and "
-                        "keyAntiquant/valuAntiquant is splited.",
-                        valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch,
-                        blockSize),
-                return ge::GRAPH_FAILED);
-        }
-        // per-token叠加per-head模式
-        // shape可能为(B,N,S)
-        uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
-        if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
-            OP_CHECK_IF(
-                (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
-                OP_LOGE(fiaInfo.opName,
-                        "The last dimension(%u) of keyAntiquantScale is less than "
-                        "maxBlockNumPerBatch(%u) * blockSize(%u). "
-                        "The last dimension of keyAntiquantScale should be larger than or equal to "
-                        "maxBlockNumPerBatch * blockSize when "
-                        "keyAntiquantMode, valueAntiquantMode are per-token-head mode and "
-                        "keyAntiquant/valuAntiquant is splited.",
-                        keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
-                return ge::GRAPH_FAILED);
-            OP_CHECK_IF(
-                (valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
-                OP_LOGE(fiaInfo.opName,
-                        "The last dimension(%u) of valueAntiquantScale is less than "
-                        "maxBlockNumPerBatch(%u) * blockSize(%u). "
-                        "The last dimension of valueAntiquantScale should be larger than or equal to "
-                        "maxBlockNumPerBatch * blockSize when "
-                        "keyAntiquantMode, valueAntiquantMode are per-token-head mode and "
-                        "keyAntiquant/valuAntiquant is splited.",
-                        valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch,
-                        blockSize),
-                return ge::GRAPH_FAILED);
-        }
-        // per-token-group模式，antiquantScale输入最后一维需要大于等于maxBlockNumPerSeq * blockSize
-        // shape为(1,B,N,S,D/32)
-        if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-            OP_CHECK_IF(
-                (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
-                OP_LOGE(fiaInfo.opName,
-                        "The last dimension(%u) of keyAntiquantScale is less than "
-                        "maxBlockNumPerSeq(%u) * blockSize(%u). "
-                        "The last dimension of keyAntiquantScale should be larger than or equal to "
-                        "maxBlockNumPerSeq * blockSize when "
-                        "keyAntiquantMode, valueAntiquantMode are per-token-group mode and "
-                        "keyAntiquant/valuAntiquant is splited.",
-                        keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
-                return ge::GRAPH_FAILED);
-        }
+
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     }
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+    // per-token模式，per-token叠加per-head模式，antiquantScale输入的最后一维需要大于等于maxBlockNumPerBatch * blockSize
+    // per-token模式
+    if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        // shape 可能为(1, B, S)或(B, S)
+        uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
+        OP_CHECK_IF(
+            (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
+            OP_LOGE(fiaInfo.opName,
+                    "The last dimension(%u) of keyAntiquantScale is less than "
+                    "maxBlockNumPerBatch(%u) * blockSize(%u). "
+                    "The last dimension of keyAntiquantScale should be larger than or equal to "
+                    "maxBlockNumPerBatch * blockSize when "
+                    "keyAntiquantMode, valueAntiquantMode are per-token mode and "
+                    "keyAntiquant/valuAntiquant is splited.",
+                    keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
+            OP_LOGE(fiaInfo.opName,
+                    "The last dimension(%u) of valueAntiquantScale is less than "
+                    "maxBlockNumPerBatch(%u) * blockSize(%u). "
+                    "The last dimension of valueAntiquantScale should be larger than or equal to "
+                    "maxBlockNumPerBatch * blockSize when "
+                    "keyAntiquantMode, valueAntiquantMode are per-token mode and "
+                    "keyAntiquant/valuAntiquant is splited.",
+                    valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
+            return ge::GRAPH_FAILED);
+    }
+    // per-token叠加per-head模式
+    // shape可能为(B,N,S)
+    uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
+    if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
+        OP_CHECK_IF(
+            (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
+            OP_LOGE(fiaInfo.opName,
+                    "The last dimension(%u) of keyAntiquantScale is less than "
+                    "maxBlockNumPerBatch(%u) * blockSize(%u). "
+                    "The last dimension of keyAntiquantScale should be larger than or equal to "
+                    "maxBlockNumPerBatch * blockSize when "
+                    "keyAntiquantMode, valueAntiquantMode are per-token-head mode and "
+                    "keyAntiquant/valuAntiquant is splited.",
+                    keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
+            OP_LOGE(fiaInfo.opName,
+                    "The last dimension(%u) of valueAntiquantScale is less than "
+                    "maxBlockNumPerBatch(%u) * blockSize(%u). "
+                    "The last dimension of valueAntiquantScale should be larger than or equal to "
+                    "maxBlockNumPerBatch * blockSize when "
+                    "keyAntiquantMode, valueAntiquantMode are per-token-head mode and "
+                    "keyAntiquant/valuAntiquant is splited.",
+                    valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
+            return ge::GRAPH_FAILED);
+    }
+    // per-token-group模式，antiquantScale输入最后一维需要大于等于maxBlockNumPerSeq * blockSize
+    // shape为(1,B,N,S,D/32)
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
+        OP_CHECK_IF(
+            (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize),
+            OP_LOGE(fiaInfo.opName,
+                    "The last dimension(%u) of keyAntiquantScale is less than "
+                    "maxBlockNumPerSeq(%u) * blockSize(%u). "
+                    "The last dimension of keyAntiquantScale should be larger than or equal to "
+                    "maxBlockNumPerSeq * blockSize when "
+                    "keyAntiquantMode, valueAntiquantMode are per-token-group mode and "
+                    "keyAntiquant/valuAntiquant is splited.",
+                    keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1), maxBlockNumPerBatch, blockSize),
+            return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1466,199 +1375,159 @@ ge::graphStatus DequantChecker::CheckScaleTypeForAntiquant(const FiaTilingInfo &
     // 校验Scale矩阵的datatype的合法性
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
-    }
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        int64_t antiquantMode = 0;
-        if (fiaInfo.opParamInfo.antiquantMode != nullptr) {
-            antiquantMode = *fiaInfo.opParamInfo.antiquantMode;
-        }
-        auto &antiquantScaleDesc = fiaInfo.opParamInfo.antiquantScale.desc;
-        auto &queryDesc = fiaInfo.opParamInfo.query.desc;
-        if (antiquantScaleDesc == nullptr) {
-            // 若不存在antiquantScaleDesc，则放弃后续校验
-            return ge::GRAPH_SUCCESS;
-        }
-        if (antiquantMode == PER_CHANNEL_MODE) {
-            // per-channel/per-tensor模式，antiquantScale的datatype需要与query数据类型相同
-            OP_CHECK_IF((antiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of antiquantScale(%s) and query(%s) are different. "
-                                "The datatype of antiquantScale and query must be the same when "
-                                "antiquantMode is per-channel/per-tensor mode and "
-                                "keyAntiquant/valueAntiquant is not in split mode.",
-                                DataTypeToSerialString(antiquantScaleDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
 
-        if (antiquantMode == PER_TOKEN_MODE) {
-            // per-token模式，antiquantScale的数据类型固定为FLOAT32
-            OP_CHECK_IF((antiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of antiquantScale(%s) is not FLOAT32. "
-                                "The datatype of antiquantScale must be FLOAT32 when "
-                                "antiquantMode is per-token mode and "
-                                "keyAntiquant/valueAntiquant is not in split mode.",
-                                DataTypeToSerialString(antiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-    } else {
-        int64_t keyAntiquantMode = 0;
-        int64_t valueAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
-        if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
-            valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
-        }
-        auto &keyAntiquantScaleDesc = fiaInfo.opParamInfo.keyAntiquantScale.desc;
-        auto &valueAntiquantScaleDesc = fiaInfo.opParamInfo.valueAntiquantScale.desc;
-        auto &queryDesc = fiaInfo.opParamInfo.query.desc;
-        // KV分离场景
-        if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
-            // per-channel/per-tensor模式，keyAntiquantScale和valueAntiquantScale的数据类型与query相同
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
-                                "The datatype of keyAntiquantScale and query must be the same when "
-                                "keyAntiquantMode is per-channel mode or per-tensor mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) and query(%s) are different. "
-                                "The datatype of valueAntiquantScale and query must be the same when "
-                                "valueAntiquantMode is per-channel mode or per-tensor mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-
-        if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            // per-token模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT32
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of keyAntiquantScale must be FLOAT32 when "
-                                "keyAntiquantMode is per-token mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of valueAntiquantScale must be FLOAT32 when "
-                                "valueAntiquantMode is per-token mode and "
-                                "valueAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
-            // per-tensor-head模式，keyAntiquantScale和valueAntiquantScale的数据类型与query相同
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
-                                "The datatype of keyAntiquantScale and query must be the same when "
-                                "keyAntiquantMode is per-tensor-head mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) and query(%s) are different. "
-                                "The datatype of valueAntiquantScale and query must be the same when "
-                                "valueAntiquantMode is per-tensor-head mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
-            // per-token-head模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT32
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of keyAntiquantScale must be FLOAT32 when "
-                                "keyAntiquantMode is per-token-head mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of valueAntiquantScale must be FLOAT32 when "
-                                "valueAntiquantMode is per-token-head mode and "
-                                "valueAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
-            // per-token-PA模式，数据类型固定为FLOAT32
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of keyAntiquantScale must be FLOAT32 when "
-                                "keyAntiquantMode is per-token-PA mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of valueAntiquantScale must be FLOAT32 when "
-                                "valueAntiquantMode is per-token-PA mode and "
-                                "valueAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            // key支持per-channel叠加value支持per-token
-            // keyAntiquantScale的数据类型与query相同
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
-                                "The datatype of keyAntiquantScale and query must be the same when "
-                                "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            // valueAntiquantScale的数据类型固定为FLOAT32
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                                "The datatype of valueAntiquantScale must be FLOAT32 when "
-                                "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-            // per-token-group模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT8_E8M0
-            OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantScale(%s) is not FLOAT8_E8M0. "
-                                "The datatype of keyAntiquantScale must be FLOAT8_E8M0 when "
-                                "keyAntiquantMode is per-token-group mode and "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantScale(%s) is not FLOAT8_E8M0. "
-                                "The datatype of valueAntiquantScale must be FLOAT8_E8M0 when "
-                                "valueAntiquantMode is per-token-group mode and "
-                                "valueAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     }
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+    auto &keyAntiquantScaleDesc = fiaInfo.opParamInfo.keyAntiquantScale.desc;
+    auto &valueAntiquantScaleDesc = fiaInfo.opParamInfo.valueAntiquantScale.desc;
+    auto &queryDesc = fiaInfo.opParamInfo.query.desc;
+
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
+        // per-channel/per-tensor模式，keyAntiquantScale和valueAntiquantScale的数据类型与query相同
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
+                            "The datatype of keyAntiquantScale and query must be the same when "
+                            "keyAntiquantMode is per-channel mode or per-tensor mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) and query(%s) are different. "
+                            "The datatype of valueAntiquantScale and query must be the same when "
+                            "valueAntiquantMode is per-channel mode or per-tensor mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+
+    if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        // per-token模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT32
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of keyAntiquantScale must be FLOAT32 when "
+                            "keyAntiquantMode is per-token mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of valueAntiquantScale must be FLOAT32 when "
+                            "valueAntiquantMode is per-token mode and "
+                            "valueAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
+        // per-tensor-head模式，keyAntiquantScale和valueAntiquantScale的数据类型与query相同
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
+                            "The datatype of keyAntiquantScale and query must be the same when "
+                            "keyAntiquantMode is per-tensor-head mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) and query(%s) are different. "
+                            "The datatype of valueAntiquantScale and query must be the same when "
+                            "valueAntiquantMode is per-tensor-head mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
+        // per-token-head模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT32
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of keyAntiquantScale must be FLOAT32 when "
+                            "keyAntiquantMode is per-token-head mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of valueAntiquantScale must be FLOAT32 when "
+                            "valueAntiquantMode is per-token-head mode and "
+                            "valueAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
+        // per-token-PA模式，数据类型固定为FLOAT32
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of keyAntiquantScale must be FLOAT32 when "
+                            "keyAntiquantMode is per-token-PA mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of valueAntiquantScale must be FLOAT32 when "
+                            "valueAntiquantMode is per-token-PA mode and "
+                            "valueAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        // key支持per-channel叠加value支持per-token
+        // keyAntiquantScale的数据类型与query相同
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
+                            "The datatype of keyAntiquantScale and query must be the same when "
+                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        // valueAntiquantScale的数据类型固定为FLOAT32
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
+                            "The datatype of valueAntiquantScale must be FLOAT32 when "
+                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
+        // per-token-group模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT8_E8M0
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantScale(%s) is not FLOAT8_E8M0. "
+                            "The datatype of keyAntiquantScale must be FLOAT8_E8M0 when "
+                            "keyAntiquantMode is per-token-group mode and "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantScale(%s) is not FLOAT8_E8M0. "
+                            "The datatype of valueAntiquantScale must be FLOAT8_E8M0 when "
+                            "valueAntiquantMode is per-token-group mode and "
+                            "valueAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1667,112 +1536,77 @@ ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo 
     // 校验scale矩阵的shape的合法性
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
+
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     }
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        int64_t antiquantMode = 0;
-        if (fiaInfo.opParamInfo.antiquantMode != nullptr) {
-            antiquantMode = *fiaInfo.opParamInfo.antiquantMode;
-        }
-        auto &antiquantScaleTensor = fiaInfo.opParamInfo.antiquantScale.tensor;
-        if (antiquantScaleTensor == nullptr) {
-            // 若不存在antiquantScale，则放弃后续校验
-            return ge::GRAPH_SUCCESS;
-        }
-        gert::Shape antiquantScaleTensorShape = antiquantScaleTensor->GetStorageShape();
-        uint32_t antiquantScaleTensorDimNum = antiquantScaleTensorShape.GetDimNum();
-        uint32_t numKeyValueHeads = *fiaInfo.opParamInfo.kvHeadNums;
-        uint32_t headDim = fiaInfo.qkHeadDim;
-        uint32_t batchSize = fiaInfo.bSize;
-        uint64_t seqLength = fiaInfo.s2Size;
-        if (antiquantMode == PER_CHANNEL_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckScaleShapeForPerChannelPerTensorMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (antiquantMode == PER_TOKEN_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckScaleShapeForPerTokenMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-    } else {
-        // KV分离场景
-        int64_t keyAntiquantMode = 0;
-        int64_t valueAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
-        if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
-            valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
-        }
-        if (keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr) {
-            return ge::GRAPH_SUCCESS;
-        }
-        gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
-        gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
-        uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
-        uint32_t valueAntiquantScaleTensorDimNum = valueAntiquantScaleTensorShape.GetDimNum();
-        uint32_t numKeyValueHeads = *fiaInfo.opParamInfo.kvHeadNums;
-        uint32_t headDim = fiaInfo.qkHeadDim;
-        uint32_t batchSize = fiaInfo.bSize;
-        uint64_t seqLength = fiaInfo.s2Size;
-        if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTensorHeadMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenHeadMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenPAMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenHeadPAMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            // key支持per-channel叠加value支持per-token
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo) ||
-                ge::GRAPH_SUCCESS != CheckVScaleShapeForPerTokenMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenGroupMode(fiaInfo)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (!((keyAntiquantMode == PER_CHANNEL_MODE) && (valueAntiquantMode == PER_TOKEN_MODE))) {
-            // 除key支持per-channel叠加value支持per-token模式以外
-            // keyAntiquantScale的shape必须与valueAntiquantScale一致
-            OP_CHECK_IF(
-                (keyAntiquantScaleTensorShape != valueAntiquantScaleTensorShape),
-                OP_LOGE(fiaInfo.opName,
-                        "The shape of keyAntiquantScale and valueAntiquantScale are different. "
-                        "The shape of keyAntiquantScale and valueAntiquantScale must be the same when "
-                        "keyAntiquantMode is not per-channal mode and valueAntiquantMode is not per-token mode."),
-                return ge::GRAPH_FAILED);
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+
+    gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
+    gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
+    uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
+    uint32_t valueAntiquantScaleTensorDimNum = valueAntiquantScaleTensorShape.GetDimNum();
+    uint32_t numKeyValueHeads = *fiaInfo.opParamInfo.kvHeadNums;
+    uint32_t headDim = fiaInfo.qkHeadDim;
+    uint32_t batchSize = fiaInfo.bSize;
+    uint64_t seqLength = fiaInfo.s2Size;
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
         }
     }
+    if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTensorHeadMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenHeadMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenPAMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenHeadPAMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        // key支持per-channel叠加value支持per-token
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo) ||
+            ge::GRAPH_SUCCESS != CheckVScaleShapeForPerTokenMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenGroupMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (!((keyAntiquantMode == PER_CHANNEL_MODE) && (valueAntiquantMode == PER_TOKEN_MODE))) {
+        // 除key支持per-channel叠加value支持per-token模式以外
+        // keyAntiquantScale的shape必须与valueAntiquantScale一致
+        OP_CHECK_IF((keyAntiquantScaleTensorShape != valueAntiquantScaleTensorShape),
+                    OP_LOGE(fiaInfo.opName,
+                            "The shape of keyAntiquantScale and valueAntiquantScale are different. "
+                            "The shape of keyAntiquantScale and valueAntiquantScale must be the same when "
+                            "keyAntiquantMode is not per-channal mode and valueAntiquantMode is not per-token mode."),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1781,53 +1615,32 @@ ge::graphStatus DequantChecker::CheckOffsetTypeForAntiquant(const FiaTilingInfo 
     // 校验offset矩阵的datatype的合法性
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
+
+    // keyAntiquantOffset的datatype与keyAntiquantScale一致
+    auto &keyAntiquantOffsetDesc = fiaInfo.opParamInfo.keyAntiquantOffset.desc;
+    auto &keyAntiquantScaleDesc = fiaInfo.opParamInfo.keyAntiquantScale.desc;
+    if (keyAntiquantOffsetDesc != nullptr && keyAntiquantScaleDesc != nullptr) {
+        OP_CHECK_IF((keyAntiquantOffsetDesc->GetDataType() != keyAntiquantScaleDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of keyAntiquantOffset(%s) and keyAntiquantScale(%s) are different. "
+                            "The datatype of keyAntiquantOffset and keyAntiquantScale must be the same when "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(keyAntiquantOffsetDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
     }
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        // antiquantOffset的数据类型与antiquantScale一致
-        auto &antiquantOffsetDesc = fiaInfo.opParamInfo.antiquantOffset.desc;
-        auto &antiquantScaleDesc = fiaInfo.opParamInfo.antiquantScale.desc;
-        if (antiquantOffsetDesc != nullptr && antiquantScaleDesc != nullptr) {
-            OP_CHECK_IF((antiquantOffsetDesc->GetDataType() != antiquantScaleDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of antiquantOffset(%s) and antiquantScale(%s) are different. "
-                                "The datatype of antiquantOffset and antiquantScale must be the same when "
-                                "keyAntiquant/valueAntiquant is not in split mode.",
-                                DataTypeToSerialString(antiquantOffsetDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(antiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-    } else {
-        // KV分离场景
-        // keyAntiquantOffset的datatype与keyAntiquantScale一致
-        auto &keyAntiquantOffsetDesc = fiaInfo.opParamInfo.keyAntiquantOffset.desc;
-        auto &keyAntiquantScaleDesc = fiaInfo.opParamInfo.keyAntiquantScale.desc;
-        if (keyAntiquantOffsetDesc != nullptr && keyAntiquantScaleDesc != nullptr) {
-            OP_CHECK_IF((keyAntiquantOffsetDesc->GetDataType() != keyAntiquantScaleDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of keyAntiquantOffset(%s) and keyAntiquantScale(%s) are different. "
-                                "The datatype of keyAntiquantOffset and keyAntiquantScale must be the same when "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(keyAntiquantOffsetDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
-        // valueAntiquantOffset的datatype与valueAntiquantScale一致
-        auto &valueAntiquantOffsetDesc = fiaInfo.opParamInfo.valueAntiquantOffset.desc;
-        auto &valueAntiquantScaleDesc = fiaInfo.opParamInfo.valueAntiquantScale.desc;
-        if (valueAntiquantOffsetDesc != nullptr && valueAntiquantScaleDesc != nullptr) {
-            OP_CHECK_IF((valueAntiquantOffsetDesc->GetDataType() != valueAntiquantScaleDesc->GetDataType()),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of valueAntiquantOffset(%s) and valueAntiquantScale(%s) are different. "
-                                "The datatype of valueAntiquantOffset and valueAntiquantScale must be the same when "
-                                "keyAntiquant/valueAntiquant is in split mode.",
-                                DataTypeToSerialString(valueAntiquantOffsetDesc->GetDataType()).c_str(),
-                                DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
+    // valueAntiquantOffset的datatype与valueAntiquantScale一致
+    auto &valueAntiquantOffsetDesc = fiaInfo.opParamInfo.valueAntiquantOffset.desc;
+    auto &valueAntiquantScaleDesc = fiaInfo.opParamInfo.valueAntiquantScale.desc;
+    if (valueAntiquantOffsetDesc != nullptr && valueAntiquantScaleDesc != nullptr) {
+        OP_CHECK_IF((valueAntiquantOffsetDesc->GetDataType() != valueAntiquantScaleDesc->GetDataType()),
+                    OP_LOGE(fiaInfo.opName,
+                            "The datatype of valueAntiquantOffset(%s) and valueAntiquantScale(%s) are different. "
+                            "The datatype of valueAntiquantOffset and valueAntiquantScale must be the same when "
+                            "keyAntiquant/valueAntiquant is in split mode.",
+                            DataTypeToSerialString(valueAntiquantOffsetDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1836,55 +1649,33 @@ ge::graphStatus DequantChecker::CheckOffsetTypeForAntiquant(const FiaTilingInfo 
 ge::graphStatus DequantChecker::CheckOffsetShapeForAntiquant(const FiaTilingInfo &fiaInfo)
 {
     // 校验offset矩阵的shape的合法性
-    auto &antiquantScaleTensor = fiaInfo.opParamInfo.antiquantScale.tensor;
-    auto &antiquantOffsetTensor = fiaInfo.opParamInfo.antiquantOffset.tensor;
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     auto &keyAntiquantOffsetTensor = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
     auto &valueAntiquantOffsetTensor = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
-    bool kvAntiParamSplitFlag = false;
-    if (keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor != nullptr) {
-        kvAntiParamSplitFlag = true;  // 若key和value的antiquantScaleTensor都非空，则为KV分离场景
-    }
-    if (!kvAntiParamSplitFlag) {
-        // KV不分离场景
-        // antiquantOffset的shape与antiquantScale保持一致
-        if (antiquantScaleTensor == nullptr || antiquantOffsetTensor == nullptr) {
-            // 若不存在antiquantScale或antiquantOffset，则放弃后续校验
-            return ge::GRAPH_SUCCESS;
-        }
-        gert::Shape antiquantScaleTensorShape = antiquantScaleTensor->GetStorageShape();
-        gert::Shape antiquantOffsetTensorShape = antiquantOffsetTensor->GetStorageShape();
-        OP_CHECK_IF((antiquantOffsetTensorShape != antiquantScaleTensorShape),
-                    OP_LOGE(fiaInfo.opName, "The shape of antiquantOffset and antiquantScale are different. "
-                                            "The shape of antiquantOffset and antiquantScale must be the same when "
-                                            "keyAntiquant/valueAntiquant is not in split mode."),
-                    return ge::GRAPH_FAILED);
-    } else {
-        // KV分离场景
-        if (keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr ||
-            keyAntiquantOffsetTensor == nullptr || valueAntiquantOffsetTensor == nullptr) {
-            return ge::GRAPH_SUCCESS;
-        }
-        gert::Shape keyAntiquantOffsetTensorShape = keyAntiquantOffsetTensor->GetStorageShape();
-        gert::Shape valueAntiquantOffsetTensorShape = valueAntiquantOffsetTensor->GetStorageShape();
-        gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
-        gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
 
-        OP_CHECK_IF(
-            (keyAntiquantOffsetTensorShape != keyAntiquantScaleTensorShape),
-            OP_LOGE(fiaInfo.opName, "The shape of keyAntiquantOffset and keyAntiquantScale are different. "
-                                    "The shape of keyAntiquantOffset and keyAntiquantScale must be the same when "
-                                    "keyAntiquant/valueAntiquant is in split mode."),
-            return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(
-            (valueAntiquantOffsetTensorShape != valueAntiquantScaleTensorShape),
-            OP_LOGE(fiaInfo.opName, "The shape of valueAntiquantOffset and valueAntiquantScale are different. "
-                                    "The shape of valueAntiquantOffset and valueAntiquantScale must be the same when "
-                                    "keyAntiquant/valueAntiquant is in split mode."),
-            return ge::GRAPH_FAILED);
+    if (keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr ||
+        keyAntiquantOffsetTensor == nullptr || valueAntiquantOffsetTensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
     }
+    gert::Shape keyAntiquantOffsetTensorShape = keyAntiquantOffsetTensor->GetStorageShape();
+    gert::Shape valueAntiquantOffsetTensorShape = valueAntiquantOffsetTensor->GetStorageShape();
+    gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
+    gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
+
+    OP_CHECK_IF((keyAntiquantOffsetTensorShape != keyAntiquantScaleTensorShape),
+                OP_LOGE(fiaInfo.opName, "The shape of keyAntiquantOffset and keyAntiquantScale are different. "
+                                        "The shape of keyAntiquantOffset and keyAntiquantScale must be the same when "
+                                        "keyAntiquant/valueAntiquant is in split mode."),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        (valueAntiquantOffsetTensorShape != valueAntiquantScaleTensorShape),
+        OP_LOGE(fiaInfo.opName, "The shape of valueAntiquantOffset and valueAntiquantScale are different. "
+                                "The shape of valueAntiquantOffset and valueAntiquantScale must be the same when "
+                                "keyAntiquant/valueAntiquant is in split mode."),
+        return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2300,8 +2091,6 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
     }
-    OP_LOGI(fiaInfo.opName, "End DequantChecker::CheckSinglePara!");
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2320,15 +2109,11 @@ ge::graphStatus DequantChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
     }
-    OP_LOGI(fiaInfo.opName, "End DequantChecker::CheckParaExistence!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus DequantChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin DequantChecker::CheckFeature!");
-
     if (enableNonQuant_) {
         ;
     } else if (enableFullQuant_) {
@@ -2342,15 +2127,11 @@ ge::graphStatus DequantChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
     }
-    OP_LOGI(fiaInfo.opName, "End DequantChecker::CheckFeature!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus DequantChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin DequantChecker::CheckMultiPara!");
-
     if (enableNonQuant_) {
         ;
     } else if (enableFullQuant_) {
@@ -2365,8 +2146,6 @@ ge::graphStatus DequantChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
     }
-    OP_LOGI(fiaInfo.opName, "End DequantChecker::CheckMultiPara!");
-
     return ge::GRAPH_SUCCESS;
 }
 

@@ -39,16 +39,22 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
     if (!fiaInfo.learnableSinkFlag) {
         return ge::GRAPH_SUCCESS;
     }
-
     const gert::CompileTimeTensorDesc *learnableSinkDesc = fiaInfo.opParamInfo.learnableSink.desc;
     if (learnableSinkDesc != nullptr) {
-        OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_BF16,
-            OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support BF16.",
+        OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_BF16 && learnableSinkDesc->GetDataType() != ge::DT_FLOAT16,
+            OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support BF16/FP16.",
                 DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
+        return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(learnableSinkDesc->GetDataType() != fiaInfo.inputQType,
+            OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s).",
+                DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str(), 
+                DataTypeToSerialString(fiaInfo.inputQType).c_str()),
         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
+
 
 // CheckParaExistence
 ge::graphStatus LearnableSinkChecker::CheckFeatureExistence(const FiaTilingInfo &fiaInfo)
@@ -144,8 +150,6 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
 
 ge::graphStatus LearnableSinkChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LearnableSinkChecker::CheckSinglePara!");
-
     if (ge::GRAPH_SUCCESS != CheckSinkDtypeSupport(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -156,14 +160,11 @@ ge::graphStatus LearnableSinkChecker::CheckSinglePara(const FiaTilingInfo &fiaIn
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LearnableSinkChecker::CheckSinglePara!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LearnableSinkChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LearnableSinkChecker::CheckParaExistence!");
-
     if (ge::GRAPH_SUCCESS != CheckFeatureExistence(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -175,13 +176,11 @@ ge::graphStatus LearnableSinkChecker::CheckParaExistence(const FiaTilingInfo &fi
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LearnableSinkChecker::CheckParaExistence!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LearnableSinkChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LearnableSinkChecker::CheckFeature!");
     if (ge::GRAPH_SUCCESS != CheckFeatureSupport(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -193,14 +192,11 @@ ge::graphStatus LearnableSinkChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LearnableSinkChecker::CheckFeature!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LearnableSinkChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin LearnableSinkChecker::CheckMultiPara!");
-
     if (ge::GRAPH_SUCCESS != CheckSinkShapeSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo)) {
         return ge::GRAPH_FAILED;
@@ -213,7 +209,6 @@ ge::graphStatus LearnableSinkChecker::CheckMultiPara(const FiaTilingInfo &fiaInf
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End LearnableSinkChecker::CheckMultiPara!");
     return ge::GRAPH_SUCCESS;
 }
 

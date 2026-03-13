@@ -37,7 +37,7 @@ using namespace arch35FIA;
 // CheckSinglePara
 ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
 {
-    // SoftmaxLse only supports outputting FP32
+    // SoftmaxLse only supports output FP32
     if (fiaInfo.softmaxLseFlag) {
         OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.lseOut.desc, SOFTMAX_LSE_NAME),
                     OP_LOGE(fiaInfo.opName, "SoftmaxLse only support dtype FP32, but got %s",
@@ -111,7 +111,6 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaDimAndShape(const FiaTilingInfo
 
 ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin SoftmaxLSEChecker::CheckSinglePara!");
     if (ge::GRAPH_SUCCESS != CheckSingleDtype(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -122,13 +121,11 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End SoftmaxLSEChecker::CheckSinglePara!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin SoftmaxLSEChecker::CheckParaExistence!");
     if (ge::GRAPH_SUCCESS != CheckExistenceShapeAndDesc(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -139,13 +136,11 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End SoftmaxLSEChecker::CheckParaExistence!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SoftmaxLSEChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin SoftmaxLSEChecker::CheckFeature!");
     if (enableNonQuant_) {
         ;
     } else if (enableFullQuant_) {
@@ -153,14 +148,11 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End SoftmaxLSEChecker::CheckFeature!");
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin SoftmaxLSEChecker::CheckMultiPara!");
     if (ge::GRAPH_SUCCESS != CheckMultiParaDimAndShape(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
@@ -171,8 +163,6 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
     } else if (enableAntiQuant_) {
         ;
     }
-    OP_LOGI(fiaInfo.opName, "End SoftmaxLSEChecker::CheckMultiPara!");
-
     return ge::GRAPH_SUCCESS;
 }
 

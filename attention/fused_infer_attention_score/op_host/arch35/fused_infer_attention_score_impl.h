@@ -77,7 +77,7 @@ protected:
     void UpdateTilingKeyQuantMode(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyHasRope(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyMaskMode(const FiaTilingInfo &fiaInfo);
-    void UpdataTilingKeyMatmulMode(const FiaTilingInfo &fiaInfo);
+    void UpdateTilingKeyMatmulMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus UpdateTilingKeyInfo(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetWorkspaceNormal(const FiaTilingInfo &fiaInfo, int64_t &curWorkspaceSize);
     ge::graphStatus SetWorkspaceAntiQuant(const FiaTilingInfo &fiaInfo, int64_t &workspaceSize_);
@@ -103,7 +103,7 @@ protected:
                                     int64_t nextTokensLeftUp);
     int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums);
     void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t tilingElementArrayLen, uint32_t sOuterSize,
-                           uint32_t sInnerSize, double coreWightTarget, uint32_t &curCore);
+                           uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
     void SplitNBSeq(const FiaTilingInfo &fiaInfo);
     void InitImplParam(const FiaTilingInfo &fiaInfo);
     void SetGSMerge(const FiaTilingInfo &fiaInfo);
@@ -111,11 +111,11 @@ protected:
     bool CheckQKVActualSeqLengthsRight(const FiaTilingInfo &fiaInfo);
     bool CheckFlashDecode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SplitS2(const FiaTilingInfo &fiaInfo);
-    void SetDeqauntBaseSize(const FiaTilingInfo &fiaInfo);
+    void SetDequantBaseSize(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CalcInnerSize(const FiaTilingInfo &fiaInfo, uint32_t seqSize);
     void ComputeDequantSplitNBSeq(const FiaTilingInfo &fiaInfo, std::vector<int64_t> sOuterLoopTimes,
                                   std::vector<int64_t> sInnerLoopTimes, int64_t sInnerLoopTimesPrefix,
-                                  double coreWightTarget, uint32_t &curCore, const size_t tilingElementArrayLen);
+                                  double coreWeightTarget, uint32_t &curCore, const size_t tilingElementArrayLen);
     void DequantCubeSplitBNSeq(const FiaTilingInfo &fiaInfo);
     int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums);
     void SplitDequant(const FiaTilingInfo &fiaInfo);
@@ -124,12 +124,13 @@ protected:
     void AdjustPABmm1Tiling(const FiaTilingInfo &fiaInfo, uint32_t &bmm1BaseN);
     void AdjustPABmm2Tiling(const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo);
+    void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
 
     PromptFlashAttentionTilingData pfaTilingData_;
     IncreFlashAttentionTilingData ifaTilingData_;
     FlashAttentionScoreSimplifiedTilingData faRunTilingAdapter_;
     FiaTilingKeyInfo tilingKeyInfo_;
-    FiaPlatFormInfo platFormInfo_;
+    FiaPlatFormInfo platformInfo_;
     uint32_t nLoopTimes_;
     uint32_t gsSize_;
     uint32_t sOuterFactor_;
@@ -148,7 +149,7 @@ protected:
     bool actualSharedPrefixLenFlag_ = false;
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
-    bool formPFA_ = false;
+    bool fromPFA_ = false;
     bool isPFAFlag_ = false;
 };
 

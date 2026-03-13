@@ -89,11 +89,11 @@ private:
     // Existence
     ge::graphStatus CheckExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDescExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckScaleExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckOffsetExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
 
     // Feature
     ge::graphStatus CheckFeatureForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureExtendForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeaturePAForAntiquant(const FiaTilingInfo &fiaInfo);
 
     // MultiPara

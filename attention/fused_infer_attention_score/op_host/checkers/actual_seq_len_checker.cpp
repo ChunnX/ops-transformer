@@ -331,7 +331,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
 {
     auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
     FiaLayout qLayout = fiaInfo.qLayout;
-    // IFAMLA场景，仅query的layout为TND/NTD时支持传入actualSeqLengthsQ
+    // IFAMLA全量化场景，仅query的layout为TND/NTD时支持传入actualSeqLengthsQ
     bool enableIFAMLA = (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
     if (enableIFAMLA && actualSeqLengthsQTensor != nullptr) {
         OP_CHECK_IF((qLayout != FiaLayout::TND) && (qLayout != FiaLayout::NTD),
@@ -426,9 +426,15 @@ ge::graphStatus ActualSeqLenChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.isMaxWorkspace) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckFeatureAlibi(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
+    
+    if (ge::GRAPH_SUCCESS != CheckFeatureAlibi(fiaInfo)) {
         return ge::GRAPH_FAILED;
+    }
+
+    if (enableFullQuant_) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

@@ -47,9 +47,9 @@ private:
     ge::graphStatus CheckRopeExistence(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureExistence(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckShapeSupport(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAxisSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckOutDtypeSupport(const FiaTilingInfo &fiaInfo);
 
 private:
 };
