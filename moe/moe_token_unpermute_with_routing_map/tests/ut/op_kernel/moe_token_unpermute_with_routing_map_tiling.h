@@ -22,8 +22,6 @@
 #define DTYPE_PERMUTE_PROBS half
 #define __CCE_UT_TEST__
 
-#define __aicore__
-
 struct MaskedSelectMTUTilingData {
     uint64_t formerNum;
     uint64_t formerLength;

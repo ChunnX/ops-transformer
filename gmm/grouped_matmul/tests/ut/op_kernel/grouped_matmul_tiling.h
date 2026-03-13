@@ -18,7 +18,6 @@
 #define DT_BF16 bfloat16_t
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
-#define __aicore__
 #define REGISTER_TILINGDATA_SIZE(tiling_struct, counter)
 constexpr uint16_t GMM_MAX_TENSOR_LIST_SIZE = 128;
 

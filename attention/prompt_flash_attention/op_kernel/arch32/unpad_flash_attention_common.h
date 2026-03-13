@@ -32,10 +32,6 @@
 #include "mma.h"
 using namespace AscendC;
 
-#ifdef __CCE_KT_TEST__
-#define __aicore__
-#endif
-
 constexpr int32_t FLOAT_VECTOR_SIZE = 64;
 constexpr int32_t VECTOR_SIZE = 128;
 constexpr int32_t BLOCK_SIZE = 16;

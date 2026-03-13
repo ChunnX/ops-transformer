@@ -24,8 +24,6 @@
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
 
-#define __aicore__
-
 inline void InitMoeTokenUnpermuteGradTilingData(uint8_t* tiling, MoeTokenUnpermuteGradTilingData* const_data)
 {
     memcpy(const_data, tiling, sizeof(MoeTokenUnpermuteGradTilingData));

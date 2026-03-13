@@ -21,8 +21,6 @@
 #define __CCE_UT_TEST__
 #define DTYPE_PERMUTE_PROBS bfloat16_t
 
-#define __aicore__
-
 struct PermuteVBSComputeRMTilingData {
     int64_t needCoreNum = 1;
     int64_t perCoreElements = 8;

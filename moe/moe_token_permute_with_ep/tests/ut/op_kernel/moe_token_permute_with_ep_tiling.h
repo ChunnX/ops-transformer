@@ -20,7 +20,6 @@
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
 
-#define __aicore__
 struct PermuteVBSComputeTilingEPData {
     int64_t needCoreNum = 1;
     int64_t perCoreElements = 8;

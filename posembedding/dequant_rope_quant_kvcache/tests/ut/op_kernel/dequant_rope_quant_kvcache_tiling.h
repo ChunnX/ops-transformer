@@ -20,7 +20,6 @@
 #define __CCE_UT_TEST__
 #define DTYPE_COS half
 #define DTYPE_X half
-#define __aicore__
 
 struct DequantRopeQuantKvcacheTilingData {
     int64_t qHeadNum = 8;
