@@ -1242,10 +1242,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_V>(); //包括需要等待数据拷贝到发送区完成
-    if(aivId_ == aivUsedCumSum_) {
+    if(aivId_ == aivUsedCumSum_) { 4//轮询 + (计算) + (接收) 
         WaitFlag(gmSendTokenFlg, flagTensor, flagRecvGatherMask, waitNum);
         //TODO:调用Hccl接口.还未提供
-    }
+    }2 4 + 4  []
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1275,7 +1275,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         bool isSharedExpert = HasSharedExpertInServer(serverIndex);//是否存在共享专家
         ScatterToken(startTokenId, endTokenId, serverIndex, isSharedExpert);
-        HcclCommSend(serverIndex, flagRecvGatherMask);
+        HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
     }
     // LOG_INFO("end SendTokenToRemotServer");
 }
@@ -1311,7 +1311,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + expertOffset));
         DataCopyPad(expertCntTensor, expertOffsetCntGMTensor, expertCntCopyInParams, expertCntPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
+        expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + index * offsetPerMask));
         LOG_INFO("CalExpertOffset index",index);
+        LOG_INFO("CalExpertOffset expertOffsetCntGMTensor",expertOffsetCntGMTensor, {axisBS_, axisK_});
         LOG_INFO("CalExpertOffset expertCntTensor", expertCntTensor, {axisBS_, moeCntRowAlign_});
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
         PipeBarrier<PIPE_V>();
@@ -1489,6 +1491,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //计算每个ServerCnt，也就是Token需要发送给那些Server
     CalServerSendCnt();
     SetServerFlag();
+
+    //TODO:分核发送
     SendTokenToRemotServer();
 }
 
@@ -2724,10 +2728,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     writeCntTensor.SetValue(0,1);
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
-    PipeBarrier<PIPE_MTE3>(); // 写flag用于同步
+    PipeBarrier<PIPE_ALL>();
+    
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
-    PipeBarrier<PIPE_MTE3>(); // 写flag用于同步
     // LOG_INFO("end WriteExpertOffset");
 }
 
