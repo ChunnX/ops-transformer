@@ -136,7 +136,7 @@ private:
                                         GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
     __aicore__ inline void SetServerFlag();
     __aicore__ inline void ExpertOffsetCal();
-    __aicore__ inline void SendTokenToRemotServer();
+    __aicore__ inline void SendTokenToRemoteServer();
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
     __aicore__ inline void ProcessToken(
             GM_ADDR rankGM, uint32_t tokenIndex, uint32_t topKIndex,
@@ -1249,9 +1249,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendTokenToRemotServer()
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendTokenToRemoteServer()
 {
-    // LOG_INFO("start SendTokenToRemotServer");
+    // LOG_INFO("start SendTokenToRemoteServer");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
     SplitToCore(totalSendCnt, aivUsedCumSum_, aivUsedScatter_, startTokenId, endTokenId, sendTokenNum);
@@ -1277,7 +1277,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ScatterToken(startTokenId, endTokenId, serverIndex, isSharedExpert);
         HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
     }
-    // LOG_INFO("end SendTokenToRemotServer");
+    // LOG_INFO("end SendTokenToRemoteServer");
 }
 
 
@@ -1493,7 +1493,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SetServerFlag();
 
     //TODO:分核发送
-    SendTokenToRemotServer();
+    SendTokenToRemoteServer();
 }
 
 // 构建发往其他server的所有data报文
@@ -2715,7 +2715,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
 {
-    // LOG_INFO("start WriteExpertOffset");
+    LOG_INFO("start WriteExpertOffset");
     uint32_t newAivId = aivId_ - aivUsedCumSum_;
     uint32_t offsetPerMask = Ceil(expertIdsCnt_ * sizeof(uint16_t), UB_ALIGN) * UB_ALIGN;
     uint64_t dstOffset = newAivId * offsetPerMask; //gmExpertOffsetCnt
@@ -2726,13 +2726,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + dstOffset)); // todo:把其全部改为reinterpret_cast
     expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmExpertOffsetCnt + dstFlag));
     writeCntTensor.SetValue(0,1);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
     PipeBarrier<PIPE_ALL>();
-    
+    LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
-    // LOG_INFO("end WriteExpertOffset");
+    LOG_INFO("end WriteExpertOffset");
 }
 
 template <TemplateDispatchKFCTypeClass>
