@@ -284,17 +284,27 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::InitWorkspace
         (__gm__ T *)(workspace + totalOffset));
     if ASCEND_IS_AIV {
         int64_t totalCost = 0;
+        int64_t totalCostQ = 0;
+
         if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+            totalCostQ = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
             totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
         } else {
+            totalCostQ = constInfo.bSize * constInfo.s1Size;
             totalCost = constInfo.bSize * constInfo.s2Size;
         }
 
         int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
         int64_t avgCost = CeilDiv(totalCost, totalCoreNum);
-
+        int64_t avgCostQ = CeilDiv(totalCostQ, totalCoreNum);
         int32_t t2Start = Min(constInfo.aivIdx * avgCost, totalCost);
         int32_t t2End = Min(t2Start + avgCost, totalCost);
+        int32_t t2StartQ = Min(constInfo.aivIdx * avgCostQ, totalCostQ);
+        int32_t t2EndQ = Min(t2StartQ + avgCostQ, totalCostQ);
+        int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
+
+        AscendC::InitOutput(dQueryIndexGm[t2StartQ * qBaseOffset], qBaseOffset * (t2EndQ - t2StartQ), static_cast<T>(0));
+        AscendC::InitOutput(dWeightGm[t2Start * constInfo.gSizeQuery], constInfo.gSizeQuery * (t2End - t2Start), static_cast<T>(0));
         AscendC::InitOutput(scatterAddRes[t2Start * constInfo.dSizeQueryIndex], constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
     }
     SyncAll();
@@ -432,13 +442,13 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
                 CrossCoreSetFlag<2, PIPE_MTE2>(14);
             }
 
-            if (runInfo0.isValid) {
+            if (runInfo0.isValid && (runInfo0.s1Idx + 1) >= constInfo.cmpRatio) {
                 if ASCEND_IS_AIV {
                     vectorService.ProcessVector0(runInfo0);  // V0
                 }
             }
 
-            if (runInfoNeg1.isValid) {
+            if (runInfoNeg1.isValid && (runInfoNeg1.s1Idx + 1) >= constInfo.cmpRatio) {
                 if ASCEND_IS_AIC {
                     matmulService.ComputeMm1(runInfoNeg1);   // C1
                     matmulService.ComputeMm2(runInfoNeg1);   // C1
@@ -453,7 +463,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
                 }
             }
 
-            if (runInfoNeg2.isValid) {
+            if (runInfoNeg2.isValid && (runInfoNeg2.s1Idx + 1) >= constInfo.cmpRatio) {
                 if ASCEND_IS_AIV {
                     if constexpr (deterministic){
                         vectorService.ProcessDeterVector2(runInfoNeg2);
