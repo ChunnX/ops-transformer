@@ -2730,7 +2730,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
     PipeBarrier<PIPE_ALL>();
-    LOG_INIT("WriteExpertOffset dstOffset",dstOffset);
+    LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
     LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
