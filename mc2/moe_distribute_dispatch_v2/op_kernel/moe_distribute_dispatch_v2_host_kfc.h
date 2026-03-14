@@ -1111,10 +1111,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
 
     DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(axisK_ * sizeof(uint32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> CopyPadParams{false, 0U, 0U, 0U};
-    CopyRepeatParams cntCopyParams{1, 1, 0, 0};
     DataCopyPad(xOutTint32[moeListAlign_], expertIdsGMTensor_[tokenIndex * axisK_], copyParams, CopyPadParams);
-    PipeBarrier<PIPE_MTE2>();
-    //Copy(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * axisK_], mask, 1, cntCopyParams); //TODO:
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
     DataCopy(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * moeCntRowAlign_], moeCntRowAlign_);
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
@@ -1152,7 +1150,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyExtParams flagCopyOutParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U,
                                            SPLIT_BLOCK_DATA_SIZE, 0U};
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], flagTensor_, flagCopyOutParams);
-    // PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2844,7 +2841,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         } else {
             CalTokenSendExpertOffset();
             if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-                ScatterTokenToRemote();
+                ScatterTokenToRemote(); 4 // 20  5
                 // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
             } else {
                 GatherTokenFrRemote(aivUsedGather_);
