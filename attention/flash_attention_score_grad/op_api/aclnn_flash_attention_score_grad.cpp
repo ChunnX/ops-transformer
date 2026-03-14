@@ -57,6 +57,8 @@ typedef struct FagInShapeInfoS {
     int64_t dkDim;
     int64_t dvDim;
     int64_t alignDim;
+    int64_t t1;
+    int64_t t2;
 
     int64_t querySDimStrideSize;
     int64_t kvSDimStrideSize;
@@ -163,6 +165,36 @@ static int64_t getSeqLenQSum(const aclIntArray *actualSeqQLenOptional) {
         }
     }
     return sQLenSum;
+}
+
+static void GetActSeqLen(const aclIntArray *cuSeqLen, int64_t &sum) {
+    if (cuSeqLen->Size() < 1) {
+        return;
+    }
+    sum += static_cast<int64_t>((*cuSeqLen)[0]);
+    for (int64_t i = 1; i < cuSeqLen->Size(); ++i) {
+        int64_t cur = static_cast<int64_t>((*cuSeqLen)[i]) - static_cast<int64_t>((*cuSeqLen)[i - 1]);
+        if (cur > 0) {
+            sum += cur;
+        }
+    }
+}
+
+static bool CheckDimT(const FagInShapeInfo &fagShape, 
+                       const aclIntArray *actualSeqQLenOptional,
+                       const aclIntArray *actualSeqKvLenOptional,
+                       int64_t &sumSeqQLen, int64_t &sumSeqKvLen)
+{
+    if (actualSeqQLenOptional == nullptr || actualSeqKvLenOptional == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ActualSeqQLen and actualSeqKvLen cannot be nullptr when layout is TND.");
+        return false;
+    }
+    GetActSeqLen(actualSeqQLenOptional, sumSeqQLen);
+    GetActSeqLen(actualSeqKvLenOptional, sumSeqKvLen);
+    if (fagShape.t1 < sumSeqQLen || fagShape.t2 < sumSeqKvLen) {
+        return false;
+    }
+    return true;
 }
 
 static bool CheckTndIsNeedPad(const FagInShapeInfo &fagShape, const aclIntArray *actualSeqQLenOptional,
@@ -367,6 +399,8 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         fagShape.n2Dim = keyShape.GetDim(1);    // 1:n2
         fagShape.dkDim = keyShape.GetDim(DIM_NUM_2);
         fagShape.dvDim = valueShape.GetDim(DIM_NUM_2);
+        fagShape.t1 = queryShape.GetDim(0);
+        fagShape.t2 = keyShape.GetDim(0);
     } else if (queryShape.GetDimNum() > MIN_DIM) {
         fagShape.dDim = queryShape.GetDim(3); // 3:d
         fagShape.dkDim = keyShape.GetDim(3); // key Head-dim
@@ -468,6 +502,15 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         // 特殊情况的TND的D不等长无需处理
         if (isLayoutTND && fagShape.dDim == HEAD_DIM_192 && fagShape.dvDim == HEAD_DIM_128 && deterministicValue == 0) {
             fagShape.needPadDimD = false;
+        }
+        if (isLayoutTND) {
+            int64_t sumSeqQLen = 0;
+            int64_t sumSeqKvLen = 0;
+            if (!CheckDimT(fagShape, actualSeqQLenOptional, actualSeqKvLenOptional, sumSeqQLen, sumSeqKvLen)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Query T(%d) and key T(%d) need larger than respectively sum of seqQLen(%d) and seqKvLen(%d).", 
+                                            fagShape.t1, fagShape.t2, sumSeqQLen, sumSeqKvLen);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
         }
     } else {
         fagShape.needPadDimD = false;
