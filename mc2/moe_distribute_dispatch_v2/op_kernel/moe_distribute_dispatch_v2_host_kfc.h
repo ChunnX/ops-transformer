@@ -1221,6 +1221,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
             {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
         if(rsvdCnt == waitNum) {
+            LOG_INFO("WaitFlag success");
             break;
         }
     }
@@ -1310,6 +1311,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + index * offsetPerMask));
         LOG_INFO("CalExpertOffset index",index);
+        LOG_INFO("CalExpertOffset expertOffset",(expertOffset - dstOffset));
         LOG_INFO("CalExpertOffset expertOffsetCntGMTensor",expertOffsetCntGMTensor, {axisBS_, axisK_});
         LOG_INFO("CalExpertOffset expertCntTensor", expertCntTensor, {axisBS_, moeCntRowAlign_});
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
@@ -2727,6 +2729,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
     PipeBarrier<PIPE_ALL>();
+    LOG_INIT("WriteExpertOffset dstOffset",dstOffset);
     LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
