@@ -25,7 +25,7 @@ using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
-__aicore__ inline void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR w_scale, GM_ADDR bias,
+__aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, GM_ADDR w_scale, GM_ADDR bias,
                                                        GM_ADDR x_scale, GM_ADDR group_list, GM_ADDR share_input,
                                                        GM_ADDR logit, GM_ADDR row_index, GM_ADDR offset, GM_ADDR y,
                                                        GM_ADDR workspaceGM, GM_ADDR tilingGM)
