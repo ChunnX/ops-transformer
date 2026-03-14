@@ -1209,17 +1209,22 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flagAddr));
     DataCopyParams flagCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t) * waitNum), 0, 0};
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
-    // uint64_t count =0;
+    uint64_t count =0;
     while(true) { // 软同步
-        // count++;
-        // if(count > 1000000){
-        //     LOG_INFO("error WaitFlag,Error count");
-        //     break;
-        // }
+        count++;
+        if(count > 1000000){
+            LOG_INFO("error WaitFlag,Error count");
+            break;
+        
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
-            {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
+        for(uint32_t i = 0; i < waitNum; i++) {
+            if(flagInLTTensor.GetValue(i) == 1) {
+                rsvdCnt++;
+            }
+        }
+        // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
+        //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
         if(rsvdCnt == waitNum) {
             LOG_INFO("WaitFlag success");
             break;
