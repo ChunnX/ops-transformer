@@ -368,13 +368,13 @@ ge::graphStatus FiaTilingCheck::CheckActualSeqLensKv() const
         if (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
             opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr &&
             actualSeqLengthsKvSize_ != actualSeqLengthsQSize_) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be equal to %s shape size(%u).",
+            OP_LOGE(opName_, "when key/value's layout is TND, %s shape size is %u, it should be equal to %s shape size(%u).",
                 ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_,
                 ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_);
             return ge::GRAPH_FAILED;
         }
         if (actualSeqLengthsKvSize_ != bSize_ && actualSeqLengthsKvSize_ != 1U) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
+            OP_LOGE(opName_, "when key/value's layout is TND, %s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
                 ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, bSize_);
             return ge::GRAPH_FAILED;
         }
