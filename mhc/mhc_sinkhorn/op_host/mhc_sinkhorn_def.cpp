@@ -50,11 +50,11 @@ public:
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(false)
+            .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
-            .ExtendCfgInfo("op.pattern", "formatAgnostic")
+            .PrecisionReduceFlag(true)
             .ExtendCfgInfo("opFile.value", "mhc_sinkhorn_apt");
         this->AICore().AddConfig("ascend950", aicore_config);
     }
