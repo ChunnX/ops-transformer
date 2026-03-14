@@ -21,13 +21,6 @@ using namespace op;
 extern "C" {
 #endif
 
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
 extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
     const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
