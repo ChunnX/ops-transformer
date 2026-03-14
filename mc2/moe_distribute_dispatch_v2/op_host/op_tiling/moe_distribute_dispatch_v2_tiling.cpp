@@ -86,6 +86,7 @@ namespace {
     constexpr uint32_t ATTR_CONST_EXPERT_NUM_INDEX = 16;
 
     constexpr uint32_t TWO_DIMS = 2;
+    constexpr uint32_t HALF_NUM = 2;    // cumsum最多只能用一半的核
     constexpr uint32_t ONE_DIM = 1;
     constexpr uint32_t DYN_SCALE_DIMS = 1;
     constexpr uint32_t ASSIST_INFO_DIMS = 1;
@@ -176,7 +177,7 @@ namespace {
 }
 
 // Supported x datatype in nonquant mode, the same as expandX
-const std::set<ge::DataType> NON_QUANT_DTYPE = {
+static const std::set<ge::DataType> NON_QUANT_DTYPE = {
     ge::DT_FLOAT16, ge::DT_BF16, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
 namespace optiling {
@@ -1056,7 +1057,7 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
 }
 
 static ge::graphStatus CheckTwoDimScalesShape(const gert::TilingContext *context, const char *nodeName,
-    MoeDistributeDispatchV2TilingData &tilingData, const int64_t scalesDim0, const int64_t scalesDim1,
+    const MoeDistributeDispatchV2TilingData &tilingData, const int64_t scalesDim0, const int64_t scalesDim1,
     DispatchV2Config &config)
 {
     uint32_t sharedExpertRankNum = tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum;
@@ -1106,7 +1107,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
     const int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     int64_t hMax = isLayered ? H_MAX_LAYERED : H_MAX;
     int64_t hMin = isLayered ? 0 : H_MIN;
-    OP_TILING_CHECK((isLayered && (xDim1 % H_BASIC_BLOCK_LAYERED)), OP_LOGE(nodeName,
+    OP_TILING_CHECK((isLayered && (xDim1 % H_BASIC_BLOCK_LAYERED != 0)), OP_LOGE(nodeName,
         "xShape dims1(H) should be %u Aligned, but got %ld.", H_BASIC_BLOCK_LAYERED, xDim1), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((xDim1 < hMin) || (xDim1 > hMax), OP_LOGE(nodeName,
         "xShape dims1(H) should be in [%ld, %ld], but got %ld.", hMin, hMax, xDim1), return ge::GRAPH_FAILED);
@@ -1153,7 +1154,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
             //A3不会进此分支
             auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
             OP_TILING_CHECK((quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)) && (expandXDesc->GetDataType() == ge::DT_INT8) 
-                && (scalesDim0 != (int64_t)h) && (scalesDim0 != (int64_t)STATIC_SCALE_DIM_0),
+                && (scalesDim0 != static_cast<int64_t>(h)) && (scalesDim0 != static_cast<int64_t>(STATIC_SCALE_DIM_0)),
                 OP_LOGE(nodeName, "The expected scalesDim0 is %lu or %lu in static quant, but got %ld", 
                 h, STATIC_SCALE_DIM_0, scalesDim0), return ge::GRAPH_FAILED);
             OP_TILING_CHECK((quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))
@@ -1525,8 +1526,8 @@ static uint32_t Ceil(uint32_t dividend, uint32_t divisor, const char *nodeName)
     return 0;
 }
 
-static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData, 
-    uint32_t expertIdsBufSize, uint32_t kSize, const char *nodeName)
+static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
+    const MoeDistributeDispatchV2TilingData &tilingData, uint32_t expertIdsBufSize, uint32_t kSize, const char *nodeName)
 {
     uint32_t UbForMoe = 0;
     uint32_t moeExpertNum = tilingData.moeDistributeDispatchV2Info.moeExpertNum;
@@ -1537,7 +1538,7 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context, Mo
     uint32_t totalExpertNum = sharedExpertRankNum + moeExpertNum;
     uint32_t aivUsedCumSum = totalExpertNum / 32; // 单核处理32个专家cnt发送
     aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
-    aivUsedCumSum = (aivUsedCumSum >= (aivNum / 2)) ? (aivNum / 2) : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= (aivNum / HALF_NUM)) ? (aivNum / HALF_NUM) : aivUsedCumSum;
     uint32_t aivUsedAllToAll = aivNum - aivUsedCumSum;
     uint32_t sharedUsedAivNum = 0;
     if (sharedExpertRankNum != 0U) {
@@ -1554,7 +1555,7 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context, Mo
     return UbForMoe;
 }
 
-static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
+static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context, const MoeDistributeDispatchV2TilingData &tilingData,
     uint32_t quantMode, uint32_t &expertIdsBufSize, uint32_t hSize, uint32_t expertIdsCnt, uint32_t &hOutSizeAlign, const char *nodeName)
 {
     uint32_t UbForBasic = 0;
@@ -1624,9 +1625,9 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     if (quantMode > static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
         uint32_t hOutAlignUbSize = Ceil(hOutSizeAlign, UB_ALIGN, nodeName);
         ubSize = ubSize + hOutAlignUbSize;
-        ubSize = ubSize + 2 * maxSizeForUbBuffer; //receiveDataCastFloatBuf smoothScalesBuf
+        ubSize = ubSize + BUFFER_NUM * maxSizeForUbBuffer; // receiveDataCastFloatBuf smoothScalesBuf
     } else if (needMaskCalFlag) {
-        ubSize = ubSize + 2 * maxSizeForUbBuffer;
+        ubSize = ubSize + BUFFER_NUM * maxSizeForUbBuffer;
     }
 
     if (tilingData.moeDistributeDispatchV2Info.isExpertMask || (tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum != 0)) {

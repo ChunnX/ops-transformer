@@ -1399,7 +1399,7 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
     if (config.hasAddRmsNorm) {
         // NUM_PER_REP_FP32 * sizeof(float) * 2 是为kernel侧ReduceSum操作申请的空间大小
         totalBufferSize = maxSizeTokenBuf + maxSizeRowTmpFloatBuf + mulBufSize + hFloatAlign32Size + hExpandXAlign32Size
-        + NUM_PER_REP_FP32 * sizeof(float) * 2 + hExpandXAlign32Size * BUFFER_NUM + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
+        + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM + hExpandXAlign32Size * BUFFER_NUM + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
     } else {
         totalBufferSize = maxSizeTokenBuf + maxSizeRowTmpFloatBuf + mulBufSize + hFloatAlign32Size + hExpandXAlign32Size * BUFFER_NUM
         + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
