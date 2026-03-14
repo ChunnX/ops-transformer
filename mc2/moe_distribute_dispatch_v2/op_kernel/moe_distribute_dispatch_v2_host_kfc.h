@@ -2829,7 +2829,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t endtime = GetSystemCycle();
     uint64_t usetime = endtime -starttime;
     // LOG_INFO("CalTokenSendExpertOffset use time",usetime);
-    LOG_INFO("expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
+    LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
