@@ -2811,11 +2811,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GatherMask(validExpertIndexTensor, expertsIndexTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0},
                 sendNumperExpert); // 当前需要发送的专家的索引以及需要发送的有效专家总数
         PipeBarrier<PIPE_V>();
-        LOG_INFO("validExpertIndexTensor",validExpertIndexTensor,{1, static_cast<uint32_t>(sendNumperExpert)});
-        LOG_INFO("sendNumperExpert",sendNumperExpert);
         if(sendNumperExpert == 0){
             continue;
         }
+        LOG_INFO("validExpertIndexTensor",validExpertIndexTensor,{1, static_cast<uint32_t>(sendNumperExpert)});
+        LOG_INFO("sendNumperExpert",sendNumperExpert);
         Cast(tempOffset, validExpertIndexTensor, RoundMode::CAST_NONE, static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
         LOG_INFO("tempOffset",tempOffset, {1, static_cast<uint32_t>(sendNumperExpert)});
