@@ -224,10 +224,10 @@ protected:
                                     int32_t posL1, int32_t baseBlockSize, int32_t orgWidth = 192);
     __aicore__ inline void mm2LoadDataA(LocalTensor<INPUT_T> &tscmTensor,
                                     const GlobalTensor<INPUT_T> &globalTensor, const DataCopyParams &copyParams,
-                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize);
+                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize, int32_t ndNum = 2);
     __aicore__ inline void mm2LoadDataB(LocalTensor<INPUT_T> &tscmTensor, const GlobalTensor<INPUT_T> &globalTensor,
                             int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth = 192);
+                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth = 192, int32_t ndNum = 2);
     __aicore__ inline void CopyGmToL1(LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmSrcTensor, uint32_t srcN, 
                                     uint32_t srcD, uint32_t srcDstride);
 
@@ -1090,7 +1090,7 @@ __aicore__ inline void
 FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasDrop, INPUT_T, T,
                                 bmm1Format, mmPolicyType, hasRope>::mm2LoadDataA(LocalTensor<INPUT_T> &tscmTensor,
                                     const GlobalTensor<INPUT_T> &globalTensor, const DataCopyParams &copyParams,
-                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize)
+                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize, int32_t ndNum)
 {
     int32_t baseBlockNum = TscmGlobal[tscmIndex].bufferSize / baseBlockSize;
     posL1 = posL1 % baseBlockNum;
@@ -1119,7 +1119,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
         TscmGlobal[tscmIndex].bufferSize = tscmTensor.GetSize();
     }
 
-    TscmGlobal[tscmIndex].cacheSize += 2;
+    TscmGlobal[tscmIndex].cacheSize += ndNum;
     return;
 }
 
@@ -1130,7 +1130,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
                                 bmm1Format, mmPolicyType, hasRope>::mm2LoadDataB(LocalTensor<INPUT_T> &tscmTensor,
                                     const GlobalTensor<INPUT_T> &globalTensor,
                                     int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth)
+                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth, int32_t ndNum)
 {
     // 是否需要缓存,当前一次只搬一个base块
     if (posL1 < TscmGlobal[tscmIndex].cacheSize) {
@@ -1150,7 +1150,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
     }
 
     Nd2NzParams nd2nzPara;
-    nd2nzPara.ndNum = 2;
+    nd2nzPara.ndNum = ndNum;
     nd2nzPara.nValue = tileHeight; // 行数
     nd2nzPara.dValue = tileWidth;
     nd2nzPara.srcDValue = orgWidth;
@@ -1160,7 +1160,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
     nd2nzPara.dstNzMatrixStride = baseBlockSize;
     AscendC::DataCopy(tscmTensor, globalTensor[posL1 * baseBlockSize], nd2nzPara);
 
-    TscmGlobal[tscmIndex].cacheSize += 2;
+    TscmGlobal[tscmIndex].cacheSize += ndNum;
     return;
 }
 
@@ -2361,11 +2361,9 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     int32_t cOffset = 0;
     int32_t aSrcOffset = 0;
 
-    const uint16_t blockCount = mm2BaseK * 2 / BLOCK_CUBE;
     const uint16_t blockLen = BLOCK_CUBE * mm2BaseM * sizeof(INPUT_T) / BLOCK_BYTE;
     const uint16_t srcStride = aRowNum == 1 ? 0 : blockLen; // singleCoreM == BaseM or 2 * BaseM
     const uint16_t dstStride = 0;
-    AscendC::DataCopyParams copyParams = {blockCount, blockLen, srcStride, dstStride};
     event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
     event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
     event_t Mte1ToMte2Flag[2];
@@ -2376,14 +2374,17 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     for (int32_t curRow = 0;curRow < aRowNum;curRow++) {
         for (int32_t curCol = 0;curCol < bColNum;curCol++) {
             for (int32_t curK = 0;curK < aColNum;curK++) {
+                int32_t ndNum = aColNum - curK == 1 ? 1 : 2;
+ 	            const uint16_t blockCount = mm2BaseK * ndNum / BLOCK_CUBE;
+ 	            AscendC::DataCopyParams copyParams = {blockCount, blockLen, srcStride, dstStride};
                 posA = curRow * aColNum + curK;
                 posB = curK * bColNum + curCol;
                 aSrcOffset = mm2BaseK * extraInfo.cubeS1RealSize * curK + BLOCK_CUBE * mm2BaseM * curRow;
-                this->mm2LoadDataB(scmBTensor, bSrc, mm2BaseK, mm2BaseN, K_V_INDEX, posB, mm2BBaseSize, this->d2Size);
+                this->mm2LoadDataB(scmBTensor, bSrc, mm2BaseK, mm2BaseN, K_V_INDEX, posB, mm2BBaseSize, this->d2Size, ndNum);
                 if (posA % 2 == 0 && posA > 0) {
                     AscendC::WaitFlag<HardEvent::MTE1_MTE2>(Mte1ToMte2Flag[(posA / 2) % 2]);
                 }
-                this->mm2LoadDataA(scmATensor, aSrc[aSrcOffset], copyParams, Q_VEC1_INDEX, posA, mm2ABaseSize);
+                this->mm2LoadDataA(scmATensor, aSrc[aSrcOffset], copyParams, Q_VEC1_INDEX, posA, mm2ABaseSize, ndNum);
                 
                 AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
                 AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
