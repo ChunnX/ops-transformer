@@ -121,7 +121,11 @@ private:
     float sharedInputWeight_ = 1.0;
     uint64_t outputBs_ = 0;
     int8_t scaleType_ = 0;
+<<<<<<< HEAD
     int8_t rowIndexType_ = 0;
+=======
+    int8_t rowindexType_ = 0;
+>>>>>>> 98f14ece (tilingkey modify)
 };
 } // namespace optiling
 
