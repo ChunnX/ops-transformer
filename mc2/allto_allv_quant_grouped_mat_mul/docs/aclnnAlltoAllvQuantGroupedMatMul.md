@@ -103,21 +103,21 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     <tr>
     <td>gmmWeight</td>
     <td>输入</td>
-    <td>GroupedMatMul计算的右矩阵，数据类型为HIFLOAT8，支持3维，shape为(e, H1, N1)。</td>
-    <td>HIFLOAT8</td>
+    <td>GroupedMatMul计算的右矩阵，支持3维，shape为(e, H1, N1)。</td>
+    <td>与gmmX保持一致</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>gmmXScale</td>
     <td>输入</td>
-    <td>gmmX的量化系数，当gmmXQuantMode==1时，支持1维，shape为(1)。</td>
+    <td>gmmX的量化系数，pertensor量化场景支持1维，shape为(1)。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>gmmWeightScale</td>
     <td>输入</td>
-    <td>gmmWeight的量化系数，当gmmWeightQuantMode==1时必填，支持1维，shape为(1)。</td>
+    <td>gmmWeight的量化系数，pertensor量化场景支持1维，shape为(1)。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     </tr>
@@ -139,27 +139,27 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     <td>mmXOptional</td>
     <td>输入</td>
     <td>可选输入，共享专家MatMul计算中的左矩阵，需与mmWeightOptional同时传入或同为nullptr，支持2维，shape为(BS, H2)。</td>
-    <td>HIFLOAT8</td>
+    <td>与gmmX保持一致</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>mmWeightOptional</td>
     <td>输入</td>
     <td>可选输入，共享专家MatMul计算中的右矩阵，需与mmXOptional同时传入或同为nullptr，支持2维，shape为(H2, N2)。</td>
-    <td>HIFLOAT8</td>
+    <td>与mmX保持一致</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>mmXScaleOptional</td>
     <td>输入</td>
-    <td>mmX的量化系数，当mmXQuantMode==1时必填，1维，shape为(1)。</td>
+    <td>mmX的量化系数，pertensor量化场景支持1维，shape为(1)。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>mmWeightScaleOptional</td>
     <td>输入</td>
-    <td>mmWeight的量化系数，当mmWeightQuantMode==1时必填，1维，shape为(1)。</td>
+    <td>mmWeight的量化系数，pertensor量化场景支持1维，shape为(1)。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     </tr>
@@ -201,7 +201,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     <tr>
     <td>epWorldSize</td>
     <td>输入</td>
-    <td>ep通信域size：Ascend 950PR/Ascend 950DT支持2、4、8、16、32、64。</td>
+    <td>ep通信域大小：Ascend 950PR/Ascend 950DT支持2、4、8、16、32、64。</td>
     <td>INT64</td>
     <td>ND</td>
     </tr>
@@ -250,14 +250,14 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     <tr>
     <td>gmmY</td>
     <td>输出</td>
-    <td>最终的计算结果，数据类型与输入gmmX保持一致，支持2维，shape为(A, N1)。</td>
+    <td>路由专家计算的输出，数据类型与输入gmmX保持一致，支持2维，shape为(A, N1)。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>mmYOptional</td>
     <td>输出</td>
-    <td>共享专家MatMul的输出，数据类型与mmXOptional保持一致，支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
+    <td>共享专家计算的输出，数据类型与mmXOptional保持一致，支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     </tr>
@@ -285,7 +285,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     </tbody></table>
 
 - gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode的枚举值跟量化模式关系如下:
-  - 0: 不量化
+  - 0: 非量化
   - 1: pertensor
   - 2: perchannel
   - 3: pertoken
@@ -387,7 +387,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
 ## 调用示例
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-注意：由于量化接口仅支持Ascend 950PR/Ascend 950DT系列，以下示例基于该系列实现。
+注意：由于量化接口仅支持Ascend 950PR/Ascend 950DT系列，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改 `EP_WORLD_SIZE`。
 
 ```cpp
 #include <thread>

@@ -85,6 +85,9 @@ ge::graphStatus AlltoAllvGmmQuantTiling::DoOpTiling()
     if (CheckCommonShapeAttrsInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    if (CheckScaleShape() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     context_->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivCoreNum_, aicCoreNum_, aivCoreNum_));
@@ -414,43 +417,80 @@ ge::graphStatus AlltoAllvGmmQuantTiling::CheckQuantMode() const
         OP_LOGE(context_->GetNodeName(), "gmmXQuantMode attr can not be null."), return ge::GRAPH_FAILED);
     auto gmmXQuantMode = *gmmXQuantModePtr_;
     OP_TILING_CHECK(gmmXQuantMode != PERTENSOR_QUANT_MODE,
-        OP_LOGE(context_->GetNodeName(), "gmmXQuantMode only support 1(pertensor mode)."), return ge::GRAPH_FAILED);
+        OP_LOGE(context_->GetNodeName(), "gmmXQuantMode should be 1(pertensor mode), but actual is %lu.", gmmXQuantMode), 
+        return ge::GRAPH_FAILED);
     // gmmWeightQuantMode
     OP_TILING_CHECK(gmmWeightQuantModePtr_ == nullptr,
         OP_LOGE(context_->GetNodeName(), "gmmWeightQuantMode attr can not be null."), return ge::GRAPH_FAILED);
     auto gmmWeightQuantMode = *gmmWeightQuantModePtr_;
     OP_TILING_CHECK(gmmWeightQuantMode != PERTENSOR_QUANT_MODE,
-        OP_LOGE(context_->GetNodeName(), "gmmWeightQuantMode only support 1(pertensor mode)."),
+        OP_LOGE(context_->GetNodeName(), "gmmWeightQuantMode should be 1(pertensor mode), but actual is %lu.", gmmWeightQuantMode),
         return ge::GRAPH_FAILED);
-    // check gmmXScale shape
-    OP_TILING_CHECK(context_->GetOptionalInputShape(GMM_X_SCALE_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "gmmXScale input shape can not be null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetOptionalInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum() != DIM_ONE ||
-        context_->GetOptionalInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO) != DIM_ONE,
-        OP_LOGE(context_->GetNodeName(), "gmmXScale input shape should be [1]"), return ge::GRAPH_FAILED);
-    // check gmmWeightScale shape
-    OP_TILING_CHECK(context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "gmmWeightScale input shape can not be null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum() != DIM_ONE ||
-        context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO) != DIM_ONE,
-        OP_LOGE(context_->GetNodeName(), "gmmWeightScale input shape should be [1]."), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // mmXQuantMode
         OP_TILING_CHECK(mmXQuantModePtr_ == nullptr,
             OP_LOGE(context_->GetNodeName(), "mmXQuantMode attr can not be null."), return ge::GRAPH_FAILED);
         auto mmXQuantMode = *mmXQuantModePtr_;
         OP_TILING_CHECK(mmXQuantMode != PERTENSOR_QUANT_MODE,
-            OP_LOGE(context_->GetNodeName(), "mmXQuantMode only support 1(pertensor mode)."), return ge::GRAPH_FAILED);
+            OP_LOGE(context_->GetNodeName(), "mmXQuantMode should be 1(pertensor mode), but actual is %lu.", mmXQuantMode), 
+            return ge::GRAPH_FAILED);
         // mmWeightQuantMode
         OP_TILING_CHECK(mmWeightQuantModePtr_ == nullptr,
             OP_LOGE(context_->GetNodeName(), "mmWeightQuantMode attr can not be null."), return ge::GRAPH_FAILED);
         auto mmWeightQuantMode = *mmWeightQuantModePtr_;
         OP_TILING_CHECK(mmWeightQuantMode != PERTENSOR_QUANT_MODE,
-            OP_LOGE(context_->GetNodeName(), "mmWeightQuantMode only support 1(pertensor mode)."),
+            OP_LOGE(context_->GetNodeName(), "mmWeightQuantMode should be 1(pertensor mode), but actual is %lu.", mmWeightQuantMode),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
     OP_LOGD(context_->GetNodeName(), "end CheckQuantMode.");
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AlltoAllvGmmQuantTiling::CheckScaleShape() const
+{
+    
+    OP_LOGD(context_->GetNodeName(), "start CheckScaleShape.");
+    // check gmmXScale shape
+    OP_TILING_CHECK(context_->GetOptionalInputShape(GMM_X_SCALE_INDEX) == nullptr,
+        OP_LOGE(context_->GetNodeName(), "gmmXScale input shape can not be null."), return ge::GRAPH_FAILED);
+    auto gmmXScaleDimNum = context_->GetOptionalInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(gmmXScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "gmmXScale input dimNum should be 1, but actual dimNum is %lu", gmmXScaleDimNum), 
+        return ge::GRAPH_FAILED);
+    auto gmmXScaleShape = context_->GetOptionalInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    OP_TILING_CHECK(gmmXScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "gmmXScale input shape should be [1], but actual shape is [%lu]", gmmXScaleShape), 
+        return ge::GRAPH_FAILED);
+    // check gmmWeightScale shape
+    OP_TILING_CHECK(context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX) == nullptr,
+        OP_LOGE(context_->GetNodeName(), "gmmWeightScale input shape can not be null."), return ge::GRAPH_FAILED);
+    auto gmmWeightScaleDimNum = context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(gmmWeightScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "gmmWeightScale input dimNum should be 1, but actual dimNum is %lu", gmmWeightScaleDimNum), 
+        return ge::GRAPH_FAILED);
+    auto gmmWeightScaleShape = context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    OP_TILING_CHECK(gmmWeightScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "gmmWeightScale input shape should be [1], but actual shape is [%lu]", gmmWeightScaleShape), 
+        return ge::GRAPH_FAILED);
+    if (hasSharedExpertFlag_) {
+        // check mmXScale shape
+        OP_TILING_CHECK(context_->GetOptionalInputShape(MM_X_SCALE_INDEX) == nullptr,
+            OP_LOGE(context_->GetNodeName(), "mmXScale input shape can not be null."), return ge::GRAPH_FAILED);
+        auto mmXScaleDimNum = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();
+        OP_TILING_CHECK(mmXScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "mmXScaleDimNum input dimNum should be 1, but actual dimNum is %lu", mmXScaleDimNum), 
+            return ge::GRAPH_FAILED);
+        auto mmXScaleShape = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+        OP_TILING_CHECK(mmXScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "mmXScaleDimNum input shape should be [1], but actual shape is [%lu]", mmXScaleShape), 
+            return ge::GRAPH_FAILED);
+        // check mmWeightScale shape
+        OP_TILING_CHECK(context_->GetOptionalInputShape(MM_WEIGHT_SCALE_INDEX) == nullptr,
+            OP_LOGE(context_->GetNodeName(), "mmWeightScale input shape can not be null."), return ge::GRAPH_FAILED);
+        auto mmWeightScaleDimNum = context_->GetOptionalInputShape(MM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
+        OP_TILING_CHECK(mmWeightScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "mmWeightScale input dimNum should be 1, but actual dimNum is %lu", mmWeightScaleDimNum), 
+            return ge::GRAPH_FAILED);
+        auto mmWeightScaleShape = context_->GetOptionalInputShape(MM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+        OP_TILING_CHECK(mmWeightScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "mmWeightScale input shape should be [1], but actual shape is [%lu]", mmWeightScaleShape), 
+            return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGD(context_->GetNodeName(), "end CheckScaleShape.");
     return ge::GRAPH_SUCCESS;
 }
 

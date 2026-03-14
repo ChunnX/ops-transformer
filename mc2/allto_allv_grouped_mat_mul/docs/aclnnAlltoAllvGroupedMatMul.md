@@ -310,7 +310,9 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：
+- 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+- 本示例代码以8卡为例，请根据实际环境卡数修改 `EP_WORLD_SIZE`。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
@@ -377,7 +379,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
     };
 
     // shape 基本信息
-    constexpr int64_t EP_WORLD_SIZE = 2;
+    constexpr int64_t EP_WORLD_SIZE = 8;
     constexpr int64_t BS = 4096;
     constexpr int64_t K = 2;
     constexpr int64_t H = 7168;
