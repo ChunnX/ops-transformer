@@ -1446,6 +1446,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     for(int32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
         int32_t dstServerId = serverIndex;
+        if(HasSharedExpertInServer(dstServerId)) {
+            serverCountTensor_.SetValue(serverIndex, activeMaskBsCnt);
+            continue;
+        }
         Adds(dstServerIdInt32, dstServerIdInt32, dstServerId, calCnt);
         PipeBarrier<PIPE_V>();
         //// LOG_INFO("Adds dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
