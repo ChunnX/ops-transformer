@@ -1679,13 +1679,13 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         finishNumTensor_(idx) = 0;
     }
 
-    // uint32_t count = 0;
+    uint32_t count = 0;
     while (true) {
-        // count++;
-        // if (count == 1000000) {
-        //     LogInfo(__LINE__, "[BATCHWRITE][WaitToken] error count.");
-        //     break;
-        // }
+        count++;
+        if (count == 1000000) {
+            LogInfo(__LINE__, "[BATCHWRITE][WaitToken] error count.");
+            break;
+        }
         if (finishNumTensor_(index) == 1) {
             index = (index + 1) % tokenCnt; // 轮询查询每个有效的index
             continue;
