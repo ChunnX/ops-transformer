@@ -1176,11 +1176,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
         int32_t tokenSendOffset = isSharedExpert ? tokenIndex : tokenSendMap_.GetValue(offset) ;
-        // LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
-        // LOG_INFO("ScatterToken isSharedExpert ",isSharedExpert);
+        LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
+        LOG_INFO("ScatterToken isSharedExpert ",isSharedExpert);
         bool isSend = (isSharedExpert) || (tokenSendOffset != -1);
         if(!isSend) {
-            // LOG_INFO("ScatterToken not send");
+            LOG_INFO("ScatterToken not send");
             continue;
         }
         SingleTokenProcess(startIndex, tokenIndex, serverId, tokenSendOffset); // 将数据写入对应的发送区
@@ -1262,13 +1262,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendTokenToRemoteServer()
 {
-    // LOG_INFO("start SendTokenToRemoteServer");
+    LOG_INFO("start SendTokenToRemoteServer");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
     SplitToCore(totalSendCnt, aivUsedCumSum_, aivUsedScatter_, startTokenId, endTokenId, sendTokenNum);
-    // LOG_INFO("startTokenId",startTokenId);
-    // LOG_INFO("endTokenId",endTokenId);
-    // LOG_INFO("sendTokenNum",sendTokenNum);
+    LOG_INFO("startTokenId",startTokenId);
+    LOG_INFO("endTokenId",endTokenId);
+    LOG_INFO("sendTokenNum",sendTokenNum);
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return ;
     }
@@ -1288,7 +1288,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ScatterToken(startTokenId, endTokenId, serverIndex, isSharedExpert);
         //HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
     }
-    // LOG_INFO("end SendTokenToRemoteServer");
+    LOG_INFO("end SendTokenToRemoteServer");
 }
 
 
@@ -1369,16 +1369,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetServerFlag()
 {
-    // LOG_INFO("SetServerFlag start");
+    LOG_INFO("SetServerFlag start");
     uint32_t totalSeverCnt = serverNum_;
     uint32_t startServerNum, endServerNum, sendServerNum;
     SplitToCore(totalSeverCnt, aivUsedCumSum_, aivUsedScatter_, startServerNum, endServerNum, sendServerNum);
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
-    // LOG_INFO("startServerNum", startServerNum);
-    // LOG_INFO("endServerNum", endServerNum);
-    // LOG_INFO("sendServerNum", sendServerNum);
+    LOG_INFO("startServerNum", startServerNum);
+    LOG_INFO("endServerNum", endServerNum);
+    LOG_INFO("sendServerNum", sendServerNum);
     GlobalTensor<uint32_t> dstStateGMTensor;
     TBuf<> tempbuf;
     tpipe_->InitBuffer(tempbuf, SERVER_STATE_ALIGN);
@@ -1390,7 +1390,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         outTensor(0) = serverCountTensor_(index);
         DataCopy(dstStateGMTensor, outTensor, SERVER_STATE_ALIGN/sizeof(uint32_t));
     }
-    // LOG_INFO("SetServerFlag end");
+    LOG_INFO("SetServerFlag end");
 }
 
 // template <TemplateDispatchKFCTypeClass>
