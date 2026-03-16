@@ -1211,11 +1211,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
     uint64_t count =0;
     while(true) { // 软同步
-        count++;
-        if(count > 1000000){
-            LOG_INFO("error WaitFlag,Error count");
-            break;
-        }
+        //count++;
+        // if(count > 1000000){
+        //     LOG_INFO("error WaitFlag,Error count");
+        //     break;
+        // }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         for(uint32_t i = 0; i < waitNum; i++) {
