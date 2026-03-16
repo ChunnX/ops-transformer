@@ -887,6 +887,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchV2TilingData *tilingData)
 {
+    aivUsedCumSum_ = 2; //TODO:
+    aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
+    aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
+
     //// LogInfo(__LINE__, "Init start");
     InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
     statusDataSpaceGm_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
@@ -939,9 +943,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitMaskInfo();
     InitDispatchBetweenServerInfo();
     //// LogInfo(__LINE__, "Init end: ");
-    aivUsedCumSum_ = 2; //TODO:
-    aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
-    aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
 }
 
 template <TemplateDispatchKFCTypeClass>
