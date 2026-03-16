@@ -1470,6 +1470,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if(isExpertMaskFlag_) {
             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里需注意，需要提前把数据搬进来。
             Cast(tempTensorFp32, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
+            PipeBarrier<PIPE_V>();
             Mul(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt); //需要与mask相乘。
             PipeBarrier<PIPE_V>(); 
         }
@@ -2820,6 +2821,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if(isExpertMaskFlag_) {
             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里有二维mask
             Cast(maskInputInt16Tensor, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
+            PipeBarrier<PIPE_V>();
             Mul(dstExpIdTensorInt16, dstExpIdTensorInt16, maskInputInt16Tensor, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
             PipeBarrier<PIPE_V>(); 
         }
