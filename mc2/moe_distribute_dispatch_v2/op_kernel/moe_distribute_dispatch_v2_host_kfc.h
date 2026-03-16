@@ -2402,7 +2402,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t dstOffset = serverIndex * blockCntPerCnt_ *  SERVER_STATE_ALIGN;
         GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset);
         WriteDataToWinOut(sendTokenNumToexpert, rankGM, blockCntPerCnt_);
-        PipeBarrier<PIPE_MTE3>();
+        //PipeBarrier<PIPE_MTE3>();
         // todo: HCCL接口
     }
 }
