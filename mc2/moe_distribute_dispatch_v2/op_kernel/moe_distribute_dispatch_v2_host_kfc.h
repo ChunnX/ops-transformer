@@ -1231,8 +1231,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
         //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
 
-        LOG_INFO("WaitFlag rsvdCnt",rsvdCnt);
-        if(flagRecvGatherMask.GetValue(0) == waitNum) {
+        LOG_INFO("WaitFlag rsvdCnt",flagInLTTensor.GetValue(0));
+        if(flagInLTTensor.GetValue(0) == waitNum) {
             LOG_INFO("WaitFlag success");
             break;
         }
