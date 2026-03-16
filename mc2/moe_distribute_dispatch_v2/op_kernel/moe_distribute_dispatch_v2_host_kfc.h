@@ -1501,7 +1501,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         PipeBarrier<PIPE_V>();
     }
     // LOG_INFO("tokenSendMap_", tokenSendMap_,{1, static_cast<uint32_t>(activeMaskBsCnt_)});
-    // LOG_INFO("serverCountTensor_", serverCountTensor_,{1, serverNum_});
+    LOG_INFO("serverCountTensor_", serverCountTensor_,{1, serverNum_});
 }
 
 
@@ -2359,7 +2359,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendExpertCnt()
 {
     PipeBarrier<PIPE_V>(); // 防止setvalue流水没有完成；
-    // LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1, moeExpertNum_});
+    LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1, moeExpertNum_});
 
     uint32_t startServerId, endServerId, sendServerNum;
     SplitToCore(serverNum_, 0, aivUsedCumSum_, startServerId, endServerId, sendServerNum);
