@@ -1204,6 +1204,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<int32_t> flagInLTTensor, LocalTensor<uint32_t> flagRecvGatherMask, uint32_t waitNum) 
 {
     // Implementation of WaitFlag
+    LOG_INFO("WaitFlag waitNum", waitNum);
     uint64_t rsvdCnt = 0;
     GlobalTensor<int32_t> flagInGMTensor;
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flagAddr));
@@ -1226,6 +1227,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
         GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
             {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
+        LOG_INFO("WaitFlag rsvdCnt",rsvdCnt);
         if(rsvdCnt == waitNum) {
             LOG_INFO("WaitFlag success");
             break;
