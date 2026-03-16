@@ -26,7 +26,7 @@
   Routing计算是MoE模型中的一个环节。MoE模型主要由一组专家模型和一个门控模型组成，在计算时，输入的数据会先根据门控网络（Gating Network，包含MoeGatingTopKSoftmax算子）计算出每个数据元素对应权重最高的k个专家，然后该结果会输入MoeInitRouting算子，生成Routing矩阵。在后续，模型中的每个专家会根据Routing矩阵处理其应处理的数据，产生相应的输出。各专家的输出最后与权重加权求和，形成最终的预测结果。
 - **计算公式**：
 
-  1.将输入shape为[numRows, k]或[numRows]的expertIdx展平为一行做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx，其中numRows为token个数，k为专家个数，当expertIdx为1维时记k为1：
+  1.将输入shape为[numRows, k]或[numRows]的expertIdx展平为一行做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx，其中numRows为token个数，k表示token数据元素对应权重最高的k个专家，当expertIdx为1维时记k为1：
   
   $$
   sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
@@ -136,7 +136,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>activeNum</td>
       <td>输入</td>
       <td>表示是否为Active场景。</td>
-      <td>该属性在dropPadMode为0时生效，值范围大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</td>
+      <td>该属性在dropPadMode为0的非Drop/Pad场景生效，值范围大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量不超过activeNum。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -155,7 +155,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
     <tr>
       <td>expertNum</td>
       <td>输入</td>
-      <td>表示专家数。</td>
+      <td>表示专家总数。</td>
       <td>值范围大于等于0，Drop/Pad场景下或者expertTokensCountOrCumsumFlag大于0需要输出expertTokensCountOrCumsumOut时，expertNum需大于0。</td>
       <td>-</td>
       <td>-</td>
@@ -166,7 +166,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>dropPadMode</td>
       <td>输入</td>
       <td>表示是否为Drop/Pad场景。</td>
-      <td>取值为0或1。<ul><li>0：表示非Drop/Pad场景，该场景下不校验expertCapacity。</li><li>1：表示Drop/Pad场景，需要校验expertNum和expertCapacity，对于每个专家处理的超过和不足expertCapacity的值会做相应的处理。</li></ul></td>
+      <td>取值为0或1。<ul><li>0：表示非Drop/Pad场景，该场景下不校验expertCapacity。</li><li>1：表示Drop/Pad场景，需要校验expertNum和expertCapacity，该模式下输出内容会将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
