@@ -1716,7 +1716,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             // LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             // SyncFunc<AscendC::HardEvent::MTE2_V>();
-            //SendToExpert(index);
+            SendToExpert(index);
 
             // LOG_INFO("[BATCHWRITE][WaitToken][true]after sendtoexpert tokenid:", index);
             // finish更新并clean
@@ -2871,17 +2871,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
-            // CalTokenSendExpertOffset();
-            // if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-            //     ScatterTokenToRemote();  //4 20  5
-            //     // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
-            // } else {
-            //     GatherTokenFrRemote(aivUsedGather_);
-            // }
+            CalTokenSendExpertOffset();
+            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+                ScatterTokenToRemote();  //4 20  5
+                // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
+            } else {
+                GatherTokenFrRemote(aivUsedGather_);
+            }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
-        //LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
