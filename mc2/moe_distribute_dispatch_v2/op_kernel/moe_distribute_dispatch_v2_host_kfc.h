@@ -1500,11 +1500,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         PipeBarrier<PIPE_V>();
         GatherMask(gatherIndex, indexTensor, expertMaskTensorU32, true, activeMaskBsCnt, {1, 1, 0, 0}, sendTokenCnt); // 是否可以简化计算
         PipeBarrier<PIPE_V>();
-        LOG_INFO("GatherMask gatherIndex",gatherIndex,{1,static_cast<uint32_t>(sendTokenCnt)});
-        serverCountTensor_.SetValue(serverIndex, static_cast<uint32_t>(sendTokenCnt));
         if(sendTokenCnt == 0) {
             continue;
         }
+        LOG_INFO("GatherMask gatherIndex",gatherIndex,{1,static_cast<uint32_t>(sendTokenCnt)});
+        serverCountTensor_.SetValue(serverIndex, static_cast<uint32_t>(sendTokenCnt));
         Muls(gatherIndex, gatherIndex, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendTokenCnt));
         PipeBarrier<PIPE_V>();
         Scatter(tokenSendMap_[serverIndex * perServerMapCnt_], indexTensor, dstOffset, 0, static_cast<uint32_t>(sendTokenCnt)); // 32字节对齐
