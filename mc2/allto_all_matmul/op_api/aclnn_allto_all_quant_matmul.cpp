@@ -504,6 +504,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
     CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_INVALID);	// 先检查x2是否合法，避免非法操作
     bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
     auto transX2 = x2;    // 复制一个x2
+    OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
     if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
