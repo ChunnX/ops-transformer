@@ -1218,13 +1218,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        for(uint32_t i = 0; i < waitNum; i++) {
-            if(flagInLTTensor.GetValue(i) == 1) {
-                rsvdCnt++;
-            }
-        }
-        // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
-        //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
+        // for(uint32_t i = 0; i < waitNum; i++) {
+        //     if(flagInLTTensor.GetValue(i) == 1) {
+        //         rsvdCnt++;
+        //     }
+        // }
+        GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
+            {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
         if(rsvdCnt == waitNum) {
             LOG_INFO("WaitFlag success");
             break;
@@ -1244,7 +1244,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagOutGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg + offset));
     DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
-    SyncFunc<AscendC::HardEvent::MTE3_V>(); //包括需要等待数据拷贝到发送区完成
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); //包括需要等待数据拷贝到发送区完成
     if(aivId_ == aivUsedCumSum_) { //4//轮询 + (计算) + (接收) 
         WaitFlag(gmSendTokenFlg, flagTensor, flagRecvGatherMask, waitNum);
         //TODO:调用Hccl接口.还未提供
