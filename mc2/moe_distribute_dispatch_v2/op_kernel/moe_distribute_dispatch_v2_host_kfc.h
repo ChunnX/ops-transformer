@@ -1201,14 +1201,15 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<int32_t> flagInLTTensor, LocalTensor<uint32_t> flagRecvGatherMask, uint32_t waitNum) 
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, LocalTensor<uint32_t> flagRecvGatherMask, uint32_t waitNum) 
 {
     // Implementation of WaitFlag
     LOG_INFO("WaitFlag waitNum", waitNum);
     uint64_t rsvdCnt = 0;
-    GlobalTensor<int32_t> flagInGMTensor;
-    flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flagAddr));
-    DataCopyParams flagCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t) * waitNum), 0, 0};
+    GlobalTensor<float32_t> flagInGMTensor;
+    LocalTensor<uint8_t> sharedTensorInt8 = flagInLTTensor.ReinterpretCast<uint8_t>(); //reduce isReuseSource 为true情况下不会使用。
+    flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(flagAddr));
+    DataCopyParams flagCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(float32_t) * waitNum), 0, 0};
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
     uint64_t count =0;
     while(true) { // 软同步
@@ -1225,10 +1226,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //     }
         // }
         LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
-        GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
-            {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
+        uint32_t srcShape[2] = {1, waitNum};
+        ReduceSum<float32_t, Pattern::Reduce::AR, true>(flagRecvGatherMask, flagInLTTensor, sharedTensorInt8, srcShape, false);
+        //ReduceSum()
+        // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
+        //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
+
         LOG_INFO("WaitFlag rsvdCnt",rsvdCnt);
-        if(rsvdCnt == waitNum) {
+        if(flagRecvGatherMask.GetValue(0) == waitNum) {
             LOG_INFO("WaitFlag success");
             break;
         }
@@ -1281,7 +1286,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         bool isSharedExpert = HasSharedExpertInServer(serverIndex);//是否存在共享专家
         ScatterToken(startTokenId, endTokenId, serverIndex, isSharedExpert);
-        HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
+        //HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
     }
     // LOG_INFO("end SendTokenToRemoteServer");
 }
@@ -2729,10 +2734,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t dstOffset = newAivId * offsetPerMask; //gmExpertOffsetCnt
     uint64_t dstFlag = (aivNum_ - aivUsedCumSum_) * offsetPerMask + sizeof(uint32_t) * newAivId;
     GlobalTensor<int16_t> expertOffsetCntGMTensor;
-    GlobalTensor<int32_t> expertOffsetFlagGMTensor;
-    LocalTensor<int32_t> writeCntTensor = dstExpBuf_.Get<int32_t>();
+    GlobalTensor<float32_t> expertOffsetFlagGMTensor;
+    LocalTensor<float32_t> writeCntTensor = dstExpBuf_.Get<float32_t>();
     expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + dstOffset)); // todo:把其全部改为reinterpret_cast
-    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmExpertOffsetCnt + dstFlag));
+    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + dstFlag));
     writeCntTensor.SetValue(0,1);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
@@ -2741,10 +2746,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //SyncFunc<AscendC::HardEvent::MTE3_MTE3>();
     LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
     LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
-    DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(float32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
     PipeBarrier<PIPE_ALL>();
-    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
+    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
     LOG_INFO("WriteExpertOffset dstFlag", dstFlag);
     LOG_INFO("WriteExpertOffset expertOffsetFlagGMTensor", expertOffsetFlagGMTensor, {1, aivNum_});
     LOG_INFO("end WriteExpertOffset");
