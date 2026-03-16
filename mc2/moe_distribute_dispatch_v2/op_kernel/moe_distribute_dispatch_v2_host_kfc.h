@@ -1223,6 +1223,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //         rsvdCnt++;
         //     }
         // }
+        LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
         GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
             {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
         if(rsvdCnt == waitNum) {
