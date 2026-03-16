@@ -1472,7 +1472,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里需注意，需要提前把数据搬进来。
             Cast(tempTensorFp32, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
             PipeBarrier<PIPE_V>();
-            LOG_INFO("isExpertMaskFlag_ Cast", tempTensorFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_})
+            LOG_INFO("isExpertMaskFlag_ Cast", tempTensorFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
             Mul(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt); //需要与mask相乘。
             PipeBarrier<PIPE_V>(); 
         }
