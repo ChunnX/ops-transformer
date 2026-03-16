@@ -1423,6 +1423,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int32_t>  gatherIndex = dstExpBuf_.Get<int32_t>();
     LocalTensor<uint32_t>  dstOffset = dstExpBuf_.Get<uint32_t>();
 
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
     Cast(dstServerIdFp32, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
     Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(moeExpertNumPerRank_), calCnt);
     PipeBarrier<PIPE_V>();
@@ -2791,7 +2792,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     
 
     CreateVecIndex(expertsIndexTensor, static_cast<int16_t>(0), calCnt);    // TODO：这个需要单独放
-    Duplicate<int16_t>(XorTensorInt16, 1, calCnt); 
+    Duplicate<int16_t>(XorTensorInt16, 1, calCnt);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
     Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
     PipeBarrier<PIPE_V>();
     LOG_INFO("expertIdsInt16", expertIdsInt16, {activeBsCnt, axisK_});
