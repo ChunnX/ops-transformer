@@ -131,6 +131,10 @@ bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* b
     }
     auto kdimX1 = x1->GetViewShape().GetDim(1);
     auto kdimX2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
+
+    OP_LOGI("The input transposeX2 is: %d, x1 dim0 is: %ld, x1 dim1 is: %ld, x2 dim0 is: %ld, x2 dim1 is: %ld",
+            transposeX2, x1->GetViewShape().GetDim(0), x1->GetViewShape().GetDim(1), x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1));
+
     if (kdimX1 != kdimX2) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
         "The k-axis of x1 and x2 should be same, but x1's k-axis is: %ld and x2's k-axis is: %ld.", kdimX1, kdimX2);
