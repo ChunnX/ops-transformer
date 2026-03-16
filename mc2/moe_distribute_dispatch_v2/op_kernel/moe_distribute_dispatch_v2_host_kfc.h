@@ -1207,7 +1207,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("WaitFlag waitNum", waitNum);
     uint64_t rsvdCnt = 0;
     GlobalTensor<float32_t> flagInGMTensor;
-    LocalTensor<uint8_t> sharedTensorInt8 = flagInLTTensor.ReinterpretCast<uint8_t>(); //reduce isReuseSource 为true情况下不会使用。
+    //LocalTensor<uint8_t> sharedTensorInt8 = flagInLTTensor.ReinterpretCast<uint8_t>(); //reduce isReuseSource 为true情况下不会使用。
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(flagAddr));
     DataCopyParams flagCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(float32_t) * waitNum), 0, 0};
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
@@ -1226,7 +1226,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //     }
         // }
         LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
-        ReduceSum(flagInLTTensor, flagInLTTensor, sharedTensorInt8, waitNum); // 采用fa
+        ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         //ReduceSum()
         // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
         //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
