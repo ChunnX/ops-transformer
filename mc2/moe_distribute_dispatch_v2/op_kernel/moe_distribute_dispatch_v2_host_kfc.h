@@ -609,7 +609,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommBetweenServerInfo()
 {
-    statusBufCntAlign_ = Ceil(Ceil(expertNumInServer_ * serverNum_, aivUsedCumSum_), 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
+    statusBufCntAlign_ = Ceil(expertNumInServer_ * serverNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     //// LogInfo(__LINE__,"statusBufCntAlign_",statusBufCntAlign_);
     uint32_t statusBufSize = statusBufCntAlign_ * UB_ALIGN;
     totalUsedUB_ += statusBufSize;
@@ -2438,6 +2438,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         LocalTensor<int32_t> maskStrideInt32Tensor = subExpBuf_.Get<int32_t>();
         Cast(maskStrideInt32Tensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("CalExpertTotalSendCnt maskStrideInt32Tensor",maskStrideInt32Tensor,{axisBS_, axisK_});
         Mul(expertIdsTensor_, expertIdsTensor_, maskStrideInt32Tensor, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
         Adds(expertIdsTensor_, expertIdsTensor_, -1, expertIdsCnt_);
@@ -2826,6 +2827,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里有二维mask
             Cast(maskInputInt16Tensor, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
             PipeBarrier<PIPE_V>();
+            LOG_INFO("CalTokenSendExpertOffset isExpertMaskFlag_ cast",maskInputInt16Tensor,{activeBsCnt, axisK_});
             Mul(dstExpIdTensorInt16, dstExpIdTensorInt16, maskInputInt16Tensor, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
             PipeBarrier<PIPE_V>(); 
         }
