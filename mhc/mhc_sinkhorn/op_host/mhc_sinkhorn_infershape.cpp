@@ -13,51 +13,65 @@
  * \brief mhc_sinkhorn_infershape
  */
 
-#include <vector>
-#include "register/op_impl_registry.h"
 #include "log/log.h"
+#include "register/op_impl_registry.h"
+#include "platform/platform_info.h"
+#include "runtime/rt_external_base.h"
+#include "platform/soc_spec.h"
 #include "util/shape_util.h"
+
 using namespace ge;
 using namespace std;
 
-namespace {
-constexpr size_t X_INDEX = 0;
-constexpr size_t Y_INDEX = 0;
-
-constexpr size_t INDEX_EPS = 0;
-constexpr size_t INDEX_NUM_ITERS = 1;
-constexpr size_t INDEX_OUT_FLAG = 2;
-
-constexpr size_t BSNN_DIMS = 4;
-constexpr size_t TNN_DIMS = 3;
-} // namespace
-
 namespace ops {
+static constexpr size_t X_INDEX = 0;
+static constexpr size_t Y_INDEX = 0;
+
+static constexpr size_t INDEX_EPS = 0;
+static constexpr size_t INDEX_NUM_ITERS = 1;
+static constexpr size_t INDEX_OUT_FLAG = 2;
+
+static constexpr size_t BSNN_DIMS = 4;
+static constexpr size_t TNN_DIMS = 3;
+static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2LL;
+
 static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
 {
-    const gert::Shape* x_shape = context->GetInputShape(X_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, x_shape);
-    gert::Shape* y_shape = context->GetOutputShape(Y_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, y_shape);
-    auto attr_ptr = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attr_ptr);
-    auto eps_ptr = attr_ptr->GetAttrPointer<gert::ContinuousVector>(INDEX_EPS);
-    OP_CHECK_NULL_WITH_CONTEXT(context, eps_ptr);
-    auto num_iters_ptr = attr_ptr->GetAttrPointer<gert::ContinuousVector>(INDEX_NUM_ITERS);
-    OP_CHECK_NULL_WITH_CONTEXT(context, num_iters_ptr);
-    auto out_flag_ptr = attr_ptr->GetAttrPointer<gert::ContinuousVector>(INDEX_OUT_FLAG);
-    OP_CHECK_NULL_WITH_CONTEXT(context, out_flag_ptr);
-    
-    size_t x_dim_num = x_shape->GetDimNum();
-    OP_CHECK_IF(
-        x_dim_num != BSNN_DIMS && x_dim_num != TNN_DIMS,
-        OP_LOGE(context, "The dims of x not equal 4 or 3."), return GRAPH_FAILED);
-    size_t y_dim_num = y_shape->GetDimNum();
-    OP_CHECK_IF(
-        y_dim_num != x_dim_num,
-        OP_LOGE(context, "The dims of y not equal x."), return GRAPH_FAILED);
+    OP_LOGD(context, "Begin to do MhcSinkhornInfershape.");
+    const gert::Shape* xShape = context->GetInputShape(X_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
+    gert::Shape* yShape = context->GetOutputShape(Y_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
+    auto attrPtr = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
+    auto epsPtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(INDEX_EPS);
+    OP_CHECK_NULL_WITH_CONTEXT(context, epsPtr);
+    auto numItersPtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(INDEX_NUM_ITERS);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numItersPtr);
+    auto outFlagPtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(INDEX_OUT_FLAG);
+    OP_CHECK_NULL_WITH_CONTEXT(context, outFlagPtr);
 
-    return GRAPH_SUCCESS;
+    if (Ops::Base::IsUnknownRank(*xShape)) {
+        yShape->SetDimNum(0);
+        yShape->AppendDim(UNKNOWN_RANK_DIM_VALUE);
+        OP_LOGD(context->GetNodeName(), "MhcSinkhorn infershape handles unknown rank.");
+        return ge::GRAPH_SUCCESS;
+    }
+    size_t xDims = xShape->GetDimNum();
+
+    OP_CHECK_IF((xDims != TNN_DIMS) && (xDims != BSNN_DIMS),
+                OP_LOGE(context->GetNodeName(), "The dim of x should be 3 or 4, but got %lu", xDims),
+                return ge::GRAPH_FAILED);
+
+    // y shape is same as input x
+    yShape->SetDimNum(xDims);
+    for (size_t i = 0; i < xDims; ++i) {
+        yShape->SetDim(i, xShape->GetDim(i));
+    }
+
+    OP_LOGD(context, "End to do MhcSinkhornInfershape.");
+
+    return GRAPH_SUCCESS; 
 }
 
 static graphStatus InferDtype4MhcSinkhorn(gert::InferDataTypeContext* context)
