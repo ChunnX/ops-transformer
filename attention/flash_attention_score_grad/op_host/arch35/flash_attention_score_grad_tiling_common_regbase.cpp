@@ -167,7 +167,7 @@ ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     auto deqScaleQShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_Q));
     auto deqScaleKShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_K));
@@ -262,7 +262,7 @@ ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, FuzzyBa
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     auto yInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTENTION_IN));
     auto deqScaleQInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_Q));
@@ -296,7 +296,7 @@ ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, FuzzyBa
     return ge::GRAPH_SUCCESS;
 }
 
-bool CheckIsLargeInvalidBlk(FuzzyBaseInfoParamsRegbase& fBaseParams)
+bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL)) &&
         (fBaseParams.s1Outer >= 0 && fBaseParams.s2Outer >= 0) &&
@@ -485,9 +485,9 @@ int64_t GetTotalPerBatchNum(FuzzyBaseInfoParamsRegbase& fBaseParams, uint8_t spa
         for (int64_t s2oIdx = 0; s2oIdx < fBaseParams.s2Outer; s2oIdx++) {
             int64_t xMin = (s2oIdx - q) > 0 ? (s2oIdx - q) : 0;
             int64_t xMax = (fBaseParams.s1Outer - 1) > (s2oIdx + p) ? (s2oIdx + p) : (fBaseParams.s1Outer - 1);
-            int64_t length = xMax - xMin + 1;
+            int64_t length = (xMax >= xMin) ? (xMax - xMin + 1) : 0;
             if (length > 0) {
-                totalPerBatchNum += (xMax - xMin + 1);   
+                totalPerBatchNum += length;   
             }
         }
     }
@@ -592,7 +592,7 @@ int64_t FindBandIdx(FuzzyBaseInfoParamsRegbase& fBaseParams)
     return 0;
 }
 
-bool IsNewDeter(FuzzyBaseInfoParamsRegbase& fBaseParams)
+bool IsNewDeter(const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     return fBaseParams.deterSparseType >= static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
            fBaseParams.deterSparseType <= static_cast<uint32_t>(DeterSparseType::DETER_BAND) && 
@@ -721,7 +721,7 @@ void CalcleCausalDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
     fBaseParams.deterMaxRound = rUpper;
 }
 
-void SetSparsePrefixBlockInterval(FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t bIdx,
+void SetSparsePrefixBlockInterval(const FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t bIdx,
     int64_t nIdx, std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx,
     int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM], uint32_t &coreNum, int64_t &tmepBlock)
 {
@@ -823,7 +823,7 @@ void GetCommS1S2OuterInfo(FuzzyBaseInfoParamsRegbase& fBaseParams,
     }
 }
 
-void GetCommonS1S2OuterIndex(FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t (*parseInfo)[ARRAY_LENGTH],
+void GetCommonS1S2OuterIndex(const FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t (*parseInfo)[ARRAY_LENGTH],
     int64_t gTail, int64_t& s1oIdx, int64_t& s2oIdx)
 {
     int64_t preSize = 0;
@@ -917,7 +917,7 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-    ret = ProcessTokensInfo(context_, fBaseParams);
+    ret = ProcessTokensInfo(fBaseParams);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -950,7 +950,7 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
                CheckShapeValid(context_, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.d);
 }
 
-void ProcessDropoutIsDivisibleBy8(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+void ProcessDropoutIsDivisibleBy8(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
     if (strcmp(inputLayout, "TND") == 0) {
@@ -1071,7 +1071,7 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessSparseModeInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     // 新增SPARSE_MODE属性，上库兼容处理
     auto attrs = context_->GetAttrs();
@@ -1139,7 +1139,7 @@ ge::graphStatus ProcessSparseModeInfo(gert::TilingContext *context_, FuzzyBaseIn
 }
 
 // 以下场景对外部输入token屏蔽，重新设置token值并做校验
-ge::graphStatus ProcessTokensInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     OP_LOGD("ProcessTokensInfo", " Before correction ,the value of s1Token = %ld and the value of s2Token %ld.",
               fBaseParams.s1Token, fBaseParams.s2Token);
@@ -1408,7 +1408,7 @@ bool SetSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& 
     return false;
 }
 
-void SetSplitAxis(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     fBaseParams.isBn2 = (fBaseParams.s1 <= BN2_MAX_S && fBaseParams.s2 <= BN2_MAX_S) &&
                         (fBaseParams.n1 == fBaseParams.n2) &&
@@ -1484,17 +1484,17 @@ void DetermineMode(FuzzyBaseInfoParamsRegbase& fBaseParams)
     } else if (fBaseParams.queryType == ge::DT_BF16) {
         fBaseParams.inputDtype = DtypeEnum::BFLOAT16;
     } else if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2) {
-        fBaseParams.inputDtype = (optiling::DtypeEnum)(DTYPE_ENUM_INDEX_4);    // DtypeEnum::FLOAT8_E5M2
+        fBaseParams.inputDtype = static_cast<optiling::DtypeEnum>(DTYPE_ENUM_INDEX_4);    // DtypeEnum::FLOAT8_E5M2
     } else if (fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN) {
-        fBaseParams.inputDtype = (optiling::DtypeEnum)(DTYPE_ENUM_INDEX_5);    // DtypeEnum::FLOAT8_E4M3
+        fBaseParams.inputDtype = static_cast<optiling::DtypeEnum>(DTYPE_ENUM_INDEX_5);    // DtypeEnum::FLOAT8_E4M3
     } else if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
-        fBaseParams.inputDtype = (optiling::DtypeEnum)(DTYPE_ENUM_INDEX_6);    // DtypeEnum::HIFLOAT8
+        fBaseParams.inputDtype = static_cast<optiling::DtypeEnum>(DTYPE_ENUM_INDEX_6);    // DtypeEnum::HIFLOAT8
     } else {
         fBaseParams.inputDtype = DtypeEnum::FLOAT16_PRECISION;
     }
 }
 
-bool SupportTrans2BS2N2GD(FuzzyBaseInfoParamsRegbase& fBaseParams) {
+bool SupportTrans2BS2N2GD(const FuzzyBaseInfoParamsRegbase& fBaseParams) {
     return (fBaseParams.sparseMode <= static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) && fBaseParams.isAllSame &&
          (fBaseParams.layoutType == INPUT_FORMAT_TND);
 }
@@ -1607,8 +1607,8 @@ bool SetPrefixSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsReg
         OP_LOGW(context_, "FAG Us1s2Bbn2gs1s2 sparseMode is prefix, but prefixN data is null pointer!");
         return false;
     }
-    const size_t shapeSize = prefixNTensor->GetShapeSize();
-    for (size_t i = 0; i < shapeSize; i++) {
+    const int64_t shapeSize = prefixNTensor->GetShapeSize();
+    for (int64_t i = 0; i < shapeSize; i++) {
         prefixN.push_back(value[i]);
     }
 

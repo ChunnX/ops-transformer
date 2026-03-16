@@ -29,9 +29,8 @@
      explicit FlashAttentionScoreGradTilingNormalRegbase(gert::TilingContext *curContext_) : TilingBaseClass(curContext_)
      {
      }
-     ~FlashAttentionScoreGradTilingNormalRegbase()
-     {
-     }
+     ~FlashAttentionScoreGradTilingNormalRegbase() override = default;
+
      FlashAttentionScoreGradS1S2BNGS1S2BaseParamsRegbase *s1s2BNGS1S2BaseParams_ = nullptr;
      FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParamsRegbase *s1s2BNGS1S2SplitCoreParams_ = nullptr;
      BlockNumListParamsRegbase *s1s2BNGS1S2BlockNumList_ = nullptr;

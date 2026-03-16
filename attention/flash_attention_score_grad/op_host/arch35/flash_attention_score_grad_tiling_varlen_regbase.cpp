@@ -24,9 +24,7 @@ public:
     explicit FlashAttentionScoreGradTilingVarlenRegbase(gert::TilingContext *curContext_) : FlashAttentionScoreGradTilingNormalRegbase(curContext_)
     {
     }
-    ~FlashAttentionScoreGradTilingVarlenRegbase()
-    {
-    }
+    ~FlashAttentionScoreGradTilingVarlenRegbase() override = default;
 
 protected:
     bool IsCapable() override
@@ -44,7 +42,7 @@ protected:
         return false;
     }
 
-    void CalcleTNDDeterParam()
+    void CalcleTNDDeterParam() override
     {
         if (fBaseParams.layoutType != INPUT_FORMAT_TND) {
             return;
@@ -787,7 +785,7 @@ protected:
         tndBandDeterRoundInfo.lastBatchId = batchId;
     }
 
-    ge::graphStatus GetBlockInfoOfTNDForBn2()
+    ge::graphStatus GetBlockInfoOfTNDForBn2() override
     {
         // 二维数组，第一维是batch，第二维的id0存储不乘N的基本块数，id1存每个batch乘N的基本块总数
         std::vector<std::vector<int64_t>> totalBlockInfo(fBaseParams.b, std::vector<int64_t>(TOTAL_BLOCK_DIMENSION));
@@ -939,7 +937,7 @@ protected:
         return true;
     }
 
-    ge::graphStatus GetSparseUnpadBlockInfo()
+    ge::graphStatus GetSparseUnpadBlockInfo() override
     {
         std::vector<std::vector<std::vector<int64_t>>> calculatedBlockInfo(
             fBaseParams.b,
@@ -1127,7 +1125,7 @@ protected:
         }
     }
 
-    bool IsValidUnpad(int64_t blockIdx)
+    bool IsValidUnpad(int64_t blockIdx) override
     {
         int64_t resbaseIdx = blockIdx;
         for (int64_t bIdx = 0; bIdx < fBaseParams.b; bIdx++) {
@@ -1155,7 +1153,7 @@ protected:
     }
 
     bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx,
-        int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx)
+        int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx) override
     {
         int64_t actualS1Len = fBaseParams.actualSeqQlen[bIdx];
         int64_t actualS2Len = fBaseParams.actualSeqKvlen[bIdx];
@@ -1202,7 +1200,7 @@ protected:
         return isValid;
     }
 
-    bool GetBlockInfoOfBNS4TND()
+    bool GetBlockInfoOfBNS4TND() override
     {
         std::vector<std::vector<int64_t>> totalBlockInfo(fBaseParams.b, std::vector<int64_t>(TOTAL_BLOCK_DIMENSION));
         std::vector<std::vector<float>> acturalBlockInfo(fBaseParams.b + NUM_TWO, std::vector<float>(fBaseParams.s2Outer));
