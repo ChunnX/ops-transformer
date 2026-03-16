@@ -2051,13 +2051,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::V_S>();
         flagRecvGatherMask_.SetValue(0, 1);
 
-        // int32_t count = 0;
+        int32_t count = 0;
         while(true) { //确保等到 
-            // count++;
-            // if (count == 1000000) {
-            //     LOG_INFO("SetStatus error count");
-            //     break;
-            // }
+            count++;
+            if (count == 1000000) {
+                LOG_INFO("SetStatus error count");
+                break;
+            }
             DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
                                             static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
             DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
@@ -2262,7 +2262,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
-    // int count = 0;
+    int count = 0;
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
         // LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
@@ -2271,11 +2271,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
         // LOG_INFO("sumOfFlag:", sumOfFlag);
-        // count ++;
-        // if(count == 10000000) {
-        //     LOG_INFO("waitDispatch error count");
-        //     break;
-        // }
+        count ++;
+        if(count == 10000000) {
+            LOG_INFO("waitDispatch error count");
+            break;
+        }
     }
     // 清状态
     WaitDispatchClearStatus();
