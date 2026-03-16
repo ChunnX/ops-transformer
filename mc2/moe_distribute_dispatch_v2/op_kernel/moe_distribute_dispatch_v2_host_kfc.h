@@ -539,7 +539,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     axisK_ = tilingData->moeDistributeDispatchV2Info.k;
     aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
     tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
+    aivUsedCumSum_ = 2; //TODO:
+    aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
+    aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
     LOG_INIT(tpipe_,epRankId_);
+    LOG_INFO("aivUsedCumSum_",aivUsedCumSum_);
+    LOG_INFO("aivUsedScatter_",aivUsedScatter_);
+    LOG_INFO("aivUsedGather_",aivUsedGather_);
+
     //// LogInfo(__LINE__, "epRankId_: ",epRankId_);
     //// LogInfo(__LINE__, "axisBS_: ",axisBS_);
     //// LogInfo(__LINE__, "axisH_: ",axisH_);
@@ -887,12 +894,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchV2TilingData *tilingData)
 {
-    aivUsedCumSum_ = 2; //TODO:
-    aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
-    aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
+
 
     //// LogInfo(__LINE__, "Init start");
     InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
+
+
     statusDataSpaceGm_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
     selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusDataSpaceGm_));
     //// LogInfo(__LINE__, "statusDataSpaceGm_ ");
