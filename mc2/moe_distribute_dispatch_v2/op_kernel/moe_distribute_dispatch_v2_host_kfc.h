@@ -2090,7 +2090,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             // LOG_INFO("srcPos",srcPos);
             // LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
         }
-        LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
+        LOG_INFO("[statusTensor_]",statusTensor_,{moeExpertNumPerRank_,8});
         PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE3>(); 
         GlobalTensor<int32_t> rankGMTensor;
