@@ -1,0 +1,104 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file flash_attn_tiling_basic.cpp
+ * \brief FlashAttention arch35
+ */
+
+#include "flash_attn_tiling_regbase.h"
+
+using namespace Ops::Transformer::OpTiling;
+
+namespace optiling {
+namespace FA {
+
+class FlashAttentionTilingBasic : public FlashAttentionTilingRegbase {
+public:
+    explicit FlashAttentionTilingBasic(gert::TilingContext *context)
+        : FlashAttentionTilingRegbase(context)
+    {
+        this->regbase = true;
+    }
+    ~FlashAttentionTilingBasic() override = default;
+
+protected:
+    bool IsCapable() override
+    {
+        if (npuArch != NpuArch::DAV_3510) {
+            OP_LOGD(opName, "FlashAttentionTilingBasic: current npu arch is not dav-3510, skip.");
+            return false;
+        }
+        return true;
+    }
+
+    void CalcDBasicBlock() override
+    {
+    }
+
+    void CalcS1S2BasicBlock() override
+    {
+        // TODO: 基本块计算
+        // 可以参照flash_attn_score_tiling_basic.cpp中的CalcS1S2BasicBlock实现
+    }
+
+    int64_t CalcTotalSize() override
+    {
+        int64_t totalSize = bSize * n2Size * gSize * multiCoreParamsRegbase_->get_s1OuterSize();
+        return totalSize;
+    }
+
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        // TODO: workspace计算
+        size_t *workspaces = context_->GetWorkspaceSizes(1);
+        // 可以参照flash_attn_score_tiling_basic.cpp中的GetWorkspaceSize实现
+        workspaces[0] = 0;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t GetTilingKey() const override
+    {
+        uint8_t layout = static_cast<uint8_t>(tilingKeyLayout);
+        uint16_t s1Type = static_cast<uint16_t>(s1BasicBlock);
+        uint16_t s2Type = static_cast<uint16_t>(s2BasicBlock);
+        uint16_t dType = static_cast<uint16_t>(dTemplateType);
+        uint16_t dvType = static_cast<uint16_t>(dVTemplateType);
+        uint8_t atten = static_cast<uint8_t>(hasAttenMask ? 1 : 0);
+        uint8_t paFlag = static_cast<uint8_t>(isPA ? 1 : 0);
+        uint8_t lseFlag = static_cast<uint8_t>(returnSoftmaxLse != 0 ? 1 : 0);
+        uint8_t impl = static_cast<uint8_t>(implMode);
+
+        if (dType == static_cast<uint16_t>(dVType)) {
+            return GET_TPL_TILING_KEY(0, impl, layout, s1Type, s2Type, dType,
+                                      static_cast<uint16_t>(FADTemplateType::NONALIGNED),
+                                      atten, paFlag, lseFlag, 1);
+        }
+        return GET_TPL_TILING_KEY(0, impl, layout, s1Type, s2Type, dType, dvType,
+                                  atten, paFlag, lseFlag, 1);
+    }
+
+    ge::graphStatus PostTiling() override
+    {
+        FlashAttentionTilingRegbase::PostTiling();
+        return ge::GRAPH_SUCCESS;
+    }
+
+private:
+    uint16_t dVType = static_cast<uint16_t>(FADTemplateType::NONALIGNED);
+    bool regbase = true;
+};
+
+// 注册到arch35 (DAV_3510)，优先级83（与flash_attn_score保持一致）
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttention, FlashAttentionTilingBasic,
+                                    static_cast<int32_t>(NpuArch::DAV_3510), 83);
+
+} // namespace FA
+} // namespace optiling
