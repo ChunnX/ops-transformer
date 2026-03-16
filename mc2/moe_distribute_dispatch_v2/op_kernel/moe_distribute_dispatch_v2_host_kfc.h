@@ -2805,7 +2805,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int16_t> XorTensorInt16 = subExpBuf_.Get<int16_t>();
     LocalTensor<uint8_t> sharedTensorInt8 = gatherMaskTBuf_.Get<uint8_t>(); //最小需要256B，最大是element * typesize
     LocalTensor<half> maskInputFp16Tensor = gatherMaskTBuf_.Get<half>();
-    LocalTensor<int16_t> maskInputInt16Tensor = gatherMaskTBuf_.Get<half>();
+    LocalTensor<int16_t> maskInputInt16Tensor = gatherMaskTBuf_.Get<int16_t>();
     LocalTensor<int16_t> expertsIndexTensor = indexBuf.Get<int16_t>();
     LocalTensor<uint16_t> gatherMaskTensor = gatherMaskTBuf_.Get<uint16_t>();
     LocalTensor<uint8_t> gatherMaskTensorInt8 = gatherMaskTBuf_.Get<uint8_t>();
