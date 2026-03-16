@@ -153,7 +153,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
       <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>paddedMode为false：(tokens_num * topK_num,  hidden_size）<br>paddedMode为true：(experts_num* capacity,  hidden_size）</td>
+      <td>paddedMode为false：（tokens_num * topK_num,  hidden_size）<br>paddedMode为true：（experts_num* capacity,  hidden_size）</td>
       <td>√</td>
     </tr>
     <tr>
@@ -295,21 +295,15 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     <tr>
       <td> ACLNN_ERR_PARAM_INVALID </td>
       <td> 161002 </td>
-      <td>输入或输出的数据类型不在支持的范围内。</td>
+      <td>输入或输出的数据类型或shape不在支持的范围内。</td>
     </tr>
     <tr>
-      <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
-      <td rowspan="4"> 561002 </td>
+      <td rowspan="2"> ACLNN_ERR_INNER_NULLPTR </td>
+      <td rowspan="2"> 561103 </td>
       <td>topK_num > 512。</td>
     </tr>
     <tr>
-      <td>topK_num大于experts_num。</td>
-    </tr>
-    <tr>
-      <td>capacity大于tokens_num。</td>
-    </tr>
-    <tr>
-      <td>输入或输出的shape不符合要求。</td>
+      <td>probsOptional的shape不在支持的范围。</td>
     </tr>
   </tbody></table>
 
@@ -363,7 +357,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 - 确定性计算：
   - aclnnMoeTokenUnpermuteWithRoutingMap默认确定性实现。
 
-- topK_num <= 512, pad模式为false时routingMap中每行为1或true的个数固定且小于`512`。
+- topK_num <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
+- paddedMode为true时，topK_num <= experts_num。
+- paddedMode为true时，capacity <= tokens_num。
 
 ## 调用示例
 
