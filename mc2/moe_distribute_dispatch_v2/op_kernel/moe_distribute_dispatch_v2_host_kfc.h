@@ -1232,7 +1232,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
 
         LOG_INFO("WaitFlag rsvdCnt",flagInLTTensor.GetValue(0));
-        if(flagInLTTensor.GetValue(0) == waitNum) {
+        if(flagInLTTensor.GetValue(0) == float32_t(waitNum)) {
             LOG_INFO("WaitFlag success");
             break;
         }
@@ -2747,7 +2747,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(float32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
-    PipeBarrier<PIPE_ALL>();
     expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
     LOG_INFO("WriteExpertOffset dstFlag", dstFlag);
     LOG_INFO("WriteExpertOffset expertOffsetFlagGMTensor", expertOffsetFlagGMTensor, {1, aivNum_});
@@ -2792,9 +2791,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<int16_t>(XorTensorInt16, 1, calCnt); 
     Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
     PipeBarrier<PIPE_V>();
-
+    LOG_INFO("expertIdsInt16", expertIdsInt16, {activeBsCnt, axisK_});
     for(uint32_t Index = startExpertId; Index < endExpertId; Index++) { //TODO:需要考虑二维mask影响 
         int16_t dstExpertId = static_cast<uint16_t>(Index);
+        LOG_INFO("dstExpertId", dstExpertId);
         Adds(dstExpIdTensorInt16, expertIdsInt16, -dstExpertId, calCnt);
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
