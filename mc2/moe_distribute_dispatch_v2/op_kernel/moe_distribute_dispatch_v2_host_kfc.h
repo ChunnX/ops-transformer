@@ -2734,8 +2734,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
-    //PipeBarrier<PIPE_MTE3>();
-    SyncFunc<AscendC::HardEvent::MTE3_MTE3>();
+    PipeBarrier<PIPE_MTE3>();
+    //SyncFunc<AscendC::HardEvent::MTE3_MTE3>();
     LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
     LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
