@@ -2867,13 +2867,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
-            CalTokenSendExpertOffset();
-            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-                ScatterTokenToRemote();  //4 20  5
-                // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
-            } else {
-                GatherTokenFrRemote(aivUsedGather_);
-            }
+            // CalTokenSendExpertOffset();
+            // if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+            //     ScatterTokenToRemote();  //4 20  5
+            //     // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
+            // } else {
+            //     GatherTokenFrRemote(aivUsedGather_);
+            // }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
