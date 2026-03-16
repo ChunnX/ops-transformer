@@ -2464,9 +2464,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     
     SplitToCore(rscvStatusNum_, 0, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_);
 
-    // LOG_INFO("startStatusIndex_", startStatusIndex_);
-    // LOG_INFO("endStatusIndex_", endStatusIndex_);
-    // LOG_INFO("recStatusNumPerCore_", recStatusNumPerCore_);
+    LOG_INFO("startStatusIndex_", startStatusIndex_);
+    LOG_INFO("endStatusIndex_", endStatusIndex_);
+    LOG_INFO("recStatusNumPerCore_", recStatusNumPerCore_);
     
     BufferInit();
     WaitDispatch();
