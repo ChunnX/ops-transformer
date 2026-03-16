@@ -155,7 +155,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>输入</td>
       <td>当paddedMode为true后生效，否则不会对其进行操作。当paddedMode为true时，此为unpermutedTokens的shape。</td>
       <td>当前仅支持nullptr。</td>
-      <td>-</td>
+      <td>aclIntArray*</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

@@ -142,7 +142,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>输入</td>
       <td>paddedMode为true时，输出结果的shape。</td>
       <td><ul><li>paddedMode为true时，restoreShapeOptional生效，out的shape将表征为restoreShapeOptional。</li><li>目前仅支持nullptr。</li></ul></td>
-      <td>INT32</td>
+      <td>aclIntArray*</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

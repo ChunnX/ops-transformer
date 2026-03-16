@@ -24,7 +24,7 @@
   $$
   
   $$
-  inputGrad = inputGrad.reshape(-1, topK, hiddenSize)
+  inputGrad = inputGrad.reshape(-1, numTopk, hiddenSize)
   $$
   
   $$
