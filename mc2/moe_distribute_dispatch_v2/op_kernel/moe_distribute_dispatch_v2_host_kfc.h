@@ -1300,7 +1300,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     uint64_t usedCoreNum =  (aivNum_ - aivUsedCumSum_) > moeExpertNum_? moeExpertNum_ : (aivNum_ - aivUsedCumSum_);
     uint64_t dstOffset = startTokenId * axisK_ * sizeof(int16_t);
     uint32_t computeRow = endTokenId - startTokenId;
-    uint32_t expertOffsetNum = computeRow * axisK_; //32B对齐
+    uint32_t expertOffsetNum = computeRow * moeCntRowAlign_; //32B对齐
     LOG_INFO("expertOffsetNum",expertOffsetNum);
     GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(gmExpertOffsetCnt + dstFlag);
     LocalTensor<float32_t> flagInLTTensor = dstExpBuf_.Get<float32_t>();
