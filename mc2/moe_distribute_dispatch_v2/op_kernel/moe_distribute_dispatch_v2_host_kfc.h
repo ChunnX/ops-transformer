@@ -1444,7 +1444,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     PipeBarrier<PIPE_V>();
     //// LOG_INFO("dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
 
-    LOG_INFO("CalServerSendCnt expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_,axisK_})
+    LOG_INFO("CalServerSendCnt expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_,axisK_});
     for(int32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
         int32_t dstServerId = serverIndex;
         if(HasSharedExpertInServer(dstServerId)) {
