@@ -1593,7 +1593,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t tokenCnt;
         ////// LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] curServerId:", dstServerInd);
         WaitStatusFlag(dstServerInd, tokenCnt);
-        // LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
+        LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
         // buf分配
         //tpipe_->Reset(); //TODO 
 
@@ -1725,7 +1725,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             uint32_t dstPosition = index;
             GM_ADDR readAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
             CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, arriveCount);
-            // LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
+            LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             // SyncFunc<AscendC::HardEvent::MTE2_V>();
             //SendToExpert(index);
