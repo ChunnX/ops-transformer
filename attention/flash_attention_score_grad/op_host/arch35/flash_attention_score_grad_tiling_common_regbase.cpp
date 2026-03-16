@@ -1009,19 +1009,46 @@ ge::graphStatus ProcessDropoutInfo(gert::TilingContext *context_, FuzzyBaseInfoP
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
-    DetermineMode(fBaseParams);
-    if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
-        fBaseParams.queryType == ge::DT_UINT8 || fBaseParams.queryType == ge::DT_INT8 ||
-        fBaseParams.queryType == ge::DT_QINT8) {
-        auto queryDType = context_->GetInputDesc(0)->GetDataType();
-        OP_LOGE("ProcessQuantInfo", "In the 8-bit scenario, only HIFP8 is supported, but got %s",
-                ge::TypeUtils::DataTypeToSerialString(queryDType).c_str());
-        return ge::GRAPH_FAILED;
-    }
-    // hifp8 shape whitelist
     if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
+        auto queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
+        auto keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY));
+        auto valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE));
+        auto dyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::DY));
+        auto attentionInShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_IN));
+        if (queryShape == nullptr || keyShape == nullptr ||
+            valueShape == nullptr || dyShape == nullptr || 
+            attentionInShape == nullptr) {
+            OP_LOGE(context_, "Scenario HIFP8, q, k, v, dy or y must not be null.");
+            return ge::GRAPH_FAILED;
+        }
+        auto attentionInShapeDim = attentionInShape->GetStorageShape().GetDimNum();
+        auto queryShapeDim = queryShape->GetStorageShape().GetDimNum();
+        auto dyShapeDim = dyShape->GetStorageShape().GetDimNum();
+        auto keyShapeDim = keyShape->GetStorageShape().GetDimNum();
+        auto valueShapeDim = valueShape->GetStorageShape().GetDimNum();
+        if (attentionInShapeDim != queryShapeDim || dyShapeDim != queryShapeDim || keyShapeDim != queryShapeDim ||
+            valueShapeDim != queryShapeDim) {
+            OP_LOGE(context_, "Scenario HIFP8, The dimnum of y %zu, dy %zu, key %zu, value %zu, should be equal to query %zu",
+                    attentionInShapeDim, dyShapeDim, keyShapeDim, valueShapeDim, queryShapeDim);
+            return ge::GRAPH_FAILED;
+        }
+        for (uint32_t dimIdx = 0; dimIdx < queryShapeDim; dimIdx++) {
+            if ((queryShape->GetStorageShape().GetDim(dimIdx) != dyShape->GetStorageShape().GetDim(dimIdx)) ||
+                (queryShape->GetStorageShape().GetDim(dimIdx) != attentionInShape->GetStorageShape().GetDim(dimIdx))) {
+                OP_LOGE(context_, "Scenario HIFP8, The y[%u] : %zu, dy[%u] : %zu, should be equal to query[%u] : %zu",
+                    dimIdx, attentionInShape->GetStorageShape().GetDim(dimIdx), dimIdx,
+                    dyShape->GetStorageShape().GetDim(dimIdx), dimIdx, queryShape->GetStorageShape().GetDim(dimIdx));
+                return ge::GRAPH_FAILED;
+            }
+            if ((keyShape->GetStorageShape().GetDim(dimIdx) != valueShape->GetStorageShape().GetDim(dimIdx))) {
+                OP_LOGE(context_, "Scenario HIFP8, The key[%u] : %zu, should be equal to value[%u] : %zu",
+                    dimIdx, keyShape->GetStorageShape().GetDim(dimIdx), dimIdx,
+                    valueShape->GetStorageShape().GetDim(dimIdx));
+                return ge::GRAPH_FAILED;
+            }
+        }
         const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
         OP_CHECK_IF(inputLayout == nullptr,
             OP_LOGE(context_, "Scenario HIFP8, inputLayout is null."),
@@ -1044,6 +1071,26 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
             OP_LOGE(context_, "Scenario HIFP8, query & key shape only support{[1, 54000, 5, 128], [1, 54000, 5, 128]}, {[1, 9360, 40, 128], [1, 9360, 40, 128]}, {[1, 54000, 10, 128], [1, 54000, 10, 128]}, {[1, 9360, 80, 128], [1, 9360, 80, 128]}, {[1, 57600, 5, 128], [1, 57600, 5, 128]}, {[1, 7200, 40, 128], [1, 512, 40, 128]}.");
             return ge::GRAPH_FAILED;
         }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+
+ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+{
+    DetermineMode(fBaseParams);
+    if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+        fBaseParams.queryType == ge::DT_UINT8 || fBaseParams.queryType == ge::DT_INT8 ||
+        fBaseParams.queryType == ge::DT_QINT8) {
+        auto queryDType = context_->GetInputDesc(0)->GetDataType();
+        OP_LOGE("ProcessQuantInfo", "In the 8-bit scenario, only HIFP8 is supported, but got %s",
+                ge::TypeUtils::DataTypeToSerialString(queryDType).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    // hifp8 shape whitelist
+    auto quantShapeRet = QuantShapeValidCheck(context_, fBaseParams);
+    if (quantShapeRet != ge::GRAPH_SUCCESS) {
+        return quantShapeRet;
     }
     fBaseParams.outDtype = fBaseParams.inputDtype;
     if (context_->GetAttrs()->GetAttrNum() > OUTDTYPE_ATTR_IDX &&

@@ -559,6 +559,7 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams);
+ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
 bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams);
