@@ -1260,6 +1260,12 @@ ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
 
 static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, FAInferContext& faInfo, uint32_t aicoreNum)
 {
+    constexpr int64_t KV_ACTUAL_SEQ_LEN_1024 = 1024;
+ 	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_16 = 16;
+ 	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_0 = 0;
+ 	constexpr int32_t EMBEDDING_SIZE_128 = 128;
+ 	constexpr int64_t GROUP_SIZE_128 = 128;
+
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
     auto tempQ = context->GetInputShape(QUERY_INDEX);
     auto tempK = context->GetInputShape(KEY_INDEX);
@@ -1357,7 +1363,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (minKVSeqlen >= aicoreNum * 512);
         bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (minKVSeqlen >= 1024);
         if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
-            (faInfo.embeddingSize <= 128) && (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= 128) && (maxQSeqlen <= 16) && (minKVSeqlen >= 1024) && (minQSeqlen > 0) && // 128: embeddingsize need less than 128 128: gsize need less than 128 16: maxqseqlen need less than 16 1024: minkvseqlen need greater than or equal to 1024 0: minqseqlen need greater than 0 
+            (faInfo.embeddingSize <= EMBEDDING_SIZE_128) && (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) && (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) && (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) && (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) && 
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
         }
@@ -1383,11 +1389,12 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
     int32_t innerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
     bool isLearnableSink = context.GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
     bool isLearnableSinkFlag = true;
+    constexpr int64_t QUERY_HEAD_DIM_64 = 64;
     if (isLearnableSink && inputLayoutStr == "TND") {
         auto tempQ = context.GetInputShape(QUERY_INDEX);
         int64_t tempQD = tempQ->GetStorageShape().GetDim(DIM_2);
         auto sinkDataType = context.GetOptionalInputDesc(LEARNABLE_SINK_INDEX)->GetDataType();
-        if (tempQD == 64 && sinkDataType == ge::DT_BF16) { // 64: qD need 64, condition to set sinkflag to disable
+        if (tempQD == QUERY_HEAD_DIM_64 && sinkDataType == ge::DT_BF16) {
             isLearnableSinkFlag = false;
         }
     }
