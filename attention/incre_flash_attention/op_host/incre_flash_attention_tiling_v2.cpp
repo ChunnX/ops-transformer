@@ -1195,7 +1195,6 @@ void IFATilingV2::SetfaRunFlag() {
     faRunSparseType_ = static_cast<uint8_t>(IfaSparseEnum::IFA_ALL);
     if (attenMaskFlag_) {
       faRunAttenMaskShapeType_ = 1; // 1 is shape type
-      attenMaskQSize_ = 1;
     } else {
       faRunAttenMaskShapeType_ = 0;
       attenMaskQSize_ = 0;
@@ -1877,6 +1876,7 @@ ge::graphStatus IFATilingV2::ProcessAttenMask() {
 
   uint32_t minAttenMaskSize = pageAttentionFlag_ ? sMax_ : maxActualseq_;
   attenMaskKvSize_ = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1);
+  attenMaskQSize_ = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 2);
   OP_CHECK_IF(attenMaskKvSize_ < minAttenMaskSize,
     OP_LOGE(ifaContext_->opName, "S Size[%u] of attenMask must be greater than or equal to the second dimension of blockTable * blockSize([%u]).",
               attenMaskKvSize_, minAttenMaskSize),
