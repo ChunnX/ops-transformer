@@ -102,7 +102,7 @@ public:
 private:
     __aicore__ inline void CalExpertOffset(uint32_t startTokenId, uint32_t endTokenId, LocalTensor<uint32_t> flagRecvGatherMask);
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<uint32_t> flagRecvGatherMask);
-    __aicore__ inline void WaitFlag(GM_ADDR flagAddr, LocalTensor<int32_t> flagInLTTensor, LocalTensor<uint32_t> flagRecvGatherMask, uint32_t waitNum);
+    __aicore__ inline void WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, uint32_t waitNum);
     __aicore__ inline void CalServerSendCnt();
     __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
@@ -1201,7 +1201,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, LocalTensor<uint32_t> flagRecvGatherMask, uint32_t waitNum) 
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,  uint32_t waitNum) 
 {
     // Implementation of WaitFlag
     LOG_INFO("WaitFlag waitNum", waitNum);
@@ -1253,7 +1253,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); //包括需要等待数据拷贝到发送区完成
     if(aivId_ == aivUsedCumSum_) { //4//轮询 + (计算) + (接收) 
-        WaitFlag(gmSendTokenFlg, flagTensor, flagRecvGatherMask, waitNum);
+        //WaitFlag(gmSendTokenFlg, flagTensor, flagRecvGatherMask, waitNum);
         //TODO:调用Hccl接口.还未提供
     }//2 4 + 4  []
 }
@@ -1303,7 +1303,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     uint32_t expertOffsetNum = computeRow * moeCntRowAlign_; //32B对齐
     LOG_INFO("expertOffsetNum",expertOffsetNum);
     GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(gmExpertOffsetCnt + dstFlag);
-    LocalTensor<int32_t> flagInLTTensor = dstExpBuf_.Get<int32_t>();
+    LocalTensor<float32_t> flagInLTTensor = dstExpBuf_.Get<int32_t>();
     LocalTensor<int16_t> expertCntTensor = dstExpBuf_.Get<int16_t>();
     GlobalTensor<int16_t> expertOffsetCntGMTensor;
     DataCopyParams expertCntCopyInParams{static_cast<uint16_t>(computeRow), static_cast<uint16_t>(sizeof(int16_t) * axisK_), 0, 0};
@@ -1311,7 +1311,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
     LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     // LOG_INFO("CalExpertOffset start waitFlg");
-    WaitFlag(flagAddr, flagInLTTensor, flagRecvGatherMask,  usedCoreNum);
+    WaitFlag(flagAddr, flagInLTTensor,  usedCoreNum);
     // LOG_INFO("CalExpertOffset end waitFlg");
     LOG_INFO("usedCoreNum",usedCoreNum);
     PipeBarrier<PIPE_V>();
