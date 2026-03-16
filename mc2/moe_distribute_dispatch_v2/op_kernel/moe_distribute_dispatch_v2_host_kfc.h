@@ -1303,7 +1303,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     uint32_t expertOffsetNum = computeRow * moeCntRowAlign_; //32B对齐
     LOG_INFO("expertOffsetNum",expertOffsetNum);
     GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(gmExpertOffsetCnt + dstFlag);
-    LocalTensor<float32_t> flagInLTTensor = dstExpBuf_.Get<int32_t>();
+    LocalTensor<float32_t> flagInLTTensor = dstExpBuf_.Get<float32_t>();
     LocalTensor<int16_t> expertCntTensor = dstExpBuf_.Get<int16_t>();
     GlobalTensor<int16_t> expertOffsetCntGMTensor;
     DataCopyParams expertCntCopyInParams{static_cast<uint16_t>(computeRow), static_cast<uint16_t>(sizeof(int16_t) * axisK_), 0, 0};
