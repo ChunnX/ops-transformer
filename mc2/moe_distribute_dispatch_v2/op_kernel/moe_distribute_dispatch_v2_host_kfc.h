@@ -1226,8 +1226,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //     }
         // }
         LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
-        uint32_t srcShape[2] = {1, waitNum};
-        ReduceSum<float32_t, Pattern::Reduce::AR, true>(flagRecvGatherMask, flagInLTTensor, sharedTensorInt8, srcShape, false);
+        ReduceSum(flagInLTTensor, flagInLTTensor, sharedTensorInt8, waitNum); // 采用fa
         //ReduceSum()
         // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
         //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
