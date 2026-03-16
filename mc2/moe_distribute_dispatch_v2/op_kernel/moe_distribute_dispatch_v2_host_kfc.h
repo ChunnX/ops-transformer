@@ -2762,6 +2762,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (startExpertId >= endExpertId || sendExpertNum == 0) {
         return ;
     }
+    LOG_INFO("CalTokenSendExpertOffset startExpertId", startExpertId);
+    LOG_INFO("CalTokenSendExpertOffset endExpertId", endExpertId);
+    LOG_INFO("CalTokenSendExpertOffset sendExpertNum", sendExpertNum);
     TBuf<> tempBuf;
     TBuf<> indexBuf;
     
