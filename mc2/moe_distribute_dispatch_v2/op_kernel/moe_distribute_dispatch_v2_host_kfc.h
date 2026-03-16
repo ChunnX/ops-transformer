@@ -609,7 +609,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommBetweenServerInfo()
 {
-    statusBufCntAlign_ = Ceil(Ceil(expertNumInServer_ * serverNum_, aivNum_), 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
+    statusBufCntAlign_ = Ceil(Ceil(expertNumInServer_ * serverNum_, aivUsedCumSum_), 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     //// LogInfo(__LINE__,"statusBufCntAlign_",statusBufCntAlign_);
     uint32_t statusBufSize = statusBufCntAlign_ * UB_ALIGN;
     totalUsedUB_ += statusBufSize;
