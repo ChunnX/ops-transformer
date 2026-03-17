@@ -13,6 +13,7 @@
  * \brief APT (arch35) kernel entry for DistributeBarrierExtend.
  */
 
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

@@ -7,10 +7,12 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  **/
+
 /*!
  * \file moe_distribute_dispatch_v3_apt.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeDispatchV3.
  */
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

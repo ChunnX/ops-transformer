@@ -12,6 +12,7 @@
  * \file matmul_allto_all.cpp
  * \brief kernel内核实现
  */
+
 #include <lib/matmul_intf.h>
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
