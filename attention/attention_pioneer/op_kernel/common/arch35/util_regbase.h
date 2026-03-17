@@ -82,6 +82,7 @@ struct RunParamStr;
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \
+    uint32_t s1RealSizeAlign64;    /* dn场景使用 */ \
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     int64_t tensorQOffset;         /* query的offset souter层确定 */ \
