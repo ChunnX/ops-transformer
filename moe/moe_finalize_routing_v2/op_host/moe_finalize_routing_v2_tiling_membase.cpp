@@ -188,11 +188,11 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     params.biasShape = biasShape;
     params.scalesShape = scalesShape;
     params.expandedRowIdxShape = expandedRowIdxShapePtr;
-
-    OP_CHECK_IF(
-        dropPadMode_ < DROP_MODE_VALUE_0 || dropPadMode_ > DROP_MODE_VALUE_3,
-        OP_LOGE(context_->GetNodeName(), "the value of drop_pad_mode should be [0,3]."),
-        return ge::GRAPH_FAILED);
+    dropPadMode_ = 2;
+    // OP_CHECK_IF(
+    //     dropPadMode_ < DROP_MODE_VALUE_0 || dropPadMode_ > DROP_MODE_VALUE_3,
+    //     OP_LOGE(context_->GetNodeName(), "the value of drop_pad_mode should be [0,3]."),
+    //     return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         expandedRowIdxShape.GetDimNum() != 1,
