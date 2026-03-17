@@ -2817,15 +2817,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<uint32_t> dstoffset = gatherMaskTBuf_.Get<uint32_t>();
     
 
-    CreateVecIndex(expertsIndexTensor, static_cast<int16_t>(0), calCnt);    // TODO：这个需要单独放
+    CreateVecIndex(expertsIndexTensor, static_cast<int16_t>(0), calCnt);
     Duplicate<int16_t>(XorTensorInt16, 1, calCnt);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
+    //SyncFunc<AscendC::HardEvent::MTE2_V>();
     PipeBarrier<PIPE_V>();
     LOG_INFO("expertIdsInt16", expertIdsInt16, {activeBsCnt, axisK_});
-    for(uint32_t Index = startExpertId; Index < endExpertId; Index++) { //TODO:需要考虑二维mask影响 
+    for(uint32_t Index = startExpertId; Index < endExpertId; Index++) {
         int16_t dstExpertId = static_cast<uint16_t>(Index);
+        Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt); // todo: 需要单独存放
         LOG_INFO("dstExpertId", dstExpertId);
+        PipeBarrier<PIPE_V>();
         Adds(dstExpIdTensorInt16, expertIdsInt16, -dstExpertId, calCnt);
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
