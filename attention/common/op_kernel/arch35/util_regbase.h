@@ -82,6 +82,7 @@ struct RunParamStr;
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \
+    uint32_t s1RealSizeAlign64;    /* dn场景使用 */ \
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     int64_t tensorQOffset;         /* query的offset souter层确定 */ \
@@ -150,6 +151,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t goIdx = 0; /* g轴的index */ \
     int32_t s1RealSize; \
     int32_t s1RealSizeAlign32; \
+    int32_t s1RealSizeAlign64; \
     int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */ \
     int32_t firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 size */ \
     int32_t s2RealSize; /* s2方向基本块的真实长度 */ \
