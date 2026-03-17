@@ -208,6 +208,7 @@ public:
     __aicore__ inline void AllocV0V1Buffers(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers);
     __aicore__ inline void ProcessV0(uint32_t runBSStart, V0V1Buffers<P> &buffers);
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers, uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
+    __aicore__ inline void VFDoV1ProcessInvRmsGrad(__ubuf__ P *h1GradIn, __ubuf__ P *hMixIn, uint16_t dealBSSize);
     __aicore__ inline void InitCube();
     __aicore__ inline void AICProcess(GlobalTensor<P> x, GlobalTensor<P> y, GlobalTensor<P> z, uint64_t m, uint64_t n, uint64_t k);
     __aicore__ inline void ProcessC0C1Pipeline();
@@ -817,7 +818,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(
         bf16InQueue_.DeQue<P>(hMixBuf);
 
         // hmix * h_1_grad, prepare for inv rms grad
-        Mul(h1GradBuf[bsOffset * fusionSize_], h1GradBuf[bsOffset * fusionSize_], hMixBuf, dealBSSize * fusionSize_);
+        // Mul(h1GradBuf[bsOffset * fusionSize_], h1GradBuf[bsOffset * fusionSize_], hMixBuf, dealBSSize * fusionSize_);
+        VFDoV1ProcessInvRmsGrad((__ubuf__ P *)h1GradBuf[bsOffset * fusionSize_].GetPhyAddr(), (__ubuf__ P *)hMixBuf.GetPhyAddr(), dealBSSize);
         PipeBarrier<PIPE_V>();
 
         // TODO
@@ -861,6 +863,32 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(
         Add(sumBuf, h1GradBuf, sumBuf, fusionSize_);
     }
     PipeBarrier<PIPE_V>();
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessInvRmsGrad(__ubuf__ P *h1GradIn, __ubuf__ P *hMixIn, uint16_t dealBSSize)
+{
+    uint32_t totalElem = dealBSSize * fusionSize_;
+    uint32_t regCapacityFP32 = 64; // 256B / sizeof(P)
+    uint16_t nLoopCnt = Ceil(totalElem, regCapacityFP32);
+    uint32_t curElemCnt = totalElem;
+
+    __VEC_SCOPE__
+    {
+        for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; ++vfBlockIdx) {
+            uint32_t elemOffset = vfBlockIdx * regCapacityFP32;
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
+            MicroAPI::RegTensor<P> h1GradBuf, hMixReg;
+            MicroAPI::RegTensor<P> hMulReg;
+
+            MicroAPI::LoadAlign(h1GradBuf, h1GradIn + elemOffset);
+            MicroAPI::LoadAlign(hMixReg, hMixIn + elemOffset);
+
+            MicroAPI::Mul(hMulReg, h1GradBuf, hMixReg, mask);
+
+            MicroAPI::StoreAlign(h1GradIn + elemOffset, hMulReg, mask);
+        }
+    }
 }
 
 template <class T, class P>
