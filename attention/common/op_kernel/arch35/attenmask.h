@@ -414,7 +414,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             }
             GetAttenMaskComputeMode<hasAtten>(delta, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
             return ComputeOffsetForCausal(delta, constInfo.s1BaseSize, constInfo.s2BaseSize,
-                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
+                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         }
         // compress mode, 推理场景的TND和TND的offset计算相同，因为mask被padding到了最大的s2Size
         int64_t deltaCausalOrNext = 0;
@@ -596,7 +596,8 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
         if (needAtten) {
             int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true);
             BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.s2RealSize,
-                                       constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+                                       runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
+                                       runInfo.s1RealSizeAlign64 >> 1, constInfo);
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }
