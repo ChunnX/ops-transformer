@@ -38,6 +38,30 @@ class MoeDistributeBuffer:
                                         ) -> int:
         def inline_align(value, base):
             return (value + base - 1) // base * base
+        torch._check(((world_size >= 2) and (world_size <= 768)),   # world_size当前仅支持[2,768]
+                     lambda: (f"world_size only support in [2, 768], but got {world_size=}."))
+        torch._check(((hidden >= 1024) and (hidden <= 8192)),       # hidden当前仅支持[1024,8192]
+                     lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
+        # num_max_dispatch_tokens_per_rank当前仅支持[1,512]
+        torch._check(((num_max_dispatch_tokens_per_rank >= 1) and (num_max_dispatch_tokens_per_rank <= 512)),
+                     lambda: (f"num_max_dispatch_tokens_per_rank only support in [1, 512], "
+                              f"but got {num_max_dispatch_tokens_per_rank=}."))
+        torch._check(((num_moe_expert >= 1) and (num_moe_expert <= 1024)),       # num_moe_expert当前仅支持[1,1024]
+                     lambda: (f"num_moe_expert only support in [1, 1024], but got {num_moe_expert=}."))
+        torch._check(((topk >= 1) and (topk <= 16)),                # topk当前仅支持[1,16]
+                     lambda: (f"topk only support in [1, 16], but got {topk=}."))
+        torch._check(((num_shared_expert >= 0) and (num_shared_expert <= 4)),   # num_shared_expert当前仅支持[0,4]
+                     lambda: (f"num_shared_expert only support in [0, 4], but got {num_shared_expert=}."))
+        torch._check((world_size - num_shared_expert_ranks > 0),                # 至少存在一张moe专家卡
+                     lambda: (f"world_size - num_shared_expert_ranks must be greater than 0, "
+                              f"but got {world_size=} {num_shared_expert_ranks=}."))
+        # local_moe_expert_num*world_size仅支持(0，2048]
+        local_moe_expert_num = num_moe_expert // (world_size - num_shared_expert_ranks)
+        torch._check(((local_moe_expert_num * world_size > 0) and (local_moe_expert_num * world_size <= 2048)),
+            lambda: (f"local_moe_expert_num * world_size only support in (0, 2048], "
+                     f"but got {world_size=} {num_shared_expert_ranks=}, "
+                     f"local_moe_expert_num = num_moe_expert // (world_size - num_shared_expert_ranks), "
+                     f"{local_moe_expert_num=}"))
 
         max_out_dtype_size = 2 # sizeof(int32)
         mb_conversion = 1024 * 1024
@@ -48,8 +72,7 @@ class MoeDistributeBuffer:
 
         comm_alg_support_list = ["fullmesh_v1", "fullmesh_v2", ""]
         torch._check(comm_alg in comm_alg_support_list,
-                     lambda: (f"comm_alg only support {comm_alg_support_list=} "
-                              f"but got {comm_alg=}."),)
+                     lambda: (f"comm_alg only support {comm_alg_support_list=}, but got {comm_alg=}."))
 
         token_actual_len = inline_align(hidden * max_out_dtype_size, ub_align) + scale_expand_index_buffer
         if (comm_alg == "fullmesh_v2"):
@@ -58,8 +81,6 @@ class MoeDistributeBuffer:
         else: 
             token_need_size_dispatch = inline_align(token_actual_len, win_addr_align)
         token_need_size_combine = inline_align(hidden * max_out_dtype_size, win_addr_align)
-
-        local_moe_expert_num = num_moe_expert // (world_size - num_shared_expert_ranks)
         minimum_buffer_size = 2 * (
             (num_max_dispatch_tokens_per_rank * token_need_size_dispatch * world_size * local_moe_expert_num) + \
             (num_max_dispatch_tokens_per_rank * token_need_size_combine * (topk + num_shared_expert))) + mb_conversion
