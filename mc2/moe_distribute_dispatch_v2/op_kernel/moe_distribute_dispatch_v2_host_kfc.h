@@ -146,6 +146,7 @@ private:
     __aicore__ inline void SendToExpert(uint32_t rcvCnt);
     __aicore__ inline void resetMaxCnt(int32_t cntPosIndex, int32_t curExpertCnt);
     __aicore__ inline void SetStatus();
+    __aicore__ inline void CalTokenMask();
     __aicore__ inline void InitStatusTensor();
     __aicore__ inline void BufferInit();
     __aicore__ inline void InitComputeInfo();
