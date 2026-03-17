@@ -358,8 +358,12 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   - aclnnMoeTokenUnpermuteWithRoutingMap默认确定性实现。
 
 - topK_num <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
-- paddedMode为true时，topK_num <= experts_num。
-- paddedMode为true时，capacity <= tokens_num。
+
+- 以下场景后续版本会拦截，如果提示warning，建议整改：
+  - paddedMode为true，且topK_num > experts_num。
+  - paddedMode为true，且capacity > tokens_num。
+  - routingMap的数据类型或shape不符合要求。
+  - 输入tensor的数据格式不为ND。
 
 ## 调用示例
 
