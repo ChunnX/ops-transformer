@@ -414,7 +414,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             }
             GetAttenMaskComputeMode<hasAtten>(delta, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
             return ComputeOffsetForCausal(delta, constInfo.s1BaseSize, constInfo.s2BaseSize,
-                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
+                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         }
         // compress mode, 推理场景的TND和TND的offset计算相同，因为mask被padding到了最大的s2Size
         int64_t deltaCausalOrNext = 0;
