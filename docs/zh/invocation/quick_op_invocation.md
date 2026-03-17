@@ -364,3 +364,4 @@ Global Environment TearDown
 ```
 
 \$\{n\}表示执行了n个用例，\$\{m\}表示m项测试，\$\{x\}表示执行用例消耗的时间，单位为毫秒。
+> 说明：add_example算子仅是为了帮助理解如何开发算子，仅设计了ophost的ut用例，并未设计opapi和opkernel的ut用例。开发者可以参考其他算子的ut用例以实现看护。
