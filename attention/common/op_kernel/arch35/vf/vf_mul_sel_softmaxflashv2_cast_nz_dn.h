@@ -112,9 +112,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + (m >> 2);
+    __ubuf__ uint32_t *mask_ub2 = maskUb + (m >> 2) * 2;
+    __ubuf__ uint32_t *mask_ub3 = maskUb + (m >> 2) * 3;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -132,7 +132,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
 
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                    IsSameType<T2, hifloat8_t>::value) && hasAtten) {
+                    IsSameType<T2, hifloat8_t>::value || IsSameType<T2, bfloat16_t>::value ||
+                    IsSameType<T2, half>::value) && hasAtten) {
         if (needAtten) {
             for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
                 LoadAlign(src0, src_ub0 + iter_m * m * 4);
@@ -185,7 +186,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
-
     if constexpr (hasSink) {
         Max(max0, max0, vreg_sink_input, preg_108);
     }
@@ -213,7 +213,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     } else {
         loopNum = ubN / 4;
     }
-
+    if constexpr (hasAtten == true) {
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    }
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -487,9 +489,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + (m >> 2);
+    __ubuf__ uint32_t *mask_ub2 = maskUb + (m >> 2) * 2;
+    __ubuf__ uint32_t *mask_ub3 = maskUb + (m >> 2) * 3;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -506,7 +508,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                    IsSameType<T2, hifloat8_t>::value) && hasAtten) {
+                    IsSameType<T2, hifloat8_t>::value || IsSameType<T2, bfloat16_t>::value ||
+                    IsSameType<T2, half>::value) && hasAtten) {
         if (needAtten) {
             for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
                 LoadAlign(src0, src_ub0 + iter_m * m * 4);
@@ -592,7 +595,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     } else {
         loopNum = ubN / 4;
     }
-
+    if constexpr (hasAtten == true) {
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    }
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
