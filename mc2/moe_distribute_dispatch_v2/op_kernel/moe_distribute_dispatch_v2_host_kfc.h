@@ -2818,7 +2818,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     
 
     CreateVecIndex(expertsIndexTensor, static_cast<int16_t>(0), calCnt);
-    Duplicate<int16_t>(XorTensorInt16, 1, calCnt);
     //SyncFunc<AscendC::HardEvent::MTE2_V>();
     PipeBarrier<PIPE_V>();
     LOG_INFO("expertIdsInt16", expertIdsInt16, {activeBsCnt, axisK_});
@@ -2834,6 +2833,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         Mins(dstExpIdTensorInt16, dstExpIdTensorInt16, 1, calCnt);
+        Duplicate<int16_t>(XorTensorInt16, 1, calCnt); // todo:单独放
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         Xor(dstExpIdTensorInt16, dstExpIdTensorInt16, XorTensorInt16, sharedTensorInt8, calCnt);
