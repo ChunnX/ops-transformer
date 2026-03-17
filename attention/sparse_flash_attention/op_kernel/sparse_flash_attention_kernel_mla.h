@@ -269,23 +269,12 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitAllZeroOutput(uint32_t
 
         uint64_t attenOutOffset = (tBase + s1Idx) * kvHeadNum * constInfo.gSize * headDim +   // T轴、s1轴偏移
                                     n2Idx * constInfo.gSize * headDim;                        // N2轴偏移
-        uint64_t softmaxSumOffset = n2Idx * actualSeqLengthsQGm.GetValue(constInfo.batchSize - 1) * constInfo.gSize +
-                                    (tBase + s1Idx) * constInfo.gSize;
-        uint64_t softmaxMaxOffset = softmaxSumOffset;
         matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * headDim, 0);
-        matmul::InitOutput<T>(softmaxSumGm[softmaxSumOffset], constInfo.gSize, 0);
-        matmul::InitOutput<T>(softmaxMaxGm[softmaxMaxOffset], constInfo.gSize, 0);
     } else if (constInfo.outputLayout == SFA_LAYOUT::BSND) {
         uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * kvHeadNum * constInfo.gSize * headDim +
                                     s1Idx * kvHeadNum * constInfo.gSize * headDim +           // B轴、S1轴偏移
                                     n2Idx * constInfo.gSize * headDim;                        // N2轴偏移
-        uint64_t softmaxSumOffset = bIdx * kvHeadNum * constInfo.qSeqSize * constInfo.gSize +
-                                    n2Idx * constInfo.qSeqSize * constInfo.gSize +
-                                    s1Idx * constInfo.gSize;
-        uint64_t softmaxMaxOffset = softmaxSumOffset;
         matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * headDim, 0);
-        matmul::InitOutput<T>(softmaxSumGm[softmaxSumOffset], constInfo.gSize, 0);
-        matmul::InitOutput<T>(softmaxMaxGm[softmaxMaxOffset], constInfo.gSize, 0);
     }
 }
 
