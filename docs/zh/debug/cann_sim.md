@@ -24,7 +24,7 @@ CANN Simulator是一款面向算子开发场景的SoC级芯片仿真工具，用
 
 ## 环境准备
 
-CANN Simulator集成在CANN toolkit包里，参考[环境部署](../context/quick_install.md)完成软件包的安装
+CANN Simulator集成在CANN toolkit包里，参考[环境部署](../install/quick_install.md)完成软件包的安装
 
 # 快速开始
 
@@ -37,7 +37,7 @@ CANN Simulator集成在CANN toolkit包里，参考[环境部署](../context/quic
 # 说明：进入项目根目录，执行如下编译命令，命令仅供参考，详细可以查看算子调用的说明。
 bash build.sh --pkg --soc=Ascend950 --vendor_name=custom --ops=add_example
 # 安装自定义算子包
-./build_out/cann-ops-math-${vendor_name}_linux-${arch}.run
+./build_out/cann-ops-transformer-${vendor_name}_linux-${arch}.run
 ```
 
 * 参考[aclnn调用](../invocation/op_invocation.md#aclnn调用)完成test_aclnn_add_example.cpp的编译，编出可执行文件test_aclnn_add_example
