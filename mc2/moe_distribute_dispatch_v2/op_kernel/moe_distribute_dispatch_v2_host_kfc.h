@@ -1055,10 +1055,10 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalValidBSCnt(Local
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ExpertActiveMaskCal()
 {
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
     LocalTensor<int8_t> maskStrideInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
     LocalTensor<half> maskStrideFp16Tensor = subExpBuf_.Get<half>();
     LocalTensor<int32_t> maskStrideInt32Tensor = gatherMaskTBuf_.Get<int32_t>();
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
     Adds(expertIdsTensor_, expertIdsTensor_, moeExpertNum_, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
     Cast(maskStrideFp16Tensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, expertIdsCnt_);
