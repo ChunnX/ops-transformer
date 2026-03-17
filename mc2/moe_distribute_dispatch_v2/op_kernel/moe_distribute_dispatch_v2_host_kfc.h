@@ -2804,7 +2804,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(indexBuf,  calCnt * sizeof(uint16_t));
 
     LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
-    LocalTensor<int16_t> expertIdsInt16 = subExpBuf_.Get<int16_t>(); //expertIdsTensor_.ReinterpretCast<int16_t>();
+    LocalTensor<int16_t> expertIdsInt16 = subExpBuf_.Get<int16_t>();
     LocalTensor<half> dstExpIdTensorFP16 = dstExpBuf_.Get<half>();
     LocalTensor<int16_t> XorTensorInt16 = subExpBuf_.Get<int16_t>();
     LocalTensor<uint8_t> sharedTensorInt8 = gatherMaskTBuf_.Get<uint8_t>(); //最小需要256B，最大是element * typesize
@@ -2821,16 +2821,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     CreateVecIndex(expertsIndexTensor, static_cast<int16_t>(0), calCnt);
     //SyncFunc<AscendC::HardEvent::MTE2_V>();
     PipeBarrier<PIPE_V>();
-    LOG_INFO("expertIdsInt16", expertIdsInt16, {activeBsCnt, axisK_});
     for(uint32_t Index = startExpertId; Index < endExpertId; Index++) {
         int16_t dstExpertId = static_cast<uint16_t>(Index);
         Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt); // todo: 需要单独存放
         LOG_INFO("dstExpertId", dstExpertId);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("expertIdsInt16", expertIdsInt16, {activeBsCnt, axisK_});
         Adds(dstExpIdTensorInt16, expertIdsInt16, -dstExpertId, calCnt);
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
-        Abs(dstExpIdTensorFP16, dstExpIdTensorFP16, calCnt);
+        Abs(dstExpIdTensorFP16, dstExpIdTensorFP16, calCnt); //TODO:需要改，目前A5支持in32的abs
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         Mins(dstExpIdTensorInt16, dstExpIdTensorInt16, 1, calCnt);
@@ -2880,10 +2880,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t usetime = endtime -starttime;
     // LOG_INFO("CalTokenSendExpertOffset use time",usetime);
     LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
-    SyncFunc<AscendC::HardEvent::V_MTE2>();
-    DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
+    // SyncFunc<AscendC::HardEvent::V_MTE2>();
+    // DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
+    // DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
+    // DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
     WriteExpertOffset(); // 计算完成将结果写入GM并写flag
 }
 
