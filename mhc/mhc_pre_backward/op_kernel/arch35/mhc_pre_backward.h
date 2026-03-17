@@ -891,6 +891,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     // 因为参与该计算过程的变量的尾轴为n^2 + 2 * n，所以存在onceDealMixBSNum_ < remainDealBsSize(最大为chunk)，这个循环主要处理该情况
     // onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
     while (remainDealBsSize > 0) {
+        // 处理inv_ms
         fp32OutBuf = bf16OutQueue_.AllocTensor<P>();
         uint32_t dealBSSize = (remainDealBsSize > onceDealMixBSNum_) ? onceDealMixBSNum_ : remainDealBsSize;
         dataCopyParams_.blockLen = dealBSSize * sizeof(P);
@@ -899,6 +900,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
         fp32InQueue_.EnQue(fp32InputBuf);
         LocalTensor<P> invRmsBufLocal = fp32InQueue_.DeQue<P>();
 
+        //regbase start
         const uint32_t xRowSumBroadCastDst[2] = {dealBSSize, fusionSize_};
         const uint32_t xRowSumBroadCastSrc[2] = {dealBSSize, 1};
         BroadCast<float, 2, 1>(buffers.invRmsBuf, invRmsBufLocal, xRowSumBroadCastDst, xRowSumBroadCastSrc,
