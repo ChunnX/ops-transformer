@@ -12,6 +12,7 @@
  * \file moe_distribute_combine_add_rms_norm.cpp
  * \brief
  */
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
