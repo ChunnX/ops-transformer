@@ -12,6 +12,7 @@
  * \file allto_all_all_gather_batch_mat_mul.cpp
  * \brief
  */
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
