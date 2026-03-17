@@ -1077,30 +1077,20 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::V_S>();
 }
 
-// template <TemplateDispatchKFCTypeClass>
-// __aicore__ inline void
-// MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenMask()
-// {
-//     activeMaskBsCnt_ = axisBS_;
-//     // SetServerFlag();
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenMask()
+{
+    activeMaskBsCnt_ = axisBS_;
     
-//     if (isTokenMaskFlag_) { // 1维
-//         //// LogInfo(__LINE__, "isTokenMaskFlag_ is true");
-//         TokenActiveMaskCal();
-//     }
+    if (isTokenMaskFlag_) { // 1维
+        TokenActiveMaskCal();
+    }
 
 
-//     // if (isExpertMaskFlag_) { // 2维
-//     //     //// LogInfo(__LINE__, "isExpertMaskFlag_ is true");
-//     //     ExpertActiveMaskCal();
-//     // }
-
-//     // if (activeMaskBsCnt_ == 0) {
-//     //     //// LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
-//     //     return;
-//     // }
-
-// }
+    if (isExpertMaskFlag_) { // 2维
+        ExpertActiveMaskCal();
+    }
+}
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
