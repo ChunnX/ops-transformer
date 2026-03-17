@@ -52,11 +52,16 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                                   IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
+    static constexpr bool isBf16Fp16 = IsSameType<INPUT_T, bfloat16_t>::value ||
+                                  IsSameType<INPUT_T, half>::value;
     static constexpr bool isMlaFullQuant = isFp8 && hasRope;
     static constexpr bool isMlaNoQuant = !isFp8 && hasRope && isInfer && (dTemplateType == DTemplateType::Aligned576);
     static constexpr bool isGqaNoQuant = !isFp8 && isInfer && !isMlaNoQuant && !isMlaFullQuant;
-    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
-                                       s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    static constexpr bool useDn = ((optionalDn || IsDn(((IsSameType<INPUT_T, float>::value) || isFp8),
+                                                     (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten,
+                                                     hasDrop, s1BaseSize == 64, dTemplateType, hasRope,
+                                                     enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value))
+                                               && implMode != ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter = (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) ||
@@ -377,12 +382,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
 {
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
-    if constexpr (isFp8 && hasAtten) {
+    if constexpr ((isFp8 || isBf16Fp16) && hasAtten) {
         AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,
                                     runInfo, constInfo, *attenMaskInfoPtr,
                                     (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
                                     ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
-                                     (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
+                                     (runInfo.s2LoopCount == runInfo.s2LoopLimit ||
+                                      runInfo.s2LoopCount == runInfo.s2LoopLimit - 1)));
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
@@ -426,6 +432,22 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
                 static_cast<T>(constInfo.scaleValue), descaleQK,
                 negativeFloatScalar, constInfo.keepProb, runInfo.s2EndIdx - s1BaseSize < s2BaseSize);
+        } else if constexpr (isBf16Fp16) {
+            if (constInfo.learnableSinkFlag) {  
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, true>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK,
+                    negativeFloatScalar, constInfo.keepProb, runInfo.s2EndIdx - s1BaseSize < s2BaseSize,
+                    pScale, constInfo.sinkValue);
+            } else {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, false>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK,
+                    negativeFloatScalar, constInfo.keepProb, runInfo.s2EndIdx - s1BaseSize < s2BaseSize,
+                    pScale, constInfo.sinkValue);
+            }
         } else {
             if (constInfo.learnableSinkFlag) {
                 FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize, true>(
@@ -448,6 +470,24 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
                 static_cast<T>(constInfo.scaleValue), descaleQK,
                 negativeFloatScalar, constInfo.keepProb, runInfo.s2LoopCount == runInfo.s2LoopLimit);
+        } else if constexpr (isBf16Fp16) {
+            if (constInfo.learnableSinkFlag) {  
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, true>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK,
+                    negativeFloatScalar, constInfo.keepProb, 
+                    (runInfo.s2LoopCount == runInfo.s2LoopLimit || runInfo.s2LoopCount == runInfo.s2LoopLimit - 1),
+                    pScale, constInfo.sinkValue);
+            } else {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, false>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK,
+                    negativeFloatScalar, constInfo.keepProb,
+                    (runInfo.s2LoopCount == runInfo.s2LoopLimit || runInfo.s2LoopCount == runInfo.s2LoopLimit - 1),
+                    pScale, constInfo.sinkValue);
+            }
         } else {
             if (constInfo.learnableSinkFlag) {
                 FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, true>(
@@ -465,7 +505,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
         }
     }
     bmm1ResBuf.SetCrossCore();
-    if constexpr (isFp8 && hasAtten) {
+    if constexpr ((isFp8 || isBf16Fp16) && hasAtten) {
         this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
     }
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
@@ -2021,6 +2061,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffe
                 if constexpr (!IsSameType<INPUT_T, float>::value) {
                     tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
                 }
+            } else if constexpr (optionalDn) {
+                tPipe->InitBuffer(attenMaskInQue[0], 1, 8192);
+                tPipe->InitBuffer(attenMaskInQue[1], 1, 8192);
             }
             if constexpr (bmm2Write2Ub) {
                 // 小于128Bmm2结果和Vec2结果都在UB
