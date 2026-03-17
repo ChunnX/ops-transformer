@@ -319,8 +319,8 @@ def get_hccl_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     for i in range(card_num_func):
         hccl_rankid_num.append(arr_func[8 + (i * per_core)])
         hccl_ep_num.append(arr_func[9 + (i * per_core)])
-    logging.info("1.1 %s各核hccl中的rankid:%s\n", d_c, hccl_rankid_num)
-    logging.info("1.1 %s各核hccl中的epworldsize:%s\n", d_c, hccl_ep_num)
+    logging.info("1.1 %s各核建立hccl通信链路时的输入rankid:%s\n", d_c, hccl_rankid_num)
+    logging.info("1.1 %s各核建立hccl通信链路时的输入epworldsize:%s\n", d_c, hccl_ep_num)
     hccl_rankid_num_count = Counter(hccl_rankid_num)
     hccl_ep_num_count = Counter(hccl_ep_num)
     hccl_max_rankid_num = max(hccl_rankid_num_count, key=hccl_rankid_num_count.get)
@@ -328,10 +328,10 @@ def get_hccl_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     diff_hccl_ep = [idx for idx, val in enumerate(hccl_ep_num) if val != hccl_max_ep_num]
     diff_hccl_rankid = [idx for idx, val in enumerate(hccl_rankid_num) if val != hccl_max_rankid_num]
     if diff_hccl_rankid != []:
-        logging.warning("1.1 %s有如下下标的核的hccl中rankid与其他核不相等%s,共%d个核\n", diff_hccl_rankid,
+        logging.warning("1.1 %s有如下下标的核的建立hccl通信链路时的输入rankid与其他核不相等%s,共%d个核\n", diff_hccl_rankid,
                         len(diff_hccl_rankid))
     if diff_hccl_ep != []:
-        logging.warning("1.1 %s有如下下标的核的hccl中epworldsize与其他核不相等%s,共%d个核\n",
+        logging.warning("1.1 %s有如下下标的核的建立hccl通信链路时的输入epworldsize与其他核不相等%s,共%d个核\n",
                         diff_hccl_ep, len(diff_hccl_ep))
     return hccl_rankid_num, hccl_max_rankid_num, hccl_ep_num, hccl_max_ep_num
 
@@ -416,7 +416,7 @@ def dis_status_analysis(parms: WinData, dis_core_num_func: int, dis_unwait_index
     logging.info("3.2 dispatch 中各核分配到状态位数量%s", dis_status_core)
     if dis_unwait_index_func == []:
         return dis_status_error_dict
-    logging.warning("3.2 dispatch有如下下标的核没有等到状态%s,共%d个核",
+    logging.warning("3.2 dispatch有如下下标的核未等到状态%s,(共%d个核)",
                     dis_unwait_index_func, len(dis_unwait_index_func))
     # 在未等到状态的核的对应0/1状态区查找具体哪个状态没有等到
     for i in dis_unwait_index_func:
@@ -427,7 +427,7 @@ def dis_status_analysis(parms: WinData, dis_core_num_func: int, dis_unwait_index
         for core_num_func in range(dis_status_core[i]):
             if int32_status_data[(sum(dis_status_core[:i + 1]) - dis_status_core[i] + core_num_func) * 8] == 0:
                 dis_status_error_dict[f"d{card_num_func}_第{i}个核_第{core_num_func}状态位_dispatch{dis_0_1_func}"] = (
-                                                    f"状态位没有等到")
+                                                    f"状态位未等到")
     return dis_status_error_dict
 
 
@@ -455,7 +455,7 @@ def com_status_analysis(parms: WinData, com_core_num_func: int, share_expert_num
     logging.info("3.2 combine 中各核分配到状态位数量%s", com_status_core)
     if com_unwait_index_func == []:
         return com_statu_error_dict
-    logging.warning("3.2 combine有如下下标的核没有等到状态%s,共%d个核",
+    logging.warning("3.2 combine有如下下标的核未等到状态%s,(共%d个核)",
                     com_unwait_index_func, len(com_unwait_index_func))
     # 在未等到状态的核的对应0/1状态区查找具体哪个状态没有等到
     for i in com_unwait_index_func:
@@ -466,7 +466,7 @@ def com_status_analysis(parms: WinData, com_core_num_func: int, share_expert_num
         for core_num_func in range(com_status_core[i]):
             if int32_status_data[(sum(com_status_core[:i + 1]) - com_status_core[i] + core_num_func) * 8] == 0:
                 com_statu_error_dict[f"d{card_num_func}_第{i}个核_第{core_num_func}个状态位_combine{com_0_1_func}区"] = (
-                                                    f"状态位没有等到")
+                                                    f"状态位未等到")
     return com_statu_error_dict
 
 
@@ -556,10 +556,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                 "dispatch_hccl epworldsize:%d, dispatch moe专家数:%d, dispatch globalbs:%d, 根据dispatch输入计算的bs:%d",
                 dis_rankid, dis_hccl_rankid, dis_epworldsize, dis_hccl_epworldsize, dis_moe_num, dis_globalbs, dis_bs)
             if dis_rankid != dis_hccl_rankid:
-                logging.warning("1.1 dispatch win区数据中的rankid:%d 与hccl的rankid输入:%s 不同",
+                logging.warning("1.1 dispatch win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
                                 dis_rankid, dis_hccl_rankid)
             if dis_epworldsize != dis_hccl_epworldsize:
-                logging.warning("1.1 dispatch win区数据中的epworldsize:%d 与hccl的epworldsize输入:%s 不同",
+                logging.warning("1.1 dispatch win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
                                 dis_epworldsize, dis_hccl_epworldsize)
         else:
             logging.info("1. 未调用到dispatch算子不进行dispatch的rankid,moe专家输入分析")
@@ -576,9 +576,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                 "combine_hccl epworldsize:%d, combine moe专家数:%d, combine globalbs:%d, 根据combine输入计算的bs:%d",
                 com_rankid, com_hccl_rankid, com_epworldsize, com_hccl_epworldsize, com_moe_num, com_globalbs, com_bs)
             if com_rankid != com_hccl_rankid:
-                logging.warning("1.1 combine win区数据中的rankid:%d 与hccl中的输入:%s 不同", com_rankid, com_hccl_rankid)
+                logging.warning("1.1 combine win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
+                                com_rankid, com_hccl_rankid)
             if com_epworldsize != com_hccl_epworldsize:
-                logging.warning("1.1 combine win区数据中的epworldsize:%d 与hccl中的输入:%s 不同",
+                logging.warning("1.1 combine win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
                                 com_epworldsize, com_hccl_epworldsize)
         else:
             logging.info("1.1 未调用到combine算子不进行combine的rankid,moe专家输入分析")
@@ -900,7 +901,7 @@ for filename in os.listdir(os.path.join(floder_path)):
                     if judge_expandidx == True:
                         logging.info('7. 卡%s的expandidx没有异常', card_id)
                 else:
-                    logging.info('7. 卡%s的没有挂在combine不进行分析', card_id)
+                    logging.info('7. 卡%s的算子执行流程并未卡死combine算子上,不进行分析', card_id)
                     continue
                 start_idx += local_expert_num_one_card
             logging.info('7. 各卡的expertids,dump数据中读取的expandidx,本卡专家数,该卡挂在哪个算子上已归档至'

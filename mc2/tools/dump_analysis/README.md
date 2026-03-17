@@ -2,7 +2,7 @@
 
 ## 背景说明
 
-- exception dump：算子在出现aic error后，会触发exception dump功能，将算子输入输出tensor dump成bin文件，其中dispatchv2&combinev2算子还额外注册异常处理回调，会将通信中保存状态位的windows内存dump成bin文件，其中该bin文件中的最后1M的数据称为win区数据。里面包含卡住、aic error等常见问题定位所需数据。
+- exception dump：算子在出现aic error后，会触发exception dump功能，将算子输入输出tensor dump成bin文件，其中dispatchv2&combinev2算子还额外注册异常处理回调，会将通信中保存状态位的windows内存(或 win区内存)dump成bin文件，其中该bin文件中的最后1M的数据称为win区数据。里面包含卡住、aic error等常见问题定位所需数据。
 
 - 在dispatch&combine问题定位中，需要根据多卡数据进行整体分析判断，分析难度大，因此需要开发多卡数据分析工具来快速分析，要求能够根据已有数据，一键式解析数据，按照既定规则分析出可能异常的点，直接打印异常情况描述，部分数据解析完成后需输出csv文件，工具需打印当前正在进行哪一项分析。
 
@@ -86,25 +86,25 @@
    <td>win_status_list</td>
    <td>输出</td>
    <td>存放win区中0/1标识区指定的dispatchv2/combinev2的0/1状态区的所有状态位数据，用于查看没等到状态的核里面具体是第几个状态位没有等到。<br>
-       如:解析出该卡dispatchv2的状态区储存在0区，则将win区dump数据中的dispatch 0区状态区[0:64 * 1024]的数据存入win_status_list</td>
+       如:解析出该卡dispatchv2的状态区存储在0区，则将win区dump数据中的dispatch 0区状态区[0:64 * 1024]的数据存入win_status_list.csv</td>
    <td>csv表</td>
   </tr>
   <tr>                                                 
    <td>win_all_card_data</td>
    <td>输出</td>
-   <td>存放每张卡dispatchv2&combinev2的执行次数、moe专家数以及globalbs,用于对比每张卡的这些参数是否一致。<br> 如:d0 dispatch: 1 指第一张卡dispatchv2算子运行了1次</td>
+   <td>存放每张卡dispatchv2&combinev2的执行次数、moe专家数以及globalbs,并判断各卡上的这些参数是否一致。<br> 如:d0 dispatch: 1 (指第一张卡dispatchv2算子运行了1次)</td>
    <td>csv表</td>
   </tr>
   <tr>
-   <td>win_analysis_list</td>
+   <td>win_analysis_error</td>
    <td>输出</td>
-   <td>存放分析出的异常点及异常位置，即把打屏日志中的Warning信息存储在该csv文件中。<br>如：d0卡dispatchv2算子第35个核的第2个状态位没有等到</td>
+   <td>存放分析出的异常点及异常位置，即把打屏日志中的Warning信息存储在该csv文件中。<br>如：d0卡dispatchv2算子第35个核的第2个状态位未等到</td>
    <td>csv表</td>
   </tr>
   <tr>
    <td>win_data</td>
    <td>输出</td>
-   <td>存放解析出的各卡的moe专家数、使用核数、执行次数、epworldsize、rankid、globalbs、hccl中输入的rankid和globalbs、计算得出的bs、k、0/1标识位数据。<br>如:d0_dispatch_moe专家数: 65</td>
+   <td>存放解析出的各卡的moe专家数、使用核数、执行次数、epworldsize、rankid、globalbs、hccl中输入的rankid和globalbs、计算得出的bs、k、0/1标识位数据。<br>如:d0_dispatch_moe专家数:65</td>
    <td>csv表</td>
   </tr>
   <tr>
@@ -116,7 +116,7 @@
   <tr>
    <td>win_all_card_expandidx</td>
    <td>输出</td>
-   <td>存放解析出的各卡中输入expertids、dump数据中读取的exoandidx(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，<br>如：0卡 本卡专家数: 8。</td>
+   <td>存放解析出的各卡中输入expertids、dump数据中读取的expandidx(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，<br>如:0卡 本卡专家数:8。</td>
    <td>csv表</td>
   </tr>
  </tbody>
@@ -154,7 +154,7 @@
 [INFO] 1.1 combine各核的globalbs:[1,...,1]<br>
 [INFO] 1.1 combine_rankid:1 combine_hccl_rankid:0, combine epworldsize:2, combine_hccl epworldsize:0, combine moe专家数:16, combine globalbs:2, 根据combine输入计算的bs:1<br>
 [WARNING] 1.1 combine win区数据中的rankid:1 与 hccl的rankid输入:0 不同<br>
-[WARNING] 1.1 combine win区数据中的epworldsize:1 与 hccl的epworldsize输入:0 不同<br>
+[WARNING] 1.1 combine win区数据中的epworldsize:1 与建立hccl通信链路时的epworldsize输入:0 不同<br>
 <b>上述结果为对dump数据中的各项数据进行取值以及对比rankid和epworldsize的输入与hccl中的输入是否相同，用于各项参数输入异常导致的卡死问题，并将分析出的异常用warning的形式输出。</b><br><br>
 
 [INFO] 1.2 该卡不为共享专家卡
@@ -172,7 +172,7 @@
 [INFO] 2. 开始执行序分析<br>
 [INFO] 2. dispatch各核执行次数:[7,7,7,7,7,7,.....,7]<br>
 [INFO] 2. combine各核执行次数:[6,6,6,6,6,6,6,....,6]<br>
-[WARNING] 2. dispatch执行次数:7 = combine执行次数:6 + 1,挂在dispatch上<br>
+[WARNING] 2. dispatch执行次数：7 = combine执行次数:6 + 1，挂在dispatch上<br>
 [INFO] 2. 执行序分析完成<br>
 <b>上述结果为执行序分析，会输出当前分析卡的对应文件、当前卡中的dispatch&combine算子的使用核数、各个核的dispatch&combine算子执行次数以及对比执行次数用于定位因执行次数不匹配导致的卡死问题，并将分析出的异常用warning的形式输出。</b><br><br>
 
@@ -185,7 +185,7 @@
 [INFO] 3.2 dispatch 1区状态区数据shape:16384<br>
 [INFO] 3.2 dispatch 1区状态区数据:[0,3,0,.......,]<br>
 [INFO] 3.2 dispatch 中各核分配到的状态位数量:[2,2,2,2,2,....,1,1,1,...,1]<br>
-[WARNING] 3.2 dispatch 中有如下下标的核没有等到状态[0,1,2,3,...,71]共72个核<br>
+[WARNING] 3.2 dispatch 中有如下下标的核未等到状态[0,1,2,3,...,71]（共72个核）<br>
 [INFO] 3.3 dispatch状态位分析完成<br>
 <b>上述结果为dispatch的状态位分析，会输出当前卡dispatch所使用的epworldsize、moe专家数以及总状态位数量,以及会将各核的执行位置情况、对应状态区的数据信息、各核分配到的状态位数量情况以及没有等到状态的核的下标打印出来，并将分析出的异常用warning的形式输出。</b><br><br>
 
@@ -197,7 +197,7 @@
 [INFO] 4.2 combine 1区状态区数据shape:81920<br>
 [INFO] 4.2 combine 1区状态区数据:[1,3,0,0,0,0,.......,0]<br>
 [INFO] 4.2 combine 中各核分配到的状态位数量:[17,17,...0,.......,0]<br>
-[WARNING] 4.2 combine 中有如下下标的核没有等到状态[7,8,9,...,71]共65个核<br>
+[WARNING] 4.2 combine 中有如下下标的核未等到状态[7,8,9,...,71]（共65个核）<br>
 [INFO] 4.3 combine状态位分析完成<br>
 <b>上述结果为combine的状态位分析，会输出当前卡combine所使用的epworldsize、moe专家数以及总状态位数量,以及会将各核的执行位置情况、对应状态区的数据信息、各核分配到的状态位数量情况以及没有等到状态的核的下标打印出来，并将分析出的异常用warning的形式输出。</b><br><br>
 
@@ -219,12 +219,12 @@
 [INFO] 6. 各卡的dispatch的globalbs:[2,2]<<br>
 [INFO] 6. 各卡的combine的globalbs:[2,2]<br>
 [INFO] 6. 各卡的dispatch&combine执行次数、moe专家数、globalbs数据已归档至win_all_card_data.csv<br>
-<b>上述结果为多卡间的dispatch&combine的执行次数、moe专家数、globalbs对比，当多卡间的dispatch/combine算子的上诉数据不同时，将该异常以warning的形式输出，其中moe专家数的异常以error的形式输出，并将各卡的dispatch&combine执行次数存储至win_all_card_run_num.csv。</b>
+<b>上述结果为多卡间的dispatch&combine的执行次数、moe专家数、globalbs对比，当多卡间的dispatch/combine算子的上述数据不同时，将该异常以warning的形式输出，其中moe专家数的异常以error的形式输出，并将各卡的dispatch&combine执行次数存储至win_all_card_data.csv。</b>
 
 [INFO] 7. 开始所有卡的expandidx对比
-[INFO] 7. 所有专家的expertidx如下:{0: [(0, 0, 6)],....., 14: [(0, 0, 1), (1, 0, 2)]}
+[INFO] 7. 所有专家的expertidx如下:{0: [(0, 0, 6)],… …, 14: [(0, 0, 1), (1, 0, 2)]}
 [INFO] 7. 卡0的expandidx没有异常
-[INFO] 7. 卡1没有挂在combine不进行异常分析
+[INFO] 7. 卡1的算子执行流程并未卡死在combine算子上，不进行异常分析
 [INFO] 7. 各卡的expertids、dump数据中读取的expandidx、本卡专家数、该卡挂在哪个算子上已归档至win_all_card_expandidx.csv
 [INFO] 7. 所有卡的expandidx对比完成
-<b>上述结果为多卡间的dispatch&combine的expandidx输入校验，该功能会计算出所有专家对应的expertidx，当该卡挂在combine算子上时，对该卡的输入expertidx与计算的expertidx进行对比，如果不同，将该异常以warning的形式输出，并将各卡的输入expertids、dump数据中读取的exoandidx(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，四项数据存储至win_all_card_run_num.csv。</b>
+<b>上述结果为多卡间的dispatch&combine的expandidx输入校验，该功能会计算出所有专家对应的expertidx，当该卡挂在combine算子上时，对该卡的输入expertidx与计算的expertidx进行对比，如果不同，将该异常以warning的形式输出，并将各卡的输入expertids、dump数据中读取的expandidx(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，四项数据存储至win_all_card_run_num.csv。</b>
