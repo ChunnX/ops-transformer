@@ -30,6 +30,7 @@ struct MoeFinalizeRoutingV2RegbaseTilingData {
     int64_t rowLoopOfFormerBlock = 0;       // 整核BS的循环次数
     int64_t rowLoopOfTailBlock = 0;         // 尾核BS的循环次数
     int64_t rowFactor = 0;                  // 每次循环处理的BS数
+    int64_t constExpertRangeFactor = 0;     // 每次循环处理的const专家数，等于rowFactor和constExpertRangeNum的最小值
     int64_t tailRowFactorOfFormerBlock = 0; // 整核处理的BS尾块数
     int64_t tailRowFactorOfTailBlock = 0;   // 尾核处理的BS尾块数
     int64_t hLoop = 0;                      // H循环次数
@@ -39,6 +40,13 @@ struct MoeFinalizeRoutingV2RegbaseTilingData {
     int64_t kFactor = 0;                    // 每次循环处理的K数
     int64_t tailKFactor = 0;                // K尾块数
     int64_t activeNum = 0;                  // 实际传入的expandedX的第一维的大小
+    int64_t zeroExpertStart = 0;
+    int64_t zeroExpertEnd = 0;
+    int64_t copyExpertStart = 0;
+    int64_t copyExpertEnd = 0;
+    int64_t constantExpertStart = 0;
+    int64_t constantExpertEnd = 0;
+    int64_t constExpertRangeNum = 0;
 };
 
 #endif
