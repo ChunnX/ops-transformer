@@ -2475,8 +2475,8 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalCumSum()
 {
     uint32_t startExpertId, endExpertId, sendExpertNum;
-    CalExpertTotalSendCnt();
     CalServerSendCnt<false>();
+    CalExpertTotalSendCnt();
     SendExpertCnt();
     SetStatus();
     
