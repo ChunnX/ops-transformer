@@ -141,41 +141,28 @@
       <tr>
         <td>dropPadMode</td>
         <td>属性</td>
-        <td>表示是否为 DropPad 场景，取值为 0 和 1。
-          <li>0：表示 Dropless 场景，该场景下不校验 expertCapacity。</li>
-          <li>1：表示 DropPad 场景。</li></td>
+        <td>表示是否为 DropPad 场景，取值为 0 和 1。<br>• 0：表示 Dropless 场景，该场景下不校验 expertCapacity。<br>• 1：表示 DropPad 场景。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertTokensNumType</td>
         <td>属性</td>
-        <td>取值为0、1和2 。
-          <li>0：表示 comsum 模式。</li>
-          <li>1：表示 count 模式，即输出的值为各个专家处理的 token 数量的累计值。</li>
-          <li>2：表示 key\_value 模式，即输出的值为专家和对应专家处理 token 数量的累计值。</li></td>
+        <td>取值为0、1和2 。<br>• 0：表示 comsum 模式。<br>• 1：表示 count 模式，即输出的值为各个专家处理的 token 数量的累计值。<br>• 2：表示 key\_value 模式，即输出的值为专家和对应专家处理 token 数量的累计值。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertTokensNumFlag</td>
         <td>属性</td>
-        <td>取值为false和true。
-          <li>false：表示不输出 expertTokensCountOrCumsumOut。</li>
-          <li>true：表示输出 expertTokensCountOrCumsumOut。</li></td>
+        <td>取值为false和true。<br>• false：表示不输出 expertTokensCountOrCumsumOut。<br>• true：表示输出 expertTokensCountOrCumsumOut。</td>
         <td>Bool</td>
         <td>-</td>
       </tr>
       <tr>
         <td>quantMode</td>
         <td>属性</td>
-        <td>取值为0、1、-1、2、3。
-          <li>0：表示静态quant场景。</li>
-          <li>1：表示动态quant场景。</li>
-          <li>-1：表示不量化场景。</li>
-          <li>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。</li>
-          <li>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。</li>
-        </td>
+        <td>取值为0、1、-1、2、3。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -189,9 +176,7 @@
       <tr>
         <td>rowIdxType</td>
         <td>属性</td>
-        <td>表示expandedRowIdxOut使用的索引类型，取值为0、1。（性能模板仅支持1）
-          <li>0：表示gather类型的索引。</li>
-          <li>1：表示scatter类型的索引。</li></td>
+        <td>表示expandedRowIdxOut使用的索引类型，取值为0、1。（性能模板仅支持1）<br>• 0：表示gather类型的索引。<br>• 1：表示scatter类型的索引。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -212,16 +197,14 @@
       <tr>
         <td>expertTokensCountOrCumsumOut</td>
         <td>输出</td>
-        <td>
-          <li>在expertTokensNumType为1的场景下，表示activeExpertRangeOptional范围内expert对应的处理token的总数。</li>
-          <li>在expertTokensNumType为2的场景下，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。</li></td>
+        <td>• 在expertTokensNumType为1的场景下，表示activeExpertRangeOptional范围内expert对应的处理token的总数。<br>• 在expertTokensNumType为2的场景下，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。</td>
         <td>INT64</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。</li></td>
+        <td>输出量化计算过程中scaleOptional的中间值。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
