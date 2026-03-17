@@ -36,11 +36,13 @@ constexpr int64_t READ_INDEX_BY_ROW = 2;
         return_expr;                               \
     } while (0)
 
-extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
-    const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
-    const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+ extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
+ 	     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
+ 	     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
+ 	     const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* a1Optional,
+ 	     const aclTensor* a2Optional, const aclTensor* vOptional, int64_t dropPadMode, const aclIntArray* zeroExpertRange,
+ 	     const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange, const aclTensor* out,
+ 	     uint64_t* workspaceSize, aclOpExecutor** executor);
 extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 extern aclnnStatus aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
@@ -61,8 +63,8 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
     aclnnStatus ret = aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
-        permutedTokens, sortedIndices, nullptr, nullptr, nullptr, probsOptional, nullptr, READ_INDEX_BY_ROW, out,
-        workspaceSize, executor);
+        permutedTokens, sortedIndices, nullptr, nullptr, nullptr, probsOptional, nullptr, nullptr, nullptr, nullptr,
+        nullptr, READ_INDEX_BY_ROW, nullptr, nullptr, nullptr, out, workspaceSize, executor);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(
             ACLNN_ERR_INNER,

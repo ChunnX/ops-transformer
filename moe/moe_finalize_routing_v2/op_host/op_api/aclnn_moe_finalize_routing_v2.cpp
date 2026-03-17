@@ -14,33 +14,118 @@
 #include "opdev/op_executor.h"
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/contiguous.h"
+#include "opdev/tensor_view_utils.h"
+#include "opdev/op_log.h"
+#include "moe_finalize_routing_v2.h"
+
+using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
+ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
-
-aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
-    const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
-    const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* a1Optional,
+ 	const aclTensor* a2Optional, const aclTensor* vOptional, int64_t dropPadMode, const aclIntArray* zeroExpertRange,
+ 	const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange, const aclTensor* out,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    return aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
-        expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional, scalesOptional, expertIdxOptional, dropPadMode,
-        out, workspaceSize, executor);
+    L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
+        DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
+            scalesOptional, expertIdxOptional, xOptional, a1Optional,
+ 	        a2Optional, vOptional, dropPadMode, zeroExpertRange,
+ 	        copyExpertRange, constantExpertRange),
+        DFX_OUT(out));
+
+    // 参数检查
+    OP_CHECK_NULL(expandedX, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(expandedRowIdx, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
+
+    // 创建OpExecutor
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    // 固定写法，将输入转换成连续的tensor
+    auto expandedXContiguous = l0op::Contiguous(expandedX, uniqueExecutor.get());
+    CHECK_RET(expandedXContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto expandedRowIdxContiguous = l0op::Contiguous(expandedRowIdx, uniqueExecutor.get());
+    CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    const aclTensor* x1Contiguous = nullptr;
+    if (x1Optional != nullptr) {
+        x1Contiguous = l0op::Contiguous(x1Optional, uniqueExecutor.get());
+        CHECK_RET(x1Contiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+
+    const aclTensor* x2Contiguous = nullptr;
+    if (x2Optional != nullptr) {
+        x2Contiguous = l0op::Contiguous(x2Optional, uniqueExecutor.get());
+        CHECK_RET(x2Contiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+
+    const aclTensor* biasContiguous = nullptr;
+    if (biasOptional != nullptr) {
+        biasContiguous = l0op::Contiguous(biasOptional, uniqueExecutor.get());
+        CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+
+    const aclTensor* scalesContiguous = nullptr;
+    if (scalesOptional != nullptr) {
+        scalesContiguous = l0op::Contiguous(scalesOptional, uniqueExecutor.get());
+        CHECK_RET(scalesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+
+    const aclTensor* expertIdxContiguous = nullptr;
+    if (expertIdxOptional != nullptr) {
+        expertIdxContiguous = l0op::Contiguous(expertIdxOptional, uniqueExecutor.get());
+        CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+
+    const aclTensor* xContiguous = nullptr;
+    if (xOptional != nullptr) {
+        xContiguous = l0op::Contiguous(xOptional, uniqueExecutor.get());
+        CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+    const aclTensor* a1Contiguous = nullptr;
+    if (a1Optional != nullptr) {
+        a1Contiguous = l0op::Contiguous(a1Optional, uniqueExecutor.get());
+        CHECK_RET(a1Contiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+    const aclTensor* a2Contiguous = nullptr;
+    if (a2Optional != nullptr) {
+        a2Contiguous = l0op::Contiguous(a2Optional, uniqueExecutor.get());
+        CHECK_RET(a2Contiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+    const aclTensor* vContiguous = nullptr;
+    if (vOptional != nullptr) {
+        vContiguous = l0op::Contiguous(vOptional, uniqueExecutor.get());
+        CHECK_RET(vContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    }
+    // 调用l0接口进行计算，传入out参数
+    auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
+                                        x2Contiguous, biasContiguous, scalesContiguous,
+                                        expertIdxContiguous, xContiguous, a1Contiguous, a2Contiguous, vContiguous,
+                                        dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange, out, uniqueExecutor.get());
+    CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+    auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
+    CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 获取计算过程中需要使用的workspace大小
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnMoeFinalizeRoutingV2(
+ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
-    return aclnnInnerMoeFinalizeRoutingV2(workspace, workspaceSize, executor, stream);
+    L2_DFX_PHASE_2(aclnnMoeFinalizeRoutingV2);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
