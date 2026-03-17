@@ -1104,7 +1104,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         recvTmpTensor_ = tmpBuf.Get<XType>();
 
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         LocalTensor<uint8_t> singleByteTok = tokenData_.template ReinterpretCast<uint8_t>();
         if constexpr (QuantMode > UNQUANT && ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT))) {
             Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(XType));
@@ -1350,7 +1350,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     } else { // 非量化场景
         xOutTensor_ = xOutQueue_.AllocTensor<ExpandXOutType>();
         DataCopy(xOutTensor_, tokenData, hAlignSize_ / sizeof(ExpandXOutType));
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if constexpr (IsSmoothScaleExist) {
             auto tmp = scalesGMTensor_.ReinterpretCast<uint8_t>();
             DataCopyPad(xOutTensor_[axisH_].template ReinterpretCast<uint8_t>(), tmp[tokenIndex * scaleInBytes_],
