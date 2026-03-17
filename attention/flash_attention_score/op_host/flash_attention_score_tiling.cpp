@@ -265,7 +265,7 @@ static bool IsEmptyInputRegbase(gert::TilingContext *context)
         regbaseEmptyInputTiling->set_softmaxMaxTailCoreDataSize(emptyArgs.softmaxMaxTailCoreDataSize);
         regbaseEmptyInputTiling->set_attentionOutLastCoreDataSize(emptyArgs.attentionOutLastCoreDataSize);
         regbaseEmptyInputTiling->set_attentionOutLastCoreIndex(emptyArgs.attentionOutLastCoreIndex);
-        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1));
+        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0));
         context->SetBlockDim(compileInfoPtr->aicNum);
         size_t *workspaces = context->GetWorkspaceSizes(1);
         // workspace上预留100M
