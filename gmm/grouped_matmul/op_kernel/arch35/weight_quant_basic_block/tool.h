@@ -15,7 +15,6 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 
-#include "kernel_log.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
