@@ -2803,7 +2803,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(indexBuf,  calCnt * sizeof(uint16_t));
 
     LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
-    LocalTensor<int16_t> expertIdsInt16 = expertIdsTensor_.ReinterpretCast<int16_t>();
+    LocalTensor<int16_t> expertIdsInt16 = subExpBuf_.Get<int16_t>(); //expertIdsTensor_.ReinterpretCast<int16_t>();
     LocalTensor<half> dstExpIdTensorFP16 = dstExpBuf_.Get<half>();
     LocalTensor<int16_t> XorTensorInt16 = subExpBuf_.Get<int16_t>();
     LocalTensor<uint8_t> sharedTensorInt8 = gatherMaskTBuf_.Get<uint8_t>(); //最小需要256B，最大是element * typesize
