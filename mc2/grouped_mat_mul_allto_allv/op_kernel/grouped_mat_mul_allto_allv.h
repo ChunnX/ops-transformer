@@ -93,7 +93,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
@@ -136,8 +136,10 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
     axisA_ = tilingData_->commonTilingInfo.A;
     axisN1_ = tilingData_->commonTilingInfo.N1;
 
-    hccl_.Init(contextGM, hcclInitTiling);
-    hccl_.SetCcTiling(alltoAllvCcTiling);
+    const void *hcclInitTilingV2 = &(tilingData_->hcclInitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(GroupedMatMulAlltoAllvTilingData, alltoAllvCcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
     rankId_ = hccl_.GetRankId();
     rankDim_ = hccl_.GetRankDim();
 
