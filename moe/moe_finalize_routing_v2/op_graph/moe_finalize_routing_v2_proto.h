@@ -41,6 +41,14 @@ type requirement of A is consistent with expandedX except in Ascend 950 AI Proce
 When scales is null, K is 1.
 * @li expert_idx: An optional 2D Tensor, represents the indexes of bias. Type is Int32.Shape support(NUM\_ROWS,
 K).Values in Tensor are [0, E-1], if bias exists, expert_idx must exist.
+* @li x: An optional 2D Tensor, needed for copy or constant expert. Type is:BFloat16, Float16 or Float32.The data type
+requirement of A is consistent with expandedX,and the shape requirements are consistent with the shape of out.
+* @li a1: An optional 2D Tensor, needed for constant expert. Type is:BFloat16, Float16 or Float32.The data type
+requirement of A is consistent with expandedX,and the shape requirements are consistent with the shape of out.
+* @li a2: An optional 2D Tensor, needed for constant expert. Type is:BFloat16, Float16 or Float32.The data type
+requirement of A is consistent with expandedX,and the shape requirements are consistent with the shape of out.
+* @li v: An optional 2D Tensor, needed for constant expert. Type is:BFloat16, Float16 or Float32.The data type
+requirement of A is consistent with expandedX,and the shape requirements are consistent with the shape of out.
 * @par Outputs:
 * @li y: A 2D Tensor. Type is:BFloat16, Float16 or Float32.Shape support(NUM\_ROWS, H).
 * @par Attributes:
@@ -48,6 +56,15 @@ K).Values in Tensor are [0, E-1], if bias exists, expert_idx must exist.
       0 (dropless scenario, expanded_row_idx column arrangement), 1 (drop or pad scenario, expanded_row_idx column
 arrangement), 2 (dropless scenario, expanded_row_idx line arrangement), 3 (drop or pad scenario, expanded_row_idx line
 arrangement).
+* @li zero_expert_range:  Optional parameter. Type is:ListInt. Like [zero_expert_start, zero_expert_end].
+      zero_expert_start must be greater than or equal to 0, zero_expert_end must be less than or equal to 10240,
+      zero_expert_start must be less than zero_expert_end. Default: [].
+* @li copy_expert_range:  Optional parameter. Type is:ListInt. Like [copy_expert_start, copy_expert_end].
+      copy_expert_start must be greater than or equal to 0, copy_expert_end must be less than or equal to 10240,
+      copy_expert_start must be less than copy_expert_end. Default: [].
+* @li constant_expert_range:  Optional parameter. Type is:ListInt. Like [constant_expert_start, constant_expert_end].
+      constant_expert_start must be greater than or equal to 0, constant_expert_end must be less than or equal to 10240,
+      constant_expert_start must be less than constant_expert_end. Default: [].
 */
 REG_OP(MoeFinalizeRoutingV2)
     .INPUT(expanded_x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
@@ -57,8 +74,15 @@ REG_OP(MoeFinalizeRoutingV2)
     .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .OPTIONAL_INPUT(expert_idx, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(a1, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(a2, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(v, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .OUTPUT(y, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .ATTR(drop_pad_mode, Int, 0)
+    .ATTR(zero_expert_range, ListInt, {})
+    .ATTR(copy_expert_range, ListInt, {})
+    .ATTR(constant_expert_range, ListInt, {})
     .OP_END_FACTORY_REG(MoeFinalizeRoutingV2)
 
 } // namespace ge

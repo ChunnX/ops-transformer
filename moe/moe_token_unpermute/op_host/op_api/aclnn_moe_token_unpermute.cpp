@@ -35,12 +35,6 @@ constexpr int64_t READ_INDEX_BY_ROW = 2;
         }                                          \
         return_expr;                               \
     } while (0)
-
-extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
-    const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
-    const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
 extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 extern aclnnStatus aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
@@ -60,16 +54,39 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
             executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
-    aclnnStatus ret = aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
-        permutedTokens, sortedIndices, nullptr, nullptr, nullptr, probsOptional, nullptr, READ_INDEX_BY_ROW, out,
-        workspaceSize, executor);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(
-            ACLNN_ERR_INNER,
-            "aclnnMoeTokeUnpermute calls alcnnMoeFinalizeRoutingV2, please refer to the document for parameter "
-            "correspondence.");
+    // 参数检查
+    OP_CHECK_NULL(permutedTokens, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
+
+    // 创建OpExecutor
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    // 固定写法，将输入转换成连续的tensor
+    auto permutedTokensContiguous = l0op::Contiguous(permutedTokens, uniqueExecutor.get());
+    CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
+    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    const aclTensor* probsContiguous = nullptr;
+    if (probsOptional != nullptr) {
+        probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
+        CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     }
-    return ret;
+
+    auto out_ = l0op::MoeFinalizeRoutingV2(
+        permutedTokensContiguous, sortedIndicesContiguous, nullptr, nullptr, nullptr, probsContiguous, nullptr, nullptr,
+        nullptr, nullptr, nullptr, READ_INDEX_BY_ROW, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+    CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+    auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
+    CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 获取计算过程中需要使用的workspace大小
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnMoeTokenUnpermute(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
@@ -78,14 +95,7 @@ aclnnStatus aclnnMoeTokenUnpermute(void* workspace, uint64_t workspaceSize, aclO
     if (!useMoeFinalizeRoutingV2) {
         return aclnnInnerMoeTokenUnpermute(workspace, workspaceSize, executor, stream);
     }
-    aclnnStatus ret = aclnnInnerMoeFinalizeRoutingV2(workspace, workspaceSize, executor, stream);
-    CHECK_LOG_RET(
-        ret != ACLNN_SUCCESS,
-        OP_LOGE(
-            ACLNN_ERR_INNER,
-            "aclnnMoeTokeUnpermute calls alcnnMoeFinalizeRoutingV2, please refer to the document for parameter "
-            "correspondence."),
-        return ret);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
