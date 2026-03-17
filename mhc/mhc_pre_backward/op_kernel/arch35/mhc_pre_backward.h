@@ -867,7 +867,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     LocalTensor<P> invRmsGradUb = fp32OutQueue_.AllocTensor<P>();
     auto h1GradBuf = buffers.calcTmpBuf;
-    int64_t remainDealBsSize = (runBSEnd - runBSStart);
+    int64_t remainDealBsSize = (curBSSize);
     uint32_t bsOffset = 0;
     // 因为参与该计算过程的变量的尾轴为n^2 + 2 * n，所以存在onceDealMixBSNum_ < remainDealBsSize(最大为chunk)，这个循环主要处理该情况
     // onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
