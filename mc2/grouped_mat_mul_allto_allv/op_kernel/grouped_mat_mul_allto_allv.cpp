@@ -12,6 +12,7 @@
  * \file grouped_mat_mul_allto_allv.cpp
  * \brief
  */
+ 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

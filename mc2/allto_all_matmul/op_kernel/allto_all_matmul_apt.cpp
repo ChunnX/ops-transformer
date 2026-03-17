@@ -12,6 +12,7 @@
  * \file allto_all_matmul.cpp
  * \brief
  */
+ 
 #include <cstring>
 #include <kernel_operator.h>
 #include <lib/matmul_intf.h>
