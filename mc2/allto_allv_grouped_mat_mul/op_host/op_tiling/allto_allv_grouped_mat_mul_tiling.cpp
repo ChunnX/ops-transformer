@@ -1171,7 +1171,6 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-// 后续开源至gitcode需要使用__DAV_C310__的宏隔离
 REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStruct, 0);
 
 static ge::graphStatus AlltoAllvGmmTilingFunc(gert::TilingContext* context)
