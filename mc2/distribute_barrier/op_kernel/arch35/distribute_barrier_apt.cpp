@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+
 /*!
  * \file distribute_barrier_apt.cpp
  * \brief APT (arch35) kernel entry for DistributeBarrier.
