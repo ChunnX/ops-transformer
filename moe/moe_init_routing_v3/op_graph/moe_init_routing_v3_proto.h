@@ -55,11 +55,11 @@ namespace ge {
 * @li row_idx_type: Optional parameter. Type is:Int. The value is 0(gather) or 1(scatter). Default: 0.
 */
 REG_OP(MoeInitRoutingV3)
-.INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_HIFLOAT8}))
+.INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_HIFLOAT8, DT_FLOAT4_E2M1}))
 .INPUT(expert_idx, TensorType({DT_INT32}))
-.OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))
+.OPTIONAL_INPUT(scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
 .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
-.OUTPUT(expanded_x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8}))
+.OUTPUT(expanded_x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1}))
 .OUTPUT(expanded_row_idx, TensorType({DT_INT32}))
 .OUTPUT(expert_tokens_count_or_cumsum, TensorType({DT_INT64}))
 .OUTPUT(expanded_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
