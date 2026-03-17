@@ -801,7 +801,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitDispatchBetweenServerInfo()
 {
     //// LogInfo(__LINE__, "InitDispatchBetweenServerInfo start");
-    if (isTokenMaskFlag_ || isExpertMaskFlag_) {
+    if (isExpertMaskFlag_) {
         tpipe_->InitBuffer(expertMaskInputBuf_, expertIdsCnt_ * sizeof(bool));
         totalUsedUB_ += expertIdsCnt_ * sizeof(bool);
         expertMaskInputTensor_ = expertMaskInputBuf_.Get<bool>();
@@ -1052,11 +1052,16 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalValidBSCnt(Local
     GatherMask(validBsIndexTensor_, bsIndexTensor, maskTensorInt32, true, mask, {1, 1, 0, 0}, activeMaskBsCnt_);
 }
 
+/**
+ * @brief ExpertActiveMaskCal 
+ * @details 当isExpertMaskFlag_为true时，将所有不需要发送的专家ID全部设置为moeExpertNum，
+ *          处理完之后后续计算不需要考虑二维Mask影响
+ */
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ExpertActiveMaskCal()
 {
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-     LOG_INFO("ExpertActiveMaskCal expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_, axisK_});
+    LOG_INFO("ExpertActiveMaskCal expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_, axisK_});
     LocalTensor<int8_t> maskStrideInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
     LocalTensor<half> maskStrideFp16Tensor = subExpBuf_.Get<half>();
     LocalTensor<int32_t> maskStrideInt32Tensor = gatherMaskTBuf_.Get<int32_t>();
@@ -1077,20 +1082,29 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("ExpertActiveMaskCal expertIdsTensor_",expertIdsTensor_,{axisBS_, axisK_});
 }
 
+/**
+ * @brief InitMaskReSource 
+ * @details 初始化一维mask和二维mask计算所需的资源
+ */
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitMaskReSource()
 {
-    if (isTokenMaskFlag_ || !isExpertMaskFlag_) {
+    if (isExpertMaskFlag_) {
         DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
         DataCopyExtParams maskParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(bool)), 0U, 0U, 0U};
         DataCopyPad(expertMaskInputTensor_, xActiveMaskGMTensor_, maskParams, maskCopyPadParams);
     }
-    
+
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
 }
 
+/**
+ * @brief CalTokenMask 
+ * @details 当isTokenMaskFlag_或者isExpertMaskFlag_为true时，计算需要发送多少Token，其中当二维为true时
+ *          只将不发送的专家ID设置值为moeExpertNum_，不计算具体的Token数
+ */
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenMask()
 {
@@ -1104,6 +1118,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ExpertActiveMaskCal();
     }
 }
+
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
