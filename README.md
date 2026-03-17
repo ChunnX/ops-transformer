@@ -5,7 +5,7 @@
 - [2026/02] 新支持算子[mhc_post](experimental/mhc/mhc_post)、[mhc_pre](experimental/mhc/mhc_pre)、[mhc_res](experimental/mhc/mhc_res)。
 - [2026/01] 新支持算子[grouped_matmul<<<>>>调用示例](examples/fast_kernel_launch_example/csrc/grouped_matmul)，方便用户自定义使用。
 - [2026/01] 新支持算子[fused_floyd_attention](attention/fused_floyd_attention)、[fused_floyd_attention_grad](attention/fused_floyd_attention_grad)、[matmul_allto_all](mc2/matmul_allto_all)。
-- [2025/12] 新增[QuickStart](QUICKSTART.md)，指导新手零基础入门算子项目部署（支持Docker环境）、算子开发和贡献流程。
+- [2025/12] 新增[QuickStart](docs/QUICKSTART.md)，指导新手零基础入门算子项目部署（支持Docker环境）、算子开发和贡献流程。
 - [2025/12] 优化指南类文档，聚焦[算子开发指南](docs/zh/develop/aicore_develop_guide.md)，明确最小交付件和关键示例代码，针对[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓算子提供迁移本项目的指导。
 - [2025/12] 支持transformer类onnx算子插件，包括[NPUFlashAttention](attention/flash_attention_score/framework)、[NPUMultiHeadAttention](common/src/framework)、[NPUMoeComputeExpertTokens](moe/moe_compute_expert_tokens/framework)等。
 - [2025/12] 新支持算子[kv_rms_norm_rope_cache](posembedding/kv_rms_norm_rope_cache)、[attention_update](attention/attention_update)、[attention_worker_scheduler](attention/attention_worker_scheduler)、[gather_pa_kv_cache](attention/gather_pa_kv_cache)、[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer_grad](attention/lightning_indexer_grad)、[mla_preprocess](attention/mla_preprocess)、[mla_preprocess_v2](attention/mla_preprocess_v2)、[grouped_matmul_swiglu_quant_v2](gmm/grouped_matmul_swiglu_quant_v2)、[attention_to_ffn](mc2/attention_to_ffn)、[ffn_to_attention](mc2/ffn_to_attention)。
@@ -29,30 +29,26 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 
 ## ⚡️快速入门
 
-若您希望**从零到一了解并快速体验项目**，请访问如下文档。可以先了解项目算子信息，再尝试算子调用、开发、贡献等。
+若您希望**从零到一快速体验**项目能力，请访问下述简易教程。
 
-1. [算子列表](docs/zh/op_list.md)：项目全量算子信息，方便快速查询。
-2. [QuickStart](QUICKSTART.md)：**基于WebIDE或Docker环境**提供极简快速上手指南，包括搭建环境、编译部署、算子调用/开发/调试、贡献等。
-
-    > **说明**：无论是WebIDE或Docker环境，默认提供最新商发版本CANN软件包，目前是CANN 8.5.0。若您想手动安装CANN包或体验master分支最新能力等，请参考[学习教程](#📖学习教程)中的步骤，完成环境搭建、编译执行、算子开发等操作。
+1. [环境部署](docs/zh/install/quick_install.md)：介绍基础环境搭建，包括软件包和三方依赖的获取和安装、源码下载等。
+   
+    >  **说明**：本步骤是QuickStart和各类教程的操作前提，请先完成基础环境搭建。
+2. [QuickStart](docs/QUICKSTART.md)：提供快速上手项目能力的指南，包括编译部署、算子调用/开发/调试等核心操作。
 
 ## 📖学习教程
 
-若您已完成**快速入门**学习，对本项目有了一定认知，并希望**深入了解和体验项目**，请访问如下文档。
+若您已学习**环境部署和QuickStart**，对本项目有一定认知，并希望**深入了解和体验项目**，请访问下述详细教程。
 
-这些文档提供了多样化场景和更全面的操作指导，方便您应用于各种AI业务场景。
+1. [算子列表](docs/zh/op_list.md)：提供全量算子信息，方便您查看算子分类和功能。
+2. [算子调用](docs/zh/invocation/quick_op_invocation.md)：提供多种算子编译和运行方法（包括执行算子样例和UT）等。
+3. [算子开发](docs/zh/develop/aicore_develop_guide.md)：提供详细算子开发指南，从零学习创建算子工程、实现Tiling和Kernel核心交付件等。
+4. [算子调试调优](docs/zh/debug/op_debug_prof.md)：提供常见算子调试和调优方法，如DumpTensor、msProf、Simulator等。
 
-1. [环境部署](docs/zh/context/quick_install.md)：**基础环境搭建**指南，提供多种场景下CANN软件包安装方法，例如Docker部署、手动安装等。
-2. [算子调用](docs/zh/invocation/quick_op_invocation.md)：算子**源码编译和执行**指南，提供多种编译算子包以及运行算子的方法（包括执行算子样例和UT）等。
-3. [算子开发](docs/zh/develop/aicore_develop_guide.md)：基于项目工程**开发新算子**指南，从零学习创建算子工程、实现Tiling和Kernel核心交付件等。
-4. [算子调试调优](docs/zh/debug/op_debug_prof.md)：提供常见的算子**调试和调优**方法，如DumpTensor、msProf、Simulator等。
-
-除了上述指南，还提供了其他文档例如[算子调用方式](docs/zh/invocation/op_invocation.md)、术语概念、build参数介绍等，全量文档请访问[docs](docs/README.md)。
+除了上述关键教程，还有其他文档介绍，例如算子调用方式、build参数说明、术语概念等，全量文档请访问[docs](docs/README.md)。
 
 ## 🔍目录结构
-
-关键目录如下，详细目录介绍参见[项目目录](./docs/zh/context/dir_structure.md)。
-
+关键目录如下，详细目录介绍参见[项目目录](./docs/zh/install/dir_structure.md)。
 ```
 ├── cmake                          # 项目工程编译目录
 ├── common                         # 项目公共头文件和公共源码
