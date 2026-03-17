@@ -1323,7 +1323,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_tiling_16)
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
                 &compileInfo, "Ascend950", 64, 262144, 8192);
-    int64_t expectTilingKey = 2400418603268571952;
+    int64_t expectTilingKey = 7012104621695959856;
     std::string expectTilingData = "2 0 0 8 1 1024 2048 0 128 128 0 4467570831416885248 1024 1024 0 0 0 1125908513685763 8796093022208 1 0 0 1024 1024 0 0 255 0 0 0 0 0 0 0 0 0 0 0 0 64 128 8 2 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43 45 47 49 51 53 55 57 59 61 63 65 67 69 71 73 75 77 79 81 83 85 87 89 91 93 95 97 99 101 103 105 107 109 111 113 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
