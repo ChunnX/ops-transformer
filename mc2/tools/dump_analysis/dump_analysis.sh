@@ -303,6 +303,6 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
             done
         fi
     else
-        echo "error:路径 $TARGET_DIR 下没有dump数据"
+        echo "error:路径 $TARGET_DIR 下没有以mc2_exception_info开头的dump数据"
     fi
 fi
