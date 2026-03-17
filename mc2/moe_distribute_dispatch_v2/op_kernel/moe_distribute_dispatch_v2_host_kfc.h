@@ -116,6 +116,7 @@ private:
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
+    __aicore__ inline void InitMaskReSource();
     __aicore__ inline void TimeOutDetection();
     __aicore__ inline void WaitDispatchClearStatus();
     __aicore__ inline void CalValidBSCnt(LocalTensor<bool> maskStrideTensor);
