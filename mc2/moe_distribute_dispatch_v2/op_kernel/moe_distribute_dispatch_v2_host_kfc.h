@@ -124,7 +124,7 @@ private:
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t startTokenIndex, uint32_t tokenIndex);
     template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SingleTokenProcess(uint32_t startTokenIndex, uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
-    __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId, bool isSharedExpert);
+    __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId);
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<int32_t> flagTensor, LocalTensor<uint32_t> flagRecvGatherMask);
     // __aicore__ inline bool HasSharedExpertInServer(uint32_t serverId);
     __aicore__ inline void ConstructDataAndFlagBatchWriteInfo(uint32_t beginServerId, uint32_t serverNum,
@@ -1179,15 +1179,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId, bool isSharedExpert)
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId)
 {
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
-        int32_t tokenSendOffset = isSharedExpert ? tokenIndex : tokenSendMap_.GetValue(offset) ;
+        int32_t tokenSendOffset = tokenSendMap_.GetValue(offset);
         LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
-        LOG_INFO("ScatterToken isSharedExpert ",isSharedExpert);
-        bool isSend = (isSharedExpert) || (tokenSendOffset != -1);
-        if(!isSend) {
+        if(tokenSendOffset == -1) {
             LOG_INFO("ScatterToken not send");
             continue;
         }
@@ -1292,8 +1290,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (serverCountTensor_.GetValue(serverIndex) == 0){
             continue;
         }
-        bool isSharedExpert = false; //HasSharedExpertInServer(serverIndex);//是否存在共享专家 TODO:
-        ScatterToken(startTokenId, endTokenId, serverIndex, isSharedExpert);
+        ScatterToken(startTokenId, endTokenId, serverIndex);
         //HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
     }
     LOG_INFO("end SendTokenToRemoteServer");
