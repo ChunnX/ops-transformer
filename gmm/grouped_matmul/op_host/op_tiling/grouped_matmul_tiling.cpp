@@ -235,7 +235,7 @@ ge::graphStatus GMMTiling::PrepareTilingData(const gert::TilingContext* context)
     }
     return SeparatedXSeparatedWeight(context);
   }
-  OP_LOGE(context->GetNodeName(), "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d",
+  OP_LOGE(context->GetNodeName(), "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d",
             groupType_, isSingleWeight_, isSingleX_, isSingleY_);
   return ge::GRAPH_FAILED;
 }
@@ -260,7 +260,7 @@ ge::graphStatus GMMTiling::GMMGetTensorShapeSplitM(const gert::TilingContext* co
     if (!isSingleX_ && !isSingleWeight_ && !isSingleY_) {  // split M, m-m-m
       return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE(context->GetNodeName(), "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d",
+    OP_LOGE(context->GetNodeName(), "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d",
               groupType_, isSingleWeight_, isSingleX_, isSingleY_);
     return ge::GRAPH_FAILED;
 }
@@ -276,7 +276,7 @@ ge::graphStatus GMMTiling::GMMGetTensorShapeSplitK(const gert::TilingContext* co
     if (!isSingleX_ && isSingleWeight_) {  // splitK, m-s-m/m-s-s
       return SeparatedXSingleWeight(context, wShape);
     }
-    OP_LOGE(context->GetNodeName(), "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d",
+    OP_LOGE(context->GetNodeName(), "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d",
               groupType_, isSingleWeight_, isSingleX_, isSingleY_);
     return ge::GRAPH_FAILED;
 }
@@ -1108,7 +1108,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   OP_CHECK_NULL_WITH_CONTEXT(context, attr);  // check attr is not null
   const bool* transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
   const bool* transposeXPtr = attr->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
-  const int32_t* groupTypePtr = attr->GetAttrPointer<int32_t>(ATTR_INDEX_GROUPTYPE);
+  const int64_t* groupTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
   const int64_t* splitItemPtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_SPLIT_ITEM);
   const int64_t* actTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
   const uint32_t* groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_INDEX_GROUP_LIST_TYPE);
@@ -1154,7 +1154,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(groupType_ != SPLIT_M,
                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "When groupListType is 2 only support groupType 0, but get groupType %d",
+                                           "When groupListType is 2 only support groupType 0, but get groupType %ld",
                                            groupType_),
                return ge::GRAPH_FAILED);
   }

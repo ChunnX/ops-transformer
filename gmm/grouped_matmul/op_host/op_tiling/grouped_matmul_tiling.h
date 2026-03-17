@@ -195,7 +195,7 @@ private:
     bool isSingleY_ = false;
     bool isAllSingleTensor_ = false;
     bool hasBias_ = false;
-    int32_t groupType_ = 0;
+    int64_t groupType_ = 0;
     int64_t splitItem_ = 0L;
     uint32_t groupListType_ = 0;
     uint32_t xKDim_ = 0;
