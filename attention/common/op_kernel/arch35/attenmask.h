@@ -420,7 +420,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             }
             GetAttenMaskComputeMode<hasAtten>(delta, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
             return ComputeOffsetForCausal(delta, constInfo.s1BaseSize, constInfo.s2BaseSize,
-                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
+                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         }
         // compress mode, 推理场景的TND和TND的offset计算相同，因为mask被padding到了最大的s2Size
         int64_t deltaCausalOrNext = 0;
@@ -606,6 +606,7 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
 {
     if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
+<<<<<<< HEAD
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
         if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
             int32_t s2RealSize = runInfo.s2RealSize;
@@ -615,7 +616,16 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                 }
             }
             BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize,
-                                       constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+                                       runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size, runInfo.s1RealSizeAlign64 >> 1, constInfo);
+=======
+        if (needAtten) {
+            int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true);
+            if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
+                                        runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
+                                        runInfo.s1RealSizeAlign64 >> 1, constInfo);
+            }
+>>>>>>> e0f7f6e9 (DN支持causal, 支持无效行场景)
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }
