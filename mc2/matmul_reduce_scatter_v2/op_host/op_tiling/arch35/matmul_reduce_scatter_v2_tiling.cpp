@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
-/* !
+/*!
  * \file matmul_reduce_scatter_v2_tiling.cpp
  * \brief
  */
@@ -28,6 +28,8 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "tiling_base/tiling_templates_registry.h"
+#include "reduce_scatter_fit_balance_tiling.h"
+#include "../reduce_scatter_formulaic_tiling.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -50,7 +52,7 @@ bool MatmulReduceScatterV2Tiling::IsCapable()
     return false;
 }
 
-void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling) 
+void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
     OP_LOGD(opName, " tiling.isHf32 %d", tiling.isHf32);
@@ -90,15 +92,15 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm() 
+ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
 {
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    const uint32_t opType = isA2APath_ 
+    const uint32_t opType = isA2APath_
         ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
         : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
 
-    const std::string rsConfig = isA2APath_ 
-        ? "AlltoAll=level0:fullmesh" 
+    const std::string rsConfig = isA2APath_
+        ? "AlltoAll=level0:fullmesh"
         : "ReduceScatter=level0:fullmesh";
 
     int index = 0;
@@ -118,13 +120,14 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                                              Mc2MatMulV3TilingData &tilingData)
+ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
+    Mc2MMRegisterCfg &registerCfg, Mc2MatMulV3TilingData &tilingData)
 {
     tilingCfg.SetRankDim(args_.rankDim);
     OP_LOGD(opName_, "execte DoMatmulV3Tiling!");
     tilingCfg.SetMatMulV3TilingData(tilingData);
-    OP_TILING_CHECK(Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_,
+                                                                    tilingCfg, registerCfg) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "do tiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -199,7 +202,26 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
     context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
 }
-//注册Tiling类
+
+CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
+{
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+        MMReduceScatterFitBalanceTiling scatterTiling(args_,
+            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::STANDARD_CARD);
+        return scatterTiling.GetTiling();
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+        MMReduceScatterFitBalanceTiling scatterTiling(args_,
+            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
+        return scatterTiling.GetTiling();
+    } else {
+        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        scatterTiling.GetTiling();
+        return scatterTiling.tilingM_.cutRes;
+    }
+}
+
+// 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling, \
                                    static_cast<int32_t>(NpuArch::DAV_3510), 0);
 
