@@ -55,6 +55,8 @@ protected:
 
     void PrintExtendMatmulTiling(bool isTail) override;
 
+    CutResult GetTilingResult() override;
+
     void DoCommFp8ReTiling();
 
     ge::graphStatus DoQuantTiling();
