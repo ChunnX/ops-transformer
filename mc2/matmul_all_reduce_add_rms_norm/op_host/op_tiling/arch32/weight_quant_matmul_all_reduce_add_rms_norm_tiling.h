@@ -8,27 +8,25 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file quant_matmul_all_reduce_add_rms_norm_tiling.h
+/* !
+ * \file weight_quant_matmul_all_reduce_add_rms_norm_tiling.h
  * \brief
  */
-#ifndef _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
-#define _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
+#ifndef _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
+#define _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
 #include <memory>
-#include "../../../matmul_all_reduce/op_host/op_tiling/arch32/quant_matmul_all_reduce_tiling.h"
+#include "../../../../matmul_all_reduce/op_host/op_tiling/arch32/weight_quant_matmul_all_reduce_tiling.h"
 #include "common_add_rms_norm_tiling.h"
 #include "context_transfer.h"
-#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
+#include "../../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 namespace optiling {
-
-class QuantMMNTilingTransferHelper;
-class QuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass
-{
-    friend class QuantMMNTilingTransferHelper;
+class WeightQuantMMNTilingTransferHelper;
+class WeightQuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass {
+    friend class WeightQuantMMNTilingTransferHelper;
 
 public:
-    explicit QuantMatmulAllReduceAddRmsNormTiling(gert::TilingContext* context);
-    ~QuantMatmulAllReduceAddRmsNormTiling() override = default;
+    explicit WeightQuantMatmulAllReduceAddRmsNormTiling(gert::TilingContext* context);
+    ~WeightQuantMatmulAllReduceAddRmsNormTiling() override = default;
 
 protected:
     ge::graphStatus GetPlatformInfo() override;
@@ -44,23 +42,23 @@ protected:
 private:
     bool HasTail() const;
     MRNCtxInfo mrnCtxInfo_;
-    Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData tilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData tilingData_;
     bool hasTail_;
     TilingOut tilingOutAddRmsNormTile_;
     TilingOut tilingOutAddRmsNormTail_;
-    std::unique_ptr<QuantMMNTilingTransferHelper> helper_;
+    std::unique_ptr<WeightQuantMMNTilingTransferHelper> helper_;
 };
 
-class QuantMMNTilingTransferHelper : public QuantMatmulAllReduceTiling
-{
+class WeightQuantMMNTilingTransferHelper : public WeightQuantMatmulAllReduceTiling {
 public:
-    QuantMMNTilingTransferHelper(
-        QuantMatmulAllReduceAddRmsNormTiling& quantMatmulAllReduceAddRmsNormTiling,
-        Mc2Tiling::QuantMatmulAllReduceTilingData& data);
+    WeightQuantMMNTilingTransferHelper(
+        WeightQuantMatmulAllReduceAddRmsNormTiling& weightQuantMatmulAllReduceAddRmsNormTiling,
+        Mc2Tiling::WeightQuantMatmulAllReduceTilingData& data);
     ge::graphStatus GetShapeAttrsInfo() override;
 
 private:
-    QuantMatmulAllReduceAddRmsNormTiling& tilingProcesser_;
+    WeightQuantMatmulAllReduceAddRmsNormTiling& tilingProcesser_;
 };
 } // namespace optiling
-#endif // _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
+
+#endif // _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_

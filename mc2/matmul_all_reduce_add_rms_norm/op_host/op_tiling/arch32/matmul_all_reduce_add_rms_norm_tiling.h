@@ -8,22 +8,21 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
+/* !
  * \file matmul_all_reduce_add_rms_norm_tiling.h
  * \brief
  */
 
 #ifndef _MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
 #define _MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
-#include "../../../matmul_all_reduce/op_host/op_tiling/arch32/matmul_all_reduce_tiling_910.h"
+#include "../../../../matmul_all_reduce/op_host/op_tiling/arch32/matmul_all_reduce_tiling_910.h"
 #include "common_add_rms_norm_tiling.h"
 #include "context_transfer.h"
-#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
+#include "../../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace optiling {
 class MMNTilingTransferHelper;
-class MatmulAllReduceAddRmsNormTiling : public TilingBaseClass
-{
+class MatmulAllReduceAddRmsNormTiling : public TilingBaseClass {
     friend class MMNTilingTransferHelper;
 
 public:
@@ -51,8 +50,7 @@ private:
     std::unique_ptr<MMNTilingTransferHelper> helper_;
 };
 
-class MMNTilingTransferHelper : public MatmulAllReduceTiling910
-{
+class MMNTilingTransferHelper : public MatmulAllReduceTiling910 {
 public:
     MMNTilingTransferHelper(
         MatmulAllReduceAddRmsNormTiling& MatmulAllReduceAddRmsNormTiling,
