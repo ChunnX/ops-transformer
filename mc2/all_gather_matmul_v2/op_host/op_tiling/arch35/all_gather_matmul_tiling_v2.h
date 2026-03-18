@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file all_gather_matmul_tiling_v2.h
@@ -32,12 +32,11 @@ namespace optiling {
 
 using namespace mc2_matmul_v3_advanced;
 
-class AllGatherMatmulTilingV2 : public AllGatherMatmulTilingBase
-{
+class AllGatherMatmulTilingV2 : public AllGatherMatmulTilingBase {
 public:
     explicit AllGatherMatmulTilingV2(gert::TilingContext *context);
     ~AllGatherMatmulTilingV2() override = default;
-    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg, 
+    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
                                      Mc2MatMulV3TilingData &tilingData);
 
 protected:
@@ -46,6 +45,8 @@ protected:
     ge::graphStatus DoOpTiling() override;
 
     ge::graphStatus PostTiling() override;
+
+    CutResult GetTilingResult() override;
 
     Mc2Tiling::RCSTiling &MutableRCSTilingData()
     {
