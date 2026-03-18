@@ -8,21 +8,20 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
+/* !
  * \file weight_quant_matmul_all_reduce_add_rms_norm_tiling.h
  * \brief
  */
 #ifndef _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
 #define _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
 #include <memory>
-#include "../../../matmul_all_reduce/op_host/op_tiling/arch32/weight_quant_matmul_all_reduce_tiling.h"
+#include "../../../../matmul_all_reduce/op_host/op_tiling/arch32/weight_quant_matmul_all_reduce_tiling.h"
 #include "common_add_rms_norm_tiling.h"
 #include "context_transfer.h"
-#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
+#include "../../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 namespace optiling {
 class WeightQuantMMNTilingTransferHelper;
-class WeightQuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass
-{
+class WeightQuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass {
     friend class WeightQuantMMNTilingTransferHelper;
 
 public:

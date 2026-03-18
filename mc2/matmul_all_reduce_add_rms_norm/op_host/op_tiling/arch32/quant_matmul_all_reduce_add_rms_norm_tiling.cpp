@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
+/* !
  * \file quant_matmul_all_reduce_add_rms_norm_tiling.cc
  * \brief
  */
@@ -22,7 +22,8 @@ constexpr char MRN[] = "MatmulAllReduceAddRmsNorm";
 constexpr char IMRN[] = "InplaceMatmulAllReduceAddRmsNorm";
 } // namespace
 QuantMMNTilingTransferHelper::QuantMMNTilingTransferHelper(
-    QuantMatmulAllReduceAddRmsNormTiling& quantMatmulAllReduceAddRmsNormTiling, Mc2Tiling::QuantMatmulAllReduceTilingData& data)
+    QuantMatmulAllReduceAddRmsNormTiling& quantMatmulAllReduceAddRmsNormTiling,
+    Mc2Tiling::QuantMatmulAllReduceTilingData& data)
     : QuantMatmulAllReduceTiling(
           quantMatmulAllReduceAddRmsNormTiling.context_, &quantMatmulAllReduceAddRmsNormTiling.mrnCtxInfo_.mmrCtxInfo,
           &data),
@@ -166,7 +167,7 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::PostTiling()
         return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&tilingData_), tilingDataSize);
-    if (ret != EOK){
+    if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
     }
