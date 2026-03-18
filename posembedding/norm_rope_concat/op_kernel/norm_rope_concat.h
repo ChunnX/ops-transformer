@@ -19,8 +19,9 @@
 #include "norm_rope_concat_base.h"
 
 namespace nrc {
-using namespace AscendC::MicroAPI;
-
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    using namespace AscendC::Reg;
+#endif
 template <bool isTraining>
 class NormOperationForward : public NormOperation {
 public:
