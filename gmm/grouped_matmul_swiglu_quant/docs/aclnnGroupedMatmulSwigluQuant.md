@@ -236,7 +236,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
         <td>FLOAT</td>
         <td>ND</td>
         <td>2</td>
-        <td>-</td>
+        <td>√</td>
       </tr>
       <tr>
         <td>offset</td>
