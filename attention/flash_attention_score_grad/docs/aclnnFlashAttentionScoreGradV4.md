@@ -155,7 +155,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的Q。</td>
       <td>数据类型与keyIn/value一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -165,7 +165,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的K。</td>
       <td>数据类型与query/value一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -185,7 +185,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的V。</td>
       <td>数据类型与query/keyIn一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -195,7 +195,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的dY。</td>
       <td>-</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>可选输入</td>
       <td>注意力正向的最终输出。</td>
       <td>数据类型和shape与query一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -618,6 +618,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   </tbody>
   </table>
 
+  
   
 - **返回值：**
 
