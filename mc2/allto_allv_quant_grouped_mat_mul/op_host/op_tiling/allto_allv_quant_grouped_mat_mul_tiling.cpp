@@ -16,13 +16,13 @@
 #include <string>
 #include <numeric>
 #include <climits>
-#include "tiling/matmul_formulaic_tiling.h"
-#include "tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"

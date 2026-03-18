@@ -22,7 +22,7 @@
 #include "exe_graph/runtime/tiling_parse_context.h"
 #include "../matmul_v3_compile_info.h"
 
-#include "../../../../../common/inc/mc2_log.h"
+#include "../../../../../common/utils/mc2_log.h"
 #include "log/log.h"
 
 namespace optiling {

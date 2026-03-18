@@ -14,17 +14,17 @@
  */
 #include <vector>
 
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "platform/platform_info.h"
 
 #ifdef BUILD_OPEN_PROJECT
-#include "mc2_gen_task_ops_utils.h"
+#include "op_graph/mc2_gen_task_ops_utils.h"
 #include "mc2_log.h"
 #include "graph/kernel_launch_info.h"
 #include "graph/arg_desc_info.h"
 #include "register/op_impl_registry.h"
 #else
-#include "mc2_gen_task_utils.h"
+#include "op_graph/mc2_gen_task_utils.h"
 #include "register/op_ct_impl_registry.h"
 #endif
 

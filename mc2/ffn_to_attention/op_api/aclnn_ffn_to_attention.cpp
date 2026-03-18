@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_ffn_to_attention.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2_def.h"
 #include <algorithm>
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"

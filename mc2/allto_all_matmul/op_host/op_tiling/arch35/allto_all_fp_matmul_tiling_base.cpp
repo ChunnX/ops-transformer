@@ -12,7 +12,7 @@
  * \file allto_all_fp_matmul_tiling_base.cpp
  * \brief
  */
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "allto_all_fp_matmul_tiling_base.h"
 

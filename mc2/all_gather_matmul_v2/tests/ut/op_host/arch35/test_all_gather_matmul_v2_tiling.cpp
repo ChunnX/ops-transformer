@@ -10,7 +10,7 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../../../common/inc/kernel/mc2_tiling_struct.h"
+#include "../../../../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../../../op_kernel/all_gather_matmul_aiv_mode_tiling.h"
 #include "mc2_tiling_case_executor.h"
 

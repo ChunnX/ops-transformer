@@ -23,10 +23,10 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
-#if __has_include("../common/inc/kernel/moe_distribute_base.h")
-#include "../common/inc/kernel/moe_distribute_base.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
 #else
-#include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
 #endif
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"

@@ -19,11 +19,11 @@
 #pragma once
 #include "securec.h"
 #include "tiling/tiling_api.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2_matmul_tiling_cfg.h"
-#include "tiling/new_mc2_tiling_utils.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "../quant_grouped_mat_mul_allto_allv_tiling_base.h"
 #include "../../../op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "../../../op_kernel/quant_grouped_mat_mul_allto_allv_tiling_key.h"

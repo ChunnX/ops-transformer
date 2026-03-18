@@ -14,9 +14,9 @@
  */
 #include <platform/platform_info.h>
 #include <register/op_impl_registry.h>
-#include "mc2_common_infershape.h"
+#include "op_host/mc2_common_infershape.h"
 #include "mc2_log.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "util/math_util.h"
 
 namespace ops {

@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "tiling/moe_tiling_base.h"
+#include "op_host/op_tiling/moe_tiling_base.h"
 #include "moe_distribute_dispatch_teardown_tiling_base.h"
 
 namespace {

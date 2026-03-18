@@ -9,7 +9,7 @@
  */
 
 #include "fallback/fallback.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 
 #ifdef __cplusplus

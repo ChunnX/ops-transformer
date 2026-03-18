@@ -15,9 +15,9 @@
 #include "vector"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_hcom_topo_info.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include <map>
 #include "allto_all_matmul_tiling_910b.h"
 

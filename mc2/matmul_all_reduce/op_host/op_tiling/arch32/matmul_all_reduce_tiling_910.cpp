@@ -13,7 +13,7 @@
  * \brief
  */
 #include "matmul_all_reduce_tiling_910.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 
 namespace optiling {
 using namespace Mc2Tiling;

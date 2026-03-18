@@ -18,7 +18,7 @@
 
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
-#include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
 
 namespace QuantMTECommImpl {
 

@@ -23,7 +23,7 @@
 #include "test_add_rms_norm.h"
 #include "../../../../matmul_all_reduce/tests/ut/op_kernel/weight_quant_batch_matmul_v2_tiling.h"
 #include "../../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-#if __has_include("../../../../common/inc/hccl_stub.h")
+#if __has_include("../../../../common/utils/hccl_stub.h")
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 #endif
 

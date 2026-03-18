@@ -32,7 +32,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 
 using namespace AscendC;
 using namespace ge;

@@ -16,7 +16,7 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_TILING_BASE_H_
 #define MOE_DISTRIBUTE_COMBINE_SETUP_TILING_BASE_H_
 
-#include "tiling/moe_tiling_base.h"
+#include "op_host/op_tiling/moe_tiling_base.h"
 #include "../../op_kernel/moe_distribute_combine_setup_tiling_key.h"
 #include "../../op_kernel/moe_distribute_combine_setup_tiling_data.h"
 
