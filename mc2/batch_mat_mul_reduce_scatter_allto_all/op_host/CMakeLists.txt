@@ -12,7 +12,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         batch_mat_mul_reduce_scatter_allto_all_def.cpp
     )
-    add_modules_sources(
+    add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
