@@ -64,8 +64,7 @@ template <
     class BlockScheduler_,
     class ElementGroupList_,
     class BlockEpilogue1_,
-    class BlockEpilogue2_,
-    bool IS_A2
+    class BlockEpilogue2_
 >
 class DispatchFFNCombineKernelA2 {
 public:
@@ -696,18 +695,11 @@ private:
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(ubOffet + UB_ALIGN);
 
         for(int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            // if (dstEpIdx == params.rank) {
-            //     continue;
-            // }
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
             srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
             AscendC::GlobalTensor<int32_t> dstAddress;
             __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
-            auto addr1 = shmem.WinContext_->windowsIn[dstEpIdx];
-            auto addr2 = shmem.WinContext_->data[dstEpIdx].localInput.addr;
-            auto addr3 = shmem.WinContext_->data[dstEpIdx].remoteInput.addr;
-            AscendC::printf("rank:%ld, dstEpId:%d, addr1:%x, addr2:%x, addr3:%x, localTokenPerExpertOffset:%ld\n", params.rank, dstEpIdx, addr1, addr2, addr3, localTokenPerExpertOffset);
 
             dstAddress.SetGlobalBuffer((__gm__ int32_t * )dstPeermemPtr);
             AscendC::GlobalTensor<int32_t> localDstAddress;
@@ -726,9 +718,6 @@ private:
             copyGmToUb(tmpBuffer, srcAddress[0], 
                 layout::RowMajor{ 1, numPerCore}, 
                 layout::RowMajor{1, numPerCore});
-            AscendC::printf("000000000000000000000000000000000000000000000000000000000 rank:%ld, dstEpId:%d, dstPeermemPtr:%x\n", params.rank, dstEpIdx, dstPeermemPtr);
-            AscendC::DumpTensor(srcAddress[0], 12, 16);
-            AscendC::DumpTensor(tmpBuffer, 34, 16);
 
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -739,8 +728,6 @@ private:
                 copyUbToGm(dstAddress, tmpBuffer, 
                     layout::RowMajor{ 1, numPerCore}, 
                     layout::RowMajor{1, numPerCore});
-                AscendC::DumpTensor(dstAddress[0], 56, 16);
-                AscendC::DumpTensor(tmpBuffer, 78, 16);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             } else {
@@ -748,52 +735,36 @@ private:
                 copyUbToGm(localDstAddress, tmpBuffer, 
                     layout::RowMajor{ 1, numPerCore}, 
                     layout::RowMajor{1, numPerCore});
-                AscendC::DumpTensor(localDstAddress, 78, 16);
-                //AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-                //AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                 AscendC::PipeBarrier<PIPE_ALL>();
                 AIVRDMAPostSend((GM_ADDR)localDstAddress.GetPhyAddr(), (GM_ADDR)dstAddress.GetPhyAddr(), dstEpIdx, numPerCore * sizeof(int32_t),
                                 qp_info_, rdmaUbLocal, rdmaUbLocalHead);
-                AscendC::PipeBarrier<PIPE_ALL>();
             }  
         }
-        AscendC::SyncAll<true>();
 
         for(int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            //if (dstEpIdx != params.rank) {
-                int32_t intPer512 = CACHE_LINE / sizeof(int);
-                for(int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128); checkIdx += intPer512) {
-                    __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert) + tokenPerExpertLayout(dstEpIdx, 0, checkIdx);
-                    gm_signal_wait_until_ne(sync_check, 0);
-                    AscendC::printf("55555555555555555555555555555555555555555555555555 rank:%ld, dstEpId:%d, sync_check:%x, v[0]:%d\n", params.rank, dstEpIdx, sync_check, sync_check[0]);
-                }
-                AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                AscendC::DataCopy(tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], tmpBuffer, numPerCore);
-            // } else {
-            //     AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
-            //     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            //     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            // }
-            AscendC::PipeBarrier<PIPE_ALL>();
-            int32_t prevSum = 0;
-            int32_t j = 0;
-            for (int32_t i = 0; i < (params.rank + 1) * params.expertPerRank; i++) {
-                if (i >= params.rank * params.expertPerRank) {
-                    prevSumBuf(j) = prevSum;
-                    j++;
-                }
-                prevSum += tmpBuffer(i);
+            int32_t intPer512 = CACHE_LINE / sizeof(int);
+            for(int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128); checkIdx += intPer512) {
+                __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert) + tokenPerExpertLayout(dstEpIdx, 0, checkIdx);
+                gm_signal_wait_until_ne(sync_check, 0);
+            }
+            AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::DataCopy(tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], tmpBuffer, numPerCore);
+
+            // expect only to be called once
+            for (uint32_t i = 0, currentSum = 0; i < numPerCore; i++) {
+                prevSumBuf(i) = currentSum;
+                currentSum += tmpBuffer(i);
             }
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-            AscendC::DataCopyPad(preSumBeforeRank[dstEpIdx * params.expertPerRank], prevSumBuf,
-            AscendC::DataCopyParams{1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
+            AscendC::DataCopyPad(preSumBeforeRank, prevSumBuf,
+                AscendC::DataCopyParams{1, static_cast<uint16_t>(numPerCore * sizeof(int32_t)), 0, 0});
         }
 
         AscendC::SyncAll<true>();
@@ -879,7 +850,6 @@ private:
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
         //---initRouting------
-        // TODO: offsetA & offsetPeerPerTokenScale =>winOut?
         moe_init_routing_quant_v2<ElementD2>(reinterpret_cast<GM_ADDR> (params.ptrA), params.expertIdx, 
         params.moeInitRoutingQuantV2Scale, params.moeInitRoutingQuantV2Offset, shmem() + peermemInfo.offsetA, 
         workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity, 
@@ -1196,7 +1166,7 @@ private:
         PeermemInfo(){}
 
         CATLASS_DEVICE
-        PeermemInfo(const Params & params, const HcclShmem<IS_A2> & shmem) {
+        PeermemInfo(const Params & params, const HcclShmem<true> & shmem) {
             offsetA = 0;    // Occupies one third of BUFFSIZE
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512); // Occupies 1 MB
             offsetD = offsetPeerPerTokenScale + MB_SIZE;    // Occupies the remaining space
@@ -1226,7 +1196,7 @@ private:
     AscendC::GlobalTensor<int32_t> cumsumMM;
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
     Layout3D tokenPerExpertLayout;
-    HcclShmem<IS_A2> shmem;
+    HcclShmem<true> shmem;
 
     __gm__ HcclAiRMAInfo* qp_info_ = nullptr;
 };

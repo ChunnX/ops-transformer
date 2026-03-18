@@ -64,8 +64,7 @@ template <
     class BlockScheduler_,
     class ElementGroupList_,
     class BlockEpilogue1_,
-    class BlockEpilogue2_,
-    bool IS_A2
+    class BlockEpilogue2_
 >
 class DispatchFFNCombineKernel {
 public:
@@ -1066,7 +1065,7 @@ private:
         PeermemInfo(){}
 
         CATLASS_DEVICE
-        PeermemInfo(const Params & params, const HcclShmem<IS_A2> & shmem) {
+        PeermemInfo(const Params & params, const HcclShmem<false> & shmem) {
             offsetA = 0;    // Occupies one third of BUFFSIZE
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512); // Occupies 1 MB
             offsetD = offsetPeerPerTokenScale + MB_SIZE;    // Occupies the remaining space
@@ -1095,7 +1094,7 @@ private:
     AscendC::GlobalTensor<int32_t> cumsumMM;
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
     Layout3D tokenPerExpertLayout;
-    HcclShmem<IS_A2> shmem;
+    HcclShmem<false> shmem;
 };
 
 } // namespace Catlass::Gemm::Kernel

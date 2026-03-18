@@ -250,8 +250,8 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
     using MatmulKernel = typename std::conditional_t<IS_A2_,
-        Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>,
-        Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>>;
+        Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>,
+        Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};

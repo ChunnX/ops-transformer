@@ -40,6 +40,7 @@ namespace {
     constexpr uint64_t INIT_TILINGKEY = 1000000;
     constexpr uint64_t TILINGKEY_TRANS_B = 1U;
     constexpr uint64_t TILINGKEY_WEIGHT_NZ = 10;
+    constexpr uint64_t TILINGKEY_A2 = 100;
     constexpr uint32_t X_INDEX = 0;
     constexpr uint32_t WEIGHT_INDEX = 1;
     constexpr uint32_t WEIGHT2_INDEX = 2;
@@ -247,6 +248,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     uint64_t tilingKey = INIT_TILINGKEY;
     tilingKey += info.isTransposeB ? TILINGKEY_TRANS_B : 0;
     tilingKey += info.isWeightNz ? TILINGKEY_WEIGHT_NZ : 0;
+    tilingKey += info.isA2 ? TILINGKEY_A2 : 0;
     context->SetTilingKey(tilingKey);
 
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%d", tilingKey);

@@ -64,7 +64,6 @@ FORCE_INLINE_AICORE int32_t gm_signal_wait_until_eq_for_barrier(__gm__ int32_t *
 }
 
 FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32_t cmp_val) {
-    uint32_t count = 0;
     do {
         AscendC::LocalTensor<int32_t> ub;
         ub.address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECIN);
@@ -75,10 +74,6 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         if (ub(0) != cmp_val) {
-            return;
-        }
-        if (++count > 10000000) {
-            AscendC::printf("gm_signal_wait_until_ne check failed for address:%x\n", sig_addr);
             return;
         }
     } while (true);
