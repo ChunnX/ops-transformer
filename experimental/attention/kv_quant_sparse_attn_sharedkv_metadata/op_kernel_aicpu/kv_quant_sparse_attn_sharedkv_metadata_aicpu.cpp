@@ -128,8 +128,8 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckSingleParamN128()
         return false;
     }
     // layout_kv 校验
-    if (layoutKv_ != "PA_ND") {
-        KERNEL_LOG_ERROR("layout_kv must be PA_ND!");
+    if (layoutKv_ != "PA_ND" && layoutKv_ != "TND" && layoutKv_ != "BSND") {
+        KERNEL_LOG_ERROR("layout_kv must be TND, BSND or PA_ND!");
         return false;
     }
     return true;
@@ -389,9 +389,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsInit()
     CalcCmpMaskMode();
     isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
     groupSize_ = queryHeadNum_ / kvHeadNum_;
-    if (oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
-        hasOriTopk = true;
-    } else if (oriTopK_ != 0) {
+    if ((oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) || oriTopK_ != 0) {
         hasOriTopk = true;
     }
     if (hasCmpKv_) {
@@ -434,14 +432,12 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsInit()
 
 uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetOriTopkLength(uint32_t bIdx)
 {
-    auto mode = static_cast<SparseMode>(oriMaskMode_);
-    if (mode == SparseMode::DEFAULT_MASK) {
-        // 如果是 DEFAULT_MASK，尝试使用 oriTopkLength_
-        if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
-            const int32_t *oriTopkPtr =static_cast<const int32_t*>(oriTopkLength_->GetData());
-            return static_cast<uint32_t>(oriTopkPtr[bIdx]);
-        }
+    // 尝试使用 oriTopkLength_
+    if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+    	const int32_t *oriTopkPtr =static_cast<const int32_t*>(oriTopkLength_->GetData());
+    	return static_cast<uint32_t>(oriTopkPtr[bIdx]);
     }
+
     // 如果不是 DEFAULT_MASK，使用 oriTopK_
     return static_cast<uint32_t>(oriTopK_);
 }
@@ -476,14 +472,14 @@ uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
     return static_cast<uint32_t>(querySeqSize_);
 }
 
-uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
+uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
 {
-    // 1. 如果 seqUsedKv_ 传了，直接使用
+    // 如果 seqUsedKv_ 传了，直接使用
     if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
-    // 2. seqUsedKv_ 没传，判断 Layout
+    // seqUsedKv_ 没传，判断 Layout
     if (layoutKv_ == "TND") {
         // 如果是 TND，尝试使用 actSeqLenOriKv_
         if (actSeqLenOriKv_ != nullptr && actSeqLenOriKv_->GetData() != nullptr) {
@@ -491,7 +487,32 @@ uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
             return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
-    // 3. 如果不是 TND，或者 actSeqLenOriKv_ 为空，使用 kvSeqSize_
+    // 如果max_seqlen_kv没传入，且ori_kv为稀疏的，则尝试从topk中获取
+    if (kvSeqSize_ == 0 && hasOriTopk) {
+        return UINT32_MAX;
+    }
+    // 使用 max_seqlen_kv
+    return static_cast<uint32_t>(kvSeqSize_);
+}
+
+uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
+{
+    // 如果 seqUsedKv_ 传了，直接使用
+    if (!seqUsedKv_.empty()) {
+        return static_cast<uint32_t>(seqUsedKv_[bIdx]);
+    }
+    // seqUsedKv_ 没传，判断 Layout
+    if (layoutKv_ == "TND") {
+        // 如果是 TND，尝试使用 actSeqLenOriKv_
+        if (!actSeqLenOriKv_.empty()) {
+            return static_cast<uint32_t>(actSeqLenOriKv_[bIdx + 1U] - actSeqLenOriKv_[bIdx]);
+        }
+    }
+    // 如果max_seqlen_kv没传入，且cmp_kv为稀疏的，则尝试从topk中获取
+    if (kvSeqSize_ == 0 && hasCmpTopk) {
+        return UINT32_MAX;
+    }
+    // 使用 max_seqlen_kv
     return static_cast<uint32_t>(kvSeqSize_);
 }
 
@@ -501,12 +522,15 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcSplitInfo(SplitContext &spl
     SplitInfo &splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
-        uint32_t s2Size = GetS2SeqSize(bIdx);
+        uint32_t oriS2Size = GetOriS2SeqSize(bIdx);
+        uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
-        splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
-        splitInfo.s2TailSize[bIdx] = s2Size % s2BaseSize_;
-        if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
+        splitInfo.oriS2BaseNum[bIdx] = (static_cast<int64_t>(oriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+        splitInfo.cmpS2BaseNum[bIdx] = (static_cast<int64_t>(cmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+        splitInfo.oriS2TailSize[bIdx] = oriS2Size % s2BaseSize_;
+        splitInfo.cmpS2TailSize[bIdx] = cmpS2Size % s2BaseSize_;
+        if (splitInfo.s1GBaseNum[bIdx] != 0U && (splitInfo.oriS2BaseNum[bIdx] != 0U || splitInfo.cmpS2BaseNum[bIdx] != 0U)) {
             splitInfo.isKvSeqAllZero = false;
         }
     }
@@ -605,19 +629,26 @@ Range<int64_t> KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcS2TokenRange(uint
                                                                             bool isCmpKv)
 {
     // actual seq == 0
-    if (batchCache.s1Size == 0U || batchCache.s2Size == 0U) {
-        return std::make_pair(0, 0);
+    if (!isCmpKv) {
+        if (batchCache.s1Size == 0U || batchCache.oriS2Size == 0U) {
+            return std::make_pair(0, 0);
+        }
+    } else {
+        if (batchCache.s1Size == 0U || batchCache.cmpS2Size == 0U) {
+            return std::make_pair(0, 0);
+        }
     }
 
     // no mask
     uint32_t hasMask = 1;
+    int64_t s2Size = isCmpKv ? static_cast<int64_t>(batchCache.cmpS2Size) : static_cast<int64_t>(batchCache.oriS2Size);
     if (isCmpKv) {
     	hasMask = cmpAttentionMode_;
     } else {
     	hasMask = oriAttentionMode_;
     }
     if (!hasMask) { //attentionMaskFlag ?
-        return std::make_pair(0, static_cast<int64_t>(batchCache.s2Size) - 1);
+        return std::make_pair(0, s2Size - 1);
     }
 
     // 1. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
@@ -654,11 +685,12 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, c
 
     batchCache.bIdx = bIdx;
     batchCache.s1Size = GetS1SeqSize(bIdx);
-    batchCache.s2Size = GetS2SeqSize(bIdx);
-    batchCache.oriPreTokenLeftUp = CalcOriPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
-    batchCache.oriNextTokenLeftUp = CalcOriNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
-    batchCache.cmpPreTokenLeftUp = CalcCmpPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
-    batchCache.cmpNextTokenLeftUp = CalcCmpNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
+    batchCache.oriS2Size = GetOriS2SeqSize(bIdx);
+    batchCache.cmpS2Size = GetCmpS2SeqSize(bIdx);
+    batchCache.oriPreTokenLeftUp = CalcOriPreTokenLeftUp(batchCache.s1Size, batchCache.oriS2Size);
+    batchCache.oriNextTokenLeftUp = CalcOriNextTokenLeftUp(batchCache.s1Size, batchCache.oriS2Size);
+    batchCache.cmpPreTokenLeftUp = CalcCmpPreTokenLeftUp(batchCache.s1Size, batchCache.cmpS2Size);
+    batchCache.cmpNextTokenLeftUp = CalcCmpNextTokenLeftUp(batchCache.s1Size, batchCache.cmpS2Size);
 }
 
 void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
@@ -725,21 +757,21 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCa
 }
 
 void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &oriS2TokenRange,
-                                                                    const BatchCache &batchCache,
-                                                                    S1GCache &s1GCache)
+                                                                   const BatchCache &batchCache,
+                                                                   S1GCache &s1GCache)
 {
     int64_t oriS2FirstToken = oriS2TokenRange.first;
     int64_t oriS2LastToken = oriS2TokenRange.second;
     uint32_t oriS2LastTokenSize = 0;
     // win部分s2起止和tailSize
-    if (oriS2FirstToken >= static_cast<int64_t>(batchCache.s2Size) || oriS2LastToken < 0 ||
+    if (oriS2FirstToken >= static_cast<int64_t>(batchCache.oriS2Size) || oriS2LastToken < 0 ||
         oriS2LastToken < oriS2FirstToken) {
         s1GCache.winS2Start = 0;
         s1GCache.winS2End = 0;
         s1GCache.winS2TailSize = 0;
     } else {
-        oriS2FirstToken = Clip(oriS2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-        oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
+        oriS2FirstToken = Clip(oriS2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.oriS2Size - 1U));
+        oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.oriS2Size - 1U));
         uint32_t oriTopkSize = GetOriTopkLength(s1GCache.bIdx);
         oriS2LastTokenSize = hasOriTopk ? std::min(oriS2LastToken + 1, static_cast<int64_t>(oriTopkSize)) :
                 (oriS2LastToken + 1);
@@ -751,20 +783,20 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcOriBlockRange(Range<int64_t
 }
 
 void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t> &cmpS2TokenRange,
-                                                                    const BatchCache &batchCache,
-                                                                    S1GCache &s1GCache)
+                                                                   const BatchCache &batchCache,
+                                                                   S1GCache &s1GCache)
 {
     int64_t cmpS2FirstToken = cmpS2TokenRange.first;
     int64_t cmpS2LastToken = cmpS2TokenRange.second;
     s1GCache.cmpS2Start = s1GCache.winS2End;
     // win部分s2起止和tailSize
-    if (cmpS2FirstToken >= static_cast<int64_t>(batchCache.s2Size) || cmpS2LastToken < 0 ||
+    if (cmpS2FirstToken >= static_cast<int64_t>(batchCache.cmpS2Size) || cmpS2LastToken < 0 ||
         cmpS2LastToken < cmpS2FirstToken) {
         s1GCache.cmpS2End = s1GCache.cmpS2Start;
         s1GCache.cmpS2TailSize = 0;
     } else {
-        cmpS2LastToken = Clip(cmpS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-        uint32_t cmpS2LastTokenSize = cmpS2LastToken / cmpRatio_;
+        cmpS2LastToken = Clip(cmpS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.cmpS2Size - 1U));
+        uint32_t cmpS2LastTokenSize = (cmpS2LastToken + 1) / cmpRatio_;
         uint32_t actCmpS2LastTokenSize = 0;
         // CmpS2LastToken与topk取最小
         uint32_t cmpTopkSize = GetCmpTopkLength(s1GCache.bIdx);
@@ -845,7 +877,7 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, co
     costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
     costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0U;
 
-    if (GetS1SeqSize(bIdx) == 0U || GetS2SeqSize(bIdx) == 0U) {
+    if (GetS1SeqSize(bIdx) == 0U || ((GetOriS2SeqSize(bIdx) == 0U) && GetCmpS2SeqSize(bIdx) == 0U)) {
         return;
     }
 
