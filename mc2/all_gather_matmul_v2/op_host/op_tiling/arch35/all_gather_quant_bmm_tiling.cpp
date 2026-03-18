@@ -18,6 +18,7 @@
 #include "mc2_log.h"
 #include "all_gather_quant_bmm_tiling.h"
 #include "../../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
+#include "all_gather_fit_balance_tiling.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -577,6 +578,13 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
     context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
 }
+
+CutResult AllGatherQuantBmmTiling::GetTilingResult()
+{
+    AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
+    return tileFormulate.GetTiling();
+}
+
 
 Mc2Tiling::RCSTiling& AllGatherQuantBmmTiling::MutableRCSTilingDataA5()
 {
