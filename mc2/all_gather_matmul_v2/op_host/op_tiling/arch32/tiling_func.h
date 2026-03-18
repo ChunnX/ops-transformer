@@ -32,9 +32,10 @@ struct TilingValue {
   TilingValue(int32_t v, std::map<int, std::vector<std::vector<int>>> m = {}) : value(v), conditionMap(std::move(m)) {}
 };
 
-int ClampValue(int32_t value, int32_t min, int32_t max) { return std::max(min, std::min(value, max)); }
+inline int ClampValue(int32_t value, int32_t min, int32_t max) { return std::max(min, std::min(value, max)); }
 
-int32_t CeilDev(int32_t num, int32_t div) {
+inline int32_t CeilDev(int32_t num, int32_t div)
+{
   if (div == 0) {
     return 0;
   }
@@ -103,6 +104,8 @@ constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_FOUR_RANK_INT8_CODE_DEFAULT = 4341
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_EIGHT_RANK_INT8_CODE_DEFAULT = 428930088;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_FOUR_RANK_FP16_CODE_DEFAULT = 428930088;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_EIGHT_RANK_FP16_CODE_DEFAULT = 428377128;
+
+ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context);
 
 // Tiling Code Encode Map
 static std::map<int, std::vector<std::vector<int>>> g_allGatherV2MatmulNPU910BEightRankINT4CodeMap = {
