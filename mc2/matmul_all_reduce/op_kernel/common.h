@@ -237,13 +237,7 @@ struct MC2TilingHeader {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Mc2InitTiling mc2InitTiling;
  	Mc2CcTiling mc2CcTiling;
-#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8)) ||               \
-    (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||          \
-     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&   \
-      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) || \
-    ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    Mc2CcTiling mc2CcTilingCommQuant;
-#endif
+    Mc2CcTiling mc2CcTilingComm;
 #else
     Mc2Tiling::Mc2Msg msg;
 #endif
