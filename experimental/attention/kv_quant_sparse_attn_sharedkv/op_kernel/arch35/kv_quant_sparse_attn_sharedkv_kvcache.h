@@ -27,7 +27,8 @@ using namespace AscendC::Impl::Detail;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t * actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t * actualSeqKvlenAddr)
 {
     int32_t actualS1Size = 0;
     int32_t actualS2Size = 0;
@@ -47,10 +48,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         actualS2Size = constInfo.s2Size;
     } else {
         if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-            actualS2Size = actualSeqKvlenAddr[sIdx];
-            if ((sIdx > 0) && (!IS_PA)) {
-                actualS2Size -= actualSeqKvlenAddr[sIdx - 1];
-            }
+            actualS2Size = IS_PA ? actualSeqKvlenAddr[sIdx] : cuSeqlensOriKvAddr[sIdx + 1] - cuSeqlensOriKvAddr[sIdx];
         } else {
             actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
                 actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
@@ -78,9 +76,11 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *actualSeqKvlenAddr)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, actualSeqQlenAddr, actualSeqKvlenAddr);
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, cuSeqlensOriKvAddr, actualSeqQlenAddr,
+        actualSeqKvlenAddr);
 }
 
 TEMPLATE_INTF

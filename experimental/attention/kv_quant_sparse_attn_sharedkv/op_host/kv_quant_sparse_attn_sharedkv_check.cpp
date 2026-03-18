@@ -95,8 +95,12 @@ void KvQuantSASTilingCheck::Init()
     opParamInfo_ = sasInfo_.opParamInfo;
     socVersion_ = sasInfo_.socVersion;
 
-    bSize_ = sasInfo_.bSize;
-    bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
+    kvLayout_ = sasInfo_.kvLayout;
+    if (kvLayout_ == SASLayout::PA_ND) {
+        bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
+    } else {
+        bSize_ = sasInfo_.actualLenDimsKV;
+    }
     n1Size_ = sasInfo_.n1Size;
     n2Size_ = sasInfo_.n2Size;
     s1Size_ = sasInfo_.s1Size;
@@ -143,7 +147,6 @@ void KvQuantSASTilingCheck::Init()
     outputType_ = sasInfo_.outputType;
 
     qLayout_ = sasInfo_.qLayout;
-    kvLayout_ = sasInfo_.kvLayout;
     outLayout_ = sasInfo_.outLayout;
 
     if (opParamInfo_.cmpKv.tensor == nullptr) {
