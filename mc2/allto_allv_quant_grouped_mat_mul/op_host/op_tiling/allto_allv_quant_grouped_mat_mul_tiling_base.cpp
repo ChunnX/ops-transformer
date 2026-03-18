@@ -377,7 +377,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmWeightShapeInfo()
         OP_LOGE(context_->GetNodeName(), "e should be in (%lu, %lu], but got %lu.", E_MIN_VALUE, E_MAX_VALUE, e_),
         return ge::GRAPH_FAILED);
     // check N1 range
-    OP_TILING_CHECK(n1_ <= N1_MIN_VALUE || n1_ > N1_MAX_VALUE,
+    OP_TILING_CHECK(n1_ <= N1_MIN_VALUE || n1_ >= N1_MAX_VALUE,
         OP_LOGE(context_->GetNodeName(), "N1 should be in (%lu, %lu), but got %lu!", N1_MIN_VALUE, N1_MAX_VALUE, n1_),
         return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckGmmWeightShapeInfo.");
@@ -457,7 +457,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetMmWeightShapeInfo()
     if (context_->GetOptionalInputShape(MM_WEIGHT_INDEX) != nullptr) {
         n2_ = transMmWeight_ ? context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ZERO) :
                                context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-        OP_TILING_CHECK(n2_ <= N2_MIN_VALUE || n2_ > N2_MAX_VALUE,
+        OP_TILING_CHECK(n2_ <= N2_MIN_VALUE || n2_ >= N2_MAX_VALUE,
             OP_LOGE(context_->GetNodeName(), "N2 should be in (%lu, %lu), but got %lu!", N2_MIN_VALUE, N2_MAX_VALUE, n2_),
             return ge::GRAPH_FAILED);
     } else {
