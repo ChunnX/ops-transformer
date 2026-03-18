@@ -446,6 +446,8 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
     // 调用L0算子能力
     if (bias != nullptr) {
         isEnableWeightAssistanceMatrix = true;
+        bias = l0op::Contiguous(bias, uniqueExecutor.get());
+        CHECK_RET(bias != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
     if (isEnableWeightAssistanceMatrix && weightScale->GetViewShape().GetDimNum() == WEIGHT_SCALE_PERGROUP_DIM_LIMIT) {
         dequantMode = 1;

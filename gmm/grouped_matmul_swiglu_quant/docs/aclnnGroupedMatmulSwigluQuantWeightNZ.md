@@ -225,12 +225,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
       <tr>
         <td>bias</td>
         <td rowspan="1">输入</td>
-        <td>矩阵乘计算的偏移值，对应公式中的bias。</td>
-        <td>预留输入，暂不支持，需要传空指针。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>计算矩阵乘时的辅助矩阵，对应公式中的weightAssistMatrix。</td>
+        <td>仅A8W4场景生效，A8W8场景需传空指针。</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
       </tr>
       <tr>
         <td>offset</td>
