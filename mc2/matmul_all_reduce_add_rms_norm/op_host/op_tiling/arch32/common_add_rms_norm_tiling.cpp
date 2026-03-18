@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file common_add_rms_norm_tiling.cc
@@ -162,7 +162,8 @@ ge::graphStatus CheckAddRmsNormInputShape(
             context->GetNodeName(),
             "Expect shape of residual and normOut from arn to be same,"
             " but got residual:[%s], normOut:[%s].",
-            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(), Ops::Base::ToString(yShape->GetStorageShape()).c_str()),
+            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(yShape->GetStorageShape()).c_str()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         x2Shape->GetStorageShape() != xShape->GetStorageShape(),
@@ -170,7 +171,8 @@ ge::graphStatus CheckAddRmsNormInputShape(
             context->GetNodeName(),
             "Expect shape of residual and y from arn to be same, but"
             " got residual:[%s], y:[%s].",
-            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(), Ops::Base::ToString(xShape->GetStorageShape()).c_str()),
+            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(xShape->GetStorageShape()).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
