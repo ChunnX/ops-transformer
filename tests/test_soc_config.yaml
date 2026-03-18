@@ -106,5 +106,7 @@ ascend950:
     - mc2/quant_all_reduce/tests/ut/op_host
     - mc2/quant_reduce_scatter/op_host
     - mc2/quant_reduce_scatter/tests/ut/op_host
+    - mc2/allto_allv_quant_grouped_mat_mul/op_host
+    - mc2/allto_allv_quant_grouped_mat_mul/tests/ut/op_host
   options:
     - ascend950

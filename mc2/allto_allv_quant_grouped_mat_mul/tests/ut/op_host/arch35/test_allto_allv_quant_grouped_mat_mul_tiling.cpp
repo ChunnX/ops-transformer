@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
 #include "allto_allv_quant_grouped_mat_mul_host_ut_param.h"
-#include "../../../op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h"
+#include "../../../../op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h"
 
 using namespace std;
 
