@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
-/* !
+/*!
  * \file matmul_reduce_scatter_v2_tiling.h
  * \brief
  */
@@ -42,6 +42,7 @@ protected:
     ge::graphStatus CheckInput() override;
     ge::graphStatus DoAllMatmulTiling();
     void PrintAllTilingData() const;
+    CutResult GetTilingResult() override;
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
                                      Mc2MatMulV3TilingData &tilingData);
@@ -59,7 +60,6 @@ private:
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;
 };
-ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *context);
 } // namespace optiling
 
 
