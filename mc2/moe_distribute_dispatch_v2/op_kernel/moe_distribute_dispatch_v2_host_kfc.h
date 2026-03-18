@@ -1064,11 +1064,11 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     LocalTensor<float> xoutTfloat32 = xOutTensor.template ReinterpretCast<float>();
     xOutTint32(sendXTypeElemAlign_) = epRankId_;      // 源rankId
     xOutTint32(sendXTypeElemAlign_ + 1) = tokenIndex; // TokenID ,
-
+    
     DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(axisK_ * sizeof(uint32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> CopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(xOutTint32[moeListAlign_], expertIdsGMTensor_[tokenIndex * axisK_], copyParams, CopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    PipeBarrier<PIPE_V>();
     DataCopy(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * moeCntRowAlign_], moeCntRowAlign_);
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
@@ -1077,7 +1077,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
         LOG_INFO("index: ", index);
         LOG_INFO("xOutTint16: ", xOutTint16(index + moeCntAlign_));
     }
+
     if(isExpertMaskFlag_) {
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         for (uint32_t index = 0; index < axisK_; index++) {
             uint32_t expertPos = moeListAlign_ + index;
             uint32_t offset = tokenIndex * axisK_ + index;
@@ -1259,7 +1261,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     GlobalTensor<int16_t> expertOffsetCntGMTensor;
     DataCopyParams expertCntCopyInParams{static_cast<uint16_t>(computeRow), static_cast<uint16_t>(sizeof(int16_t) * axisK_), 0, 0};
     DataCopyPadParams expertCntPadParams{false, 0, 0, 0};
-    PipeBarrier<PIPE_V>(); //这里复用了dstExpBuf_ ，必须等待完成。TODO：
+    SyncFunc<AscendC::HardEvent::V_MTE2>(); //这里复用了dstExpBuf_ ，必须等待完成。TODO：
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
     LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     // LOG_INFO("CalExpertOffset start waitFlg");
@@ -1460,6 +1462,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             PipeBarrier<PIPE_V>();
         }
     }
+    PipeBarrier<PIPE_ALL>(); //todo：这里必须这样，或者后面的清理可以做
     LOG_INFO("tokenSendMap_", tokenSendMap_,{1, static_cast<uint32_t>(activeMaskBsCnt_)});
     LOG_INFO("serverCountTensor_", serverCountTensor_,{1, serverNum_});
 }
