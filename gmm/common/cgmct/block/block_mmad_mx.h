@@ -87,7 +87,7 @@ public:
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     static constexpr bool transA = TagToTrans<LayoutA>::value;
     static constexpr bool transB = TagToTrans<LayoutB>::value;
-    static constexpr CubeFormat FormatB = TagToFormat<LayoutB>::format;
+    static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
     constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT / sizeof(AType);
     constexpr static int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
     constexpr static int32_t BIAS_C0 = AscendC::AuxGetC0Size<BiasType>();
@@ -262,15 +262,13 @@ public:
             uint64_t kAlign = Cgmct::Gemm::CeilDiv(tileL1L0Param.curGmAKL1, C0_SIZE) * AscendC::BLOCK_CUBE;
             offset = tileL1L0Param.curAlignM * kAlign;
         } else { // nd2nz pading to k 64 align, (k,m)->(m1,k1,k0,m0)
-            uint64_t curNd2NzK = Cgmct::Gemm::CeilAlign(tileL1L0Param.curGmAKL1, AscendC::BLOCK_CUBE);
-            if (tileL1L0Param.curPadAKL1 == curNd2NzK) {
+            if (tileL1L0Param.curPadAKL1 == tileL1L0Param.curGmAKL1) {
                 return;
             }
-            uint64_t m1 = Cgmct::Gemm::CeilDiv(tileL1L0Param.curAlignM, C0_SIZE);
-            offset = curNd2NzK * AscendC::BLOCK_CUBE;
-            initConstValueParams.repeatTimes = m1;
-            initConstValueParams.blockNum = tileL1L0Param.curPadAKL1 - curNd2NzK;
-            initConstValueParams.dstGap = curNd2NzK;
+            offset = tileL1L0Param.curGmAKL1 * AscendC::BLOCK_CUBE;
+            initConstValueParams.repeatTimes = Cgmct::Gemm::CeilDiv(tileL1L0Param.curAlignM, C0_SIZE);
+            initConstValueParams.blockNum = tileL1L0Param.curPadAKL1 - tileL1L0Param.curGmAKL1;
+            initConstValueParams.dstGap = tileL1L0Param.curGmAKL1;
             initConstValueParams.initValue = 0;
         }
         AscendC::InitConstValue(al1LocalHalf[offset], initConstValueParams);
@@ -295,14 +293,17 @@ public:
             uint64_t kAlign = Cgmct::Gemm::CeilDiv(tileL1L0Param.curGmBKL1, C0_SIZE) * AscendC::BLOCK_CUBE;
             offset = tileL1L0Param.curAlignN * kAlign;
         } else { // nd2nz pading to k 64 align, (k,n)->(n1,k1,k0,n0)
-            uint64_t curNd2NzK = Cgmct::Gemm::CeilAlign(tileL1L0Param.curGmBKL1, AscendC::BLOCK_CUBE);
-            if (tileL1L0Param.curPadBKL1 == curNd2NzK) {
+            uint64_t movK = tileL1L0Param.curGmBKL1;
+            if constexpr (formatB == CubeFormat::NZ) {
+                movK = Cgmct::Gemm::CeilAlign(tileL1L0Param.curGmBKL1, AscendC::BLOCK_CUBE);
+            }
+            if (tileL1L0Param.curPadBKL1 == movK) {
                 return;
             }
-            offset = curNd2NzK * AscendC::BLOCK_CUBE;
+            offset = movK * AscendC::BLOCK_CUBE;
             initConstValueParams.repeatTimes = Cgmct::Gemm::CeilDiv(tileL1L0Param.curAlignN, C0_SIZE);
-            initConstValueParams.blockNum = tileL1L0Param.curPadBKL1 - curNd2NzK;
-            initConstValueParams.dstGap = curNd2NzK;
+            initConstValueParams.blockNum = tileL1L0Param.curPadBKL1 - movK;
+            initConstValueParams.dstGap = movK;
             initConstValueParams.initValue = 0;
         }
         AscendC::InitConstValue(bl1LocalHalf[offset], initConstValueParams);
@@ -603,7 +604,7 @@ public:
                                      uint64_t l1BufId, uint64_t kL1Offset)
     {
         InitB1(bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
-        if constexpr (FormatB == CubeFormat::NZ) {
+        if constexpr (formatB == CubeFormat::NZ) {
             uint64_t offsetB =
                 transB ? kL1Offset * Cgmct::Gemm::CeilAlign(n_, AscendC::BLOCK_CUBE) : kL1Offset * C0_SIZE;
             CopyInB1WeightNz(bGlobal[offsetB], bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
