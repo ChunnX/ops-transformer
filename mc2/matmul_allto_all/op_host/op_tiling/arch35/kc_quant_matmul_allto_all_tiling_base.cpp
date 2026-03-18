@@ -47,13 +47,47 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckOpInputInfo()
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckKcTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "tiling check Dtype failed in kc quant matmul all to all."), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "tiling check Dtype failed in kc quant matmul all to all."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckKcQuantShapeInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check kc quant shape info failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckKcQuantMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check kc quant matrix shape failed."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验参数的format::是否为私有格式
+ *
+ * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
+ * @param opName: 算子名称
+ * @return
+ */
+ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckKcTensorFormat(const gert::TilingContext *context,
+                                                                     const char *opName)
+{
+    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+    auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
+    OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
+                    OP_LOGE(opName, "x1Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+    ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorDesc->GetStorageFormat()));
+    OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
+                    OP_LOGE(opName, "x1Scale format should be ND, but actual value is %s.",
+                            Ops::Base::ToString(x1ScaleFormat).c_str()),
+                    return ge::GRAPH_FAILED);
+    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
+    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
+                    OP_LOGE(opName, "x2Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+    ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
+    OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
+                    OP_LOGE(opName, "x2Scale format should be ND, but actual value is %s.",
+                            Ops::Base::ToString(x2ScaleFormat).c_str()),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

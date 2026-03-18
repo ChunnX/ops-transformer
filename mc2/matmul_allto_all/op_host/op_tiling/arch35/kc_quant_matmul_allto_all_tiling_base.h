@@ -45,7 +45,7 @@ protected:
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoKcQuantMMTiling();
     ge::graphStatus SetHcclTiling();
-    
+    ge::graphStatus CheckKcTensorFormat(const gert::TilingContext *context, const char *opName);
     void SetTilingInfo(MatmulAlltoAllTilingInfo &tilingInfo) const;
     void PrintKcQuantMatmulAlltoAllTilingData(QuantMatmulAlltoAllTilingData &outTilingData);
     
