@@ -18,13 +18,13 @@
 
 #include "lib/hccl/hccl.h"
 #include "../common_def.h"
-#include "../../common/inc/kernel/mc2_common_def.h"
+#include "../../common/op_kernel/mc2_common_def.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
-#include "../../common/new_mc2_mm/kernel/mc2_quant_batch_matmul.h"
-#include "../../common/inc/kernel/qbmm_mix_perblock_noncontiguous.h"
+#include "../../common/op_kernel/mc2_quant_batch_matmul.h"
+#include "../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 #include "matmul_reduce_scatter_v2_c_tiling.h"
-#include "../../common/inc/kernel/reduce_sum_cast_fp32.h"
+#include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename CType, typename ScaleType, \
                                         class MMClass, bool IsPerBlock, bool ATrans, bool BTrans>

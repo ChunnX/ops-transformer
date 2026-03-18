@@ -11,7 +11,7 @@
 #ifndef MATMUL_ALLTO_ALL_UTIL_TILING_H
 #define MATMUL_ALLTO_ALL_UTIL_TILING_H
 
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 
 namespace MC2Tiling {

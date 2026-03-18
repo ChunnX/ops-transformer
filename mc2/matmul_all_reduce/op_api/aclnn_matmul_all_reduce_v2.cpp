@@ -15,7 +15,7 @@
 #include "aclnn_matmul_all_reduce_v2.h"
 
 #include "matmul_all_reduce_util.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 #include "matmul_all_reduce_util.h"
 
 using namespace op;

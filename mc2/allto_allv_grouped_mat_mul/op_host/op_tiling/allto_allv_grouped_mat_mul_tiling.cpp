@@ -17,14 +17,14 @@
 #include <string>
 #include <numeric>
 #include <climits>
-#include "tiling/matmul_formulaic_tiling.h"
-#include "tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
-#include "tiling/mc2_calc_num_blocks.h"
+#include "op_host/op_tiling/mc2_calc_num_blocks.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling.h"
 #include "allto_allv_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
@@ -261,7 +261,7 @@ protected:
     ge::graphStatus SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const;
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
     uint64_t GetTilingKey(const gert::TilingContext* context) const;
-    ge::graphStatus setNumBlocks(gert::TilingContext* context); 
+    ge::graphStatus setNumBlocks(gert::TilingContext* context);
 
 private:
     int32_t maxM_;
@@ -428,7 +428,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
     uint64_t eExpert = tilingData->commonTilingInfo.E_ep;
     uint64_t epWorldSize = tilingData->commonTilingInfo.epWorldSize;
     uint64_t recvSendMin = static_cast<uint64_t>(2U * 1024U * 1024U);       // 通信量下限 2MB=2*1024*1024
-    
+
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned null."), return ge::GRAPH_FAILED);
 
@@ -783,7 +783,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     OP_TILING_CHECK(
         mc2tiling::HCCL_DATA_TYPE.find(inputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
         OP_LOGE(A_INNER_DEBUG, "%s is Unsupported inputdata type!", Ops::Base::ToString(inputDataType).c_str()),
-        return ge::GRAPH_FAILED);   
+        return ge::GRAPH_FAILED);
 
     auto alltoAllvDstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);
     auto alltoAllvSrcDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(inputDataType)->second);
@@ -864,7 +864,7 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
         OP_TILING_CHECK(context->GetOutputShape(OUTPUT_MM_Y_INDEX) == nullptr,
             OP_LOGE(A_INNER_DEBUG, "GetOutputShape of mm_y returns null."),
             return ge::GRAPH_FAILED);
-    }   
+    }
     OP_TILING_CHECK(
         CheckShapeDims(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Check shape dim failed!"),
         return ge::GRAPH_FAILED);
@@ -902,7 +902,7 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) const
 {
-    uint32_t templateMmDType = ADD_TPL_FP16; 
+    uint32_t templateMmDType = ADD_TPL_FP16;
     bool tilingkeyMm = false;
     bool tilingekyGmmTrans = false;
     bool tilingekyMmTrans = false;
@@ -911,7 +911,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     } else if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_BF16) {
         templateMmDType = ADD_TPL_BP16;
     }
-    if (tilingData->commonTilingInfo.isNeedMM) { 
+    if (tilingData->commonTilingInfo.isNeedMM) {
         tilingkeyMm = true;
     } else {
         tilingkeyMm = false;
@@ -926,7 +926,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     } else {
         tilingekyMmTrans = false;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm, 
+    uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm,
                                     tilingekyGmmTrans, tilingekyMmTrans);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
@@ -974,7 +974,7 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     OP_TILING_CHECK(
         DoAiCoreTiling(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMMAlltoAllv DoAiCoreTiling failed."),
         return ge::GRAPH_FAILED);
-    
+
     OP_TILING_CHECK(
         setNumBlocks(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMMAlltoAllv setNumBlocks failed."),
         return ge::GRAPH_FAILED);

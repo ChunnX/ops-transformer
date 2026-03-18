@@ -15,10 +15,10 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 
-#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
-#include "../common/inc/kernel/mc2_kernel_utils.h"
+#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
+#include "../common/op_kernel/mc2_kernel_utils.h"
 #else
-#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 #if ASC_DEVKIT_MAJOR >= 9

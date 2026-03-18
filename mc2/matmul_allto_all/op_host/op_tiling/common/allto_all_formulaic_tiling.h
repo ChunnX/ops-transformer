@@ -15,7 +15,7 @@
 #ifndef ALLTO_ALL_FORMULAIC_TILING_H
 #define ALLTO_ALL_FORMULAIC_TILING_H
 
-#include "tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
 
 constexpr uint64_t LARGE_K_BOUNDARY = 8192;
 constexpr double COMPUTE_TIME_SCALE_FACTOR = 1.5;

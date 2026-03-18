@@ -28,7 +28,7 @@
 #include "opdev/platform.h"
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 
 static constexpr int64_t MAX_GROUP_LIST_SIZE = 64; // tiling data size only support 8192 bytes.
 

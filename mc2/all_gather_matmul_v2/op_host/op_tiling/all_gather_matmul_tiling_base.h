@@ -20,10 +20,10 @@
 #include "tiling/tiling_api.h"
 #include "weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_struct.h"
-#include "tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_struct.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_tiling_arch35.h"
 
 namespace optiling

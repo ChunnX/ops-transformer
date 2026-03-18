@@ -24,7 +24,7 @@
 #include <cstdint>
 
 #include "mc2_log.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "all_reduce_formulaic_tiling.h"
 #include "util/math_util.h"
 

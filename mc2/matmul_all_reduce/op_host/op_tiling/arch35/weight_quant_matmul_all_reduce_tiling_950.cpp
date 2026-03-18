@@ -16,7 +16,7 @@
 #define WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
 
 #include "weight_quant_matmul_all_reduce_tiling_950.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2/matmul_all_reduce/op_kernel/matmul_all_reduce_apt_tiling_key.h"
 
 using namespace Mc2Tiling;

@@ -28,7 +28,7 @@
 #include <string>
 #include <type_traits>
 
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
@@ -37,7 +37,7 @@
 #include "platform/platform_infos_def.h"
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 
-#include "tiling/moe_tiling_base.h"
+#include "op_host/op_tiling/moe_tiling_base.h"
 #include "moe_distribute_combine_tiling_a2a3.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"

@@ -14,7 +14,7 @@
  */
 #include "aclnn_quant_matmul_all_reduce_v4.h"
 
-#include "mc2_aclnn_util.h"
+#include "common/op_api/mc2_aclnn_util.h"
 #include "matmul_all_reduce_util.h"
 
 using namespace op;

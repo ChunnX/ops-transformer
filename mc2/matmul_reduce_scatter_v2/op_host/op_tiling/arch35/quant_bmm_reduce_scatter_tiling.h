@@ -20,8 +20,8 @@
 #include "../../../op_kernel/arch35/matmul_reduce_scatter_v2_c_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
-#include "tiling/mc2_tiling_utils.h"
-#include "kernel/mc2_tiling_struct.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_kernel/mc2_tiling_struct.h"
 
 namespace optiling {
 

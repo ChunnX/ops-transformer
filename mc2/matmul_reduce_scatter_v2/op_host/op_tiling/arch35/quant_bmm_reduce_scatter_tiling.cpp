@@ -17,9 +17,9 @@
 #define _QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_
 
 #include "quant_bmm_reduce_scatter_tiling.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 
