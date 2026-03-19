@@ -323,7 +323,7 @@ ge::graphStatus FlashAttnTilingRegbase::PostTiling()
     //     return ge::GRAPH_FAILED;
     // }
 
-    context_->SetBlockDim(16);
+    context_->SetBlockDim(32);
     // auto platformInfoPtr = context_->GetPlatformInfo();
     // if (platformInfoPtr != nullptr) {
     //     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);

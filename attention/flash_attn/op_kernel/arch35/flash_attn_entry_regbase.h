@@ -23,48 +23,60 @@
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_base.h"
+#include "flash_attn_kernel_base.h"
 
-#define FA_COPY_TILING_DATA(tiling)                                                                    \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);        \
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;              \
+#ifdef __DAV_C310_CUBE__ // CUBE 实现
 
-#ifdef __DAV_C310_CUBE__
-//todo kernel tempale 实例化
-#define INVOKE_FA_IMPL(templateClass, ...)                                                             \
-    do {                                                                                               \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                           \
-        TPipe tPipe;                                                                                   \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                   \
-            BaseApi::FABlockCube<__VA_ARGS__>, BaseApi::FABlockCubeDummy<__VA_ARGS__>>::type;          \
-        using VecBlockType  = typename std::conditional<g_coreType == AscendC::AIC,                   \
-            BaseApi::FABlockVecDummy<__VA_ARGS__>, BaseApi::FABlockVecTrain<__VA_ARGS__>>::type;       \
+#define INVOKE_FA_IMPL(templateClass, ...)                                                          \
+    do {                                                                                                       \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
+        TPipe tPipe;                                                                                           \
+        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockCube<__VA_ARGS__>, BaseApi::FANoQuantBlockCubeDummy<__VA_ARGS__>>::type; \
+        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>, BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>>::type; \
+        templateClass<CubeBlockType, VecBlockType> op;                                                         \
+        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,     \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,       \
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,   \
+                nullptr, &tPipe);                                                                              \
+        op.Process();                                                                                          \
     } while (0)
-
 #else // VECTOR 实现
+#define FA_COPY_TILING_DATA(tiling)                                                                       \
+    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                \
+    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;                      \
 
-#ifndef __CCE_KT_TEST__
-#define INVOKE_FA_IMPL(templateClass, ...)                                                             \
-    do {                                                                                               \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                           \
-        FA_COPY_TILING_DATA(tiling);                                                                   \
-        TPipe tPipe;                                                                                   \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                   \
-            BaseApi::FABlockCube<__VA_ARGS__>, BaseApi::FABlockCubeDummy<__VA_ARGS__>>::type;          \
-        using VecBlockType  = typename std::conditional<g_coreType == AscendC::AIC,                   \
-            BaseApi::FABlockVecDummy<__VA_ARGS__>, BaseApi::FABlockVecTrain<__VA_ARGS__>>::type;       \
+#ifdef __CCE_KT_TEST__
+#define INVOKE_FA_IMPL(templateClass, ...)                                                          \
+    do {                                                                                                       \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
+        FA_COPY_TILING_DATA(tiling);                                                                      \
+        TPipe tPipe;                                                                                           \
+        using CubeBlockType = typename BaseApi::FANoQuantBlockCube<__VA_ARGS__>;                                      \
+        using VecBlockType = typename BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>;                                   \
+        templateClass<CubeBlockType, VecBlockType> op;                                                         \
+        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,     \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,       \
+                nullptr,nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,   \
+                tilingData, &tPipe);                                                                           \
+        op.Process();                                                                                          \
     } while (0)
-#else  // test模式
-#define INVOKE_FA_IMPL(templateClass, ...)                                                             \
-    do {                                                                                               \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                           \
-        FA_COPY_TILING_DATA(tiling);                                                                   \
-        TPipe tPipe;                                                                                   \
-        using CubeBlockType = typename BaseApi::FABlockCube<__VA_ARGS__>;                             \
-        using VecBlockType  = typename BaseApi::FABlockVecTrain<__VA_ARGS__>;                         \
+#else
+#define INVOKE_FA_IMPL(templateClass, ...)                                                          \
+    do {                                                                                                       \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
+        FA_COPY_TILING_DATA(tiling);                                                                      \
+        TPipe tPipe;                                                                                           \
+        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockCube<__VA_ARGS__>, BaseApi::FANoQuantBlockCubeDummy<__VA_ARGS__>>::type; \
+        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>, BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>>::type; \
+        templateClass<CubeBlockType, VecBlockType> op;                                                         \
+        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,     \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,       \
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,   \
+                tilingData, &tPipe);                                                                           \
+        op.Process();                                                                                          \
     } while (0)
-#endif // __CCE_KT_TEST__
-
-#endif // __DAV_C310_CUBE__
+#endif
+#endif
 
 // FlashAttn kernel核心函数（arch35）
 template<uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
@@ -78,57 +90,75 @@ inline __aicore__ void flash_attn_regbase(
     __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    
 {
+    // BNSD
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-
-    // TODO: 根据isPA选择推理kernel（PA场景）或训练kernel（非PA场景）
-    #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
-    if (!isPA) {
-        if (isSoftmaxLse) {
-            // 训练场景（returnSoftmaxLse=1）
-            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelTrain,
-                half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
-                S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
-                PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
-                hasAtten, false, false);
-        } else {
-            // 推理场景（returnSoftmaxLse=0）
-            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelInfer,
-                half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
-                S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
-                PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
-                hasAtten, false, false);
-        }
-    }
-    // TODO: PA场景kernel分发
-    return;
+    AscendC::printf("-----------kernel----------");
+    #if (ORIG_DTYPE_QUERY == DT_FLOAT)
+        AscendC::printf("-----------DT_FLOAT----------");
+        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
+        return;
     #endif
-
     #if (ORIG_DTYPE_QUERY == DT_BF16)
-    if (!isPA) {
-        if (isSoftmaxLse) {
-            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelTrain,
-                bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode), LayOutTypeEnum(layout),
-                S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
-                PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
-                hasAtten, false, false);
-        } else {
-            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelInfer,
-                bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode), LayOutTypeEnum(layout),
-                S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
-                PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
-                hasAtten, false, false);
-        }
-    }
-    return;
+        AscendC::printf("-----------DT_BF16----------");
+        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
+        return;
     #endif
+    #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+        AscendC::printf("-----------DT_FLOAT16----------");
+        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, half, float, half, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
+        return;
+    #endif
+#endif
 
-#endif // __CCE_AICORE__ == 310
+
+    // // TODO: 根据isPA选择推理kernel（PA场景）或训练kernel（非PA场景）
+    // #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+    // if (!isPA) {
+    //     if (isSoftmaxLse) {
+    //         // 训练场景（returnSoftmaxLse=1）
+    //         INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelTrain,
+    //             half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
+    //             S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
+    //             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+    //             PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
+    //             hasAtten, false, false);
+    //     } else {
+    //         // 推理场景（returnSoftmaxLse=0）
+    //         INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelInfer,
+    //             half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
+    //             S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
+    //             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+    //             PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
+    //             hasAtten, false, false);
+    //     }
+    // }
+    // // TODO: PA场景kernel分发
+    // return;
+    // #endif
+
+    // #if (ORIG_DTYPE_QUERY == DT_BF16)
+    // if (!isPA) {
+    //     if (isSoftmaxLse) {
+    //         INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelTrain,
+    //             bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode), LayOutTypeEnum(layout),
+    //             S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
+    //             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+    //             PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
+    //             hasAtten, false, false);
+    //     } else {
+    //         INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelInfer,
+    //             bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode), LayOutTypeEnum(layout),
+    //             S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
+    //             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+    //             PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
+    //             hasAtten, false, false);
+    //     }
+    // }
+    // return;
+    // #endif
 }
 
 #endif // FLASH_ATTN_ENTRY_REGBASE_H_
