@@ -96,7 +96,8 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93)) {
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
+         socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
@@ -347,10 +348,10 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", qExpectShapeDim - 1,
                 weightsShapeDim),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valuesOut.shape->GetStorageShape().GetShapeSize() != 0 && !(*opParamInfo_.returnValue),
-                OP_LOGE(opName_, "when returnValue is false, valuesOut must be null.",
-                    qExpectShapeDim, valuesOutShapeDim),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.valuesOut.shape->GetStorageShape().GetShapeSize() != 0 && !(*opParamInfo_.returnValue),
+    //             OP_LOGE(opName_, "when returnValue is false, valuesOut must be null.",
+    //                 qExpectShapeDim, valuesOutShapeDim),
+    //             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
