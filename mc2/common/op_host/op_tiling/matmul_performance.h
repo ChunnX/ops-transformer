@@ -138,6 +138,10 @@ public:
     {
         return mmShapeInfo_.baseM;
     };
+    uint32_t GetBaseN()
+    {
+        return mmShapeInfo_.baseN;
+    };
     // 返回允许切分的最小数据量
     uint64_t GetLinearThresholdLen(uint64_t rankTileNum);
     // 性能预测

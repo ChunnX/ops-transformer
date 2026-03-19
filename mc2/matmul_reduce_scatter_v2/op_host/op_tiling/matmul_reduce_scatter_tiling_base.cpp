@@ -25,6 +25,7 @@
 #include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "reduce_scatter_formulaic_tiling.h"
+#include "arch35/reduce_scatter_fit_balance_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
@@ -68,12 +69,22 @@ uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingAr
     return args.mValue > tileLen ? tileLen : args.mValue;
 }
 
+CutResult MatmulReduceScatterTilingBase::GetTilingResult()
+{
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+        MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL);
+        return scatterTiling.GetTiling();
+    } else {
+        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        scatterTiling.GetTiling();
+        return scatterTiling.tilingM_.cutRes;
+    }
+}
+
 void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcsCfg)
 {
-    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-    MMPlusReduceScatter scatterTilingHccl(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
-    scatterTilingHccl.GetTiling();
-    CutResult mCutScatter = scatterTilingHccl.tilingM_.cutRes;
+    CutResult mCutScatter = GetTilingResult();
     rcsCfg.tailCnt = 0;
     if (mCutScatter.shortTileAtBack || (mCutScatter.numShortTile == 0)) {
         rcsCfg.tileCnt = mCutScatter.numLongTile;
