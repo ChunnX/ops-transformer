@@ -16,9 +16,9 @@ using namespace op;
 
 namespace l0op {
 
-OP_TYPE_REGISTER(FlashAttention);
+OP_TYPE_REGISTER(FlashAttn);
 
-const std::array<const aclTensor *, 2> FlashAttention(
+const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *q,
     const aclTensor *k,
     const aclTensor *v,
@@ -40,7 +40,7 @@ const std::array<const aclTensor *, 2> FlashAttention(
     int64_t deterministic,
     aclOpExecutor *executor)
 {
-    L0_DFX(FlashAttention, q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
+    L0_DFX(FlashAttn, q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, metadataOptional,
            softmaxMode, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut,
            returnSoftmaxLse, deterministic);
@@ -70,26 +70,26 @@ const std::array<const aclTensor *, 2> FlashAttention(
     auto attentionOutAlloc = executor->AllocTensor(q->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(FlashAttention,
+    auto ret = INFER_SHAPE(FlashAttn,
                            OP_INPUT(q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(softmaxMode, maskMode, winLeft, winRight,
                                    layoutQ, layoutKv, layoutOut, returnSoftmaxLse, deterministic));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttention InferShape failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn InferShape failed.");
         return {nullptr, nullptr};
     }
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        FlashAttention,
+        FlashAttn,
         OP_INPUT(q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                  sequsedQOptional, sequsedKvOptional, sinksOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
         OP_ATTR(softmaxMode, maskMode, winLeft, winRight,
                 layoutQ, layoutKv, layoutOut, returnSoftmaxLse, deterministic));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttention launch kernel failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn launch kernel failed.");
         return {nullptr, nullptr};
     }
 

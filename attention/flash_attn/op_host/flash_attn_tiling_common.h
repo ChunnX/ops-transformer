@@ -9,26 +9,26 @@
  */
 
 /*!
- * \file flash_attn_tiling.h
- * \brief FlashAttention Tiling
+ * \file flash_attn_tiling_common.h
+ * \brief FlashAttn编译期信息结构体，由TilingParse阶段填充并缓存
  */
 
-#ifndef FLASH_ATTN_TILING_H_
-#define FLASH_ATTN_TILING_H_
+#pragma once
 
 #include <cstdint>
-#include <register/op_impl_registry.h>
-#include "../../common/op_kernel/arch35/flash_attn_score_tiling_regbase.h"
-#include "flash_attn_tiling_common.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
+//参考训练算子公共info
+struct FlashAttnCompileInfo {
+    uint32_t aivNum;
+    uint32_t aicNum;
+    uint64_t ubSize;
+    uint64_t l1Size;
+    uint64_t l0cSize;
+    uint64_t l2CacheSize;
+    platform_ascendc::SocVersion socVersion;
+    NpuArch npuArch;
+};
 
-// FlashAttention 使用common中的公共结构
-using FlashAttentionTilingData = FlashAttentionScoreSimplifiedTilingData;
-
-ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttention(gert::TilingContext *context);
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttention(gert::TilingParseContext *context);
-
-}  // namespace optiling
-
-#endif  // FLASH_ATTN_TILING_H_
+} // namespace optiling

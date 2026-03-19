@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_template_tiling_key.h
- * \brief FlashAttention TilingKey定义（非量化，仅FP16/BF16）
+ * \brief FlashAttn TilingKey定义（非量化，仅FP16/BF16）
  */
 
 #ifndef TEMPLATE_TILING_KEY_FLASH_ATTN_H_
@@ -39,8 +39,8 @@
 #define ASCENDC_TPL_12_BW 12
 #endif
 
-// FlashAttention TilingKey布局，总计约56bit
-ASCENDC_TPL_ARGS_DECL(FlashAttention,
+// FlashAttn TilingKey布局，总计约56bit
+ASCENDC_TPL_ARGS_DECL(FlashAttn,
     // bit:1-0  KernelTypeKey: 0=正常计算, 1=空tensor场景
     ASCENDC_TPL_UINT_DECL(KernelTypeKey, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     // bit:3-2  ImplMode: 0=高精度, 1=高性能, 2=invalid_line高精度
@@ -78,7 +78,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(IsPA, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(IsSoftmaxLse, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttnScoreSimplifiedTilingData)
     ),
 );
 

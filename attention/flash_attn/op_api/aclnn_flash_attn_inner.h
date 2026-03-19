@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerFlashAttentionGetWorkspaceSize(
+extern aclnnStatus aclnnInnerFlashAttnGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
@@ -30,13 +30,13 @@ extern aclnnStatus aclnnInnerFlashAttentionGetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerFlashAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+extern aclnnStatus aclnnInnerFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                             const aclrtStream stream);
 
-void FlashAttentionProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
+void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder);
 
-void FlashAttentionProcessSinks(const aclTensor *&sinksOptional);
+void FlashAttnProcessSinks(const aclTensor *&sinksOptional);
 
 #ifdef __cplusplus
 }

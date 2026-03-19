@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_tiling_regbase.cpp
- * \brief FlashAttention arch35 tiling基类实现（非量化场景框架，具体计算待补充）
+ * \brief FlashAttn arch35 tiling基类实现（非量化场景框架，具体计算待补充）
  */
 
 #include <algorithm>
@@ -20,7 +20,7 @@
 namespace optiling {
 namespace FA {
 
-void FlashAttentionTilingRegbase::Reset()
+void FlashAttnTilingRegbase::Reset()
 {
     inputDtype = ge::DT_FLOAT16;
     inputDtypeBytes = ge::GetSizeByDataType(ge::DT_FLOAT16);
@@ -69,7 +69,7 @@ void FlashAttentionTilingRegbase::Reset()
     opName = nullptr;
 }
 
-ge::graphStatus FlashAttentionTilingRegbase::CheckContext()
+ge::graphStatus FlashAttnTilingRegbase::CheckContext()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -86,11 +86,11 @@ ge::graphStatus FlashAttentionTilingRegbase::CheckContext()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashAttentionTilingRegbase::GetPlatformInfo()
+ge::graphStatus FlashAttnTilingRegbase::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
-        auto compileInfoPtr = reinterpret_cast<const FlashAttentionCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const FlashAttnCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compileInfoPtr is null."),
                    return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
@@ -110,12 +110,12 @@ ge::graphStatus FlashAttentionTilingRegbase::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1,  aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
     }
-    OP_LOGI(context_, "FlashAttention platform: aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
+    OP_LOGI(context_, "FlashAttn platform: aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
             aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
     return ge::GRAPH_SUCCESS;
 }
 
-bool FlashAttentionTilingRegbase::AnalyzeDtype()
+bool FlashAttnTilingRegbase::AnalyzeDtype()
 {
     inputDtype = context_->GetInputDesc(FA_INPUT_Q_INDEX)->GetDataType();
     inputDtypeBytes = ge::GetSizeByDataType(inputDtype);
@@ -137,7 +137,7 @@ bool FlashAttentionTilingRegbase::AnalyzeDtype()
             isHighPrecision = false;
             break;
         default:
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "FlashAttention only supports FP16/BF16, got: %d.",
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "FlashAttn only supports FP16/BF16, got: %d.",
                                         static_cast<int>(inputDtype));
             return false;
     }
@@ -145,7 +145,7 @@ bool FlashAttentionTilingRegbase::AnalyzeDtype()
     return true;
 }
 
-bool FlashAttentionTilingRegbase::AnalyzeAttrs()
+bool FlashAttnTilingRegbase::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -181,44 +181,44 @@ bool FlashAttentionTilingRegbase::AnalyzeAttrs()
 
     implMode = FAImplMode::HIGH_PRECISION;
 
-    OP_LOGD(context_, "FlashAttention attrs: softmaxScale[%f] maskMode[%ld] winLeft[%ld] winRight[%ld] "
+    OP_LOGD(context_, "FlashAttn attrs: softmaxScale[%f] maskMode[%ld] winLeft[%ld] winRight[%ld] "
             "layoutQ[%s] layoutKv[%s] layoutOut[%s] returnLse[%ld] deterministic[%ld].",
             softmaxScale, maskMode, winLeft, winRight,
             inputLayoutQ, inputLayoutKv, inputLayoutOut, returnSoftmaxLse, deterministic);
     return true;
 }
 
-bool FlashAttentionTilingRegbase::AnalyzeLayout()
+bool FlashAttnTilingRegbase::AnalyzeLayout()
 {
     return true;
 }
 
-bool FlashAttentionTilingRegbase::AnalyzeVarLenInput()
+bool FlashAttnTilingRegbase::AnalyzeVarLenInput()
 {
     // TODO: 解析cuSeqlens或seqused
     return true;
 }
 
-bool FlashAttentionTilingRegbase::AnalyzePAInput()
+bool FlashAttnTilingRegbase::AnalyzePAInput()
 {
     return true;
 }
 
-bool FlashAttentionTilingRegbase::AnalyzeMetadataInput()
+bool FlashAttnTilingRegbase::AnalyzeMetadataInput()
 {
     //TODO:metada 解析 
     auto metadataShape = context_->GetOptionalInputShape(FA_INPUT_METADATA_INDEX);
     if (metadataShape != nullptr && metadataShape->GetStorageShape().GetShapeSize() > 0) {
         hasMetadata = true;
-        OP_LOGD(context_, "FlashAttention: metadata input is present, may use pre-computed tiling.");
+        OP_LOGD(context_, "FlashAttn: metadata input is present, may use pre-computed tiling.");
     }
     return true;
 }
 
-ge::graphStatus FlashAttentionTilingRegbase::GetShapeAttrsInfo()
+ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
 {
     opName = context_->GetNodeName();
-    OP_LOGD(opName, "FlashAttention TilingContext: %s.", GetTilingContextDebugStr().c_str());
+    OP_LOGD(opName, "FlashAttn TilingContext: %s.", GetTilingContextDebugStr().c_str());
 
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS,
                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid context."), return ge::GRAPH_FAILED);
@@ -241,12 +241,12 @@ ge::graphStatus FlashAttentionTilingRegbase::GetShapeAttrsInfo()
     inputParamsRegbase_->set_needDropMaskOp(0U);  // 无dropout
     inputParamsRegbase_->set_isKvContinuous(static_cast<uint8_t>(!isPA));
 
-    OP_LOGD(context_, "FlashAttention shape: B=%ld N_q=%ld N_kv=%ld S_q=%ld S_kv=%ld D=%ld Dv=%ld isPA=%d.",
+    OP_LOGD(context_, "FlashAttn shape: B=%ld N_q=%ld N_kv=%ld S_q=%ld S_kv=%ld D=%ld Dv=%ld isPA=%d.",
             bSize, n1Size, n2Size, s1Size, s2Size, dSize, dSizeV, static_cast<int>(isPA));
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashAttentionTilingRegbase::DoOpTiling()
+ge::graphStatus FlashAttnTilingRegbase::DoOpTiling()
 {
     CalcDBasicBlock();
     CalcDVBasicBlock();
@@ -286,30 +286,30 @@ ge::graphStatus FlashAttentionTilingRegbase::DoOpTiling()
     multiCoreParamsRegbase_->set_splitCoreMode(0U);
 
     OP_LOGD(context_,
-        "FlashAttention DoOpTiling: s1Outer=%ld totalSize=%ld usedCoreNum=%d "
+        "FlashAttn DoOpTiling: s1Outer=%ld totalSize=%ld usedCoreNum=%d "
         "splitFactor=%ld splitTail=%ld.",
         s1Outer, totalSz, usedCoreNum, splitFactor, splitFactorTail);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashAttentionTilingRegbase::DoLibApiTiling()
+ge::graphStatus FlashAttnTilingRegbase::DoLibApiTiling()
 {
     // TODO: 
     return ge::GRAPH_SUCCESS;
 }
 
-void FlashAttentionTilingRegbase::CalcDVBasicBlock()
+void FlashAttnTilingRegbase::CalcDVBasicBlock()
 {
     // TODO:
 }
 
-int64_t FlashAttentionTilingRegbase::CalcTotalSize()
+int64_t FlashAttnTilingRegbase::CalcTotalSize()
 {
     // bSize * n2Size * gSize * multiCoreParamsRegbase_->get_s1OuterSize()
     return 0;
 }
 
-ge::graphStatus FlashAttentionTilingRegbase::PostTiling()
+ge::graphStatus FlashAttnTilingRegbase::PostTiling()
 {
     // 设置TilingKey和BlockDim，由子类GetTilingKey()提供key
     uint64_t tilingKey = GetTilingKey();
@@ -334,9 +334,9 @@ ge::graphStatus FlashAttentionTilingRegbase::PostTiling()
     // }
 
     // OP_LOGD(context_,
-    //     "FlashAttention PostTiling: tilingKey=0x%lx blockDim=%d.",
+    //     "FlashAttn PostTiling: tilingKey=0x%lx blockDim=%d.",
     //     tilingKey, usedCoreNum);
-    // context_->GetRawTilingData()->SetDataSize(sizeof(FlashAttentionScoreSimplifiedTilingData));
+    // context_->GetRawTilingData()->SetDataSize(sizeof(FlashAttnScoreSimplifiedTilingData));
     return ge::GRAPH_SUCCESS;
 }
 

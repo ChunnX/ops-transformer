@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn.cpp
- * \brief FlashAttention Kernel主入口（框架，参照flash_attn_score结构）
+ * \brief FlashAttn Kernel主入口（框架，参照flash_attn_score结构）
  */
 
 #include "kernel_operator.h"
@@ -39,7 +39,7 @@ __global__ __aicore__ void flash_attn(
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling)
 {
-    REGISTER_TILING_DEFAULT(optiling::FlashAttentionScoreSimplifiedTilingData);
+    REGISTER_TILING_DEFAULT(optiling::FlashAttnScoreSimplifiedTilingData);
     // 框架根据tilingKey模板参数分发至flash_attn_regbase<...>()
     flash_attn_regbase<
         implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, 

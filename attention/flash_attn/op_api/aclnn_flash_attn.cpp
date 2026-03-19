@@ -25,7 +25,7 @@ extern "C" {
 namespace {
 
 // 第一段接口：计算workspace大小
-aclnnStatus aclnnFlashAttentionGetWorkspaceSize(
+aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *q,
     const aclTensor *k,
     const aclTensor *v,
@@ -50,17 +50,17 @@ aclnnStatus aclnnFlashAttentionGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    OP_LOGD("start aclnnFlashAttentionGetWorkspaceSize");
+    OP_LOGD("start aclnnFlashAttnGetWorkspaceSize");
 
     // sinks shape为{0}时置nullptr
-    FlashAttentionProcessSinks(sinksOptional);
+    FlashAttnProcessSinks(sinksOptional);
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
     //todo:check and set  预留 
-    FlashAttentionProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
+    FlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFlashAttentionGetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerFlashAttnGetWorkspaceSize(
         q, k, v, blockTableOptional,
         cuSeqlensQOptional, cuSeqlensKvOptional,
         sequsedQOptional, sequsedKvOptional,
@@ -80,13 +80,13 @@ aclnnStatus aclnnFlashAttentionGetWorkspaceSize(
 }
 
 // 第二段接口：执行计算
-aclnnStatus aclnnFlashAttention(
+aclnnStatus aclnnFlashAttn(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     const aclrtStream stream)
 {
-    return aclnnInnerFlashAttention(workspace, workspaceSize, executor, stream);
+    return aclnnInnerFlashAttn(workspace, workspaceSize, executor, stream);
 }
 
 } // namespace

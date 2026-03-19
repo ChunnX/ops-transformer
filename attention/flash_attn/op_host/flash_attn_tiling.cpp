@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_tiling.cpp
- * \brief FlashAttention Tiling主入口
+ * \brief FlashAttn Tiling主入口
  */
 
 #include <cmath>
@@ -34,9 +34,9 @@ static bool IsEmptyInput(gert::TilingContext *context)
     return false;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttention(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
 {
-    OP_LOGW(context, "FlashAttention TilingFlashAttention start.");
+    OP_LOGW(context, "FlashAttn TilingFlashAttn start.");
 
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
@@ -53,13 +53,13 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttention(gert::TilingContext *conte
     return TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttention(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
         OP_LOGE(context, "platformInfoPtr is null"),
         return ge::GRAPH_FAILED);
-    auto compileInfoPtr = context->GetCompiledInfo<FlashAttentionCompileInfo>();
+    auto compileInfoPtr = context->GetCompiledInfo<FlashAttnCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
         OP_LOGE(context, "compileInfoPtr is null"),
         return ge::GRAPH_FAILED);
@@ -78,9 +78,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttention(gert::TilingPars
 }
 
 // 注册tiling函数：
-IMPL_OP_OPTILING(FlashAttention)
-    .Tiling(TilingFlashAttention)
+IMPL_OP_OPTILING(FlashAttn)
+    .Tiling(TilingFlashAttn)
     .TilingInputsDataDependency({4, 5, 6, 7, 9})//后续删除
-    .TilingParse<FlashAttentionCompileInfo>(TilingPrepareForFlashAttention);
+    .TilingParse<FlashAttnCompileInfo>(TilingPrepareForFlashAttn);
 
 } // namespace optiling

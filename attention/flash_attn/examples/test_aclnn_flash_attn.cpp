@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_flash_attn.cpp
- * \brief FlashAttention算子调用示例（推理场景）
+ * \brief FlashAttn算子调用示例（推理场景）
  */
 
 #include <iostream>
@@ -150,12 +150,12 @@ int main()
     int64_t returnSoftmaxLse = 0;      // 推理场景不输出softmax_lse
     int64_t deterministic    = 0;
 
-    // 3. 调用aclnnFlashAttention两段式接口
+    // 3. 调用aclnnFlashAttn两段式接口
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
     // 第一段：计算workspace大小
-    ret = aclnnFlashAttentionGetWorkspaceSize(
+    ret = aclnnFlashAttnGetWorkspaceSize(
         qTensor, kTensor, vTensor,
         nullptr,    // blockTableOptional: 无PA
         nullptr,    // cuSeqlensQOptional
@@ -171,11 +171,11 @@ int main()
         nullptr,    // softmaxLseOptional: 推理场景不输出
         &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnFlashAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnFlashAttnGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
     }
     else {
-        LOG_PRINT("aclnnFlashAttentionGetWorkspaceSize success. \n");
+        LOG_PRINT("aclnnFlashAttnGetWorkspaceSize success. \n");
     }
 
     // 根据workspaceSize申请device内存
@@ -189,13 +189,13 @@ int main()
     }
 
     // 第二段：执行计算
-    ret = aclnnFlashAttention(workspaceAddr, workspaceSize, executor, stream);
+    ret = aclnnFlashAttn(workspaceAddr, workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnFlashAttention failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnFlashAttn failed. ERROR: %d\n", ret);
         return ret;
     }
     else {
-        LOG_PRINT("aclnnFlashAttention success. \n");
+        LOG_PRINT("aclnnFlashAttn success. \n");
     }
 
     // 4. （固定写法）同步等待任务执行结束

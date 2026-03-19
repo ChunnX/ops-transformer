@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_entry_regbase.h
- * \brief FlashAttention arch35 kernel入口（非量化场景，框架桩）
+ * \brief FlashAttn arch35 kernel入口（非量化场景，框架桩）
  *
  * 参照flash_attn_score/op_kernel/arch35/flash_attn_score_entry_regbase.h框架，
  * 去除PSE/dropout/rope相关参数，新增PA layout和metadata支持。
@@ -25,8 +25,8 @@
 #include "../../../common/op_kernel/arch35/flash_attn_score_kernel_base.h"
 
 #define FA_COPY_TILING_DATA(tiling)                                                                    \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);        \
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;              \
+    GET_TILING_DATA_WITH_STRUCT(FlashAttnScoreSimplifiedTilingData, tilingDataIn, tiling);        \
+    const FlashAttnScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;              \
 
 #ifdef __DAV_C310_CUBE__
 //todo kernel tempale 实例化
@@ -66,7 +66,7 @@
 
 #endif // __DAV_C310_CUBE__
 
-// FlashAttention kernel核心函数（arch35）
+// FlashAttn kernel核心函数（arch35）
 template<uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
     uint16_t dTemplateType, uint16_t dvTemplateType, bool hasAtten, bool isPA, bool isSoftmaxLse,
     uint8_t regbase>
@@ -87,7 +87,7 @@ inline __aicore__ void flash_attn_regbase(
     if (!isPA) {
         if (isSoftmaxLse) {
             // 训练场景（returnSoftmaxLse=1）
-            INVOKE_FA_IMPL(BaseApi::FlashAttentionScoreKernelTrain,
+            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelTrain,
                 half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
                 S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
                 DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
@@ -95,7 +95,7 @@ inline __aicore__ void flash_attn_regbase(
                 hasAtten, false, false);
         } else {
             // 推理场景（returnSoftmaxLse=0）
-            INVOKE_FA_IMPL(BaseApi::FlashAttentionScoreKernelInfer,
+            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelInfer,
                 half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
                 S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
                 DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
@@ -110,14 +110,14 @@ inline __aicore__ void flash_attn_regbase(
     #if (ORIG_DTYPE_QUERY == DT_BF16)
     if (!isPA) {
         if (isSoftmaxLse) {
-            INVOKE_FA_IMPL(BaseApi::FlashAttentionScoreKernelTrain,
+            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelTrain,
                 bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode), LayOutTypeEnum(layout),
                 S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
                 DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
                 PseTypeEnum(static_cast<uint8_t>(PseType::PSE_NONE_TYPE)),
                 hasAtten, false, false);
         } else {
-            INVOKE_FA_IMPL(BaseApi::FlashAttentionScoreKernelInfer,
+            INVOKE_FA_IMPL(BaseApi::FlashAttnScoreKernelInfer,
                 bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode), LayOutTypeEnum(layout),
                 S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
                 DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),

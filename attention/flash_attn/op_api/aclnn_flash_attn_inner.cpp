@@ -20,13 +20,13 @@ extern "C" {
 
 namespace {
 
-void FlashAttentionProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
+void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
 }
 
 // sinks shape为{0}时置nullptr
-void FlashAttentionProcessSinks(const aclTensor *&sinksOptional)
+void FlashAttnProcessSinks(const aclTensor *&sinksOptional)
 {
     if (sinksOptional != nullptr) {
         const auto &shape = sinksOptional->GetViewShape();

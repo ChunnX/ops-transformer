@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_def.cpp
- * \brief FlashAttention算子定义（训练推理归一，仅非量化）
+ * \brief FlashAttn算子定义（训练推理归一，仅非量化）
  *        输入数据类型仅支持FLOAT16和BFLOAT16。
  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。
  */
@@ -19,9 +19,9 @@
 
 namespace ops {
 
-class FlashAttention : public OpDef {
+class FlashAttn : public OpDef {
 public:
-    explicit FlashAttention(const char *name) : OpDef(name)
+    explicit FlashAttn(const char *name) : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
@@ -173,6 +173,6 @@ public:
     }
 };
 
-OP_ADD(FlashAttention);
+OP_ADD(FlashAttn);
 
 }  // namespace ops

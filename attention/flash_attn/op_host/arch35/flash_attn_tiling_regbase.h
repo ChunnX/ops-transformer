@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_tiling_regbase.h
- * \brief FlashAttention arch35 tiling基类
+ * \brief FlashAttn arch35 tiling基类
  */
 
 #ifndef ARCH35_FLASH_ATTN_TILING_REGBASE_H_
@@ -136,14 +136,14 @@ static auto FA_CeilDiv(T num1, T num2) -> T
     return (num1 + num2 - 1) / num2;
 }
 
-// FlashAttention Tiling基类（arch35）
-class FlashAttentionTilingRegbase : public TilingBaseClass {
+// FlashAttn Tiling基类（arch35）
+class FlashAttnTilingRegbase : public TilingBaseClass {
 public:
-    explicit FlashAttentionTilingRegbase(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit FlashAttnTilingRegbase(gert::TilingContext *context) : TilingBaseClass(context)
     {
         Reset();
     }
-    ~FlashAttentionTilingRegbase() override = default;
+    ~FlashAttnTilingRegbase() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -271,8 +271,8 @@ protected:
     const char *opName = nullptr;
 
     // TilingData
-    FlashAttentionScoreSimplifiedTilingData *tilingData =
-        context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
+    FlashAttnScoreSimplifiedTilingData *tilingData =
+        context_->GetTilingData<FlashAttnScoreSimplifiedTilingData>();
     InputParamsRegbase      *inputParamsRegbase_   = &tilingData->inputParamsRegbase;
     MultiCoreParamsRegbase  *multiCoreParamsRegbase_ = &tilingData->multiCoreParamsRegbase;
 };

@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_tiling_basic.cpp
- * \brief FlashAttention arch35
+ * \brief FlashAttn arch35
  */
 
 #include "flash_attn_tiling_regbase.h"
@@ -20,20 +20,20 @@ using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 namespace FA {
 
-class FlashAttentionTilingBasic : public FlashAttentionTilingRegbase {
+class FlashAttnTilingBasic : public FlashAttnTilingRegbase {
 public:
-    explicit FlashAttentionTilingBasic(gert::TilingContext *context)
-        : FlashAttentionTilingRegbase(context)
+    explicit FlashAttnTilingBasic(gert::TilingContext *context)
+        : FlashAttnTilingRegbase(context)
     {
         this->regbase = true;
     }
-    ~FlashAttentionTilingBasic() override = default;
+    ~FlashAttnTilingBasic() override = default;
 
 protected:
     bool IsCapable() override
     {
         if (npuArch != NpuArch::DAV_3510) {
-            OP_LOGD(opName, "FlashAttentionTilingBasic: current npu arch is not dav-3510, skip.");
+            OP_LOGD(opName, "FlashAttnTilingBasic: current npu arch is not dav-3510, skip.");
             return false;
         }
         return true;
@@ -87,7 +87,7 @@ protected:
 
     ge::graphStatus PostTiling() override
     {
-        FlashAttentionTilingRegbase::PostTiling();
+        FlashAttnTilingRegbase::PostTiling();
         return ge::GRAPH_SUCCESS;
     }
 
@@ -97,7 +97,7 @@ private:
 };
 
 // 注册到arch35 (DAV_3510)，优先级83（与flash_attn_score保持一致）
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttention, FlashAttentionTilingBasic,
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttn, FlashAttnTilingBasic,
                                     static_cast<int32_t>(NpuArch::DAV_3510), 83);
 
 } // namespace FA

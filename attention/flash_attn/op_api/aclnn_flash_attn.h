@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnFlashAttention的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnFlashAttn的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_train_infer
  *
  * @param q                   [IN]  query tensor。数据类型FLOAT16/BFLOAT16，ND格式。
@@ -67,7 +67,7 @@ extern "C" {
  * @param executor            [OUT] op执行器句柄，供第二段接口使用。
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
-aclnnStatus aclnnFlashAttentionGetWorkspaceSize(
+aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *q,
     const aclTensor *k,
     const aclTensor *v,
@@ -93,14 +93,14 @@ aclnnStatus aclnnFlashAttentionGetWorkspaceSize(
     aclOpExecutor **executor);
 
 /**
- * @brief aclnnFlashAttention的第二段接口，用于执行计算。
+ * @brief aclnnFlashAttn的第二段接口，用于执行计算。
  * @param workspace       [IN] 由第一段接口计算得到的workspace设备内存指针。
  * @param workspaceSize   [IN] workspace大小（字节数）。
  * @param executor        [IN] 第一段接口输出的op执行器句柄。
  * @param stream          [IN] 用于执行计算的acl stream。
  * @return aclnnStatus 执行状态。
  */
-aclnnStatus aclnnFlashAttention(
+aclnnStatus aclnnFlashAttn(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,

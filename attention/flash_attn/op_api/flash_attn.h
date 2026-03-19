@@ -17,8 +17,8 @@
 namespace l0op {
 
 /**
- * @brief FlashAttention level-0 operator。
- *        封装FlashAttention算子的底层调度，完成InferShape与Kernel Launch注册。
+ * @brief FlashAttn level-0 operator。
+ *        封装FlashAttn算子的底层调度，完成InferShape与Kernel Launch注册。
  *        该接口为内部接口，仅供aclnn层调用。
  *
  * @param q                   query tensor
@@ -44,7 +44,7 @@ namespace l0op {
  * @return std::array<const aclTensor*, 2> [attentionOut, softmaxLse]
  *         任意元素为nullptr表示对应输出的InferShape或Launch失败。
  */
-const std::array<const aclTensor *, 2> FlashAttention(
+const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *q,
     const aclTensor *k,
     const aclTensor *v,

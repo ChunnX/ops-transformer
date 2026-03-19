@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_infershape.cpp
- * \brief FlashAttention算子InferShape实现
+ * \brief FlashAttn算子InferShape实现
  */
 
 #include <graph/utils/type_utils.h>
@@ -42,9 +42,9 @@ static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE    = 1;
 
 static constexpr int FA_SOFTMAX_LSE_LAST_DIM = 1;  // softmax_lse最后一维元素数（每head一个float）
 
-ge::graphStatus InferShapeFlashAttention(gert::InferShapeContext *context)
+ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
 {
-    OP_LOGI(context, "FlashAttention InferShape start.");
+    OP_LOGI(context, "FlashAttn InferShape start.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -78,7 +78,7 @@ ge::graphStatus InferShapeFlashAttention(gert::InferShapeContext *context)
     for (auto &c : layoutQStr)   { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
     for (auto &c : layoutOutStr) { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
 
-    OP_LOGI(context, "FlashAttention InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%ld.",
+    OP_LOGI(context, "FlashAttn InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%ld.",
             layoutQStr.c_str(), layoutKvStr.c_str(), layoutOutStr.c_str(), returnSoftmaxLse);
 
     int64_t batchSize  = 1;
@@ -173,11 +173,11 @@ ge::graphStatus InferShapeFlashAttention(gert::InferShapeContext *context)
         }
     }
 
-    OP_LOGI(context, "FlashAttention InferShape done. attnOut dims=%zu.", attnOutShape->GetDimNum());
+    OP_LOGI(context, "FlashAttn InferShape done. attnOut dims=%zu.", attnOutShape->GetDimNum());
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeFlashAttention(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeFlashAttn(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -190,8 +190,8 @@ ge::graphStatus InferDataTypeFlashAttention(gert::InferDataTypeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(FlashAttention)
-    .InferShape(InferShapeFlashAttention)
-    .InferDataType(InferDataTypeFlashAttention);
+IMPL_OP_INFERSHAPE(FlashAttn)
+    .InferShape(InferShapeFlashAttn)
+    .InferDataType(InferDataTypeFlashAttn);
 
 }  // namespace ops
