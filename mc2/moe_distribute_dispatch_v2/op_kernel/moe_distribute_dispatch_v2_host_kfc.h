@@ -1055,9 +1055,9 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t startTokenIndex, uint32_t tokenIndex)
 {
     uint32_t realIndex = tokenIndex - startTokenIndex;
-    LOG_INFO("FillQuadruple realIndex:", realIndex);
-    LOG_INFO("FillQuadruple startTokenIndex:", startTokenIndex);
-    LOG_INFO("FillQuadruple tokenIndex:", tokenIndex);
+    // LOG_INFO("FillQuadruple realIndex:", realIndex);
+    // LOG_INFO("FillQuadruple startTokenIndex:", startTokenIndex);
+    // LOG_INFO("FillQuadruple tokenIndex:", tokenIndex);
     uint64_t mask = axisK_;
     LocalTensor<int32_t> xOutTint32 = xOutTensor.template ReinterpretCast<int32_t>();
     LocalTensor<int16_t> xOutTint16 = xOutTensor.template ReinterpretCast<int16_t>();
@@ -1073,10 +1073,10 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
 
-    for(uint32_t index =0; index < axisK_; index++) {
-        LOG_INFO("index: ", index);
-        LOG_INFO("xOutTint16: ", xOutTint16(index + moeCntAlign_));
-    }
+    // for(uint32_t index =0; index < axisK_; index++) {
+    //     LOG_INFO("index: ", index);
+    //     LOG_INFO("xOutTint16: ", xOutTint16(index + moeCntAlign_));
+    // }
 
     if(isExpertMaskFlag_) {
         SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -1133,9 +1133,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
         int32_t tokenSendOffset = tokenSendMap_.GetValue(offset);
-        LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
+        //LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
         if(tokenSendOffset == -1) {
-            LOG_INFO("ScatterToken not send");
+            //LOG_INFO("ScatterToken not send");
             continue;
         }
         SingleTokenProcess(startIndex, tokenIndex, serverId, tokenSendOffset); // 将数据写入对应的发送区
@@ -1160,7 +1160,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,  uint32_t waitNum) 
 {
     // Implementation of WaitFlag
-    LOG_INFO("WaitFlag waitNum", waitNum);
+    //LOG_INFO("WaitFlag waitNum", waitNum);
     uint64_t rsvdCnt = 0;
     GlobalTensor<float32_t> flagInGMTensor;
     //LocalTensor<uint8_t> sharedTensorInt8 = flagInLTTensor.ReinterpretCast<uint8_t>(); //reduce isReuseSource 为true情况下不会使用。
@@ -1181,16 +1181,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //         rsvdCnt++;
         //     }
         // }
-        LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
+        //LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
         //ReduceSum()
         // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
         //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
 
-        LOG_INFO("WaitFlag rsvdCnt",flagInLTTensor.GetValue(0));
+        //LOG_INFO("WaitFlag rsvdCnt",flagInLTTensor.GetValue(0));
         if(flagInLTTensor.GetValue(0) == float32_t(waitNum)) {
-            LOG_INFO("WaitFlag success");
+            //LOG_INFO("WaitFlag success");
             break;
         }
     }
@@ -1218,13 +1218,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendTokenToRemoteServer()
 {
-    LOG_INFO("start SendTokenToRemoteServer");
+    //LOG_INFO("start SendTokenToRemoteServer");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
     SplitToCore(totalSendCnt, aivUsedCumSum_, aivUsedScatter_, startTokenId, endTokenId, sendTokenNum);
-    LOG_INFO("startTokenId",startTokenId);
-    LOG_INFO("endTokenId",endTokenId);
-    LOG_INFO("sendTokenNum",sendTokenNum);
+    //LOG_INFO("startTokenId",startTokenId);
+    //LOG_INFO("endTokenId",endTokenId);
+    //LOG_INFO("sendTokenNum",sendTokenNum);
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return ;
     }
@@ -1240,7 +1240,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ScatterToken(startTokenId, endTokenId, serverIndex);
         //HcclCommSend(serverIndex, flagRecvGatherMask); //TODO: 几个server几个核发送
     }
-    LOG_INFO("end SendTokenToRemoteServer");
+    //LOG_INFO("end SendTokenToRemoteServer");
 }
 
 
@@ -1254,7 +1254,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     uint64_t dstOffset = startTokenId * axisK_ * sizeof(int16_t);
     uint32_t computeRow = endTokenId - startTokenId;
     uint32_t expertOffsetNum = computeRow * moeCntRowAlign_; //32B对齐
-    LOG_INFO("expertOffsetNum",expertOffsetNum);
+    //LOG_INFO("expertOffsetNum",expertOffsetNum);
     GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(gmExpertOffsetCnt + dstFlag);
     LocalTensor<float32_t> flagInLTTensor = dstExpBuf_.Get<float32_t>();
     LocalTensor<int16_t> expertCntTensor = dstExpBuf_.Get<int16_t>();
@@ -1263,11 +1263,11 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     DataCopyPadParams expertCntPadParams{false, 0, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE2>(); //这里复用了dstExpBuf_ ，必须等待完成。TODO：
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
-    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
+    //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     // LOG_INFO("CalExpertOffset start waitFlg");
     WaitFlag(flagAddr, flagInLTTensor,  usedCoreNum);
     // LOG_INFO("CalExpertOffset end waitFlg");
-    LOG_INFO("usedCoreNum",usedCoreNum);
+    //LOG_INFO("usedCoreNum",usedCoreNum);
     PipeBarrier<PIPE_V>();
     for(uint32_t index =0 ;index < usedCoreNum; index++) {
         // 计算每个核心的专家偏移量
@@ -1276,17 +1276,16 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         SyncFunc<AscendC::HardEvent::V_MTE2>();
         DataCopyPad(expertCntTensor, expertOffsetCntGMTensor, expertCntCopyInParams, expertCntPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + index * offsetPerMask));
-        uint32_t t= expertOffset - dstOffset;
-        LOG_INFO("CalExpertOffset index",index);
-        LOG_INFO("CalExpertOffset expertOffset",t);
-        LOG_INFO("CalExpertOffset expertOffsetCntGMTensor",expertOffsetCntGMTensor, {axisBS_, axisK_});
-        LOG_INFO("CalExpertOffset expertCntTensor", expertCntTensor, {axisBS_, moeCntRowAlign_});
+        // expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + index * offsetPerMask));
+        // uint32_t t= expertOffset - dstOffset;
+        // LOG_INFO("CalExpertOffset index",index);
+        // LOG_INFO("CalExpertOffset expertOffset",t);
+        // LOG_INFO("CalExpertOffset expertOffsetCntGMTensor",expertOffsetCntGMTensor, {axisBS_, axisK_});
+        // LOG_INFO("CalExpertOffset expertCntTensor", expertCntTensor, {axisBS_, moeCntRowAlign_});
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
-        PipeBarrier<PIPE_V>();
-        LOG_INFO("CalExpertOffset for expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
+        //LOG_INFO("CalExpertOffset for expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     }
-    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
+    //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
 }
 
 
@@ -1321,16 +1320,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetServerFlag()
 {
-    LOG_INFO("SetServerFlag start");
+    //LOG_INFO("SetServerFlag start");
     uint32_t totalSeverCnt = serverNum_;
     uint32_t startServerNum, endServerNum, sendServerNum;
     SplitToCore(totalSeverCnt, aivUsedCumSum_, aivUsedScatter_, startServerNum, endServerNum, sendServerNum);
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
-    LOG_INFO("startServerNum", startServerNum);
-    LOG_INFO("endServerNum", endServerNum);
-    LOG_INFO("sendServerNum", sendServerNum);
+    //LOG_INFO("startServerNum", startServerNum);
+    //LOG_INFO("endServerNum", endServerNum);
+    //LOG_INFO("sendServerNum", sendServerNum);
     GlobalTensor<uint32_t> dstStateGMTensor;
     TBuf<> tempbuf;
     tpipe_->InitBuffer(tempbuf, SERVER_STATE_ALIGN);
@@ -1343,7 +1342,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         outTensor(0) = serverCountTensor_(index);
         DataCopy(dstStateGMTensor, outTensor, SERVER_STATE_ALIGN/sizeof(uint32_t));
     }
-    LOG_INFO("SetServerFlag end");
+    //LOG_INFO("SetServerFlag end");
 }
 
 // template <TemplateDispatchKFCTypeClass>
@@ -1382,47 +1381,47 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<uint32_t>  dstOffset = dstExpBuf_.Get<uint32_t>();
 
     // SyncFunc<AscendC::HardEvent::MTE2_V>();
-    LOG_INFO("expertIdsTensor_",expertIdsTensor_,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    //LOG_INFO("expertIdsTensor_",expertIdsTensor_,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     PipeBarrier<PIPE_V>();
     Cast(dstServerIdFp32, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
     Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(moeExpertNumPerRank_), calCnt);
     PipeBarrier<PIPE_V>();
-    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    //LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Div(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt);
     PipeBarrier<PIPE_V>();
-    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    //LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Adds(dstServerIdFp32, dstServerIdFp32, static_cast<float32_t>(sharedExpertRankNum_), calCnt);
     PipeBarrier<PIPE_V>();
-    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    //LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(rankSizePerServer_), calCnt);
     PipeBarrier<PIPE_V>();
     Div(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt); //计算每个专家所在的serverID
     PipeBarrier<PIPE_V>();
-    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    //LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Cast(dstServerIdInt32, dstServerIdFp32, RoundMode::CAST_TRUNC, calCnt); 
     PipeBarrier<PIPE_V>();
-    LOG_INFO("dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    //LOG_INFO("dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
 
-    LOG_INFO("CalServerSendCnt expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_,axisK_});
+    //LOG_INFO("CalServerSendCnt expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_,axisK_});
     for(int32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
         int32_t dstServerId = serverIndex;
         Adds(dstServerIdInt32, dstServerIdInt32, -dstServerId, calCnt);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Adds dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+        //LOG_INFO("Adds dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         Abs(dstServerIdFp32, dstServerIdFp32, calCnt);
         PipeBarrier<PIPE_V>();
         Mins(dstServerIdInt32, dstServerIdInt32, 1, calCnt);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Mins dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+        //LOG_INFO("Mins dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         Cast(dstServerIdInt16, dstServerIdInt32, RoundMode::CAST_NONE, calCnt);
         Duplicate<int16_t>(tempTensorInt16, 1, calCnt);
         PipeBarrier<PIPE_V>();
         Xor(compareInt16, dstServerIdInt16, tempTensorInt16, sharedTensorInt8, calCnt);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Xor compareInt16",compareInt16,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+        //LOG_INFO("Xor compareInt16",compareInt16,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         Cast(dstServerIdFp32, compareInt16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Cast dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+        //LOG_INFO("Cast dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         // if(isExpertMaskFlag_) {
         //     LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里需注意，需要提前把数据搬进来。
         //     Cast(tempTensorFp16, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
@@ -1435,14 +1434,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //     Mul(dstServerIdFp32, dstServerIdFp32, gTempTensorFp32, calCnt); //需要与mask相乘。
         //     PipeBarrier<PIPE_V>(); 
         // }
-        LOG_INFO("isExpertMaskFlag_ dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+        //LOG_INFO("isExpertMaskFlag_ dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         uint32_t srcShape[2] = {activeMaskBsCnt, axisK_};
         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, dstServerIdFp32, sharedTensorInt8, srcShape, false);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("ReduceSum tempTensorFp32",tempTensorFp32,{1,static_cast<uint32_t>(activeMaskBsCnt_)});
+        //LOG_INFO("ReduceSum tempTensorFp32",tempTensorFp32,{1,static_cast<uint32_t>(activeMaskBsCnt_)});
         Mins(dstServerIdFp32, tempTensorFp32, float32_t(1.0), activeMaskBsCnt); // 得到需要发送到这个server的TokenID
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Mins dstServerIdFp32",tempTensorFp32,{1,static_cast<uint32_t>(activeMaskBsCnt_)});
+        //LOG_INFO("Mins dstServerIdFp32",tempTensorFp32,{1,static_cast<uint32_t>(activeMaskBsCnt_)});
         Cast(dstServerIdInt32, dstServerIdFp32, RoundMode::CAST_RINT, activeMaskBsCnt);
         CreateVecIndex(indexTensor, 0, activeMaskBsCnt);
         Duplicate<uint32_t>(expertMaskTensorU32, 0, maskSize);
@@ -1454,7 +1453,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if(sendTokenCnt == 0) {
             continue;
         }
-        LOG_INFO("GatherMask gatherIndex",gatherIndex,{1,static_cast<uint32_t>(sendTokenCnt)});
+        //LOG_INFO("GatherMask gatherIndex",gatherIndex,{1,static_cast<uint32_t>(sendTokenCnt)});
         serverCountTensor_.SetValue(serverIndex, static_cast<uint32_t>(sendTokenCnt));
         if constexpr (isStoreOffset) {
             Muls(gatherIndex, gatherIndex, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendTokenCnt));
@@ -1464,8 +1463,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
     }
     PipeBarrier<PIPE_ALL>(); //todo：这里必须这样，或者后面的清理可以做
-    LOG_INFO("tokenSendMap_", tokenSendMap_,{1, static_cast<uint32_t>(activeMaskBsCnt_)});
-    LOG_INFO("serverCountTensor_", serverCountTensor_,{1, serverNum_});
+    //LOG_INFO("tokenSendMap_", tokenSendMap_,{1, static_cast<uint32_t>(activeMaskBsCnt_)});
+    //LOG_INFO("serverCountTensor_", serverCountTensor_,{1, serverNum_});
 }
 
 
@@ -2646,7 +2645,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
 {
-    LOG_INFO("start WriteExpertOffset");
+    //LOG_INFO("start WriteExpertOffset");
     uint32_t newAivId = aivId_ - aivUsedCumSum_;
     uint32_t offsetPerMask = Ceil(expertIdsCnt_ * sizeof(uint16_t), UB_ALIGN) * UB_ALIGN;
     uint64_t dstOffset = newAivId * offsetPerMask; //gmExpertOffsetCnt
@@ -2661,16 +2660,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
     //SyncFunc<AscendC::HardEvent::MTE3_MTE3>();
-    LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
-    LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
+    // LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
+    // LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(float32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
     expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
     PipeBarrier<PIPE_ALL>();
-    LOG_INFO("WriteExpertOffset dstFlag", dstFlag);
-    LOG_INFO("WriteExpertOffset expertOffsetFlagGMTensor", expertOffsetFlagGMTensor, {1, aivNum_});
-    LOG_INFO("end WriteExpertOffset");
+    // LOG_INFO("WriteExpertOffset dstFlag", dstFlag);
+    // LOG_INFO("WriteExpertOffset expertOffsetFlagGMTensor", expertOffsetFlagGMTensor, {1, aivNum_});
+    // LOG_INFO("end WriteExpertOffset");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2682,9 +2681,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (startExpertId >= endExpertId || sendExpertNum == 0) {
         return ;
     }
-    LOG_INFO("CalTokenSendExpertOffset startExpertId", startExpertId);
-    LOG_INFO("CalTokenSendExpertOffset endExpertId", endExpertId);
-    LOG_INFO("CalTokenSendExpertOffset sendExpertNum", sendExpertNum);
+    // LOG_INFO("CalTokenSendExpertOffset startExpertId", startExpertId);
+    // LOG_INFO("CalTokenSendExpertOffset endExpertId", endExpertId);
+    // LOG_INFO("CalTokenSendExpertOffset sendExpertNum", sendExpertNum);
     TBuf<> tempBuf;
     TBuf<> indexBuf;
     
@@ -2772,7 +2771,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t endtime = GetSystemCycle();
     uint64_t usetime = endtime -starttime;
     // LOG_INFO("CalTokenSendExpertOffset use time",usetime);
-    LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
+    //LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
     // SyncFunc<AscendC::HardEvent::V_MTE2>();
     // DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
     // DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
