@@ -1761,6 +1761,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPadParams srcTokenPadParams{false, 0U, 0U, 0U};
 
     SyncFunc<AscendC::HardEvent::V_MTE2>();
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
     DataCopyPad(recvTmpTensor_, dataFlagGlobal[(index * sendTokenLengthAlign_) / sizeof(XType)],
                 srcTokenCopyParams, srcTokenPadParams);
     //PipeBarrier<PIPE_MTE2>();
@@ -2524,7 +2525,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitAndFormatOutput(TBuf<> tBuf, uint32_t validNum)
 {
-    LOG_INFO("in WaitAndFormatOutput");
+    //LOG_INFO("in WaitAndFormatOutput");
     uint32_t index = 0;
     uint32_t finishNum = 0;
     uint32_t maxCopyTokenCnt = tBufRealSize_ / hCommuSize_;
@@ -2536,8 +2537,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
     flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
-    LOG_INFO("WaitAndFormatOutput validNum:", validNum);
-    LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
+    //LOG_INFO("WaitAndFormatOutput validNum:", validNum);
+    //LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
     int count = 0;
     while (true) {
         count ++;
@@ -2554,9 +2555,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
         arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (arriveCount == copyCnt) {
-            LOG_INFO("WaitAndFormatOutput index:", index);
-            LOG_INFO("arriveCount:", arriveCount);
-            LOG_INFO("copyCnt:", copyCnt);
+            //LOG_INFO("WaitAndFormatOutput index:", ind1ex);
+            //LOG_INFO("arriveCount:", arriveCount);
+            //LOG_INFO("copyCnt:", copyCnt);
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
