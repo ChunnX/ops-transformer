@@ -911,13 +911,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
         PipeBarrier<PIPE_V>();
 
         // TODO
-        Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], hMixBuf, buffers.invRmsBuf, dealBSSize * fusionSize_);
+        // Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], hMixBuf, buffers.invRmsBuf, dealBSSize * fusionSize_);
+        VFDoV1ProcessAlphaGrad((__ubuf__ P *)h1GradBuf.GetPhyAddr(), (__ubuf__ P *)buffers.invRmsBuf.GetPhyAddr(), (__ubuf__ P *)buffers.gatherFusionBuf[bsOffset * fusionSize_].GetPhyAddr(), (__ubuf__ P *)hMixBuf.GetPhyAddr(), dealBSSize);
         PipeBarrier<PIPE_V>();
         bf16InQueue_.FreeTensor(hMixBuf);
 
         // alpha grad pre
-        Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], buffers.hFusionBuf1[bsOffset * fusionSize_],
-            buffers.gatherFusionBuf[bsOffset * fusionSize_], dealBSSize * fusionSize_);
+        // Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], buffers.hFusionBuf1[bsOffset * fusionSize_],
+        //     buffers.gatherFusionBuf[bsOffset * fusionSize_], dealBSSize * fusionSize_);
         PipeBarrier<PIPE_V>();
 
         remainDealBsSize -= dealBSSize;
