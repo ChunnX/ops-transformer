@@ -49,17 +49,8 @@ extern aclnnStatus aclnnInnerAllGatherMatmulGetWorkspaceSize(const aclTensor *x1
                                                              aclOpExecutor **executor);
 extern aclnnStatus aclnnInnerAllGatherMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                              aclrtStream stream);
-extern "C" aclnnStatus NnopbaseGetAttrAddr(void *executor, const size_t index, void **attrAddr, size_t *attrLen);
-extern "C" void NnopbaseGetOutputTensorAddr(void *executor, const size_t index, void **addr);
-extern "C" void NnopbaseGetInputTensorAddr(void *executor, const size_t index, void **addr);
-extern "C" void NnopbaseSetInputTensorAddr(void *executor, const size_t index, const void *const addr);
-extern "C" void NnopbaseGetTilingData(void *executor, void **tilingData, uint64_t *dataLen);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void* NnopbaseGetUserHandle(void *executor);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
-extern "C" void NnopbaseReportLaunchInfo(const uint64_t beginTime, const char *const opType);
-extern "C" aclnnStatus NnopbaseReportAicpuAdditionInfo(const uint64_t timeStamp, const char *const opType);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
 
 // check nullptr
