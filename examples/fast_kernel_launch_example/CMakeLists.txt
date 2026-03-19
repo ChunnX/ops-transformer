@@ -53,6 +53,8 @@ set(LINK_LIBRARIES
     register
     tiling_api
     runtime
+    hccl
+    hcomm
 )
 
 # compile options
