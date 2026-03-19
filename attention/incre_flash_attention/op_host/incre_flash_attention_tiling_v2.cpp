@@ -2715,25 +2715,27 @@ ge::graphStatus IFATilingV2::ProcessAntiQuant() {
                         "the layout of input does not support TND."),
                 return ge::GRAPH_FAILED);
     if (isPFAFlag_) {
-      OP_CHECK_IF((inputKvType_ == ge::DT_INT8 && (inputQType_ != ge::DT_BF16 || outputType_ != ge::DT_BF16)),
+      OP_CHECK_IF((antiquantMode_ == PER_CHANNEL_MODE || antiquantMode_ == PER_TOKEN_MODE)
+                  && (inputKvType_ == ge::DT_INT8 && (inputQType_ != ge::DT_BF16 || outputType_ != ge::DT_BF16)),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                        "the data type of query and output only support BF16."),
+                        "if keyAntiquantMode/valueAntiquantMode is 0 or 1, the data type of query and output only support BF16."),
                 return ge::GRAPH_FAILED);
-      OP_CHECK_IF((inputKvType_ == ge::DT_INT8 && pageAttentionKvLayoutType_ != KvCacheLayout::KV_CACHE_NZ && sOfQuery_ > 16),
+      OP_CHECK_IF((antiquantMode_ == PER_CHANNEL_MODE || antiquantMode_ == PER_TOKEN_MODE) && (inputKvType_ == ge::DT_INT8 && sOfQuery_ > 16),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                        "S of query should not be greater than 16."),
+                        "if keyAntiquantMode/valueAntiquantMode is 0 or 1, S of query should not be greater than 16."),
                 return ge::GRAPH_FAILED);
-      OP_CHECK_IF((inputKvType_ == ge::DT_INT8 && !batchContinuousFlag_),
+      OP_CHECK_IF((antiquantMode_ == PER_CHANNEL_MODE || antiquantMode_ == PER_TOKEN_MODE) && (inputKvType_ == ge::DT_INT8 && !batchContinuousFlag_),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                        "tensorlist is not supported."),
+                        "if keyAntiquantMode/valueAntiquantMode is 0 or 1, tensorlist is not supported."),
                 return ge::GRAPH_FAILED);
-      OP_CHECK_IF((inputKvType_ == ge::DT_INT8 && (ifaContext_->queryPaddingSize.tensor || ifaContext_->kvPaddingSize.tensor)),
+      OP_CHECK_IF((antiquantMode_ == PER_CHANNEL_MODE || antiquantMode_ == PER_TOKEN_MODE)
+                  && (inputKvType_ == ge::DT_INT8 && (ifaContext_->queryPaddingSize.tensor || ifaContext_->kvPaddingSize.tensor)),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                        "leftpadding is not supported."),
+                        "if keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported."),
                 return ge::GRAPH_FAILED);
-      OP_CHECK_IF((inputKvType_ == ge::DT_INT8 && pageAttentionFlag_),
+      OP_CHECK_IF((antiquantMode_ == PER_CHANNEL_MODE || antiquantMode_ == PER_TOKEN_MODE) && (inputKvType_ == ge::DT_INT8 && pageAttentionFlag_),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                        "page attention is not supported."),
+                        "if keyAntiquantMode/valueAntiquantMode is 0 or 1, page attention is not supported."),
                 return ge::GRAPH_FAILED);
       OP_CHECK_IF((inputKvType_ == ge::DT_INT4 || inputKvType_ == ge::DT_INT32),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode scenario, int4 and int32 data types are not supported for the key and value."),
