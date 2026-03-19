@@ -49,10 +49,10 @@ aclTensor* ConvertTensorToInt4(const aclTensor* input, aclOpExecutor* executor)
 // 对x1和x2进行int32到int4的转换预处理
 void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&alltoallout, aclOpExecutor *executor)
 {
-    if (x2->GetDataType() == DataType::DT_INT32) {
+    if (x2 != nullptr && x2->GetDataType() == DataType::DT_INT32) {
         x2 = ConvertTensorToInt4(x2, executor);
     }
-    if (x1->GetDataType() == DataType::DT_INT32) {
+    if (x1 != nullptr && x1->GetDataType() == DataType::DT_INT32) {
         x1 = ConvertTensorToInt4(x1, executor);
     }
     if (alltoallout != nullptr && alltoallout->GetDataType() == DataType::DT_INT32) {
