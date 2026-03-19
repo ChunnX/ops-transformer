@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "mc2_gen_task_ops_utils.h"
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 #include "op_mc2.h"
 #include "platform/platform_info.h"
 

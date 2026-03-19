@@ -18,7 +18,7 @@
 #include "exe_graph/runtime/exe_res_generation_context.h"
 #include "graph/kernel_launch_info.h"
 #include "graph/arg_desc_info.h"
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 #include "mc2_gen_task_ops_utils.h"
 #include "graph/ascend_string.h"
 

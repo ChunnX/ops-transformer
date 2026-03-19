@@ -118,8 +118,8 @@ macro(add_modules_sources)
         ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
     )
     if(GENTASK_SRCS)
-      add_opmaster_ct_gentask_modules()
-      target_sources(${OPHOST_NAME}_opmaster_ct_gentask_obj PRIVATE ${GENTASK_SRCS})
+      add_gentask_modules()
+      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
     endif()
   endif()
 
@@ -549,36 +549,39 @@ function(add_graph_plugin_modules)
 endfunction()
 
 # 添加gentask object
-function(add_opmaster_ct_gentask_modules)
-  message(STATUS "add_opmaster_ct_gentask_modules start")
-  if (NOT TARGET ${OPHOST_NAME}_opmaster_ct_gentask_obj)
-    add_library(${OPHOST_NAME}_opmaster_ct_gentask_obj OBJECT)
-    add_dependencies(${OPHOST_NAME}_opmaster_ct_gentask_obj json)
+function(add_gentask_modules)
+  message(STATUS "add_gentask_modules start")
+  if (NOT TARGET ${OPGRAPH_NAME}_gentask_obj)
+    add_library(${OPGRAPH_NAME}_gentask_obj OBJECT)
+    add_dependencies(${OPGRAPH_NAME}_gentask_obj json)
 
-    target_include_directories(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    target_include_directories(${OPGRAPH_NAME}_gentask_obj
       PRIVATE ${OP_TILING_INCLUDE}
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/experiment/metadef/common/util>>
     )
-    target_compile_definitions(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    target_compile_definitions(${OPGRAPH_NAME}_gentask_obj
       PRIVATE
       LOG_CPP
     )
-    target_compile_options(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    target_compile_options(${OPGRAPH_NAME}_gentask_obj
       PRIVATE
       $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
       -Dgoogle=ascend_private
       -fvisibility=hidden
       -fno-strict-aliasing
     )
-    message(STATUS "xxxx compile add_opmaster_ct_gentask_modules")
-    target_link_libraries(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    message(STATUS "xxxx compile add_gentask_modules")
+    target_link_libraries(${OPGRAPH_NAME}_gentask_obj
       PRIVATE
       $<BUILD_INTERFACE:intf_pub_cxx17>
       $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
-      # $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:alog_headers>>
-      # $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:$<BUILD_INTERFACE:slog_headers>>
+      graph
+      graph_base
+      exe_graph
+      platform
+      runtime
     )
   endif()
 endfunction()
