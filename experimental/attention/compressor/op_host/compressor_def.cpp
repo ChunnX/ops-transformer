@@ -18,7 +18,7 @@ public:
     static constexpr uint32_t COFF_VALUE = 1;
     static constexpr uint32_t ROTARY_MODE_VALUE = 1;
     static constexpr uint32_t CACHE_MODE_VALUE = 1;
-    static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = -1;
+    static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = 0;
 
     explicit Compressor(const char *name) : OpDef(name)
     {
@@ -41,7 +41,7 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("ape")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
