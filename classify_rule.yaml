@@ -615,6 +615,11 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/op_kernel/
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/CMakeLists.txt
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/README.md
+                - ops/ops-transformer/moe/moe_gating_top_k/op_host/
+                - ops/ops-transformer/moe/moe_gating_top_k/op_graph/
+                - ops/ops-transformer/moe/moe_gating_top_k/op_kernel/
+                - ops/ops-transformer/moe/moe_gating_top_k/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_gating_top_k/README.md
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/op_host/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/op_graph/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/op_kernel/
@@ -650,6 +655,26 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/op_kernel/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/CMakeLists.txt
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/README.md
+                - ops/ops-transformer/moe/moe_init_routing_v3/op_host/
+                - ops/ops-transformer/moe/moe_init_routing_v3/op_graph/
+                - ops/ops-transformer/moe/moe_init_routing_v3/op_kernel/
+                - ops/ops-transformer/moe/moe_init_routing_v3/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_init_routing_v3/README.md
+                - ops/ops-transformer/moe/moe_init_re_routing/op_host/
+                - ops/ops-transformer/moe/moe_init_re_routing/op_graph/
+                - ops/ops-transformer/moe/moe_init_re_routing/op_kernel/
+                - ops/ops-transformer/moe/moe_init_re_routing/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_init_re_routing/README.md
+                - ops/ops-transformer/moe/moe_token_permute/op_host/
+                - ops/ops-transformer/moe/moe_token_permute/op_graph/
+                - ops/ops-transformer/moe/moe_token_permute/op_kernel/
+                - ops/ops-transformer/moe/moe_token_permute/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_token_permute/README.md
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_host/
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_graph/
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_kernel/
+                - ops/ops-transformer/moe/moe_token_permute_grad/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_token_permute_grad/README.md
                 - ops/ops-transformer/moe/moe_token_unpermute/op_host/
                 - ops/ops-transformer/moe/moe_token_unpermute/op_graph/
                 - ops/ops-transformer/moe/moe_token_unpermute/op_kernel/
