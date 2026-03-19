@@ -17,7 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "mc2_tiling_case_executor.h"
-#include "../../../../op_host/op_tiling/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
+#include "../../../../op_host/op_tiling/arch35/tt_quant_grouped_mat_mul_allto_allv_tiling.h"
 
 using namespace std;
 
@@ -550,6 +550,44 @@ static const vector<GroupedMatMulAlltoAllvTilingTestParam> groupedMatMulAlltoAll
         {1024,1024,1024,1024,1024,1024,1024,1025}, // 总和=8193，不等于gmmX的第一维大小8192
         {8192,4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {4096,4096}, ge::DT_FLOAT16, ge::FORMAT_ND, 
         1, 1, 1, 1, false, false, 2, 2, 0, ge::GRAPH_FAILED, 0
+    },
+    {
+        "gmmalltoallv_hif8_quant_scaleShape_not_1",
+        {8192, 7168}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {4, 7168, 4096}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {4}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {4096, 7168}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {7168, 4096}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024},
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024},
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        1, 1, 1, 1,
+        false, false,
+        2, 2, 0,
+        ge::GRAPH_FAILED, 0
+    },
+    {
+        "gmmalltoallv_hif8_quant_n2_not_in_range",
+        {8192, 7168}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {4, 7168, 4096}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {4096, 7168}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {7168, 65536}, ge::DT_HIFLOAT8, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {1}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024},
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024},
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        {4096, 65536}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        1, 1, 1, 1,
+        false, false,
+        2, 2, 0,
+        ge::GRAPH_FAILED, 0
     }
 };
 
