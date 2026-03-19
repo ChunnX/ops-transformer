@@ -18,7 +18,7 @@
 namespace ops {
 class MegaMoe : public OpDef {
 public:
-  explicit MoeDistributeDispatchV2(const char* name) : OpDef(name) {
+  explicit MegaMoe(const char* name) : OpDef(name) {
     this->Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
