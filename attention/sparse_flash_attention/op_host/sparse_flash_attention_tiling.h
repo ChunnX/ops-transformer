@@ -165,6 +165,7 @@ TILING_DATA_FIELD_DEF(uint32_t, attentionMode)
 TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
+TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionBaseParamsMlaOp, SparseFlashAttentionBaseParamsMla)
 
@@ -252,6 +253,7 @@ struct SFATilingInfo {
     uint32_t l2CacheOffFlag = 0;
     int64_t sparseBlockSize = 0;
     int64_t sparseBlockCount = 0;
+    int64_t dSizeVInput = 0;
 
     bool pageAttentionFlag = false;
     int64_t blockSize = 0;
@@ -555,6 +557,7 @@ public:
     ge::graphStatus GetBlockSize();
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
+    ge::graphStatus GetDSizeKV();
     ge::graphStatus GetValueHeadDim();
     ge::graphStatus GetRopeHeadDim();
     ge::graphStatus GetQueryAndOutLayout();
@@ -591,6 +594,8 @@ public:
     uint32_t ropeHeadDim_ = 0;
     uint32_t qTSize_ = 0; // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
+    int64_t dSizeKV_ = 0;
+
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
 
