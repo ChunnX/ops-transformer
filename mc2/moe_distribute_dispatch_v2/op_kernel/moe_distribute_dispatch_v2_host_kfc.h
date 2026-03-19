@@ -1008,7 +1008,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Adds(expertIdsTensor_, expertIdsTensor_, -moeExpertNum_, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
     Abs(expertIdsTensor_, expertIdsTensor_, expertIdsCnt_);
-    PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_ALL>();
     //LOG_INFO("ExpertActiveMaskCal expertIdsTensor_",expertIdsTensor_,{axisBS_, axisK_});
 }
 
