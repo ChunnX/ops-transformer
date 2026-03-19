@@ -23,7 +23,7 @@
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
-#include "../../../common/op_kernel/arch35/flash_attn_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "err/ops_err.h"
 #include "platform/soc_spec.h"
 #include "../flash_attn_tiling_common.h"

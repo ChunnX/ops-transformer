@@ -18,7 +18,7 @@
 
 #include <cstdint>
 #include <register/op_impl_registry.h>
-#include "../../common/op_kernel/arch35/flash_attn_score_tiling_regbase.h"
+#include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "flash_attn_tiling_common.h"
 
 namespace optiling {

@@ -20,9 +20,9 @@
 #ifndef FLASH_ATTN_ENTRY_REGBASE_H_
 #define FLASH_ATTN_ENTRY_REGBASE_H_
 
-#include "../../../common/op_kernel/arch35/flash_attn_score_tiling_regbase.h"
-#include "../../../common/op_kernel/arch35/flash_attn_score_kernel_infer.h"
-#include "../../../common/op_kernel/arch35/flash_attn_score_kernel_base.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_kernel_base.h"
 
 #define FA_COPY_TILING_DATA(tiling)                                                                    \
     GET_TILING_DATA_WITH_STRUCT(FlashAttnScoreSimplifiedTilingData, tilingDataIn, tiling);        \
