@@ -1530,7 +1530,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
         uint32_t tokenCnt;
         WaitStatusFlag(dstServerInd, tokenCnt);
-        LOG_INFO("[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
+        //LOG_INFO("[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
         // buf分配
         //tpipe_->Reset(); //TODO 
 
@@ -1634,8 +1634,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
     while (true) {
         count++;
         if (count == 1000000) {
-            LOG_INFO("[BATCHWRITE][WaitToken] error count.");
-            break;
+            // LOG_INFO("[BATCHWRITE][WaitToken] error count.");
+            // break;
         }
         if (finishNumTensor_(index) == 1) {
             index = (index + 1) % tokenCnt; // 轮询查询每个有效的index
@@ -1660,7 +1660,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             uint32_t dstPosition = index;
             GM_ADDR readAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
             CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, arriveCount);
-            LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
+            //LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             SendToExpert(index);
@@ -1683,8 +1683,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             index = (index + 1) % tokenCnt;
         }
         if (tokenCnt == finishNum) {
-            LOG_INFO("[BATCHWRITE][WaitToken] [finishNum]index:", index);
-            LOG_INFO("[BATCHWRITE][WaitToken] finishNum:", finishNum);
+            //LOG_INFO("[BATCHWRITE][WaitToken] [finishNum]index:", index);
+            //LOG_INFO("[BATCHWRITE][WaitToken] finishNum:", finishNum);
             break;
         }
     }
