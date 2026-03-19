@@ -49,11 +49,15 @@ namespace optiling {
         uint32_t mBaseSize;
         uint32_t dBaseSize;
     };
-
+    
     struct CompressorWorkspaceParams {
         uint32_t preMm1ResSize;
         uint32_t curMm1ResSize;
+        uint32_t mm1KvResSize;
+        uint32_t mm1ScoreResSize;
         uint32_t vec1ResSize;
+        uint32_t vec1TailCacheSize;
+        uint32_t dbWorkspaceRatio = 1;
     };
 
     struct CompressorTilingData {

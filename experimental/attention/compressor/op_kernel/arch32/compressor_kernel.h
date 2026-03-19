@@ -9,25 +9,20 @@
  */
 
 /*!
- * \file compressor_kernel_perf.h
+ * \file compressor_kernel.h
  * \brief
  */
 
-#ifndef COMPRESSOR_KERNEL_PERF_H
-#define COMPRESSOR_KERNEL_PERF_H
+#ifndef COMPRESSOR_KERNEL_H
+#define COMPRESSOR_KERNEL_H
 
 #include "compressor_comm.h"
-#include "compressor_template_tiling_key.h"
-#include "compressor_tiling_data.h"
+#include "../compressor_template_tiling_key.h"
+#include "../compressor_tiling_data.h"
 #include "compressor_comm.h"
 #include "compressor_tools.h"
-#if (__CCE_AICORE__ == 220)
-#include "arch32/compressor_block_cube_perf.h"
-#include "arch32/compressor_block_vec_perf.h"
-#else
-#include "arch35/compressor_block_cube.h"
-#include "arch35/compressor_block_vec.h"
-#endif
+#include "compressor_block_cube.h"
+#include "compressor_block_vec.h"
 
 using namespace AscendC;
 
@@ -59,9 +54,9 @@ struct BasicBlockInfo {
 };
 
 template <typename COMP>
-class CompressorKernelPerf {
+class CompressorKernel {
 public:
-    __aicore__ inline CompressorKernelPerf(TPipe* pipe, const optiling::CompressorTilingData* __restrict tilingData)
+    __aicore__ inline CompressorKernel(TPipe* pipe, const optiling::CompressorTilingData* __restrict tilingData)
         : pipe_(pipe), tilingData_(tilingData) {}
 
     __aicore__ inline void Init(
@@ -138,8 +133,8 @@ private:
     uint32_t aiCoreIdx = 0;
 
     // ==============================Service Define==============================
-    CompressorBlockCubePerf<COMP> blockCube_;
-    CompressorBlockVectorPerf<COMP> blockVec_;
+    CompressorBlockCube<COMP> blockCube_;
+    CompressorBlockVector<COMP> blockVec_;
 
     uint32_t allCompressedTcNum_ = 0;
     uint32_t curCompressedTcNum_ = 0;
@@ -147,7 +142,7 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::Init(
+__aicore__ inline void CompressorKernel<COMP>::Init(
         __gm__ uint8_t *x,
         __gm__ uint8_t *wKv,
         __gm__ uint8_t *wGate,
@@ -201,33 +196,22 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
     InitWorkspace(workspace);
     // 4. 初始化block层
     if ASCEND_IS_AIC {
-#if __CCE_AICORE__ == 310
-        blockCube_.InitParams(constInfo);
-#else
         blockCube_.InitParams(constInfo, tools_);
-#endif
         blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, 
             stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
-#if __CCE_AICORE__ == 310
-#else
         blockCube_.InitGlobalBuffers(preMm1ResGm, curMm1ResGm);
-#endif
     } else {
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable, 
                         cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
-#if __CCE_AICORE__ == 310
         blockVec_.InitVec1GlobalTensor(preMm1ResGm, curMm1ResGm, vec1ResGm, vec2InputGm);
-#else 
-        blockVec_.InitVec1GlobalTensor(preMm1ResGm, curMm1ResGm, vec1ResGm, vec2InputGm);
-#endif
     }
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::InitTilingData() {
+__aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.batchSize = tilingData_->baseParams.batchSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
@@ -236,6 +220,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitTilingData() {
     constInfo.sSize = tilingData_->baseParams.seqSize;
     constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
+    constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
     constInfo.reciprocalD = tilingData_->baseParams.reciprocalD;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
@@ -250,7 +235,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitTilingData() {
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
+__aicore__ inline void CompressorKernel<COMP>::SetBaseSize()
 {
     uint32_t mSize = 0;
     uint32_t minMBaseSize = 0;
@@ -319,7 +304,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorKernelPerf<COMP>::CalcSIdxOfLastTc()
+__aicore__ inline uint32_t CompressorKernel<COMP>::CalcSIdxOfLastTc()
 {
     // 在Init中已确保倒数第一个batch的bSeqUsed不会是0
     uint32_t cmpRatio = constInfo.cmpRatio;
@@ -341,7 +326,7 @@ __aicore__ inline uint32_t CompressorKernelPerf<COMP>::CalcSIdxOfLastTc()
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcCmpBlockInfo(CmpBlockInfo &cmpBlockInfo)
+__aicore__ inline void CompressorKernel<COMP>::CalcCmpBlockInfo(CmpBlockInfo &cmpBlockInfo)
 {
     uint32_t cmpRatio = constInfo.cmpRatio;
     // 计算压缩块信息
@@ -362,7 +347,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcCmpBlockInfo(CmpBlockInfo
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(CmpBlockInfo &cmpBlockInfo, uint32_t maxBatchSize)
+__aicore__ inline void CompressorKernel<COMP>::SkipInvalidBatch(CmpBlockInfo &cmpBlockInfo, uint32_t maxBatchSize)
 {
     for (; cmpBlockInfo.bIdx < maxBatchSize; ++cmpBlockInfo.bIdx) {
         cmpBlockInfo.bSeqLength = tools_.GetSeqLength(cmpBlockInfo.bIdx);
@@ -377,7 +362,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(CmpBlockInfo
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetNextCmpSeqCnt(CmpBlockInfo &cmpBlockInfo)
+__aicore__ inline uint32_t CompressorKernel<COMP>::GetNextCmpSeqCnt(CmpBlockInfo &cmpBlockInfo)
 {
     if (cmpBlockInfo.isFirst) {
         cmpBlockInfo.isFirst = false;
@@ -393,7 +378,7 @@ __aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetNextCmpSeqCnt(CmpBlock
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::AcceptUpdate(CmpBlockInfo &cmpBlockInfo)
+__aicore__ inline void CompressorKernel<COMP>::AcceptUpdate(CmpBlockInfo &cmpBlockInfo)
 {
     // 更新sIdx和bIdx、以及与bIdx相关的bStartPos和bSeqUsed
     cmpBlockInfo.sIdx += cmpBlockInfo.validSeqCnt;
@@ -409,7 +394,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AcceptUpdate(CmpBlockInfo &cm
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::UpdateBasicBlockInfo(BasicBlockInfo &basicBlockInfo,
+__aicore__ inline void CompressorKernel<COMP>::UpdateBasicBlockInfo(BasicBlockInfo &basicBlockInfo,
     CmpBlockInfo &cmpBlockInfo, bool isLeft)
 {
     if (isLeft) {
@@ -424,7 +409,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateBasicBlockInfo(BasicBlo
 }
 
 template <typename COMP>
-__aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneBasicBlock(
+__aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneBasicBlock(
     CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo)
 {
     BasicBlockInfo basicBlockInfo{};
@@ -470,7 +455,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneBasicBlock(
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetBasicBlockNum()
+__aicore__ inline uint32_t CompressorKernel<COMP>::GetBasicBlockNum()
 {
     // 计算基本块数量
     uint32_t basicBlockNum = 0;
@@ -485,7 +470,7 @@ __aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetBasicBlockNum()
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcCurCoreStartIdx(
+__aicore__ inline void CompressorKernel<COMP>::CalcCurCoreStartIdx(
     CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo)
 {
     uint32_t basicBlockNum = constInfo.curGroupIdx * constInfo.singleCoreDealTcBasicNum;
@@ -496,7 +481,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcCurCoreStartIdx(
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
+__aicore__ inline void CompressorKernel<COMP>::CalcSplitCoreInfo()
 {
     // D方向的基本块数量
     constInfo.dBasicBlockNum = constInfo.headDim / constInfo.dBaseSize;
@@ -525,7 +510,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t *workspace) {
+__aicore__ inline void CompressorKernel<COMP>::InitWorkspace(__gm__ uint8_t *workspace) {
     uint64_t offset = 0;
     // preMm1ResGm
     preMm1ResGm.SetGlobalBuffer(
@@ -552,49 +537,37 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info) {
+__aicore__ inline void CompressorKernel<COMP>::ComputeMm1(const RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
     blockCube_.ComputeMm1(info);
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const RunInfo &info) {
-#if (__CCE_AICORE__ == 220)
+__aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
-#else
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_V>(SYNC_C1_V1_FLAG);
-#endif
     blockVec_.ComputeVec1(info);
-#if (__CCE_AICORE__ == 220)
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);
-#else
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG);
-#endif
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec2(const Vec2RunInfo &info) {
+__aicore__ inline void CompressorKernel<COMP>::ComputeVec2(const Vec2RunInfo &info) {
     blockVec_.ComputeVec2(info);
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
+__aicore__ inline void CompressorKernel<COMP>::AllocEventID()
 {
     if ASCEND_IS_AIC {
         blockCube_.AllocEventID(pipe_);
     } else {
         blockVec_.AllocEventID();
-#if (__CCE_AICORE__ == 220)
         CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);
-#else
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG);
-#endif
     }
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
+__aicore__ inline void CompressorKernel<COMP>::FreeEventID()
 {
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
@@ -605,13 +578,13 @@ __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
 }
 
 template <typename COMP>
-__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteC1V1(uint32_t curBasicBlockIdx)
+__aicore__ inline bool CompressorKernel<COMP>::IsNeedExcuteC1V1(uint32_t curBasicBlockIdx)
 {
     return (curBasicBlockIdx < constInfo.realDealBasicBlockNum);
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info,
+__aicore__ inline void CompressorKernel<COMP>::CalcC1V1Params(RunInfo &info,
     uint32_t curBasicBlockIdx, CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo)
 {
     // 计算v1写出偏移
@@ -636,13 +609,13 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info,
 }
 
 template <typename COMP>
-__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteV2(Vec2RunInfo &vec2Info)
+__aicore__ inline bool CompressorKernel<COMP>::IsNeedExcuteV2(Vec2RunInfo &vec2Info)
 {
     return (vec2Info.dealScSize > 0);
 }
 
 template <typename COMP>
-__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedSyncAll(uint32_t curBasicBlockIdx)
+__aicore__ inline bool CompressorKernel<COMP>::IsNeedSyncAll(uint32_t curBasicBlockIdx)
 {
     if (allCompressedTcNum_ == 0) {
         return false;
@@ -656,7 +629,7 @@ __aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedSyncAll(uint32_t curBas
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::UpdateVec2Info(
+__aicore__ inline void CompressorKernel<COMP>::UpdateVec2Info(
     Vec2RunInfo &vec2Info, uint32_t curBasicBlockIdx, const RunInfo &info)
 {
     // nSize轮起始先重置v2Info信息
@@ -682,7 +655,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateVec2Info(
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::Process()
+__aicore__ inline void CompressorKernel<COMP>::Process()
 {
     // 所有batch的有效序列都为0时, 直接退出
     if (constInfo.batchSize == 0) {
@@ -728,4 +701,4 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
 
 } // namespace Compressor
 
-#endif // COMPRESSOR_KERNEL_PERF_H
+#endif // COMPRESSOR_KERNEL_H

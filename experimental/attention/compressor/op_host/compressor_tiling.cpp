@@ -155,8 +155,8 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
 
-     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u", \
- 	    baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff, baseParams_->stateCacheStrideDim0);
+    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u", \
+        baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff, baseParams_->stateCacheStrideDim0);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -174,16 +174,31 @@ ge::graphStatus CompressorTiling::SetPageAttentionInfo()
 
 ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
 {
-    workspaceParams_->preMm1ResSize = 0;
-    if (coff == 2) { // 2:需要做overlap
-        workspaceParams_->preMm1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * 2;      // 2 wkv和score合一起
-    }
-    workspaceParams_->curMm1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * 2;          // 2 wkv和score合一起
-    if (context_->templateId == TemplateId::PERF) {
-        workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * baseParams_->nSize;
+    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+        workspaceParams_->dbWorkspaceRatio = 2;
+        workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
+        workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
+        if (coff == 2) {
+            workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
+        }
+        if (context_->templateId == TemplateId::PERF) {
+            workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
+        } else {
+            workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize / baseParams_->cmpRatio * innerSplitParams_->dBaseSize * baseParams_->nSize;
+        }
     } else {
-        workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize / baseParams_->cmpRatio * innerSplitParams_->dBaseSize * baseParams_->nSize;
+        workspaceParams_->preMm1ResSize = 0;
+        if (coff == 2) { // 2:需要做overlap
+            workspaceParams_->preMm1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * 2;      // 2 wkv和score合一起
+        }
+        workspaceParams_->curMm1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * 2;          // 2 wkv和score合一起
+        if (context_->templateId == TemplateId::PERF) {
+            workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * baseParams_->nSize;
+        } else {
+            workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize / baseParams_->cmpRatio * innerSplitParams_->dBaseSize * baseParams_->nSize;
+        }
     }
+    
 
     return ge::GRAPH_SUCCESS;
 }
@@ -196,9 +211,6 @@ ge::graphStatus CompressorTiling::SetScenarioInfo()
 ge::graphStatus CompressorTiling::SetTemplateId()
 {
     if (context_->templateId == TemplateId::EMPTY_X) {
-        return ge::GRAPH_SUCCESS;
-    }
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         return ge::GRAPH_SUCCESS;
     }
     // 设置高性能模板
@@ -226,12 +238,24 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
 
 ge::graphStatus CompressorTiling::CalcWorkSpace()
 {
-    constexpr uint32_t MM1_RES_ELEM_SIZE = 4;      // 4: fp32
-    constexpr uint32_t V1_RES_ELEM_SIZE = 4;       // 4: fp32
-    workspaceSize_ = libapiSize_;
-    workspaceSize_ += aicNum_ * workspaceParams_->preMm1ResSize * MM1_RES_ELEM_SIZE;
-    workspaceSize_ += aicNum_ * workspaceParams_->curMm1ResSize * MM1_RES_ELEM_SIZE;
-    workspaceSize_ += aicNum_ * workspaceParams_->vec1ResSize * V1_RES_ELEM_SIZE;
+    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+        constexpr uint32_t MM1_RES_ELEM_SIZE = 4;      // 4: fp32
+        constexpr uint32_t V1_RES_ELEM_SIZE = 4;       // 4: fp32
+        uint32_t maxGroupNum = aicNum_ / (baseParams_->headDim / innerSplitParams_->dBaseSize);
+        workspaceSize_ = libapiSize_;
+        workspaceSize_ += workspaceParams_->mm1KvResSize * maxGroupNum * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+        workspaceSize_ += workspaceParams_->mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+        workspaceSize_ += workspaceParams_->vec1TailCacheSize * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio * 2;   // 2 kv和score
+        workspaceSize_ += workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+    } else {
+        constexpr uint32_t MM1_RES_ELEM_SIZE = 4;      // 4: fp32
+        constexpr uint32_t V1_RES_ELEM_SIZE = 4;       // 4: fp32
+        workspaceSize_ = libapiSize_;
+        workspaceSize_ += aicNum_ * workspaceParams_->preMm1ResSize * MM1_RES_ELEM_SIZE;
+        workspaceSize_ += aicNum_ * workspaceParams_->curMm1ResSize * MM1_RES_ELEM_SIZE;
+        workspaceSize_ += aicNum_ * workspaceParams_->vec1ResSize * V1_RES_ELEM_SIZE;
+    }
+    
     
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

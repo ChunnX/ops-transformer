@@ -53,13 +53,14 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ T * inputBuf, __ubuf__ GammaType * gamma
 
     for(uint32_t i = 0; i < repeatTimes; ++i){
         MicroAPI::RegTensor<T> vregX;
-        MicroAPI::RegTensor<GammaType> vregGamma;
+        // MicroAPI::RegTensor<GammaType> vregGamma;
         MicroAPI::RegTensor<T> vregGammaCast;
         uint16_t loopOffset = i * FLOAT_REP_SIZE;
 
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregX, inputBuf + loopOffset);
-        MicroAPI::LoadAlign<GammaType, MicroAPI::LoadDist::DIST_UNPACK_B16>(vregGamma, gammaBuf + loopOffset);
-        MicroAPI::Cast<T, GammaType, castTraitB162B32>(vregGammaCast, vregGamma, maskAll);
+        // MicroAPI::LoadAlign<GammaType, MicroAPI::LoadDist::DIST_UNPACK_B16>(vregGamma, gammaBuf + loopOffset);
+        // MicroAPI::Cast<T, GammaType, castTraitB162B32>(vregGammaCast, vregGamma, maskAll);
+        MicroAPI::LoadAlign<GammaType, MicroAPI::LoadDist::DIST_NORM>(vregGammaCast, gammaBuf + loopOffset);
 
         MicroAPI::Div(vregX, vregX, vregDiv, maskAll);
         MicroAPI::Mul(vregX, vregX, vregGammaCast, maskAll);
@@ -80,7 +81,7 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ T * inputBuf, __ubuf__ GammaType * gamma
           epsilon，防止除零极小数
  */
 template <typename T, typename GammaType>
-__aicore__ inline void RmsNormVF(LocalTensor<T> outputLocal, const LocalTensor<T> inputLocal, const LocalTensor<GammaType> gammaLocal,
+__aicore__ inline void RmsNormVF(const LocalTensor<T> outputLocal, const LocalTensor<T> inputLocal, const LocalTensor<GammaType> gammaLocal,
     float reciprocal, float epsilon, uint32_t row, uint32_t col) 
 {
     uint32_t cnt = row * col;
