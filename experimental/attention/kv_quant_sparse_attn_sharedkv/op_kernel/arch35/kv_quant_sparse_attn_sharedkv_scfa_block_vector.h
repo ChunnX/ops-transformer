@@ -58,13 +58,20 @@ public:
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseAttnSharedkvTilingData *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedKv)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             tilingData = tiling;
             if (cuSeqlensQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+            }
+            if (cuSeqlensQ != nullptr) {
+                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+            }
+            if (cuSeqlensQ != nullptr) {
+                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
             }
             if (sequsedKv != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
@@ -133,6 +140,7 @@ private:
     GlobalTensor<KV_T> oriKVGm;
     GlobalTensor<KV_T> cmpKVGm;
     GlobalTensor<KV_T> keyGm;
+    GlobalTensor<int32_t> cuSeqlensKvGm;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> oriSparseIndicesGm;
     GlobalTensor<int32_t> cmpSparseIndicesGm;
@@ -141,6 +149,8 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<T> sinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
+    GlobalTensor<int32_t> cuSeqlensOriKvGm;
+    GlobalTensor<int32_t> cuSeqlensCmpKvGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
 
     TBuf<> commonTBuf; // common的复用空间
@@ -249,7 +259,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx, 
             }
         }
     } else {
-        realKeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
+        if (LAYOUT_T == SAS_LAYOUT::BSND) {
+            realKeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
+        } else if (LAYOUT_T == SAS_LAYOUT::TND) {
+            realKeyOffset = (cuSeqlensCmpKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.dSizeVInput; // TN(1)D
+        }
     }
 }
 
@@ -697,7 +711,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
             curSequence += copyElmenCnt;
         }
     } else {
-        DataCopyPad(kvMergUb, keyGm[s2Idx * combineDim], intriParams, padParams);
+        DataCopyPad(kvMergUb, keyGm[(cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.n2Size * combineDim],
+            intriParams, padParams);
     }
 }
 
@@ -756,11 +771,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     }
     if (runInfo.isCmp) {
         keyGm = cmpKVGm;
+        cuSeqlensKvGm = cuSeqlensCmpKvGm;
         blockTableGm = cmpBlockTableGm;
         blockSize = constInfo.cmpBlockSize;
         maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
     } else {
         keyGm = oriKVGm;
+        cuSeqlensKvGm = cuSeqlensOriKvGm;
         blockTableGm = oriBlockTableGm;
         blockSize = constInfo.oriBlockSize;
         maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
@@ -1174,7 +1191,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
 
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
-        int64_t s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+        int64_t s2Size;
+        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+            s2Size = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
+        } else {
+            s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+        }
         int64_t s1Size;
         if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
             s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
@@ -1217,7 +1239,8 @@ public:
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseAttnSharedkvTilingData *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
 };
 }

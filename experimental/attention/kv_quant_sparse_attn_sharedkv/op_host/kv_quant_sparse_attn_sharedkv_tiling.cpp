@@ -203,6 +203,7 @@ ge::graphStatus KvQuantSASInfoParser::GetKvLayout()
 {
     const map<string, SASLayout> layoutKVMap = {
         {"PA_ND",     SASLayout::PA_ND},
+        {"TND",       SASLayout::TND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -304,13 +305,13 @@ ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenSize(uint32_t &size, const 
             name.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize);
+    size = static_cast<uint32_t>(shapeSize) - 1;
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
-    return GetActualSeqLenSize(size, opParamInfo_.sequsedKv.tensor, qLayout_, "cuSeqLensQ");
+    return GetActualSeqLenSize(size, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cuSeqLensQ");
 }
 
 ge::graphStatus KvQuantSASInfoParser::GetBatchSize()
@@ -351,6 +352,9 @@ ge::graphStatus KvQuantSASInfoParser::GetS1Size()
 
 ge::graphStatus KvQuantSASInfoParser::GetMaxBlockNumPerBatch()
 {
+    if (kvLayout_ == SASLayout::TND) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
         OP_LOGE(opName_, "the layout_kv is %s and topk_value_mode is 1, blockTable must be provided.", KvQuantSASLayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
@@ -405,6 +409,9 @@ ge::graphStatus KvQuantSASInfoParser::GetS2SizeForPageAttention()
 
 ge::graphStatus KvQuantSASInfoParser::GetS2Size()
 {
+    if (kvLayout_ == SASLayout::TND) {
+        return ge::GRAPH_SUCCESS;
+    }
     // 获取S2基准值:PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
     return GetS2SizeForPageAttention();
 }
@@ -431,8 +438,14 @@ ge::graphStatus KvQuantSASInfoParser::GetSparseBlockCount()
 ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = static_cast<uint32_t>(s2Size_);
-    if (opParamInfo_.sequsedKv.tensor != nullptr) {
-        actualLenDimsKV_ = opParamInfo_.sequsedKv.tensor->GetShapeSize();
+    if (kvLayout_ == SASLayout::PA_ND) {
+        if (opParamInfo_.sequsedKv.tensor != nullptr) {
+            actualLenDimsKV_ = opParamInfo_.sequsedKv.tensor->GetShapeSize();
+        }
+    } else {
+        if (opParamInfo_.cuSeqLensOriKv.tensor != nullptr) {
+            actualLenDimsKV_ = opParamInfo_.cuSeqLensOriKv.tensor->GetShapeSize() - 1;
+        }
     }
     if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         actualLenDimsQ_ = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize(); // cuSeqLensQ shape is B+1

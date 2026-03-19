@@ -41,7 +41,7 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     param_names = [
         "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_kv", "softmax_scale", "cmp_ratio",
+        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "seqused_kv", "softmax_scale", "cmp_ratio",
         "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
         "ori_kv_topk_mode", "cmp_kv_topk_mode", "topk_value_mode", "template_run_mode", "actlen_mode","S1EQS2"
     ]
@@ -65,6 +65,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_block_size1"],
         locals()["param_block_size2"],
         locals()["param_cu_seqlens_q"],
+        locals()["param_cu_seqlens_ori_kv"],
+        locals()["param_cu_seqlens_cmp_kv"],
         locals()["param_seqused_kv"],
         locals()["param_softmax_scale"],
         locals()["param_cmp_ratio"],
@@ -110,6 +112,8 @@ def sas(param_combinations):   # 初始化参数和tensor
     block_size1 = param_combinations['block_size1']
     block_size2 = param_combinations['block_size2']
     cu_seqlens_q = param_combinations['cu_seqlens_q']
+    cu_seqlens_ori_kv = param_combinations['cu_seqlens_ori_kv']
+    cu_seqlens_cmp_kv = param_combinations['cu_seqlens_cmp_kv']
     seqused_kv = param_combinations['seqused_kv']
     softmax_scale = param_combinations['softmax_scale']
     cmp_ratio = param_combinations['cmp_ratio']
@@ -134,7 +138,7 @@ def sas(param_combinations):   # 初始化参数和tensor
     if Testcase_Name ==None :
         Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
 
-    # 生成actLen 
+    # 生成actLen
     QS = [0]
     KVS = []
     if cu_seqlens_q == None or seqused_kv == None:
@@ -143,15 +147,17 @@ def sas(param_combinations):   # 初始化参数和tensor
                 if actlen_mode == "random":
                     tmpS1 = S1 - random.randint(0, S1 - 1)
                     QS.append(tmpS1 + QS[-1])
-                    if S1EQS2: #  qs=kvs
-                        tmpS2 = tmpS1
-                    else: # qs != kvs
-                        tmpS2 = S2 - random.randint(0, math.ceil(S2/2) - 1)
-                    KVS.append(tmpS2)
+                    if layout_kv != "TND":
+                        if S1EQS2: #  qs=kvs
+                            tmpS2 = tmpS1
+                        else: # qs != kvs
+                            tmpS2 = S2 - random.randint(0, math.ceil(S2/2) - 1)
+                        KVS.append(tmpS2)
                 elif actlen_mode == "full":  ## 走该分支
                     tmpS1 = S1
                     QS.append(tmpS1 + QS[-1])
-                    KVS.append(S2)
+                    if layout_kv != "TND":
+                        KVS.append(S2)
         elif layout_q == "BSND":
             for i in range(B):
                 QS.append(S1 + QS[-1])
@@ -161,9 +167,11 @@ def sas(param_combinations):   # 初始化参数和tensor
                     tmpS2 = S2
                 KVS.append(tmpS2)
 
-        cu_seqlens_q = QS
-        seqused_kv = KVS
+        cu_seqlens_q = QS if cu_seqlens_q == None else cu_seqlens_q
+        seqused_kv = KVS if layout_kv != "TND" else None
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
+    T2 = cu_seqlens_ori_kv[-1] if layout_kv == "TND" else None
+    T3 = cu_seqlens_cmp_kv[-1] if (template_run_mode != "SWA" and layout_kv == "TND") else None
     # 生成ori_kv_topk
     if template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA":
         if ori_kv_topk_mode == "full":
@@ -177,7 +185,7 @@ def sas(param_combinations):   # 初始化参数和tensor
             else:
                 raise ValueError(f"layout_q is not support {layout_q}")
         else:
-            ori_topk_length = None    
+            ori_topk_length = None
     else:
         ori_topk_length = None
 
@@ -195,7 +203,7 @@ def sas(param_combinations):   # 初始化参数和tensor
             else:
                 raise ValueError(f"layout_q is not support {layout_q}")
         else:
-            cmp_topk_length = None   
+            cmp_topk_length = None
     else:
         cmp_topk_length = None
 
@@ -204,23 +212,24 @@ def sas(param_combinations):   # 初始化参数和tensor
     ori_block_num_sum = 0
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
-    for cur_ori_act_kv in seqused_kv:
-        cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
-        ori_block_num_per_batch.append(cur_ori_kv_block_num)
-        ori_block_num_sum += cur_ori_kv_block_num
+    if layout_kv != "TND":
+        for cur_ori_act_kv in seqused_kv:
+            cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
+            ori_block_num_per_batch.append(cur_ori_kv_block_num)
+            ori_block_num_sum += cur_ori_kv_block_num
 
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
-        cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
-        cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
-        cmp_block_num_sum += cur_cmp_kv_block_num
+            cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+            cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
+            cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
+            cmp_block_num_sum += cur_cmp_kv_block_num
     block_num1 = ori_block_num_sum
     block_num2 = cmp_block_num_sum
-    
-    params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
+
+    params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K, block_num1, \
+                block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
                 cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_topk_length, cmp_topk_length, \
                 topk_value_mode, template_run_mode
-    
+
     # 输入参数的合法性校验
     try:
         check_valid_param.check_valid_param(params)
@@ -242,10 +251,10 @@ def sas(param_combinations):   # 初始化参数和tensor
     case_id += 1
 
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
-    
+
     if(result == "NPU ERROR"):
         pytest.fail(f"用例执行失败:{test_data['Testcase_Name']}")
-    
+
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
 def test_sparse_attn_sharedkv(param_combinations):

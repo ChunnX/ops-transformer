@@ -43,6 +43,8 @@ const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
+const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
+const std::string CU_SEQLENS_CMP_KV_NAME = "cu_seqlens_cmp_kv";
 const std::string SEQUSED_KV_NAME = "seqused_kv";
 
 // // ------------------公共定义--------------------------
@@ -468,6 +470,8 @@ private:
     ge::graphStatus CheckSingleParaCmpSparseIndices() const;
     ge::graphStatus CheckSingleParaBlockTable() const;
     ge::graphStatus CheckSingleParaCuSeqLensQ() const;
+    ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
+    ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
     ge::graphStatus CheckSingleParaSequsedKv() const;
     ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSingleParaMetadata() const;
@@ -476,6 +480,9 @@ private:
     ge::graphStatus CheckParaExistenceAntiquant() const;
     ge::graphStatus CheckCmpSparseIndicesExistence();
     ge::graphStatus CheckParaExistence();
+    ge::graphStatus CheckSequsedKvExistence() const;
+    ge::graphStatus CheckCuSeqLensOriKvExistence()const;
+    ge::graphStatus CheckCuSeqLensCmpKvExistence() const;
     ge::graphStatus CheckCmpRatioExistence();
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
         const SASLayout &layout, const std::string &name) const;
