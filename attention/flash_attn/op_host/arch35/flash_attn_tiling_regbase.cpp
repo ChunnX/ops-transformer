@@ -336,7 +336,7 @@ ge::graphStatus FlashAttnTilingRegbase::PostTiling()
     // OP_LOGD(context_,
     //     "FlashAttn PostTiling: tilingKey=0x%lx blockDim=%d.",
     //     tilingKey, usedCoreNum);
-    // context_->GetRawTilingData()->SetDataSize(sizeof(FlashAttnScoreSimplifiedTilingData));
+    // context_->GetRawTilingData()->SetDataSize(sizeof(FlashAttentionScoreSimplifiedTilingData));
     return ge::GRAPH_SUCCESS;
 }
 

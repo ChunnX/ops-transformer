@@ -78,7 +78,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(IsPA, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(IsSoftmaxLse, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttnScoreSimplifiedTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 );
 

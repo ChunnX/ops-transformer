@@ -271,8 +271,8 @@ protected:
     const char *opName = nullptr;
 
     // TilingData
-    FlashAttnScoreSimplifiedTilingData *tilingData =
-        context_->GetTilingData<FlashAttnScoreSimplifiedTilingData>();
+    FlashAttentionScoreSimplifiedTilingData *tilingData =
+        context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
     InputParamsRegbase      *inputParamsRegbase_   = &tilingData->inputParamsRegbase;
     MultiCoreParamsRegbase  *multiCoreParamsRegbase_ = &tilingData->multiCoreParamsRegbase;
 };

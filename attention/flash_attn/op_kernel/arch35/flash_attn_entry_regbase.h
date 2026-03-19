@@ -25,8 +25,8 @@
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_base.h"
 
 #define FA_COPY_TILING_DATA(tiling)                                                                    \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttnScoreSimplifiedTilingData, tilingDataIn, tiling);        \
-    const FlashAttnScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;              \
+    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);        \
+    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;              \
 
 #ifdef __DAV_C310_CUBE__
 //todo kernel tempale 实例化
