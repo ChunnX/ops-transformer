@@ -122,16 +122,20 @@ struct SplitResult {
 // 分核功能模块内部使用：记录切分信息
 struct SplitInfo {
     std::vector<uint32_t> s1GBaseNum {};                   // S1G方向，切了多少个基本块
-    std::vector<uint32_t> s2BaseNum {};                    // S2方向，切了多少个基本块
+    std::vector<uint32_t> oriS2BaseNum {};                    // oriS2方向，切了多少个基本块
+    std::vector<uint32_t> cmpS2BaseNum {};                    // cmpS2方向，切了多少个基本块
     std::vector<uint32_t> s1GTailSize {};                  // S1G方向，尾块size
-    std::vector<uint32_t> s2TailSize {};                   // S2方向，尾块size
+    std::vector<uint32_t> oriS2TailSize {};                   // oriS2方向，尾块size
+    std::vector<uint32_t> cmpS2TailSize {};                   // cmpS2方向，尾块size
     bool isKvSeqAllZero { true };
 
     explicit SplitInfo(uint32_t batchSize) :
         s1GBaseNum(batchSize),
-        s2BaseNum(batchSize),
+        oriS2BaseNum(batchSize),
+        cmpS2BaseNum(batchSize),
         s1GTailSize(batchSize),
-        s2TailSize(batchSize) {}
+        oriS2TailSize(batchSize),
+        cmpS2TailSize(batchSize){}
 };
 
 // 分核功能模块内部使用：记录batch的开销信息
@@ -163,7 +167,8 @@ struct SplitContext {
 struct BatchCache {
     uint32_t bIdx { 0U };
     uint32_t s1Size { 0U };
-    uint32_t s2Size { 0U };
+    uint32_t oriS2Size { 0U };
+    uint32_t cmpS2Size { 0U };
     int64_t oriPreTokenLeftUp { 0 };
     int64_t oriNextTokenLeftUp { 0 };
     int64_t cmpPreTokenLeftUp { 0 };
@@ -250,11 +255,12 @@ private:
     ValidSocVersion ProcessSocVersion();
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
-    uint32_t GetS2SeqSize(uint32_t bIdx);
+    uint32_t GetOriS2SeqSize(uint32_t bIdx);
+    uint32_t GetCmpS2SeqSize(uint32_t bIdx);
+    uint32_t GetS1Idx(uint32_t s1Size, uint32_t s1GIdx);
+    uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
     uint32_t GetOriTopkLength(uint32_t bsStride);
     uint32_t GetCmpTopkLength(uint32_t bsStride);
-    uint32_t GetS1Idx(const BatchCache &batchCache, uint32_t s1GIdx);
-    uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
     int64_t CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
