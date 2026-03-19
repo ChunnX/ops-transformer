@@ -1279,6 +1279,8 @@ ge::graphStatus SFATilingCheck::CheckMultiParaConsistency()
         ge::GRAPH_SUCCESS != CheckQRope() ||
         ge::GRAPH_SUCCESS != CheckTopK() ||
         ge::GRAPH_SUCCESS != CheckAttenOut() ||
+        ge::GRAPH_SUCCESS != CheckSoftmaxMax() ||
+        ge::GRAPH_SUCCESS != CheckSoftmaxSum() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
