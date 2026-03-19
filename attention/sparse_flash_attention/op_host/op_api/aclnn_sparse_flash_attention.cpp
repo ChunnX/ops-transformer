@@ -107,8 +107,8 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     if (returnSoftmaxLse) {
-        if (softmaxMax == nullptr && softmaxSum == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "softmaxMax and softmaxSum cannot be nullptr.");
+        if (softmaxMax == nullptr || softmaxSum == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "when returnSoftmaxLse is true, softmaxMax and softmaxSum cannot be nullptr.");
             return ge::GRAPH_FAILED;
         }
     } else {
