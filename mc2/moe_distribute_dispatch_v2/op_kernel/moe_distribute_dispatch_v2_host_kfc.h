@@ -1169,11 +1169,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
     uint64_t count =0;
     while(true) { // 软同步
-        //count++;
-        // if(count > 1000000){
-        //     LOG_INFO("error WaitFlag,Error count");
-        //     break;
-        // }
+        count++;
+        if(count > 1000000){
+            LOG_INFO("error WaitFlag,error count");
+            break;
+        }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         // for(uint32_t i = 0; i < waitNum; i++) {
@@ -2398,13 +2398,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
     LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
 
-    // int count = 0;
+    int count = 0;
     while (true) {
-        // count++;
-        // if(count == 1000000) {
-        //     LOG_INFO("WaitCumSumFlag error count");
-        //     break;
-        // }
+        count++;
+        if(count == 1000000) {
+            LOG_INFO("WaitCumSumFlag error count");
+            break;
+        }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusSumOutTensor, statusFp32Tensor_, sumFlagParams);
