@@ -123,7 +123,9 @@ private:
     ge::graphStatus CheckAndSetLocalParamsMm();
     ge::graphStatus CheckAndSetLocalParamsAttr();
     ge::graphStatus CheckAndSetLocalParams();
+    ge::graphStatus CheckParamsRelationGmmTransShape();
     ge::graphStatus CheckParamsRelationGmm();
+    ge::graphStatus CheckParamsRelationMmTransShape();
     ge::graphStatus CheckParamsRelationMm();
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams();
     ge::graphStatus CheckAndSetSendRecvCountsAttr();
