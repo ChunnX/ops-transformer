@@ -34,9 +34,7 @@ void AllGatherMMFitBalanceTiling::EstimateMMCommTime()
     } else {
         frontMMTime_ = matmulPerf_.MatmulTime(mmInfo_.mValue, 1);
     }
-    if (totalMatmulTime >= totalTpTime) {
-        tilingM_.cutRes.shortTileAtBack = true;
-    }
+    tilingM_.cutRes.shortTileAtBack = true;
     ratioCalcComm_ = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
 
     uint64_t sizeOfComm = mmInfo_.mValue * mmInfo_.kValue * (rankDim_ - 1) / ONE_MBYTE * commPerf_.GetCommDTypeSize();
@@ -51,13 +49,7 @@ void AllGatherMMFitBalanceTiling::EstimateMMCommTime()
 void AllGatherMMFitBalanceTiling::SetLongTileLen()
 {
     // Long tile should overlap the cost time of local tile
-    if (tilingM_.cutRes.shortTileAtBack) {
-        tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(frontMMTime_);
-    } else {
-        double targetTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
-        tilingM_.cutRes.longTileLen =
-            matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
-    }
+    tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(frontMMTime_);
 }
 
 void AllGatherMMFitBalanceTiling::SetShortTileLen()

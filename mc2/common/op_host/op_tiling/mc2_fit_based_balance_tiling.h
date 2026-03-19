@@ -31,6 +31,7 @@ public:
     MatmulParameters mmInfo_;
     uint64_t rankDim_ = 2;
     uint64_t rankTileNum_ = 1;
+    uint64_t coreNum_ = 32;
     double ratioCalcComm_ = 1.0;
 
     explicit Mc2FitBasedBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
@@ -41,12 +42,13 @@ public:
         mmInfo_ = matmulPerf_.mmShapeInfo_;
         tilingM_.SetMaxTileCnt(MAX_TILE_CNT); // Due to the limited FFTS queue size, a maximum of 16 rounds can be cut.
         rankTileNum_ = commPerf_.GetRankTileNum();
+        coreNum_ = args.aicCoreNum;
     };
 
     virtual CutResult GetTiling();
     virtual void EstimateMMCommTime() {};
     virtual void SetShortTileLen() {};
-    virtual void SetLongTileLen();
+    virtual void SetLongTileLen() {};
     virtual void AdjustLongShortTileLen() {};
 
     virtual ~Mc2FitBasedBalanceTiling()

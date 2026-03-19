@@ -32,18 +32,3 @@ CutResult Mc2FitBasedBalanceTiling::GetTiling()
 
     return tilingM_.cutRes;
 }
-
-
-void Mc2FitBasedBalanceTiling::SetLongTileLen()
-{
-    // balancing the pipeline
-    if (tilingM_.cutRes.shortTileAtBack) {
-        double targetTime =
-            matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, rankTileNum_);
-        tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(targetTime);
-    } else {
-        double targetTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
-        tilingM_.cutRes.longTileLen =
-            matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
-    }
-}
