@@ -1524,7 +1524,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     uint32_t startServerId, endServerId, serverCnt;
     SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ , aivUsedGather_, startServerId, endServerId, serverCnt);
-    if (startServerId >= serverNum_ || serverCnt == 0) {
+    if (startServerId >= endServerId || serverCnt == 0) {
         return;
     }
     
