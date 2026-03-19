@@ -1,0 +1,505 @@
+GTEST_INSTALL_PATH=/home/j60100428/ops-transformer_0319/third_party/gtest
+gtest found:FALSE
+gtest not found in /home/j60100428/ops-transformer_0319/third_party/gtest, begin load from https://gitcode.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz
+CMake Warning (dev) at /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:3074 (message):
+  The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
+  not set.  The policy's OLD behavior will be used.  When using a URL
+  download, the timestamps of extracted files should preferably be that of
+  the time of extraction, otherwise code that depends on the extracted
+  contents might not be rebuilt if the URL changes.  The OLD behavior
+  preserves the timestamps from the archive instead, but this is usually not
+  what you want.  Update your project to the NEW behavior or specify the
+  DOWNLOAD_EXTRACT_TIMESTAMP option with a value of true to avoid this
+  robustness issue.
+Call Stack (most recent call first):
+  /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:4170 (_ep_add_download_command)
+  cmake/third_party/gtest.cmake:90 (ExternalProject_Add)
+  CMakeLists.txt:130 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+[2026-03-25 17:04:27] Warning: The current environment is configured for ascend910b, Please use Atlas A2 series hardware for optimal performance.
+[2026-03-25 17:04:28] ----------------------------------------------------------------
+[2026-03-25 17:04:28] Start to build ut
+[2026-03-25 17:04:28] -- The C compiler identification is GNU 9.4.0
+[2026-03-25 17:04:28] -- The CXX compiler identification is GNU 9.4.0
+[2026-03-25 17:04:28] -- Detecting C compiler ABI info
+[2026-03-25 17:04:28] -- Detecting C compiler ABI info - done
+[2026-03-25 17:04:28] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-03-25 17:04:28] -- Detecting C compile features
+[2026-03-25 17:04:28] -- Detecting C compile features - done
+[2026-03-25 17:04:28] -- Detecting CXX compiler ABI info
+[2026-03-25 17:04:29] -- Detecting CXX compiler ABI info - done
+[2026-03-25 17:04:29] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-03-25 17:04:29] -- Detecting CXX compile features
+[2026-03-25 17:04:29] -- Detecting CXX compile features - done
+[2026-03-25 17:04:29] -- ASCEND_CANN_PACKAGE_PATH=/home/j60100428/Ascend_0320/cann-9.0.0
+[2026-03-25 17:04:29] -- compile project with library
+[2026-03-25 17:04:31] -- Found Python3: /root/miniconda3/envs/jpy38/bin/python3.8 (found version "3.8.20") found components: Interpreter 
+[2026-03-25 17:04:31] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=
+[2026-03-25 17:04:31] -- CCACHE_PROGRAM=CCACHE_PROGRAM-NOTFOUND
+[2026-03-25 17:04:31] -- ASCEND_COMPUTE_UNIT=ascend910b;
+[2026-03-25 17:04:31] -- ASCEND_OP_NAME=prompt_flash_attention
+[2026-03-25 17:04:31] -- TILING_KEY=
+[2026-03-25 17:04:31] -- TESTS_UT_OPS_TEST=prompt_flash_attention
+[2026-03-25 17:04:31] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-03-25 17:04:31] -- CMAKE_BUILD_TYPE=Debug
+[2026-03-25 17:04:31] -- VERSION=
+[2026-03-25 17:04:31] -- CMAKE_CXX_COMPILER_ID=GNU
+[2026-03-25 17:04:31] -- Could NOT find json (missing: JSON_INCLUDE) 
+[2026-03-25 17:04:32] -- Could NOT find gtest (missing: GTEST_INCLUDE GTEST_STATIC_LIBRARY GTEST_MAIN_STATIC_LIBRARY GMOCK_STATIC_LIBRARY GMOCK_MAIN_STATIC_LIBRARY) 
+[2026-03-25 17:04:32] -- Start building custom package.
+[2026-03-25 17:04:32] -- Search libs under install path /home/j60100428/Ascend_0320/cann-9.0.0
+[2026-03-25 17:04:32] -- CMAKE_MODULE_PATH            :/home/j60100428/ops-transformer_0319/cmake/modules;/home/j60100428/Ascend_0320/cann-9.0.0/include/ge/cmake
+[2026-03-25 17:04:32] -- compile option:  -O0 -g -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-03-25 17:04:32] -- Found dlog: /home/j60100428/Ascend_0320/cann-9.0.0/pkg_inc/base  
+[2026-03-25 17:04:32] -- Transformer Variables in dlog module:
+[2026-03-25 17:04:32] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/j60100428/Ascend_0320/cann-9.0.0/pkg_inc/base"
+[2026-03-25 17:04:32] -- dlog_SHARED_LIBRARY="/home/j60100428/Ascend_0320/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-25 17:04:32] -- 
+[2026-03-25 17:04:32]  Properties for TARGET dlog:
+[2026-03-25 17:04:32]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-03-25 17:04:32]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-03-25 17:04:32]    dlog.IMPORTED_LOCATION = "/home/j60100428/Ascend_0320/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-25 17:04:32] 
+[2026-03-25 17:04:32] -- 
+[2026-03-25 17:04:32]  Properties for TARGET dlog_headers:
+[2026-03-25 17:04:32]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_0320/cann-9.0.0/pkg_inc/base"
+[2026-03-25 17:04:32] 
+[2026-03-25 17:04:32] -- Found securec: /home/j60100428/Ascend_0320/cann-9.0.0/include  
+[2026-03-25 17:04:32] -- Found OPBASE: /home/j60100428/ops-transformer_0319/third_party/opbase/pkg_inc  
+[2026-03-25 17:04:32] -- Found OPABSE include:/home/j60100428/ops-transformer_0319/third_party/opbase/pkg_inc
+[2026-03-25 17:04:32] -- Found OPABSE lib:
+[2026-03-25 17:04:32] -- Found platform: /home/j60100428/Ascend_0320/cann-9.0.0/include  
+[2026-03-25 17:04:32] -- Found platform include:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include
+[2026-03-25 17:The eigen package needs to be downloaded.
+04:32] -- Found register library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libregister.so
+[2026-03-25 17:04:32] -- Found opp_registry library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libopp_registry.so
+[2026-03-25 17:04:32] -- Found exe_graph library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libexe_graph.so
+[2026-03-25 17:04:32] -- Found graph_base library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libgraph_base.so
+[2026-03-25 17:04:32] -- Found error_manager library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/liberror_manager.so
+[2026-03-25 17:04:32] -- Found metadef library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libmetadef.so
+[2026-03-25 17:04:32] -- Found rt2_registry library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/librt2_registry.a
+[2026-03-25 17:04:32] -- Found metadef: /home/j60100428/Ascend_0320/cann-9.0.0/include  
+[2026-03-25 17:04:32] -- Found source metadef include dir:  /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/exe_graph
+[2026-03-25 17:04:32] -- Found graph library:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libgraph.so
+[2026-03-25 17:04:32] -- Found source acl include dir:  /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include
+[2026-03-25 17:04:32] -- [transformer]Found source npuruntime include dir: /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc/runtime
+[2026-03-25 17:04:32] -- Found aclnn include dir:  /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include
+[2026-03-25 17:04:32] -- Found opdev include dir:  /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/aclnn
+[2026-03-25 17:04:32] -- Found tilingapi include:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include
+[2026-03-25 17:04:32] -- TILINGAPI_INC_DIRS: /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/ascendc;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/ascendc/include;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/lib;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/impl;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/tiling
+[2026-03-25 17:04:32] -- Found tilingapi lib:/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/lib64/libtiling_api.a
+[2026-03-25 17:04:32] -- Using AICPU include dirs: /home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/experiment;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/experiment/cce;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/experiment/msprof;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/common;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/utils;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/aicpu_common/context;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/aicpu_common/context/common;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/aicpu_common/context/utils;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc;/home/j60100428/Ascend_0320/cann-9.0.0/x86_64-linux/pkg_inc/aicpu
+[2026-03-25 17:04:32] -- Finding gen es pkg
+[2026-03-25 17:04:32] -- [add_es_library] Module loaded from: /home/j60100428/Ascend_0320/cann-9.0.0/include/ge/cmake
+[2026-03-25 17:04:32] -- Downloading eigen from https://gitcode.com/cann-src-third-party/eigen/releases/downlCMake Warning (dev) at /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:3074 (message):
+  The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
+  not set.  The policy's OLD behavior will be used.  When using a URL
+  download, the timestamps of extracted files should preferably be that of
+  the time of extraction, otherwise code that depends on the extracted
+  contents might not be rebuilt if the URL changes.  The OLD behavior
+  preserves the timestamps from the archive instead, but this is usually not
+  what you want.  Update your project to the NEW behavior or specify the
+  DOWNLOAD_EXTRACT_TIMESTAMP option with a value of true to avoid this
+  robustness issue.
+Call Stack (most recent call first):
+  /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:4170 (_ep_add_download_command)
+  cmake/third_party/abseil-cpp.cmake:52 (ExternalProject_Add)
+  CMakeLists.txt:147 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:3074 (message):
+  The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
+  not set.  The policy's OLD behavior will be used.  When using a URL
+  download, the timestamps of extracted files should preferably be that of
+  the time of extraction, otherwise code that depends on the extracted
+  contents might not be rebuilt if the URL changes.  The OLD behavior
+  preserves the timestamps from the archive instead, but this is usually not
+  what you want.  Update your project to the NEW behavior or specify the
+  DOWNLOAD_EXTRACT_TIMESTAMP option with a value of true to avoid this
+  robustness issue.
+Call Stack (most recent call first):
+  /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:4170 (_ep_add_download_command)
+  cmake/third_party/ascend_protobuf.cmake:54 (ExternalProject_Add)
+  CMakeLists.txt:148 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /opt/cmake/share/cmake-3.24/Modules/FetchContent.cmake:1267 (message):
+  The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
+  not set.  The policy's OLD behavior will be used.  When using a URL
+  download, the timestamps of extracted files should preferably be that of
+  the time of extraction, otherwise code that depends on the extracted
+  contents might not be rebuilt if the URL changes.  The OLD behavior
+  preserves the timestamps from the archive instead, but this is usually not
+  what you want.  Update your project to the NEW behavior or specify the
+  DOWNLOAD_EXTRACT_TIMESTAMP option with a value of true to avoid this
+  robustness issue.
+Call Stack (most recent call first):
+  cmake/third_party/makeself-fetch.cmake:32 (FetchContent_Declare)
+  CMakeLists.txt:150 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+oad/5.0.0-h0.trunk/eigen-5.0.0.tar.gz
+[2026-03-25 17:04:32] -- Could NOT find abseil-cpp (missing: ABSL_SOURCE_DIR) 
+[2026-03-25 17:04:32] -- [ThirdPartyLib][abseil-cpp] https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz not found, need download.
+[2026-03-25 17:04:32] -- Could NOT find ascend_protobuf_build_transformer (missing: ASCEND_PROTOBUF_SHARED_INCLUDE) 
+[2026-03-25 17:04:32] -- [ThirdPartyLib][ascend protobuf] ascend protobuf shared not found, finding binary file.
+[2026-03-25 17:04:32] -- [ThirdPartyLib][ascend protobuf] https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz not found, need download.
+[2026-03-25 17:04:32] -- Downloading makeself from https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz
+[2026-03-25 17:04:33] -- Found alog: /home/j60100428/Ascend_0320/cann-9.0.0/include  
+[2026-03-25 17:04:33] -- Variables in alog module:
+[2026-03-25 17:04:33] -- alog_a_INCLUDE_DIR="/home/j60100428/Ascend_0320/cann-9.0.0/include"
+[2026-03-25 17:04:33] -- slog_a_SHARED_LIBRARY="/home/j60100428/Ascend_0320/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-25 17:04:33] -- alog_a_SHARED_LIBRARY="/home/j60100428/Ascend_0320/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-25 17:04:33] -- 
+[2026-03-25 17:04:33]  Properties for TARGET slog_a:
+[2026-03-25 17:04:33]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-03-25 17:04:33]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-03-25 17:04:33]    slog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_0320/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-25 17:04:33] 
+[2026-03-25 17:04:33] -- 
+[2026-03-25 17:04:33]  Properties for TARGET alog_a:
+[2026-03-25 17:04:33]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-03-25 17:04:33]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-03-25 17:04:33]    alog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_0320/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-25 17:04:33] 
+[2026-03-25 17:04:33] -- 
+[2026-03-25 17:04:33]  Properties for TARGET alog_headers:
+[2026-03-25 17:04:33]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_0320/cann-9.0.0/include;/home/j60100428/Ascend_0320/cann-9.0.0/include/base"
+[2026-03-25 17:04:33] 
+[2026-03-25 17:04:33] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-03-25 17:04:33] -- === Debug: start ops.ops-transformer.attention.prompt_flash_attention.tests.CMakeLists.txt 
+[2026-03-25 17:04:33] -- === Debug: CURRENT_DIRS =CMakeLists.txt;st;ut 
+[2026-03-25 17:04:33] -- === Debug: CURRENT_DIRS =CMakeLists.txt;op_api;op_host 
+[2026-03-25 17:04:33] -- _OpsTestUt_UTestCaseLibraries      = .
+[2026-03-25 17:04:33] -- _OpsTestUt_UTestAclnnCaseLibraries = 
+[2026-03-25 17:04:33] -- _OpsTestUt_UTestCaseLibraries and _OpsTestUt_UTestAclnnCaseLibraries both empty.
+[2026-03-25 17:04:33] -- aicpu or host aicpu no need aclnn.
+[2026-03-25 17:04:33] -- Skip proto update: /home/j60100428/ops-transformer_0319/attention/prompt_flash_attention
+[2026-03-25 17:04:33] -- Start Generating es transformer for custom pkg
+[2026-03-25 17:04:33] -- Generated helper script: /home/j60100428/ops-transformer_0319/build/cmake/run_gen_esb_with_lock.sh
+[2026-03-25 17:04:33] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-03-25 17:04:33] -- add_es_package: Using default output directory: /home/j60100428/ops-transformer_0319/build
+[2026-03-25 17:04:33] -- add_es_package: OPP_PROTO_TARGET output directory: /home/j60100428/ops-transformer_0319/build
+[2026-03-25 17:04:33] -- add_es_package: Derived ASCEND_OPP_PATH: /home/j60100428/ops-transformer_0319/build
+[2026-03-25 17:04:33] --   - Created standard OPP path: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-03-25 17:04:33] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-03-25 17:04:33] --     Found gen_esb in PATH (environment variables configured)
+[2026-03-25 17:04:33] --     - gen_esb path: /home/j60100428/Ascend_0320/cann-9.0.0/bin/gen_esb
+[2026-03-25 17:04:33] --     - library path: /home/j60100428/Ascend_0320/cann-9.0.0/lib64
+[2026-03-25 17:04:33] -- Using proto library path (derived from OPP_PROTO_TARGET): /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-03-25 17:04:33] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-03-25 17:04:33] -- [add_es_library] No history registry found at /home/j60100428/Ascend_0320/cann-9.0.0/opp/history_registry/transformer_cust, skipping
+[2026-03-25 17:04:33] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-03-25 17:04:33] --   Found library in run package: /home/j60100428/Ascend_0320/cann-9.0.0/lib64/libeager_style_graph_builder_base.so
+[2026-03-25 17:04:33] -- Configuring ES package: es_transformer_cust
+[2026-03-25 17:04:33] --   - Exported target: es_transformer_cust (public interface)
+[2026-03-25 17:04:33] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-03-25 17:04:33] --   - Internal .so target: es_transformer_cust_so
+[2026-03-25 17:04:33] --   - Internal .a target: es_transformer_cust_a
+[2026-03-25 17:04:33] --   - Module name (for gen_esb): transformer_cust
+[2026-03-25 17:04:33] --   - OPP proto target: proto_transformer_cust
+[2026-03-25 17:04:33] --   - OPP proto path: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-03-25 17:04:33] --   - Output path: /home/j60100428/ops-transformer_0319/build/es_packages
+[2026-03-25 17:04:33] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-03-25 17:04:33] --   - Python package: es_transformer_cust
+[2026-03-25 17:04:33] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-03-25 17:04:33] --   - Wrapper file: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-03-25 17:04:33] --   - Module name: transformer_cust
+[2026-03-25 17:04:33] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-03-25 17:04:33] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-03-25 17:04:33] -- add_es_library: Deduced header base path from cmake file: /home/j60100428/Ascend_0320/cann-9.0.0
+[2026-03-25 17:04:33] -- add_es_library: metadef_headers target not found, skipping
+[2026-03-25 17:04:33] -- add_es_library: Found c_sec target
+[2026-03-25 17:04:33] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-03-25 17:04:33] -- add_es_package: 'build_es_transformer_cust' is the first ES package (will be built first)
+[2026-03-25 17:04:33] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-03-25 17:04:33] --   - Exported target (for linking): es_transformer_cust
+[2026-03-25 17:04:33] --   - Build target: build_es_transformer_cust
+[2026-03-25 17:04:33] --   - Wrapper file: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-03-25 17:04:33] --   - Internal targets:
+[2026-03-25 17:04:33] --     * Code generation: generate_es_transformer_cust_code
+[2026-03-25 17:04:33] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-03-25 17:04:33] --     * Shared library: es_transformer_cust_so
+[2026-03-25 17:04:33] --     * Static library: es_transformer_cust_a
+[2026-03-25 17:04:33] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-03-25 17:04:33] --     * Install: install_es_transformer_cust
+[2026-03-25 17:04:33] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-03-25 17:04:33] --   - Python package: es_transformer_cust
+[2026-03-25 17:04:33] --   - ES base library: /home/j60100428/Ascend_0320/cann-9.0.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-03-25 17:04:33] -- 
+[2026-03-25 17:04:33] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-03-25 17:04:33] -- 
+[2026-03-25 17:04:33] -- Quick start:
+[2026-03-25 17:04:33] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-03-25 17:04:33] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-03-25 17:04:33] -- 
+[2026-03-25 17:04:33] -- custom cust proto to es
+[2026-03-25 17:04:33] -- Detected architecture: x86_64
+[2026-03-25 17:04:33] -- End building custom package.
+[2026-03-25 17:04:33] -- create aclnn master header file: /home/j60100428/ops-transformer_0319/build/aclnn_ops_transformer_custom.h
+[2026-03-25 17:04:33] -- no operator info to generate
+[2026-03-25 17:04:33] -- Start building custom package.
+[2026-03-25 17:04:33] -- No aicpu json files to merge, skipping.
+[2026-03-25 17:04:33] -- No aicpu cust obj targets found, skipping.
+[2026-03-25 17:04:33] -- Configuring done
+[2026-03-25 17:04:33] -- Generating done
+[2026-03-25 17:04:33] -- Build files have been written to: /home/j60100428/ops-transformer_0319/build
+[2026-03-25 17:04:34] ... transformer_op_host_ut
+[2026-03-25 17:04:34] Building target: transformer_op_host_ut.
+[2026-03-25 17:04:34] [  0%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/log/log.cpp.o
+[2026-03-25 17:04:34] [  2%] Creating directories for 'third_party_json'
+[2026-03-25 17:04:34] [  5%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/fp16.cpp.o
+[2026-03-25 17:04:34] [  8%] Creating directories for 'third_party_gtest'
+[2026-03-25 17:04:34] [ 11%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/softmax_tiling_ut_stub.dir/__/__/__/tests/ut/framework_normal/common/softmax_tiling_mocker.cpp.o
+[2026-03-25 17:04:34] [ 11%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/math_util.cpp.o
+[2026-03-25 17:04:34] [ 14%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/shape_util.cpp.o
+[2026-03-25 17:04:34] [ 14%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/fallback_comm.cpp.o
+[2026-03-25 17:04:34] [ 14%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/prompt_flash_attention_infershape.cpp.o
+[2026-03-25 17:04:34] [ 17%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/fallback_comm_2stages.cpp.o
+[2026-03-25 17:04:34] [ 20%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/common/op_host/proto_stub.cpp.o
+[2026-03-25 17:04:34] [ 25%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_broadcast_util.cpp.o
+[2026-03-25 17:04:34] [ 25%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/tiling_base/tiling_util.cpp.o
+[2026-03-25 17:04:34] [ 31%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_elewise_util.cpp.o
+[2026-03-25 17:04:34] [ 31%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling.cpp.o
+[2026-03-25 17:04:34] [ 31%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_reduce_util.cpp.o
+[2026-03-25 17:04:34] [ 34%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_base.cpp.o
+[2026-03-25 17:04:34] [ 34%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_noncontiguous.cpp.o
+[2026-03-25 17:04:34] [ 37%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/elewise/elewise_tiling.cpp.o
+[2026-03-25 17:04:34] [ 40%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/reduce/reduce_tiling.cpp.o
+[2026-03-25 17:04:34] [ 42%] Performing download step (download and verify) for 'third_party_json'
+[2026-03-25 17:04:34] [ 45%] Performing download step (download, verify and extract) for 'third_party_gtest'
+[2026-03-25 17:04:34] -- Downloading...
+[2026-03-25 17:04:34]    dst='/home/j60100428/ops-transformer_0319/third_party/pkg/include.zip'
+[2026-03-25 17:04:34]    timeout='none'
+[2026-03-25 17:04:34]    inactivity timeout='none'
+[2026-03-25 17:04:34] -- Using src='https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip'
+[2026-03-25 17:04:34] -- Downloading...
+[2026-03-25 17:04:34]    dst='/home/j60100428/ops-transformer_0319/third_party/pkg/googletest-1.14.0.tar.gz'
+[2026-03-25 17:04:34]    timeout='none'
+[2026-03-25 17:04:34]    inactivity timeout='none'
+[2026-03-25 17:04:34] -- Using src='https://gitcode.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz'
+[2026-03-25 17:04:34] -- [download 5% complete]
+[2026-03-25 17:04:34] -- [download 2% complete]
+[2026-03-25 17:04:34] -- [download 11% complete]
+[2026-03-25 17:04:34] -- [download 16% complete]
+[2026-03-25 17:04:34] -- [download 4% complete]
+[2026-03-25 17:04:34] -- [download 6% complete]
+[2026-03-25 17:04:34] -- [download 22% complete]
+[2026-03-25 17:04:34] -- [download 27% complete]
+[2026-03-25 17:04:34] -- [download 7% complete]
+[2026-03-25 17:04:34] -- [download 9% complete]
+[2026-03-25 17:04:34] -- [download 32% complete]
+[2026-03-25 17:04:34] -- [download 38% complete]
+[2026-03-25 17:04:34] -- [download 11% complete]
+[2026-03-25 17:04:34] -- [download 13% complete]
+[2026-03-25 17:04:34] -- [download 43% complete]
+[2026-03-25 17:04:34] -- [download 15% complete]
+[2026-03-25 17:04:34] -- [download 49% complete]
+[2026-03-25 17:04:34] -- [download 54% complete]
+[2026-03-25 17:04:34] -- [download 60% complete]
+[2026-03-25 17:04:34] -- [download 65% complete]
+[2026-03-25 17:04:34] -- [download 17% complete]
+[2026-03-25 17:04:34] -- [download 19% complete]
+[2026-03-25 17:04:34] -- [download 21% complete]
+[2026-03-25 17:04:34] -- [download 71% complete]
+[2026-03-25 17:04:34] -- [download 23% complete]
+[2026-03-25 17:04:34] -- [download 76% complete]
+[2026-03-25 17:04:34] -- [download 24% complete]
+[2026-03-25 17:04:34] -- [download 82% complete]
+[2026-03-25 17:04:34] -- [download 87% complete]
+[2026-03-25 17:04:34] -- [download 26% complete]
+[2026-03-25 17:04:34] -- [download 28% complete]
+[2026-03-25 17:04:34] -- [download 93% complete]
+[2026-03-25 17:04:34] -- [download 98% complete]
+[2026-03-25 17:04:34] -- [download 100% complete]
+[2026-03-25 17:04:34] -- Downloading... done
+[2026-03-25 17:04:34] -- [download 30% complete]
+[2026-03-25 17:04:34] -- [download 32% complete]
+[2026-03-25 17:04:34] -- [download 34% complete]
+[2026-03-25 17:04:34] -- [download 36% complete]
+[2026-03-25 17:04:34] -- [download 38% complete]
+[2026-03-25 17:04:34] -- [download 40% complete]
+[2026-03-25 17:04:34] -- [download 41% complete]
+[2026-03-25 17:04:34] -- [download 43% complete]
+[2026-03-25 17:04:34] [ 45%] No update step for 'third_party_json'
+[2026-03-25 17:04:34] -- [download 45% complete]
+[2026-03-25 17:04:34] -- [download 47% complete]
+[2026-03-25 17:04:34] -- [download 49% complete]
+[2026-03-25 17:04:34] -- [download 51% complete]
+[2026-03-25 17:04:34] -- [download 53% complete]
+[2026-03-25 17:04:34] -- [download 55% complete]
+[2026-03-25 17:04:34] -- [download 57% complete]
+[2026-03-25 17:04:34] -- [download 58% complete]
+[2026-03-25 17:04:34] [ 48%] No patch step for 'third_party_json'
+[2026-03-25 17:04:34] -- [download 60% complete]
+[2026-03-25 17:04:34] -- [download 62% complete]
+[2026-03-25 17:04:34] -- [download 64% complete]
+[2/usr/bin/ld: unrecognized option '--no-allow-multiple-definition'
+/usr/bin/ld: use the --help option for usage information
+collect2: error: ld returned 1 exit status
+make[3]: *** [attention/prompt_flash_attention/op_host/CMakeFiles/softmax_tiling_ut_stub.dir/build.make:98: attention/prompt_flash_attention/op_host/libsoftmax_tiling_ut_stub.so] Error 1
+make[2]: *** [CMakeFiles/Makefile2:1753: attention/prompt_flash_attention/op_host/CMakeFiles/softmax_tiling_ut_stub.dir/all] Error 2
+make[2]: *** Waiting for unfinished jobs....
+026-03-25 17:04:34] -- [download 66% complete]
+[2026-03-25 17:04:34] [ 51%] No configure step for 'third_party_json'
+[2026-03-25 17:04:34] -- [download 68% complete]
+[2026-03-25 17:04:34] -- [download 70% complete]
+[2026-03-25 17:04:34] -- [download 72% complete]
+[2026-03-25 17:04:34] [ 51%] No build step for 'third_party_json'
+[2026-03-25 17:04:34] -- [download 74% complete]
+[2026-03-25 17:04:34] -- [download 75% complete]
+[2026-03-25 17:04:34] -- [download 77% complete]
+[2026-03-25 17:04:34] -- [download 79% complete]
+[2026-03-25 17:04:34] -- [download 81% complete]
+[2026-03-25 17:04:34] -- [download 83% complete]
+[2026-03-25 17:04:34] -- [download 85% complete]
+[2026-03-25 17:04:34] -- [download 87% complete]
+[2026-03-25 17:04:34] -- [download 89% complete]
+[2026-03-25 17:04:35] [ 51%] Performing install step for 'third_party_json'
+[2026-03-25 17:04:35] -- [download 91% complete]
+[2026-03-25 17:04:35] -- [download 92% complete]
+[2026-03-25 17:04:35] -- [download 94% complete]
+[2026-03-25 17:04:35] -- [download 96% complete]
+[2026-03-25 17:04:35] -- [download 98% complete]
+[2026-03-25 17:04:35] -- [download 100% complete]
+[2026-03-25 17:04:35] -- Downloading... done
+[2026-03-25 17:04:35] [ 51%] Built target opbase_util_objs
+[2026-03-25 17:04:35] -- extracting...
+[2026-03-25 17:04:35]      src='/home/j60100428/ops-transformer_0319/third_party/pkg/googletest-1.14.0.tar.gz'
+[2026-03-25 17:04:35]      dst='/home/j60100428/ops-transformer_0319/build/third_party_gtest-prefix/src/third_party_gtest'
+[2026-03-25 17:04:35] -- extracting... [tar xfz]
+[2026-03-25 17:04:35] [ 54%] Completed 'third_party_json'
+[2026-03-25 17:04:35] [ 54%] Built target third_party_json
+[2026-03-25 17:04:35] -- extracting... [analysis]
+[2026-03-25 17:04:35] -- extracting... [rename]
+[2026-03-25 17:04:35] -- extracting... [clean up]
+[2026-03-25 17:04:35] -- extracting... done
+[2026-03-25 17:04:35] [ 54%] Linking CXX shared library libsoftmax_tiling_ut_stub.so
+[2026-03-25 17:04:35] [ 57%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/fallback_prompt_flash_attention.cpp.o
+[2026-03-25 17:04:35] [ 57%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling.cpp.o
+[2026-03-25 17:04:35] [ 60%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_arch38.cpp.o
+[2026-03-25 17:04:35] [ 62%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_register.cpp.o
+[2026-03-25 17:04:35] [ 62%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_v2.cpp.o
+[2026-03-25 17:04:35] [ 65%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/fia_tiling_info.cpp.o
+[2026-03-25 17:04:35] [ 68%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/fia_tiling_shape.cpp.o
+[2026-03-25 17:04:35] [ 68%] No update step for 'third_party_gtest'
+[2026-03-25 17:04:35] [ 71%] No patch step for 'third_party_gtest'
+[2026-03-25 17:04:35] [ 74%] Performing configure step for 'third_party_gtest'
+[2026-03-25 17:04:35] -- The C compiler identification is GNU 9.4.0
+[2026-03-25 17:04:35] [ 74%] Built target common_transformer_obj
+[2026-03-25 17:04:35] -- The CXX compiler identification is GNU 9.4.0
+[2026-03-25 17:04:35] -- Detecting C compiler ABI info
+[2026-03-25 17:04:35] [ 74%] Built target opbase_infer_objs
+[2026-03-25 17:04:35] -- Detecting C compiler ABI info - done
+[2026-03-25 17:04:35] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-03-25 17:04:35] -- Detecting C compile features
+[2026-03-25 17:04:35] -- Detecting C compile features - done
+[2026-03-25 17:04:35] -- Detecting CXX compiler ABI info
+[2026-03-25 17:04:35] -- Detecting CXX compiler ABI info - done
+[2026-03-25 17:04:35] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-03-25 17:04:35] -- Detecting CXX compile features
+[2026-03-25 17:04:35] -- Detecting CXX compile features - done
+[2026-03-25 17:04:37] [ 74%] Built target opbase_tiling_objs
+[2026-03-25 17:04:37] -- Found Python3: /root/miniconda3/envs/jpy38/bin/python3.8 (found version "3.8.20") found components: Interpreter 
+[2026-03-25 17:04:37] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[2026-03-25 17:04:37] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+[2026-03-25 17:04:37] -- Looking for pthread_create in pthreads
+[2026-03-25 17:04:37] -- Looking for pthread_create in pthreads - not found
+[2026-03-25 17:04:37] -- Looking for pthread_create in pthread
+[2026-03-25 17:04:37] -- Looking for pthread_create in pthread - found
+[2026-03-25 17:04:37] -- Found Threads: TRUE  
+[2026-03-25 17:04:37] -- Configuring done
+[2026-03-25 17:04:37] -- Generating done
+[2026-03-25 17:04:37] -- Build files have been written to: /home/j60100428/ops-transformer_0319/build/third_party_gtest-prefix/src/third_party_gtest-build
+[2026-03-25 17:04:37] [ 74%] Performing build step for 'third_party_gtest'
+[2026-03-25 17:04:37] [ 12%] Building CXX object googletest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[2026-03-25 17:04:37] [ 74%] Built target ophost_transformer_infer_obj
+[2026-03-25 17:04:46] [ 25%] Linking CXX static library ../lib/libgtest.a
+[2026-03-25 17:04:46] [ 25%] Built target gtest
+[2026-03-25 17:04:46] [ 37%] Building CXX object googlemock/CMakeFiles/gmock.dir/src/gmock-all.cc.o
+[2026-03-25 17:04:46] [ 50%] Building CXX object googletest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[2026-03-25 17:04:47] [ 62%] Linking CXX static library ../lib/libgtest_main.a
+[2026-03-25 17:04:47] [ 62%] Built target gtest_main
+[2026-03-25 17:04:49] [ 75%] Linking CXX static library ../lib/libgmock.a
+[2026-03-25 17:04:49] [ 75%] Built target gmock
+[2026-03-25 17:04:49] [ 87%] Building CXX object googlemock/CMakeFiles/gmock_main.dir/src/gmock_main.cc.o
+[2026-03-25 17:04:50] [100%] Linking CXX static library ../lib/libgmock_main.a
+[2026-03-25 17:04:50] [100%] Built target gmock_main
+[2026-03-25 17:04:50] [ 74%] Performing install step for 'third_party_gtest'
+[2026-03-25 17:04:50] Consolidate compiler generated dependencies of target gtest
+[2026-03-25 17:04:50] [ 25%] Built target gtest
+[2026-03-25 17:04:50] Consolidate compiler generated dependencies of target gmock
+[2026-03-25 17:04:50] Consolidate compiler generated dependencies of target gtest_main
+[2026-03-25 17:04:50] [ 50%] Built target gmock
+[2026-03-25 17:04:50] [ 75%] Built target gtest_main
+[2026-03-25 17:04:50] Consolidate compiler generated dependencies of target gmock_main
+[2026-03-25 17:04:50] [100%] Built target gmock_main
+[2026-03-25 17:04:50] Install the project...
+[2026-03-25 17:04:50] -- Install configuration: ""
+[2026-03-25 17:04:50] -- Up-to-date: /home/j60100428/ops-transformer_0319/third_party/gtest/include
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-actions.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/gmock-pp.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/gmock-port.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/custom
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/custom/gmock-port.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/custom/gmock-matchers.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/custom/gmock-generated-actions.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/custom/README.md
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/internal/gmock-internal-utils.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-more-matchers.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-cardinalities.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-function-mocker.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-matchers.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-nice-strict.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-spec-builders.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gmock/gmock-more-actions.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/libgmock.a
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/libgmock_main.a
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/pkgconfig/gmock.pc
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/pkgconfig/gmock_main.pc
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/cmake/GTest/GTestTargets.cmake
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/cmake/GTest/GTestTargets-noconfig.cmake
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/cmake/GTest/GTestConfigVersion.cmake
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/cmake/GTest/GTestConfig.cmake
+[2026-03-25 17:04:50] -- Up-to-date: /home/j60100428/ops-transformer_0319/third_party/gtest/include
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-spi.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-message.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest_prod.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-port-arch.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-death-test-internal.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/custom
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/custom/gtest-port.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/custom/gtest.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/custom/gtest-printers.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/custom/README.md
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-filepath.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/make[1]: *** [CMakeFiles/Makefile2:2071: tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_host_ut.dir/rule] Error 2
+make: *** [Makefile:891: transformer_op_host_ut] Error 2
+third_party/gtest/include/gtest/internal/gtest-port.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-param-util.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-type-util.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-internal.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/internal/gtest-string.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-assertion-result.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-test-part.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-param-test.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest_pred_impl.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-typed-test.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-death-test.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-printers.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest-matchers.h
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/libgtest.a
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/libgtest_main.a
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/pkgconfig/gtest.pc
+[2026-03-25 17:04:50] -- Installing: /home/j60100428/ops-transformer_0319/third_party/gtest/lib/pkgconfig/gtest_main.pc
+[2026-03-25 17:04:50] [ 77%] Completed 'third_party_gtest'
+[2026-03-25 17:04:50] [ 77%] Built target third_party_gtest
+[2026-03-25 17:05:17] [ 77%] Built target ophost_transformer_tiling_obj
+[2026-03-25 17:05:17] [ERROR] Build failed for target: transformer_op_host_ut.

@@ -33,6 +33,22 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 endif()
 
+if(UT_TEST_ALL OR OP_HOST_UT)
+    set(_SOFTMAX_STUB_COMMON_DIR ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common)
+    add_library(softmax_tiling_ut_stub SHARED
+        ${_SOFTMAX_STUB_COMMON_DIR}/softmax_tiling_mocker.cpp
+    )
+    target_include_directories(softmax_tiling_ut_stub PRIVATE
+        ${_SOFTMAX_STUB_COMMON_DIR}
+        ${OP_TILING_INCLUDE}
+    )
+    target_link_libraries(softmax_tiling_ut_stub PRIVATE
+        -Wl,--allow-multiple-definition
+        -Wl,--whole-archive $<TARGET_FILE:tiling_api> -Wl,--no-whole-archive
+        -Wl,--no-allow-multiple-definition
+    )
+endif()
+
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         set(prompt_flash_attention_apt_depends attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")

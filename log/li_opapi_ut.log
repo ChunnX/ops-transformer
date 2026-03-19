@@ -1,0 +1,309 @@
+json found in /home/j60100428/ops-transformer_0319/third_party/json, and not force rebuild cann third_party
+GTEST_INSTALL_PATH=/home/j60100428/ops-transformer_0319/third_party/gtest
+gtest found:TRUE
+gtest found in /home/j60100428/ops-transformer_0319/third_party/gtest, and not force rebuild cann third_party
+[2026-03-20 11:28:37] ----------------------------------------------------------------
+[2026-03-20 11:28:37] Start to build ut
+[2026-03-20 11:28:37] -- The C compiler identification is GNU 9.4.0
+[2026-03-20 11:28:38] -- The CXX compiler identification is GNU 9.4.0
+[2026-03-20 11:28:38] -- Detecting C compiler ABI info
+[2026-03-20 11:28:38] -- Detecting C compiler ABI info - done
+[2026-03-20 11:28:38] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-03-20 11:28:38] -- Detecting C compile features
+[2026-03-20 11:28:38] -- Detecting C compile features - done
+[2026-03-20 11:28:38] -- Detecting CXX compiler ABI info
+[2026-03-20 11:28:38] -- Detecting CXX compiler ABI info - done
+[2026-03-20 11:28:38] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-03-20 11:28:38] -- Detecting CXX compile features
+[2026-03-20 11:28:38] -- Detecting CXX compile features - done
+[2026-03-20 11:28:38] -- ASCEND_CANN_PACKAGE_PATH=/home/j60100428/Ascend_0319/cann-9.0.0
+[2026-03-20 11:28:38] -- compile project with library
+[2026-03-20 11:28:38] -- Find opbase source dir: /home/j60100428/ops-transformer_0319/third_party/opbase
+[2026-03-20 11:28:39] -- Found Python3: /root/miniconda3/envs/jpy38/bin/python3.8 (found version "3.8.20") found components: Interpreter 
+[2026-03-20 11:28:39] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=
+[2026-03-20 11:28:39] -- CCACHE_PROGRAM=CCACHE_PROGRAM-NOTFOUND
+[2026-03-20 11:28:39] -- ASCEND_COMPUTE_UNIT=ascend910b;
+[2026-03-20 11:28:39] -- ASCEND_OP_NAME=lightning_indexer
+[2026-03-20 11:28:39] -- TILING_KEY=
+[2026-03-20 11:28:39] -- TESTS_UT_OPS_TEST=lightning_indexer
+[2026-03-20 11:28:39] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-03-20 11:28:39] -- CMAKE_BUILD_TYPE=Debug
+[2026-03-20 11:28:39] -- VERSION=
+[2026-03-20 11:28:39] -- CMAKE_CXX_COMPILER_ID=GNU
+[2026-03-20 11:28:39] -- Found json: /home/j60100428/ops-transformer_0319/third_party/json/include  
+[2026-03-20 11:28:39] -- Found gtest: /home/j60100428/ops-transformer_0319/third_party/gtest/include  
+[2026-03-20 11:28:39] -- Start building custom package.
+[2026-03-20 11:28:39] -- Search libs under install path /home/j60100428/Ascend_0319/cann-9.0.0
+[2026-03-20 11:28:39] -- CMAKE_MODULE_PATH            :/home/j60100428/ops-transformer_0319/cmake/modules;/home/j60100428/Ascend_0319/cann-9.0.0/include/ge/cmake
+[2026-03-20 11:28:39] -- compile option:  -O0 -g -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-03-20 11:28:39] -- Found dlog: /home/j60100428/Ascend_0319/cann-9.0.0/pkg_inc/base  
+[2026-03-20 11:28:39] -- Transformer Variables in dlog module:
+[2026-03-20 11:28:39] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/j60100428/Ascend_0319/cann-9.0.0/pkg_inc/base"
+[2026-03-20 11:28:39] -- dlog_SHARED_LIBRARY="/home/j60100428/Ascend_0319/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39]  Properties for TARGET dlog:
+[2026-03-20 11:28:39]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-03-20 11:28:39]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-03-20 11:28:39]    dlog.IMPORTED_LOCATION = "/home/j60100428/Ascend_0319/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-20 11:28:39] 
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39]  Properties for TARGET dlog_headers:
+[2026-03-20 11:28:39]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_0319/cann-9.0.0/pkg_inc/base"
+[2026-03-20 11:28:39] 
+[2026-03-20 11:28:39] -- Found securec: /home/j60100428/Ascend_0319/cann-9.0.0/include  
+[2026-03-20 11:28:39] -- Found OPBASE: /home/j60100428/ops-transformer_0319/third_party/opbase/pkg_inc  
+[2026-03-20 11:28:39] -- Found OPABSE include:/home/j60100428/ops-transformer_0319/third_party/opbase/pkg_inc
+[2026-03-20 11:28:39] -- Found OPABSE lib:
+[2026-03-20 11:28:39] -- Found platform: /home/j60100428/Ascend_0319/cann-9.0.0/include  
+[2026-03-20 11:28:39] -- Found platform include:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include
+[2026-03-20 11:28:39] -- Found register library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linuThe eigen package needs to be downloaded.
+x/lib64/libregister.so
+[2026-03-20 11:28:39] -- Found opp_registry library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/libopp_registry.so
+[2026-03-20 11:28:39] -- Found exe_graph library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/libexe_graph.so
+[2026-03-20 11:28:39] -- Found graph_base library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/libgraph_base.so
+[2026-03-20 11:28:39] -- Found error_manager library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/liberror_manager.so
+[2026-03-20 11:28:39] -- Found metadef library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/libmetadef.so
+[2026-03-20 11:28:39] -- Found rt2_registry library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/librt2_registry.a
+[2026-03-20 11:28:39] -- Found metadef: /home/j60100428/Ascend_0319/cann-9.0.0/include  
+[2026-03-20 11:28:39] -- Found source metadef include dir:  /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/exe_graph
+[2026-03-20 11:28:39] -- Found graph library:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/libgraph.so
+[2026-03-20 11:28:39] -- Found source acl include dir:  /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include
+[2026-03-20 11:28:39] -- [transformer]Found source npuruntime include dir: /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc/runtime
+[2026-03-20 11:28:39] -- Found aclnn include dir:  /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include
+[2026-03-20 11:28:39] -- Found opdev include dir:  /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/aclnn
+[2026-03-20 11:28:39] -- Found tilingapi include:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include
+[2026-03-20 11:28:39] -- TILINGAPI_INC_DIRS: /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/ascendc;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/ascendc/include;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/lib;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/impl;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/tiling
+[2026-03-20 11:28:39] -- Found tilingapi lib:/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/lib64/libtiling_api.a
+[2026-03-20 11:28:39] -- Using AICPU include dirs: /home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/experiment;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/experiment/cce;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/experiment/msprof;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/common;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/utils;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/aicpu_common/context;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/aicpu_common/context/common;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/aicpu_common/context/utils;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc;/home/j60100428/Ascend_0319/cann-9.0.0/x86_64-linux/pkg_inc/aicpu
+[2026-03-20 11:28:39] -- Finding gen es pkg
+[2026-03-20 11:28:39] -- [add_es_library] Module loaded from: /home/j60100428/Ascend_0319/cann-9.0.0/include/ge/cmake
+[2026-03-20 11:28:39] -- Downloading eigen from https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz
+[2026-03-20 11:28:39] -- Could NOT find abseiCMake Warning (dev) at /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:3074 (message):
+  The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
+  not set.  The policy's OLD behavior will be used.  When using a URL
+  download, the timestamps of extracted files should preferably be that of
+  the time of extraction, otherwise code that depends on the extracted
+  contents might not be rebuilt if the URL changes.  The OLD behavior
+  preserves the timestamps from the archive instead, but this is usually not
+  what you want.  Update your project to the NEW behavior or specify the
+  DOWNLOAD_EXTRACT_TIMESTAMP option with a value of true to avoid this
+  robustness issue.
+Call Stack (most recent call first):
+  /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:4170 (_ep_add_download_command)
+  cmake/third_party/abseil-cpp.cmake:52 (ExternalProject_Add)
+  CMakeLists.txt:147 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:3074 (message):
+  The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
+  not set.  The policy's OLD behavior will be used.  When using a URL
+  download, the timestamps of extracted files should preferably be that of
+  the time of extraction, otherwise code that depends on the extracted
+  contents might not be rebuilt if the URL changes.  The OLD behavior
+  preserves the timestamps from the archive instead, but this is usually not
+  what you want.  Update your project to the NEW behavior or specify the
+  DOWNLOAD_EXTRACT_TIMESTAMP option with a value of true to avoid this
+  robustness issue.
+Call Stack (most recent call first):
+  /opt/cmake/share/cmake-3.24/Modules/ExternalProject.cmake:4170 (_ep_add_download_command)
+  cmake/third_party/ascend_protobuf.cmake:54 (ExternalProject_Add)
+  CMakeLists.txt:148 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+l-cpp (missing: ABSL_SOURCE_DIR) 
+[2026-03-20 11:28:39] -- [ThirdPartyLib][abseil-cpp] https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz not found, need download.
+[2026-03-20 11:28:39] -- Could NOT find ascend_protobuf_build_transformer (missing: ASCEND_PROTOBUF_SHARED_INCLUDE) 
+[2026-03-20 11:28:39] -- [ThirdPartyLib][ascend protobuf] ascend protobuf shared not found, finding binary file.
+[2026-03-20 11:28:39] -- [ThirdPartyLib][ascend protobuf] https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz not found, need download.
+[2026-03-20 11:28:39] -- Found alog: /home/j60100428/Ascend_0319/cann-9.0.0/include  
+[2026-03-20 11:28:39] -- Variables in alog module:
+[2026-03-20 11:28:39] -- alog_a_INCLUDE_DIR="/home/j60100428/Ascend_0319/cann-9.0.0/include"
+[2026-03-20 11:28:39] -- slog_a_SHARED_LIBRARY="/home/j60100428/Ascend_0319/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-20 11:28:39] -- alog_a_SHARED_LIBRARY="/home/j60100428/Ascend_0319/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39]  Properties for TARGET slog_a:
+[2026-03-20 11:28:39]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-03-20 11:28:39]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-03-20 11:28:39]    slog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_0319/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-20 11:28:39] 
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39]  Properties for TARGET alog_a:
+[2026-03-20 11:28:39]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-03-20 11:28:39]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-03-20 11:28:39]    alog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_0319/cann-9.0.0/lib64/libascendalog.so"
+[2026-03-20 11:28:39] 
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39]  Properties for TARGET alog_headers:
+[2026-03-20 11:28:39]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_0319/cann-9.0.0/include;/home/j60100428/Ascend_0319/cann-9.0.0/include/base"
+[2026-03-20 11:28:39] 
+[2026-03-20 11:28:39] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-03-20 11:28:39] -- === Debug: CURRENT_DIRS =CMakeLists.txt;ut 
+[2026-03-20 11:28:39] -- === Debug: start ops.ops-transformer.attention.lightning_indexer.tests.ut.CMakeLists.txt 
+[2026-03-20 11:28:39] -- === Debug: CURRENT_DIRS =CMakeLists.txt;op_api;op_host 
+[2026-03-20 11:28:39] -- Found Python3: /root/miniconda3/envs/jpy38/bin/python3.8 (found suitable version "3.8.20", minimum required is "3.7") found components: Interpreter 
+[2026-03-20 11:28:39] -- HI_PYTHON = /root/miniconda3/envs/jpy38/bin/python3.8
+[2026-03-20 11:28:39] -- HI_PYTHON_INC_TEMP = /root/miniconda3/envs/jpy38/include/python3.8
+[2026-03-20 11:28:39] -- HI_PYTHON_LIB_TEMP = -L/root/miniconda3/envs/jpy38/lib -lpython3.8
+[2026-03-20 11:28:39] -- _OpsTestUt_UTestCaseLibraries      = .
+[2026-03-20 11:28:39] -- _OpsTestUt_UTestAclnnCaseLibraries = 
+[2026-03-20 11:28:39] -- _OpsTestUt_UTestCaseLibraries and _OpsTestUt_UTestAclnnCaseLibraries both empty.
+[2026-03-20 11:28:39] -- Skip proto update: /home/j60100428/ops-transformer_0319/attention/lightning_indexer
+[2026-03-20 11:28:39] -- Start Generating es transformer for custom pkg
+[2026-03-20 11:28:39] -- Generated helper script: /home/j60100428/ops-transformer_0319/build/cmake/run_gen_esb_with_lock.sh
+[2026-03-20 11:28:39] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-03-20 11:28:39] -- add_es_package: Using default output directory: /home/j60100428/ops-transformer_0319/build
+[2026-03-20 11:28:39] -- add_es_package: OPP_PROTO_TARGET output directory: /home/j60100428/ops-transformer_0319/build
+[2026-03-20 11:28:39] -- add_es_package: Derived ASCEND_OPP_PATH: /home/j60100428/ops-transformer_0319/build
+[2026-03-20 11:28:39] --   - Created standard OPP path: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-03-20 11:28:39] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-03-20 11:28:39] --     Found gen_esb in PATH (environment variables configured)
+[2026-03-20 11:28:39] --     - gen_esb path: /home/j60100428/Ascend_0319/cann-9.0.0/bin/gen_esb
+[2026-03-20 11:28:39] --     - library path: /home/j60100428/Ascend_0319/cann-9.0.0/lib64
+[2026-03-20 11:28:39] -- Using proto library path (derived from OPP_PROTO_TARGET): /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-03-20 11:28:39] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-03-20 11:28:39] -- [add_es_library] No history registry found at /home/j60100428/Ascend_0319/cann-9.0.0/opp/history_registry/transformer_cust, skipping
+[2026-03-20 11:28:39] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-03-20 11:28:39] --   Found library in run package: /home/j60100428/Ascend_0319/cann-9.0.0/lib64/libeager_style_graph_builder_base.so
+[2026-03-20 11:28:39] -- Configuring ES package: es_transformer_cust
+[2026-03-20 11:28:39] --   - Exported target: es_transformer_cust (public interface)
+[2026-03-20 11:28:39] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-03-20 11:28:39] --   - Internal .so target: es_transformer_cust_so
+[2026-03-20 11:28:39] --   - Internal .a target: es_transformer_cust_a
+[2026-03-20 11:28:39] --   - Module name (for gen_esb): transformer_cust
+[2026-03-20 11:28:39] --   - OPP proto target: proto_transformer_cust
+[2026-03-20 11:28:39] --   - OPP proto path: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-03-20 11:28:39] --   - Output path: /home/j60100428/ops-transformer_0319/build/es_packages
+[2026-03-20 11:28:39] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-03-20 11:28:39] --   - Python package: es_transformer_cust
+[2026-03-20 11:28:39] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-03-20 11:28:39] --   - Wrapper file: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-03-20 11:28:39] --   - Module name: transformer_cust
+[2026-03-20 11:28:39] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-03-20 11:28:39] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-03-20 11:28:39] -- add_es_library: Deduced header base path from cmake file: /home/j60100428/Ascend_0319/cann-9.0.0
+[2026-03-20 11:28:39] -- add_es_library: metadef_headers target not found, skipping
+[2026-03-20 11:28:39] -- add_es_library: Found c_sec target
+[2026-03-20 11:28:39] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-03-20 11:28:39] -- add_es_package: 'build_es_transformer_cust' is the first ES package (will be built first)
+[2026-03-20 11:28:39] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-03-20 11:28:39] --   - Exported target (for linking): es_transformer_cust
+[2026-03-20 11:28:39] --   - Build target: build_es_transformer_cust
+[2026-03-20 11:28:39] --   - Wrapper file: /home/j60100428/ops-transformer_0319/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-03-20 11:28:39] --   - Internal targets:
+[2026-03-20 11:28:39] --     * Code generation: generate_es_transformer_cust_code
+[2026-03-20 11:28:39] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-03-20 11:28:39] --     * Shared library: es_transformer_cust_so
+[2026-03-20 11:28:39] --     * Static library: es_transformer_cust_a
+[2026-03-20 11:28:39] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-03-20 11:28:39] --     * Install: install_es_transformer_cust
+[2026-03-20 11:28:39] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-03-20 11:28:39] --   - Python package: es_transformer_cust
+[2026-03-20 11:28:39] --   - ES base library: /home/j60100428/Ascend_0319/cann-9.0.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39] -- Quick start:
+[2026-03-20 11:28:39] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-03-20 11:28:39] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-03-20 11:28:39] -- 
+[2026-03-20 11:28:39] -- custom cust proto to es
+[2026-03-20 11:28:39] -- Detected architecture: x86_64
+[2026-03-20 11:28:39] -- End building custom package.
+[2026-03-20 11:28:39] -- create aclnn master header file: /home/j60100428/ops-transformer_0319/build/aclnn_ops_transformer_custom.h
+[2026-03-20 11:28:39] -- no operator info to generate
+[2026-03-20 11:28:39] -- Start building custom package.
+[2026-03-20 11:28:39] -- No aicpu json files to merge, skipping.
+[2026-03-20 11:28:39] -- No aicpu cust obj targets found, skipping.
+[2026-03-20 11:28:39] -- Configuring done
+[2026-03-20 11:28:40] -- Generating done
+[2026-03-20 11:28:40] -- Build files have been written to: /home/j60100428/ops-transformer_0319/build
+[2026-03-20 11:28:40] ... transformer_op_api_ut
+[2026-03-20 11:28:40] Building target: transformer_op_api_ut.
+[2026-03-20 11:28:40] [  4%] Generating op_host_aclnn_stub.cpp
+[2026-03-20 11:28:40] [  8%] Building CXX object attention/lightning_indexer/tests/ut/op_api/CMakeFiles/transformer_op_api_ut_cases_obj.dir/test_aclnn_lightning_indexer.cpp.o
+[2026-03-20 11:28:40] [ 12%] Building CXX object attention/lightning_indexer/tests/ut/op_api/CMakeFiles/transformer_op_api_ut_cases_obj.dir/__/__/__/__/__/tests/ut/framework_normal/op_api/stub/opdev/platform.cpp.o
+[2026-03-20 11:28:40] [ 16%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/inner/file_io.cpp.o
+[2026-03-20 11:28:40] [ 20%] Building CXX object attention/lightning_indexer/tests/ut/op_api/CMakeFiles/transformer_op_api_ut_cases_obj.dir/__/__/__/__/__/tests/ut/framework_normal/op_api/stub/opdev/nnopbase.cpp.o
+[2026-03-20 11:28:40] [ 28%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/attention/lightning_indexer/op_host/lightning_indexer_def.cpp.o
+[2026-03-20 11:28:40] [ 28%] Building CXX object common/stub/op_api/CMakeFiles/opapi_stub.dir/opapi_stub.cpp.o
+[2026-03-20 11:28:40] [ 28%] Building CXX object common/stub/op_api/CMakeFiles/opapi_math.dir/opapi_stub.cpp.o
+[2026-03-20 11:28:40] [ 28%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/array_desc.cpp.o
+[2026-03-20 11:28:40] [ 32%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/inner/c_py.cpp.o
+[2026-03-20 11:28:40] [ 36%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/inner/c_shell.cpp.o
+[2026-03-20 11:28:40] [ 36%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/inner/rts_interface.cpp.o
+[2026-03-20 11:28:40] [ 40%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/inner/string_utils.cpp.o
+[2026-03-20 11:28:40] [ 44%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/inner/types.cpp.o
+[2026-03-20 11:28:40] [ 48%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/op_api_ut.cpp.o
+[2026-03-20 11:28:40] [ 48%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/scalar_desc.cpp.o
+[2026-03-20 11:28:40] [ 52%] Building CXX object tests/ut/framework_normal/op_api/op_api_ut_common/src/CMakeFiles/op_api_ut_common.dir/tensor_desc.cpp.o
+[2026-03-20 11:28:40] [ 52%] Building CXX object CMakeFiles/op_host_aclnn.dir/op_host_aclnn_stub.cpp.o
+[2026-03-20 11:28:40] [ 56%] Linking CXX shared library libop_host_aclnn.so
+[2026-03-20 11:28:40] [ 56%] Built target op_host_aclnn
+[2026-03-20 11:28:40] [ 56%] Built target opbuild_gen_default
+[2026-03-20 11:28:41] [ 60%] Linking CXX shared library ../../../libopapi_math.so
+[2026-03-20 11:28:41] [ 60%] Built target opapi_math
+[2026-03-20 11:28:41] [ 64%] Linking CXX shared library ../../../libopapi_stub.so
+[2026-03-20 11:28:41] [ 64%] Built target opapi_stub
+[2026-03-20 11:28:42] [ 68%] Linking CXX shared library libop_host_aclnnInner.so
+[2026-03-20 11:28:42] [ 68%] Built target op_host_aclnnInner
+[2026-03-20 11:28:42] [ 72%] Generating autogen/inner/aclnnInner_lightning_indexer.cpp
+[2026-03-20 11:28:42] [ 72%] Built target opbuild_gen_inner
+[2026-03-20 11:28:42] [ 76%] Building CXX object CMakeFiles/ops_aclnn.dir/autogen/inner/aclnnInner_lightning_indexer.cpp.o
+[2026-03-20 11:28:43] [ 80%] Linking CXX static library libops_aclnn.a
+[2026-03-20 11:28:43] [ 84%] Built target ops_aclnn
+[2026-03-20 11:28:43] [ 88%] Building CXX object attention/lightning_indexer/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/op_api/aclnn_lightning_indexer.cpp.o
+[2026-03-20 11:28:43] [ 92%] Linking CXX shared library libop_api_ut_common.so
+[2026-03-20 11:28:44] [ 92%] Built target op_api_ut_common
+[2026-03-20 11:28:44] [ 92%] Built target transformer_op_api_ut_cases_obj
+[2026-03-20 11:28:45] [ 92%] Built target ophost_transformer_opapi_obj
+[2026-03-20 11:28:45] [ 92%] Linking CXX shared library libopapi_transformer_ut.so
+[2026-03-20 11:28:45] [ 92%] Built target opapi_transformer_ut
+[2026-03-20 11:28:45] [ 96%] Building CXX object tests/ut/framework_normal/op_api/CMakeFiles/transformer_op_api_ut.dir/test_op_api_main.cpp.o
+[2026-03-20 11:28:45] [100%] Building CXX object tests/ut/framework_normal/op_api/CMakeFiles/transformer_op_api_ut.dir/stub/opdev/runtime_stubs.cpp.o
+[2026-03-20 11:28:46] [100%] Linking CXX executable transformer_op_api_ut
+[2026-03-20 11:28:46] Run ops op_api utest with asan
+[2026-03-20 11:28:46] [INFO] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:46.956.212 [task_fail_callback_data_manager.cc:93] 2975397 TaskFailCallBackManager: Constructor.
+[2026-03-20 11:28:46] [INFO] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:46.956.258 [xpu_task_fail_callback_data_manager.cc:59] 2975397 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
+[2026-03-20 11:28:47] OpApiUtEnvironment new
+[2026-03-20 11:28:47] [==========] Running 2 tests from 1 test suite.
+[2026-03-20 11:28:47] [----------] Global test environment set-up.
+[2026-03-20 11:28:47] Global Environment SetpUp.
+[2026-03-20 11:28:47] [----------] 2 tests from lightning_indexer_opapi_ut
+[2026-03-20 11:28:47] lightning_indexer_opapi_ut SetUp
+[2026-03-20 11:28:47] [ RUN      ] lightning_indexer_opapi_ut.lightning_indexer_aclnn_0
+[2026-03-20 11:28:48] [INFO] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.131.925 [runtime_keeper.cc:184] 2975397 CreateRuntimeImpl: Open libruntime_v100.so successfully
+[2026-03-20 11:28:48] [ERROR] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.132.166 [api_impl.cc:7751]2975397 GetResInCurrentThread:ctx is NULL!
+[2026-03-20 11:28:48] [ERROR] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.063 [api_c_stream.cc:749]2975397 rtsGetResInCurrentThread:ErrCode=107002, desc=[the context is a null pointer], InnerCode=0x7070001
+[2026-03-20 11:28:48] [ERROR] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.074 [error_message_manage.cc:55]2975397 FuncErrorReason:rtsGetResInCurrentThread execution failed, the context is a null pointer.
+[2026-03-20 11:28:48] [ERROR] ASCENDCL(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.115 [device.cpp:528]2975397 aclrtGetResInCurrentThreadImpl:call rtsGetResInCurrentThread failed, runtime result = 107002.
+[2026-03-20 11:28:48] [ERROR] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.131 [api_impl.cc:7751]2975397 GetResInCurrentThread:ctx is NULL!
+[2026-03-20 11:28:48] [ERROR] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.149 [api_c_stream.cc:749]2975397 rtsGetResInCurrentThread:ErrCode=107002, descAddressSanitizer:DEADLYSIGNAL
+=================================================================
+==2975397==ERROR: AddressSanitizer: SEGV on unknown address 0x0003b461deb2 (pc 0x55f9f4da62e4 bp 0x7ffd727c4640 sp 0x7ffd727c4590 T0)
+==2975397==The signal is caused by a READ memory access.
+    #0 0x55f9f4da62e3 in OpApiUt<int (*)(aclTensor const*, aclTensor const*, aclTensor const*, aclTensor const*, aclTensor const*, aclTensor const*, char*, char*, long, long, long, long, bool, aclTensor const*, aclTensor const*, unsigned long*, aclOpExecutor**), int (*)(void*, unsigned long, aclOpExecutor*, void*), std::tuple<TensorDesc, TensorDesc, TensorDesc, decltype(nullptr), decltype(nullptr), decltype(nullptr), char*, char*, long, long, long, long, bool>, std::tuple<TensorDesc, TensorDesc>, std::tuple<aclTensor*, aclTensor*, aclTensor*, decltype(nullptr), decltype(nullptr), decltype(nullptr), char*, char*, long, long, long, long, bool, aclTensor*, aclTensor*>, std::tuple<> >::TestGetWorkspaceSize(unsigned long*) (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0xab2e3)
+    #1 0x55f9f4d9368c in lightning_indexer_opapi_ut_lightning_indexer_aclnn_0_Test::TestBody() /home/j60100428/ops-transformer_0319/attention/lightning_indexer/tests/ut/op_api/test_aclnn_lightning_indexer.cpp:76
+    #2 0x55f9f4e17970 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x11c970)
+    #3 0x55f9f4e07815 in testing::Test::Run() (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x10c815)
+    #4 0x55f9f4e07a14 in testing::TestInfo::Run() (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x10ca14)
+    #5 0x55f9f4e0a340 in testing::TestSuite::Run() (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x10f340)
+    #6 0x55f9f4e0a87e in testing::internal::UnitTestImpl::RunAllTests() (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x10f87e)
+    #7 0x55f9f4e17f50 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x11cf50)
+    #8 0x55f9f4e07acc in testing::UnitTest::Run() (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x10cacc)
+    #9 0x55f9f4d8d2fd in RUN_ALL_TESTS() /home/j60100428/ops-transformer_0319/third_party/gtest/include/gtest/gtest.h:2317
+    #10 0x55f9f4d8cfea in main /home/j60100428/ops-transformer_0319/tests/ut/framework_normal/op_api/test_op_api_main.cpp:37
+    #11 0x7f585b19c082 in __libc_start_main ../csu/libc-start.c:308
+    #12 0x55f9f4d8cdfd in _start (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0x91dfd)
+
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV (/home/j60100428/ops-transformer_0319/build/tests/ut/framework_normal/op_api/transformer_op_api_ut+0xab2e3) in OpApiUt<int (*)(aclTensor const*, aclTensor const*, aclTensor const*, aclTensor const*, aclTensor const*, aclTensor const*, char*, char*, long, long, long, long, bool, aclTensor const*, aclTensor const*, unsigned long*, aclOpExecutor**), int (*)(void*, unsigned long, aclOpExecutor*, void*), std::tuple<TensorDesc, TensorDesc, TensorDesc, decltype(nullptr), decltype(nullptr), decltype(nullptr), char*, char*, long, long, long, long, bool>, std::tuple<TensorDesc, TensorDesc>, std::tuple<aclTensor*, aclTensor*, aclTensor*, decltype(nullptr), decltype(nullptr), decltype(nullptr), char*, char*, long, long, long, long, bool, aclTensor*, aclTensor*>, std::tuple<> >::TestGetWorkspaceSize(unsigned long*)
+==2975397==ABORTING
+make[3]: *** [tests/ut/framework_normal/op_api/CMakeFiles/transformer_op_api_ut.dir/build.make:128: tests/ut/framework_normal/op_api/transformer_op_api_ut] Error 1
+make[3]: *** Deleting file 'tests/ut/framework_normal/op_api/transformer_op_api_ut'
+make[2]: *** [CMakeFiles/Makefile2:1878: tests/ut/framework_normal/op_api/CMakeFiles/transformer_op_api_ut.dir/all] Error 2
+make[1]: *** [CMakeFiles/Makefile2:1885: tests/ut/framework_normal/op_api/CMakeFiles/transformer_op_api_ut.dir/rule] Error 2
+make: *** [Makefile:827: transformer_op_api_ut] Error 2
+=[the context is a null pointer], InnerCode=0x7070001
+[2026-03-20 11:28:48] [ERROR] RUNTIME(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.155 [error_message_manage.cc:55]2975397 FuncErrorReason:rtsGetResInCurrentThread execution failed, the context is a null pointer.
+[2026-03-20 11:28:48] [ERROR] ASCENDCL(2975397,transformer_op_api_ut):2026-03-20-11:28:48.140.171 [device.cpp:528]2975397 aclrtGetResInCurrentThreadImpl:call rtsGetResInCurrentThread failed, runtime result = 107002.
+[2026-03-20 11:28:48] [ERROR] Build failed for target: transformer_op_api_ut.
