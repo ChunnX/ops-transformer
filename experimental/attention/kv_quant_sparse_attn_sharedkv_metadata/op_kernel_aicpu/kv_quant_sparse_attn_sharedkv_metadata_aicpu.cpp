@@ -498,14 +498,16 @@ uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetOriS2SeqSize(uint32_t bI
 uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
 {
     // 如果 seqUsedKv_ 传了，直接使用
-    if (!seqUsedKv_.empty()) {
-        return static_cast<uint32_t>(seqUsedKv_[bIdx]);
+    if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     // seqUsedKv_ 没传，判断 Layout
     if (layoutKv_ == "TND") {
         // 如果是 TND，尝试使用 actSeqLenOriKv_
-        if (!actSeqLenOriKv_.empty()) {
-            return static_cast<uint32_t>(actSeqLenOriKv_[bIdx + 1U] - actSeqLenOriKv_[bIdx]);
+        if (actSeqLenOriKv_ != nullptr && actSeqLenOriKv_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenOriKv_->GetData());
+            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
     // 如果max_seqlen_kv没传入，且cmp_kv为稀疏的，则尝试从topk中获取

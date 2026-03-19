@@ -469,57 +469,19 @@ bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t SparseAttnSharedkvMetadataCpuKernel::GetS1Idx(const BatchCache &batchCache, uint32_t s1GIdx)
+uint32_t SparseAttnSharedkvMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint32_t s1GIdx)
 {
     uint32_t s1GToken = s1GIdx * mBaseSize_;
     uint32_t s1Idx = 0;
     if (isS1G_) {
         s1Idx = s1GToken / static_cast<int64_t>(groupSize_);
     } else {
-        s1Idx = s1GToken % static_cast<int64_t>(batchCache.s1Size);
+        s1Idx = s1GToken % static_cast<int64_t>(s1Size);
     }
     return s1Idx;
 }
 
-uint32_t SparseAttnSharedkvMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx)
-{
-    uint32_t bsStride = 0;
-    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedQ_->GetData());
-        for (uint32_t i = 0; i < bIdx; i++) {
-            if (i == 0) {
-                continue;
-            }
-            bsStride += seqUsedPtr[i - 1];
-        }
-        bsStride += s1Idx;
-        return bsStride;
-    }
-    if (layoutQuery_ == "TND") {
-        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr =static_cast<const int32_t*>(actSeqLenQ_->GetData());
-            bsStride = s1Ptr[bIdx] + s1Idx;
-            return bsStride;
-        }
-    }
-    bsStride = bIdx * static_cast<uint32_t>(querySeqSize_) + s1Idx;
-    return bsStride;
-}
-
-uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetS1Idx(const BatchCache &batchCache, uint32_t s1GIdx)
-{
-    uint32_t s1GToken = s1GIdx * mBaseSize_;
-    uint32_t s1Idx = 0;
-    if (isS1G_) {
-        s1Idx = s1GToken / static_cast<int64_t>(groupSize_);
-    } else {
-        s1Idx = s1GToken % static_cast<int64_t>(batchCache.s1Size);
-    }
-    return s1Idx;
-}
-
-
-uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx) {
+uint32_t SparseAttnSharedkvMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx) {
     uint32_t bsStride = 0;
     if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t *>(seqUsedQ_->GetData());
@@ -548,7 +510,7 @@ uint32_t SparseAttnSharedkvMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride
     // 尝试使用 oriTopkLength_
     if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
     	const int32_t *oriTopkPtr =static_cast<const int32_t*>(oriTopkLength_->GetData());
-    	return static_cast<uint32_t>(oriTopkPtr[bIdx]);
+    	return static_cast<uint32_t>(oriTopkPtr[bsStride]);
     }
     // 如果不是 DEFAULT_MASK，使用 oriTopK_
     return static_cast<uint32_t>(oriTopK_);
@@ -584,7 +546,7 @@ uint32_t SparseAttnSharedkvMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
     return static_cast<uint32_t>(querySeqSize_);
 }
 
-uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
+uint32_t SparseAttnSharedkvMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
 {
     // 如果 seqUsedKv_ 传了，直接使用
     if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
@@ -607,17 +569,19 @@ uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetOriS2SeqSize(uint32_t bI
     return static_cast<uint32_t>(kvSeqSize_);
 }
 
-uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
+uint32_t SparseAttnSharedkvMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
 {
     // 如果 seqUsedKv_ 传了，直接使用
-    if (!seqUsedKv_.empty()) {
-        return static_cast<uint32_t>(seqUsedKv_[bIdx]);
+    if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     // seqUsedKv_ 没传，判断 Layout
     if (layoutKv_ == "TND") {
         // 如果是 TND，尝试使用 actSeqLenOriKv_
-        if (!actSeqLenOriKv_.empty()) {
-            return static_cast<uint32_t>(actSeqLenOriKv_[bIdx + 1U] - actSeqLenOriKv_[bIdx]);
+        if (actSeqLenOriKv_ != nullptr && actSeqLenOriKv_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenOriKv_->GetData());
+            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
     // 如果max_seqlen_kv没传入，且cmp_kv为稀疏的，则尝试从topk中获取

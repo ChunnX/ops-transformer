@@ -257,7 +257,7 @@ private:
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetOriS2SeqSize(uint32_t bIdx);
     uint32_t GetCmpS2SeqSize(uint32_t bIdx);
-    uint32_t GetS1Idx(const BatchCache &batchCache, uint32_t s1GIdx);
+    uint32_t GetS1Idx(uint32_t s1Size, uint32_t s1GIdx);
     uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
     uint32_t GetOriTopkLength(uint32_t bsStride);
     uint32_t GetCmpTopkLength(uint32_t bsStride);
