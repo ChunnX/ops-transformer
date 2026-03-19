@@ -35,13 +35,13 @@
         output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
         $$
 
-    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(ceildiv(a0, 128), ceildiv(a1, 128))、x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
+    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时, x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
 
-    -   情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(a0, ceildiv(a1, 64), 2)、x2Scale为(b0, ceildiv(b1, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
+    -   情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(n, k)时, x1Scale的shape为(m, ceildiv(k, 64), 2)、x2Scale的shape为(n, ceildiv(k, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。mx量化仅支持x2、x2Scale转置场景。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
@@ -290,7 +290,13 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         - bais：如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
         - x1Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceildiv(m, 128), ceildiv(k, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx量化场景下，数据类型为FLOAT8_E8M0，shape为(m, ceilDiv(k, 64), 2)。
         - x2Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceildiv(k, 128), ceildiv(n, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx场景下，数据类型为FLOAT8_E8M0，shape为(n, ceilDiv(k, 64), 2)。
-        - groupSize：在perblock场景下，x1Scale、x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合仅支持[128, 128, 128]，对应groupSize的值为549764202624；在mx量化场景下，当x1Scale、x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合仅支持[1, 1, 32]，对应groupSize的值为4295032864；其他场景输入，当前版本仅支持输入0。
+        - groupSize:
+            - 仅当x1Scale和x2Scale输入都是2维及以上数据时，groupSize取值有效，其他场景需传入0。
+            - groupSize值支持公式推导：传入的groupSize内部会按如下公式分解得到groupSizeM、groupSizeN、groupSizeK，当其中有1个或多个为0，会根据x1/x2/x1Scale/x2Scale输入shape重新设置groupSizeM、groupSizeN、groupSizeK用于计算。设置原理：如果groupSizeM=0，表示m方向量化分组值由接口推导，推导公式为groupSizeM = m / scaleM（需保证m能被scaleM整除），其中m与x1 shape中的m一致，scaleM与x1Scale shape中的m一致；如果groupSizeK=0，表示k方向量化分组值由接口推导，推导公式为groupSizeK = k / scaleK（需保证k能被scaleK整除），其中k与x1 shape中的k一致，scaleK与x1Scale shape中的k一致；如果groupSizeN=0，表示n方向量化分组值由接口推导，推导公式为groupSizeN = n / scaleN（需保证n能被scaleN整除），其中n与x2 shape中的n一致，scaleN与x2Scale shape中的n一致。
+            $$
+            groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
+            $$
+            - 如果满足重新设置条件，一般情况下，当x1Scale、x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale、x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
         - commMode：当前版本仅支持输入“ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
 
