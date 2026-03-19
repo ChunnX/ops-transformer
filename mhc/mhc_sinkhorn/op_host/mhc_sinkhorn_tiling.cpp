@@ -118,6 +118,8 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     auto xShapePtr = context_->GetInputShape(X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     auto xShape = xShapePtr->GetStorageShape();
+    OP_CHECK_IF((xShape.GetShapeSize() == 0),
+                OP_LOGE(opName_, "Input x must not be empty tensor"), return ge::GRAPH_FAILED);
     xDimNum_ = static_cast<int64_t>(xShape.GetDimNum());
     OP_CHECK_IF((xDimNum_ != DIM_NUM_3 && xDimNum_ != DIM_NUM_4),
                 OP_LOGE(opName_, "xDimNum must be 3 or 4, but got %d .", xDimNum_), return ge::GRAPH_FAILED);

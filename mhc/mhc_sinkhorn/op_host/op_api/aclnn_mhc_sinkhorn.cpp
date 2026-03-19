@@ -190,9 +190,8 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     if (x->IsEmpty()) {
-        *workspaceSize = 0;
-        uniqueExecutor.ReleaseTo(executor);
-        return ACLNN_SUCCESS;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Do not support empty input tensor.");
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
     // 将输入x转换成连续的tensor
