@@ -1663,7 +1663,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, arriveCount);
             LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
-            // SyncFunc<AscendC::HardEvent::MTE2_V>();
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
             SendToExpert(index);
 
             // LOG_INFO("[BATCHWRITE][WaitToken][true]after sendtoexpert tokenid:", index);
@@ -1867,7 +1867,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     DataCopy(tokenData_, recvTmpTensor_, hAlignSize_ / sizeof(XType));
     // PipeBarrier<PIPE_ALL>();
-    
+    // SyncFunc<AscendC::HardEvent::MTE2_S>();
     LocalTensor<int16_t> xInTensorInt16 = recvTmpTensor_.template ReinterpretCast<int16_t>();
     LocalTensor<uint32_t> xInTensor = recvTmpTensor_.template ReinterpretCast<uint32_t>();
     LocalTensor<float> xInToFloatTensor = recvTmpTensor_.template ReinterpretCast<float>();
