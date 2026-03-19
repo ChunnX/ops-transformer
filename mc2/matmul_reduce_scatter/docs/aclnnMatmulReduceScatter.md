@@ -17,13 +17,17 @@
 
 ## 功能说明
 
-- 接口功能：完成mm + reduce_scatter_base计算。
+- 接口功能：完成`Matmul`计算和`ReduceScatter`通信的融合，先计算后通信。融合算子内部实现计算和通信流水并行。
 
 - 计算公式：
 
     $$
-    output=reduceScatter(x1@x2+bias)
+    output=ReduceScatter(x1@x2+bias)
     $$
+
+    - x1指Matmul计算的左矩阵。
+    - x2指Matmul计算的右矩阵。
+    - bias指Matmul计算的偏置。
 
 ## 函数原型
 
@@ -80,8 +84,13 @@ aclnnStatus aclnnMatmulReduceScatter(
     <tr>
         <td>x1</td>
         <td>输入</td>
-        <td>即计算公式中的x1。</td>
-        <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维shape输入，且仅支持不转置场景。</li></ul></td>
+        <td>Matmul计算的左矩阵输入，即计算公式中的x1。</td>
+        <td>
+            <ul>
+                <li>shape为（m，k）。</li>
+                <li>支持空Tensor。</li>
+            </ul>
+        </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
@@ -90,8 +99,16 @@ aclnnStatus aclnnMatmulReduceScatter(
     <tr>
         <td>x2</td>
         <td>输入</td>
-        <td>即计算公式中的x2。</td>
-        <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
+        <td>Matmul计算的右矩阵输入，即计算公式中的x2。</td>
+        <td>
+            <ul>
+                <li>不转置场景的shape为（k，n），转置场景的shape为（n，k）。</li>
+                <li>支持空Tensor。</li>
+                <li>与x1的数据类型保持一致。</li>
+                <li>当前版本仅支持二维输入，支持转置/不转置场景。</li>
+                <li>仅支持两根轴转置情况下的<a href="../../../docs/zh/context/非连续的Tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
+            </ul>
+        </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
@@ -100,8 +117,15 @@ aclnnStatus aclnnMatmulReduceScatter(
     <tr>
         <td>bias</td>
         <td>输入</td>
-        <td>即计算公式中的bias。</td>
-        <td><ul><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></ul></td>
+        <td>Matmul计算的偏置，即计算公式中的bias。</td>
+        <td>
+            <ul>
+                <li>shape为（n）。</li>
+                <li>支持传入空指针场景。</li>
+                <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持输入为非0的场景。</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>：支持输入为非0的场景。</li>
+            </ul>
+        </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>1</td>
@@ -141,7 +165,9 @@ aclnnStatus aclnnMatmulReduceScatter(
         <td>streamMode</td>
         <td>输入</td>
         <td>流模式的枚举。</td>
-        <td>当前只支持枚举值1。</td>
+        <td>streamMode：任务失败后的流处理模式。取值范围如下：
+            1表示ACL_STOP_ON_FAILURE，某个任务失败后，停止执行后续的任务。此模式为当前版本唯一支持的值。
+    </td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -151,7 +177,13 @@ aclnnStatus aclnnMatmulReduceScatter(
         <td>output</td>
         <td>输出</td>
         <td>AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
-        <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li></ul></td>
+        <td>
+            <ul>
+                <li>shape为(m/rank_size, n)。</li>
+                <li>支持空Tensor。</li>
+                <li>与x1的数据类型保持一致。</li>
+            </ul>
+        </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
@@ -178,11 +210,6 @@ aclnnStatus aclnnMatmulReduceScatter(
         <td>-</td>
     </tr>
     </tbody></table>
-
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - bias：暂不支持输入为非0的场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - bias：支持输入为非0的场景。
 
 -   **返回值**
 
@@ -263,25 +290,26 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
-- 输入x1为2维，其shape为(m, k)，m须为卡数rank_size的整数倍。
-- 输入x2必须是2维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
-- x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需满足以下条件：
-  - m为空，k不为空，n不为空；
-  - m不为空，k不为空，n为空；
-  - m为空，k不为空，n为空。
-- x2矩阵支持转置/不转置场景，x1矩阵只支持不转置场景。
+- 参数说明中shape涉及的变量说明：
+  - m为卡数rank_size的整数倍。
+  - k的取值范围为[256, 65535)。
+  - x1/x2支持的空tensor场景，m和n可以为0，k不可为0，且需满足以下条件：
+    - m为0，k不为0，n不为0；
+    - m不为0，k不为0，n为0；
+    - m为0，k不为0，n为0。
+  - rank_size为卡数。
+- x2支持转置/不转置场景，x1只支持不转置场景。
 - x1、x2计算输入的数据类型要和output计算输出的数据类型一致。
-- bias暂不支持输入为非0的场景。
-- 输出为2维，其shape为(m/rank_size, n), rank_size为卡数。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡，并且仅支持hccs链路all mesh组网。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - 支持2、4、8卡，并且仅支持hccs链路all mesh组网。
+  - 一个模型中的通算融合MC2算子，仅支持相同通信域。
+  - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 支持2、4、8、16、32卡，并且仅支持hccs链路double ring组网。
-  - reduceScatter(x1@x2+bias)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16、32、64卡，并且仅支持hccs链路all mesh组网。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
+  - ReduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - aclnnMatmulReduceScatter默认为确定性实现。
 
 ## 调用示例
 
@@ -289,7 +317,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
@@ -450,7 +478,6 @@ aclnnStatus aclnnMatmulReduceScatter(
 
     int main(int argc, char *argv[])
     {
-        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[DEV_NUM];
