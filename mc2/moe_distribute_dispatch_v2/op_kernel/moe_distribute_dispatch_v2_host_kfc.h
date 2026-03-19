@@ -991,7 +991,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ExpertActiveMaskCal()
 {
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-    LOG_INFO("ExpertActiveMaskCal expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_, axisK_});
+    //LOG_INFO("ExpertActiveMaskCal expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_, axisK_});
     LocalTensor<int8_t> maskStrideInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
     LocalTensor<half> maskStrideFp16Tensor = subExpBuf_.Get<half>();
     LocalTensor<int32_t> maskStrideInt32Tensor = gatherMaskTBuf_.Get<int32_t>();
@@ -999,17 +999,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     PipeBarrier<PIPE_V>();
     Cast(maskStrideFp16Tensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
-    LOG_INFO("ExpertActiveMaskCal maskStrideFp16Tensor",maskStrideFp16Tensor,{axisBS_, axisK_});
+    //LOG_INFO("ExpertActiveMaskCal maskStrideFp16Tensor",maskStrideFp16Tensor,{axisBS_, axisK_});
     Cast(maskStrideInt32Tensor, maskStrideFp16Tensor, RoundMode::CAST_RINT, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
-    LOG_INFO("ExpertActiveMaskCal maskStrideInt32Tensor",maskStrideInt32Tensor,{axisBS_, axisK_});
+    //LOG_INFO("ExpertActiveMaskCal maskStrideInt32Tensor",maskStrideInt32Tensor,{axisBS_, axisK_});
     Mul(expertIdsTensor_, expertIdsTensor_, maskStrideInt32Tensor, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
     Adds(expertIdsTensor_, expertIdsTensor_, -moeExpertNum_, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
     Abs(expertIdsTensor_, expertIdsTensor_, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
-    LOG_INFO("ExpertActiveMaskCal expertIdsTensor_",expertIdsTensor_,{axisBS_, axisK_});
+    //LOG_INFO("ExpertActiveMaskCal expertIdsTensor_",expertIdsTensor_,{axisBS_, axisK_});
 }
 
 /**
