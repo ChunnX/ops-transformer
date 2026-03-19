@@ -25,8 +25,8 @@ extern aclnnStatus aclnnInnerFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional, const aclTensor *metadataOptional,
     float softmaxMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse, int64_t deterministic,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, 
+    const char *layoutOut, int64_t returnSoftmaxLse, int64_t deterministic,
     const aclTensor *attentionOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

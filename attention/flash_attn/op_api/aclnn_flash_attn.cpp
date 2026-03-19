@@ -40,6 +40,8 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     int64_t maskMode,
     int64_t winLeft,
     int64_t winRight,
+    int64_t maxSeqlenQ,
+    int64_t maxSeqlenKV,
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutOut,
@@ -66,7 +68,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
         sequsedQOptional, sequsedKvOptional,
         sinksOptional, metadataOptional,
         softmaxMode, maskMode, winLeft, winRight,
-        layoutQ, layoutKv, layoutOut,
+        maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
         returnSoftmaxLse, deterministic,
         attentionOut, placeHolder,
         workspaceSize, executor);

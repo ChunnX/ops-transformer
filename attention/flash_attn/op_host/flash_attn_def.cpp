@@ -137,10 +137,16 @@ public:
             .Int(0);
         this->Attr("win_left")
             .AttrType(OPTIONAL)
-            .Int(2147483647);
+            .Int(-1);
         this->Attr("win_right")
             .AttrType(OPTIONAL)
-            .Int(2147483647);
+            .Int(-1);
+        this->Attr("max_seqlen_q")
+            .AttrType(OPTIONAL)
+            .Int(-1);
+        this->Attr("max_seqlen_kv")
+            .AttrType(OPTIONAL)
+            .Int(-1);
         this->Attr("layout_q")
             .AttrType(OPTIONAL)
             .String("BSND");

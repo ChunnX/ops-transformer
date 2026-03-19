@@ -144,6 +144,8 @@ int main()
     int64_t maskMode         = 0;      // 0: 无掩码
     int64_t winLeft          = 0;
     int64_t winRight         = 0;
+    int64_t maxseqlenq          = 0;
+    int64_t maxseqlenkv         = 0;
     const char *layoutQ      = "BNSD";
     const char *layoutKv     = "BSND";  // KV布局仅支持BSND/TND/PA_ND/PA_Nz
     const char *layoutOut    = "BNSD";
@@ -164,7 +166,7 @@ int main()
         nullptr,    // sequsedKvOptional
         nullptr,    // sinksOptional
         nullptr,    // metadataOptional
-        softmaxMode, maskMode, winLeft, winRight,
+        softmaxMode, maskMode, winLeft, winRight, maxseqlenq, maxseqlenkv,
         layoutQ, layoutKv, layoutOut,
         returnSoftmaxLse, deterministic,
         outTensor,

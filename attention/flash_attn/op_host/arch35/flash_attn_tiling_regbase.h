@@ -72,11 +72,15 @@ static const size_t FA_ATTR_SOFTMAX_MODE_INDEX    = 0UL;
 static const size_t FA_ATTR_MASK_MODE_INDEX       = 1UL;
 static const size_t FA_ATTR_WIN_LEFT_INDEX        = 2UL;
 static const size_t FA_ATTR_WIN_RIGHT_INDEX       = 3UL;
-static const size_t FA_ATTR_LAYOUT_Q_INDEX        = 4UL;
-static const size_t FA_ATTR_LAYOUT_KV_INDEX       = 5UL;
-static const size_t FA_ATTR_LAYOUT_OUT_INDEX      = 6UL;
-static const size_t FA_ATTR_RETURN_SOFTMAX_LSE    = 7UL;
-static const size_t FA_ATTR_DETERMINISTIC         = 8UL;
+
+static const size_t FA_ATTR_MAX_SEQLEN_Q_INDEX    = 4UL;
+static const size_t FA_ATTR_MAX_SEQLEN_KV_INDEX   = 5UL;
+
+static const size_t FA_ATTR_LAYOUT_Q_INDEX        = 6UL;
+static const size_t FA_ATTR_LAYOUT_KV_INDEX       = 7UL;
+static const size_t FA_ATTR_LAYOUT_OUT_INDEX      = 8UL;
+static const size_t FA_ATTR_RETURN_SOFTMAX_LSE    = 9UL;
+static const size_t FA_ATTR_DETERMINISTIC         = 10UL;
 
 // layout枚举（与flash_attn_score对齐）
 enum class FALayoutType : uint8_t {
