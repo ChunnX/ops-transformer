@@ -75,7 +75,7 @@ static ge::graphStatus SetRankSize(const gert::TilingContext *context, TilingRun
     const char *nodeName = context->GetNodeName();
     // attrs在函数CheckAttrsInfo中已做校验
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    const int *rankSizePtr = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
+    const int64_t *rankSizePtr = attrs->GetAttrPointer<int64_t>(WORLD_SIZE_INDEX);
     if (rankSizePtr == nullptr || *rankSizePtr == RANK_SIZE_DEFAULT) {
         int64_t rankSize = 0;
         OP_TILING_CHECK(!mc2tiling::GetRankSize(nodeName, runInfo.groupPtr, rankSize),
@@ -85,8 +85,8 @@ static ge::graphStatus SetRankSize(const gert::TilingContext *context, TilingRun
     } else {
         runInfo.rankSize = *rankSizePtr;
     }
-    OP_TILING_CHECK(!IsContains(RANK_SIZE_LIST, runInfo.rankSize),
-                    OP_LOGE(nodeName, "The rankSize should be in %s, but actual value is %u.",
+    OP_TILING_CHECK(std::find(RANK_SIZE_LIST.begin(), RANK_SIZE_LIST.end(), runInfo.rankSize) >= RANK_SIZE_LIST.end(),
+                    OP_LOGE(nodeName, "The rankSize should be in %s, but actual value is %ld.",
                     VectorToString(RANK_SIZE_LIST).c_str(), runInfo.rankSize),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -218,7 +218,7 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
     const char* dimDesc = (xDimNum == THREE_DIMS) ? "B*S" : "BS"; // 报错信息二维时为BS, 三维时为B*S
     OP_TILING_CHECK(xValueBS % runInfo.rankSize != 0,
                     OP_LOGE(nodeName,
-                            "Input tensor 'x' has shape %s. The %s dimension (%lu) is invalid, which must be divisible by world_size (%u).",
+                            "Input tensor 'x' has shape %s. The %s dimension (%lu) is invalid, which must be divisible by world_size (%ld).",
                             Ops::Base::ToString(xShape->GetStorageShape()).c_str(), dimDesc, xValueBS, runInfo.rankSize),
                     return false);
 
@@ -428,14 +428,14 @@ static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const 
         OP_TILING_CHECK(invalidShape,
                         OP_LOGE(nodeName,
                                 "output shape is invalid, which was mismatch with x shape,"
-                                "actual output shape is (%lu, %lu, %lu), x shape is (%lu, %lu, %lu), rankSize is %u.",
+                                "actual output shape is (%lu, %lu, %lu), x shape is (%lu, %lu, %lu), rankSize is %ld.",
                                 outputValueOne, outputValueTwo, outputValueThree, xValueOne, xValueTwo, xValueThree, runInfo.rankSize),
                         return false);
     } else {
         OP_TILING_CHECK(invalidShape,
                         OP_LOGE(nodeName,
                                 "output shape is invalid, which was mismatch with x shape,"
-                                "actual output shape is (%lu, %lu), x shape is (%lu, %lu), rankSize is %u.",
+                                "actual output shape is (%lu, %lu), x shape is (%lu, %lu), rankSize is %ld.",
                                 outputValueOne, outputValueTwo, xValueOne, xValueTwo, runInfo.rankSize),
                         return false);
     }
@@ -459,7 +459,7 @@ static bool CheckReduceScatter3DShape(const gert::TilingContext *context,
     OP_TILING_CHECK(invalidShape,
                     OP_LOGE(nodeName,
                             "output shape is invalid, which was calculated with x shape,"
-                            "actual output shape is (%lu, %lu), x shape is (%lu, %lu, %lu), rankSize is %u.",
+                            "actual output shape is (%lu, %lu), x shape is (%lu, %lu, %lu), rankSize is %ld.",
                             outputValueOne, outputValueTwo, xValueOne, xValueTwo, xValueThree, runInfo.rankSize),
                     return false);
     return true;
@@ -478,7 +478,7 @@ static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputVa
     OP_TILING_CHECK(invalidShape,
                     OP_LOGE(nodeName,
                             "output shape is invalid, which was calculated with x shape,"
-                            "actual output shape is (%lu, %lu), x shape is (%lu, %lu), rankSize is %u.",
+                            "actual output shape is (%lu, %lu), x shape is (%lu, %lu), rankSize is %ld.",
                             outputValueOne, outputValueTwo, xValueOne, xValueTwo, runInfo.rankSize),
                     return false);
     return true;
