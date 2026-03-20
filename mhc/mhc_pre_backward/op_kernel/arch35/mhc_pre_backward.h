@@ -72,6 +72,9 @@ constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 64;            // ProcessV2函数使�
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
+constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
+constexpr uint32_t ALPHA_GRAD_SHAPE_2_OFFSET = 8;
+constexpr uint32_t ALPHA_GRAD_SHAPE_3_OFFSET = 16;
 
 struct InitParams {
     GM_ADDR x;
@@ -669,14 +672,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     AscendC::LocalTensor<P> alphaOutBuf = bf16OutQueue_.AllocTensor<P>();
     uint32_t coreId = GetBlockIdx();
 
-    uint32_t srcShape1[] = {1, N_};
-    uint32_t srcShape2[] = {1, 2 * N_};
-    uint32_t srcShape3[] = {1, fusionSize_};
+    // uint32_t srcShape1[] = {1, N_};
+    // uint32_t srcShape2[] = {1, 2 * N_};
+    // uint32_t srcShape3[] = {1, fusionSize_};
 
-    ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf, sumBuf, srcShape1, true);
-    PipeBarrier<PIPE_V>();
-    Muls(sumBuf, sumBuf, 0.0f, N_);
-    PipeBarrier<PIPE_V>();
+    // ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf, sumBuf, srcShape1, true);
+    // PipeBarrier<PIPE_V>();
+    // Muls(sumBuf, sumBuf, 0.0f, N_);
+    // PipeBarrier<PIPE_V>();
 
     ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf[8], sumBuf, srcShape2, true);
     PipeBarrier<PIPE_V>();
