@@ -99,13 +99,18 @@ at::Tensor blitz_sparse_attention(
     int64_t num_key_value_heads = num_key_value_heads_opt.value_or(0);
     int64_t sparse_mode = sparse_mode_opt.value_or(0);
     
-    // Validate input tensors   
+    // Validate input tensors
+    TORCH_CHECK(query.is_contiguous(), "query must be contiguous");
+    TORCH_CHECK(key.is_contiguous(), "key must be contiguous");
+    TORCH_CHECK(value.is_contiguous(), "value must be contiguous");
+
     if (atten_mask.has_value()) {
         TORCH_CHECK(atten_mask.value().scalar_type() == at::kBool, "atten_mask must be bool tensor");
     }
 
     if (sabi.has_value()) {
         TORCH_CHECK(sabi.value().scalar_type() == at::kUInt16, "sabi tensor must be uint16 tensor");
+        TORCH_CHECK(sabi.value().is_contiguous(), "sabi must be contiguous");
     }
     
     // Create ACL tensors from torch tensors
