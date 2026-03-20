@@ -92,7 +92,7 @@ the output should be:
 ```
 
 ## Kernel integration plan
-If this block sparse kernel is of an interest, please consider merging it with the official attention/blitz_sparse_attention. Its source code is based on attention/blitz_sparse_attention taken from git commit a574b5d71faa7c360934a6c7d1b4aa85e1a49147
+If this block sparse kernel is of an interest, please consider merging it with the official attention/prompt_flash_attention. Its source code is based on attention/prompt_flash_attention taken from git commit a574b5d71faa7c360934a6c7d1b4aa85e1a49147
 
 ## 产品支持情况
 

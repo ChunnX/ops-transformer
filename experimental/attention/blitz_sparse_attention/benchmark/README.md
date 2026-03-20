@@ -12,7 +12,7 @@ bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blit
 
 ## Parameters
 
-Using the CAPITAL_LETTERS variables at the top of the file you can ru all the things you need. Wherever there is a list, it means you can set mutliple values, and the file will run correctness/time evaluations for **all the possible combinations**.
+Using the CAPITAL_LETTERS variables at the top of the file you can ru all the things you need. Wherever there is a list, it means you can set multiple values, and the file will run correctness/time evaluations for **all the possible combinations**.
 
 * `B_VALS`: batch sizes to test. For block-sparsity only `B_VALS = [1]` works for now.
 * `H_VALS`: number of heads
@@ -20,7 +20,7 @@ Using the CAPITAL_LETTERS variables at the top of the file you can ru all the th
 * `D_VALS`: head dimensions
 * `N_REPEATS`: how many runs to do to estimate time
 * `N_WARMUP`: how many warmup runs before running `N_REPEATS` calls
-* `ATTENTION_MATRIX`: what kind of attention matrix to use. By chosing this value, you create the matrix you want and you also automatically set all the parameters as they are required accordingly by torch_npu.npu_prompt_flash_attention. The possible values are (only the first few ones are probably interesting for you):
+* `ATTENTION_MATRIX`: what kind of attention matrix to use. By choosing this value, you create the matrix you want and you also automatically set all the parameters as they are required accordingly by torch_npu.npu_prompt_flash_attention. The possible values are (only the first few ones are probably interesting for you):
     * `blocks_optimized_batched`: our optimized block-sparse kernel. There is a batch dimension, but please keep it 1 for now.
     * `blocks_optimized`: same, without batch dimension (you can use either this or the other)
     * `dense`: all tokens are attended by all tokens
@@ -29,15 +29,15 @@ Using the CAPITAL_LETTERS variables at the top of the file you can ru all the th
     * `band`: torch_npu band mode: diagonal band. You can set the width of the diagonal with `BAND_PRE_TOKENS` and `BAND_POST_TOKENS`
     * `custom`: you can create your own custom mask in `make_custom_mask`. Will use the default `dense` pattern for the torch_npu version
 * `SPARSITY_VALS`: how many blocks to activate: randomly chosen, but each Q-block row will have the same number of blocks
-* `BLOCK_SIZE_Q`, `BLOCK_SIZE_KV`: For now, only the defaulst 128x512 are supported for the `blocks_optimized*` version
+* `BLOCK_SIZE_Q`, `BLOCK_SIZE_KV`: For now, only the default 128x512 are supported for the `blocks_optimized*` version
 * `BLOCK_MASK_SEED`: for reproducibility of random sampling. Can set to any value to change random sampling
 * `USE_FRAME`: Adds a frame on top of the block-sparse mask. If you want to change the frame shape, please modify the method `generate_sparse_blocks_by_row_with_frame`. If `S` (in `S_VALS`) length is too short the mask might be dense. For now, the frame is always:
     * First 8 KV-blocks are active for all rows
     * First 29 Q-rows are completely active
-    * Last Q-row is compeletely active
+    * Last Q-row is completely active
     * Last KV-column is all active
 * `PRINT_OUTPUTS`: For manual visualization of output tensors
-* `PRINT_MASK`: To visually check if the maks is as expected
+* `PRINT_MASK`: To visually check if the mask is as expected
 * `PRINT_BLOCK_EQUALITY`: if the correctness test fails, you can check which blocks in the outputs match with the reference and which not. The block granularity to visualize is given by `PRINT_HEIGHT` and `PRINT_WIDTH`
 * `RUN_REFERENCE`: Besides measuring time, also test correctness. This only is possible for small enough masks, otherwise you will get OOM in the reference run. For this reason, you can disable this for very long contexts, and enable it for short enough sequences.
 * `TORCH_REFERENCE`: If `True`, correctness will be tested against the torch attention implementation. If `False`, for block-sparse attention the reference is the torch_npu dense with the corresponding attention mask (like in `sparse_block` mode). Please only use `H=1`, as torch_npu doesn't support different masks for different heads.
@@ -80,7 +80,6 @@ TORCH_REFERENCE = True  # If False, will instead run the torch_npu reference
 #### Output:
 
 ```
-(base) root@5e47d24afe58:/workspace/ops-transformer/benchmark# python benchmark.py 
 ==========================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'
 ==========================================================================================
@@ -114,7 +113,7 @@ TORCH_REFERENCE = True  # If False, will instead run the torch_npu reference
  24   1   4096   4096  128      0.80             yes           26180.69            1025.53
  24   1   4096   4096  128      0.90             yes           26216.21             971.07
 ```
-Reference goes OOM for 10_000 sequence lenght and 24 heads (not shown).
+Reference goes OOM for 10_000 sequence length and 24 heads (not shown).
 
 On the left you see the inputs, then the "yes" line checks correctness, after that you see the reference runtime and our runtime. After that you see the memory bandwidth usage, which is much better in our kernel.
 
