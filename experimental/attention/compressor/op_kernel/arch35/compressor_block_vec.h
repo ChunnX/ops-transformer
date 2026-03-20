@@ -31,34 +31,6 @@ namespace Compressor {
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-struct LoopInfo {
-    uint32_t groupSize = 0U;
-    uint32_t groupNum = 0U;
-    uint32_t coreRowIdx = 0U;
-    uint32_t coreColIdx = 0U;
-    bool isCoreRowFirst = false;
-    bool isCoreRowLast = false;
-    bool isCoreLoopFirst = false;
-    bool isCoreLoopLast = false;
-};
-
-struct Vec1SplitInfo {
-    uint32_t dealSeqStartIdx = 0;
-    uint32_t dBaseSize = 0;
-    uint32_t vec1GroupSize = 0;
-    uint32_t vec1GroupNum = 0;
-    uint32_t dealTcSize = 0;
-    uint32_t preDealTcSize = 0;
-    uint32_t curBStart = 0;
-    uint32_t curSStart = 0;
-    uint32_t curCompressedCnt = 0;
-    uint32_t totalCompressedCnt = 0;
-    uint32_t tcSplitSize = 0;
-    uint32_t dSplitSize = 0;
-    uint32_t dLoopCount = 0;
-};
-
-
 template <typename COMP>
 class CompressorBlockVector {
 public:
@@ -75,10 +47,20 @@ public:
     __aicore__ inline CompressorBlockVector(){};
     // =================================设置参数=================================
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const CompressorTools<COMP> &tools);
-    __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
-                                __gm__ uint8_t *ape, __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin, 
-                                __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, 
-                                __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut);
+    __aicore__ inline void Init( 
+        __gm__ uint8_t *x,
+        __gm__ uint8_t *wKv,
+        __gm__ uint8_t *wGate,
+        __gm__ uint8_t *stateCache,
+        __gm__ uint8_t *ape,
+        __gm__ uint8_t *normWeight,
+        __gm__ uint8_t *ropeSin,
+        __gm__ uint8_t *ropeCos,
+        __gm__ uint8_t *stateBlockTable,
+        __gm__ uint8_t *cuSeqlens,
+        __gm__ uint8_t *seqUsed,
+        __gm__ uint8_t *startPos,
+        __gm__ uint8_t *cmpKvOut);
     // =================================资源管理=================================
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
@@ -269,10 +251,19 @@ __aicore__ inline void CompressorBlockVector<COMP>::InitParams(const ConstInfo &
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::Init(
-    __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
-    __gm__ uint8_t *ape, __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos,
-    __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-    __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+        __gm__ uint8_t *x,
+        __gm__ uint8_t *wKv,
+        __gm__ uint8_t *wGate,
+        __gm__ uint8_t *stateCache,
+        __gm__ uint8_t *ape,
+        __gm__ uint8_t *normWeight,
+        __gm__ uint8_t *ropeSin,
+        __gm__ uint8_t *ropeCos,
+        __gm__ uint8_t *stateBlockTable,
+        __gm__ uint8_t *cuSeqlens,
+        __gm__ uint8_t *seqUsed,
+        __gm__ uint8_t *startPos,
+        __gm__ uint8_t *cmpKvOut)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
  	stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
@@ -615,7 +606,6 @@ CompressorBlockVector<COMP>::DataCopyWithOutputQue(const GlobalTensor<O> &dstGm,
 
         outputQue1.FreeTensor(outputUb);
     }
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename COMP>
@@ -645,7 +635,6 @@ CompressorBlockVector<COMP>::DataCopyWithInputQue(const LocalTensor<O> &dstLocal
 
         inputQue2.FreeTensor(inputUb);
     }
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename COMP>
@@ -897,7 +886,15 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     uint32_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
-
+    
+    if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
+        uint32_t writeSeqStartIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, constInfo_.cmpRatio) - (coff_ - 1) * constInfo_.cmpRatio;
+        if (endSeqIdx <= writeSeqStartIdx) {
+            return;
+        }
+        startSeqIdx = max(startSeqIdx, writeSeqStartIdx);
+    }
+    
     if constexpr (COMP::coff == COFF::OVERLAP) {
         WriteToCacheState(stateGm, blockTableGm, srcLocal[srcBaseOffset], sliceInfo.bIdx, startSeqIdx, endSeqIdx,
                           dStartIdx, dDealSize, stateIdx);
@@ -1473,10 +1470,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::SplitCoreV2(const Compressor
             v2TcEndIdx = i + 1;
             GetScIdxInfo(info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
                          OutputSStartIdx, OutputSize);
-            // printf("[SplitCoreV2] bStart:%u, bCompressedId:%u, dealScSize:%u, v2TcStartIdx:%u, v2TcEndIdx:%u, "
-            //        "OutputBStartIdx:%u, OutputSStartIdx:%u, OutputSize:%u\n",
-            //        info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
-            //        OutputSStartIdx, OutputSize);
             return;
         }
     }
