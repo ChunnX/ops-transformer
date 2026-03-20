@@ -19,6 +19,8 @@
 
 namespace l0op {
 
+using namespace op;
+
 OP_TYPE_REGISTER(RotateDynamicQuant);
 
 const std::tuple<aclTensor *, aclTensor *>
