@@ -131,20 +131,12 @@ protected:
     virtual aclnnStatus ConvertDataContiguous()
     {
         // x tensor转换为连续格式
-        if (params_.x->IsContiguous()) {
-            params_.x_contiguous = params_.x;
-        } else {
-            params_.x_contiguous = l0op::Contiguous(params_.x, l0Executor_);
-            CHECK_RET(params_.x_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        }
+        params_.x_contiguous = l0op::Contiguous(params_.x, l0Executor_);
+        CHECK_RET(params_.x_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
         // rot tensor转换为连续格式
-        if (params_.rot->IsContiguous()) {
-            params_.rot_contiguous = params_.rot;
-        } else {
-            params_.rot_contiguous = l0op::Contiguous(params_.rot, l0Executor_);
-            CHECK_RET(params_.rot_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        }
+        params_.rot_contiguous = l0op::Contiguous(params_.rot, l0Executor_);
+        CHECK_RET(params_.rot_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
         return ACLNN_SUCCESS;
     }

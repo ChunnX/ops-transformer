@@ -39,7 +39,9 @@ ge::graphStatus RotateDynamicQuantBaseTiling::GetInputShape()
 ge::graphStatus RotateDynamicQuantBaseTiling::ParseInputAndAttr()
 {
     // 获取输入tensor信息
-    OP_CHECK_RET(GetInputShape() != ge::GRAPH_SUCCESS, return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetInputShape() != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "GetInputShape failed"),
+        return ge::GRAPH_FAILED);
 
     // 获取平台信息
     auto platformInfo = context_->GetPlatformInfo();
