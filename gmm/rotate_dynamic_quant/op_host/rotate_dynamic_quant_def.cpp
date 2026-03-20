@@ -22,14 +22,14 @@ public:
         // 输入 x: [M, N], DT_FLOAT16/DT_BFLOAT16, FORMAT_ND
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BFLOAT16, ge::DT_BFLOAT16, ge::DT_BFLOAT16})
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
         // 输入 rot: [N, N], DT_FLOAT16/DT_BFLOAT16, FORMAT_ND (与x保持一致)
         this->Input("rot")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BFLOAT16, ge::DT_BFLOAT16, ge::DT_BFLOAT16})
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
