@@ -41,12 +41,12 @@ TEST_P(InferShapeTest, param)
     if (param.inputInstance[7] == 1) inputTensorDesc.emplace_back(param.pertoken_scale);
     if (param.inputInstance[8] == 1) inputTensorDesc.emplace_back(param.comm_quant_scale_1);
     if (param.inputInstance[9] == 1) inputTensorDesc.emplace_back(param.comm_quant_scale_2);
+    std::vector<gert::InfershapeContextPara::TensorDescription> outputTensorDesc;
+    if (param.outputInstance[0] == 1) outputTensorDesc.emplace_back(param.y);
     gert::InfershapeContextPara inferShapeContextPara(
         "MatmulAllReduce",
         inputTensorDesc,
-        {
-            param.y
-        },
+        outputTensorDesc,
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
             {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduce_op)},
