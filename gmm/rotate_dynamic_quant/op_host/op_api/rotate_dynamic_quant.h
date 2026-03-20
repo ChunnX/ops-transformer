@@ -16,7 +16,15 @@
 
 namespace l0op {
 
-const std::tuple<const aclTensor *, const aclTensor *>
+/**
+ * @brief RotateDynamicQuant 算子 L0 接口
+ * @param x 输入 tensor，shape 为 [M, N]
+ * @param rot 旋转矩阵 tensor，shape 为 [N, N]
+ * @param dstType 输出数据类型，0 表示 DT_INT8，1 表示 DT_INT32
+ * @param executor 执行器
+ * @return 返回 tuple<yOut, scaleOut>
+ */
+const std::tuple<aclTensor *, aclTensor *>
 RotateDynamicQuant(
     const aclTensor *x, const aclTensor *rot,
     int64_t dstType,

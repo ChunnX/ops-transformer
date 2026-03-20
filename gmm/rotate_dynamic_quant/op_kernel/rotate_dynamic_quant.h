@@ -22,86 +22,72 @@ namespace RotateDynamicQuant {
 
 using namespace AscendC;
 
-// TilingData结构体定义（与op_host/rotate_dynamic_quant_tiling.h中定义一致）
-struct RotateDynamicQuantTilingData {
-    uint32_t coreNum;
-    uint64_t totalLength;
-    uint64_t mDim;
-    uint64_t nDim;
-    int64_t dstType;
-};
-
-// 初始化参数结构体
+// 定义初始化参数结构体
 struct InitParams {
-    GM_ADDR x;
-    GM_ADDR rot;
-    GM_ADDR yOut;
-    GM_ADDR scaleOut;
+    GM_ADDR x;          // 输入 x: [M, N]
+    GM_ADDR rot;        // 旋转矩阵 rot: [N, N]
+    GM_ADDR yOut;       // 输出 yOut: [M, N]
+    GM_ADDR scaleOut;   // 缩放系数 scaleOut: [M]
     GM_ADDR workspace;
     TPipe *tPipeIn;
     RotateDynamicQuantTilingData *tilingData;
 };
 
-// Kernel类模板
-template <typename X_T, typename YOUT_T>
+// 定义 Kernel 类
+template <class X_T, class YOUT_T>
 class RotateDynamicQuantKernel {
 public:
     __aicore__ inline RotateDynamicQuantKernel() {}
-
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
 
 private:
-    // Global Tensor
+    // 成员变量
     GlobalTensor<X_T> xGm_;
     GlobalTensor<X_T> rotGm_;
     GlobalTensor<YOUT_T> yOutGm_;
     GlobalTensor<float> scaleOutGm_;
-
-    // Tiling数据
-    RotateDynamicQuantTilingData *tiling_;
     TPipe *pipe_;
+    RotateDynamicQuantTilingData *tiling_;
 
-    // Shape信息
-    uint64_t mDim_;
-    uint64_t nDim_;
+    uint64_t M_;
+    uint64_t N_;
     int64_t dstType_;
+    uint32_t coreNum_;
 };
 
-template <typename X_T, typename YOUT_T>
-__aicore__ inline void RotateDynamicQuantKernel<X_T, YOUT_T>::Init(InitParams initParams)
-{
-    // 初始化GlobalTensor
+// 实现 Init 函数
+template <class X_T, class YOUT_T>
+__aicore__ inline void RotateDynamicQuantKernel<X_T, YOUT_T>::Init(InitParams initParams) {
+    // 初始化 GlobalTensor
     xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ X_T *>(initParams.x));
     rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ X_T *>(initParams.rot));
     yOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ YOUT_T *>(initParams.yOut));
     scaleOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(initParams.scaleOut));
 
-    // 获取tiling数据
+    // 获取 tiling 数据
     tiling_ = initParams.tilingData;
     pipe_ = initParams.tPipeIn;
 
-    mDim_ = tiling_->mDim;
-    nDim_ = tiling_->nDim;
-    dstType_ = tiling_->dstType;
+    M_ = tiling_->get_M();
+    N_ = tiling_->get_N();
+    dstType_ = tiling_->get_dstType();
+    coreNum_ = tiling_->get_coreNum();
 
     SyncAll();
 }
 
-template <typename X_T, typename YOUT_T>
-__aicore__ inline void RotateDynamicQuantKernel<X_T, YOUT_T>::Process()
-{
+// 实现 Process 函数
+template <class X_T, class YOUT_T>
+__aicore__ inline void RotateDynamicQuantKernel<X_T, YOUT_T>::Process() {
     // TODO: 实现核心计算逻辑
-    // 1. 数据加载：从Global Memory加载x和rot数据
-    // 2. 旋转计算：x * rot
-    // 3. 动态量化：计算scale，量化输出
-    // 4. 数据写回：将结果写回Global Memory
-
-    // 示例框架（需要根据实际需求实现）：
-    // - 分块处理数据
-    // - 使用UB进行中间计算
-    // - 计算每行的max值作为scale
-    // - 量化并写回结果
+    // 1. 数据加载：从 GM 加载 x 和 rot 到 UB
+    // 2. 旋转计算：y = x @ rot
+    // 3. 动态量化：
+    //    - 计算每行的最大绝对值
+    //    - 计算缩放系数 scale = max_val / 127 (INT8) 或 max_val / 2147483647 (INT32)
+    //    - 量化：yOut = round(y / scale)
+    // 4. 数据写回：将 yOut 和 scaleOut 写回 GM
 }
 
 } // namespace RotateDynamicQuant

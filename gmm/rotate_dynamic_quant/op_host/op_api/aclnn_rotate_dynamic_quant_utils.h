@@ -48,7 +48,7 @@ struct RotateDynamicQuantParamsBase {
     const aclTensor *scaleOut = nullptr;
 
     // ========== 属性参数 ==========
-    int64_t dstType = 0;
+    int64_t dstType = 0;  // 0 -> DT_INT8, 1 -> DT_INT32
 };
 
 /**
@@ -130,11 +130,11 @@ protected:
 
     virtual aclnnStatus ConvertDataContiguous()
     {
-        // x tensor转换为连续格式
+        // x 支持非连续 tensor，统一转换为连续格式
         params_.x_contiguous = l0op::Contiguous(params_.x, l0Executor_);
         CHECK_RET(params_.x_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-        // rot tensor转换为连续格式
+        // rot 支持非连续 tensor，统一转换为连续格式
         params_.rot_contiguous = l0op::Contiguous(params_.rot, l0Executor_);
         CHECK_RET(params_.rot_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -160,8 +160,7 @@ public:
         auto ret = CheckParams();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-        // 空 Tensor 场景处理
-        if (params_.yOut->IsEmpty() || params_.scaleOut->IsEmpty()) {
+        if (params_.yOut->IsEmpty()) {
             *workspaceSize_ = 0ULL;
             uniqueExecutor.ReleaseTo(executor_);
             return ACLNN_SUCCESS;
@@ -170,23 +169,19 @@ public:
         ret = ConvertDataContiguous();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-        // 执行算子
-        auto outParams = l0op::RotateDynamicQuant(
-            params_.x_contiguous, params_.rot_contiguous,
-            params_.dstType,
-            l0Executor_);
-        CHECK_RET(std::get<0>(outParams) != nullptr && std::get<1>(outParams) != nullptr,
-                  ACLNN_ERR_INNER_NULLPTR);
+        // TODO: 调用实际的算子实现
+        // auto outParams = l0op::RotateDynamicQuant(
+        //     params_.x_contiguous, params_.rot_contiguous,
+        //     params_.dstType,
+        //     l0Executor_);
+        // CHECK_RET(outParams != std::tuple(nullptr), ACLNN_ERR_INNER_NULLPTR);
 
-        // 拷贝输出到用户输出 tensor
-        auto yOutInternal = std::get<0>(outParams);
-        auto scaleOutInternal = std::get<1>(outParams);
-
-        auto retView1 = l0op::ViewCopy(yOutInternal, params_.yOut, l0Executor_);
-        CHECK_RET(retView1 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-        auto retView2 = l0op::ViewCopy(scaleOutInternal, params_.scaleOut, l0Executor_);
-        CHECK_RET(retView2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // auto yOut = std::get<0>(outParams);
+        // auto scaleOut = std::get<1>(outParams);
+        // auto retView = l0op::ViewCopy(yOut, params_.yOut, l0Executor_);
+        // CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // retView = l0op::ViewCopy(scaleOut, params_.scaleOut, l0Executor_);
+        // CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
         *workspaceSize_ = uniqueExecutor->GetWorkspaceSize();
         uniqueExecutor.ReleaseTo(executor_);

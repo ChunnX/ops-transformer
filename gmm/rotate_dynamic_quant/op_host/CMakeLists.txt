@@ -15,7 +15,7 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if (BUILD_OPS_RTY_KERNEL)
+if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME RotateDynamicQuant
         OPTIONS --cce-auto-sync=on

@@ -79,9 +79,9 @@ extern "C" {
  *
  * @param [in] x: 输入 tensor，shape 为 [M, N]，数据类型支持：DT_FLOAT16, DT_BFLOAT16
  * @param [in] rot: 旋转矩阵 tensor，shape 为 [N, N]，数据类型与 x 保持一致
- * @param [in] dstType: 输出 yOut 的数据类型属性，0 表示 DT_INT8，1 表示 DT_INT32
- * @param [out] yOut: 输出 tensor，shape 为 [M, N]，数据类型由 dstType 决定
- * @param [out] scaleOut: 输出 scale tensor，shape 为 [M]，数据类型为 DT_FLOAT
+ * @param [in] dstType: 输出数据类型属性，0 表示 DT_INT8，1 表示 DT_INT32
+ * @param [out] yOut: 输出 tensor，shape 为 [M, N]，数据类型：DT_INT8 或 DT_INT32
+ * @param [out] scaleOut: 缩放系数 tensor，shape 为 [M]，数据类型：DT_FLOAT
  * @param [out] workspaceSize: 返回需要在 npu device 侧申请的 workspace 大小
  * @param [out] executor: 返回 op 执行器，包含了算子计算流程
  * @return aclnnStatus: 返回状态码

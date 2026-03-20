@@ -21,38 +21,49 @@ namespace l0op {
 
 OP_TYPE_REGISTER(RotateDynamicQuant);
 
-const std::tuple<const aclTensor *, const aclTensor *>
+const std::tuple<aclTensor *, aclTensor *>
 RotateDynamicQuant(
     const aclTensor *x, const aclTensor *rot,
     int64_t dstType,
     aclOpExecutor *executor) {
 
-    L0_DFX(RotateDynamicQuant, x, rot);
+    L0_DFX(RotateDynamicQuant, x, rot, dstType);
 
-    // 根据dst_type确定输出yOut的数据类型
-    DataType yOutType = (dstType == 1) ? DataType::DT_INT32 : DataType::DT_INT8;
+    // 获取 x 的 shape [M, N]
+    auto xShape = x->GetViewShape();
+    int64_t M = xShape.GetDim(0);
+    int64_t N = xShape.GetDim(1);
+
+    // 根据 dstType 确定输出数据类型
+    DataType yOutDataType = (dstType == 1) ? DataType::DT_INT32 : DataType::DT_INT8;
     Format format = Format::FORMAT_ND;
 
-    // 获取输入x的shape
-    auto xShape = x->GetViewShape();
-    int64_t mDim = xShape.GetDim(0);
-    int64_t nDim = xShape.GetDim(1);
-
-    // yOut: shape与x一致 [M, N]，类型由dst_type决定
-    auto yOutShape = op::Shape({mDim, nDim});
-    auto yOut = executor->AllocTensor(yOutShape, yOutType, format);
+    // 分配 yOut: [M, N], dtype 由 dstType 决定
+    auto yOut = executor->AllocTensor(yOutDataType, format, format);
     OP_CHECK_NULL(yOut, return std::make_tuple(nullptr, nullptr));
 
-    // scaleOut: shape为[M]，类型固定为DT_FLOAT
-    auto scaleOutShape = op::Shape({mDim});
-    auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, format);
+    // 设置 yOut 的 shape
+    auto yOutShape = yOut->GetViewShape();
+    yOutShape.SetDimNum(2);
+    yOutShape.SetDim(0, M);
+    yOutShape.SetDim(1, N);
+
+    // 分配 scaleOut: [M], dtype = DT_FLOAT
+    auto scaleOut = executor->AllocTensor(DataType::DT_FLOAT, format, format);
     OP_CHECK_NULL(scaleOut, return std::make_tuple(nullptr, nullptr));
 
+    // 设置 scaleOut 的 shape
+    auto scaleOutShape = scaleOut->GetViewShape();
+    scaleOutShape.SetDimNum(1);
+    scaleOutShape.SetDim(0, M);
+
+    // 调用 InferShape
     auto ret = INFER_SHAPE(RotateDynamicQuant, OP_INPUT(x, rot),
         OP_OUTPUT(yOut, scaleOut), OP_ATTR(dstType));
     OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return std::make_tuple(nullptr, nullptr),
         "RotateDynamicQuant InferShape failed.");
 
+    // 添加到启动列表
     auto ret1 = ADD_TO_LAUNCHER_LIST_AICORE(RotateDynamicQuant,
         OP_INPUT(x, rot),
         OP_OUTPUT(yOut, scaleOut), OP_ATTR(dstType));

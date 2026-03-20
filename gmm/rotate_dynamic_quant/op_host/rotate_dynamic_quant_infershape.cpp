@@ -12,10 +12,6 @@
  * \file rotate_dynamic_quant_infershape.cpp
  * \brief 算子形状推导实现
  */
-#include <map>
-#include <string>
-#include <sstream>
-#include <initializer_list>
 
 #include "exe_graph/runtime/infer_shape_context.h"
 #include "exe_graph/runtime/shape.h"
@@ -35,40 +31,28 @@ const constexpr int64_t ROT_INDEX = 1;
 const constexpr int64_t YOUT_INDEX = 0;
 const constexpr int64_t SCALEOUT_INDEX = 1;
 
+// 实现形状推导函数
 static ge::graphStatus InferShapeRotateDynamicQuant(InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape RotateDynamicQuant");
 
-    // 获取输入x的形状
+    // 获取输入 x 的形状 [M, N]
     auto xShape = context->GetInputShape(X_INDEX);
-    if (xShape == nullptr) {
-        OP_LOGE(context->GetNodeName(), "x shape is null");
-        return GRAPH_FAILED;
-    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
-    // 获取输入rot的形状
-    auto rotShape = context->GetInputShape(ROT_INDEX);
-    if (rotShape == nullptr) {
-        OP_LOGE(context->GetNodeName(), "rot shape is null");
-        return GRAPH_FAILED;
-    }
-
-    // yOut的形状与输入x一致
+    // yOut 形状与输入 x 一致 [M, N]
     auto yOutShape = context->GetOutputShape(YOUT_INDEX);
-    if (yOutShape == nullptr) {
-        OP_LOGE(context->GetNodeName(), "yOut shape is null");
-        return GRAPH_FAILED;
-    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, yOutShape);
     *yOutShape = *xShape;
 
-    // scaleOut的形状为[M]，即x的第一维
+    // scaleOut 形状为 [M]，取 x 的第一维
     auto scaleOutShape = context->GetOutputShape(SCALEOUT_INDEX);
-    if (scaleOutShape == nullptr) {
-        OP_LOGE(context->GetNodeName(), "scaleOut shape is null");
-        return GRAPH_FAILED;
-    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, scaleOutShape);
+    int64_t dimNum = xShape->GetDimNum();
     scaleOutShape->SetDimNum(1);
-    scaleOutShape->SetDim(0, xShape->GetDim(0));
+    if (dimNum > 0) {
+        scaleOutShape->SetDim(0, xShape->GetDim(0));
+    }
 
     OP_LOGD(context->GetNodeName(), "End to do InferShape RotateDynamicQuant");
     return GRAPH_SUCCESS;
@@ -76,31 +60,30 @@ static ge::graphStatus InferShapeRotateDynamicQuant(InferShapeContext *context)
 
 static graphStatus InferDataTypeRotateDynamicQuant(gert::InferDataTypeContext *context)
 {
-    // 获取dst_type属性
+    // 获取属性 dst_type 来决定 yOut 的数据类型
     auto attrs = context->GetAttrs();
-    if (attrs == nullptr) {
-        OP_LOGE(context->GetNodeName(), "attrs is null");
-        return GRAPH_FAILED;
-    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    int64_t dstType = 0;
-    auto dstTypePtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t* dstTypePtr = attrs->GetAttrPointer<int64_t>(0);
+    int64_t dstType = 0;  // 默认值 0 -> DT_INT8
     if (dstTypePtr != nullptr) {
         dstType = *dstTypePtr;
     }
 
-    // 根据dst_type设置yOut的数据类型
-    // dst_type: 0 -> DT_INT8, 1 -> DT_INT32
-    ge::DataType yOutDataType = (dstType == 1) ? ge::DT_INT32 : ge::DT_INT8;
+    // 根据 dst_type 设置 yOut 数据类型
+    // 0 -> DT_INT8, 1 -> DT_INT32
+    DataType yOutDataType = (dstType == 1) ? DataType::DT_INT32 : DataType::DT_INT8;
     context->SetOutputDataType(YOUT_INDEX, yOutDataType);
 
-    // scaleOut固定为DT_FLOAT
-    context->SetOutputDataType(SCALEOUT_INDEX, ge::DT_FLOAT);
+    // scaleOut 数据类型固定为 DT_FLOAT
+    context->SetOutputDataType(SCALEOUT_INDEX, DataType::DT_FLOAT);
 
     return GRAPH_SUCCESS;
 }
 
+// 注册形状推导实现
 IMPL_OP_INFERSHAPE(RotateDynamicQuant)
     .InferShape(InferShapeRotateDynamicQuant)
     .InferDataType(InferDataTypeRotateDynamicQuant);
+
 } // namespace ops

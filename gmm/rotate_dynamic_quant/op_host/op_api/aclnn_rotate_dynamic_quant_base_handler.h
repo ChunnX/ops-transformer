@@ -32,19 +32,15 @@ constexpr size_t SCALEOUT_DIM_LIMIT = 1UL;
 /**
  * @brief 支持的数据类型列表
  */
-const std::initializer_list<DataType> X_INPUT_DTYPE_SUPPORT_LIST = {
+const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT16, DataType::DT_BF16
 };
 
-const std::initializer_list<DataType> ROT_INPUT_DTYPE_SUPPORT_LIST = {
-    DataType::DT_FLOAT16, DataType::DT_BF16
-};
-
-const std::initializer_list<DataType> YOUT_OUTPUT_DTYPE_SUPPORT_LIST = {
+const std::initializer_list<DataType> YOUT_DTYPE_SUPPORT_LIST = {
     DataType::DT_INT8, DataType::DT_INT32
 };
 
-const std::initializer_list<DataType> SCALEOUT_OUTPUT_DTYPE_SUPPORT_LIST = {
+const std::initializer_list<DataType> SCALEOUT_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT
 };
 
@@ -55,7 +51,7 @@ class RotateDynamicQuantBaseHandler : public rotate_dynamic_quant::RotateDynamic
 protected:
     bool CheckInputOutDims() override
     {
-        // 检查x维度为2
+        // x: [M, N]
         auto xDimNum = params_.x->GetViewShape().GetDimNum();
         if (xDimNum != X_DIM_LIMIT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -64,7 +60,7 @@ protected:
             return false;
         }
 
-        // 检查rot维度为2
+        // rot: [N, N]
         auto rotDimNum = params_.rot->GetViewShape().GetDimNum();
         if (rotDimNum != ROT_DIM_LIMIT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -73,7 +69,7 @@ protected:
             return false;
         }
 
-        // 检查yOut维度为2
+        // yOut: [M, N]
         auto yOutDimNum = params_.yOut->GetViewShape().GetDimNum();
         if (yOutDimNum != YOUT_DIM_LIMIT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -82,7 +78,7 @@ protected:
             return false;
         }
 
-        // 检查scaleOut维度为1
+        // scaleOut: [M]
         auto scaleOutDimNum = params_.scaleOut->GetViewShape().GetDimNum();
         if (scaleOutDimNum != SCALEOUT_DIM_LIMIT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -101,41 +97,34 @@ protected:
         auto yOutShape = params_.yOut->GetViewShape();
         auto scaleOutShape = params_.scaleOut->GetViewShape();
 
-        int64_t xDim0 = xShape.GetDim(DIM_IDX_0);  // M
-        int64_t xDim1 = xShape.GetDim(DIM_IDX_1);  // N
-        int64_t rotDim0 = rotShape.GetDim(DIM_IDX_0);  // N
-        int64_t rotDim1 = rotShape.GetDim(DIM_IDX_1);  // N
+        // x: [M, N], rot: [N, N], 检查 x 的第2维等于 rot 的两个维度
+        int64_t xDim1 = xShape.GetDim(DIM_IDX_1);
+        int64_t rotDim0 = rotShape.GetDim(DIM_IDX_0);
+        int64_t rotDim1 = rotShape.GetDim(DIM_IDX_1);
 
-        // rot的两个维度必须相等且等于x的第二维N
-        if (rotDim0 != rotDim1) {
+        if (xDim1 != rotDim0 || xDim1 != rotDim1) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "rot tensor dimensions must be equal, but got [%ld, %ld]",
-                    rotDim0, rotDim1);
+                    "x second dim (%ld) must equal rot dims (%ld, %ld)",
+                    xDim1, rotDim0, rotDim1);
             return false;
         }
 
-        if (rotDim0 != xDim1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "rot dimension (%ld) must equal x second dimension (%ld)",
-                    rotDim0, xDim1);
-            return false;
-        }
-
-        // yOut shape必须与x一致 [M, N]
+        // yOut shape 与 x 一致
+        int64_t xDim0 = xShape.GetDim(DIM_IDX_0);
         int64_t yOutDim0 = yOutShape.GetDim(DIM_IDX_0);
         int64_t yOutDim1 = yOutShape.GetDim(DIM_IDX_1);
+
         if (yOutDim0 != xDim0 || yOutDim1 != xDim1) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "yOut shape [%ld, %ld] must equal x shape [%ld, %ld]",
-                    yOutDim0, yOutDim1, xDim0, xDim1);
+                    "yOut shape must match x shape");
             return false;
         }
 
-        // scaleOut shape必须为[M]
+        // scaleOut: [M], 检查第0维等于 x 的第0维
         int64_t scaleOutDim0 = scaleOutShape.GetDim(DIM_IDX_0);
         if (scaleOutDim0 != xDim0) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "scaleOut dimension (%ld) must equal x first dimension (%ld)",
+                    "scaleOut first dim (%ld) must equal x first dim (%ld)",
                     scaleOutDim0, xDim0);
             return false;
         }
@@ -145,13 +134,11 @@ protected:
 
     bool CheckDtypeValid() override
     {
-        // 检查x数据类型
-        OP_CHECK_DTYPE_NOT_SUPPORT(params_.x, X_INPUT_DTYPE_SUPPORT_LIST, return false);
+        // 检查 x 和 rot 的数据类型
+        OP_CHECK_DTYPE_NOT_SUPPORT(params_.x, X_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(params_.rot, X_DTYPE_SUPPORT_LIST, return false);
 
-        // 检查rot数据类型
-        OP_CHECK_DTYPE_NOT_SUPPORT(params_.rot, ROT_INPUT_DTYPE_SUPPORT_LIST, return false);
-
-        // x和rot数据类型必须一致
+        // 检查 x 和 rot 的数据类型一致
         auto xDtype = params_.x->GetDataType();
         auto rotDtype = params_.rot->GetDataType();
         if (xDtype != rotDtype) {
@@ -162,30 +149,18 @@ protected:
             return false;
         }
 
-        // 检查yOut数据类型
-        OP_CHECK_DTYPE_NOT_SUPPORT(params_.yOut, YOUT_OUTPUT_DTYPE_SUPPORT_LIST, return false);
+        // 检查 yOut 数据类型
+        OP_CHECK_DTYPE_NOT_SUPPORT(params_.yOut, YOUT_DTYPE_SUPPORT_LIST, return false);
 
-        // 检查yOut数据类型与dstType属性一致
-        auto yOutDtype = params_.yOut->GetDataType();
-        DataType expectedYOutDtype = (params_.dstType == 1) ? DataType::DT_INT32 : DataType::DT_INT8;
-        if (yOutDtype != expectedYOutDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "yOut dtype (%s) must match dstType (%ld), expected %s",
-                    ToString(yOutDtype).GetString(),
-                    params_.dstType,
-                    ToString(expectedYOutDtype).GetString());
-            return false;
-        }
-
-        // 检查scaleOut数据类型
-        OP_CHECK_DTYPE_NOT_SUPPORT(params_.scaleOut, SCALEOUT_OUTPUT_DTYPE_SUPPORT_LIST, return false);
+        // 检查 scaleOut 数据类型
+        OP_CHECK_DTYPE_NOT_SUPPORT(params_.scaleOut, SCALEOUT_DTYPE_SUPPORT_LIST, return false);
 
         return true;
     }
 
     bool CheckFormat() override
     {
-        // 检查x格式
+        // 检查所有 tensor 的 format，支持非连续 tensor，格式为 ND
         if (IsPrivateFormat(params_.x->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "x tensor format must be ND, current format is %s",
@@ -193,7 +168,6 @@ protected:
             return false;
         }
 
-        // 检查rot格式
         if (IsPrivateFormat(params_.rot->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "rot tensor format must be ND, current format is %s",
@@ -201,7 +175,6 @@ protected:
             return false;
         }
 
-        // 检查yOut格式
         if (IsPrivateFormat(params_.yOut->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "yOut tensor format must be ND, current format is %s",
@@ -209,7 +182,6 @@ protected:
             return false;
         }
 
-        // 检查scaleOut格式
         if (IsPrivateFormat(params_.scaleOut->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "scaleOut tensor format must be ND, current format is %s",
