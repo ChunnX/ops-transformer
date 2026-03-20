@@ -10,7 +10,7 @@
 
 /*!
  * \file rotate_dynamic_quant_def.cpp
- * \brief RotateDynamicQuant算子定义文件，定义算子的输入输出、数据类型、格式等
+ * \brief 算子定义文件，定义算子的输入输出、数据类型、格式等
  */
 #include "register/op_def_registry.h"
 
@@ -19,35 +19,33 @@ class RotateDynamicQuant : public OpDef {
 public:
     explicit RotateDynamicQuant(const char* name) : OpDef(name)
     {
-        // 输入 x: [M, N], DT_FLOAT16/DT_BFLOAT16
+        // 输入tensor定义
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        // 输入 rot: [N, N], DT_FLOAT16/DT_BFLOAT16, 与x数据类型一致
         this->Input("rot")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        // 输出 yOut: [M, N], DT_INT8/DT_INT32, 由dst_type属性决定
+        // 输出tensor定义
         this->Output("yOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT8, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        // 输出 scaleOut: [M], DT_FLOAT32
         this->Output("scaleOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        // 属性 dst_type: 指定输出y的数据类型, 0=DT_INT8, 1=DT_INT32
+        // 属性定义
         this->Attr("dst_type")
             .AttrType(OPTIONAL)
             .Int(0);

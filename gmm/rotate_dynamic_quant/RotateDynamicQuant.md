@@ -2,10 +2,10 @@
 
 ## 基本信息
 - **算子名称**：RotateDynamicQuant
-- **算子功能描述**：融合旋转和量化需求，实现旋转位置编码后的动态量化
+- **算子功能描述**：融合旋转位置编码和动态量化的算子
 - **SOC版本**：DAV_2201
 - **算子仓类型**：ops-transformer
-- **生成日期**：2026-03-19
+- **生成日期**：2026-03-20
 
 ## 输入参数
 | 参数名 | 参数类型 | 支持的数据类型 | 支持的格式 | Shape 描述 | 说明 |
@@ -17,99 +17,91 @@
 | 参数名 | 参数类型 | 支持的数据类型 | 支持的格式 | Shape 描述 | 说明 |
 |--------|----------|----------------|------------|------------|------|
 | yOut | REQUIRED | DT_INT8, DT_INT32 | FORMAT_ND | [M, N] | shape与输入x一致 |
-| scaleOut | REQUIRED | DT_FLOAT32 | FORMAT_ND | [M] | 表示动态量化过程中计算出的缩放系数 |
+| scaleOut | REQUIRED | DT_FLOAT | FORMAT_ND | [M] | 表示动态量化过程中计算出的缩放系数 |
 
 ## 属性参数
 | 属性名 | 属性类型 | 默认值 | 说明 |
 |--------|----------|--------|------|
-| dst_type | int32_t | 0 | 指定输出y的数据类型，0=DT_INT8, 1=DT_INT32 |
+| dst_type | int32_t | 0 | 指定输出yOut的数据类型，0表示DT_INT8，1表示DT_INT32 |
 
 ## dtype 组合设计
 
 ### 组合规则
-1. x 和 rot 数据类型必须一致
-2. scaleOut 固定为 DT_FLOAT32
-3. yOut 的 dtype 由属性 dst_type 决定（0=DT_INT8, 1=DT_INT32）
+- 输入 x 和 rot 数据类型必须保持一致
+- 输出 scaleOut 固定为 DT_FLOAT
+- 输出 yOut 数据类型由 dst_type 属性决定
 
 ### dtype 组合表
 | 组合ID | x | rot | yOut | scaleOut | 说明 |
 |--------|---|-----|------|----------|------|
-| 0 | DT_FLOAT16 | DT_FLOAT16 | DT_INT8 | DT_FLOAT32 | FP16输入 → INT8输出 |
-| 1 | DT_FLOAT16 | DT_FLOAT16 | DT_INT32 | DT_FLOAT32 | FP16输入 → INT32输出 |
-| 2 | DT_BFLOAT16 | DT_BFLOAT16 | DT_INT8 | DT_FLOAT32 | BF16输入 → INT8输出 |
-| 3 | DT_BFLOAT16 | DT_BFLOAT16 | DT_INT32 | DT_FLOAT32 | BF16输入 → INT32输出 |
+| 0 | DT_FLOAT16 | DT_FLOAT16 | DT_INT8 | DT_FLOAT | FLOAT16输入，INT8量化输出 |
+| 1 | DT_FLOAT16 | DT_FLOAT16 | DT_INT32 | DT_FLOAT | FLOAT16输入，INT32量化输出 |
+| 2 | DT_BFLOAT16 | DT_BFLOAT16 | DT_INT8 | DT_FLOAT | BFLOAT16输入，INT8量化输出 |
+| 3 | DT_BFLOAT16 | DT_BFLOAT16 | DT_INT32 | DT_FLOAT | BFLOAT16输入，INT32量化输出 |
 
 ### 生成配置
 - **总组合数**：4
-- **DataType**：{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16}
-- **Format**：{ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND}
+- **DataType**：
+  - x: `{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16}`
+  - rot: `{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16}`
+  - yOut: `{ge::DT_INT8, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32}`
+  - scaleOut: `{ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT}`
+- **Format**：全部使用 `ge::FORMAT_ND`
 
 ## 目录结构
 ```
 rotate_dynamic_quant/
 ├── CMakeLists.txt
-├── RotateDynamicQuant.md          # 算子设计文档
+├── RotateDynamicQuant.md
 ├── op_host/
 │   ├── CMakeLists.txt
 │   ├── rotate_dynamic_quant_def.cpp
 │   ├── rotate_dynamic_quant_infershape.cpp
-│   ├── op_api/
-│   │   ├── aclnn_rotate_dynamic_quant.h
-│   │   ├── aclnn_rotate_dynamic_quant_utils.h
-│   │   ├── aclnn_rotate_dynamic_quant_base_handler.h
-│   │   ├── aclnn_rotate_dynamic_quant_process.cpp
-│   │   ├── rotate_dynamic_quant.h
-│   │   └── rotate_dynamic_quant.cpp
-│   └── op_tiling/
-│       ├── rotate_dynamic_quant_tiling.h
-│       └── rotate_dynamic_quant_tiling.cpp
-├── op_kernel/
-│   ├── rotate_dynamic_quant.cpp
-│   └── rotate_dynamic_quant.h
-└── tests/
-    └── ut/
-        ├── op_api/
-        │   └── test_aclnn_rotate_dynamic_quant.cpp
-        └── op_host/
-            ├── test_rotate_dynamic_quant_infershape.cpp
-            └── test_rotate_dynamic_quant_tiling.cpp
+│   ├── rotate_dynamic_quant_tiling.h
+│   ├── rotate_dynamic_quant_tiling.cpp
+│   └── op_api/
+│       ├── aclnn_rotate_dynamic_quant.h
+│       ├── aclnn_rotate_dynamic_quant_utils.h
+│       ├── aclnn_rotate_dynamic_quant_base_handler.h
+│       ├── aclnn_rotate_dynamic_quant_process.cpp
+│       ├── rotate_dynamic_quant.h
+│       └── rotate_dynamic_quant.cpp
+└── op_kernel/
+    ├── rotate_dynamic_quant.h
+    └── rotate_dynamic_quant.cpp
 ```
 
-## API 接口
+## 文件说明
 
-### aclnnRotateDynamicQuantGetWorkspaceSize
-```cpp
-aclnnStatus aclnnRotateDynamicQuantGetWorkspaceSize(
-    const aclTensor *x,
-    const aclTensor *rot,
-    int32_t dst_type,
-    const aclTensor *yOut,
-    const aclTensor *scaleOut,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
-```
+### op_host 目录
+| 文件名 | 说明 |
+|--------|------|
+| rotate_dynamic_quant_def.cpp | 算子定义文件，定义输入输出参数、数据类型、格式等 |
+| rotate_dynamic_quant_infershape.cpp | 形状推导实现，计算输出tensor的shape和dtype |
+| rotate_dynamic_quant_tiling.h | Tiling数据结构定义 |
+| rotate_dynamic_quant_tiling.cpp | Tiling计算实现 |
 
-### aclnnRotateDynamicQuant
-```cpp
-aclnnStatus aclnnRotateDynamicQuant(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream);
-```
+### op_host/op_api 目录
+| 文件名 | 说明 |
+|--------|------|
+| aclnn_rotate_dynamic_quant.h | ACLNN公共API声明 |
+| aclnn_rotate_dynamic_quant_utils.h | Handler基类、参数结构、Builder模式 |
+| aclnn_rotate_dynamic_quant_base_handler.h | DAV_2201版本Handler实现 |
+| aclnn_rotate_dynamic_quant_process.cpp | L2入口、Handler工厂路由 |
+| rotate_dynamic_quant.h | L0算子声明 |
+| rotate_dynamic_quant.cpp | L0算子实现 |
 
-## 特殊约束条件
-1. 进行 int4 量化时，要求输入 x 的最后一维是 8 的整数倍
-2. 支持非连续 tensor 输入
-3. rot 必须是方阵 [N, N]
-4. x 和 rot 的数据类型必须一致
-5. yOut 的 shape 必须与 x 一致
-6. scaleOut 的第一维必须等于 x 的第一维 M
+### op_kernel 目录
+| 文件名 | 说明 |
+|--------|------|
+| rotate_dynamic_quant.h | Kernel头文件，定义Kernel类和数据结构 |
+| rotate_dynamic_quant.cpp | Kernel实现入口函数 |
+
+## 约束条件
+- x的最后一维N必须是rot的两个维度大小
+- rot的两个维度必须相等
+- 进行int4量化时，要求x的最后一维是8的整数倍
+- x和rot的数据类型必须一致
 
 ## 参考算子
-无（使用插件模板生成）
-
-## 待完善项
-- [ ] Kernel 实现核心计算逻辑
-- [ ] Tiling 数据切分策略优化
-- [ ] 单元测试用例
+无（基于empty_op_template模板生成）

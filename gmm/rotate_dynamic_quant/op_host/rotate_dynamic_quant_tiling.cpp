@@ -10,7 +10,7 @@
 
 /*!
  * \file rotate_dynamic_quant_tiling.cpp
- * \brief RotateDynamicQuant Tiling计算实现
+ * \brief Tiling计算实现
  */
 
 #include "rotate_dynamic_quant_tiling.h"
@@ -21,19 +21,25 @@
 
 namespace optiling {
 
-// 注册 Tiling 模板类
-REGISTER_TILING_TEMPLATE("RotateDynamicQuant", RotateDynamicQuantBaseTiling, 1000);
+REGISTER_OPS_TILING_TEMPLATE(RotateDynamicQuant, RotateDynamicQuantBaseTiling, 1000);
 
-ge::graphStatus RotateDynamicQuantBaseTiling::ParseInputAndAttr()
+ge::graphStatus RotateDynamicQuantBaseTiling::GetInputShape()
 {
-    // 获取输入 tensor 信息
     auto xTensor = context_->GetInputTensor(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xTensor);
 
     auto xShape = xTensor->GetStorageShape();
-    M_ = static_cast<uint64_t>(xShape.GetDim(0));
-    N_ = static_cast<uint64_t>(xShape.GetDim(1));
-    totalLength_ = M_ * N_;
+    mDim_ = static_cast<uint64_t>(xShape.GetDim(0));
+    nDim_ = static_cast<uint64_t>(xShape.GetDim(1));
+    totalLength_ = static_cast<uint64_t>(xShape.GetShapeSize());
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus RotateDynamicQuantBaseTiling::ParseInputAndAttr()
+{
+    // 获取输入tensor信息
+    OP_CHECK_RET(GetInputShape() != ge::GRAPH_SUCCESS, return ge::GRAPH_FAILED);
 
     // 获取平台信息
     auto platformInfo = context_->GetPlatformInfo();
@@ -47,17 +53,16 @@ ge::graphStatus RotateDynamicQuantBaseTiling::ParseInputAndAttr()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
-
     blockDim_ = ascendcPlatform.GetCoreNumAic();
 
-    // 获取属性值 dst_type
+    // 获取dst_type属性值
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
-        auto dstTypePtr = attrs->GetAttrPointer<int32_t>(0);
+        auto dstTypePtr = attrs->GetAttrPointer<int64_t>(0);
         if (dstTypePtr != nullptr) {
-            dstType_ = static_cast<uint32_t>(*dstTypePtr);
+            dstType_ = *dstTypePtr;
         } else {
-            dstType_ = 0;  // 默认为 INT8
+            dstType_ = 0;
         }
     } else {
         dstType_ = 0;
@@ -70,19 +75,18 @@ void RotateDynamicQuantBaseTiling::FillTilingData()
 {
     tilingData_.set_coreNum(blockDim_);
     tilingData_.set_totalLength(totalLength_);
-    tilingData_.set_M(M_);
-    tilingData_.set_N(N_);
+    tilingData_.set_mDim(mDim_);
+    tilingData_.set_nDim(nDim_);
     tilingData_.set_dstType(dstType_);
 }
 
 ge::graphStatus RotateDynamicQuantBaseTiling::TilingProcess()
 {
-    // 计算 workspace 大小
+    // 计算workspace大小
     size_t userWorkspaceSize = 0;
     size_t systemWorkspaceSize = 16 * 1024 * 1024; // 16M
 
-    // 设置 tilingKey
-    // tilingKey 可以根据不同的计算模式设置不同的值
+    // 设置tilingKey
     tilingKey_ = static_cast<uint64_t>(dstType_);
 
     workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
@@ -115,12 +119,11 @@ ge::graphStatus RotateDynamicQuantBaseTiling::DoOpTiling()
 
 void RotateDynamicQuantBaseTiling::PrintTilingData()
 {
-    OP_LOGD(context_->GetNodeName(), "RotateDynamicQuant Tiling Data:");
-    OP_LOGD(context_->GetNodeName(), "  coreNum: [%u]", tilingData_.get_coreNum());
-    OP_LOGD(context_->GetNodeName(), "  totalLength: [%lu]", tilingData_.get_totalLength());
-    OP_LOGD(context_->GetNodeName(), "  M: [%lu]", tilingData_.get_M());
-    OP_LOGD(context_->GetNodeName(), "  N: [%lu]", tilingData_.get_N());
-    OP_LOGD(context_->GetNodeName(), "  dstType: [%u]", tilingData_.get_dstType());
+    OP_LOGD(context_->GetNodeName(), "coreNum: [%u]", tilingData_.get_coreNum());
+    OP_LOGD(context_->GetNodeName(), "totalLength: [%lu]", tilingData_.get_totalLength());
+    OP_LOGD(context_->GetNodeName(), "mDim: [%lu]", tilingData_.get_mDim());
+    OP_LOGD(context_->GetNodeName(), "nDim: [%lu]", tilingData_.get_nDim());
+    OP_LOGD(context_->GetNodeName(), "dstType: [%ld]", tilingData_.get_dstType());
 }
 
 uint64_t RotateDynamicQuantBaseTiling::GetTilingKey() const
@@ -139,16 +142,15 @@ ge::graphStatus RotateDynamicQuantBaseTiling::PostTiling()
     context_->SetBlockDim(tilingData_.get_coreNum());
     context_->SetScheduleMode(1);
 
-    // 设置 workspace
+    // 设置workspace
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(workspaces == nullptr, OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "workspaces is null"),
         return ge::GRAPH_FAILED);
     workspaces[0] = workspaceSize_;
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Tiling 函数入口
+// Tiling函数入口
 static ge::graphStatus TilingFuncRotateDynamicQuant(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr,
@@ -158,7 +160,7 @@ static ge::graphStatus TilingFuncRotateDynamicQuant(gert::TilingContext* context
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-// TilingPrepare 函数，用于获取编译时平台信息
+// TilingPrepare函数
 static ge::graphStatus TilingPrepareRotateDynamicQuant(gert::TilingParseContext* context)
 {
     OP_CHECK_IF(context == nullptr,
@@ -194,7 +196,6 @@ static ge::graphStatus TilingPrepareRotateDynamicQuant(gert::TilingParseContext*
     return ge::GRAPH_SUCCESS;
 }
 
-// 注册 Tiling 实现
 IMPL_OP_OPTILING(RotateDynamicQuant)
     .Tiling(TilingFuncRotateDynamicQuant)
     .TilingParse<RotateDynamicQuantCompileInfo>(TilingPrepareRotateDynamicQuant);

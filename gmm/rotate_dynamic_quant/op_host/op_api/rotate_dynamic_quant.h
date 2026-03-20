@@ -16,20 +16,12 @@
 
 namespace l0op {
 
-/**
- * @brief RotateDynamicQuant L0 算子函数
- * @param x 输入 tensor [M, N]
- * @param rot 旋转矩阵 tensor [N, N]
- * @param dst_type 输出数据类型属性，0=INT8, 1=INT32
- * @param executor 执行器
- * @return 返回 (yOut, scaleOut) 元组
- */
-const std::tuple<aclTensor *, aclTensor *>
+const std::tuple<const aclTensor *, const aclTensor *>
 RotateDynamicQuant(
-    const aclTensor *x,
-    const aclTensor *rot,
-    int32_t dst_type,
+    const aclTensor *x, const aclTensor *rot,
+    int64_t dstType,
     aclOpExecutor *executor);
-}
+
+} // namespace l0op
 
 #endif // OP_API_OP_API_COMMON_INC_LEVEL0_OP_ROTATE_DYNAMIC_QUANT_H

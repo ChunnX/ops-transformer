@@ -32,7 +32,7 @@ namespace rotate_dynamic_quant {
 using namespace op;
 
 /**
- * @brief RotateDynamicQuant算子参数结构体
+ * @brief 算子参数结构体，存储所有输入输出参数和属性
  */
 struct RotateDynamicQuantParamsBase {
     // ========== 原始输入 tensor（用户传入，不可修改） ==========
@@ -48,7 +48,7 @@ struct RotateDynamicQuantParamsBase {
     const aclTensor *scaleOut = nullptr;
 
     // ========== 属性参数 ==========
-    int32_t dst_type = 0;  // 0=INT8, 1=INT32
+    int64_t dstType = 0;
 };
 
 /**
@@ -57,7 +57,7 @@ struct RotateDynamicQuantParamsBase {
 class RotateDynamicQuantParamsBuilder {
 public:
     static RotateDynamicQuantParamsBuilder Create(const aclTensor *x, const aclTensor *rot,
-                                                   const aclTensor *yOut, const aclTensor *scaleOut)
+                                                  const aclTensor *yOut, const aclTensor *scaleOut)
     {
         RotateDynamicQuantParamsBuilder b;
         b.p_.x = x;
@@ -67,9 +67,9 @@ public:
         return b;
     }
 
-    RotateDynamicQuantParamsBuilder &SetDstType(int32_t dst_type)
+    RotateDynamicQuantParamsBuilder &SetDstType(int64_t dstType)
     {
-        p_.dst_type = dst_type;
+        p_.dstType = dstType;
         return *this;
     }
 
@@ -130,12 +130,21 @@ protected:
 
     virtual aclnnStatus ConvertDataContiguous()
     {
-        // 将输入tensor转换为连续格式
-        params_.x_contiguous = l0op::Contiguous(params_.x, l0Executor_);
-        CHECK_RET(params_.x_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // x tensor转换为连续格式
+        if (params_.x->IsContiguous()) {
+            params_.x_contiguous = params_.x;
+        } else {
+            params_.x_contiguous = l0op::Contiguous(params_.x, l0Executor_);
+            CHECK_RET(params_.x_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        }
 
-        params_.rot_contiguous = l0op::Contiguous(params_.rot, l0Executor_);
-        CHECK_RET(params_.rot_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // rot tensor转换为连续格式
+        if (params_.rot->IsContiguous()) {
+            params_.rot_contiguous = params_.rot;
+        } else {
+            params_.rot_contiguous = l0op::Contiguous(params_.rot, l0Executor_);
+            CHECK_RET(params_.rot_contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        }
 
         return ACLNN_SUCCESS;
     }
@@ -160,7 +169,7 @@ public:
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
         // 空 Tensor 场景处理
-        if (params_.yOut->IsEmpty()) {
+        if (params_.yOut->IsEmpty() || params_.scaleOut->IsEmpty()) {
             *workspaceSize_ = 0ULL;
             uniqueExecutor.ReleaseTo(executor_);
             return ACLNN_SUCCESS;
@@ -171,19 +180,21 @@ public:
 
         // 执行算子
         auto outParams = l0op::RotateDynamicQuant(
-            params_.x_contiguous, params_.rot_contiguous, params_.dst_type,
+            params_.x_contiguous, params_.rot_contiguous,
+            params_.dstType,
             l0Executor_);
-        CHECK_RET(outParams != std::tuple(nullptr), ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(std::get<0>(outParams) != nullptr && std::get<1>(outParams) != nullptr,
+                  ACLNN_ERR_INNER_NULLPTR);
 
-        // 拷贝输出到用户输出tensor
-        auto yOutResult = std::get<0>(outParams);
-        auto scaleOutResult = std::get<1>(outParams);
+        // 拷贝输出到用户输出 tensor
+        auto yOutInternal = std::get<0>(outParams);
+        auto scaleOutInternal = std::get<1>(outParams);
 
-        auto retViewY = l0op::ViewCopy(yOutResult, params_.yOut, l0Executor_);
-        CHECK_RET(retViewY != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto retView1 = l0op::ViewCopy(yOutInternal, params_.yOut, l0Executor_);
+        CHECK_RET(retView1 != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-        auto retViewScale = l0op::ViewCopy(scaleOutResult, params_.scaleOut, l0Executor_);
-        CHECK_RET(retViewScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto retView2 = l0op::ViewCopy(scaleOutInternal, params_.scaleOut, l0Executor_);
+        CHECK_RET(retView2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
         *workspaceSize_ = uniqueExecutor->GetWorkspaceSize();
         uniqueExecutor.ReleaseTo(executor_);

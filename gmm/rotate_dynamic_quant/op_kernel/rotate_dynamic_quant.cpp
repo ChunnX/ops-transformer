@@ -10,7 +10,7 @@
 
 /*!
  * \file rotate_dynamic_quant.cpp
- * \brief RotateDynamicQuant 算子 Kernel 实现文件
+ * \brief 算子Kernel实现文件
  */
 
 #include "rotate_dynamic_quant.h"
@@ -19,15 +19,15 @@
 using namespace AscendC;
 using namespace RotateDynamicQuant;
 
-// Kernel 入口函数
+// Kernel入口函数
 extern "C" __global__ __aicore__ void rotate_dynamic_quant(
     GM_ADDR x, GM_ADDR rot, GM_ADDR yOut, GM_ADDR scaleOut,
-    GM_ADDR workspace, GM_ADDR tiling) {
-
-    // 解析 tiling 数据
+    GM_ADDR workspace, GM_ADDR tiling)
+{
+    // 解析tiling数据
     RotateDynamicQuantTilingData *tilingData = reinterpret_cast<RotateDynamicQuantTilingData *>(tiling);
 
-    // 构建 InitParams
+    // 构建InitParams
     InitParams initParams;
     initParams.x = x;
     initParams.rot = rot;
@@ -37,22 +37,18 @@ extern "C" __global__ __aicore__ void rotate_dynamic_quant(
     initParams.tilingData = tilingData;
     initParams.tPipeIn = &GetTilingPipe();
 
-    // TODO: 根据 dstType 和输入数据类型选择合适的 Kernel 实例
-    // dstType: 0=INT8, 1=INT32
-    // 输入类型: FLOAT16, BFLOAT16
-
-    uint32_t dstType = tilingData->get_dstType();
-
-    // 示例：根据不同的数据类型组合调用不同的 kernel
-    // if (dstType == 0) {
-    //     // INT8 输出
-    //     RotateDynamicQuantKernel<half_t, int8_t> kernel;
-    //     kernel.Init(initParams);
-    //     kernel.Process();
-    // } else {
-    //     // INT32 输出
-    //     RotateDynamicQuantKernel<half_t, int32_t> kernel;
-    //     kernel.Init(initParams);
-    //     kernel.Process();
-    // }
+    // 根据dstType选择不同的数据类型组合
+    // dstType: 0 -> INT8输出, 1 -> INT32输出
+    if (tilingData->dstType == 1) {
+        // INT32输出
+        // 输入类型可能是FLOAT16或BF16
+        RotateDynamicQuantKernel<half, int32_t> kernel;
+        kernel.Init(initParams);
+        kernel.Process();
+    } else {
+        // INT8输出（默认）
+        RotateDynamicQuantKernel<half, int8_t> kernel;
+        kernel.Init(initParams);
+        kernel.Process();
+    }
 }
