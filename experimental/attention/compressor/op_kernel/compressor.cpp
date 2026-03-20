@@ -17,6 +17,7 @@
 #include "arch32/compressor_kernel.h"
 #else
 #include "arch35/compressor_kernel.h"
+#include "arch35/compressor_kernel_full_load.h"
 #endif
  
 using namespace Compressor;
@@ -60,5 +61,13 @@ __global__ __aicore__ void compressor(
     constexpr auto coff = static_cast<COFF>(Coff);
     constexpr auto rotaryMode = static_cast<ROTARY_MODE>(RotaryMode);
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
-    INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, xLayout, xDtype, coff, rotaryMode, cacheMode);
+    #if (__CCE_AICORE__ == 220)
+        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, xLayout, xDtype, coff, rotaryMode, cacheMode);
+    #else
+        if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
+            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelFullLoad, xLayout, xDtype, coff, rotaryMode, cacheMode);
+        } else {
+            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, xLayout, xDtype, coff, rotaryMode, cacheMode);
+        }
+    #endif
 }

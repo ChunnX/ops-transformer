@@ -27,43 +27,6 @@ using namespace AscendC;
 
 namespace Compressor {
 
-struct CmpBlockInfo {
-    __aicore__ inline CmpBlockInfo() {};
-    __aicore__ inline CmpBlockInfo(uint32_t bIdx, uint32_t sIdx, bool needReset = false) : bIdx(bIdx), sIdx(sIdx), needReset(needReset) {};
-
-    uint32_t bIdx = 0U;
-    uint32_t sIdx = 0U;
-    uint32_t bSeqUsed = 0U;
-    uint32_t bStartPos = 0U;
-    bool needReset = false;
-    bool isFirst = true;
-
-    uint32_t headSeqCnt = 0U;
-    uint32_t validSeqCnt = 0U;
-    uint32_t tailSeqCnt = 0U;
-    bool isCompress = 0U;
-};
-
-struct BasicBlockInfo {
-    uint32_t bIdx = 0;
-    uint32_t sIdx = 0;
-    uint32_t compressedTcNum = 0;
-    uint32_t dealSeqCnt = 0;
-    uint32_t dealTcNum = 0;
-};
-
-struct BatchInfo {
-    uint32_t tcNum = 0;
-    uint32_t compressedTcNum = 0;
-    uint32_t remSeqCnt = 0;
-    uint32_t seqCnt = 0;
-    uint32_t seqUsedCnt = 0;
-    uint32_t headHolderSeq = 0;
-    uint32_t bStartPos = 0;
-    uint32_t bIdx = 0;
-    uint32_t sIdx = 0;
-};
-
 template <typename COMP>
 class CompressorKernel {
 public:
@@ -382,7 +345,6 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
         uint32_t curDealTcNum = 0;
         uint32_t curDealCompressedTcNum = 0;
         // 无法处理完当前整个batch
-        // printf("[SkipOneLoop] quota:%u, remSeqCnt:%u\n", quota, batchInfo.remSeqCnt);
         if (quota < batchInfo.remSeqCnt) {
             // 向下对齐r，
             uint32_t alignSeq = constInfo.cmpRatio;
@@ -435,8 +397,6 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
         uint32_t remaining = totalDataSize - currentGroupStart;
         basicBlockInfo.dealSeqCnt = (remaining < constInfo.mBaseSize) ? remaining : constInfo.mBaseSize;
     }
-    
-    // printf("[SkipOneLoop] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", basicBlockInfo.bIdx, basicBlockInfo.sIdx, basicBlockInfo.dealTcNum, basicBlockInfo.compressedTcNum);
     return basicBlockInfo;
 }
 
@@ -474,8 +434,6 @@ __aicore__ inline void CompressorKernel<COMP>::CalcSplitCoreInfo()
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
-
-    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, dBaseSize:%u, dBaseNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.dBaseSize, constInfo.dBaseNum, constInfo.curGroupIdx, constInfo.mBaseSize);
 }
 
 template <typename COMP>
@@ -522,7 +480,6 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + info.cubeDbIdx);
     if (isNeedExcute) {
-        // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u, cubeDbIdx:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize, info.cubeDbIdx);
         blockCube_.ComputeMm1(info);
     }
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
@@ -534,7 +491,6 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const Vec1RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
-    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
     CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
@@ -544,7 +500,6 @@ __aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const Vec1RunInfo &in
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeVec2(const Vec2RunInfo &info) {
-    // printf("[VEC2] bStart:%u, sStart:%u, bCompressedId:%u, dealScSize:%u, v2DbIdx:%u\n", info.bStart, info.sStart, info.bCompressedId, info.dealScSize, info.v2DbIdx);
     blockVec_.ComputeVec2(info);
 }
 
@@ -669,7 +624,6 @@ __aicore__ inline void CompressorKernel<COMP>::Process()
         RunInfo &extraInfo0 = extraInfo[0];
         CalcC1V1Params(extraInfo0, vec1Info, batchInfo, i);
         bool isNeedExcuteC1 = IsNeedExcuteC1(extraInfo0);
-        // printf("[LOOP] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", extraInfo0.bStart, extraInfo0.sStart, vec1Info.dealTcNum, vec1Info.dealScSize);
 
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0, isNeedExcuteC1);

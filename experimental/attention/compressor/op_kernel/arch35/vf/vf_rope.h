@@ -271,7 +271,7 @@ __aicore__ inline void RopeVF(const LocalTensor<ROPET>& sinTensor, const LocalTe
     ropeParam.dAlign = Compressor::Align(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     ropeParam.currSNum = currSNum;
     ropeParam.currDNum = currDNum;
-    if(isInterleave) {
+    if (isInterleave) {
         ropeParam.repeatTimes = dLen / VL_FLOAT32_SIZE;
         TailParam tailParam;
         uint16_t loopNum = ropeParam.repeatTimes / 2;//(开两个寄存器)
