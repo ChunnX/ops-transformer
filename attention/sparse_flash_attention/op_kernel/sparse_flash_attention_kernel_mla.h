@@ -287,7 +287,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitOutputSingleCore()
         uint64_t singleCoreSize = (totalOutputSize + (2 * coreNum) - 1) / (2 * coreNum);  // 2 means c:v = 1:2
         uint64_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-        if (singleInitOutputSize > 0) {
+        if (tmpBlockIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
             matmul::InitOutput<OUT_T>(attentionOutGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
         }
         SyncAll();
