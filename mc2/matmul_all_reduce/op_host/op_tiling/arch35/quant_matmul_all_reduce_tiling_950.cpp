@@ -28,6 +28,7 @@ constexpr uint64_t INT8_WORKSPACE_CNT = 3;
 constexpr uint64_t PERTILE_FP8_WORKSPACE_CNT = 3;
 constexpr uint64_t PERTILE_FP32_WORKSPACE_CNT = 2;
 constexpr uint64_t STANDARD_CARD_CGMPAD_WORKSPACE_CNT = 3;
+constexpr uint64_t FIVE_ONE_TWO = 512;
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
@@ -346,7 +347,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSizeInStandardCard4P(c
     uint64_t rankM = static_cast<uint64_t>(MutableRCSTilingData().rankM);
     uint64_t rankN = static_cast<uint64_t>(MutableRCSTilingData().rankN);
     commLen = rankM * rankN;
-    cgmPadLen = (MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt) * args_.rankDim;
+    cgmPadLen = (MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt) * FIVE_ONE_TWO;
     commWorkSpace = (commLen + cgmPadLen) * static_cast<uint64_t>(args_.outputDtypeSize);
     OP_LOGI(opName_, "Set commWorkSpace size=%lu to context.", commWorkSpace);
 
