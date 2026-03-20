@@ -159,6 +159,11 @@ __aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::Calc
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process()
 {
+    AscendC::printf("tilingdata : bSize:%d n2Size:%d gSize:%d t1Size:%d t2Size:%d s1Size:%d", this->tilingData->inputParamsRegbase.bSize,
+                    this->tilingData->inputParamsRegbase.n2Size, this->tilingData->inputParamsRegbase.gSize, 
+                    this->tilingData->inputParamsRegbase.t1Size, this->tilingData->inputParamsRegbase.t2Size,
+                    this->tilingData->inputParamsRegbase.s1Size);
+
     AscendC::printf("-----------Process----------");
     int64_t multiCoreInnerOffset = 0;
     int64_t multiCoreInnerLimit = 0;

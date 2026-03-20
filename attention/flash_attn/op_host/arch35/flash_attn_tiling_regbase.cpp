@@ -32,7 +32,7 @@ void FlashAttnTilingRegbase::Reset()
     bmm2OutDtype = matmul_tiling::DataType::DT_FLOAT;
 
     tilingKeyLayout = FALayoutType::NONE;
-    tilingKeyKVLayout = FAKVLayoutType::BSND;
+    tilingKeyKVLayout = FAKVLayoutType::BNSD;
     implMode = FAImplMode::HIGH_PRECISION;
     inputLayoutQ = nullptr;
     inputLayoutKv = nullptr;
@@ -228,8 +228,8 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
                OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze optional inputs."), return ge::GRAPH_FAILED);
 
     // ================================================================
-    // 写死 shape/attr/flags：对应 test_aclnn_flash_attn.cpp 的 BNSD 推理场景
-    //   Q shape:  BNSD = {B=1, N_q=8,  S_q=128,  D=64}
+    // 写死 shape/attr/flags：对应 example 的 BNSD 推理场景
+    //   Q shape:  BNSD = {B=1, N_q=8, S_q=128, D=64}
     //   K shape:  BSND = {B=1, S_kv=128, N_kv=2, D=64}
     //   V shape:  BSND = {B=1, S_kv=128, N_kv=2, D=64}
     //   Out shape: BNSD = {B=1, N_q=8, S_q=128, D=64}
@@ -249,7 +249,7 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
         softmaxScale = 0.125f;
     }
     tilingKeyLayout   = FALayoutType::BNSD;          // Q/Out 均为 BNSD
-    tilingKeyKVLayout = FAKVLayoutType::BSND;         // KV 为 BSND
+    tilingKeyKVLayout = FAKVLayoutType::BNSD;         // KV 为 BSND
     implMode          = FAImplMode::HIGH_PRECISION;   // 高精度模式
     hasAttenMask      = false;   // maskMode=0，无注意力掩码
     isPA              = false;   // 无分页注意力
@@ -298,7 +298,7 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
     inputParamsRegbase_->set_isActualSeqLengthsNull(1U);     // cuSeqlensQ = nullptr
     inputParamsRegbase_->set_isActualSeqLengthsKVNull(1U);   // cuSeqlensKv = nullptr
     // --- prefix（无） ---
-    inputParamsRegbase_->set_isActualSharedPrefixLenNull(1U);
+    inputParamsRegbase_->set_isActualSharedPrefixLenNull(0u);
     // --- 分页注意力（无） ---
     inputParamsRegbase_->set_blockSize(0);
     inputParamsRegbase_->set_blockTableDim2(0);

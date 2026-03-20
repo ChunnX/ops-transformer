@@ -75,13 +75,8 @@ protected:
         uint8_t paFlag = static_cast<uint8_t>(isPA ? 1 : 0);
         uint8_t lseFlag = static_cast<uint8_t>(returnSoftmaxLse != 0 ? 1 : 0);
         uint8_t impl = static_cast<uint8_t>(implMode);
-
-        if (dType == static_cast<uint16_t>(dVType)) {
-            return GET_TPL_TILING_KEY(0, impl, layout, s1Type, s2Type, dType,
-                                      static_cast<uint16_t>(FADTemplateType::NONALIGNED),
-                                      atten, paFlag, lseFlag, 1);
-        }
-        return GET_TPL_TILING_KEY(0, impl, layout, s1Type, s2Type, dType, dvType,
+        OP_LOGD(opName, "impl:%d layout:%d s1Type:%d s2Type:%d dType:%d atten:%d paFlag:%d lseFlag:%d .", impl, layout, s1Type, s2Type, dType, atten, paFlag, lseFlag);
+        return GET_TPL_TILING_KEY(0, impl, layout, s1Type, s2Type, dType, 0,
                                   atten, paFlag, lseFlag, 1);
     }
 

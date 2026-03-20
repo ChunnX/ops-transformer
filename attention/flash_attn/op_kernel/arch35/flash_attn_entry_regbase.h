@@ -92,21 +92,31 @@ inline __aicore__ void flash_attn_regbase(
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
     
 {
-    // BNSD
+// BNSD
+// AscendC::printf("query: %p, key: %p, value: %p", query, key, value);
+// GlobalTensor<half> qBuff;
+// GlobalTensor<half> kBuff;
+// GlobalTensor<half> vBuff;
+// qBuff.SetGlobalBuffer((__gm__ half *)query);
+// kBuff.SetGlobalBuffer((__gm__ half *)key);
+// vBuff.SetGlobalBuffer((__gm__ half *)value);
+// AscendC::DumpTensor(qBuff, 1, 128);
+// AscendC::DumpTensor(kBuff, 2, 128);
+// AscendC::DumpTensor(vBuff, 3, 128);
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     AscendC::printf("-----------kernel----------");
-    #if (ORIG_DTYPE_QUERY == DT_FLOAT)
+    #if (ORIG_DTYPE_Q == DT_FLOAT)
         AscendC::printf("-----------DT_FLOAT----------");
         INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
         return;
     #endif
-    #if (ORIG_DTYPE_QUERY == DT_BF16)
+    #if (ORIG_DTYPE_Q == DT_BF16)
         AscendC::printf("-----------DT_BF16----------");
         INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
         return;
     #endif
-    #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+    #if (ORIG_DTYPE_Q == DT_FLOAT16)
         AscendC::printf("-----------DT_FLOAT16----------");
         INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, half, float, half, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
         return;

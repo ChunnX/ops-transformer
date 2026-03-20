@@ -92,7 +92,7 @@ enum class FALayoutType : uint8_t {
 
 // KV layout枚举（含PA场景）
 enum class FAKVLayoutType : uint8_t {
-    BSND   = 0,
+    BNSD   = 0,
     TND    = 1,
     PA_ND  = 2,
     PA_Nz  = 3,
@@ -217,7 +217,7 @@ protected:
 
     // layout
     FALayoutType   tilingKeyLayout    = FALayoutType::NONE;
-    FAKVLayoutType tilingKeyKVLayout  = FAKVLayoutType::BSND;
+    FAKVLayoutType tilingKeyKVLayout  = FAKVLayoutType::BNSD;
     FAImplMode     implMode           = FAImplMode::HIGH_PRECISION;
     const char    *inputLayoutQ       = nullptr;
     const char    *inputLayoutKv      = nullptr;
