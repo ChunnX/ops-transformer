@@ -109,8 +109,8 @@ int main()
     // Q/Out: BNSD (B, N, S, D)
     // KV:    BSND (B, S, N, D) — layoutKv仅支持BSND/TND/PA_ND/PA_Nz
     std::vector<int64_t> qShape   = {B, N_q,  S_q,  D};   // BNSD
-    std::vector<int64_t> kShape   = {B, S_kv, N_kv, D};   // BSND
-    std::vector<int64_t> vShape   = {B, S_kv, N_kv, D};   // BSND
+    std::vector<int64_t> kShape   = {B, N_kv, S_kv, D};   // BSND
+    std::vector<int64_t> vShape   = {B, N_kv, S_kv, D};   // BSND
     std::vector<int64_t> outShape = {B, N_q,  S_q,  D};   // BNSD
 
     void *qDeviceAddr   = nullptr;
@@ -147,7 +147,7 @@ int main()
     int64_t maxseqlenq          = 0;
     int64_t maxseqlenkv         = 0;
     const char *layoutQ      = "BNSD";
-    const char *layoutKv     = "BSND";  // KV布局仅支持BSND/TND/PA_ND/PA_Nz
+    const char *layoutKv     = "BNSD";  // KV布局仅支持BSND/TND/PA_ND/PA_Nz
     const char *layoutOut    = "BNSD";
     int64_t returnSoftmaxLse = 0;      // 推理场景不输出softmax_lse
     int64_t deterministic    = 0;

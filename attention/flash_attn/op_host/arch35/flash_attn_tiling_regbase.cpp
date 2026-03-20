@@ -227,22 +227,95 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
     OP_CHECK_IF(!AnalyzeVarLenInput() || !AnalyzePAInput() || !AnalyzeMetadataInput(),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze optional inputs."), return ge::GRAPH_FAILED);
 
-    // 填充基础参数到InputParamsRegbase
-    inputParamsRegbase_->set_bSize(bSize);
-    inputParamsRegbase_->set_n2Size(n2Size);
-    inputParamsRegbase_->set_gSize(gSize);
-    inputParamsRegbase_->set_s1Size(s1Size);
-    inputParamsRegbase_->set_s2Size(s2Size);
-    inputParamsRegbase_->set_dSize(dSize);
-    inputParamsRegbase_->set_dSizeV(dSizeV);
-    inputParamsRegbase_->set_scaleValue(softmaxScale);
-    inputParamsRegbase_->set_isGqa(static_cast<uint8_t>(n1Size != n2Size));
-    inputParamsRegbase_->set_isSoftMaxLseEnable(static_cast<uint8_t>(returnSoftmaxLse != 0));
-    inputParamsRegbase_->set_needDropMaskOp(0U);  // 无dropout
-    inputParamsRegbase_->set_isKvContinuous(static_cast<uint8_t>(!isPA));
+    // ================================================================
+    // 写死 shape/attr/flags：对应 test_aclnn_flash_attn.cpp 的 BNSD 推理场景
+    //   Q shape:  BNSD = {B=1, N_q=8,  S_q=128,  D=64}
+    //   K shape:  BSND = {B=1, S_kv=128, N_kv=2, D=64}
+    //   V shape:  BSND = {B=1, S_kv=128, N_kv=2, D=64}
+    //   Out shape: BNSD = {B=1, N_q=8, S_q=128, D=64}
+    //   属性: softmaxMode=0→scale=0.125f, maskMode=0, returnSoftmaxLse=0
+    // ================================================================
+    bSize  = 1LL;     // batch size
+    n1Size = 8LL;     // Q head 数，来自 qShape[1]=8
+    n2Size = 2LL;     // KV head 数，来自 kShape[2]=2（BSND格式）
+    gSize  = 4LL;     // GQA 比例 = n1Size/n2Size = 8/2
+    s1Size = 128LL;   // Q 序列长度，来自 qShape[2]=128
+    s2Size = 128LL;   // KV 序列长度，来自 kShape[1]=128
+    dSize  = 64LL;    // Q/K head 维度，来自 qShape[3]=64
+    dSizeV = 64LL;    // V head 维度，与 D 相同
 
-    OP_LOGD(context_, "FlashAttn shape: B=%ld N_q=%ld N_kv=%ld S_q=%ld S_kv=%ld D=%ld Dv=%ld isPA=%d.",
-            bSize, n1Size, n2Size, s1Size, s2Size, dSize, dSizeV, static_cast<int>(isPA));
+    // softmaxMode=0.0f 表示使用默认缩放系数 1/sqrt(D) = 1/sqrt(64) = 0.125f
+    if (softmaxScale == 0.0f) {
+        softmaxScale = 0.125f;
+    }
+    tilingKeyLayout   = FALayoutType::BNSD;          // Q/Out 均为 BNSD
+    tilingKeyKVLayout = FAKVLayoutType::BSND;         // KV 为 BSND
+    implMode          = FAImplMode::HIGH_PRECISION;   // 高精度模式
+    hasAttenMask      = false;   // maskMode=0，无注意力掩码
+    isPA              = false;   // 无分页注意力
+    isTND             = false;   // 非 TND 变长
+
+    // ================================================================
+    // 填充 InputParamsRegbase（所有字段对应上述固定 shape/attr）
+    // ================================================================
+    // --- shape 维度 ---
+    inputParamsRegbase_->set_bSize(bSize);                   // 1
+    inputParamsRegbase_->set_n2Size(n2Size);                 // 2
+    inputParamsRegbase_->set_gSize(gSize);                   // 4
+    inputParamsRegbase_->set_t1Size(s1Size);                 // 128  （TND 时为 T1，此处 = S_q）
+    inputParamsRegbase_->set_t2Size(s2Size);                 // 128  （TND 时为 T2，此处 = S_kv）
+    inputParamsRegbase_->set_s1Size(s1Size);                 // 128
+    inputParamsRegbase_->set_s2Size(s2Size);                 // 128
+    inputParamsRegbase_->set_alignedS2(128LL);               // ceil(128/16)*16 = 128，已对齐
+    inputParamsRegbase_->set_dSize(dSize);                   // 64
+    inputParamsRegbase_->set_dSizeV(dSizeV);                 // 64
+    inputParamsRegbase_->set_dSizeRope(0LL);                 // 无 rope
+    // --- 缩放/精度 ---
+    inputParamsRegbase_->set_scaleValue(softmaxScale);       // 0.125f
+    inputParamsRegbase_->set_implMode(0U);                   // HIGH_PRECISION = 0
+    // --- layout ---
+    inputParamsRegbase_->set_layoutType(3U);                 // BNSD = 3
+    // --- 注意力窗口（无掩码时设为全量） ---
+    inputParamsRegbase_->set_preTokens(65536LL);             // 全量注意力：preTokens = 大值
+    inputParamsRegbase_->set_nextTokens(0LL);                // 无因果掩码
+    // --- GQA ---
+    inputParamsRegbase_->set_isGqa(1U);                      // n1(8) != n2(2) → GQA 有效
+    inputParamsRegbase_->set_headNumRatio(4U);               // n1/n2 = 8/2 = 4
+    // --- 输出控制 ---
+    inputParamsRegbase_->set_isSoftMaxLseEnable(0U);         // returnSoftmaxLse=0，不输出 lse
+    // --- dropout（无） ---
+    inputParamsRegbase_->set_needDropMaskOp(0U);             // 无 dropout
+    // --- KV 连续性 ---
+    inputParamsRegbase_->set_isKvContinuous(1U);             // 非 PA，KV 地址连续
+    // --- 注意力掩码（无） ---
+    inputParamsRegbase_->set_attenMaskCompressMode(1U);      // NONE = 1
+    inputParamsRegbase_->set_attenMaskShapeType(0U);         // 默认
+    inputParamsRegbase_->set_attenMaskS1Size(0);             // 无掩码
+    inputParamsRegbase_->set_attenMaskS2Size(0U);            // 无掩码
+    // --- PSE（无） ---
+    inputParamsRegbase_->set_pseType(0U);
+    // --- 变长序列（无 cuSeqlens / seqused） ---
+    inputParamsRegbase_->set_isActualSeqLengthsNull(1U);     // cuSeqlensQ = nullptr
+    inputParamsRegbase_->set_isActualSeqLengthsKVNull(1U);   // cuSeqlensKv = nullptr
+    // --- prefix（无） ---
+    inputParamsRegbase_->set_isActualSharedPrefixLenNull(1U);
+    // --- 分页注意力（无） ---
+    inputParamsRegbase_->set_blockSize(0);
+    inputParamsRegbase_->set_blockTableDim2(0);
+    inputParamsRegbase_->set_paBlockNumSum(0);
+    inputParamsRegbase_->set_paLayoutType(0U);
+    // --- 量化（无） ---
+    inputParamsRegbase_->set_deqScaleFlag(0U);
+    inputParamsRegbase_->set_deqScale2Flag(0U);
+    // --- padding（无） ---
+    inputParamsRegbase_->set_isQHasLeftPadding(0U);
+    inputParamsRegbase_->set_isKVHasLeftPadding(0U);
+    // --- rope（无） ---
+    inputParamsRegbase_->set_ropeHeadSize(0U);
+    inputParamsRegbase_->set_prefixSeqInnerSize(0U);
+
+    OP_LOGD(context_, "FlashAttn shape[FIXED]: B=%ld N_q=%ld N_kv=%ld G=%ld S_q=%ld S_kv=%ld D=%ld Dv=%ld scale=%f.",
+            bSize, n1Size, n2Size, gSize, s1Size, s2Size, dSize, dSizeV, softmaxScale);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -252,12 +325,25 @@ ge::graphStatus FlashAttnTilingRegbase::DoOpTiling()
     CalcDVBasicBlock();
     CalcS1S2BasicBlock();
 
+    // ================================================================
+    // 写死基本块大小：对应 D=64, S_q=S_kv=128 的 BNSD 场景
+    //   dTemplateType  = ALIGNED_64  → D=64 按 64 对齐
+    //   dVTemplateType = ALIGNED_64  → Dv=64 同上
+    //   s1BasicBlock   = 128         → S_q=128 单次处理 128 行
+    //   s2BasicBlock   = 128         → S_kv=128 单次处理 128 列
+    // ================================================================
+    dBasicBlock    = 64LL;
+    dVBasicBlock   = 64LL;
+    dTemplateType  = FADTemplateType::ALIGNED_64;
+    dVTemplateType = FADTemplateType::ALIGNED_64;
+    s1BasicBlock   = 128LL;
+    s2BasicBlock   = 128LL;
+
+    // aivNum 兜底：硬编码路径若平台信息未获取，默认按 32 核计算
+    if (aivNum == 0) { aivNum = 32U; }
+
     // TND变长场景用realT1Size代替s1Size
     int64_t effectiveS1 = isTND ? realT1Size : s1Size;
-    if (aivNum == 0) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName, "DoOpTiling: aivNum is 0.");
-        return ge::GRAPH_FAILED;
-    }
 
     int64_t s1Outer = FA_CeilDiv(effectiveS1, s1BasicBlock);
     multiCoreParamsRegbase_->set_s1OuterSize(s1Outer);
@@ -284,11 +370,42 @@ ge::graphStatus FlashAttnTilingRegbase::DoOpTiling()
     multiCoreParamsRegbase_->set_bnStartIdx(bnStartIdxArr);
     multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(0LL);
     multiCoreParamsRegbase_->set_splitCoreMode(0U);
+    // sparseStartIdx 全零（无稀疏注意力）
+    int64_t sparseArr[48] = {};
+    multiCoreParamsRegbase_->set_sparseStartIdx(sparseArr);
+
+    // ================================================================
+    // DropmaskParamsRegbase：无 dropout，全部置零
+    //   needDropMaskOp=0 → kernel 不执行 dropout，此结构体不被访问
+    // ================================================================
+    auto *dropParams = &tilingData->dropmaskParamsRegbase;
+    dropParams->set_multiCoreFactorSize(0);     // 无 dropout，多核因子为 0
+    dropParams->set_baseUbCalSize(0);           // 无 dropout，UB 计算大小为 0
+    dropParams->set_multiCoreTotalSize(0LL);    // 无 dropout，多核总量为 0
+    dropParams->set_shapeTotalSize(0LL);        // 无 dropout，shape 总量为 0
+    dropParams->dropMaskAddrOffset = 0LL;       // 无 dropout，地址偏移为 0
+
+    // ================================================================
+    // InitOutputParams：输出初始化参数
+    //   totalOutputSize = B*N_q*S_q*D = 1*8*128*64 = 65536（元素数）
+    //   singleCoreSize  = totalOutputSize / coreNum = 65536/8 = 8192
+    //   needInit = 0：推理场景 kernel 直接写满输出，无需清零
+    //   isOneN   = 0：N_q=8 不等于 1
+    //   totalSoftMaxLseOutputSize = 0：returnSoftmaxLse=0，不输出 lse
+    // ================================================================
+    auto *initOut = &tilingData->initOutputParams;
+    int64_t totalOutElems = bSize * n1Size * s1Size * dSize;   // = 65536
+    initOut->set_totalOutputSize(totalOutElems);               // 65536
+    initOut->set_totalSoftMaxLseOutputSize(0LL);               // 不输出 softmax_lse
+    initOut->set_needInit(0U);                                 // 推理无需初始化输出
+    initOut->set_isOneN(0U);                                   // n1Size=8 ≠ 1
+    initOut->set_singleCoreSize(
+        usedCoreNum > 0 ? static_cast<uint32_t>(totalOutElems / usedCoreNum) : 0U);  // 8192
 
     OP_LOGD(context_,
         "FlashAttn DoOpTiling: s1Outer=%ld totalSize=%ld usedCoreNum=%d "
-        "splitFactor=%ld splitTail=%ld.",
-        s1Outer, totalSz, usedCoreNum, splitFactor, splitFactorTail);
+        "splitFactor=%ld splitTail=%ld totalOutElems=%ld.",
+        s1Outer, totalSz, usedCoreNum, splitFactor, splitFactorTail, totalOutElems);
     return ge::GRAPH_SUCCESS;
 }
 

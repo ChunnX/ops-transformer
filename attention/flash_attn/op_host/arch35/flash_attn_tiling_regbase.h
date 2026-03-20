@@ -277,8 +277,9 @@ protected:
     // TilingData
     FlashAttentionScoreSimplifiedTilingData *tilingData =
         context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
-    InputParamsRegbase      *inputParamsRegbase_   = &tilingData->inputParamsRegbase;
-    MultiCoreParamsRegbase  *multiCoreParamsRegbase_ = &tilingData->multiCoreParamsRegbase;
+    InputParamsRegbase *inputParamsRegbase_ = &tilingData->inputParamsRegbase;
+    MultiCoreParamsRegbase *multiCoreParamsRegbase_ = &tilingData->multiCoreParamsRegbase;
+    DropmaskParamsRegbase *dropmaskParamsRegbase_ = &tilingData->dropmaskParamsRegbase;
 };
 
 } // namespace FA
