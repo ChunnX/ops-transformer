@@ -306,11 +306,11 @@
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
     - 参数约束：
-        - `epWorldSize`：取值支持4、8、16、32、64、128、144、256、288。
+        - `epWorldSize`：取值支持2、4、8、16、32、64、128、144、256、288。
         - `sharedExpertRankNum`：当前取值范围[0, `epWorldSize`)，不为0时需满足`epWorldSize` % `sharedExpertRankNum` = 0。
-        - `globalBs`：当每个rank的`BS`数一致时，`globalBs` = `BS` * `epWorldSize` 或 `globalBs` = 0。
-        - `commQuantMode`：当前版本只支持0。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= `aivNum` * 32 + 2 * `epWorldSize` * (`BS` * `H` * 2 * `localExpertNum` + 512)，`aivNum`表示核数，`localExpertNum`需使用MoE专家卡的本卡专家数。
+        - `globalBs`：当每个rank的`BS`数一致时，`globalBs` = `BS` * `epWorldSize` 或 `globalBs` = 0；当每个rank的`BS`数不一致时，`globalBs` = `maxBs` * `epWorldSize`，其中`maxBs`表示单卡`BS`最大值。
+        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
 
 ## 调用说明
 

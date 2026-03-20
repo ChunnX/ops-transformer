@@ -418,7 +418,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
         - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
         - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
-        - `commQuantMode`当前版本仅支持0，0表示通信不量化。
+        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
 
 - **返回值**
 

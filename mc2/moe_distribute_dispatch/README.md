@@ -19,17 +19,35 @@
 - 算子功能：对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 - 计算公式：
 
-    - 不存在TP域通信时：
+    - 情形1：如果quaneMode=0（非量化场景）：
 
     $$
-    expandXOut = AllToAllV(X)\\
+    allToAllXOut = AllToAllV(X)\\
+    expandXOut =
+    \begin{cases}
+    AllToAllV(X), & 无TP通信域 \\
+    AllGatherV(allToAllXOut), & 有TP通信域 \\
+    \end{cases}
     $$
 
-    - 存在TP域通信时：
+    - 情形2：如果quaneMode=2（pertoken动态量化场景）：
 
     $$
-    ataOut = AllToAllV(X)\\
-    expandXOut = AllGatherV(ataOut)\\
+    xFp32 = CastToFp32(X) \times scales \\
+    dynamicScales = dstTypeMax/Max(Abs(xFp32)) \\
+    quantOut = CastToInt8(xFp32 \times dynamicScalesValue) \\
+    allToAllXOut = AllToAllV(quantOut) \\
+    allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
+    expandXOut =
+    \begin{cases}
+    AllToAllV(X), & 无TP通信域 \\
+    AllGatherV(allToAllXOut), & 有TP通信域 \\
+    \end{cases} \\
+    dynamicScalesOut =
+    \begin{cases}
+    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
+    allToAllDynamicScalesOut, & 有TP通信域 \\
+    \end{cases}
     $$
 
     注意该算子必须与`MoeDistributeCombine`配套使用。
@@ -191,7 +209,7 @@
 <td>dynamicScales</td>
 <td>输出</td>
 <td>量化场景下，表示本卡输出Token的量化系数。</td>
-<td>FLOAT32、FLOAT32_E8M0</td>
+<td>FLOAT32、FLOAT8_E8M0</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -233,14 +251,14 @@
 </table>
 
 * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
+    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT8_E8M0`数据类型。
     * `quantMode`属性仅支持0和2。
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
     * 仅设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，`expandScales`内容有效。
 
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
+    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT8_E8M0`数据类型。
     * `quantMode`属性仅支持0和2。
     * 不支持`expandScales`。
 
@@ -304,24 +322,13 @@
         - `H`：表示hidden size隐藏层大小，取值为7168。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 8]。
-    - `epWorldSize`：取值支持4、8、16、32、64、128、144、256、288。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= `aivNum` * 32 + 2 * `epWorldSize` * (`BS` * `H` * 2 * `localExpertNum` + 512)，`aivNum`表示核数，`localExpertNum`需使用MoE专家卡的本卡专家数。
+    - `epWorldSize`：取值支持2、4、8、16、32、64、128、144、256、288。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
     - `quantMode`相关约束：
-        - `quantMode`取值为0时，表示非量化场景，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`。
-            - `expandX`的数据类型为`FLOAT16`、`BFLOAT16`时，输入`scales`必须传入空指针。
-            - `expandX`的数据类型为`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`时，输入`scales`必须传入有效数据，且输入`scales`的shape第1维必须等于`BS`。
-        - `quantMode`取值为1时，表示静态量化场景，`expandX`的数据类型支持`INT8`、`HIFLOAT8`。
-            - `expandX`的数据类型为`INT8`时，输入`scales`为量化系数时，shape为 (1, )；输入`scales`为每个专家共享的平滑权重时，shape为 (`H`，)。输入`scales`为融了每个专家的平滑权重的量化系数时，若有共享专家卡，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)，若无共享专家卡，其shape为 (`moeExpertNum`, `H`)。
-            - `expandX`的数据类型为`HIFLOAT8`时，`scales`的shape必须为 (1, )。
-        - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+        - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。
             - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
             - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
-        - `quantMode`取值为3时，表示pergroup动态量化场景，expandX的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
-            - 输入`scales`可传入空指针。
-            - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
-            - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
-        - `quantMode`取值为4时，表示mx量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`，输入`scales`必须传入空指针。
 
 ## 调用说明
 
