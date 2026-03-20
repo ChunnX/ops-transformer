@@ -549,26 +549,8 @@ if (BUILD_OPEN_PROJECT)
     endif()
 
     if(NOT ENABLE_BUILT_IN)
-        # op dir to be updated
-        set(FILTER_OP_DIR
-            "mc2"
-        )
         set(update_proto_srcs)
-        
         foreach(OP_DIR ${OP_DIR_LIST})
-            # filter op dir to be updated
-            set(need_update_proto FALSE)
-            foreach(filter_op_frag ${FILTER_OP_DIR})
-                if(${OP_DIR} MATCHES ".*${filter_op_frag}.*")
-                    set(need_update_proto TRUE)
-                    break()
-                endif()        
-            endforeach()
-            if(NOT need_update_proto)
-                message(STATUS "Skip proto update: ${OP_DIR}")
-                continue()
-            endif()
-
             # copy updated proto cpps to autogen
             file(GLOB OP_PROTO_HEADER ${OP_DIR}/op_graph/*_proto.h)
             if(OP_PROTO_HEADER)
