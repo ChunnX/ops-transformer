@@ -34,10 +34,10 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     // Get attribute pointers and dereference once
-    const int *weightQuantModePtr = attrs->GetAttrPointer<int>(ATTR_WEIGHT_QUANT_MODE_FLAG_INDEX);
-    const int weightQuantMode = (weightQuantModePtr == nullptr) ? 0 : *weightQuantModePtr;
-    const int *kvQuantModePtr = attrs->GetAttrPointer<int>(ATTR_KV_QUANT_MODE_FLAG_INDEX);
-    const int kvQuantMode = (kvQuantModePtr == nullptr) ? 0 : *kvQuantModePtr;
+    const int64_t *weightQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT_QUANT_MODE_FLAG_INDEX);
+    const int64_t weightQuantMode = (weightQuantModePtr == nullptr) ? 0 : *weightQuantModePtr;
+    const int64_t *kvQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_KV_QUANT_MODE_FLAG_INDEX);
+    const int64_t kvQuantMode = (kvQuantModePtr == nullptr) ? 0 : *kvQuantModePtr;
 
     // dequantScaleQNope: (B*S, N ,1) | (T, N, 1). (1) if not enabled
     auto dequantScaleQNopeShape = context->GetOutputShape(DEQUANT_SCALE_Q_NOPE_INDEX);
@@ -123,9 +123,9 @@ ge::graphStatus InferDataTypeMlaPrologV3(gert::InferDataTypeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     // Get attribute pointers and dereference once
-    const int *weightQuantModePtr = attrs->GetAttrPointer<int>(ATTR_WEIGHT_QUANT_MODE_FLAG_INDEX);
+    const int64_t *weightQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT_QUANT_MODE_FLAG_INDEX);
     const int weightQuantMode = (weightQuantModePtr == nullptr) ? 0 : *weightQuantModePtr;
-    const int *kvQuantModePtr = attrs->GetAttrPointer<int>(ATTR_KV_QUANT_MODE_FLAG_INDEX);
+    const int64_t *kvQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_KV_QUANT_MODE_FLAG_INDEX);
     const int kvQuantMode = (kvQuantModePtr == nullptr) ? 0 : *kvQuantModePtr;
 
     // mxfp8 quant
