@@ -853,22 +853,28 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
         if(GRAPH_SOURCE)
             message(STATUS "custom Graph Plugin Source to add es to obj")
             add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+                build_es_math
                 build_es_transformer_cust
             )
             target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
-                PRIVATE es_transformer_cust
+                PRIVATE
+                es_math
+                es_transformer_cust
             )
         endif()
-    else()
-        # proto -> es transformer -> cust proto
-        message(STATUS "custom cust proto to es")
-        add_dependencies(cust_proto
-            build_es_transformer_cust
-        )
-        target_link_libraries(cust_proto
-            PRIVATE es_transformer_cust
-        )
     endif()
+    # directly link es to opsproto
+    add_dependencies(cust_proto
+        build_es_math
+        build_es_transformer_cust
+    )
+    target_link_libraries(cust_proto
+        PRIVATE
+        -Wl,--no-as-needed
+        es_math
+        es_transformer_cust
+        -Wl,--as-needed
+    )
     target_link_directories(
         cust_proto PRIVATE
         ${CMAKE_BINARY_DIR}/es_packages/lib64
