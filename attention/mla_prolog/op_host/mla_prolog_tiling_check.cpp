@@ -199,17 +199,23 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
             MAX_B_SIZE, baseShapeInfo_.bSize),
         return ge::GRAPH_FAILED);
-    
     const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
     OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
         OP_LOGE(context_.opName, "He allows only %s, got %u.",
             ConvertContainerToString(supportedHeSize).c_str(), baseShapeInfo_.heSize),
         return ge::GRAPH_FAILED);
-    
-    OP_CHECK_IF(baseShapeInfo_.hcqSize != HCQ_SIZE,
-        OP_LOGE(context_.opName, "Hcq allows only %u, got %u.",
-            HCQ_SIZE, baseShapeInfo_.hcqSize),
-        return ge::GRAPH_FAILED);
+    if (GetCurNpuArch() != NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        const std::set<uint32_t> supportedHcqSize {1536U, 2048U};
+        OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
+            OP_LOGE(context_.opName, "Hcq allows %s, got %u.",
+                ConvertContainerToString(supportedHcqSize).c_str(), baseShapeInfo_.hcqSize),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(baseShapeInfo_.hcqSize != HCQ_SIZE,
+            OP_LOGE(context_.opName, "Hcq allows only %u, got %u.",
+                HCQ_SIZE, baseShapeInfo_.hcqSize),
+            return ge::GRAPH_FAILED);
+    }
     const std::set<uint32_t> supportedNSize {1, 2, 4, 8, 16, 32, 64, 128};
     OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
         OP_LOGE(context_.opName, "N allows only %s, but got %u.",
@@ -219,10 +225,18 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE(context_.opName, "Hckv allows only %u, got %u.",
             HCKV_SIZE, baseShapeInfo_.hckvSize),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.dSize != D_SIZE,
-        OP_LOGE(context_.opName, "D allows only %u, got %u.",
-            D_SIZE, baseShapeInfo_.dSize),
-        return ge::GRAPH_FAILED);
+    if (GetCurNpuArch() != NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        const std::set<uint32_t> supportedDSize {128U, 192U};
+        OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
+            OP_LOGE(context_.opName, "D allows %s, got %u.",
+                ConvertContainerToString(supportedDSize).c_str(), baseShapeInfo_.dSize),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(baseShapeInfo_.dSize != D_SIZE,
+            OP_LOGE(context_.opName, "D allows only %u, got %u.",
+                D_SIZE, baseShapeInfo_.dSize),
+            return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(baseShapeInfo_.drSize != DR_SIZE,
         OP_LOGE(context_.opName, "Dr allows only %u, got %u.",
             DR_SIZE, baseShapeInfo_.drSize),

@@ -85,6 +85,11 @@ enum class SPLIT_M_MODE : std::uint8_t {
     ENABLED  = static_cast<std::uint8_t>(1),
 };
 
+enum class ROPE_MODE : std::uint8_t {
+    INTERLEAVE_HALF = static_cast<std::uint8_t>(0),
+    HALF = static_cast<std::uint8_t>(1),
+};
+
 constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint8_t ALIGN_BLOCK_SIZE = 32; // 32B对齐
 constexpr uint32_t BLOCK_CUBE_SIZE = 16; // L1上m轴16对齐
