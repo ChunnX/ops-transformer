@@ -100,19 +100,23 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGeneralQuantShape() const
             GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex) == 0) {
             return ACLNN_SUCCESS;
         }
-        auto weightKIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - LAST_TWO_DIM_INDEX;
-        CHECK_COND(GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1) > 0, ACLNN_ERR_PARAM_INVALID,
-                "When the M or N value is not 0, the K value[%ld] in %s should be positive.",
-                GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1), xName_.c_str());
-        CHECK_COND(GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex) > 0,
-                ACLNN_ERR_PARAM_INVALID, "When the M or N value is not 0, The K value[%ld] in %s should be positive.",
-                GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex), weightName_.c_str());
         if (gmmParams_.groupType == SPLIT_K) {
             CHECK_COND(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0) == groupNum, ACLNN_ERR_PARAM_INVALID,
                        "When groupType is 2 (split K), the first dim of %s[%ld] should be equal to that of \
 %s[%ld].",
                        yName_.c_str(), GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0),
                        groupTensorName_.c_str(), groupNum);
+        } else {
+            auto weightKIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - LAST_TWO_DIM_INDEX;
+            CHECK_COND(GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1) > 0, ACLNN_ERR_PARAM_INVALID,
+                       "When groupType is 0 (split M) and when the M or N value is not 0, the K value[%ld] in %s \
+should be positive.",
+                       GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1), xName_.c_str());
+            CHECK_COND(GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex) > 0,
+                       ACLNN_ERR_PARAM_INVALID,
+                       "When groupType is 0 (split M) and when the M or N value is not 0, The K value[%ld] in %s \
+should be positive.",
+                       GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex), weightName_.c_str());
         }
     }
     return ACLNN_SUCCESS;
