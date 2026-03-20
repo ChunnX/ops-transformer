@@ -23,6 +23,7 @@ using namespace Mc2Tiling;
 namespace optiling {
 constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 constexpr uint64_t STANDARD_CARD_CGMPAD_WORKSPACE_CNT = 3;
+constexpr uint64_t FIVE_ONE_TWO = 512;
 bool WeightQuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA16W8_ || isA16W4_) {
@@ -246,7 +247,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSizeInStandardCa
     uint64_t tempTileSize = tileM * MutableTCubeTileTilingData().N;
     uint64_t tempTailSize = tailM * MutableTCubeTailTilingData().N;
 
-    cgmPadLen = (MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt) * args_.rankDim;
+    cgmPadLen = (MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt) * FIVE_ONE_TWO;
     commWorkSpace = (tempTileSize * MutableRCSTilingData().tileCnt +
                         tempTailSize * MutableRCSTilingData().tailCnt +
                         cgmPadLen) * static_cast<uint64_t>(args_.outputDtypeSize);
