@@ -990,8 +990,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalValidBSCnt(Local
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ExpertActiveMaskCal()
 {
-    PipeBarrier<PIPE_ALL>();
-    //SyncFunc<AscendC::HardEvent::MTE2_V>();
+    //PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
     //LOG_INFO("ExpertActiveMaskCal expertMaskInputTensor_",expertMaskInputTensor_,{axisBS_, axisK_});
     LocalTensor<int8_t> maskStrideInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
     LocalTensor<half> maskStrideFp16Tensor = subExpBuf_.Get<half>();
@@ -1029,6 +1029,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
+    SyncFunc<AscendC::HardEvent::MTE2_V>(); // 后续全部都需要依赖此数据，在这里全部一起等待
 }
 
 /**
@@ -1761,8 +1762,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         static_cast<uint32_t>((blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE) / UB_ALIGN - 1), 0U, 0U};
     DataCopyPadParams srcTokenPadParams{false, 0U, 0U, 0U};
 
-    SyncFunc<AscendC::HardEvent::V_MTE2>();
-    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    SyncFunc<AscendC::HardEvent::V_MTE2>();//TODO:
+    SyncFunc<AscendC::HardEvent::S_MTE2>();//TODO:
     DataCopyPad(recvTmpTensor_, dataFlagGlobal[(index * sendTokenLengthAlign_) / sizeof(XType)],
                 srcTokenCopyParams, srcTokenPadParams);
     //PipeBarrier<PIPE_MTE2>();
@@ -2788,7 +2789,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {   
     if ASCEND_IS_AIV {
         CalTokenMask();
-        SyncAll<true>();
+        // SyncAll<true>();
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
