@@ -549,6 +549,9 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitComputeInfo()
 {
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
+    if (epRankId_ < sharedExpertRankNum_) {
+        isShareExpertRankFlag_ = true;
+    }
     if (sharedExpertNum_ > 0) {
         rankNumPerSharedExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
     }
@@ -845,9 +848,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     dataState_ = InitWinState(selfDataStatusGMTensor_, winContext_[COMM_EP_IDX], epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
-    if (epRankId_ < sharedExpertRankNum_) {
-        isShareExpertRankFlag_ = true;
-    }
     InitComputeInfo();
 
     tpGatherRankId_ = ((tpRankId_ == 0) ? 1 : 0);
