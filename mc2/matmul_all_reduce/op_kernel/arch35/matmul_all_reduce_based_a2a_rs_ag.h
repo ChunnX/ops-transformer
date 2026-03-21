@@ -203,6 +203,7 @@ protected:
     {
         if ASCEND_IS_AIV {
             for (int i = 0; i < paramInTiling_->tileCnt; i++) {
+                SyncAll();      // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
                 if (notifyFlag_) {
                     if (i >= 1) {
                         // 第一块ReduceSum会和A2A掩盖
@@ -222,6 +223,7 @@ protected:
                 }
             }
             for (int i = 0; i < paramInTiling_->tailCnt; i++) {
+                SyncAll();      // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
                 if (notifyFlag_) {
                     uint64_t index = paramInTiling_->tileCnt + i;
                     hccl_.Commit(allgatherHandleId_[index - 1]);
@@ -233,6 +235,7 @@ protected:
                 reduceSumInGM_ += tailAddrAlign_;                       // reduceSumIn 切块之间是非连续的
                 reduceSumOutGM_ += tailAddrAlign_ / rankNum_;           // reduceSumOut 切块之间是非连续的
             }
+            SyncAll();      // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
             if (notifyFlag_) {
                 hccl_.Commit(allgatherHandleId_[tileAndTailNum_ - 1]);
             }
