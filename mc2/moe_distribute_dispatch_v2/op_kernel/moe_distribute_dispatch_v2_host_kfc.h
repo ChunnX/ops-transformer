@@ -2331,7 +2331,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 SyncFunc<AscendC::HardEvent::MTE3_V>();
                 Duplicate<int32_t>(cleanTensor, 0, UB_ALIGN_DATA_COUNT);
                 SyncFunc<AscendC::HardEvent::V_MTE3>();
-                DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanTensor, cleanUoParams);
+                //DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanTensor, cleanUoParams); //todo:需要重写
                 finishNum++;
             }
             PipeBarrier<PIPE_ALL>();
