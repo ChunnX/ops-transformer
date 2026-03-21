@@ -112,7 +112,6 @@ private:
     __aicore__ inline void InitTemp();
     __aicore__ inline void CalExpertTotalSendCnt();
     __aicore__ inline void ScatterTokenToRemote();
-    __aicore__ inline void CommunicateBetweenServer(uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum);
     __aicore__ inline void GatherTokenFrRemote(uint32_t aivNumForWait);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
@@ -127,9 +126,6 @@ private:
     __aicore__ inline void SingleTokenProcess(uint32_t startTokenIndex, uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
     __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId);
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<int32_t> flagTensor, LocalTensor<uint32_t> flagRecvGatherMask);
-    // __aicore__ inline bool HasSharedExpertInServer(uint32_t serverId);
-    __aicore__ inline void ConstructDataAndFlagBatchWriteInfo(uint32_t beginServerId, uint32_t serverNum,
-                                                              uint32_t aivNum);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, uint32_t &tokenCnt);
     __aicore__ inline void WaitToken(uint32_t tokenCnt, uint32_t serverIdx, uint32_t startTokenIdx, TBuf<> &tBuf);
     __aicore__ inline void CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal, uint32_t &arriveCount, uint32_t flagNum,
@@ -151,7 +147,6 @@ private:
     __aicore__ inline void InitStatusTensor();
     __aicore__ inline void BufferInit();
     __aicore__ inline void InitComputeInfo();
-    __aicore__ inline void InitCommBetweenServerInfo();
     __aicore__ inline void InitDispatchBetweenServerInfo();
     __aicore__ inline void InitExtraInfo();
     __aicore__ inline void InitMaskInfo();
@@ -274,7 +269,6 @@ private:
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor_;
     GlobalTensor<uint32_t> selfhcclDataStatusTensor_;
-    GlobalTensor<uint64_t> dataBatchWriteInfoTensor_;
     GlobalTensor<uint32_t> bufferChosenGlobal_;
     GlobalTensor<float> selfRankWinInGMTensor_;
 
@@ -305,8 +299,6 @@ private:
     LocalTensor<uint8_t> flagCompResultU8_;
     LocalTensor<uint64_t> flagCompResultLtU64_;
     LocalTensor<uint32_t> flagRecvGatherMask_;
-    LocalTensor<uint64_t> batchWriteU64Tensor_;
-    LocalTensor<uint32_t> batchWriteU32Tensor_;
     LocalTensor<uint32_t> finishNumTensor_;
     LocalTensor<int16_t> expertOffsetCntTensor_;
     LocalTensor<bool> expertMaskInputTensor_;
@@ -342,7 +334,6 @@ private:
     TBuf<> gatherMaskTBuf_;
     TBuf<> serverCountBuf_;
     TBuf<> serverMapBuf_;
-    TBuf<> batchWriteInfoBuf_;
     TBuf<> expertOffsetCntBuf_;
     TBuf<> xSendBuf_;
     TBuf<> flagBuf_;
@@ -367,7 +358,6 @@ private:
     GM_ADDR tpLocalStatusWindowGM_;
     GM_ADDR recvCntWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
-    GM_ADDR dataBatchWriteInfo_;
     GM_ADDR bufferChoseAddr_;
 
     GM_ADDR gmTemp;
@@ -589,23 +579,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
 }
 
-
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommBetweenServerInfo()
-{
-    statusBufCntAlign_ = Ceil(expertNumInServer_ * serverNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
-    uint32_t statusBufSize = statusBufCntAlign_ * UB_ALIGN;
-    totalUsedUB_ += statusBufSize;
-    statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
-    tpipe_->InitBuffer(batchWriteInfoBuf_, BW_ITEM_SIZE);
-    batchWriteU64Tensor_ = batchWriteInfoBuf_.Get<uint64_t>();
-    batchWriteU32Tensor_ = batchWriteU64Tensor_.template ReinterpretCast<uint32_t>();
-
-
-    dataBatchWriteInfo_ = recvCntWorkspaceGM_ + WORKSPACE_ELEMENT_OFFSET * aivNum_ * aivNum_;
-    dataBatchWriteInfoTensor_.SetGlobalBuffer((__gm__ uint64_t *)(dataBatchWriteInfo_), serverNum_ * B64_PER_BLOCK);
-
-}
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
@@ -838,9 +811,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         (__gm__ uint32_t *)(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    //dataState_ = 0;
     dataState_ = InitWinState(selfDataStatusGMTensor_, winContext_[COMM_EP_IDX], epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);
+    statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -868,11 +841,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if constexpr (IsSmoothScaleExist) {
         scalesGMTensor_.SetGlobalBuffer((__gm__ float*)scales);
     }
-
     InitRecieveTilingContext(expandXOut, pipe, tilingData);
     InitCommInfo();
     InitComputeInfo();
-    InitCommBetweenServerInfo();
     InitSetWindows(tilingData);
     InitExtraInfo();
     InitMaskInfo();
@@ -1483,45 +1454,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SendTokenToRemoteServer();
 }
 
-// 构建发往其他server的所有data报文
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ConstructDataAndFlagBatchWriteInfo(
-    uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum)
-{
-    // 计算当前core要处理的server
-    uint32_t startServerId, endServerId, batchWriteItemNum;
-
-    SplitToCore(serverNum, aivUsedCumSum_, aivUsedScatter_, startServerId, endServerId, batchWriteItemNum);
-
-    if (startServerId >= serverNum || batchWriteItemNum == 0) {
-        return;
-    }
-    startServerId += beginServerId;
-    endServerId += beginServerId;
-    // 当前aiv负责 [startServerId,endServerId) 个 server
-    for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
-        uint32_t dstServerId = epRankId_ % rankSizePerServer_ + dstServerInd * rankSizePerServer_; // 目标Server
-
-        uint64_t dstDataAddr = (uint64_t)(GetReceiveAddrBetweenServer(COMM_EP_IDX, dstServerId));
-        // src卡GetWindowsInAddr地址, 要发给serverIndex
-        uint64_t srcDataAddr = (uint64_t)(GetSendAddrBetweenServer(COMM_EP_IDX, serverId_));
-        // 去往该Server的传输的数据量
-        uint32_t validTokenCount = serverCountTensor_(dstServerInd);
-        uint32_t validDataLength = SERVER_STATE_ALIGN + validTokenCount * sendTokenLengthAlign_;
-
-        batchWriteU64Tensor_(0) = srcDataAddr;     // 源地址
-        batchWriteU64Tensor_(1) = dstDataAddr;     // 目的地址
-        batchWriteU64Tensor_(2) = validDataLength; // 数据长度
-        batchWriteU32Tensor_(6) = HcclDataType::HCCL_DATA_TYPE_INT8;
-        batchWriteU32Tensor_(7) = dstServerId; // dst卡
-
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        uint32_t dstServerOffset = dstServerInd;
-        uint32_t sendInfoCount = B64_PER_BLOCK; // 只发送一个结构
-        DataCopy(dataBatchWriteInfoTensor_[dstServerOffset * sendInfoCount], batchWriteU64Tensor_, sendInfoCount);
-    }
-}
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote(uint32_t aivNum)
 {
@@ -1772,24 +1704,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 }
 
-// 0-31 server  32-63 recieve
-
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CommunicateBetweenServer(uint32_t beginServerId,
-                                                                              uint32_t serverNum, uint32_t aivNum)
-{
-    // ConstructDataAndFlagBatchWriteInfo(beginServerId, serverNum, aivNum);
-    // PipeBarrier<PIPE_ALL>();
-    // if ASCEND_IS_AIV {
-    //     if (aivId_ == aivUsedCumSum_) {
-    //         bufferChosenGlobal_(0) = bufferId_ ^ 1;
-    //         DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-    //             bufferChosenGlobal_);
-    //     }
-    // }
-}
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::resetMaxCnt(int32_t cntPosIndex,
                                                                                         int32_t curExpertCnt)
@@ -1929,7 +1843,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitStatusTensor()
 {
-    
+    statusBufCntAlign_ = Ceil(expertNumInServer_ * serverNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign_ * UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();                  // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign_ * 8);
@@ -2798,7 +2712,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalTokenSendExpertOffset();
             if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
                 ScatterTokenToRemote();  //4 20  5
-                // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
             } else {
                 GatherTokenFrRemote(aivUsedGather_);
             }
