@@ -156,7 +156,7 @@ private:
     __aicore__ inline void InitExtraInfo();
     __aicore__ inline void InitMaskInfo();
     __aicore__ inline void InitSetWindows(const MoeDistributeDispatchV2TilingData *tilingData);
-    __aicore__ inline void InitRecieveTilingContext(GM_ADDR expandXOut, GM_ADDR workspaceGM, TPipe *pipe,
+    __aicore__ inline void InitRecieveTilingContext(GM_ADDR expandXOut, TPipe *pipe,
                                                     const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void WaitDispatch();
     __aicore__ inline bool IsInSameServer(uint32_t targetRankId);
@@ -374,6 +374,7 @@ private:
     GM_ADDR gmMoeCntFlg;
     GM_ADDR gmExpertOffsetCnt;
     GM_ADDR gmSendTokenFlg;
+    GM_ADDR workspaceGM_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     uint32_t axisBS_{0};
@@ -495,13 +496,13 @@ private:
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitRecieveTilingContext(
-    GM_ADDR expandXOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
+    GM_ADDR expandXOut, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
-    gmMoeCntFlg = workspaceGM + 1UL * 1024 * 1024 * 1024;
+    gmMoeCntFlg = workspaceGM_ + 1UL * 1024 * 1024 * 1024;
     gmExpertOffsetCnt = gmMoeCntFlg + 32;
     gmSendTokenFlg = gmExpertOffsetCnt + 20 * 1024 * 1024;
     gmTemp = gmSendTokenFlg + 10 * 1024 * 1024;
-    GM_ADDR bufferChoseAddr_ = workspaceGM + 3UL  * 1024 * 1024 * 1024 + 1000UL * 1024 * 1024;
+    GM_ADDR bufferChoseAddr_ = workspaceGM_ + 3UL  * 1024 * 1024 * 1024 + 1000UL * 1024 * 1024;
 
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -569,7 +570,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         startMoeExpertId_ = (startRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
     }
     expertNumInServer_ = shareRankNumInServer_ + (rankSizePerServer_ - shareRankNumInServer_) * moeExpertNumPerRank_;
-    recvCntWorkspaceGM_ = workspaceGM + epWorldSize_ * expertNumInServer_ * UB_ALIGN;
+    recvCntWorkspaceGM_ = workspaceGM_ + epWorldSize_ * expertNumInServer_ * UB_ALIGN;
     if (sharedExpertRankNum_ != 0U) {
         sharedUsedAivNum_ = (aivNum_ * sharedExpertNum_) / (axisK_ + sharedExpertNum_);
         if (sharedUsedAivNum_ == 0) {
@@ -859,15 +860,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     dynamicScalesOutGMTensor_.SetGlobalBuffer((__gm__ uint8_t *)dynamicScalesOut);
     expertTokenNumsOutGMTensor_.SetGlobalBuffer((__gm__ int64_t *)expertTokenNumsOut);
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOut));
+    workspaceGM_ = workspaceGM;
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut; // 无GlobalTensor
     sendTpCountOutGM_ = tpSendCountsOut;
-    sendCountGMTensor_.SetGlobalBuffer((__gm__ int32_t *)workspaceGM);
+    sendCountGMTensor_.SetGlobalBuffer((__gm__ int32_t *)workspaceGM_);
     if constexpr (IsSmoothScaleExist) {
         scalesGMTensor_.SetGlobalBuffer((__gm__ float*)scales);
     }
 
-    InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
+    InitRecieveTilingContext(expandXOut, pipe, tilingData);
     InitCommInfo();
     InitComputeInfo();
     InitCommBetweenServerInfo();
