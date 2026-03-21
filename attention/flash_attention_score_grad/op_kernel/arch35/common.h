@@ -256,6 +256,10 @@ struct FagConstInfo {
     int64_t leftSingleColTotalRound = 0;
     int64_t leftTotalRound = 0;
     int64_t batchTotalRound = 0;
+    // sink相关
+    uint32_t isSink = 0;
+    uint64_t s1SinkOuter = 0;
+    uint64_t s2SinkOuter = 0;
     // 核数
     uint32_t aicCoreNum = 0;
 };
@@ -350,6 +354,10 @@ struct FagRunInfo {
     bool isFirstProcessBlock = false;
     
     int64_t maxsumOffset;
+
+    // sink场景使用
+    int64_t dsinkWorkSpaceOffset = 0;
+    int64_t sinkN1Idx = 0;
 };
 
 constexpr SyncAllConfig syncAllConfigMte2ToMte2 = {PIPE_MTE2, PIPE_MTE2};

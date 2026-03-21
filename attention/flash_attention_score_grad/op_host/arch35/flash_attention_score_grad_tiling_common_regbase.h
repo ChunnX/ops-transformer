@@ -481,6 +481,10 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     int64_t qStartIdx;
     int64_t kvStartIdx;
     bool enableSwizzle = false;
+    uint32_t sinkOptional = 0;
+    uint64_t sinkSize = 0;
+    uint64_t s1SinkOuter = 0;
+    uint64_t s2SinkOuter = 0;
 };
 
 inline int64_t CeilCommon(int64_t num1, int64_t num2)
@@ -591,6 +595,7 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
 void ProcessDropoutIsDivisibleBy8(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus ProcessDropoutInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
+ge::graphStatus ProcessSinkInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase& fBaseParams);
 void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);

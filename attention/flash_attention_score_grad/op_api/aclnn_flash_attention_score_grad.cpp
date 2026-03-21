@@ -2562,7 +2562,7 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
         attenMaskOptionalCngs, softmaxMaxOptionalCngs, softmaxSumOptionalCngs, softmaxInOptionalCngs,
         attentionInOptionalCngs, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,
         kvStartIdxOptional, dScaleQOptionalCngs, dScaleKOptionalCngs, dScaleVOptionalCngs, dScaleDyOptionalCngs,
-        dScaleOOptionalCngs, nullptr, nullptr, queryRopeOptionalCngs, keyRopeOptionalCngs, dsink, scaleValue, keepProb, preTokens, nextTokens,
+        dScaleOOptionalCngs, nullptr, nullptr, queryRopeOptionalCngs, keyRopeOptionalCngs, sinkInOptionalCngs, scaleValue, keepProb, preTokens, nextTokens,
         headNum, inputLayoutUnderTrans, innerPrecise, sparseMode, pseType, seed, offset, outDtypeOptional, defaultSoftmaxInLayout, executor);
     CHECK_RET(fagRes[0] != nullptr && fagRes[1] != nullptr && fagRes[2] != nullptr,  // 0: dqOut 1: dkOut 2:dvOut
               ACLNN_ERR_PARAM_NULLPTR);
