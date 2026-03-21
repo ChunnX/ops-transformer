@@ -18,7 +18,11 @@
 
 #include "../incre_flash_attention_pub.h"
 #include "../vector_api/vf_softmax_const.h"
+#if __has_include("../../../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#else
+#include "../../../common/arch35/vf/vf_flash_decode.h"
+#endif
 
 struct Vec1TaskParam {
     uint32_t dealRowCount;
