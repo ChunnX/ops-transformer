@@ -23,8 +23,13 @@
 #define FIA_ENABLE_MLA
 #include "fused_infer_attention_score_template_tiling_key.h"
 #ifdef NOT_DYNAMIC_COMPILE
+#if __has_include("../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_entry_regbase.h")
 #include "../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_entry_regbase.h"
 #include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_entry_regbase.h"
+#else
+#include "../incre_flash_attention/arch35/incre_flash_attention_entry_regbase.h"
+#include "../prompt_flash_attention/arch35/prompt_flash_attention_entry_regbase.h"
+#endif
 #else
 #include "../incre_flash_attention/incre_flash_attention.cpp"
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
