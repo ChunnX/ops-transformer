@@ -1250,19 +1250,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         Cast(dstServerIdFp32, compareInt16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
         PipeBarrier<PIPE_V>();
         //LOG_INFO("Cast dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
-        // if(isExpertMaskFlag_) {
-        //     LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里需注意，需要提前把数据搬进来。
-        //     Cast(tempTensorFp16, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
-        //     PipeBarrier<PIPE_V>();
-        //     LOG_INFO("isExpertMaskFlag_ Cast maskInputInt8Tensor", maskInputInt8Tensor,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
-        //     LOG_INFO("isExpertMaskFlag_ Cast tempTensorFp16", tempTensorFp16,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
-        //     Cast(gTempTensorFp32, tempTensorFp16, RoundMode::CAST_NONE, calCnt);
-        //     PipeBarrier<PIPE_V>();
-        //     LOG_INFO("isExpertMaskFlag_ Cast", gTempTensorFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
-        //     Mul(dstServerIdFp32, dstServerIdFp32, gTempTensorFp32, calCnt); //需要与mask相乘。
-        //     PipeBarrier<PIPE_V>(); 
-        // }
-        //LOG_INFO("isExpertMaskFlag_ dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         uint32_t srcShape[2] = {activeMaskBsCnt, axisK_};
         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, dstServerIdFp32, sharedTensorInt8, srcShape, false);
         PipeBarrier<PIPE_V>();
@@ -2504,17 +2491,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         Xor(dstExpIdTensorInt16, dstExpIdTensorInt16, XorTensorInt16, sharedTensorInt8, calCnt);
         PipeBarrier<PIPE_V>();
         //LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
-        // if(isExpertMaskFlag_) {
-        //     LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里有二维mask
-        //     Cast(maskInputFp16Tensor, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
-        //     PipeBarrier<PIPE_V>();
-        //     LOG_INFO("CalTokenSendExpertOffset isExpertMaskFlag_ cast maskInputFp16Tensor",maskInputFp16Tensor,{activeBsCnt, axisK_});
-        //     Cast(maskInputInt16Tensor, maskInputFp16Tensor, RoundMode::CAST_RINT, calCnt);
-        //     PipeBarrier<PIPE_V>();
-        //     LOG_INFO("CalTokenSendExpertOffset isExpertMaskFlag_ cast maskInputInt16Tensor",maskInputInt16Tensor,{activeBsCnt, axisK_});
-        //     Mul(dstExpIdTensorInt16, dstExpIdTensorInt16, maskInputInt16Tensor, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
-        //     PipeBarrier<PIPE_V>(); 
-        // }
         Duplicate<uint16_t>(gatherMaskTensor, 0,
                         Ceil(calCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint16_t)); // 获取索引需要放在这里，因为需要256对齐
         Cast(dstExpIdTensorFP16, dstExpIdTensorInt16, RoundMode::CAST_RINT, calCnt); // 得到对应的结果  TODO:这里需要确认全局变量gatherMaskTensor_
@@ -2544,10 +2520,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t usetime = endtime -starttime;
     // LOG_INFO("CalTokenSendExpertOffset use time",usetime);
     //LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
-    // SyncFunc<AscendC::HardEvent::V_MTE2>();
-    // DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
-    // DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
-    // DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
     WriteExpertOffset(); // 计算完成将结果写入GM并写flag
 }
 
