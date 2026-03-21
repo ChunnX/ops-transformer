@@ -18,7 +18,7 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "recurrent_gated_delta_rule_tiling_data.h"
+#include "../recurrent_gated_delta_rule_tiling_data.h"
 
 namespace RecurrentGatedDeltaRule {
 
