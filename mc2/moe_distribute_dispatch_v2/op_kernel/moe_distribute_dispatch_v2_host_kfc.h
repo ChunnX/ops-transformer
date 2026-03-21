@@ -368,6 +368,7 @@ private:
     GM_ADDR recvCntWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
     GM_ADDR dataBatchWriteInfo_;
+    GM_ADDR bufferChoseAddr_;
 
     GM_ADDR gmTemp;
     GM_ADDR gmMoeCntFlg;
@@ -501,6 +502,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     gmExpertOffsetCnt = gmMoeCntFlg + 32;
     gmSendTokenFlg = gmExpertOffsetCnt + 20 * 1024 * 1024;
     gmTemp = gmSendTokenFlg + 10 * 1024 * 1024;
+    GM_ADDR bufferChoseAddr_ = workspaceGM + 3UL  * 1024 * 1024 * 1024 + 1000UL * 1024 * 1024;
 
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -826,12 +828,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommInfo()
 {
-    GM_ADDR bufferChoseAddr = workspaceGM + 3UL  * 1024 * 1024 * 1024 + 1000UL * 1024 * 1024;
     winContext_[COMM_EP_IDX] = (__gm__ HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    bufferChosenGlobal_.SetGlobalBuffer((__gm__ uint32_t *)(bufferChoseAddr));
+    bufferChosenGlobal_.SetGlobalBuffer((__gm__ uint32_t *)(bufferChoseAddr_));
     bufferId_ = bufferChosenGlobal_(0);
     //CheckWindowSize(totalWinSizeEp_, GetWinSize(winContext_[COMM_EP_IDX]), tpipe_, expandXOut);
-
+    
     statusDataSpaceGm_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
     selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusDataSpaceGm_));
     selfDataStatusGMTensor_.SetGlobalBuffer(
