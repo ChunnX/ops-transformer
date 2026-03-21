@@ -74,6 +74,7 @@ enum QuantModePair {
     QUANT_PAIR_NONE = 0,   // 不量化
     QUANT_PAIR_TT = 1,     // pertensor - pertensor
     QUANT_PAIR_KC = 2,     // pertoken - perchannel
+    QUANT_PAIR_MX = 6,     // mxfp8
     QUANT_PAIR_ERROR = 255
 };
 
@@ -92,6 +93,7 @@ constexpr uint32_t DIM_ZERO = 0;
 constexpr uint32_t DIM_ONE = 1;
 constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
+constexpr uint32_t DIM_FOUR = 4;
 
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
@@ -108,6 +110,8 @@ constexpr int64_t BEST_BASEN = 256;
 constexpr int64_t BEST_L1_PARTA = 256 * 1024;
 constexpr int64_t BEST_L1_PARTB = 128 * 1024;
 
+constexpr uint64_t MX_SCALE_GROUP = 64;
+constexpr uint64_t EVEN_ALIGN = 2;
 constexpr uint64_t DOUBLE_BUFFER_L0A_L0B = 2;
 constexpr uint64_t DOUBLE_BUFFER_STEPKA_STEPKB = 2;
 constexpr uint32_t UB_DIVIDE_NUM = 2;
