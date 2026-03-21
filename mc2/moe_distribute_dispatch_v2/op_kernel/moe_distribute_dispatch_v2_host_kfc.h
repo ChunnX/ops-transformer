@@ -392,7 +392,6 @@ private:
     int32_t rankSizePerServer_{0};   // 一个server内的rank数 epWorldSize_ -> rankSizePerServer_
     int32_t epRankIdInServer_{0}; // server内局部编号 epRankId_ -> epRankIdInServer_
     int32_t epRankIdOriginal_{0};
-    uint32_t tpGatherRankId_{0}; // gather 对端ID
     uint32_t tpRankId_{0};       // 本卡 ID
     uint32_t aivId_{0};          // aiv id
     uint32_t sharedExpertNum_{0};
@@ -534,7 +533,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     axisK_ = tilingData->moeDistributeDispatchV2Info.k;
     aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
     tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
-    tpGatherRankId_ = ((tpRankId_ == 0) ? 1 : 0);
     aivUsedCumSum_ = 2; //TODO:
     aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
     aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
@@ -571,8 +569,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         startMoeExpertId_ = (startRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
     }
     expertNumInServer_ = shareRankNumInServer_ + (rankSizePerServer_ - shareRankNumInServer_) * moeExpertNumPerRank_;
-
-    
+    recvCntWorkspaceGM_ = workspaceGM + epWorldSize_ * expertNumInServer_ * UB_ALIGN;
     if (sharedExpertRankNum_ != 0U) {
         sharedUsedAivNum_ = (aivNum_ * sharedExpertNum_) / (axisK_ + sharedExpertNum_);
         if (sharedUsedAivNum_ == 0) {
@@ -863,14 +860,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     dynamicScalesOutGMTensor_.SetGlobalBuffer((__gm__ uint8_t *)dynamicScalesOut);
     expertTokenNumsOutGMTensor_.SetGlobalBuffer((__gm__ int64_t *)expertTokenNumsOut);
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOut));
-    if constexpr (IsSmoothScaleExist) {
-        scalesGMTensor_.SetGlobalBuffer((__gm__ float*)scales);
-    }
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut; // 无GlobalTensor
     sendTpCountOutGM_ = tpSendCountsOut;
     sendCountGMTensor_.SetGlobalBuffer((__gm__ int32_t *)workspaceGM);
-    recvCntWorkspaceGM_ = workspaceGM + epWorldSize_ * expertNumInServer_ * UB_ALIGN;
+    if constexpr (IsSmoothScaleExist) {
+        scalesGMTensor_.SetGlobalBuffer((__gm__ float*)scales);
+    }
 
     InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
     InitCommInfo();
@@ -880,6 +876,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitExtraInfo();
     InitMaskInfo();
     InitDispatchBetweenServerInfo();
+    
 }
 
 template <TemplateDispatchKFCTypeClass>
