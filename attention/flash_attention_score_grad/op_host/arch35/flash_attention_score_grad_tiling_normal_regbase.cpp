@@ -931,6 +931,24 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t vPreTailNumTmp = static_cast<uint64_t>(fBaseParams.vSize) % vPreBlockFactor;
     uint64_t vPreTailNum = vPreTailNumTmp == static_cast<uint64_t>(0) ? vPreBlockFactor : vPreTailNumTmp;
 
+    if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
+        fBaseParams.s1SinkOuter = fBaseParams.s1Outer * AICV_RATIO_DEFAULT;
+        fBaseParams.s2SinkOuter = fBaseParams.s2Outer;
+        fBaseParams.sinkSize = fBaseParams.b * fBaseParams.n2 *
+            fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+        uint64_t sinkWorkSpaceSize = (fBaseParams.sinkSize + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+        uint64_t sinkPreBlockFactor = (sinkWorkSpaceSize + maskUsedCoreNum - 1) / maskUsedCoreNum;
+        uint64_t sinkPreBlockTotal = (sinkWorkSpaceSize + sinkPreBlockFactor - 1) / sinkPreBlockFactor;
+        uint64_t sinkPreTailNumTmp = sinkWorkSpaceSize % sinkPreBlockFactor;
+        uint64_t sinkPreTailNum = sinkPreTailNumTmp == static_cast<uint64_t>(0) ? sinkPreBlockFactor : sinkPreTailNumTmp;
+        preTilingData_->set_sinkPreBlockFactor(sinkPreBlockFactor);
+        preTilingData_->set_sinkPreBlockTotal(sinkPreBlockTotal);
+        preTilingData_->set_sinkPreBlockTail(sinkPreTailNum);
+        OP_LOGI(context_, "FAG sinkOptional, fBaseParams.s1SinkOuter is %ld, fBaseParams.s2SinkOuter = %ld, fBaseParams.sinkSize = %ld, maskUsedCoreNum = %ld, sinkPreBlockFactor = %ld, sinkPreBlockTotal = %ld, sinkPreTailNum = %ld.",
+            fBaseParams.s1SinkOuter, fBaseParams.s2SinkOuter, fBaseParams.sinkSize,
+            maskUsedCoreNum, sinkPreBlockFactor, sinkPreBlockTotal, sinkPreTailNum);
+    }
+
     uint64_t maskPreBlockTotal = fBaseParams.dropMaskSize;
     preTilingData_->set_qPreBlockFactor(qPreBlockFactor);
     preTilingData_->set_qPreBlockTotal(qPreBlockTotal);
@@ -971,6 +989,20 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
     uint64_t vPostBlockOuterTotal = (vPostBlockTotal + vPostBaseNum - static_cast<uint64_t>(1)) / vPostBaseNum;
     uint64_t vPostBlockFactor =
         (vPostBlockOuterTotal + fBaseParams.blockOuter * AICV_RATIO_DEFAULT - 1) / (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
+    if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
+        uint64_t sinkPostBaseNum = postUbBaseSize / FP16_BYTES;
+        uint64_t sinkReduceAxis = fBaseParams.b * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+        uint64_t sinkPostTailNumTmp = sinkReduceAxis % sinkPostBaseNum;
+        uint64_t sinkPostTailNum = sinkPostTailNumTmp == static_cast<uint64_t>(0) ? sinkPostBaseNum : sinkPostTailNumTmp;
+        uint64_t sinkPostBlockTotal = fBaseParams.n1;
+        uint64_t sinkPostBlockFactor =
+            (fBaseParams.n1 + fBaseParams.blockOuter * AICV_RATIO_DEFAULT - 1) /
+            (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
+        postTilingData_->set_sinkReduceAxis(sinkReduceAxis);
+        postTilingData_->set_sinkPostBlockTotal(sinkPostBlockTotal);
+        postTilingData_->set_sinkPostBlockFactor(sinkPostBlockFactor);
+        postTilingData_->set_sinkPostTailNum(sinkPostTailNum);
+    }
 
     postTilingData_->set_postUbBaseSize(postUbBaseSize);
     postTilingData_->set_qPostBlockFactor(qPostBlockFactor);
@@ -1072,6 +1104,15 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
         uint64_t sfmgSize = ((fBaseParams.b * fBaseParams.n2 * fBaseParams.g - 1) * fBaseParams.s1 +
                             AlignTo(fBaseParams.s1, ALIGN128)) * BIT_NUMS;
         workspaceSize = (workspaceSize + static_cast<size_t>(sfmgSize) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+    }
+
+    if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
+        postTilingData_->set_dsinkWorkSpaceOffset(workspaceSize);
+        OP_LOGI(context_, "FAG sinkOptional, sink baseoffset = %ld, sink workspaceSize = %ld.", workspaceSize,
+            static_cast<size_t>(fBaseParams.sinkSize) * FP32_BYTES);
+        // dsink sum data size
+        workspaceSize = (workspaceSize + static_cast<size_t>(fBaseParams.sinkSize) * FP32_BYTES + GM_ALIGN) /
+            GM_ALIGN * GM_ALIGN;
     }
     
     GetWorkspaceSize4Deter(workspaceSize);
@@ -1484,6 +1525,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_qStartIdx(fBaseParams.qStartIdx);
     s1s2BNGS1S2BaseParams_->set_kvStartIdx(fBaseParams.kvStartIdx);
     s1s2BNGS1S2BaseParams_->set_dropMaskOuter(fBaseParams.dropMaskOuter);
+    s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
+    s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
+    s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
     
     bool isSplitByBlockIdx = fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2;
     OP_LOGI(context_, "Determine whether to swizzle (not tnd), get isSplitByBlockIdx=[%d]", static_cast<int>(isSplitByBlockIdx));

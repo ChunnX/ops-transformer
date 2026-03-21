@@ -28,8 +28,9 @@ public:
                                 GM_ADDR dropMask, GM_ADDR attenMask, GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                 GM_ADDR prefixN, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen, GM_ADDR deqScaleQ,
                                 GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope,
-                                GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
-                                GM_ADDR dkRope, GM_ADDR workspace, FagTilingType ordTilingData, TPipe *pipeIn);
+                                GM_ADDR keyRope, GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse,
+                                GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR dsink, GM_ADDR workspace,
+                                FagTilingType ordTilingData, TPipe *pipeIn);
     __aicore__ inline void InitCVCommonBuffer();
     __aicore__ inline void InitCVCommonGlobalBuffer(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR workspace);
     __aicore__ inline void SetConstInfo();
@@ -149,6 +150,7 @@ protected:
     int64_t s2CvEnd = 0;
     int64_t actualCalcS1Token = 0; // 转换后实际计算使用的S1Token
     int64_t actualCalcS2Token = 0;
+    uint32_t sinkOptional = 0;
  
     // BN2S2模板判断是否有无效S2列
     int64_t curS2oIdx = -1;
@@ -194,8 +196,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR query, GM_ADDR pseShift, GM_ADDR dropMask, GM_ADDR attenMask,
     GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR prefixN, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen,
     GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope, GM_ADDR keyRope,
-    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
-    FagTilingType ordTilingData, TPipe *pipeIn)
+    GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR dsink,
+    GM_ADDR workspace, FagTilingType ordTilingData, TPipe *pipeIn)
 {
     // init current core tilingInfo
     if ASCEND_IS_AIV {
@@ -231,7 +233,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                dropInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
-                              deqScaleV, deqScaleDy, dq, dk, dv, workspace);
+                              deqScaleV, deqScaleDy, dq, dk, dv, sink, dsink, workspace);
  
     // pass params to cube block
     cubeBlock.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);
@@ -545,7 +547,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.n2GS1oS2o = constInfo.commonConstInfo.n2G * constInfo.s1Outer * constInfo.s2Outer;
     constInfo.gS1oS2o = constInfo.commonConstInfo.gSize * constInfo.s1Outer * constInfo.s2Outer;
     constInfo.s1oS2o = constInfo.s1Outer * constInfo.s2Outer;
- 
+
+    // sink
+    sinkOptional = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
+    constInfo.isSink = sinkOptional;
+    constInfo.s1SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s1SinkOuter;
+    constInfo.s2SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s2SinkOuter;
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
         constInfo.deterConstInfo.noNeedDeter = static_cast<bool>(tilingData->s1s2BNGS1S2SplitCoreParams.noNeedDeter);
         constInfo.deterConstInfo.usedCubeCoreNum =
@@ -1039,6 +1046,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         runInfo.quantScaleInfo.deqScaleQValue = deqScaleQGm.GetValue(deqScaleQGmOffset);
         runInfo.quantScaleInfo.deqScaleKValue = deqScaleKGm.GetValue(deqScaleKGmOffset);
         runInfo.quantScaleInfo.deqScaleVValue = deqScaleVGm.GetValue(deqScaleKGmOffset);
+    }
+    if (unlikely(sinkOptional)) {
+        runInfo.sinkN1Idx = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize
+            + runInfo.commonRunInfo.goIdx;
+        uint64_t s1oIdxSink = vSubBlockIdx == 1 ?
+            runInfo.commonRunInfo.s1oIdx * 2 + 1 : runInfo.commonRunInfo.s1oIdx * 2;
+        // [N, B, S1, S2]
+        runInfo.dsinkWorkSpaceOffset = runInfo.sinkN1Idx * constInfo.bSize * constInfo.s1SinkOuter * constInfo.s2SinkOuter +
+            runInfo.commonRunInfo.boIdx * constInfo.s1SinkOuter * constInfo.s2SinkOuter +
+            s1oIdxSink * constInfo.s2SinkOuter + runInfo.s2oIdx;
     }
     GetDerived()->SetUniqueRunInfo(runInfo);
 

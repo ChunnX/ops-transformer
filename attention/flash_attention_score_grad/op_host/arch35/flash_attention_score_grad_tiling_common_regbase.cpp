@@ -867,6 +867,22 @@ void CalcleActualToken(FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t batchIdx
     }
 }
 
+ge::graphStatus ProcessSinkInfo(
+    gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+{
+    auto sinkShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
+    if (sinkShape == nullptr || sinkShape->GetStorageShape().GetDimNum() == 0) {
+        OP_LOGD(context_, "ProcessSinkInfo, sinkShape is null : %d", sinkShape == nullptr);
+        fBaseParams.sinkOptional = EMPTY_TENSOR;
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(!(fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16),
+            OP_LOGE(context_, "FAG sink, dtype only supports fp16 or bf16."),
+            return ge::GRAPH_FAILED);
+    fBaseParams.sinkOptional = NORMAL_TENSOR;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {    
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
@@ -940,6 +956,11 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         OP_LOGD("Sparse FLAG", "Set sparse_mode from PREFIX to ALL_MASK because of empty or nullptr prefixN.");
         fBaseParams.sparseMode = static_cast<uint32_t>(SparseMode::ALL_MASK);
  	}
+
+    ret = ProcessSinkInfo(context_, fBaseParams);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
 
     if (CheckAttenMaskShape(fBaseParams) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
