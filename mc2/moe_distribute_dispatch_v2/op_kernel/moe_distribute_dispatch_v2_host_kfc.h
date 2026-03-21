@@ -131,7 +131,6 @@ private:
     __aicore__ inline void CopyInAndOut(LocalTensor<float> xOutFp32Tensor, LocalTensor<int32_t> xOutInt32Tensor,
                                         GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
     __aicore__ inline void SetServerFlag();
-    __aicore__ inline void ExpertOffsetCal();
     __aicore__ inline void SendTokenToRemoteServer();
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
     __aicore__ inline void ProcessToken(
@@ -621,7 +620,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t moeExpertScaleSizeAlign =  moeCntSizeAlign + Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN; // moe expertscales
     moeExpertScalesAlign_ = moeExpertScaleSizeAlign / sizeof(uint32_t);
 
-
     uint32_t moeNumPerServer = moeExpertNumPerRank_ * rankSizePerServer_;
     sendTokenLength_ = moeExpertScaleSizeAlign + Ceil(axisK_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     blockCntPerToken_ = Ceil(sendTokenLength_, SPLIT_BLOCK_DATA_SIZE);
@@ -643,8 +641,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     activeMaskBsCnt_ = axisBS_; //TODO: 
     expertIdsCnt_ = axisBS_ * axisK_;
-    perServerMapLength_ = Ceil(axisMaxBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    perServerMapCnt_ = perServerMapLength_ / sizeof(int32_t);
     
     uint32_t hFp32Size = axisH_ * sizeof(float);
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
@@ -663,9 +659,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     maxSize_ = maxSize_ > expertOffsetCntSize ? maxSize_ : expertOffsetCntSize;
 
     tpipe_->InitBuffer(expertIdsBuf_, expertIdsSize); // BS * K * 4 = 32K
-    tpipe_->InitBuffer(gatherMaskTBuf_, maxSize_);
-    tpipe_->InitBuffer(dstExpBuf_, maxSize_);             // BS * K * 4 = 32K
-    tpipe_->InitBuffer(subExpBuf_, maxSize_);             // BS * K * 4 = 32K
+    tpipe_->InitBuffer(gatherMaskTBuf_, maxSize_); // max:32K
+    tpipe_->InitBuffer(dstExpBuf_, maxSize_); // max:32K
+    tpipe_->InitBuffer(subExpBuf_, maxSize_); // max:32K
 
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
     dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
@@ -685,65 +681,39 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitTemp()
-{
-    if constexpr (QuantMode > UNQUANT) {
-        // LOG_INFO("[InitTemp]start init");
-        // maxSize_ = Ceil(axisH_,UB_ALIGN) * UB_ALIGN;
-        tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
-        floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
-        tpipe_->InitBuffer(smoothScalesBuf_, maxSize_); // max{28K, BS * K * 4B}
-        smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
-        if constexpr (QuantMode == PERTOKEN_DYNAMIC_QUANT) {
-            tpipe_->InitBuffer(rowMaxBuf_, UB_ALIGN); // 32B
-            rowMaxTensor_ = rowMaxBuf_.Get<float>();
-        }
-    } 
-
-    bufferNum_ = 1;
-    tpipe_->InitBuffer(xInQueue_, bufferNum_, hAlignSize_); // 14K * 2
-    tpipe_->InitBuffer(xOutQueue_, bufferNum_, hOutAlignUbSize_); // 7K * 2 + 32 + 6
-    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
-
-    tpipe_->InitBuffer(flagBuf_, maxBlockCnt_ * UB_ALIGN);
-    uint64_t mask[1] = {0x0101010101010101};
-    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
-    flagTensor_ = flagBuf_.Get<uint32_t>();
-    Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
-    // LOG_INFO("[InitTemp] END int Temp");
-}
-
-template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitDispatchBetweenServerInfo()
 {
     xCopyParams_ = {1U, static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    
+
+    perServerMapLength_ = Ceil(axisMaxBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    perServerMapCnt_ = perServerMapLength_ / sizeof(int32_t);
     uint32_t serverBuferLength = serverNum_;
     uint32_t serverMapLength = serverNum_ * perServerMapLength_;
+    uint32_t expertOffsetCntSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
+    maxBlockCnt_ = max(max(blockCntPerToken_, blockCntPerCnt_), blockCntPerTokenToExpert_);
+    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
+    uint64_t mask[1] = {0x0101010101010101};
+
     tpipe_->InitBuffer(serverCountBuf_, serverBuferLength * sizeof(uint32_t));
-    tpipe_->InitBuffer(serverMapBuf_, serverMapLength * sizeof(uint32_t));
+    tpipe_->InitBuffer(serverMapBuf_, serverMapLength * sizeof(uint32_t)); // max server = 8, per server = 2K
+    tpipe_->InitBuffer(expertOffsetCntBuf_, expertOffsetCntSize); // 16K
+    tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
+    tpipe_->InitBuffer(flagBuf_, maxBlockCnt_ * UB_ALIGN);
+
     serverCountTensor_ = serverCountBuf_.Get<uint32_t>();
     tokenSendMap_ = serverMapBuf_.Get<int32_t>();
+    expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>();  // TODO :
+    flagTensor_ = flagBuf_.Get<uint32_t>();
+
     Duplicate<uint32_t>(serverCountTensor_, uint32_t(0), serverBuferLength);
     Duplicate<int32_t>(tokenSendMap_, int32_t(-1), serverMapLength);
-
-    uint32_t expertOffsetCntSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
-
-    tpipe_->InitBuffer(expertOffsetCntBuf_, expertOffsetCntSize);
-    expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>(); // TODO :
-    tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
-
-    maxBlockCnt_ = max(max(blockCntPerToken_, blockCntPerCnt_), blockCntPerTokenToExpert_);
+    Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
+    Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertIdsCnt_);
+    
     // LOG_INFO("[blockCntPerToken_]", blockCntPerToken_);
     // LOG_INFO("[blockCntPerCnt_]", blockCntPerCnt_);
     // LOG_INFO("[blockCntPerTokenToExpert_]", blockCntPerTokenToExpert_);
     // LOG_INFO("[maxBlockCnt_]", maxBlockCnt_);
-    tpipe_->InitBuffer(flagBuf_, maxBlockCnt_ * UB_ALIGN);
-    uint64_t mask[1] = {0x0101010101010101};
-    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
-    flagTensor_ = flagBuf_.Get<uint32_t>();
-    Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
-    Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertIdsCnt_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -797,6 +767,34 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitExtraInfo();
     InitMaskInfo();
     InitDispatchBetweenServerInfo();
+}
+
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitTemp()
+{
+    if constexpr (QuantMode > UNQUANT) {
+        // LOG_INFO("[InitTemp]start init");
+        tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
+        floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
+        tpipe_->InitBuffer(smoothScalesBuf_, maxSize_); // max{28K, BS * K * 4B}
+        smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
+        if constexpr (QuantMode == PERTOKEN_DYNAMIC_QUANT) {
+            tpipe_->InitBuffer(rowMaxBuf_, UB_ALIGN); // 32B
+            rowMaxTensor_ = rowMaxBuf_.Get<float>();
+        }
+    } 
+
+    bufferNum_ = 1;
+    tpipe_->InitBuffer(xInQueue_, bufferNum_, hAlignSize_); // 14K * 2
+    tpipe_->InitBuffer(xOutQueue_, bufferNum_, hOutAlignUbSize_); // 7K * 2 + 32 + 6
+    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
+
+    tpipe_->InitBuffer(flagBuf_, maxBlockCnt_ * UB_ALIGN);
+    uint64_t mask[1] = {0x0101010101010101};
+    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
+    flagTensor_ = flagBuf_.Get<uint32_t>();
+    Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
+    // LOG_INFO("[InitTemp] END int Temp");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1091,9 +1089,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         return ;
     }
 
-    // TBuf<> flagBuf;
-    // tpipe_->InitBuffer(flagBuf, UB_ALIGN);
-    // flagRecvGatherMask.SetValue(0,1);
     CalExpertOffset(startTokenId, endTokenId);
     for (uint32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
         if (serverCountTensor_.GetValue(serverIndex) == 0){
@@ -1148,35 +1143,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         //LOG_INFO("CalExpertOffset for expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     }
     //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
-}
-
-
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ExpertOffsetCal()
-{
-    TBuf<> expertOffTempBuf;
-    LocalTensor<int32_t> expertOffsetTemp;
-
-    tpipe_->InitBuffer(expertOffTempBuf, moeExpertNum_ * sizeof(int32_t));
-    expertOffsetTemp = expertOffTempBuf.Get<int32_t>();
-
-    DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
-    Duplicate<int32_t>(expertOffsetTemp, (int32_t)0, moeExpertNum_);
-
-    for (uint32_t index = 0; index < expertIdsCnt_; index++) { // 计算当前token是发给此moe专家的第几个token
-        if (isExpertMaskFlag_ && !expertMaskInputTensor_(index)) {
-            continue;
-        }
-        uint32_t expertId = expertIdsTensor_.GetValue(index);
-        uint32_t exprtOffset = expertOffsetTemp(expertId);
-        //expertOffsetCntTensor_(index) = exprtOffset;
-        expertOffsetTemp(expertId) = exprtOffset + 1;
-        if (aivId_ < aivUsedCumSum_) {
-            tokenNumToExpertTensor_(expertId) = exprtOffset + 1;
-        }
-    }
 }
 
 template <TemplateDispatchKFCTypeClass>
