@@ -350,7 +350,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE && IS_SPLIT_G) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
         outputL1.WaitCrossCore();
         v0ResGm.WaitCrossCore();
         keyGm = oriKVGm;
@@ -396,7 +396,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE && IS_SPLIT_G) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
         if (sparseCalSize == 0) {
             return;
         }
@@ -756,7 +756,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
         tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 24 * sizeof(KV_T)); // V0阶段每次处理24个seq, 开2 buffer
         tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (24 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
     }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE && IS_SPLIT_G) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
         // tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
         // tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (16 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
         tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T));

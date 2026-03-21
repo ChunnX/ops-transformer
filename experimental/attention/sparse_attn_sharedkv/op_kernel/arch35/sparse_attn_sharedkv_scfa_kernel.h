@@ -218,9 +218,14 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
-    if constexpr (IS_SPLIT_G) {
+    if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
         uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-        int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
+        int64_t totalOffset;
+        if constexpr (IS_SPLIT_G) {
+            totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
+        } else {
+            totalOffset = v0ResSize * 3 * aicIdx;
+        }
         gmBufferManager.Init(workspace + totalOffset);
         v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
         if ASCEND_IS_AIC {
@@ -407,7 +412,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE && IS_SPLIT_G) {
+                if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
                     if (notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
