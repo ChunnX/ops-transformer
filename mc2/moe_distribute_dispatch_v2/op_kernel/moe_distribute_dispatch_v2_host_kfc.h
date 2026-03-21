@@ -534,6 +534,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     axisK_ = tilingData->moeDistributeDispatchV2Info.k;
     aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
     tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
+    tpGatherRankId_ = ((tpRankId_ == 0) ? 1 : 0);
     aivUsedCumSum_ = 2; //TODO:
     aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
     aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
@@ -852,12 +853,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     const MoeDistributeDispatchV2TilingData *tilingData)
 {
 
-    InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
-    InitCommInfo();
-    InitComputeInfo();
-
-    tpGatherRankId_ = ((tpRankId_ == 0) ? 1 : 0);
-    
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
@@ -874,10 +869,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut; // 无GlobalTensor
     sendTpCountOutGM_ = tpSendCountsOut;
-
     sendCountGMTensor_.SetGlobalBuffer((__gm__ int32_t *)workspaceGM);
     recvCntWorkspaceGM_ = workspaceGM + epWorldSize_ * expertNumInServer_ * UB_ALIGN;
 
+    InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
+    InitCommInfo();
+    InitComputeInfo();
     InitCommBetweenServerInfo();
     InitSetWindows(tilingData);
     InitExtraInfo();
