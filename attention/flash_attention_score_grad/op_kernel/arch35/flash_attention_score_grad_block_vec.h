@@ -22,10 +22,12 @@
 #include "vector_api/pse_atten_mask_muls_simple_softmax.h"
 #include "vector_api/vf_broadcast_sub_mul.h"
 #include "vector_api/vf_cast_transdata_deconflict.h"
+#include "vector_api/vf_cal_sink.h"
 namespace FagBaseApi {
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t SYNC_V0_V1_DS_A_MAX_DONE_FLAG = 10;
 constexpr uint32_t BIT_MASK_NUM = 8;
+constexpr uint32_t BIT32_ALIGN_NUM = 8;
 
 TEMPLATES_DEF
 class FAGBlockVec {
@@ -47,12 +49,17 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace);
+                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
+                                            GM_ADDR workspace);
     __aicore__ inline void InitUbBuffer();
     __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs);
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo);
+    __aicore__ inline void CopyDpToTmpBuf(LocalTensor<CALC_TYPE> &mm1ResTensor);
+    __aicore__ inline void ProcessVecSink(LocalTensor<CALC_TYPE> &mm1ResTensor,
+                                          LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                          FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ProcessVec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm1ResTensor,
                                        LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo);
@@ -114,6 +121,7 @@ public:
     GlobalTensor<uint8_t> dropMaskWorkspaceGm;
     GlobalTensor<float> dsAmaxWorkSpaceGm;
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
+    GlobalTensor<float> sinkGm, dsinkGm, dsinkWorkSpaceGm;
  
     // ub buffer
     TQue<QuePosition::VECIN, 1> attenMaskOrYInQue;
@@ -128,6 +136,7 @@ public:
     TBuf<> deterOffsetBuf;
     TBuf<> vselrIndexesBuf;
     TQue<QuePosition::VECOUT, 1> dsAmaxOutQue;
+    TQue<QuePosition::VECOUT, 1> dsinkResOutQue[2];
  
     TPipe *pipe;
     FagTilingType tilingData;
@@ -135,6 +144,7 @@ public:
     uint32_t vBlockIdx;
     uint32_t cBlockIdx;
     uint32_t vSubBlockIdx;
+    event_t eventIDSToV = static_cast<event_t>(0);
  
     // optional info
     AttenMaskInfo *attenMaskInfoPtr;
@@ -165,7 +175,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
                                                                     GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                                                     GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
                                                                     GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR dq,
-                                                                    GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace)
+                                                                    GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
+                                                                    GM_ADDR workspace)
 {
     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
     dyGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dy);
@@ -190,6 +201,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
         if (tilingData->preTilingData.dropoutIsDivisibleBy8 == 0) {
             dropMaskWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + tilingData->postTilingData.dropMaskGmOffset);
         }
+    }
+    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
+        sinkGm.SetGlobalBuffer((__gm__ float *)sink);
+        dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
+        dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
     }
 }
  
@@ -227,6 +243,12 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer()
         }
         pipe->InitBuffer(dsAmaxOutQue, 1, VREG_SIZE / NUM_TWO);
     }
+
+    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
+        pipe->InitBuffer(dsinkResOutQue[0], 1, BIT32_ALIGN_NUM * sizeof(float));
+        pipe->InitBuffer(dsinkResOutQue[1], 1, BIT32_ALIGN_NUM * sizeof(float));
+    }
+
     if constexpr (!IS_FP32_INPUT) {
         pipe->InitBuffer(dSOutQue, 1, (VECTOR_BASEM + 1) * VECTOR_BASEN * sizeof(OUTDTYPE));
         pipe->InitBuffer(pOutQue, 1, (VECTOR_BASEM + 1) * VECTOR_BASEN * sizeof(OUTDTYPE));
@@ -400,6 +422,50 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
         constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, maxSumQue[runInfo.commonRunInfo.taskIdMod2],
         attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, pseSlope);
 }
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyDpToTmpBuf(LocalTensor<CALC_TYPE> &mm1ResTensor)
+{
+    LocalTensor<CALC_TYPE> DpDropTensor = attenMaskOrYInQue.AllocTensor<CALC_TYPE>();
+    DataCopy(DpDropTensor, mm1ResTensor, VECTOR_BASEM * VECTOR_BASEN);
+    attenMaskOrYInQue.EnQue(DpDropTensor);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVecSink(LocalTensor<CALC_TYPE> &mm1ResTensor,
+                                                               LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                                               FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
+    eventIDSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    LocalTensor<CALC_TYPE> dsinkOutTensor = dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].AllocTensor<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> sumTensor = maxSumQue[runInfo.commonRunInfo.taskIdMod2].AllocTensor<CALC_TYPE>();
+    float sinkScale = sinkGm.GetValue(runInfo.sinkN1Idx);
+    SetFlag<HardEvent::S_V>(eventIDSToV);
+    WaitFlag<HardEvent::S_V>(eventIDSToV);
+    maxSumQue[runInfo.commonRunInfo.taskIdMod2].EnQue(sumTensor);
+    maxSumQue[runInfo.commonRunInfo.taskIdMod2].DeQue<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> maxTensor = sumTensor[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE / sizeof(CALC_TYPE)];
+
+    if constexpr (IS_DROP) {
+      LocalTensor<CALC_TYPE> DpDropTensor = attenMaskOrYInQue.DeQue<CALC_TYPE>();
+        CalculateSink<CALC_TYPE, static_cast<uint16_t>(VECTOR_BASEN)>(
+            dsinkOutTensor, mm2ResTensor, DpDropTensor, maxTensor, sumTensor, sinkScale,
+            static_cast<uint16_t>(runInfo.commonRunInfo.halfS1RealSize),
+            static_cast<uint16_t>(runInfo.commonRunInfo.s2RealSize));
+        attenMaskOrYInQue.FreeTensor(DpDropTensor);
+    } else {
+        CalculateSink<CALC_TYPE, static_cast<uint16_t>(VECTOR_BASEN)>(
+            dsinkOutTensor, mm2ResTensor, mm1ResTensor, maxTensor, sumTensor, sinkScale,
+            static_cast<uint16_t>(runInfo.commonRunInfo.halfS1RealSize),
+            static_cast<uint16_t>(runInfo.commonRunInfo.s2RealSize));
+    }
+    maxSumQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(sumTensor);
+    dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].EnQue(dsinkOutTensor);
+    dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].DeQue<CALC_TYPE>();
+    DataCopyPad(dsinkWorkSpaceGm[runInfo.dsinkWorkSpaceOffset], dsinkOutTensor,
+                {1, static_cast<uint32_t>(sizeof(CALC_TYPE)), 0, 0, 0});
+    dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(dsinkOutTensor);
+}
  
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
@@ -425,6 +491,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
     }
     CalculateDropout<CALC_TYPE, IS_DROP, VECTOR_BASEN>(constInfo, runInfo, *dropInfoPtr, mm1ResTensor, mm1ResTensor,
                                                        dropMaskBuf);
+    if (unlikely(constInfo.isSink && IS_DROP)) {
+        CopyDpToTmpBuf(mm1ResTensor);
+    }
  
     LocalTensor<CALC_TYPE> softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
     LocalTensor<INPUT_TYPE> vecOutBuffer = dSOutQue.AllocTensor<INPUT_TYPE>();
@@ -943,13 +1012,18 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace){};
+                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
+                                            GM_ADDR workspace){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, AttenMaskInfo &attenMaskInfo,
                                              PseInfo &pseInfo, DropMaskInfo &dropInfo){};
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo){};
+    __aicore__ inline void CopyDpToTmpBuf(LocalTensor<CALC_TYPE> &mm1ResTensor){};
+    __aicore__ inline void ProcessVecSink(LocalTensor<CALC_TYPE> &mm1ResTensor,
+                                          LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                          FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void ProcessVec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm1ResTensor,
                                        LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo){};

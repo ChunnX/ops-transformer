@@ -35,8 +35,9 @@ public:
     __aicore__ inline void Init(
             GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR query, GM_ADDR pseShift, GM_ADDR dropMask, GM_ADDR attenMask,
             GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR prefixN, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen,
-            GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope, GM_ADDR keyRope,
-            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
+            GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope,
+            GM_ADDR keyRope, GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
+            GM_ADDR dkRope, GM_ADDR dsink, GM_ADDR workspace,
             FagTilingType ordTilingData, TPipe *pipeIn);
     __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
     __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
@@ -75,11 +76,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
     GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR query, GM_ADDR pseShift, GM_ADDR dropMask, GM_ADDR attenMask,
     GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR prefixN, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen,
     GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope, GM_ADDR keyRope,
-    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
-    FagTilingType ordTilingData, TPipe *pipeIn)
+    GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope,
+    GM_ADDR dsink, GM_ADDR workspace, FagTilingType ordTilingData, TPipe *pipeIn)
 {
     BaseClass::Init(key, value, dy, query, pseShift, dropMask, attenMask, y, softmaxMax, softmaxSum, prefixN, actualSeqQlen, actualSeqKvlen,
-        deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope, keyRope, dq, dk, dv, dpse, dqRope, dkRope, workspace, ordTilingData, pipeIn);
+        deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope, keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope,
+        dsink, workspace, ordTilingData, pipeIn);
  
     dkvWorkSpaceOffet = this->cBlockIdx * this->CUBE_BASEN * this->HEAD_DIM_ALIGN;
     dAlign16 = AlignTo16(this->constInfo.commonConstInfo.dSize);
@@ -323,6 +325,17 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeter
         runInfo.specialS2Index = SpecialS2Index(runInfo.commonRunInfo.keyOffset);
         runInfo.isFirstBlock = isFirstBlock;
         isFirstBlock = false;
+    }
+
+    if (unlikely(this->constInfo.isSink)) {
+        runInfo.sinkN1Idx = runInfo.commonRunInfo.n2oIdx * this->constInfo.commonConstInfo.gSize
+            + runInfo.commonRunInfo.goIdx;
+        uint64_t s1oIdxSink = this->vSubBlockIdx == 1 ?
+            runInfo.commonRunInfo.s1oIdx * 2 + 1 : runInfo.commonRunInfo.s1oIdx * 2;
+        // [N, B, S1, S2]
+        runInfo.dsinkWorkSpaceOffset = runInfo.sinkN1Idx * this->constInfo.bSize * this->constInfo.s1SinkOuter * this->constInfo.s2SinkOuter +
+            runInfo.commonRunInfo.boIdx * this->constInfo.s1SinkOuter * this->constInfo.s2SinkOuter +
+            s1oIdxSink * this->constInfo.s2SinkOuter + runInfo.s2oIdx;
     }
 }
  
@@ -734,6 +747,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
  
             this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo,
                                        runInfos[(taskId + 1) & 1]); // v2: pse + attenMask + simpleSoftmax
+            if (unlikely(this->constInfo.isSink && !IS_DROP)) {
+                this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]);
+            }
             if ASCEND_IS_AIV {
                 if (needSyncDkMM) {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
@@ -744,6 +760,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
             Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
             this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
                                        runInfos[(taskId + 1) & 1]); // v3: dropout + cast + nd2nz
+            if (unlikely(this->constInfo.isSink && IS_DROP)) {
+                this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]);
+            }
  
             if ASCEND_IS_AIV {
                 if (needSyncDkMM) {
@@ -751,7 +770,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 }
             }
             this->vecBlock.ProcessVec4(pL1Buffer, mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]); // v4: cast + nd2nz
-            
+
             if ASCEND_IS_AIV {
                 CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG); // dqk must wait ds copy completely
                 CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG); // dv must wait ds copy completely
