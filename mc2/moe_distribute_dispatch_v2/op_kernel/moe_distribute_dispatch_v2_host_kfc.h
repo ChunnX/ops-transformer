@@ -849,7 +849,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchV2TilingData *tilingData)
 {
-
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
@@ -876,7 +875,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitExtraInfo();
     InitMaskInfo();
     InitDispatchBetweenServerInfo();
-    
 }
 
 template <TemplateDispatchKFCTypeClass>
