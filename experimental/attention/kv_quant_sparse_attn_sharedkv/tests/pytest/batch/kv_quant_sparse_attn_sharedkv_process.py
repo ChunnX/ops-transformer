@@ -26,19 +26,24 @@ class Network(torch.nn.Module):
     def __init__(self):
         super(Network, self).__init__()
 
-    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
-        cmp_block_table, cu_seqlens_q, seqused_kv, ori_topk_length, sinks, metadata, kv_quant_mode, tile_size, rope_head_dim, 
-        softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
+    def forward(self, q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices, ori_block_table, cmp_block_table,
+        cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, ori_topk_length, cmp_topk_length, sinks, metadata,
+        kv_quant_mode, tile_size, rope_head_dim, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
+        ori_win_left, ori_win_right, layout_q, layout_kv, topk_value_mode):
         npu_result, _ = torch_npu.npu_kv_quant_sparse_attn_sharedkv(
                                             q=q,
                                             ori_kv=ori_kv,
                                             cmp_kv=cmp_kv,
+                                            ori_sparse_indices=ori_sparse_indices,
                                             cmp_sparse_indices=cmp_sparse_indices,
                                             ori_block_table=ori_block_table,
                                             cmp_block_table=cmp_block_table,
                                             cu_seqlens_q=cu_seqlens_q,
+                                            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+                                            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
                                             seqused_kv=seqused_kv,
                                             ori_topk_length=ori_topk_length,
+                                            cmp_topk_length=cmp_topk_length,
                                             sinks=sinks,
                                             metadata=metadata,
                                             kv_quant_mode=kv_quant_mode,
@@ -51,7 +56,8 @@ class Network(torch.nn.Module):
                                             ori_win_left=ori_win_left,
                                             ori_win_right=ori_win_right,
                                             layout_q=layout_q,
-                                            layout_kv=layout_kv)
+                                            layout_kv=layout_kv,
+                                            topk_value_mode=topk_value_mode)
         return npu_result
 
 def test_sas_quant_process_graph(test_data, device_id=0):
@@ -86,6 +92,7 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                                                         seqused_q = torch.tensor([]).npu(),
                                                         seqused_kv = metadata_input['seqused_kv'].npu() if input['seqused_kv'] is not None else torch.tensor([]).npu(),
                                                         ori_topk_length=input['ori_topk_length'].npu() if input['ori_topk_length'] is not None else None,
+                                                        cmp_topk_length=input['cmp_topk_length'].npu() if input['cmp_topk_length'] is not None else None,
                                                         batch_size = metadata_input['batch_size'],
                                                         max_seqlen_q = metadata_input['max_seqlen_q'],
                                                         max_seqlen_kv = metadata_input['max_seqlen_kv'],
@@ -108,7 +115,8 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             q=input['q'].npu() if input['q'] is not None else None,
                             ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
                             cmp_kv=input['cmp_kv'].npu() if input['cmp_kv'] is not None else None,
-                            cmp_sparse_indices=input['cmp_sparse_indices'].npu() if input['cmp_sparse_indices'] is not None else None,
+                            ori_sparse_indices=input['ori_sparse_data'].npu() if input['ori_sparse_data'] is not None else None,
+                            cmp_sparse_indices=input['cmp_sparse_data'].npu() if input['cmp_sparse_data'] is not None else None,
                             ori_block_table=input['ori_block_table'].npu() if input['ori_block_table'] is not None else None,
                             cmp_block_table=input['cmp_block_table'].npu() if input['cmp_block_table'] is not None else None,
                             cu_seqlens_q=input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None,
@@ -116,6 +124,7 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             cu_seqlens_cmp_kv=input['cu_seqlens_cmp_kv'].npu() if input['cu_seqlens_cmp_kv'] is not None else None,
                             seqused_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
                             ori_topk_length=input['ori_topk_length'].npu() if input['ori_topk_length'] is not None else None,
+                            cmp_topk_length=input['cmp_topk_length'].npu() if input['cmp_topk_length'] is not None else None,
                             sinks=input['sinks'].npu() if input['sinks'] is not None else None,
                             metadata=metadata,
                             kv_quant_mode=input['kv_quant_mode'],
@@ -128,7 +137,8 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             ori_win_left=input['ori_win_left'],
                             ori_win_right=input['ori_win_right'],
                             layout_q=input['layout_q'],
-                            layout_kv=input['layout_kv'])
+                            layout_kv=input['layout_kv'],
+                            topk_value_mode=input['topk_value_mode'])
 
     torch.npu.synchronize()
     print("npu_kv_quant_sparse_attn_sharedkv...")
@@ -136,7 +146,8 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             q=input['q'].npu() if input['q'] is not None else None,
                             ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
                             cmp_kv=input['cmp_kv'].npu() if input['cmp_kv'] is not None else None,
-                            cmp_sparse_indices=input['cmp_sparse_indices'].npu() if input['cmp_sparse_indices'] is not None else None,
+                            ori_sparse_indices=input['ori_sparse_data'].npu() if input['ori_sparse_data'] is not None else None,
+                            cmp_sparse_indices=input['cmp_sparse_data'].npu() if input['cmp_sparse_data'] is not None else None,
                             ori_block_table=input['ori_block_table'].npu() if input['ori_block_table'] is not None else None,
                             cmp_block_table=input['cmp_block_table'].npu() if input['cmp_block_table'] is not None else None,
                             cu_seqlens_q=input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None,
@@ -144,6 +155,7 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             cu_seqlens_cmp_kv=input['cu_seqlens_cmp_kv'].npu() if input['cu_seqlens_cmp_kv'] is not None else None,
                             seqused_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
                             ori_topk_length=input['ori_topk_length'].npu() if input['ori_topk_length'] is not None else None,
+                            cmp_topk_length=input['cmp_topk_length'].npu() if input['cmp_topk_length'] is not None else None,
                             sinks=input['sinks'].npu() if input['sinks'] is not None else None,
                             metadata=metadata,
                             kv_quant_mode=input['kv_quant_mode'],
@@ -156,7 +168,8 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             ori_win_left=input['ori_win_left'],
                             ori_win_right=input['ori_win_right'],
                             layout_q=input['layout_q'],
-                            layout_kv=input['layout_kv'])  
+                            layout_kv=input['layout_kv'],
+                            topk_value_mode=input['topk_value_mode'])
     return npu_result, cpu_output
 
 def test_sas_quant_process_ci(test_data, device_id=0):
@@ -179,6 +192,7 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                                         seqused_q = torch.tensor([]).npu(),
                                                         seqused_kv = metadata_input['seqused_kv'].npu() if input['seqused_kv'] is not None else torch.tensor([]).npu(),
                                                         ori_topk_length=input['ori_topk_length'].npu() if input['ori_topk_length'] is not None else None,
+                                                        cmp_topk_length=input['cmp_topk_length'].npu() if input['cmp_topk_length'] is not None else None,
                                                         batch_size = metadata_input['batch_size'],
                                                         max_seqlen_q = metadata_input['max_seqlen_q'],
                                                         max_seqlen_kv = metadata_input['max_seqlen_kv'],
