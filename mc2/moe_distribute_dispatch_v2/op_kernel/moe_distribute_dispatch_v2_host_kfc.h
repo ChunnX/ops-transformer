@@ -2296,13 +2296,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
         //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt); 
-        GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
-        expertFinishNumTensor_(index) * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  
+        GM_ADDR wAddr1 = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
+        expertFinishNumTensor_(index) * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
         LOG_INFO("WaitAndFormatOutput WaitFlag start");
-        bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, flagNum);
+        bool isArrived = WaitFlag<false>(wAddr1, flagRecvTensor_, stride, flagNum);
         LOG_INFO("WaitAndFormatOutput WaitFlag end");
+        LOG_INFO("WaitAndFormatOutput WaitFlag isArrived",isArrived);
 
         if (isArrived) {
             //LOG_INFO("WaitAndFormatOutput index:", ind1ex);
