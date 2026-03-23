@@ -1051,6 +1051,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         } else {
             if(flagInLTTensor.GetValue(0) != float32_t(waitNum)) { // 尝试等待数据，没有到达直接退出
+                LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
                 return false;
             }
         }
