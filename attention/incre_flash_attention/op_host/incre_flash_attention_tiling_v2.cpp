@@ -2715,6 +2715,11 @@ ge::graphStatus IFATilingV2::ProcessAntiQuant() {
                         "the layout of input does not support TND."),
                 return ge::GRAPH_FAILED);
     if (isPFAFlag_) {
+      OP_CHECK_IF((antiquantMode_ == PER_TENSOR_HEAD_MODE || antiquantMode_ == PER_TOKEN_HEAD_MODE || 
+                   antiquantMode_ == PER_TOKEN_PA_MODE || antiquantMode_ == PER_TOKEN_HEAD_PA_MODE) && inputKvType_ == ge::DT_INT8,
+          OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                  "if S of query > 1, keyAntiquantMode/valueAntiquantMode 2, 3, 4, 5 are not supported."),
+          return ge::GRAPH_FAILED);
       OP_CHECK_IF((antiquantMode_ == PER_CHANNEL_MODE || antiquantMode_ == PER_TOKEN_MODE)
                   && (inputKvType_ == ge::DT_INT8 && (inputQType_ != ge::DT_BF16 || outputType_ != ge::DT_BF16)),
                 OP_LOGE(ifaContext_->opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
