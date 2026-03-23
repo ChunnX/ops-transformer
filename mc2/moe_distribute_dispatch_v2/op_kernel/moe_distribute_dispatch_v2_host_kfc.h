@@ -707,7 +707,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     Duplicate<uint32_t>(serverCountTensor_, uint32_t(0), serverBuferLength);
     Duplicate<int32_t>(tokenSendMap_, int32_t(-1), serverMapLength);
-    Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
+    Duplicate<uint32_t>(flagTensor_, 0x3F800000, mask, repeatTime,uint16_t(1), uint8_t(8)); // 0x3F800000是float的1
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertIdsCnt_);
     
     // LOG_INFO("[blockCntPerToken_]", blockCntPerToken_);
@@ -793,7 +793,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t mask[1] = {0x0101010101010101};
     uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
     flagTensor_ = flagBuf_.Get<uint32_t>();
-    Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
+    Duplicate<uint32_t>(flagTensor_, 0x3F800000, mask, repeatTime,uint16_t(1), uint8_t(8));  // 0x3F800000是float的1
     // LOG_INFO("[InitTemp] END int Temp");
 }
 
@@ -1017,7 +1017,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 // }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,  uint32_t waitNum) 
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
+                                                                                             uint32_t  ,uint32_t waitNum) 
 {
     // Implementation of WaitFlag
     //LOG_INFO("WaitFlag waitNum", waitNum);
