@@ -329,6 +329,7 @@ function(add_opapi_modules)
       -Wl,--no-whole-archive
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       nnopbase
+      -Wl,-Bsymbolic
       profapi
       ge_common_base
       ascend_dump
