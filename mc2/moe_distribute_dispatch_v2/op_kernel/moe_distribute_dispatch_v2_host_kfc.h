@@ -2299,9 +2299,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         expertFinishNumTensor_(index) * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
-        LOG_INFO("WaitToken WaitFlag start");
+        LOG_INFO("WaitAndFormatOutput WaitFlag start");
         bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, flagNum);
-        LOG_INFO("WaitToken WaitFlag end");
+        LOG_INFO("WaitAndFormatOutput WaitFlag end");
 
         if (isArrived) {
             //LOG_INFO("WaitAndFormatOutput index:", ind1ex);
