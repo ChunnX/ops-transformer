@@ -2309,7 +2309,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if(count % 100000 ==0) {
             GlobalTensor<float32_t> flagInGMTensor;
             flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(wAddr1));
-            LOG_INFO("WaitAndFormatOutput WaitFlag flagInGMTensor", flagInGMTensor,{100,50});
+            LOG_INFO("WaitAndFormatOutput WaitFlag flagInGMTensor", flagInGMTensor,{100,128});
         }
 
         if (isArrived) {
