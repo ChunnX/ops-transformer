@@ -1022,8 +1022,8 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
     // Implementation of WaitFlag
-    LOG_INFO("WaitFlag waitNum", waitNum);
-    LOG_INFO("WaitFlag stride", stride);
+    //LOG_INFO("WaitFlag waitNum", waitNum);
+    //LOG_INFO("WaitFlag stride", stride);
     uint64_t rsvdCnt = 0;
     GlobalTensor<float32_t> flagInGMTensor;
     //LocalTensor<uint8_t> sharedTensorInt8 = flagInLTTensor.ReinterpretCast<uint8_t>(); //reduce isReuseSource 为true情况下不会使用。
@@ -1036,7 +1036,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     do{
         count++;
         if(count > 1000000){
-            LOG_INFO("error WaitFlag,error count");
+            //LOG_INFO("error WaitFlag,error count");
             break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
@@ -1051,7 +1051,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         } else {
             if(flagInLTTensor.GetValue(0) != float32_t(waitNum)) { // 尝试等待数据，没有到达直接退出
-                LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+                //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
                 return false;
             }
         }
@@ -1059,7 +1059,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     }while(isContinueWait);
 
-    LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+    //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return true;
 }
 
@@ -1437,9 +1437,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         
         //CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
-        LOG_INFO("WaitToken WaitFlag start");
+        //LOG_INFO("WaitToken WaitFlag start");
         bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, blockCntPerToken_);
-        LOG_INFO("WaitToken WaitFlag end");
+        //LOG_INFO("WaitToken WaitFlag end");
         LOG_INFO("WaitToken WaitFlag isArrived:",isArrived);
         LOG_INFO("WaitToken WaitFlag index:",index);
 
@@ -1747,9 +1747,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::V_S>();
         flagRecvGatherMask_.SetValue(0, 1);
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
-        LOG_INFO("SetStatus WaitFlag start");
+        //LOG_INFO("SetStatus WaitFlag start");
         WaitFlag<true>(flagAddr, flagRecvTensor_test, stride, flagMaxRecvNum);
-        LOG_INFO("SetStatus WaitFlag end");
+        //LOG_INFO("SetStatus WaitFlag end");
 
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
             uint32_t srcPos = expertIndex / 120 * 128 + expertIndex % 120;
@@ -2302,10 +2302,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR wAddr1 = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_ + beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE);  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
-        LOG_INFO("WaitAndFormatOutput WaitFlag start");
+        //LOG_INFO("WaitAndFormatOutput WaitFlag start");
         bool isArrived = WaitFlag<false>(wAddr1, flagRecvTensor_, stride, flagNum);
-        LOG_INFO("WaitAndFormatOutput WaitFlag end");
-        LOG_INFO("WaitAndFormatOutput WaitFlag isArrived",isArrived);
+       // LOG_INFO("WaitAndFormatOutput WaitFlag end");
+        //LOG_INFO("WaitAndFormatOutput WaitFlag isArrived",isArrived);
         if(count % 100000 ==0) {
             GlobalTensor<float32_t> flagInGMTensor;
             flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(wAddr1));
