@@ -1035,13 +1035,13 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t count =0; //TODO:
     do{
         count++;
-        if(count > 10000){
+        if(count > 1000000){
             LOG_INFO("error WaitFlag,error count");
             break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
+        //LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
         if constexpr(isContinueWait) {
@@ -2306,6 +2306,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         bool isArrived = WaitFlag<false>(wAddr1, flagRecvTensor_, stride, flagNum);
         LOG_INFO("WaitAndFormatOutput WaitFlag end");
         LOG_INFO("WaitAndFormatOutput WaitFlag isArrived",isArrived);
+        if(count % 100000 ==0) {
+            GlobalTensor<float32_t> flagInGMTensor;
+            flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(wAddr1));
+            LOG_INFO("WaitAndFormatOutput WaitFlag flagInGMTensor", flagInGMTensor,{100,50});
+        }
 
         if (isArrived) {
             //LOG_INFO("WaitAndFormatOutput index:", ind1ex);
