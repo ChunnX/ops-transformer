@@ -1444,7 +1444,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         if (isArrived) {
             uint32_t dstPosition = index;
             GM_ADDR readAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
-            CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, 1); //TODO:太坑了
+            CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, 1); //TODO:太坑了 需要去改
             //LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -2269,7 +2269,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t finishNum = 0;
     uint32_t maxCopyTokenCnt = tBufRealSize_ / hCommuSize_;
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1 : moeExpertNumPerRank_;
-    uint32_t srcExpRankId, dstPosition, arriveCount, copyCnt, srcDataBlockIdx;
+    uint32_t srcExpRankId, dstPosition, copyCnt, srcDataBlockIdx;
     uint32_t flagMaxRecvNum = (blockCntPerTokenToExpert_ * maxCopyTokenCnt * UB_ALIGN) / sizeof(float32_t);
     uint32_t gatherOutSize = Ceil(blockCntPerTokenToExpert_ * maxCopyTokenCnt * sizeof(uint32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     GlobalTensor<int32_t> cleanGlobal;
@@ -2537,9 +2537,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 GatherTokenFrRemote();
             }
         }
-        // //localWindowCopy中包含reset操作，需确保前面操作完成
-        // PipeBarrier<PIPE_ALL>();
-        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        //localWindowCopy中包含reset操作，需确保前面操作完成
+        PipeBarrier<PIPE_ALL>();
+        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
