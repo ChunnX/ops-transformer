@@ -843,12 +843,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
 
     fp32InputBuf = fp32InQueue_.AllocTensor<P>();
     PipeBarrier<PIPE_MTE2>();
-    dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P);
+    // dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P); // 最近修复的pre反向问题
+    dataCopyParams_.blockLen = buffers.stepLength * N_ * sizeof(P);
     DataCopyPad(fp32InputBuf, hCombBeforeGradGm_[runBSStart * N_ * N_], dataCopyParams_, dataCopyPadParams_);
     fp32InQueue_.EnQue(fp32InputBuf);
     LocalTensor<P> hCombBeforeGradBuf = fp32InQueue_.DeQue<P>();
 
-    Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, hCombBeforeGradBufLen_);
+    // Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, hCombBeforeGradBufLen_); // 最近修复的pre反向问题
+    Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, buffers.stepLength * N_);
     PipeBarrier<PIPE_V>();
     fp32InQueue_.FreeTensor(hCombBeforeGradBuf);
 
