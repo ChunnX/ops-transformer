@@ -16,12 +16,16 @@ Measures:
 """
 
 import math
+import random
 import itertools
 import logging
+from collections import namedtuple
 from typing import Callable, List, Tuple
 import torch
 import torch_npu
 import torch_bsa
+
+FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -58,7 +62,10 @@ SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 512
 BLOCK_MASK_SEED = 1234
-USE_FRAME = True
+
+# Force a frame of blocks to be alwasy selected (still requires to be in the sparsity budget)
+# cols are in the number of kv_block lengths (e.g. 512 tokens) rows are in terms of q-block length (e.g. 128 tokens)
+FRAME = FrameWidths(left_cols=8, right_cols=1, top_rows=29, bottom_rows=1) # set to zeroes to disable the frame forcing
 
 # For the band mask
 BAND_PRE_TOKENS = 8
@@ -105,7 +112,7 @@ def ref_blitz_sparse_attention_launcher(
         return torch_npu.npu_fusion_attention(q, k, v, head_num=head_num, input_layout=input_layout, 
                                               scale=scale, pre_tockens=0, next_tockens=0, 
                                               atten_mask=atten_mask,
-                                              sparse_mode=0 if force_dense_sm else 1)[0]    
+                                              sparse_mode=0 if force_dense_sm else 1)[0]
 
 
 def generate_sparse_blocks_by_row(
@@ -115,51 +122,16 @@ def generate_sparse_blocks_by_row(
     block_size_kv: int,
     sparsity: float,
     seed: int,
-    use_frame: bool = False,
-) -> list[list[int]]:
-    """
-    Returns sparse block columns per block-row.
-
-    Output shape: [n_block_rows][num_kept_elems]
-      - n_block_rows = ceil(s_q / block_size)
-      - num_kept_elems = round(n_block_cols * (1 - sparsity)), clamped to [1, n_block_cols]
-      - values in [0, n_block_cols)
-    """
-
-    if use_frame:
-        return generate_sparse_blocks_by_row_with_frame(s_q, s_kv, block_size_q, block_size_kv, sparsity, seed)
-
-    sparsity = max(0.0, min(1.0, float(sparsity)))
-
-    n_block_rows = math.ceil(s_q / block_size_q)
-    n_block_cols = math.ceil(s_kv / block_size_kv)
-    if n_block_rows == 0 or n_block_cols == 0:
-        return []
-
-    num_kept_elems = int(round(n_block_cols * (1.0 - sparsity)))
-    num_kept_elems = max(1, min(num_kept_elems, n_block_cols))
-
-    g = torch.Generator(device="cpu")
-    g.manual_seed(seed)
-
-    rows: list[list[int]] = []
-    for _ in range(n_block_rows):
-        cols = torch.randperm(n_block_cols, generator=g)[:num_kept_elems].tolist()
-        rows.append(cols)
-
-    return rows
-
-
-def generate_sparse_blocks_by_row_with_frame(
-    s_q: int,
-    s_kv: int,
-    block_size_q: int,
-    block_size_kv: int,
-    sparsity: float,
-    seed: int,
+    frame: FrameWidths,
     pad_value: int = -1,
 ) -> list[list[int]]:
     """
+    Builds the sabi blocks (soparse blocks selection) of a single head, with a "frame" of 
+    always-included blocks and the rest of the blocks randomly selected to meet the target 
+    sparsity 
+    
+    Note: blocks from the frame + sparsely selected blocks are both taken into account when computing the sparsity.
+
     Constraints (post-sparsity selection):
       - first 8 block-cols of each row are always included (if they exist)
       - first 29 block-rows contain all blocks
@@ -173,47 +145,59 @@ def generate_sparse_blocks_by_row_with_frame(
 
     n_block_rows = math.ceil(s_q / block_size_q)
     n_block_cols = math.ceil(s_kv / block_size_kv)
+    n_total_blocks = n_block_rows * n_block_cols
     if n_block_rows == 0 or n_block_cols == 0:
-        return []
+        raise ValueError(f"Invalid block configuration: {s_q=}, {s_kv=}, {block_size_q=}, {block_size_kv=}")
 
-    last_col = n_block_cols - 1
+    if frame is not None:
+        if (frame.left_cols > n_block_cols or frame.right_cols > n_block_cols or 
+            frame.top_rows > n_block_rows or frame.bottom_rows > n_block_rows):
+            raise ValueError(f"Frame configuration exceeds block dimensions: {frame=}, {n_block_rows=}, {n_block_cols=}")
 
-    # Base target count from sparsity.
-    num_kept_elems = int(round(n_block_cols * (1.0 - sparsity)))
-    num_kept_elems = max(1, min(num_kept_elems, n_block_cols))
+        # Forced column indices by the frame (left and right borders) for EVERY sparse row:
+        sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
+        sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
+        sparse_forced_col_ids = sparse_forced_left | sparse_forced_right
+        sparse_candidate_col_ids = sorted(set(range(n_block_cols)) - sparse_forced_col_ids)
 
-    g = torch.Generator(device="cpu")
-    g.manual_seed(seed)
+        # Rows indices which are forced to be dense by the frame (top and bottom borders):
+        dense_top = set(range(min(frame.top_rows, n_block_rows)))
+        dense_bottom = set(range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows))
+        dense_row_ids = dense_top | dense_bottom
+    else:
+        sparse_forced_col_ids = set()
+        sparse_candidate_col_ids = list(range(n_block_cols))
+        dense_row_ids = set()
 
-    # Forced columns for EVERY non-fully-dense row:
-    # first 8 cols (or fewer if n_block_cols < 8) + last col
-    forced_prefix = set(range(min(8, n_block_cols)))
-    forced_always = set(forced_prefix)
-    forced_always.add(last_col)
-
-    # Ensure "num_kept_elems" is at least large enough to contain the forced set (unless fully dense anyway)
-    num_kept_elems = max(num_kept_elems, len(forced_always))
-
+    n_dense_rows = len(dense_row_ids)
+    n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
+    n_frame_forced_blocks = len(sparse_forced_col_ids) * n_sparse_rows + n_block_cols * n_dense_rows
+    if n_frame_forced_blocks / n_total_blocks > (1.0 - sparsity):
+        raise ValueError(f"Target sparsity violation: "
+                        f"Frame forces {n_frame_forced_blocks} blocks out of {n_total_blocks} total attention blocks. "
+                        f"Implying a mimimum density of {n_frame_forced_blocks / n_total_blocks:.2%}, which violates the target "
+                        f"sparsity of {(sparsity):.2%}. And this is even before allocating the random blocks inside "
+                        "the frame. Consider adjusting frame sizes or target sparsity.")
+    
+    # Make sure that allocating "n_kept_row_blocks" in every sparsable row (inside the borders of the frame) will not 
+    # violate the required sparsity
+    n_max_kept_blocks = int(math.floor(n_total_blocks * (1.0 - sparsity)))
+    n_max_kept_blocks_excluding_frame =  n_max_kept_blocks - n_frame_forced_blocks
+    n_kept_row_blocks_per_row =  math.ceil(n_max_kept_blocks_excluding_frame / n_sparse_rows) if n_sparse_rows > 0 else 0
+    
+    # Construct the "sabi" blocks of the current head by choosing the sparse blocks randomly
     rows: list[list[int]] = []
+    rng = random.Random(seed)
     for r in range(n_block_rows):
-        fully_dense = (r < 29) or (r == n_block_rows - 1)
-
-        if fully_dense:
+        if r in dense_row_ids:
             cols = list(range(n_block_cols))
         else:
-            forced = set(forced_always)
-
-            need = num_kept_elems - len(forced)
-            if need <= 0:
-                cols = sorted(forced)
+            if n_kept_row_blocks_per_row <= 0:
+                cols = sorted(sparse_forced_col_ids)
             else:
-                candidates = [c for c in range(n_block_cols) if c not in forced]
-                # sample without replacement
-                perm = torch.randperm(len(candidates), generator=g).tolist()
-                extra = [candidates[i] for i in perm[:need]]
-                cols = sorted(list(forced) + extra)
-
-        cols = cols + [pad_value] * (n_block_cols - len(cols))
+                sparse_selected_col_ids = rng.sample(sparse_candidate_col_ids, n_kept_row_blocks_per_row)
+                cols = sorted(list(sparse_forced_col_ids) + sparse_selected_col_ids)
+            cols = cols + [pad_value] * (n_block_cols - len(cols))
         rows.append(cols)
 
     return rows
@@ -259,6 +243,7 @@ def generate_sparse_blocks_by_row_per_head(
     block_size_kv: int,
     sparsity: float,
     num_heads: int,
+    frame: FrameWidths,
     base_seed: int,
 ) -> list[list[list[int]]]:
     """
@@ -275,7 +260,7 @@ def generate_sparse_blocks_by_row_per_head(
             block_size_kv=block_size_kv,
             sparsity=sparsity,
             seed=base_seed + h,
-            use_frame=USE_FRAME,
+            frame=frame,
         )
         for h in range(num_heads)
     ]
@@ -506,7 +491,7 @@ def gen_pfa_inputs(
     return q, k, v, actseqlen, actseqlenkv
 
 
-def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, device, emit_atten_mask: bool = True):
+def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, frame:FrameWidths, device, emit_atten_mask: bool = True):
     """
     Creates the (token)-level attention mask and the sabi - necessary for the blocks_optimized_batched
     sparse patterns
@@ -519,7 +504,7 @@ def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, device
     if attention_matrix == "sparse_block_all_same":
         if sparsity > 0:
             block_indices = generate_sparse_blocks_by_row(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, sparsity, 
-                                                          seed=BLOCK_MASK_SEED)
+                                                          seed=BLOCK_MASK_SEED, frame=None)
             pfa_atten_mask = bsa_atten_mask = make_block_mask(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, block_indices, 
                                                           device=device)
             sm = 1
@@ -537,14 +522,14 @@ def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, device
     elif attention_matrix == "blocks_optimized":
         if emit_atten_mask and sparsity > 0:
             per_head_block_ids = generate_sparse_blocks_by_row_per_head(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, 
-                                                                            sparsity, h, BLOCK_MASK_SEED)
+                                                                            sparsity, h, frame, BLOCK_MASK_SEED)
             pfa_atten_mask = make_block_mask_per_head(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, per_head_block_ids, 
                                                       device)
             sabi = torch.tensor(per_head_block_ids, dtype=torch.uint16, device=device)
     elif attention_matrix == "blocks_optimized_batched":
         per_batch_head_block_indices = [
             generate_sparse_blocks_by_row_per_head(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, sparsity, h, 
-                                                   BLOCK_MASK_SEED + bidx)
+                                                   frame, BLOCK_MASK_SEED + bidx)
             for bidx in range(b)
         ]
         sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
@@ -664,7 +649,7 @@ def benchmark_blitz_sparse_attention():
 
         # Build attention mask and related parameters for this configuration
         pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-            b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, device=DEVICE, emit_atten_mask=run_ref)
+            b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME ,device=DEVICE, emit_atten_mask=run_ref)
         if PRINT_MASK and pfa_atten_mask is not None:
             logger.info(pfa_atten_mask.int())
             logger.info(pfa_atten_mask.shape)

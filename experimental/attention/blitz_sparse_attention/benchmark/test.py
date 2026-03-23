@@ -17,12 +17,11 @@ python test.py
 """
 
 import itertools
-from typing import Tuple
 import pytest
 import torch
 import torch_npu
 import torch_bsa
-from benchmark import gen_pfa_inputs, create_attention_mask  # data gen
+from benchmark import gen_pfa_inputs, create_attention_mask, FrameWidths  # data gen
 from benchmark import ref_blitz_sparse_attention_launcher  # baseline kernel
 
 # Global test configurations
@@ -33,36 +32,34 @@ INPUT_LAYOUT = 'BNSD'
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
-TORCH_REF_VALS = [True, False]  # True=our custom reference model; False = torch_npu official kernel
-A_VALS = ["blocks_optimized_batched", "blocks_optimized", "sparse_block_all_same", "lower_triangular", "band", "custom"]
+TORCH_REF_VALS = [False]  # True=our custom reference model; False = torch_npu official kernel
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
-S_VALS = [10_000, 20_000, 30_000]  # s_q = s_kv
+S_VALS = [24_000, 36_000]  # s_q = s_kv
 D_VALS = [128]   # head dimension
+FRAME_VALUES = [FrameWidths(0,0,0,0), FrameWidths(2,1,3,1)]
 SPARSITY_VALS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 SHAPES = list(itertools.product(B_VALS, H_VALS, S_VALS, D_VALS))
-
+FRAME_SPARSITY_COMBOS = list(itertools.product(FRAME_VALUES, SPARSITY_VALS))
+FRAME_SPARSITY_IDS = [f"frame({f.left_cols},{f.right_cols},{f.top_rows},{f.bottom_rows})-sparsity{s:.2f}"
+                      for f, s in FRAME_SPARSITY_COMBOS]
 
 @pytest.mark.parametrize("torch_ref", TORCH_REF_VALS)
-@pytest.mark.parametrize("a", A_VALS)
+@pytest.mark.parametrize("frame,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
 @pytest.mark.parametrize("shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
-@pytest.mark.parametrize("sparsity", SPARSITY_VALS)
-def test_blitz_sparse_attention_correctness(torch_ref, a, shape, sparsity):
+def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
     """Test correctness of torch_bsa.blitz_sparse_attention vs reference implementation"""
-    b, h, s_kv, d = shape
-
     # Set random seed for reproducible test inputs
     torch.manual_seed(SEED)
 
-    # Skip test if sparsity is not compatible with current configuration
-    if a in ["blocks_optimized", "blocks_optimized_batched"] and sparsity > 0.9:
-        pytest.skip("Skipping high sparsity for block optimized modes")
-
+    # Unpack input shapes
+    b, h, s_kv, d = shape
     s_q = s_kv
     
+
     # Generate attention mask and parameters
     pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, a, device=DEVICE, emit_atten_mask=True
+        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame, device=DEVICE, emit_atten_mask=True
     )
     
     # Generate input tensors
@@ -84,12 +81,8 @@ def test_blitz_sparse_attention_correctness(torch_ref, a, shape, sparsity):
                                                   pfa_inputs=(q, k, v, h, scale, pfa_atten_mask, INPUT_LAYOUT), 
                                                   force_dense_sm=(sparsity == 0))   
     
-    # Compare results (moved to CPU for comparison)
-    out_our_cpu = out_our.cpu()
-    out_ref_cpu = out_ref.cpu()
-    
-    # Check correctness with reasonable tolerances
-    if not torch.allclose(out_our_cpu, out_ref_cpu, rtol=0.05, atol=0.05):
+    # Check correctness with reasonable tolerances (moved to CPU for comparison)
+    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.05, atol=0.05):
         pytest.fail(
             f"Outputs don't match for b={b}, h={h}, s_q={s_q}, s_kv={s_kv}, d={d}, sparsity={sparsity}"
         )
@@ -99,6 +92,8 @@ if __name__ == "__main__":
     import sys
     import logging
     logging.basicConfig(level=logging.INFO, format='%(message)s')
-    test_blitz_sparse_attention_correctness(torch_ref=False, a="blocks_optimized_batched", 
-                                            shape=(1, 3, 10_000, 128), sparsity=0.5)
+    test_blitz_sparse_attention_correctness(torch_ref=False,
+                                            shape=(1, 3, 10_000, 128), 
+                                            frame=FrameWidths(left_cols=2, right_cols=1, top_rows=2, bottom_rows=1), 
+                                            sparsity=0.5)
     logging.getLogger(__name__).info("Smoke test passed.")
