@@ -75,7 +75,7 @@ uint64_t HCCLPerformanceArch35::InverseCommTime(double targetTime) const
             }
         }
     }
-    return static_cast<uint64_t>(tmpSize * ONE_MBYTE) /
+    return static_cast<uint64_t>(tmpSize * ONE_MBYTE /
         (commTypeInfo_.commMatrixLen * lookUpTileNum_ *
-        commTypeInfo_.commDtypeSize);
+        GetRealDtypeSizes()));
 }

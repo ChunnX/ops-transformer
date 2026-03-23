@@ -116,6 +116,7 @@ struct HCCLInfo {
     HCCLType commMethod;
     TopoType topoType;
     uint64_t maxStepSize; // number of steps in a full round of communication
+    uint64_t commDtypeSizeExpansionFraction;
 };
 
 struct HCCLFittingParameters {
