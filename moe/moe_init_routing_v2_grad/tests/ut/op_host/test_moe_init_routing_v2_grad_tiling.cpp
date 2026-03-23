@@ -30,7 +30,7 @@ class MoeInitRoutingV2GradTiling : public testing::Test {
 };
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_01) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{480, 8}, {480, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -46,13 +46,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_01) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1000;
-    string expectTilingData = "64 80 0 0 8 6 0 40 2 2 1 8 8 2 1 1 32 2 1 2 1 2 ";
+    string expectTilingData = "40 80 0 0 8 6 0 40 2 2 1 8 8 2 1 1 32 2 1 2 1 2 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_02) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{16, 5120}, {16, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -68,13 +68,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_02) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1001;
-    string expectTilingData = "64 8 0 0 5120 2 0 8 1 1 1 5120 5120 1 1 0 20480 1 1 1 1 1 ";
+    string expectTilingData = "40 8 0 0 5120 2 0 8 1 1 1 5120 5120 1 1 0 20480 1 1 1 1 1 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_03) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{16, 5120}, {16, 5120}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -90,13 +90,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_03) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1002;
-    string expectTilingData = "64 8 0 0 5120 2 0 8 1 1 1 5120 5120 1 1 0 20480 1 1 1 1 1 ";
+    string expectTilingData = "40 8 0 0 5120 2 0 8 1 1 1 5120 5120 1 1 0 20480 1 1 1 1 1 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_04) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -112,13 +112,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_04) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1010;
-    string expectTilingData = "64 10 0 0 512 64 40 10 1 1 1 512 512 32 1 5 2048 1 1 1 1 1 ";
+    string expectTilingData = "40 10 0 0 512 64 40 10 1 1 2 496 16 32 1 5 1984 1 1 1 1 1 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_05) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -134,13 +134,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_05) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1011;
-    string expectTilingData = "64 80 0 0 512 1 40 40 2 2 1 512 512 1 1 0 2048 2 1 2 1 2 ";
+    string expectTilingData = "40 80 0 0 512 1 40 40 2 2 1 512 512 1 1 0 2048 2 1 2 1 2 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_06) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -156,13 +156,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_06) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1012;
-    string expectTilingData = "64 10 0 0 512 64 40 10 1 1 1 512 512 32 1 5 2048 1 1 1 1 1 ";
+    string expectTilingData = "40 10 0 0 512 64 40 10 1 1 2 496 16 32 1 5 1984 1 1 1 1 1 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_07) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{10,8,512},{10,8,512}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -178,13 +178,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_07) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1100;
-    string expectTilingData = "64 80 10 8 512 8 40 40 2 2 1 512 512 4 1 2 2048 2 1 2 1 2 ";
+    string expectTilingData = "40 80 10 8 512 8 40 40 2 2 1 512 512 4 1 2 2048 2 1 2 1 2 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_08) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{10,8,512},{10,8,512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -200,13 +200,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_08) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1101;
-    string expectTilingData = "64 80 10 8 512 8 40 40 2 2 1 512 512 4 1 2 2048 2 1 2 1 2 ";
+    string expectTilingData = "40 80 10 8 512 8 40 40 2 2 1 512 512 4 1 2 2048 2 1 2 1 2 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_09) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{10,8,512},{10,8,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -222,13 +222,13 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_09) {
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 1102;
-    string expectTilingData = "64 80 10 8 512 8 40 40 2 2 1 512 512 4 1 2 2048 2 1 2 1 2 ";
+    string expectTilingData = "40 80 10 8 512 8 40 40 2 2 1 512 512 4 1 2 2048 2 1 2 1 2 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_10) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{10,8,512},{10,8,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -247,7 +247,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_10) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_11) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -266,7 +266,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_11) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_12) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512,1024,1024},{40,512,1024,1024}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -285,7 +285,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_12) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_13) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{10,512},{10,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -304,7 +304,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_13) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_14) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{196608,8},{196608,8}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -323,7 +323,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_14) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_15) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -342,7 +342,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_15) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_16) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -361,7 +361,7 @@ TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_16) {
 }
 
 TEST_F(MoeInitRoutingV2GradTiling, moe_init_routing_v2_grad_tiling_17) {
-    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {};
+    optiling::MoeInitRoutingV2GradCompileInfo compileInfo = {40, 65536};
     gert::TilingContextPara tilingContextPara("MoeInitRoutingV2Grad",
                                             {
                                               {{{40,512},{40,512}}, ge::DT_BF16, ge::FORMAT_ND},

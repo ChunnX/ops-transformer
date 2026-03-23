@@ -33,5 +33,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_init_routing_v2 ACLNNTYPE aclnn_inner)
+    add_modules_sources(OPTYPE moe_init_routing_v2 ACLNNTYPE aclnn_exclude)
 endif()
