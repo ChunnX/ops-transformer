@@ -1041,7 +1041,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        //LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
+        LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
         if constexpr(isContinueWait) {
@@ -2337,6 +2337,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             break;
         }
     }
+
+
 }
 
 template <TemplateDispatchKFCTypeClass>
