@@ -23,7 +23,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
-
+#include "platform/soc_spec.h"
 namespace optiling {
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
