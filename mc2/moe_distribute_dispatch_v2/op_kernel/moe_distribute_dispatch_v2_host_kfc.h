@@ -1035,7 +1035,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t count =0; //TODO:
     do{
         count++;
-        if(count > 1000000){
+        if(count > 10000){
             LOG_INFO("error WaitFlag,error count");
             break;
         }
