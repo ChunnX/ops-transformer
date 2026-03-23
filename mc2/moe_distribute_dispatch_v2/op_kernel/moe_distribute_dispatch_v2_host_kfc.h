@@ -103,7 +103,7 @@ private:
     __aicore__ inline void InitCommInfo();
     __aicore__ inline void CalExpertOffset(uint32_t startTokenId, uint32_t endTokenId);
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<uint32_t> flagRecvGatherMask);
-    __aicore__ inline void WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, uint32_t stride, uint32_t waitNum);
+    template <bool isContinueWait> __aicore__ inline void WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, uint32_t stride, uint32_t waitNum);
     template <bool isStoreOffset> __aicore__ inline void CalServerSendCnt();
     __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
@@ -126,7 +126,7 @@ private:
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<int32_t> flagTensor, LocalTensor<uint32_t> flagRecvGatherMask);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, uint32_t &tokenCnt);
     __aicore__ inline void WaitToken(uint32_t tokenCnt, uint32_t serverIdx, uint32_t startTokenIdx, TBuf<> &tBuf);
-    __aicore__ inline void CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal, uint32_t &arriveCount, uint32_t flagNum,
+    __aicore__ inline bool CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal, uint32_t flagNum,
                                                    LocalTensor<uint32_t> &flagRecvTensor, LocalTensor<uint32_t> &flagGatherOutTensor);
     __aicore__ inline void CopyInAndOut(LocalTensor<float> xOutFp32Tensor, LocalTensor<int32_t> xOutInt32Tensor,
                                         GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
@@ -289,7 +289,7 @@ private:
     LocalTensor<uint32_t> serverCountTensor_;
     LocalTensor<int32_t> tokenSendMap_;
     LocalTensor<uint32_t> flagGatherOutTensor_;
-    LocalTensor<uint32_t> flagRecvTensor_;
+    LocalTensor<float32_t> flagRecvTensor_;
     LocalTensor<uint8_t> flagCompResultU8_;
     LocalTensor<uint64_t> flagCompResultLtU64_;
     LocalTensor<uint32_t> flagRecvGatherMask_;
@@ -1017,7 +1017,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 // }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
+template <bool isContinueWait>
+__aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
     // Implementation of WaitFlag
@@ -1030,9 +1031,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams flagCopyParams{static_cast<uint16_t>(waitNum), static_cast<uint32_t>(sizeof(float)),
                                         static_cast<uint32_t>(stride), 0, 0};
     DataCopyPadExtParams<float32_t> flagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
-
-    uint64_t count =0;
-    while(true) { // 软同步
+    
+    uint64_t count =0; //TODO:
+    do{
         count++;
         if(count > 1000000){
             LOG_INFO("error WaitFlag,error count");
@@ -1040,24 +1041,24 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        // for(uint32_t i = 0; i < waitNum; i++) {
-        //     if(flagInLTTensor.GetValue(i) == 1) {
-        //         rsvdCnt++;
-        //     }
-        // }
-        LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
+        //LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
-        //ReduceSum()
-        // GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
-        //     {1, (uint16_t)(waitNum), 1, 0}, rsvdCnt);
-
-        //LOG_INFO("WaitFlag rsvdCnt",flagInLTTensor.GetValue(0));
-        if(flagInLTTensor.GetValue(0) == float32_t(waitNum)) {
-            //LOG_INFO("WaitFlag success");
-            break;
+        if constexpr(isContinueWait) {
+            if(flagInLTTensor.GetValue(0) == float32_t(waitNum)) { // 循环等待直到全部到达
+                //LOG_INFO("WaitFlag success");
+                break;
+            }
+        } else {
+            if(flagInLTTensor.GetValue(0) != float32_t(waitNum)) { // 尝试等待数据，没有到达直接退出
+                return false;
+            }
         }
-    }
+        
+
+    }while(isContinueWait);
+    
+    return true;
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1126,7 +1127,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
     //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     // LOG_INFO("CalExpertOffset start waitFlg");
-    WaitFlag(flagAddr, flagInLTTensor, 0, usedCoreNum); //TODO:
+    WaitFlag<true>(flagAddr, flagInLTTensor, 0, usedCoreNum); //TODO:0魔鬼数字
     // LOG_INFO("CalExpertOffset end waitFlg");
     //LOG_INFO("usedCoreNum",usedCoreNum);
     PipeBarrier<PIPE_V>();
@@ -1330,7 +1331,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         tokenData_ = xInQueue_.AllocTensor<XType>();
 
         flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
-        flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
+        flagRecvTensor_ = tBuf.GetWithOffset<float32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
 
         flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
         flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
@@ -1423,20 +1424,25 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         }
         uint32_t arriveCount = 0;
 
-        GlobalTensor<uint32_t> dataFlagGlobal;
+        //GlobalTensor<uint32_t> dataFlagGlobal;
         // token的起始地址
         GM_ADDR wAddr =
-            GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
-        dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
+            GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE; // 第一个flag起始地址
+        //dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
         // if(index == 0 && count == 1) {
         //     // LOG_INFO("dataFlagGlobal,",dataFlagGlobal, {blockCntPerToken_, 128});
         // }
         
-        CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
+        //CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
+        uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
+        LOG_INFO("WaitToken WaitFlag start");
+        bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, blockCntPerToken_);
+        LOG_INFO("WaitToken WaitFlag end");
+
         // LOG_INFO("[BATCHWRITE][WaitToken][true] index:", index);
         // LOG_INFO("[BATCHWRITE][WaitToken][true] arriveCount:", arriveCount);
 
-        if (arriveCount == 1) {
+        if (isArrived) {
             uint32_t dstPosition = index;
             GM_ADDR readAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
             CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, arriveCount);
@@ -1471,10 +1477,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void
+__aicore__ inline bool
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal,
-                                                                            uint32_t &arriveCount, uint32_t flagNum,
-                                                                            LocalTensor<uint32_t> &flagRecvTensor,
+                                                                            uint32_t flagNum, LocalTensor<uint32_t> &flagRecvTensor,
                                                                             LocalTensor<uint32_t> &flagGatherOutTensor)
 {
     uint64_t rsvdCnt = 0;
@@ -1739,41 +1744,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         flagRecvGatherMask_.SetValue(0, 1);
         uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
         LOG_INFO("SetStatus WaitFlag start");
-        WaitFlag(flagAddr, flagRecvTensor_test, stride, flagMaxRecvNum);
+        WaitFlag<true>(flagAddr, flagRecvTensor_test, stride, flagMaxRecvNum);
         LOG_INFO("SetStatus WaitFlag end");
-        // int32_t count = 0;
-        // while(true) { //确保等到 
-        //     count++;
-        //     if (count == 1000000) {
-        //         LOG_INFO("SetStatus error count");
-        //         break;
-        //     }
-        //     DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
-        //                                     static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
-        //     DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
-
-        //     // flag放到flagRecvTensor_
-        //     DataCopyPad(flagRecvTensor_test, statusWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
-        //     //LOG_INFO("1111111");
-        //     LOG_INFO("dataFlagGlobal", statusWinGMTensor, {16, 8});
-        //     //LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, blockCntPerCnt_});
-
-        //     SyncFunc<AscendC::HardEvent::MTE2_V>();
-        //     uint32_t recvCnt = 0;
-        //     for (uint32_t i =0; i< blockCntPerCnt_; i++) {
-        //         recvCnt += flagRecvTensor_test(i);
-        //     }
-        //     // LOG_INFO("2222222");
-        //     // uint64_t recvCnt = 0;
-        //     // GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
-        //     //         {1, (uint16_t)(blockCntPerCnt_), 1, 0}, recvCnt);
-        //     // // LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_, {1, 1});
-
-        //     if (recvCnt == blockCntPerCnt_) {
-        //         // LOG_INFO("flagGatherOutTensor_(0)", flagGatherOutTensor_(0));
-        //         break;
-        //     }
-        // } 
 
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
             uint32_t srcPos = expertIndex / 120 * 128 + expertIndex % 120;
@@ -2321,8 +2293,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         srcExpRankId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
-        arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
-        if (arriveCount == copyCnt) {
+        //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt); 
+        GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcExpDataIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
+        beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  
+        uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
+        uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
+        LOG_INFO("WaitToken WaitFlag start");
+        bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, flagNum);
+        LOG_INFO("WaitToken WaitFlag end");
+
+        if (isArrived) {
             //LOG_INFO("WaitAndFormatOutput index:", ind1ex);
             //LOG_INFO("arriveCount:", arriveCount);
             //LOG_INFO("copyCnt:", copyCnt);
@@ -2547,12 +2527,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
                 ScatterTokenToRemote();  //4 20  5
             } else {
-                // GatherTokenFrRemote(aivUsedGather_);
+                GatherTokenFrRemote(aivUsedGather_);
             }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
-        // PipeBarrier<PIPE_ALL>();
-        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        PipeBarrier<PIPE_ALL>();
+        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
