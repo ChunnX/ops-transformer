@@ -86,7 +86,7 @@
       <tr>
         <td>expandedRowIdx</td>
         <td>输入</td>
-        <td>公式中的`expandedRowIdx`，表示token按照专家序排序索引。</td>
+        <td>公式中的`expandedRowIdx`，表示token按照专家序排序的索引。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>

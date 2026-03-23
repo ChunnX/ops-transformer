@@ -77,13 +77,13 @@ $$
    <td>permutedProbsOutputGradOptional</td>
    <td>输入</td>
    <td>可选输入，不传则表示不需要计算probsGradOutOptional。</td>
-   <td>INT8、BOOL</td>
+   <td>BFLOAT16、FLOAT16、FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sortedIndices</td>
    <td>输入</td>
-   <td>非droppad模式要求shape为一个1D的（tokens_num \* topK_num，）。</td>
+   <td>非dropPadded模式要求shape为一个1D的（tokens_num \* topK_num，）。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -105,7 +105,7 @@ $$
    <td>tokens_num</td>
    <td>属性</td>
    <td>参与运算的token个数。</td>
-   <td>BFLOAT16、FLOAT16、FLOAT32</td>
+   <td>INT64</td>
    <td>-</td>
   </tr>
   <tr>

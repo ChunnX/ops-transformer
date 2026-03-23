@@ -153,7 +153,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
       <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>paddedMode为false：（tokens_num * topK_num,  hidden_size）<br>paddedMode为true：（experts_num* capacity,  hidden_size）</td>
+      <td>paddedMode为false：(tokens_num * topK_num, hidden_size)<br>paddedMode为true：(experts_num* capacity, hidden_size)</td>
       <td>√</td>
     </tr>
     <tr>
