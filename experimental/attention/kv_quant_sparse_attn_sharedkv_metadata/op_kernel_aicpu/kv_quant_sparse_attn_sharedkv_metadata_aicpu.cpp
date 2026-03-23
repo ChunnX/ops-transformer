@@ -96,11 +96,6 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckSingleParam() {
         KERNEL_LOG_ERROR("max_seqlen_q should not be negative, but got %d", querySeqSize_);
         return false;
     }
-    // num_heads_q 校验
-    if (queryHeadNum_ != 64) {
-        KERNEL_LOG_ERROR("num_heads_q should only be 64, but got %d", queryHeadNum_);
-        return false;
-    }
     // num_heads_kv 校验
     if (kvHeadNum_ != 1) {
         KERNEL_LOG_ERROR("num_heads_kv should only be 1, but got %d", kvHeadNum_);
@@ -230,7 +225,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsCheck() {
 
 ValidSocVersion KvQuantSparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion()
 {
-    const std::string ascend950 = "Ascend910_95";
+    const std::string ascend950 = "Ascend950";
     if (socVersion_.find(ascend950) != std::string::npos) {
         return ValidSocVersion::ASCEND950;
     } else {
@@ -275,7 +270,11 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsInit()
         mBaseSize_ = groupSize_ * s1BlockLen;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950){
-        mBaseSize_ = 64U;
+        if (isSCFA) {
+            mBaseSize_ = 1U * groupSize_;
+        } else {
+            mBaseSize_ = 64U / groupSize_ * groupSize_;
+        }
         s2BaseSize_ = 128U;
     }
     return true;
