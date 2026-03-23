@@ -37,7 +37,12 @@
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
+#include "cann_version.h"
 
+#if CANN_VERSION_NUM >= 90000000
+#include "mc2_exception_dump.h"
+using namespace Mc2Exception;
+#endif
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
@@ -102,3 +107,14 @@ IMPL_OP_OPTILING(MoeDistributeCombineV3)
     .Tiling(MoeDistributeCombineV3TilingFunc)
     .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
 } // namespace optiling
+
+#if CANN_VERSION_NUM >= 90000000
+// Register exception func
+inline void MoeDistributeCombineV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV3");
+}
+
+IMPL_OP(MoeDistributeCombineV3)
+    .ExceptionDumpParseFunc(MoeDistributeCombineV3ExceptionImplWrapper);
+#endif

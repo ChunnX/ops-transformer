@@ -38,11 +38,10 @@
 #include "../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h"
+#include "cann_version.h"
 
-#ifdef MC2_EXCEPTION_HANDLER
+#if CANN_VERSION_NUM >= 90000000
 #include "mc2_exception_dump.h"
-#endif
-#ifdef MC2_EXCEPTION_HANDLER
 using namespace Mc2Exception;
 #endif
 
@@ -1302,6 +1301,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
+
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
         return ge::GRAPH_FAILED);
@@ -2203,10 +2203,14 @@ IMPL_OP_OPTILING(MoeDistributeCombineV2)
     .Tiling(MoeDistributeCombineV2TilingFunc)
     .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
-#ifdef MC2_EXCEPTION_HANDLER
+#if CANN_VERSION_NUM >= 90000000
 // Register exception func
 inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
     Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
 }
 

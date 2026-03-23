@@ -40,11 +40,10 @@
 #include "../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 #include "moe_distribute_check_win_size.h"
+#include "cann_version.h"
 
-#ifdef MC2_EXCEPTION_HANDLER
+#if CANN_VERSION_NUM >= 90000000
 #include "mc2_exception_dump.h"
-#endif
-#ifdef MC2_EXCEPTION_HANDLER
 using namespace Mc2Exception;
 #endif
 
@@ -2256,10 +2255,14 @@ IMPL_OP_OPTILING(MoeDistributeDispatchV2)
     .Tiling(MoeDistributeDispatchV2TilingFunc)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV2);
 
-#ifdef MC2_EXCEPTION_HANDLER
+#if CANN_VERSION_NUM >= 90000000
 // Register exception func
 inline void MoeDistributeDispatchV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
     Mc2ExceptionImpl(args, userdata, "MoeDistributeDispatchV2");
 }
 
