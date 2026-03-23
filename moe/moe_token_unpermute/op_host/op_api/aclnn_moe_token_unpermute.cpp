@@ -60,6 +60,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
             executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
+    OP_LOGE("jimmy address: %p\n", (void*)(*executor));
     aclnnStatus ret = aclnnInnerMoeFinalizeRoutingV2GetWorkspaceSize(
         permutedTokens, sortedIndices, nullptr, nullptr, nullptr, probsOptional, nullptr, READ_INDEX_BY_ROW, out,
         workspaceSize, executor);
