@@ -1438,7 +1438,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         LOG_INFO("WaitToken WaitFlag start");
         bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, blockCntPerToken_);
         LOG_INFO("WaitToken WaitFlag end");
-        LOG_INFO("WaitToken WaitFlag isArrived:%u, index:%d",isArrived,index);
+        LOG_INFO("WaitToken WaitFlag isArrived:",isArrived);
+        LOG_INFO("WaitToken WaitFlag index:",index);
 
         // LOG_INFO("[BATCHWRITE][WaitToken][true] index:", index);
         // LOG_INFO("[BATCHWRITE][WaitToken][true] arriveCount:", arriveCount);
