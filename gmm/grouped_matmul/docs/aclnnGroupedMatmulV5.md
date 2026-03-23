@@ -669,12 +669,13 @@ aclnnStatus aclnnGroupedMatmulV5(
       除[公共约束](#公共约束)外，A4W4场景其余约束如下：
       - 仅支持GroupType=0（M轴分组），actType=0，groupListType=0/1
       - 当前仅支持x、weight、out均为长度为1的TensorList
-      - x不支持转置，weight不支持转置
+      - x不支持转置，weight为NZ格式时，支持转置。ND格式仅支持非转置。
       - x仅支持2维Tensor，Shape为（M，K）
       - weight仅支持3维Tensor，Shape为（E，K，N）
       - weight的数据格式为ND时，要求n为8的整数倍。
       - 支持perchannel和pergroup量化。perchannel场景的scale的shape需为$[E, N]$，pergroup场景需为$[E, G, N]$。
-      - pergroup场景下，$G$必须要能整除$k$，且$k/G$需为偶数。
+      - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
+      - 开启右矩阵NZ转置后，$K/G$必须按照64对齐， K按照64对齐， N按照16对齐。
     </details>
 
     <a id="非量化场景约束"></a>
@@ -747,7 +748,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
         语义：各个专家处理的token数的预期值，算子tiling时会按照数组中第一个元素进行最优tiling，性能更优。
 
-        适用场景：[a8w4场景](#a8w4场景约束)与[a8w8场景](#a8w8场景约束)，且为x、weight、out均为单tensor场景。
+        适用场景：[a8w4场景](#a8w4场景约束)、[a8w8场景](#a8w8场景约束)与[a4w4场景](#a4w4场景约束)，且为x、weight、out均为单tensor场景。
 
       * 第二个元素：
 
