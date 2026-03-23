@@ -2271,11 +2271,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t maxCopyTokenCnt = tBufRealSize_ / hCommuSize_;
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1 : moeExpertNumPerRank_;
     uint32_t srcExpRankId, dstPosition, arriveCount, copyCnt, srcDataBlockIdx;
-    uint32_t flagMaxRecvNum = (blockCntPerTokenToExpert_ * maxCopyTokenCnt * UB_ALIGN) / sizeof(uint32_t);
+    uint32_t flagMaxRecvNum = (blockCntPerTokenToExpert_ * maxCopyTokenCnt * UB_ALIGN) / sizeof(float32_t);
     uint32_t gatherOutSize = Ceil(blockCntPerTokenToExpert_ * maxCopyTokenCnt * sizeof(uint32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     GlobalTensor<int32_t> cleanGlobal;
     flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
-    flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
+    flagRecvTensor_ = tBuf.GetWithOffset<float32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
     //LOG_INFO("WaitAndFormatOutput validNum:", validNum);
     //LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
