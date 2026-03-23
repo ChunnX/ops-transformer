@@ -7,7 +7,7 @@
 
 MoeInitRoutingV2算子的主体逻辑运行在VectorCore上，其核心计算过程如上图所示，主要包括以下步骤：
 1. 初始化：包括tiling初始化（将tiling数据从DDR内存拷贝到AiCore内存）、自定义对象实例化、初始化等；
-2. 对expertIdx进行排序，得到expandedExpertIdx和sortedRowIdx，其中expandedExpertIdx对应排序后的value，sortedRowId对应排序后的index；
+2. 对expertIdx进行排序，得到expandedExpertIdx和sortedRowIdx，其中expandedExpertIdx对应排序后的value，sortedRowIdx对应排序后的index；
 3. 对expandedExpertIdx做直方图运算，得到expertTokenCountOrCumSum或expertTokenBeforeCapacity；
 4. 对sortedRowIdx进行排序，并以排序后的index作为输出expandedRowIdx；
 5. 以x为输入，expandedRowIdx为index做Scatter运算，得到输出expandedX。
@@ -15,10 +15,10 @@ MoeInitRoutingV2算子的主体逻辑运行在VectorCore上，其核心计算过
 # 2 模板设计
 为了使不同的输入可以复用相同的tiling和流水，采用了模板的方式来实现融合算子，但是不同的输入全部使用同一套模板时又无法达到性能最优和功能泛化，因此需要根据输入shape的特征区分不同的模板来实现。
 ## 2.1 通用模板
-在通用场景下，MoeInitRoutingV2算子会按照计算流程，划分为Sort、ComputeTokenOut、SrcToDst、Scatter四个步骤。由于每一步都依赖于上一步的结果，并且需要占用完整的UB空间，因此每个步骤计算前都需要进行**多核同步**以保证上一步骤已计算结束。
+在通用场景下，MoeInitRoutingV2算子会按照计算流程，划分为Sort、ComputeTokenCount、SrcToDst、Scatter四个步骤。由于每一步都依赖于上一步的结果，并且需要占用完整的UB空间，因此每个步骤计算前都需要进行**多核同步**以保证上一步骤已计算结束。
 
 ### 2.1.1 Sort
-这一步骤用于对exertIdx进行排序。根据单核可以处理的最大的排序的数量，Sort阶段被划分为单核模板和多核模板：
+这一步骤用于对expertIdx进行排序。根据单核可以处理的最大的排序的数量，Sort阶段被划分为单核模板和多核模板：
 
 a. 单核模板：此时数据量未超过单核处理上限，仅使用第0核对expertIdx排序，其他核不工作。
 

@@ -18,7 +18,7 @@
 - 算子功能：根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
 - 计算公式：
 
-  - probs非None计算公式如下：
+  - probs非None时，计算公式如下：
     
     $$
     T[k] = T[S[k]]
@@ -107,7 +107,7 @@
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
 - <term>Ascend 950PR/Ascend 950DT</term>：
-  在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2](../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
+  在调用本接口时，框架内部会调用[aclnnMoeFinalizeRoutingV2](../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
   - permutedTokens输入等同于aclnnMoeFinalizeRoutingV2接口的expandedX输入。
   - sortedIndices输入等同于aclnnMoeFinalizeRoutingV2接口的expandedRowIdx输入。
   - probsOptional输入等同于aclnnMoeFinalizeRoutingV2接口的scalesOptional输入。

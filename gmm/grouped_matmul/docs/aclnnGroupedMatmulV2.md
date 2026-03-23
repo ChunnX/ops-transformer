@@ -284,7 +284,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td rowspan="6">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="6">161002</td>
-      <td>x、weight、biasOptional、scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、groupListOptional、out的数据类型和数据格式不在支持的范围内。</td>
+      <td>x、weight、biasOptional、scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、groupListOptional、y的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>weight的长度不在支持范围。</td>
