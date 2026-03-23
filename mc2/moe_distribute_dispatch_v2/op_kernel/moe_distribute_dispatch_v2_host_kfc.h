@@ -103,7 +103,7 @@ private:
     __aicore__ inline void InitCommInfo();
     __aicore__ inline void CalExpertOffset(uint32_t startTokenId, uint32_t endTokenId);
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<uint32_t> flagRecvGatherMask);
-    template <bool isContinueWait> __aicore__ inline void WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, uint32_t stride, uint32_t waitNum);
+    template <bool isContinueWait> __aicore__ inline bool WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, uint32_t stride, uint32_t waitNum);
     template <bool isStoreOffset> __aicore__ inline void CalServerSendCnt();
     __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
@@ -1476,50 +1476,50 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
     }
 }
 
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline bool
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal,
-                                                                            uint32_t flagNum, LocalTensor<uint32_t> &flagRecvTensor,
-                                                                            LocalTensor<uint32_t> &flagGatherOutTensor)
-{
-    uint64_t rsvdCnt = 0;
-    uint32_t arriveFlagNum = 0;
-    uint32_t compareCount =
-        Ceil(flagNum, COMPARE_COUNT_PER_BLOCK) * COMPARE_COUNT_PER_BLOCK; // flagNum 向上取整到256倍数
-    uint32_t compResultU64Num = Ceil(flagNum, 64);                        // 64：按照64bit位进行划分
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline bool
+// MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal,
+//                                                                             uint32_t flagNum, LocalTensor<uint32_t> &flagRecvTensor,
+//                                                                             LocalTensor<uint32_t> &flagGatherOutTensor)
+// {
+//     uint64_t rsvdCnt = 0;
+//     uint32_t arriveFlagNum = 0;
+//     uint32_t compareCount =
+//         Ceil(flagNum, COMPARE_COUNT_PER_BLOCK) * COMPARE_COUNT_PER_BLOCK; // flagNum 向上取整到256倍数
+//     uint32_t compResultU64Num = Ceil(flagNum, 64);                        // 64：按照64bit位进行划分
 
-    DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(flagNum), static_cast<uint32_t>(sizeof(uint32_t)),
-                                        static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
-    DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
+//     DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(flagNum), static_cast<uint32_t>(sizeof(uint32_t)),
+//                                         static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
+//     DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
 
-    // flag放到flagRecvTensor
-    DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
-    // // LOG_INFO("[BATCHWRITE]dataFlagGlobal", dataFlagGlobal, {35, 128});
-    // LOG_INFO("[BATCHWRITE]flagRecvTensor", flagRecvTensor, {1, flagNum}); // blockCntPerToken_ * SERVER_STATE_ALIGN;
+//     // flag放到flagRecvTensor
+//     DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
+//     // // LOG_INFO("[BATCHWRITE]dataFlagGlobal", dataFlagGlobal, {35, 128});
+//     // LOG_INFO("[BATCHWRITE]flagRecvTensor", flagRecvTensor, {1, flagNum}); // blockCntPerToken_ * SERVER_STATE_ALIGN;
 
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    GatherMask(flagGatherOutTensor, flagRecvTensor, flagRecvGatherMask_, true, uint32_t(1),
-               {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
-    // // LOG_INFO("flagGatherOutTensor", flagGatherOutTensor, {1, 1});
-    PipeBarrier<PIPE_V>();
-    CompareScalar(flagCompResultU8_, flagGatherOutTensor, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    for (uint32_t i = 0; i < compResultU64Num; i++) {
-        uint64_t flagCompMask = flagCompResultLtU64_(i);
-        int64_t firstValidIdx = ScalarGetSFFValue<0>(flagCompMask); // 找到0则表示数据没到
-        if (firstValidIdx == -1) {                                  // 本次数据全到
-            arriveFlagNum += 64U;                                   // 64：ScalarGetSFFValue操作单位为64bit位
-        } else {
-            arriveFlagNum += uint32_t(firstValidIdx);
-            break;
-        }
-    }
-    // // LOG_INFO("arriveFlagNum", arriveFlagNum);
-    if (arriveFlagNum > flagNum) {
-        arriveFlagNum = flagNum;
-    }
-    arriveCount = uint32_t(arriveFlagNum / flagNum); // 返回token总数
-}
+//     SyncFunc<AscendC::HardEvent::MTE2_V>();
+//     GatherMask(flagGatherOutTensor, flagRecvTensor, flagRecvGatherMask_, true, uint32_t(1),
+//                {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
+//     // // LOG_INFO("flagGatherOutTensor", flagGatherOutTensor, {1, 1});
+//     PipeBarrier<PIPE_V>();
+//     CompareScalar(flagCompResultU8_, flagGatherOutTensor, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
+//     SyncFunc<AscendC::HardEvent::V_S>();
+//     for (uint32_t i = 0; i < compResultU64Num; i++) {
+//         uint64_t flagCompMask = flagCompResultLtU64_(i);
+//         int64_t firstValidIdx = ScalarGetSFFValue<0>(flagCompMask); // 找到0则表示数据没到
+//         if (firstValidIdx == -1) {                                  // 本次数据全到
+//             arriveFlagNum += 64U;                                   // 64：ScalarGetSFFValue操作单位为64bit位
+//         } else {
+//             arriveFlagNum += uint32_t(firstValidIdx);
+//             break;
+//         }
+//     }
+//     // // LOG_INFO("arriveFlagNum", arriveFlagNum);
+//     if (arriveFlagNum > flagNum) {
+//         arriveFlagNum = flagNum;
+//     }
+//     arriveCount = uint32_t(arriveFlagNum / flagNum); // 返回token总数
+// }
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyInAndOut(
