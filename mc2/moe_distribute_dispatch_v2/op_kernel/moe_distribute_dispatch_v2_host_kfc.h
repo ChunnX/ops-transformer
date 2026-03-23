@@ -1434,10 +1434,11 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         // }
         
         //CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
-        uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
+        uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
         LOG_INFO("WaitToken WaitFlag start");
         bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, blockCntPerToken_);
         LOG_INFO("WaitToken WaitFlag end");
+        LOG_INFO("WaitToken WaitFlag isArrived:%u, index:%d",isArrived,index);
 
         // LOG_INFO("[BATCHWRITE][WaitToken][true] index:", index);
         // LOG_INFO("[BATCHWRITE][WaitToken][true] arriveCount:", arriveCount);
@@ -1742,7 +1743,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
         SyncFunc<AscendC::HardEvent::V_S>();
         flagRecvGatherMask_.SetValue(0, 1);
-        uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
+        uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
         LOG_INFO("SetStatus WaitFlag start");
         WaitFlag<true>(flagAddr, flagRecvTensor_test, stride, flagMaxRecvNum);
         LOG_INFO("SetStatus WaitFlag end");
@@ -2297,7 +2298,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
         expertFinishNumTensor_(index) * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
-        uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
+        uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
         LOG_INFO("WaitToken WaitFlag start");
         bool isArrived = WaitFlag<false>(wAddr, flagRecvTensor_, stride, flagNum);
         LOG_INFO("WaitToken WaitFlag end");
@@ -2309,10 +2310,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
-            CopyOut(xOutInt32Tensor, wAddr, index, dstPosition, arriveCount);
+            CopyOut(xOutInt32Tensor, wAddr, index, dstPosition, copyCnt);
             // finish更新并clean
-            expertFinishNumTensor_(index) += arriveCount;
-            expertLeftNumTensor_(index) -= arriveCount;
+            expertFinishNumTensor_(index) += copyCnt;
+            expertLeftNumTensor_(index) -= copyCnt;
             if (expertLeftNumTensor_(index) == 0) {
                 uint32_t cleanUpNum = expertFinishNumTensor_(index) * blockCntPerTokenToExpert_;
                 DataCopyExtParams cleanUoParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U, SERVER_STATE_ALIGN - sizeof(int32_t), 0U};
