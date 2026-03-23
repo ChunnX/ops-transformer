@@ -24,5 +24,5 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
                 -Werror
     )
 else()
-    add_modules_sources(OPTYPE moe_init_routing_v2_grad ACLNNTYPE aclnn_inner )
+    add_modules_sources(OPTYPE moe_init_routing_v2_grad ACLNNTYPE aclnn_exclude )
 endif()
