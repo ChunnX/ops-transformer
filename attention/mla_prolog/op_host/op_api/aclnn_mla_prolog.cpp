@@ -43,7 +43,7 @@ extern aclnnStatus aclnnInnerMlaPrologGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerMlaProlog(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                         const aclrtStream stream);
+                                         aclrtStream stream);
 
 aclnnStatus aclnnMlaPrologGetWorkspaceSize(
     const aclTensor *tokenX,
@@ -93,7 +93,7 @@ aclnnStatus aclnnMlaPrologGetWorkspaceSize(
 }
 
 aclnnStatus aclnnMlaProlog(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                     const aclrtStream stream)
+                                     aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaProlog are no longer supported on Ascend950.");
