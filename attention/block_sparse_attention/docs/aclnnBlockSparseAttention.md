@@ -61,8 +61,8 @@ aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
   int64_t            preTokens,
   int64_t            nextTokens,
   int64_t            softmaxLseFlag,
-  const aclTensor   *attentionOut,
-  const aclTensor   *softmaxLseOptional,
+  aclTensor         *attentionOut,
+  aclTensor         *softmaxLseOptional,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -72,7 +72,7 @@ aclnnStatus aclnnBlockSparseAttention(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  const aclrtStream stream)
+  aclrtStream stream)
 ```
 
 ## aclnnBlockSparseAttentionGetWorkspaceSize
