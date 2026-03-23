@@ -159,11 +159,11 @@
     （2）rotate\_interleaved（GPT-J style）计算模式：
 
     $$
-    x1 = query\_rot[..., ::2]
+    x1 = queryRot[..., ::2]
     $$
 
     $$
-    x2 = query\_rot[..., 1::2]
+    x2 = queryRot[..., 1::2]
     $$
 
     $$
@@ -254,7 +254,7 @@
       <td style="white-space: nowrap">keyOut</td>
       <td style="white-space: nowrap">输出</td>
       <td style="white-space: nowrap">输出key执行旋转位置编码后的结果。</td>
-      <td style="white-space: nowrap">INT32</td>
+      <td style="white-space: nowrap">FLOAT、FLOAT16、BFLOAT16</td>
       <td style="white-space: nowrap">ND</td>
     </tr>
   </tbody></table>

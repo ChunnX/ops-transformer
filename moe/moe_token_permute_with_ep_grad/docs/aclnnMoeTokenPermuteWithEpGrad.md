@@ -36,7 +36,7 @@
   - 接着计算：
 
     $$
-    tokenGradOut = tokenGradOut.reshape(-1, topK, hiddenSize)
+    tokenGradOut = tokenGradOut.reshape(-1, numTopk, hiddenSize)
     $$
 
     $$

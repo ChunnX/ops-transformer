@@ -29,7 +29,7 @@
   $$
   
   $$
-  sortedIndicesOut=argSort(sortedIndicesFirst)
+  sortedIndicesOut=argsort(sortedIndicesFirst)
   $$
     
   $$
@@ -41,7 +41,7 @@
   $$
 
   $$
-  permuteTokens[sortedIndicesOut[i]]=tokens[i//topK]
+  permutedTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
   $$
   
   $$
@@ -67,7 +67,7 @@
   permutedTokensOut = tokens.index_select(0, sortedIndicesOut)
   $$
   
-- 如果probs不是`none`时：
+- 如果probsOptional不是`none`时：
   
   $$
   probs\_T\_1D = probsOptional.T.view(-1)
