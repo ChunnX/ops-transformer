@@ -1444,7 +1444,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         if (isArrived) {
             uint32_t dstPosition = index;
             GM_ADDR readAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
-            CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, arriveCount);
+            CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, 1); //TODO:太坑了
             //LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
