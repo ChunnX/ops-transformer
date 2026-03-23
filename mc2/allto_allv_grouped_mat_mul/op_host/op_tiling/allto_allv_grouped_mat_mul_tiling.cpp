@@ -58,9 +58,9 @@ constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t NUM_EIGHT = 8;
 constexpr uint32_t NUM_SIXTEEN = 16;
-constexpr uint32_t NUM_THIRTYTWO = 32;
+constexpr uint32_t E_MAX_VALUE = 48;
 constexpr uint32_t NUM_SIXTYFOUR = 64;
-constexpr uint32_t MAX_EXPERT_NUM = 256;
+constexpr uint32_t MAX_EXPERT_NUM = 384;
 constexpr uint32_t MAX_BSK = 52428800;
 constexpr uint32_t MAX_SHAPE_SIZE = 65536;
 constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
@@ -524,8 +524,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* co
 ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContext* context) const
 {
     uint64_t E_ep = tilingData->commonTilingInfo.E_ep;
-    if (E_ep <= NUM_ZERO || E_ep > NUM_THIRTYTWO) {
-        OP_LOGE(A_INNER_DEBUG, "E_ep should be in (0, 32], but got %lu!", E_ep);
+    if (E_ep <= NUM_ZERO || E_ep > E_MAX_VALUE) {
+        OP_LOGE(A_INNER_DEBUG, "E_ep should be in (0, %d], but got %lu!", E_MAX_VALUE, E_ep);
         return ge::GRAPH_FAILED;
     }
     uint64_t epWorldSize = tilingData->commonTilingInfo.epWorldSize;
@@ -566,8 +566,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
     }
     if ((E_ep * epWorldSize <= NUM_ZERO) || (E_ep * epWorldSize > MAX_EXPERT_NUM)) {
         OP_LOGE(
-            A_INNER_DEBUG, "The size of send_counts(e*ep) and recv_counts(e*ep) should be in (0, 256], but got %lu!",
-            E_ep * epWorldSize);
+            A_INNER_DEBUG, "The size of send_counts(e*ep) and recv_counts(e*ep) should be in (0, %d], but got %lu!",
+            MAX_EXPERT_NUM, E_ep * epWorldSize);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
