@@ -2295,7 +2295,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
         //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt); 
         GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
-        beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  
+        expertFinishNumTensor_(index) * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = SERVER_STATE_ALIGN - sizeof(uint32_t);
         LOG_INFO("WaitToken WaitFlag start");
