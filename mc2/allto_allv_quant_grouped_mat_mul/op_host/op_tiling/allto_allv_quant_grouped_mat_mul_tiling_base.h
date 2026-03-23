@@ -86,6 +86,7 @@ constexpr uint32_t COMM_MAX_SIZE = 100 * 1024 * 1024;
 // cube compute
 constexpr uint64_t DOUBLE_BUFFER = 2;
 constexpr uint64_t CUBE_BLOCK = 16;
+constexpr uint64_t L1_ALIGN_SIZE = 32;
 // quant mode
 constexpr uint64_t NO_QUANT_MODE = 0;
 constexpr uint64_t PERTENSOR_QUANT_MODE = 1;

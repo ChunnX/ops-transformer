@@ -92,7 +92,7 @@ public:
         if ASCEND_IS_AIV {
             return ;
         }
-        if (expertTokenNum_[expertIdx] == 0) {
+        if (!isLocal && expertTokenNum_[expertIdx] == 0) {
             return ;
         }
         this->UpdateAddr(expertIdx);

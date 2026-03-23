@@ -114,14 +114,14 @@ ge::graphStatus AlltoAllvGmmQuantTiling::DoLibApiTiling()
         auto &gmmQuantTilingData = tilingData->gmmQuantTilingData;
         SetGMMQuantParams(gmmQuantTilingData);
         SetTilingArray(gmmQuantTilingData, maxMSize, n1_, h1_);
-        SetTilingParams(gmmQuantTilingData, maxMSize, n1_, h1_);
+        SetTilingParams(gmmQuantTilingData, maxMSize, n1_, h1_, transGmmWeight_);
         PrintGMMQuantTilingData(gmmQuantTilingData);
     }
     if (bs_ != 0) {
         auto &mmQuantTilingData = tilingData->mmQuantTilingData;
         SetGMMQuantParams(mmQuantTilingData);
         SetTilingArray(mmQuantTilingData, bs_, n2_, h2_);
-        SetTilingParams(mmQuantTilingData, bs_, n2_, h2_);
+        SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
         PrintGMMQuantTilingData(mmQuantTilingData);
     }
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
@@ -201,7 +201,7 @@ void AlltoAllvGmmQuantTiling::SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuan
     gmmQuantTilingData.gmmArray.nList[0] = static_cast<int32_t>(N);
 }
 
-void AlltoAllvGmmQuantTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K) const
+void AlltoAllvGmmQuantTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, bool transB) const
 {
     auto &mm = gmmQuantTilingData.mmTilingData;
 
@@ -217,7 +217,8 @@ void AlltoAllvGmmQuantTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQua
     mm.baseM = std::min(static_cast<int32_t>(M), static_cast<int32_t>(BASIC_BLOCK_SIZE_256));
     mm.baseM = Ops::Base::CeilAlign(mm.baseM, static_cast<int32_t>(CUBE_BLOCK));
     mm.baseN = std::min(static_cast<int32_t>(N), static_cast<int32_t>(BASIC_BLOCK_SIZE_256));
-    mm.baseN = Ops::Base::CeilAlign(mm.baseN, static_cast<int32_t>(CUBE_BLOCK));
+    mm.baseN = Ops::Base::CeilAlign(mm.baseN, transB ? static_cast<int32_t>(CUBE_BLOCK) : static_cast<int32_t>(L1_ALIGN_SIZE));
+    
     mm.baseK = std::min(static_cast<int32_t>(K), static_cast<int32_t>(BASIC_BLOCK_SIZE_128));
     mm.baseK = Ops::Base::CeilAlign(mm.baseK, static_cast<int32_t>(CUBE_REDUCE_BLOCK));
 
