@@ -27,11 +27,27 @@ def get_inputs(param, device=None):
     # 生成 indices - 确保在有效范围内
     indices = torch.randint(0, num_embeddings, (num_indices,), dtype=torch.int32, device=device)
     
-    # 生成 offsets - 必须是递增序列
+    # 生成 offsets - 根据 num_bags 动态生成分段点
+    # offsets 必须是递增序列，表示每个 bag 在 indices 中的起始位置
     if include_last_offset:
-        offsets = torch.tensor([0, num_indices // 2, num_indices], dtype=torch.int32, device=device)
+        # include_last_offset=True: offsets 长度为 num_bags + 1
+        # 最后一个元素等于 num_indices
+        num_segments = num_bags
+        segment_size = max(1, num_indices // num_segments)
+        offsets_list = [0]
+        for i in range(1, num_segments):
+            next_offset = min(offsets_list[-1] + segment_size, num_indices - (num_segments - i))
+            offsets_list.append(next_offset)
+        offsets_list.append(num_indices)  # 最后一个元素
+        offsets = torch.tensor(offsets_list, dtype=torch.int32, device=device)
     else:
-        offsets = torch.tensor([0, num_indices // 2], dtype=torch.int32, device=device)
+        # include_last_offset=False: offsets 长度为 num_bags
+        segment_size = max(1, num_indices // num_bags)
+        offsets_list = [0]
+        for i in range(1, num_bags):
+            next_offset = min(offsets_list[-1] + segment_size, num_indices - (num_bags - i))
+            offsets_list.append(next_offset)
+        offsets = torch.tensor(offsets_list, dtype=torch.int32, device=device)
     
     # 生成 per_sample_weights (可选)
     if has_per_sample_weights:

@@ -1,7 +1,0 @@
-{
-    "ID": 7,
-    "TILING_KEY": [
-        101
-    ],
-    "DESCRIPTION": "该执行路径主要应用于DiagFlatNDTo2DWithFew场景（DTYPE为complex32/uint32/int32/float32/complex64/uint64/int64/float64/int16/uin16/float16）。"
-}

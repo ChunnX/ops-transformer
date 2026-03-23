@@ -34,12 +34,7 @@ enum class DiagV2TilingKey : int64_t
     ASSIST_SIZE_1 = 2101,
     ASSIST_SIZE_2 = 2102,
     ASSIST_SIZE_4 = 2103,
-    ASSIST_SIZE_8 = 2104,
-    ASSIST_SIZE_16 = 2105,
-    SCALAR_SIZE_1 = 2401,
-    SCALAR_SIZE_2 = 2402,
-    SCALAR_SIZE_4 = 2403,
-    SCALAR_SIZE_8 = 2404
+    ASSIST_SIZE_8 = 2104
 };
 
 BEGIN_TILING_DATA_DEF(DiagV2TilingData)
@@ -52,18 +47,8 @@ TILING_DATA_FIELD_DEF(int64_t, numPerCore);
 TILING_DATA_FIELD_DEF(int64_t, tailNum);
 TILING_DATA_FIELD_DEF(int64_t, tilingKey);
 TILING_DATA_FIELD_DEF(int64_t, matrixRowLength);
-TILING_DATA_FIELD_DEF(int64_t, inputNum); // form here for DiagFlat
-TILING_DATA_FIELD_DEF(int64_t, totalCoreNum);
-TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);
-TILING_DATA_FIELD_DEF(int64_t, normalCoreHandleNum);
-TILING_DATA_FIELD_DEF(int64_t, lastCoreHandleNum);
-TILING_DATA_FIELD_DEF(int64_t, ubInputSize);
-TILING_DATA_FIELD_DEF(int64_t, ubOutputSize);
-TILING_DATA_FIELD_DEF(int64_t, diagonal);
-TILING_DATA_FIELD_DEF(int64_t, workspaceSize);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(DiagV2, DiagV2TilingData)
-REGISTER_TILING_DATA_CLASS(DiagFlat, DiagV2TilingData)
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_DIAG_V2_H_

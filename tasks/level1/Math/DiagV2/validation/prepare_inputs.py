@@ -24,11 +24,6 @@ def get_inputs(param, device=None):
         x = torch.randint(low, high, shape, device=device, dtype=dtype)
     elif dtype == torch.bool:
         x = torch.randint(0, 2, shape, device=device, dtype=torch.bool)
-    elif dtype == torch.complex64:
-        # Complex numbers: real and imaginary parts from randn
-        real = torch.randn(shape, device=device, dtype=torch.float32)
-        imag = torch.randn(shape, device=device, dtype=torch.float32)
-        x = torch.complex(real, imag)
     else:
         # 浮点类型使用randn
         x = torch.randn(shape, device=device, dtype=dtype)

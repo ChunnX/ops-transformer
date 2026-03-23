@@ -1,7 +1,0 @@
-{
-    "ID": 9,
-    "TILING_KEY": [
-        103
-    ],
-    "DESCRIPTION": "该执行路径主要应用于DiagFlatNDTo2D场景（input number more than 64）。"
-}
