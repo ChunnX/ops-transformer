@@ -1057,7 +1057,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         
 
     }while(isContinueWait);
-    
+
     LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return true;
 }
@@ -2296,9 +2296,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         srcExpRankId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
-        //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt); 
-        GM_ADDR wAddr1 = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
-        expertFinishNumTensor_(index) * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;  //TODO:
+        //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
+        int32_t beginIdx = expertFinishNumTensor_(index);
+        GM_ADDR wAddr1 = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_ + beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE);  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
         LOG_INFO("WaitAndFormatOutput WaitFlag start");
