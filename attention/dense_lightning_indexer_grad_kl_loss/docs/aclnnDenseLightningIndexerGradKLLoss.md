@@ -102,7 +102,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     int64_t              next_tokens,
     const aclTensor     *dQueryIndex,
     const aclTensor     *dKeyKndex,
-    const aclTensor     *dWeights
+    const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
     aclOpExecutor       *executor)
@@ -113,7 +113,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    const aclrtStream stream)
+    aclrtStream stream)
 ```
 
 ## aclnnDenseLightningIndexerGradKLLoss
@@ -122,9 +122,9 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
 
   <table style="undefined;table-layout: fixed; width: 1550px">
       <colgroup>
-          <col style="width: 220px">
+          <col style="width: 320px">
           <col style="width: 120px">
-          <col style="width: 300px">  
+          <col style="width: 200px">  
           <col style="width: 400px">  
           <col style="width: 212px">  
           <col style="width: 100px">
@@ -248,7 +248,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>keyRope（aclTensor*）</td>
        <td>输入</td>
-       <td>MLA rope部分：Key位置编码的输出</<td>
+       <td>MLA rope部分：Key位置编码的输出</td>
        <td><ul><li>与key的layout维度保持一致。</li><li>B: 支持泛化与query的B保持一致。</li><li>S2: 支持泛化且与key的S1保持一致。</li><li>N2: 等于N1。</li><li>Dr: 64。</li><li>T2: 多个Batch的S2累加。</li></ul></td>
        <td>FLOAT16、BFLOAT16</td>
        <td>ND</td>
