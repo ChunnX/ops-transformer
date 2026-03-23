@@ -1021,7 +1021,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
     // Implementation of WaitFlag
-    //LOG_INFO("WaitFlag waitNum", waitNum);
+    LOG_INFO("WaitFlag waitNum", waitNum);
+    LOG_INFO("WaitFlag stride", stride);
     uint64_t rsvdCnt = 0;
     GlobalTensor<float32_t> flagInGMTensor;
     //LocalTensor<uint8_t> sharedTensorInt8 = flagInLTTensor.ReinterpretCast<uint8_t>(); //reduce isReuseSource 为true情况下不会使用。
@@ -1044,7 +1045,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //         rsvdCnt++;
         //     }
         // }
-        //LOG_INFO("WaitFlag flagInGMTensor", flagInGMTensor, {1, waitNum});
+        LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
         //ReduceSum()
