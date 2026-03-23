@@ -112,7 +112,7 @@ private:
     __aicore__ inline void InitTemp();
     __aicore__ inline void CalExpertTotalSendCnt();
     __aicore__ inline void ScatterTokenToRemote();
-    __aicore__ inline void GatherTokenFrRemote(uint32_t aivNumForWait);
+    __aicore__ inline void GatherTokenFrRemote();
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
@@ -933,10 +933,10 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
 
-    // for(uint32_t index =0; index < axisK_; index++) {
-    //     LOG_INFO("index: ", index);
-    //     LOG_INFO("xOutTint16: ", xOutTint16(index + moeCntAlign_));
-    // }
+    for(uint32_t index =0; index < axisK_; index++) {
+        LOG_INFO("index: ", index);
+        LOG_INFO("xOutTint16: ", xOutTint16(index + moeCntAlign_));
+    }
 
     if(isExpertMaskFlag_) {
         SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -1031,7 +1031,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams flagCopyParams{static_cast<uint16_t>(waitNum), static_cast<uint32_t>(sizeof(float)),
                                         static_cast<uint32_t>(stride), 0, 0};
     DataCopyPadExtParams<float32_t> flagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
-    
+    uint32_t  rcvCnt = 0;
     uint64_t count =0; //TODO:
     do{
         count++;
@@ -1044,23 +1044,25 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
+        rcvCnt = static_cast<uint32_t>(flagInLTTensor.GetValue(0));
         if constexpr(isContinueWait) {
-            if(flagInLTTensor.GetValue(0) == float32_t(waitNum)) { // 循环等待直到全部到达
+            if(rcvCnt == waitNum) { // 循环等待直到全部到达
                 //LOG_INFO("WaitFlag success");
                 break;
             }
-        } else {
-            if(flagInLTTensor.GetValue(0) != float32_t(waitNum)) { // 尝试等待数据，没有到达直接退出
-                //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
-                return false;
-            }
-        }
+        } 
+        // else {
+        //     if(flagInLTTensor.GetValue(0) != float32_t(waitNum)) { // 尝试等待数据，没有到达直接退出
+        //         //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+        //         return false;
+        //     }
+        // }
         
 
     }while(isContinueWait);
 
     //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
-    return true;
+    return rcvCnt == waitNum;
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1302,7 +1304,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote(uint32_t aivNum)
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote()
 {
     uint32_t startServerId, endServerId, serverCnt;
     SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ , aivUsedGather_, startServerId, endServerId, serverCnt);
@@ -2539,7 +2541,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
                 ScatterTokenToRemote();  //4 20  5
             } else {
-                GatherTokenFrRemote(aivUsedGather_);
+                GatherTokenFrRemote();
             }
         }
         // //localWindowCopy中包含reset操作，需确保前面操作完成
