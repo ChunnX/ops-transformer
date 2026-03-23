@@ -1650,11 +1650,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
         uint32_t curExpertCnt = xInTensorInt16(moeCntAlign_ + topKIndex);                    // 取出cnt
         expertScale = xInToFloatTensor(moeExpertScalesAlign_ + topKIndex); 
-        // LOG_INFO("[SendToExpert][moe] topKIndex",topKIndex);
-        // LOG_INFO("[SendToExpert][moe] dstExpertId",dstExpertId);
-        // LOG_INFO("[SendToExpert][moe] dstRankId",dstRankId);
-        // LOG_INFO("[SendToExpert][moe] curExpertCnt",curExpertCnt);
-        // LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
+        LOG_INFO("[SendToExpert][moe] topKIndex",topKIndex);
+        LOG_INFO("[SendToExpert][moe] dstExpertId",dstExpertId);
+        LOG_INFO("[SendToExpert][moe] dstRankId",dstRankId);
+        LOG_INFO("[SendToExpert][moe] curExpertCnt",curExpertCnt);
+        LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
         
         if (dstExpertId >= moeExpertNum_)
             continue; // 无效数据
@@ -2542,9 +2542,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 GatherTokenFrRemote(aivUsedGather_);
             }
         }
-        //localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        // //localWindowCopy中包含reset操作，需确保前面操作完成
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
