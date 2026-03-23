@@ -1041,7 +1041,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        //LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
+        LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
         rcvCnt = static_cast<uint32_t>(flagInLTTensor.GetValue(0));
@@ -1051,13 +1051,6 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 break;
             }
         } 
-        // else {
-        //     if(flagInLTTensor.GetValue(0) != float32_t(waitNum)) { // 尝试等待数据，没有到达直接退出
-        //         //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
-        //         return false;
-        //     }
-        // }
-        
 
     }while(isContinueWait);
 
@@ -1151,7 +1144,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
         //LOG_INFO("CalExpertOffset for expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     }
-    //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
+    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2541,7 +2534,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
                 ScatterTokenToRemote();  //4 20  5
             } else {
-                GatherTokenFrRemote();
+                //GatherTokenFrRemote();
             }
         }
         // //localWindowCopy中包含reset操作，需确保前面操作完成
