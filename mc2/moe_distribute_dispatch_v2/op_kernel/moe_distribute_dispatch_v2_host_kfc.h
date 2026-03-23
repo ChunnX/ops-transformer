@@ -1057,6 +1057,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         
 
     }while(isContinueWait);
+    
     LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return true;
 }
