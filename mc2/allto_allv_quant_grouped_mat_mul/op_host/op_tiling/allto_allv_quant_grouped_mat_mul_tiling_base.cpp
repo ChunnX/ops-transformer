@@ -214,14 +214,14 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckCommCountsValue()
     // check sendCounts range
     for (uint64_t index = 0U; index < e_ * epWorldSize_; index++) {
         OP_TILING_CHECK((sendCounts[index] < SEND_COUNTS_MIN_VALUE) || (sendCounts[index] > bsk_),
-            OP_LOGE(context_->GetNodeName(), "sendCounts[%lu] should be in [0, BSK[%lu]], but get %lu", index, bsk_,
+            OP_LOGE(context_->GetNodeName(), "sendCounts[%lu] should be in [0, %lu], but get %lu", index, bsk_,
             sendCounts[index]),
             return ge::GRAPH_FAILED);
     }
     // check recvCounts range
     for (uint64_t index = 0U; index < e_ * epWorldSize_; index++) {
         OP_TILING_CHECK((recvCounts[index] < DIM_ZERO) || (recvCounts[index] > a_),
-            OP_LOGE(context_->GetNodeName(), "recvCounts[%lu] should be in [0, A[%lu]], but get %lu", index, a_,
+            OP_LOGE(context_->GetNodeName(), "recvCounts[%lu] should be in [0, %lu], but get %lu", index, a_,
             recvCounts[index]),
             return ge::GRAPH_FAILED);
     }
