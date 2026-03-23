@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <type_traits>
 #include <alog_pub.h>
+#include <dlog_pub.h>
 
 namespace ops::adv::tests::utils {
 
