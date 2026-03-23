@@ -1450,12 +1450,18 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
 
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950) {
-        if (tilingInfo->gSize > 64) {
+        if (tilingInfo->gSize > 64 || tilingInfo->perfMode == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
             constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
             constexpr uint32_t S2_BASE_SIZE = 128;
             constexpr uint32_t D_SIZE = 512;
             constexpr uint32_t VEC_RES_ELEM_SIZE = 2;
-            workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1U));
+            uint32_t gmSize = S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM;
+            if (tilingInfo->gSize > 64) {
+                gmSize *= (aicNum >> 1U);
+            } else {
+                gmSize *= aicNum;
+            }
+            workspaceSize += gmSize;
         }
     } else {
         constexpr uint32_t MM1_RES_ELEM_SIZE = 4;         // 4: fp32

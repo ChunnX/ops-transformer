@@ -195,7 +195,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer() {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(Q_T);
     l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
@@ -574,17 +573,15 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     // 加载当前轮的右矩阵到L1
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
         inputRightBuf.WaitCrossCore();
-        if constexpr (IS_SPLIT_G) {
-            SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-            WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-            LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
-            v0ResGm.WaitCrossCore();
-            GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-            CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
-            SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-            WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-            v0ResGm.SetCrossCore();
-        }
+        SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
+        WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
+        LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
+        v0ResGm.WaitCrossCore();
+        GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
+        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+        SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
+        WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
+        v0ResGm.SetCrossCore();
     } else {
         if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // orikv阶段不需要取topk, 核内同步
             WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
