@@ -722,7 +722,7 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     // Infer output dtype according quant_mode
     auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_X);
     auto expandedXDtype = xDtype;           // default same as dtype(x)
-    auto expandedScaleDtype = ge::DT_FLOAT; // default float32
+    auto expandedScaleDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_SCALE); // default float32
     if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         if (ge::DT_INT8 == xDtype) {
             OP_LOGE(context, "When quant_mode=%ld, xDtype cannot be int_8.", quantMode);
