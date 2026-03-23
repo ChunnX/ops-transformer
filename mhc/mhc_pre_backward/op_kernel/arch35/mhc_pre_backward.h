@@ -47,7 +47,7 @@ __aicore__ inline T Min(T lhs, T rhs)
 /**
  * Get the size of vector registers in bytes
  */
-__aicore__ inline constexpr uint32_t GetVRegSize()
+__aicore__ inline constexpr uint16_t GetVRegSize()
 {
 #if __CCE_AICORE__ == 310
     return AscendC::VECTOR_REG_WIDTH;
@@ -120,14 +120,14 @@ struct V0V1Buffers {
     uint32_t preProcessUbOffset; // Offset after hPreGradBuf for PreProcessV0 temporary buffers
 };
 
-using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float32>;
-using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float32>;
-using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float32>;
+using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
 
-using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float32, true>;
-using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float32>;
-using cT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float32>;
+using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
+using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using cT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C1 = matmul::MatmulImpl<aT_C1, bT_C1, cT_C1>;
 
 /**
@@ -347,7 +347,7 @@ private:
     uint32_t hFusionOffset_;
     uint32_t globalUbOffset_;
     uint32_t vecDealChunk_;
-    uint32_t eleNumPerVf_;
+    uint16_t eleNumPerVf_;
     DataCopyParams dataCopyParams_;
     DataCopyPadParams dataCopyPadParams_;
     bool alphaBufInitialized_;
@@ -843,13 +843,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
 
     fp32InputBuf = fp32InQueue_.AllocTensor<P>();
     PipeBarrier<PIPE_MTE2>();
-    // dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P); // 最近修复的pre反向问题
+    // dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P); // A3最近修复的pre反向问题：A3跑100多次会挂死
     dataCopyParams_.blockLen = buffers.stepLength * N_ * sizeof(P);
     DataCopyPad(fp32InputBuf, hCombBeforeGradGm_[runBSStart * N_ * N_], dataCopyParams_, dataCopyPadParams_);
     fp32InQueue_.EnQue(fp32InputBuf);
     LocalTensor<P> hCombBeforeGradBuf = fp32InQueue_.DeQue<P>();
 
-    // Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, hCombBeforeGradBufLen_); // 最近修复的pre反向问题
+    // Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, hCombBeforeGradBufLen_); // A3最近修复的pre反向问题：A3跑100多次会挂死
     Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, buffers.stepLength * N_);
     PipeBarrier<PIPE_V>();
     fp32InQueue_.FreeTensor(hCombBeforeGradBuf);
