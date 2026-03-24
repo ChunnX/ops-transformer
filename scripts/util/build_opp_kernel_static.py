@@ -235,21 +235,12 @@ class GenOpResourceIni:
     def __init__(self, soc_version: str, build_dir: str, build_with_package: bool):
         self._soc_version = soc_version
         self._build_dir = Path(build_dir)
-        opp_path = os.environ.get('ASCEND_OPP_PATH')
-        if build_with_package and opp_path:
-            opp_path = Path(opp_path)
-            self._binary_path = opp_path / "built-in/op_impl/ai_core/tbe/kernel"
-            self._tuning_basic_path = opp_path / "built-in/data/op"
-            ops_info = opp_path / "built-in/op_impl/ai_core/tbe/config" / self._soc_version
-            ops_info = list(ops_info.glob(f"aic-{self._soc_version}-ops-info-transformer.json"))
-            self._ops_info = ops_info[0] if len(ops_info) != 0 else None
-        else:
-            self._binary_path = self._build_dir / "binary" / self._soc_version / "bin"
-            self._tuning_basic_path = self._build_dir / "tbe/config" / self._soc_version
-            # transformer aic*.json 适配
-            ops_info = self._build_dir / "custom/op_impl/ai_core/tbe/config" / self._soc_version
-            ops_info = list(ops_info.glob(f"aic-{self._soc_version}-ops-info*.json"))
-            self._ops_info = ops_info[0] if len(ops_info) != 0 else None        
+        self._binary_path = self._build_dir / "binary" / self._soc_version / "bin"
+        self._tuning_basic_path = self._build_dir / "tbe/config" / self._soc_version
+        # transformer aic*.json 适配
+        ops_info = self._build_dir / "custom/op_impl/ai_core/tbe/config" / self._soc_version
+        ops_info = list(ops_info.glob(f"aic-{self._soc_version}-ops-info*.json"))
+        self._ops_info = ops_info[0] if len(ops_info) != 0 else None        
         self._op_resource_path = self._build_dir / "autogen" / self._soc_version / "aclnnop_resource"
         self._op_res: Dict[str, OpResource] = defaultdict(OpResource)
         self._l0op_list = []
