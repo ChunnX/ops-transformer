@@ -60,11 +60,21 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
     this->pipe.InitBuffer(probGradReduceSumTBuf, this->hiddenSizeLoopTimesAlign * SIZE_FLOAT);
     this->pipe.InitBuffer(permutedTokensGradTQue, DOUBLE_BUFFER, this->hiddenSizeAlign * this->inputTypeSize);
     this->pipe.InitBuffer(probGradOutTBuf, BLOCK_SIZE_32);
-
-    InitOutput<ProbsT>(
-        this->probGradGm[this->unpermutedOutputDStartOffset * this->numExpert], this->tokensNum * this->numExpert,
-        ProbsT(0));
-    SyncAll();
+    int64_t taskNum = this->tokensNum * this->numExpert;
+    if (taskNum > 0) {
+        int64_t totalCoreNum = this->tailCoreNum + this->formerCoreNum;
+        int64_t initProbNumPerCore = taskNum / totalCoreNum;
+        int64_t initFormerCoreNum = taskNum % totalCoreNum;
+        int64_t initNum = this->coreIndex < initFormerCoreNum ? initProbNumPerCore + 1 : initProbNumPerCore;
+        if (initNum > 0) {
+            int64_t initAddr = this->coreIndex < initFormerCoreNum
+                ? (initProbNumPerCore + 1) * this->coreIndex
+                : (initProbNumPerCore + 1) * initFormerCoreNum
+                    + (this->coreIndex - initFormerCoreNum) * initProbNumPerCore;
+            InitOutput<ProbsT>(this->probGradGm[initAddr], initNum, ProbsT(0));
+        }
+        SyncAll();
+    }
 }
 
 template <typename PermutedTokenT, typename IdxT, typename ProbsT>
