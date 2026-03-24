@@ -2259,8 +2259,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     GlobalTensor<ExpandXOutType> dataFlagGlobal, expandXOutGlobal;
     dataFlagGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+    GlobalTensor<float32_t> dataFlagGlobal_test;
+    dataFlagGlobal_test.SetGlobalBuffer((__gm__ float32_t *)(wAddr)); // todo:
     uint32_t t= arriveCount * 8;
-    LOG_INFO("[CopyOut][moe] dataFlagGlobal", dataFlagGlobal,{16, t});
+    LOG_INFO("[CopyOut][moe] dataFlagGlobal", dataFlagGlobal_test,{16, t});
     expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (dstPosition) * axisH_);
     DataCopyParams srcTokenCopyParams{static_cast<uint16_t>(blockCntPerTokenToExpert_ * arriveCount), 
         static_cast<uint16_t>(SPLIT_BLOCK_DATA_SIZE), static_cast<uint16_t>(UB_ALIGN), 0};
