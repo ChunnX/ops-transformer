@@ -2381,7 +2381,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // LOG_INFO("endId_", endId_);
     // LOG_INFO("sendNum_", sendNum_);
     // 软同步
-    WaitCumSumFlag();
+    WaitCumSumFlag(); // todo:
     // LOG_INFO("after WaitCumSumFlag");
     if (sendNum_ == 0) {
         // LOG_INFO("sendNum_ == 0");
