@@ -1375,8 +1375,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     firstAivId  = startServerId * useAivPerServer + (aivUsedCumSum_  + aivUsedScatter_);
     relativeAivId = aivId_ - firstAivId;
     tpipe_->InitBuffer(serverFlagBuf, UB_ALIGN);
-    tpipe_->InitBuffer(cleanBuf, UB_ALIGN * blockCntPerToken_); // 每个Token的flag个数为 blockCntPerToken_
-    Duplicate<uint32_t>(cleanBuf, 0, TOKEN_RECV_CNT_MAX);
     for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
         uint32_t tokenCnt;
         WaitStatusFlag(startServerId, serverFlagBuf, tokenCnt); // TODO :
