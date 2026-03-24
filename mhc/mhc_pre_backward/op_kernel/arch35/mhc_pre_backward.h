@@ -638,7 +638,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     }
 
     uint32_t dealBsNum = dealEndBS_ - dealStartBS_; // 不能加一
-
     uint32_t vecRunTimes = CeilDiv(dealBsNum, vecDealChunk_);
 
     float alphaPre = alphaGm_.GetValue(0);
@@ -685,7 +684,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     PipeBarrier<PIPE_V>();
 
     ReduceSum<float, Pattern::Reduce::AR, true>(alphaOutBuf[16], sumBuf, srcShape3, true);
-    PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>(); // ?下面都做流水间的同步了，为什么还要进行PIPE_V
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -900,6 +899,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     auto h1GradBuf = buffers.calcTmpBuf;
     int64_t remainDealBsSize = (runBSEnd - runBSStart);
     uint32_t bsOffset = 0;
+    // 因为参与该计算过程的变量的尾轴为n^2 + 2 * n，所以存在onceDealMixBSNum_ < remainDealBsSize(最大为chunk)，这个循环主要处理该情况
+    // onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
     while (remainDealBsSize > 0) {
         fp32OutBuf = bf16OutQueue_.AllocTensor<P>();
         uint32_t dealBSSize = (remainDealBsSize > onceDealMixBSNum_) ? onceDealMixBSNum_ : remainDealBsSize;
@@ -916,13 +917,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
         PipeBarrier<PIPE_V>();
         fp32InQueue_.FreeTensor(invRmsBufLocal);
 
-        PipeBarrier<PIPE_MTE3>();
+        PipeBarrier<PIPE_MTE3>(); // ？这为什么需要插PIPE_MTE3同步
         Mul(fp32OutBuf, buffers.invRmsBuf, h1GradBuf[bsOffset * fusionSize_], dealBSSize * fusionSize_);
         PipeBarrier<PIPE_V>();
 
+        // 这是V0的计算过程：hMixGrad
         bf16OutQueue_.EnQue(fp32OutBuf);
         LocalTensor<P> hMixGradOutBuf = bf16OutQueue_.DeQue<P>();
-
         dataCopyParams_.blockLen = dealBSSize * fusionSize_ * sizeof(P);
         DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart + bsOffset)], hMixGradOutBuf,
                     dataCopyParams_);
@@ -965,7 +966,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     dataCopyParams_.blockLen = (runBSEnd - runBSStart) * sizeof(P);
     DataCopyPad(workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(runBSStart)], invRmsOutBuf, dataCopyParams_);
-    PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>(); // ？这为什么需要插PIPE_V同步
     bf16OutQueue_.FreeTensor(invRmsOutBuf);
 
     // alpha grad (inv rms 梯度计算完成，复用h1GradBuf)
@@ -1047,7 +1048,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         }
     }
 }
-
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, uint32_t currentNDBlock,
