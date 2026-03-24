@@ -1446,16 +1446,16 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             // LOG_INFO("[BATCHWRITE][WaitToken][true]after sendtoexpert tokenid:", index);
             // finish更新并clean
             finishNumTensor_(index) = 1;
-            uint32_t cleanUpNum = blockCntPerToken_;
-            DataCopyExtParams cleanUpParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U,
-                                               SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
-            LocalTensor<int32_t> cleanBuf =
-                tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
-            cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(wAddr)); //todo:
-            SyncFunc<AscendC::HardEvent::MTE3_V>();
-            Duplicate<int32_t>(cleanBuf, 0, cleanUpNum * 8); // 8 = UB_ALIGN / 4
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanBuf, cleanUpParams);
+            // uint32_t cleanUpNum = blockCntPerToken_;
+            // DataCopyExtParams cleanUpParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U,
+            //                                    SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
+            // LocalTensor<int32_t> cleanBuf =
+            //     tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
+            // cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(wAddr)); //todo:
+            // SyncFunc<AscendC::HardEvent::MTE3_V>();
+            // Duplicate<int32_t>(cleanBuf, 0, cleanUpNum * 8); // 8 = UB_ALIGN / 4
+            // SyncFunc<AscendC::HardEvent::V_MTE3>();
+            // DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanBuf, cleanUpParams);
             finishNum++;
         } else {
             index = (index + 1) % tokenCnt;
