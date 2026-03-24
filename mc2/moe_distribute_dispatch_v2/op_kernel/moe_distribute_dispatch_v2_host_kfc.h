@@ -964,8 +964,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U,
                                            UB_ALIGN, 0U};
     DataCopyPad(dataDstWinGMTensor, xOutTensor, dataCopyOutParams);
-    // PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口(后续抽成模版)
-    PipeBarrier<PIPE_ALL>();
+    PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口(后续抽成模版)
+    // PipeBarrier<PIPE_ALL>();
     DataCopyExtParams flagCopyOutParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U,
                                            SPLIT_BLOCK_DATA_SIZE, 0U};
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], flagTensor_, flagCopyOutParams);
@@ -2263,7 +2263,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GlobalTensor<float32_t> dataFlagGlobal_test;
     dataFlagGlobal_test.SetGlobalBuffer((__gm__ float32_t *)(wAddr)); // todo:
     uint32_t t= arriveCount * 8;
-    PipeBarrier<PIPE_ALL>();
+    // PipeBarrier<PIPE_ALL>();
     //LOG_INFO("[CopyOut][moe] dataFlagGlobal", dataFlagGlobal_test,{16, t});
     expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (dstPosition) * axisH_);
     DataCopyParams srcTokenCopyParams{static_cast<uint16_t>(blockCntPerTokenToExpert_ * arriveCount), 
@@ -2418,7 +2418,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::V_S>();
     flagRecvGatherMask_.SetValue(0, 1);
     SyncFunc<AscendC::HardEvent::S_V>();
-    //PipeBarrier<PIPE_ALL>();
     WaitAndFormatOutput(tBuf, validNum);
 }
 
@@ -2564,6 +2563,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
         LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
