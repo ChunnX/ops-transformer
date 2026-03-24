@@ -1023,8 +1023,8 @@ template <bool isContinueWait>
 __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
-    // LOG_INFO("WaitFlag waitNum", waitNum);
-    // LOG_INFO("WaitFlag stride", stride);
+    LOG_INFO("WaitFlag waitNum", waitNum);
+    LOG_INFO("WaitFlag stride", stride);
     uint32_t copyNum = 1; // 如果stride为0，表示所有数据全部在一起，直接一起拷贝进来
     uint32_t copyBlockLength = waitNum * sizeof(float32_t);
     uint32_t calCnt = waitNum;
@@ -1062,7 +1062,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     }while(isContinueWait);
 
-    //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+    LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return rcvCnt == waitNum;
 }
 
@@ -1131,10 +1131,10 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     SyncFunc<AscendC::HardEvent::V_MTE2>(); //这里复用了dstExpBuf_ ，必须等待完成。TODO：
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
     LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
-    // LOG_INFO("CalExpertOffset start waitFlg");
+    LOG_INFO("CalExpertOffset start waitFlg");
     // WaitFlag(flagAddr, flagInLTTensor,  usedCoreNum);
     WaitFlag<true>(flagAddr, flagInLTTensor, 0, usedCoreNum); //TODO:0魔鬼数字
-    // LOG_INFO("CalExpertOffset end waitFlg");
+    LOG_INFO("CalExpertOffset end waitFlg");
     LOG_INFO("usedCoreNum",usedCoreNum);
     PipeBarrier<PIPE_V>();
     for(uint32_t index =0 ;index < usedCoreNum; index++) {
