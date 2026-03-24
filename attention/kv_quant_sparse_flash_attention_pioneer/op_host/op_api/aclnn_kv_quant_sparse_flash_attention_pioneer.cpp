@@ -37,14 +37,12 @@ static bool kvQuantSparseFlashAttentionPioneerCheckDataType(
     const aclTensor *key,
     const aclTensor *value,
     const aclTensor *sparseIndices,
-    const aclTensor *blockTableOptional,
     const aclTensor *out)
 {
     auto qDtype = query->GetDataType();
     auto kDtype = key->GetDataType();
     auto vDtype = value->GetDataType();
     auto sparseIndDtype = sparseIndices->GetDataType();
-    auto blockTableDtype = blockTableOptional->GetDataType();
     auto outDtype = out->GetDataType();
 
     static const std::unordered_map<DataType, std::vector<DataType>> dTypeMappingKv = {
@@ -65,10 +63,6 @@ static bool kvQuantSparseFlashAttentionPioneerCheckDataType(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sparseIndices data type must be int32, please check.");
         return false;
     }
-    if (blockTableDtype != DataType::DT_INT32) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockTable data type must be int32, please check.");
-        return false;
-    }
     if (outDtype != qDtype) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "out data type must be equal qDtype, please check.");
         return false;
@@ -81,8 +75,6 @@ aclnnStatus kvQuantSparseFlashAttentionPioneerCheckTensorNull(
     const aclTensor *key,
     const aclTensor *value,
     const aclTensor *sparseIndices,
-    const char *layoutQueryOptional,
-    const char *layoutKvOptional,
     const aclTensor *out,
     uint64_t *workspaceSize)
 {
@@ -91,8 +83,6 @@ aclnnStatus kvQuantSparseFlashAttentionPioneerCheckTensorNull(
     CHECK_RET(key != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(value != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(sparseIndices != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(layoutQueryOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(layoutKvOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(out != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
@@ -192,11 +182,11 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionPioneerGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    CHECK_RET(kvQuantSparseFlashAttentionPioneerCheckTensorNull(query, key, value, sparseIndices, layoutQueryOptional,
-            layoutKvOptional, out, workspaceSize) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(kvQuantSparseFlashAttentionPioneerCheckTensorNull(query, key, value, sparseIndices, out,
+            workspaceSize) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     
-    CHECK_RET(kvQuantSparseFlashAttentionPioneerCheckDataType(query, key, value, sparseIndices, blockTableOptional,
-            out), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(kvQuantSparseFlashAttentionPioneerCheckDataType(query, key, value, sparseIndices, out),
+            ACLNN_ERR_PARAM_INVALID);
 
     L2_DFX_PHASE_1(aclnnKvQuantSparseFlashAttentionPioneer,
             DFX_IN(query, key, value, sparseIndices, keyDequantScaleOptional, valueDequantScaleOptional,
