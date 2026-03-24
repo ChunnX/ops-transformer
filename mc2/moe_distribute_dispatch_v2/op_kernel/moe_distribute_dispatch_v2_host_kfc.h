@@ -102,6 +102,9 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void CleanTokenFlag(uint32_t serverId, uint32_t startTokenId, uint32_t cleanTokenNum);
+    __aicore__ inline void CalServerSplitCore(uint32_t serverNum, uint32_t startAivId, uint32_t useAivNum,
+                                              uint32_t &startServerId, uint32_t &endServerId, uint32_t &useAivPerServer);
     __aicore__ inline void InitCommInfo();
     __aicore__ inline void CalExpertOffset(uint32_t startTokenId, uint32_t endTokenId);
     __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<uint32_t> flagRecvGatherMask);
@@ -1473,8 +1476,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             tokenRcvStatus_(dstPosition) = 1;
             rcvTokenSum++;
             if (rcvTokenSum == tokenCnt) {
-                LOG_INFO("[BATCHWRITE][WaitToken] [finishNum]index:", index);
-                LOG_INFO("[BATCHWRITE][WaitToken] finishNum:", finishNum);
+                LOG_INFO("[BATCHWRITE][WaitToken] finishNum:");
                 break;
             }
             continue;
