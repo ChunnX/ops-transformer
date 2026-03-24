@@ -872,7 +872,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     LocalTensor<P> invRmsGradUb = fp32OutQueue_.AllocTensor<P>();
     auto h1GradBuf = buffers.calcTmpBuf;
-    int64_t remainDealBsSize = (curBSSize);
+    int64_t remainDealBsSize = curBSSize;
     uint32_t bsOffset = 0;
     // 因为参与该计算过程的变量的尾轴为n^2 + 2 * n，所以存在onceDealMixBSNum_ < remainDealBsSize(最大为chunk)，这个循环主要处理该情况
     // onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
@@ -918,7 +918,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
         // TODO
         // Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], hMixBuf, buffers.invRmsBuf, dealBSSize * fusionSize_);
         if (N_ == 8) {
-            VFDoV1ProcessAlphaGradForN8Performance(
+            VFDoV1ProcessAlphaGradForN8(
                 (__ubuf__ P *)h1GradBuf.GetPhyAddr(), (__ubuf__ P *)buffers.invRmsBuf.GetPhyAddr(),
                 (__ubuf__ P *)buffers.gatherFusionBuf[bsOffset * fusionSize_].GetPhyAddr(),
                 (__ubuf__ P *)hMixBuf.GetPhyAddr(), dealBSSize);
@@ -1543,8 +1543,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3()
 {
     // alphagrad
 
-    LocalTensor<uint8_t> tmpLocal = fp32TBuf_.GetWithOffset<uint8_t>(hFusionBufLen_ / 4, 0);
-    constexpr bool isReuse = false;
+    // LocalTensor<uint8_t> tmpLocal = fp32TBuf_.GetWithOffset<uint8_t>(hFusionBufLen_ / 4, 0);
+    // constexpr bool isReuse = false;
 
     LocalTensor<P> alphaGradInLocal = fp32InQueue_.AllocTensor<P>();
     LocalTensor<P> alphaGradOutLocal = fp32OutQueue_.AllocTensor<P>();
@@ -1631,7 +1631,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessAlphaGrad(
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessBiasGradForN8Performance(
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessBiasGradForN8(
     __ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn)
 {
     __VEC_SCOPE__
