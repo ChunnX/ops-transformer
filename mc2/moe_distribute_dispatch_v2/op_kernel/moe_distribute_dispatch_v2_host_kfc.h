@@ -2439,6 +2439,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
     // LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
     SyncFunc<AscendC::HardEvent::S_MTE3>();
+    PipeBarrier<PIPE_ALL>();
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(float32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
     expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
