@@ -304,7 +304,7 @@ class GeneralizedSFAQuant:
             ori_sparse_indices_bnsd, ori_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(ori_sparse_indices,
                 ori_sparse_indices.shape, self.layout_q, cu_seqlens_q)
         ori_k_bnsd, ori_k_bnsd_shape = self.trans_shape_to_bnsd(ori_k_cal, ori_k_cal.shape, self.layout_kv, cu_seqlens_ori_kv)
-        if self.template_run_mode != "SWA":
+        if self.template_run_mode != "SWA" and self.template_run_mode != 'ORI_SCFA':
             cmp_k_bnsd, cmp_k_bnsd_shape = self.trans_shape_to_bnsd(cmp_k_cal, cmp_k_cal.shape, self.layout_kv, cu_seqlens_cmp_kv)
         else:
             cmp_k_bnsd, cmp_k_bnsd_shape = cmp_k_cal, None
@@ -983,7 +983,7 @@ def save_test_case(input_data, output_dir):
     case_name = input_data['Testcase_Name']
 
     # 生成文件名
-    input_filename = f"sas_case_{case_name}.pt"
+    input_filename = f"{case_name}.pt"
     input_filepath = os.path.join(output_dir, input_filename)
 
     # 保存数据

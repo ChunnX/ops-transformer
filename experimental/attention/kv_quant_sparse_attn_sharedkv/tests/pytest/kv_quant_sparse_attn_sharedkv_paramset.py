@@ -15,7 +15,6 @@ import torch
 # 定义测试参数组合
 TEST_PARAMS = {
     "decode_first":{
-        "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -52,7 +51,6 @@ TEST_PARAMS = {
     },
 
     "prefill_first":{
-        "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -88,7 +86,6 @@ TEST_PARAMS = {
         "topk_value_mode":[1],
     },
     "decode_g128_test":{
-        "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -124,7 +121,6 @@ TEST_PARAMS = {
         "topk_value_mode":[2],
     },
     "tnd_decode_first":{
-        "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -162,7 +158,6 @@ TEST_PARAMS = {
         "ori_kv_topk_mode":["no"],
     },
     "decode_g128_test1":{
-        "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
