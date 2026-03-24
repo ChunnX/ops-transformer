@@ -10,7 +10,6 @@
 
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
-#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -46,15 +45,16 @@ const aclTensor *KvQuantSparseFlashAttentionPioneer(
         aclOpExecutor *executor)
 {
     int64_t keyBlockStride = 0;
-    auto blockStrides = key->GetViewStrides();
-    keyBlockStride = blockStrides[0];
+    auto keyStride = key->GetViewStrides();
+    keyBlockStride = keyStride[0];
+    int64_t keyDequantScaleBlockStride = keyBlockStride;
 
     // L0接口时延统计以及入参打印
     L0_DFX(KvQuantSparseFlashAttentionPioneer, query, key, value, sparseIndices, keyDequantScaleOptional,
         valueDequantScaleOptional, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional,
         keySinkOptional, valueSinkOptional, scaleValue, keyQuantMode, valueQuantMode, sparseBlockSize,
         layoutQueryOptional, layoutKvOptional, sparseMode, preTokens, nextTokens, attentionMode, quantScaleRepoMode,
-        tileSize, ropeHeadDim, keyBlockStride);
+        tileSize, ropeHeadDim, keyBlockStride, keyDequantScaleBlockStride);
     
     // 构造输出
     auto output = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
@@ -67,7 +67,7 @@ const aclTensor *KvQuantSparseFlashAttentionPioneer(
                             OP_OUTPUT(output),
                             OP_ATTR(scaleValue, keyQuantMode, valueQuantMode, sparseBlockSize, layoutQueryOptional,
                                 layoutKvOptional, sparseMode, preTokens, nextTokens, attentionMode,
-                                quantScaleRepoMode, tileSize, ropeHeadDim, keyBlockStride));
+                                quantScaleRepoMode, tileSize, ropeHeadDim, keyBlockStride, keyDequantScaleBlockStride));
     
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "KvQuantSparseFlashAttentionPioneer InferShape failed.");
@@ -82,7 +82,7 @@ const aclTensor *KvQuantSparseFlashAttentionPioneer(
                             OP_OUTPUT(output),
                             OP_ATTR(scaleValue, keyQuantMode, valueQuantMode, sparseBlockSize, layoutQueryOptional,
                                 layoutKvOptional, sparseMode, preTokens, nextTokens, attentionMode,
-                                quantScaleRepoMode, tileSize, ropeHeadDim, keyBlockStride));   
+                                quantScaleRepoMode, tileSize, ropeHeadDim, keyBlockStride, keyDequantScaleBlockStride));   
 
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
