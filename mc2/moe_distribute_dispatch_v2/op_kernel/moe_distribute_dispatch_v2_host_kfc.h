@@ -793,7 +793,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t mask[1] = {0x0101010101010101};
     uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
     flagTensor_ = flagBuf_.Get<uint32_t>();
-   Duplicate<uint32_t>(flagTensor_, 0x3F800000, mask, repeatTime,uint16_t(1), uint8_t(8)); // 0x3F800000是float的1
+    Duplicate<uint32_t>(flagTensor_, 0x3F800000, mask, repeatTime,uint16_t(1), uint8_t(8)); // 0x3F800000是float的1
     // LOG_INFO("[InitTemp] END int Temp");
 }
 
@@ -1034,7 +1034,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         count++;
         if(count > 1000000){
             //LOG_INFO("error WaitFlag,error count");
-            break;
+            // break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -1422,8 +1422,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
 
 
         // token的起始地址
-        // GM_ADDR wAddr =
-        //     GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
+        GM_ADDR wAddr =
+            GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
         // dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
 
         
@@ -1446,16 +1446,16 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             // LOG_INFO("[BATCHWRITE][WaitToken][true]after sendtoexpert tokenid:", index);
             // finish更新并clean
             finishNumTensor_(index) = 1;
-            // uint32_t cleanUpNum = blockCntPerToken_;
-            // DataCopyExtParams cleanUpParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U,
-            //                                    SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
-            // LocalTensor<int32_t> cleanBuf =
-            //     tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
-            // cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(wAddr)); //todo:
-            // SyncFunc<AscendC::HardEvent::MTE3_V>();
-            // Duplicate<int32_t>(cleanBuf, 0, cleanUpNum * 8); // 8 = UB_ALIGN / 4
-            // SyncFunc<AscendC::HardEvent::V_MTE3>();
-            // DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanBuf, cleanUpParams);
+            uint32_t cleanUpNum = blockCntPerToken_;
+            DataCopyExtParams cleanUpParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U,
+                                               SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
+            LocalTensor<int32_t> cleanBuf =
+                tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
+            cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(wAddr)); //todo:
+            SyncFunc<AscendC::HardEvent::MTE3_V>();
+            Duplicate<int32_t>(cleanBuf, 0, cleanUpNum * 8); // 8 = UB_ALIGN / 4
+            SyncFunc<AscendC::HardEvent::V_MTE3>();
+            DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanBuf, cleanUpParams);
             finishNum++;
         } else {
             index = (index + 1) % tokenCnt;
@@ -1963,8 +1963,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
         if(count == 10000000) {
-            LOG_INFO("waitDispatch error count");
-            break;
+            // LOG_INFO("waitDispatch error count");
+            // break;
         }
     }
     // 清状态
@@ -2167,8 +2167,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count++;
         if(count == 1000000) {
-            LOG_INFO("WaitCumSumFlag error count");
-            break;
+            // LOG_INFO("WaitCumSumFlag error count");
+            // break;
         }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -2307,8 +2307,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count ++;
         if(count > 1000000) {
-            LOG_INFO("WaitAndFormatOutput error count");
-            break;
+            // LOG_INFO("WaitAndFormatOutput error count");
+            // break;
         }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
