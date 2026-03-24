@@ -28,7 +28,7 @@
 #endif
 
 #ifdef __CCE_KT_TEST__
-#include "kernel_log.h"
+#include "kernel_operator.h"
 #endif
 
 inline void InitMatmulAllReduceTilingData(uint8_t* tiling, Mc2Tiling::MatmulAllReduceTilingData* const_data)
