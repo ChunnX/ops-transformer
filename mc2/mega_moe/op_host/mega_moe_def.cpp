@@ -19,6 +19,11 @@ namespace ops {
 class MegaMoe : public OpDef {
 public:
   explicit MegaMoe(const char* name) : OpDef(name) {
+    this->Input("context")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
@@ -27,6 +32,21 @@ public:
     this->Input("expert_ids")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("scales")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("x_active_mask")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_BOOL})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("expert_scales")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight1")
@@ -55,10 +75,18 @@ public:
         .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
         .FormatList({ge::FORMAT_ND});
         
-    this->Attr("group_ep").AttrType(REQUIRED).String();
     this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-    this->Attr("max_output_size").AttrType(REQUIRED).Int();
-
+    this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
+    this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
+    this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
+    this->Attr("max_recv_token_num").AttrType(OPTIONAL).Int(0);
+    this->Attr("shared_expert_num").AttrType(OPTIONAL).Int(1);
+    this->Attr("shared_expert_rank_num").AttrType(OPTIONAL).Int(0);
+    this->Attr("dispatch_quant_mode").AttrType(OPTIONAL).Int(0);
+    this->Attr("dispatch_quant_out_type").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
+    this->Attr("combine_quant_mode").AttrType(OPTIONAL).Int(0);
+    this->Attr("comm_alg").AttrType(OPTIONAL).String("");
+    this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
@@ -73,7 +101,6 @@ public:
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->MC2().HcclGroup({"group_ep"});
   }
 };
 

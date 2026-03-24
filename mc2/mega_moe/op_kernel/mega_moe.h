@@ -26,15 +26,15 @@ namespace MegaMoeImpl {
 class MegaMoe {
 public:
     __aicore__ inline MegaMoe(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR weight1, GM_ADDR weightScales1,
-                                GM_ADDR weight2, GM_ADDR weightScales2, GM_ADDR y, GM_ADDR workspace,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo,
+                                GM_ADDR weight1, GM_ADDR weightScales1, GM_ADDR weight2, GM_ADDR weightScales2, GM_ADDR y, GM_ADDR workspace,
                                 const MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 };
 
 __aicore__ inline void MegaMoe::Init(
-            GM_ADDR x, GM_ADDR expertIdx, GM_ADDR weight1, GM_ADDR weightScales1,
-            GM_ADDR weight2, GM_ADDR weightScales2, GM_ADDR y, GM_ADDR workspace,
+            GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo,
+            GM_ADDR weight1, GM_ADDR weightScales1, GM_ADDR weight2, GM_ADDR weightScales2, GM_ADDR y, GM_ADDR workspace,
             const MegaMoeTilingData *tilingData) {};
 
 

@@ -18,13 +18,15 @@
 using namespace MegaMoeImpl;
 
 extern "C" __global__ __aicore__ void mega_moe(
-  GM_ADDR x, GM_ADDR expertIdx, GM_ADDR weight1, GM_ADDR weightScales1,
-  GM_ADDR weight2, GM_ADDR weightScales2, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+  GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
+  GM_ADDR weight1, GM_ADDR weightScales1, GM_ADDR weight2, GM_ADDR weightScales2,
+  GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
   REGISTER_TILING_DEFAULT(MegaMoeTilingData);
 
   GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
   MegaMoe op;
-  op.Init(x, expertIdx, weight1, weightScales1, weight2, weightScales2, y, workspaceGM, &tilingData);
+  op.Init(mc2Context, x, expertIdx, scales, xActiveMask, weight1, expertScales, weightScales1, weight2,
+    weightScales2, y, workspaceGM, &tilingData);
   op.Process();
 }
