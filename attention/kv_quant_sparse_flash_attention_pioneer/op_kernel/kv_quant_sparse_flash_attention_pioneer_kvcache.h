@@ -25,6 +25,9 @@ using namespace regbaseutil;
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 
+static constexpr uint32_t sparseModeZero = 0;
+static constexpr uint32_t sparseModeThree = 3;
+
 TEMPLATE_INTF
 __aicore__ inline void CalculateQueryOffset(RunParamStr& runParam,
     const ConstInfo &constInfo, int32_t bIdx,
@@ -52,7 +55,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             actualS1Size = (sIdx == 0) ? actualSeqQlenAddr[0] :
                 actualSeqQlenAddr[sIdx] - actualSeqQlenAddr[sIdx - 1];
         } else {
-            actualS1Size = actualSeqQlenAddr[sIdx];
+            actualS1Size = constInfo.s1Size;
         }
     } else {
         actualS1Size = (actualSeqQlenAddr == nullptr) ? constInfo.s1Size :
@@ -62,26 +65,32 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = constInfo.s2Size;
     } else {
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-            actualS2Size = actualSeqKvlenAddr[sIdx];
-            if ((sIdx > 0) && (!isPa)) {
-                actualS2Size -= actualSeqKvlenAddr[sIdx - 1];
+        if constexpr (isPa) {
+            if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+                actualS2Size = actualSeqKvlenAddr[sIdx];
+            } else {
+                actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
+                    actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
             }
         } else {
-            actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
-                actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
+            if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+                actualS2Size = (sIdx == 0) ? actualSeqKvlenAddr[0] :
+                    actualSeqKvlenAddr[sIdx] - actualSeqKvlenAddr[sIdx - 1];
+            } else {
+                actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
+                    actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
+            }
         }
     }
 
     runParam.actualS1Size = actualS1Size;
     runParam.actualS2Size = actualS2Size;
-    runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
-    if (constInfo.oriWinLeft == -1) {
-        runParam.preTokensPerBatch = runParam.actualS1Size;
+    if (constInfo.sparseMode == sparseModeZero) {
+        runParam.nextTokensPerBatch = MAX_PRE_NEXT_TOKENS;
     } else {
-        runParam.preTokensPerBatch = -(runParam.actualS2Size - runParam.actualS1Size - constInfo.oriWinLeft);
+        runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     }
-    runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
+    runParam.preTokensPerBatch = runParam.actualS1Size;
 
     CalculateQueryOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
 }
@@ -169,10 +178,10 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.goIdx * constInfo.dSizeV;
         }
         if (constInfo.subBlockIdx == 1) {
-            runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
+            runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
     } else {
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND || LAYOUT_T == QSFA_LAYOUT::BSND) {
             runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
                 runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
         } else {
@@ -222,22 +231,25 @@ TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
 {
     if (runParam.actualS2Size == 0) {
-        runParam.oriKvLoopEndIdx = 0;
-        runParam.cmpKvLoopEndIdx = 0;
+        runParam.kvLoopEndIdx = 0;
         runParam.s2LoopEndIdx = 0;
         return true;
     }
     uint32_t s2BaseSize = constInfo.s2BaseSize;
 
-    runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
-        0, runParam.actualS2Size);
-    runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
-        runParam.s1RealSize, 0, runParam.actualS2Size);
+    if (constInfo.sparseMode == sparseModeZero) {
+        runParam.s2LineStartIdx = 0;
+        runParam.s2LineEndIdx = Min(runParam.actualS2Size, constInfo.sparseBlockCount); 
+    } else if (constInfo.sparseMode == sparseModeThree) {
+        runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
+            0, runParam.actualS2Size);
+        runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
+            runParam.s1RealSize, 0, runParam.actualS2Size);
+        runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx, constInfo.sparseBlockCount); // 当前LI输出的block size只可能是1
+    }
 
-    runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx / constInfo.cmpRatio, constInfo.sparseBlockCount); // 当前LI输出的block size只可能是1
-    runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
-
-    runParam.s2LoopEndIdx = runParam.oriKvLoopEndIdx;
+    runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
+    runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
     return false;
 }
 
@@ -251,7 +263,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
-    runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
+    runInfo.kvLoopEndIdx = runParam.kvLoopEndIdx;
 }
 
 #endif  // KV_QUANT_SPARSE_ATTN_SHAREDKV_KVCACHE_H
