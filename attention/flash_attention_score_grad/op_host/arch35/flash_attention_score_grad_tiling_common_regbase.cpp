@@ -927,8 +927,20 @@ ge::graphStatus ProcessSinkInfo(
         fBaseParams.sinkOptional = EMPTY_TENSOR;
         return ge::GRAPH_SUCCESS;
     }
+    OP_CHECK_IF((sinkShape->GetStorageShape().GetDimNum() != 1 ||
+        sinkShape->GetStorageShape().GetDim(0) != fBaseParams.n1),
+        OP_LOGE(context_, "FAG sink, the dimension of sink must be 1 and value must be equal to Nq."),
+        return ge::GRAPH_FAILED);
+    auto sinkInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SINK_IDX));
+    if (sinkInput != nullptr) {
+        auto sinkDtype = sinkInput->GetDataType();
+        OP_CHECK_IF(sinkDtype != ge::DT_FLOAT,
+            OP_LOGE(context_, "FAG sink, sinkDtype only supports fp32."),
+            return ge::GRAPH_FAILED);
+    }
+
     OP_CHECK_IF(!(fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16),
-            OP_LOGE(context_, "FAG sink, dtype only supports fp16 or bf16."),
+            OP_LOGE(context_, "FAG sink, other tensor's dtype only supports fp16 or bf16."),
             return ge::GRAPH_FAILED);
     fBaseParams.sinkOptional = NORMAL_TENSOR;
     return ge::GRAPH_SUCCESS;
