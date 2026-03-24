@@ -12,22 +12,22 @@ GroupedMatmul算子实现时还需要考虑如下两个方面：
 2. 硬件上AiCore内存大小有限，一般完成一个算子的计算需要对数据进行切分，并对数据搬运和计算过程进行流水并行排布，该过程对算子的影响非常大，也是性能优化阶段主要调整对象，而host上的tiling函数即是为完成该切分和流水的参数计算。
 # 2 场景划分
 从功能角度可分为非量化场景、量化场景和伪量化场景，代码层面通过三种方式选择具体模板：
-1.编译宏：通过x和weight的数据类型编译的宏ORIG_DTYPE_X，ORIG_DTYE_WEIGHT；
+1.编译宏：通过x和weight的数据类型编译的宏ORIG_DTYPE_X，ORIG_DTYPE_WEIGHT；
 2.tilingkey：如x/weight是否转置；
 3.tilingData：如tiling中isPerTokenQuant表示是否为per token量化。
 说明：
 - 非量化指x、weight、y均为浮点数类型，如float16/bfloat16/float32，非量化为纯cube场景，其计算过程由matmul高阶api实现；
-- 量化指x和weight为低精度整数类型，GroupMatmul支持A8W8场景，包括重量化、per tensor + per channel量化和per token + per channel量化（简称per token量化）；
+- 量化指x和weight为低精度整数类型，GroupedMatmul支持A8W8场景，包括重量化、per tensor + per channel量化和per token + per channel量化（简称per token量化）；
 - 伪量化指x为浮点数类型，weight为低精度整数类型，GroupedMatmul支持A16W8和A16W4场景。
 
 ## 2.1 per token量化
-本章以per token量化场景为例介绍一下GroupMatmul的算法流程，计算过程如下：
+本章以per token量化场景为例介绍一下GroupedMatmul的算法流程，计算过程如下：
 matmul(int32) -> 反量化(fp32) -> mul(fp32) -> 激活函数(fp32)(可选) -> cast(fp16/bf16)，其中mul(fp32)的输入perTokenScale还需要从shape(m) broadcast成(m，n)。
 
 ![GroupedMatmul量化场景流程图](../../../docs/zh/figures/GMM量化场景流程图.png)
 
 ## 2.2 分组方式
-针对不同场景，GroupMatmul可分为m轴分组和k轴分组，又称切M，切K。在正向训练过程对m轴进行分组，在反向计算梯度时就需要对k轴进行分组。
+针对不同场景，GroupedMatmul可分为m轴分组和k轴分组，又称切M，切K。在正向训练过程对m轴进行分组，在反向计算梯度时就需要对k轴进行分组。
 - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接，此时group type = 0;
 m轴分组可用于非量化正向训练场景，量化场景和伪量化场景。
 ```mermaid
@@ -90,7 +90,7 @@ UB buffer分配如下：
 总共需要分配的UB buffer为28 * 6kb = 168kb。
 
 ## 3.3 基本块分核方案
-GroupedMatmul实现时需要考虑输入为多个tensor的情况，即每组matmul的shape可能各不相同，而kernel侧不能为每组matmul单独配置对应的matmul高阶api接口实例（tiling结构体和core栈空间大小均不允许）。为了适配不同shape的matmul计算，Groupedmatmul采用基本块方式（横向分核），以baseM、baseN为基本块进行分核计算，此处baseM/baseN为matmul的参数。
+GroupedMatmul实现时需要考虑输入为多个tensor的情况，即每组matmul的shape可能各不相同，而kernel侧不能为每组matmul单独配置对应的matmul高阶api接口实例（tiling结构体和core栈空间大小均不允许）。为了适配不同shape的matmul计算，GroupedMatmul采用基本块方式（横向分核），以baseM、baseN为基本块进行分核计算，此处baseM/baseN为matmul的参数。
 
 ![基本块分核](../../../docs/zh/figures/GMM横向分核方案.png)
 
