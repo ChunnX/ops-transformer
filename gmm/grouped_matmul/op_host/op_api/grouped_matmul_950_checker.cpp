@@ -575,6 +575,12 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckNonPerGroupQuantDim() cons
                    "In non-pergroup quantification mode, the dim num of %s should be 1 or 2, but actual dim \
 num is %lu",
                    scaleName_.c_str(), scaleDimNumber);
+        if (GetInputTensor(gmmParams_.y)->GetDataType() == DataType::DT_INT8) {
+            // 2: (E, N)
+            CHECK_COND(scaleDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
+                       "When y dtype is int8, the dim num of %s should be 2, but actual dim num is %lu.",
+                       scaleName_.c_str(), scaleDimNumber);
+        }
 
         if (gmmParams_.perTokenScaleOptional != nullptr) {
             auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();
