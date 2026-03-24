@@ -1051,8 +1051,8 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         } 
 
     }while(isContinueWait);
-
-    //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+    LOG_INFO("WaitFlag count",count);
+    LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",rcvCnt);
     return rcvCnt == waitNum;
 }
 
@@ -2326,8 +2326,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_ + beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE);  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
+        LOG_INFO("WaitAndFormatOutput start");
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, stride, flagNum);
-
+        LOG_INFO("WaitAndFormatOutput start");
         //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (isArrived) {
             // LOG_INFO("WaitAndFormatOutput index:", index);
