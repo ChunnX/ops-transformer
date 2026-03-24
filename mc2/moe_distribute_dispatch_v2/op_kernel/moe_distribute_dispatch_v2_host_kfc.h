@@ -1387,7 +1387,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         Duplicate<uint32_t>(tokenRcvStatus_, 0, TOKEN_RECV_CNT_MAX);
         SyncFunc<AscendC::HardEvent::V_S>();
-        tokenInQueue_.EnQue(recvTmpTensor_);
+        tokenInQueue_.EnQue<XType>(recvTmpTensor_);
         WaitToken(sendTokenNum, serverIndex, startTokenId);
         CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
     }
@@ -1434,9 +1434,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                          static_cast<uint32_t>(SPLIT_BLOCK_DATA_SIZE), static_cast<uint32_t>(SERVER_STATE_ALIGN - SPLIT_BLOCK_DATA_SIZE), 0};
     DataCopyPadParams srcTokenPadParams{false, 0U, 0U, 0U};
 
-    tokenInQueue_.DeQue(recvTmpTensor_);
+    recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
     DataCopyPad(recvTmpTensor_, dataFlagGlobal, srcTokenCopyParams, srcTokenPadParams);
-    tokenInQueue_.EnQue(recvTmpTensor_);
+    tokenInQueue_.EnQue<XType>(recvTmpTensor_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1556,7 +1556,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             PipeBarrier<PIPE_V>();
         }
     #endif
-    tokenInQueue_.DeQue(recvTmpTensor_);
+    recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
     DataCopy(tokenData_, recvTmpTensor_, hAlignSize_ / sizeof(XType));
 
     LocalTensor<int16_t> xInTensorInt16 = recvTmpTensor_.template ReinterpretCast<int16_t>();
@@ -1587,7 +1587,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ProcessToken(rankGM, tokenIndex, topKIndex,
                     padParams, scaleInParams, dstExpertId + sharedExpertNum_, tokenData_, srcRankIndex, expertScale);
     }
-    tokenInQueue_.EnQue(recvTmpTensor_);
+    tokenInQueue_.EnQue<XType>(recvTmpTensor_);
 
     for (int32_t shareIndex = 0; shareIndex < sharedExpertNum_; shareIndex++) { // 发共享专家
         uint32_t rankIDSharedGroup = epRankId_ % rankNumPerSharedExpert_;
