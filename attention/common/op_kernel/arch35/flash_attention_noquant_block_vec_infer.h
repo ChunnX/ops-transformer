@@ -908,7 +908,7 @@ FANoQuantBlockVecInfer<TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(RunInfo<isInf
         runInfo.n2oIdx * constInfo.splitKVNum * constInfo.gSize * fp32BaseSize +
         runInfo.flashDecodeS2Idx * constInfo.gSize * fp32BaseSize + mStart * fp32BaseSize;
     // Copy sum to gm
-    this->BroadCastAndCopyOut(runInfo, softmaxFDSumGm, softmaxFDMaxGm, gmOffset, calculateSize);
+    this->BroadCastAndCopyOut(runInfo, constInfo, softmaxFDSumGm, softmaxFDMaxGm, gmOffset, calculateSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

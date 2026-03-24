@@ -160,7 +160,8 @@ public:
         return static_cast<ChildClass*>(this);
     }
 protected:
-    __aicore__ inline void BroadCastAndCopyOut(RunInfo<isInfer> &runInfo, GlobalTensor<T> &sumGm,
+    __aicore__ inline void BroadCastAndCopyOut(RunInfo<isInfer> &runInfo,
+                                               ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<T> &sumGm,
                                                GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize);
 
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = INPUT_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
@@ -516,7 +517,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::InvalidLinePro
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCopyOut(
-    RunInfo<isInfer> &runInfo, GlobalTensor<T> &sumGm,
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<T> &sumGm,
     GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize)
 {
     // Copy sum to gm
@@ -531,7 +532,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCo
         FaVectorApi::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
         sumBrdcst.template EnQue(sumOutTensor);
         sumBrdcst.template DeQue<float>();
-        DataCopy(sumGm[gmOffset], sumOutTensor, calculateSize);
+        if (this->tilingData->inputParamsRegbase.tndSoftmaxOut == 1) {
+            DataCopy(sumGm[gmOffset], sumOutTensor, {static_cast<uint16_t>(runInfo.halfS1RealSize),
+                1, 0, static_cast<uint16_t>(constInfo.n2G - 1)});
+        } else {
+            DataCopy(sumGm[gmOffset], sumOutTensor, calculateSize);
+        }
         sumBrdcst.template FreeTensor(sumOutTensor);
     }
 
@@ -549,7 +555,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCo
         FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
         maxBrdcst.template EnQue(maxOutTensor);
         maxBrdcst.template DeQue<float>();
-        DataCopy(maxGm[gmOffset], maxOutTensor, calculateSize);
+        if (this->tilingData->inputParamsRegbase.tndSoftmaxOut == 1) {
+            DataCopy(maxGm[gmOffset], maxOutTensor, {static_cast<uint16_t>(runInfo.halfS1RealSize),
+                1, 0, static_cast<uint16_t>(constInfo.n2G - 1)});
+        } else {
+            DataCopy(maxGm[gmOffset], maxOutTensor, calculateSize);
+        }
         maxBrdcst.template FreeTensor(maxOutTensor);
     }
 }

@@ -222,21 +222,34 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOut
     int64_t bOffset;
     int64_t n2Offset;
     int64_t gOffset;
+    int64_t s1Offset;
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        bOffset = constInfo.n2G * runInfo.s1SizeAcc;
-        n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS1Size;
-        gOffset = runInfo.goIdx * runInfo.actualS1Size;
+        // tndSoftmaxOut=1时，softmaxMax、softMaxSum按(T, N, 8)格式存储
+        // tndSoftmaxOut=0时，softmaxMax、softMaxSum按(B, N, Sq, 8)格式存储
+        if (this->tilingData->inputParamsRegbase.tndSoftmaxOut == 1) {
+            bOffset = constInfo.n2G * runInfo.s1SizeAcc;
+            s1Offset = 
+            (runInfo.s1oIdx * this->s1BaseSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize) * constInfo.n2G;
+            n2Offset = runInfo.n2oIdx * constInfo.gSize;
+            gOffset = runInfo.goIdx;
+        } else {
+            bOffset = constInfo.n2G * runInfo.s1SizeAcc;
+            s1Offset = 
+            runInfo.s1oIdx * this->s1BaseSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
+            n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS1Size;
+            gOffset = runInfo.goIdx * runInfo.actualS1Size;
+        }
     } else {
         bOffset = runInfo.boIdx * constInfo.n2Size * constInfo.gS1;
         n2Offset = runInfo.n2oIdx * constInfo.gS1;
         gOffset = runInfo.goIdx * constInfo.s1Size;
-    }
-    int64_t s1Offset =
+        s1Offset =
         (runInfo.s1oIdx * this->s1BaseSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize);
+    }
     int64_t gmOffset = (bOffset + n2Offset + gOffset + s1Offset) * fp32BaseSize;
     int64_t calculateSize = runInfo.halfS1RealSize * fp32BaseSize;
 
-    this->BroadCastAndCopyOut(runInfo, softmaxSumGm, softmaxMaxGm, gmOffset, calculateSize);
+    this->BroadCastAndCopyOut(runInfo, constInfo, softmaxSumGm, softmaxMaxGm, gmOffset, calculateSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -263,7 +276,7 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOut
         (runInfo.s1oIdx * this->s1BaseSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize);
     int64_t gmOffset = (bOffset + n2Offset + gOffset + s1Offset);
     int64_t calculateSize = runInfo.halfS1RealSize;
-    this->BroadCastAndCopyOut(runInfo, softmaxSumGm, softmaxMaxGm, gmOffset, calculateSize);
+    this->BroadCastAndCopyOut(runInfo, constInfo, softmaxSumGm, softmaxMaxGm, gmOffset, calculateSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
