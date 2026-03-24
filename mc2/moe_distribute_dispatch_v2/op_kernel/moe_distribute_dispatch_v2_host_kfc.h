@@ -2416,6 +2416,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::V_S>();
     flagRecvGatherMask_.SetValue(0, 1);
     SyncFunc<AscendC::HardEvent::S_V>();
+    PipeBarrier<PIPE_ALL>();
     WaitAndFormatOutput(tBuf, validNum);
 }
 
