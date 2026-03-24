@@ -52,6 +52,7 @@ const static int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
 const static int64_t RANK_ONE = 1LL;
 const static int64_t RANK_TWO = 2LL;
 const static int64_t RANK_THREE = 3LL;
+const static int64_t RANK_THREE = 3LL;
 const static int64_t BF16_TO_FP32_SIZE_FACTOR = 2LL;
 
 // 输入输出的位置索引
@@ -90,6 +91,7 @@ const static int64_t QUANT_MODE_MXFP8_E4M3FN = 3LL;
 const static int64_t QUANT_MODE_HIF8_CAST = 6LL;
 const static int64_t QUANT_MODE_HIF8_PERTENSOR = 7LL;
 const static int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
+const static int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
 const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 const static int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
 const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
@@ -597,12 +599,13 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
     OP_CHECK_IF(quantMode_ != QUANT_MODE_UNQUANT && quantMode_ != QUANT_MODE_STATIC &&
                     quantMode_ != QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_MXFP8_E5M2 &&
                     quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_HIF8_CAST &&
-                    quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN && quantMode_ != QUANT_MODE_MXFP4_E2M1,
+                    quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN && quantMode_ != QUANT_MODE_MXFP4_E2M1 && quantMode_ != QUANT_MODE_MXFP4_E2M1,
                 OP_LOGE(context_,
-                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld",
+                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld",
                         QUANT_MODE_UNQUANT, QUANT_MODE_STATIC, QUANT_MODE_DYNAMIC, QUANT_MODE_MXFP8_E5M2,
                         QUANT_MODE_MXFP8_E4M3FN, QUANT_MODE_HIF8_CAST, QUANT_MODE_HIF8_PERTENSOR,
                         QUANT_MODE_HIF8_PERTOKEN, QUANT_MODE_MXFP4_E2M1, 
+                        QUANT_MODE_MXFP4_E2M1, 
                         quantMode_),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
@@ -674,6 +677,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
         supportedDtypes = MX_OR_HIF8_QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ == QUANT_MODE_UNQUANT) {
         supportedDtypes = UNQUANT_SUPPORTED_DTYPES;
+    } else if (quantMode_ = QUANT_MODE_MXFP4_E2M1) {
+        supportedDtypes = MXFP4QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ = QUANT_MODE_MXFP4_E2M1) {
         supportedDtypes = MXFP4QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ == QUANT_MODE_STATIC) {
@@ -936,7 +941,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
         return ge::GRAPH_SUCCESS;
     }
 
-    int64_t expectedRank{-1}, expectedDim0{-1}, expectedDim1{-1}, expectedDim2{-1};
+    int64_t expectedRank{-1}, expectedDim0{-1}, expectedDim1{-1}, expectedDim2{-1}, expectedDim2{-1};
     if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
         expectedRank = RANK_ONE;
         expectedDim0 = totalLength_;
@@ -980,6 +985,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
                             "The dim1 of output expanded_scale should be %ld under "
                             "quant_mode %ld,, current is %ld.",
                             expectedDim1, quantMode_, dim1),
+                    return ge::GRAPH_FAILED);
+    }
+    if (expectedDim2 != -1) {
+        int64_t dim2 = expandedScaleShape_.GetDim(2);
+        OP_CHECK_IF(dim2 != expectedDim2,
+                    OP_LOGE(context_,
+                            "The dim2 of output expanded_scale should be %ld under "
+                            "quant_mode %ld,, current is %ld.",
+                            expectedDim2, quantMode_, dim2),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim2 != -1) {
