@@ -459,7 +459,7 @@ protected:
         return IsDtypeCompatiblePertoken(xDtype, ((*gmmDsqParams_.weight)[0])->GetDataType());
     }
 
-    bool IsDtypeCompatiblePertoken(const DataType a, const DataType b)
+    bool IsDtypeCompatiblePertoken(const DataType a, const DataType b) const
     {
         if ((a == DataType::DT_FLOAT8_E4M3FN || a == DataType::DT_FLOAT8_E5M2) &&
             (b == DataType::DT_FLOAT8_E4M3FN || b == DataType::DT_FLOAT8_E5M2)) {

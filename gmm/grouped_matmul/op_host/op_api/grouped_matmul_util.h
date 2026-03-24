@@ -23,6 +23,7 @@ constexpr int64_t GROUP_LIST_SPARSE_M = 2L;
 
 constexpr size_t MAX_FM_DIM = 6UL;
 constexpr size_t MIN_FM_DIM = 2UL;
+constexpr size_t MIN_DIM_FOR_TRANSPOSE = 2UL;
 constexpr size_t SPLIT_M_SINGLE_WEIGHT_DIM = 3UL;
 constexpr size_t SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 // mx dim num
