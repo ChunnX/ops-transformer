@@ -71,6 +71,7 @@ constexpr uint32_t FP32_BUF_SIZE = (192 - 16 * 4) * 1024; // 128KB
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 64;            // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
+constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
 constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
 constexpr uint32_t ALPHA_GRAD_SHAPE_2_OFFSET = 8;
@@ -1564,14 +1565,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3()
 
     SetFlag<HardEvent::V_S>(EVENT_ID2);
     WaitFlag<HardEvent::V_S>(EVENT_ID2);
-    alphaGradOutLocal.SetValue(1, alphaGradOutLocal.GetValue(8));
-    alphaGradOutLocal.SetValue(2, alphaGradOutLocal.GetValue(16));
+    alphaGradOutLocal.SetValue(1, alphaGradOutLocal.GetValue(ALPHA_GRAD_SHAPE_2_OFFSET));
+    alphaGradOutLocal.SetValue(2, alphaGradOutLocal.GetValue(ALPHA_GRAD_SHAPE_3_OFFSET));
     fp32OutQueue_.EnQue(alphaGradOutLocal);
     alphaGradOutLocal = fp32OutQueue_.DeQue<P>();
     PipeBarrier<PIPE_V>();
 
     dataCopyParams_.blockCount = 1;
-    dataCopyParams_.blockLen = 3 * sizeof(P);
+    dataCopyParams_.blockLen = ALPHA_GRAD_LAST_DIM_SIZE * sizeof(P);
     dataCopyParams_.srcStride = 0;
     dataCopyParams_.dstStride = 0;
     DataCopyPad(alphaGradGm_, alphaGradOutLocal, dataCopyParams_);
