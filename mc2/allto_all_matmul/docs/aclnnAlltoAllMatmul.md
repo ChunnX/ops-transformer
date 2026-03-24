@@ -35,8 +35,8 @@ aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(
   const char*        group,
   bool               transposeX1,
   bool               transposeX2,
-  aclTensor*         output,
-  aclTensor*         alltoAllOutOptional,
+  const aclTensor*   output,
+  const aclTensor*   alltoAllOutOptional,
   uint64_t*          workspaceSize,
   aclOpExecutor**    executor)
 ```
