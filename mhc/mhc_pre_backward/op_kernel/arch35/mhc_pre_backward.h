@@ -75,6 +75,8 @@ constexpr uint32_t ALPHA_GRAD_PADDING = 24;
 constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
 constexpr uint32_t ALPHA_GRAD_SHAPE_2_OFFSET = 8;
 constexpr uint32_t ALPHA_GRAD_SHAPE_3_OFFSET = 16;
+constexpr uint32_t VECTOR_REG_WIDTH = 256;
+constexpr uint32_t VEC_MAX_ELEM_B32 = 64; // VECTOR_REG_WIDTH / sizeof(P)
 
 struct InitParams {
     GM_ADDR x;
@@ -972,8 +974,7 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessInvRmsGrad(__ubuf__ P *h1GradIn, __ubuf__ P *hMixIn,
                                                                            uint16_t dealBSSize)
 {
-    uint32_t regCapacityFP32 = 64; // 256B / sizeof(P)
-    uint16_t nLoopCnt = Ceil(fusionSize_, regCapacityFP32);
+    uint16_t nLoopCnt = Ceil(fusionSize_, VEC_MAX_ELEM_B32);
     __VEC_SCOPE__
     {
         for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(dealBSSize); ++bsIdx) {
@@ -985,7 +986,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessInvRmsGrad(__ubu
             }
             uint32_t curElemCnt = fusionSize_;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; ++vfBlockIdx) {
-                uint32_t elemOffset = bsIdx * fusionSize_ + vfBlockIdx * regCapacityFP32;
+                uint32_t elemOffset = bsIdx * fusionSize_ + vfBlockIdx * VEC_MAX_ELEM_B32;
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
                 MicroAPI::RegTensor<P> hMixReg, h1GradBuf;
                 MicroAPI::RegTensor<P> hMulReg, tmpSumReg;
@@ -1630,22 +1631,21 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessAlphaGrad(
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessBiasGradForN8Performance(
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessBiasGradForN8Performance(
     __ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn)
 {
-    uint32_t regCapacityFP32 = 64; // 256B / sizeof(P)
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<P> sumReg1, sumReg2;
         MicroAPI::Duplicate(sumReg1, 0);
         MicroAPI::Duplicate(sumReg2, 0);
-        uint32_t dealMask1 = regCapacityFP32;
-        uint32_t dealMask2 = fusionSize_ - regCapacityFP32;
+        uint32_t dealMask1 = VEC_MAX_ELEM_B32;
+        uint32_t dealMask2 = fusionSize_ - VEC_MAX_ELEM_B32;
         MicroAPI::MaskReg mask1 = MicroAPI::UpdateMask<P>(dealMask1);
         MicroAPI::MaskReg mask2 = MicroAPI::UpdateMask<P>(dealMask2);
         for (uint16_t vcIdx = 0; vcIdx < static_cast<uint16_t>(usedVecCoreNum_); ++vcIdx) {
             uint32_t elemOffset1 = vcIdx * fusionSize_;
-            uint32_t elemOffset2 = vcIdx * fusionSize_ + regCapacityFP32;
+            uint32_t elemOffset2 = vcIdx * fusionSize_ + VEC_MAX_ELEM_B32;
             MicroAPI::RegTensor<P> biasGradReg1, biasGradReg2;
 
             MicroAPI::LoadAlign(biasGradReg1, biasGradIn + elemOffset1);
@@ -1655,16 +1655,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessBiasGradForN8Per
             MicroAPI::Add(sumReg2, sumReg2, biasGradReg2, mask2);
         }
         MicroAPI::StoreAlign(biasGradOut, sumReg1, mask1);
-        MicroAPI::StoreAlign(biasGradOut + regCapacityFP32, sumReg2, mask2);
+        MicroAPI::StoreAlign(biasGradOut + VEC_MAX_ELEM_B32, sumReg2, mask2);
     }
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessBiasGrad(
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessBiasGrad(
     __ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn)
 {
-    uint32_t regCapacityFP32 = 64; // 256B / sizeof(P)
-    uint16_t fSLoopCnt = Ceil(fusionSize_, regCapacityFP32);
+    uint16_t fSLoopCnt = Ceil(fusionSize_, VEC_MAX_ELEM_B32);
     uint32_t curElemCnt = fusionSize_;
     __VEC_SCOPE__
     {
@@ -1673,14 +1672,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessBiasGrad(
             MicroAPI::Duplicate(sumReg, 0);
             MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
             for (uint16_t vcIdx = 0; vcIdx < static_cast<uint16_t>(usedVecCoreNum_); ++vcIdx) {
-                uint32_t elemOffset = vcIdx * fusionSize_ + vfBlockIdx * regCapacityFP32;
+                uint32_t elemOffset = vcIdx * fusionSize_ + vfBlockIdx * VEC_MAX_ELEM_B32;
                 MicroAPI::RegTensor<P> biasGradReg;
 
                 MicroAPI::LoadAlign(biasGradReg, biasGradIn + elemOffset);
 
                 MicroAPI::Add(sumReg, sumReg, biasGradReg, mask);
             }
-            MicroAPI::StoreAlign(biasGradOut + vfBlockIdx * regCapacityFP32, sumReg, mask);
+            MicroAPI::StoreAlign(biasGradOut + vfBlockIdx * VEC_MAX_ELEM_B32, sumReg, mask);
         }
     }
 }
