@@ -1021,8 +1021,8 @@ template <bool isContinueWait>
 __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
-    LOG_INFO("WaitFlag waitNum", waitNum);
-    LOG_INFO("WaitFlag stride", stride);
+    // LOG_INFO("WaitFlag waitNum", waitNum);
+    // LOG_INFO("WaitFlag stride", stride);
     uint32_t copyNum = stride == 0? 1 : waitNum; // 如果stride为0，表示所有数据全部在一起，直接一起拷贝进来
     uint32_t copyBlockLength = stride == 0 ? waitNum * sizeof(float32_t) : sizeof(float32_t);
     GlobalTensor<float32_t> flagInGMTensor;
@@ -1035,11 +1035,11 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         count++;
         if(count > 1000000){
             LOG_INFO("error WaitFlag,error count");
-            // break;
+            break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
+        //LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
         ReduceSum(flagInLTTensor, flagInLTTensor, flagInLTTensor, waitNum); // 采用fa
         SyncFunc<AscendC::HardEvent::V_S>();
         rcvCnt = static_cast<uint32_t>(flagInLTTensor.GetValue(0));
@@ -1052,7 +1052,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     }while(isContinueWait);
 
-    LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+    //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return rcvCnt == waitNum;
 }
 
@@ -1411,8 +1411,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
     while (true) {
         count++;
         if (count == 1000000) {
-            // LOG_INFO("[BATCHWRITE][WaitToken] error count.");
-            // break;
+            LOG_INFO("[BATCHWRITE][WaitToken] error count.");
+            break;
         }
         if (finishNumTensor_(index) == 1) {
             index = (index + 1) % tokenCnt; // 轮询查询每个有效的index
@@ -1640,11 +1640,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
         uint32_t curExpertCnt = xInTensorInt16(moeCntAlign_ + topKIndex);                    // 取出cnt
         expertScale = xInToFloatTensor(moeExpertScalesAlign_ + topKIndex); 
-        LOG_INFO("[SendToExpert][moe] topKIndex",topKIndex);
-        LOG_INFO("[SendToExpert][moe] dstExpertId",dstExpertId);
-        LOG_INFO("[SendToExpert][moe] dstRankId",dstRankId);
-        LOG_INFO("[SendToExpert][moe] curExpertCnt",curExpertCnt);
-        LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
+        // LOG_INFO("[SendToExpert][moe] topKIndex",topKIndex);
+        // LOG_INFO("[SendToExpert][moe] dstExpertId",dstExpertId);
+        // LOG_INFO("[SendToExpert][moe] dstRankId",dstRankId);
+        // LOG_INFO("[SendToExpert][moe] curExpertCnt",curExpertCnt);
+        // LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
         
         if (dstExpertId >= moeExpertNum_)
             continue; // 无效数据
@@ -1964,8 +1964,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
         if(count == 10000000) {
-            // LOG_INFO("waitDispatch error count");
-            // break;
+            LOG_INFO("waitDispatch error count");
+            break;
         }
     }
     // 清状态
@@ -2168,8 +2168,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count++;
         if(count == 1000000) {
-            // LOG_INFO("WaitCumSumFlag error count");
-            // break;
+            LOG_INFO("WaitCumSumFlag error count");
+            break;
         }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -2312,8 +2312,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count ++;
         if(count > 1000000) {
-            // LOG_INFO("WaitAndFormatOutput error count");
-            // break;
+            LOG_INFO("WaitAndFormatOutput error count");
+            break;
         }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
