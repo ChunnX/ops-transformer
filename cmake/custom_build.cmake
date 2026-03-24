@@ -291,10 +291,6 @@ else()
     add_subdirectory(mhc)
 endif()
 
-if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
-        add_subdirectory(tests/ut/framework_normal)
-endif()
-
 # 编译AICPU算子
 if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler")	 
      add_subdirectory(examples/add_example)	 
@@ -316,6 +312,10 @@ endforeach()
 
 list(APPEND OP_LIST ${COMPILED_OPS})
 list(APPEND OP_DIR_LIST ${COMPILED_OP_DIRS})
+
+if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
+        add_subdirectory(tests/ut/framework_normal)
+endif()
 
 if(ENABLE_TEST)
     foreach (OP_DIR ${OP_DIR_LIST})
