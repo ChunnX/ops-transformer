@@ -63,8 +63,8 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclIntArray* recvCounts,
     bool               transGmmWeight,
     bool               transMmWeight,
-    aclTensor*         y,
-    aclTensor*         mmYOptional,
+    const aclTensor*   y,
+    const aclTensor*   mmYOptional,
     uint64_t*          workspaceSize,
     aclOpExecutor**    executor)
 ```

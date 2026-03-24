@@ -63,7 +63,8 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     const aclTensor* expandX,
-    const aclTensor* expertIds,const aclTensor* assistInfoForCombine,
+    const aclTensor* expertIds,
+    const aclTensor* assistInfoForCombine,
     const char* groupEp,
     int64_t epWorldSize,
     int64_t epRankId,
@@ -75,8 +76,8 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     int64_t commQuantMode,
     int64_t commType,
     const char* commAlg,
-    uint64_t* tokenMsgSize,
-    uint64_t* commCmdInfoOutSize)
+    uint64_t& tokenMsgSize,
+    uint64_t& commCmdInfoOutSize)
 ```
 
 ## aclnnMoeDistributeCombineSetupGetWorkspaceSize
