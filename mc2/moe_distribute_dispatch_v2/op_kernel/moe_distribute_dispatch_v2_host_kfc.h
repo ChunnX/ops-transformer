@@ -964,7 +964,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U,
                                            UB_ALIGN, 0U};
     DataCopyPad(dataDstWinGMTensor, xOutTensor, dataCopyOutParams);
-    PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口(后续抽成模版)
+    // PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口(后续抽成模版)
+    PipeBarrier<PIPE_ALL>();
     DataCopyExtParams flagCopyOutParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U,
                                            SPLIT_BLOCK_DATA_SIZE, 0U};
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], flagTensor_, flagCopyOutParams);
@@ -2262,6 +2263,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GlobalTensor<float32_t> dataFlagGlobal_test;
     dataFlagGlobal_test.SetGlobalBuffer((__gm__ float32_t *)(wAddr)); // todo:
     uint32_t t= arriveCount * 8;
+    PipeBarrier<PIPE_ALL>();
     //LOG_INFO("[CopyOut][moe] dataFlagGlobal", dataFlagGlobal_test,{16, t});
     expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (dstPosition) * axisH_);
     DataCopyParams srcTokenCopyParams{static_cast<uint16_t>(blockCntPerTokenToExpert_ * arriveCount), 
@@ -2326,9 +2328,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_ + beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE);  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         uint32_t stride = WIN_ADDR_ALIGN - sizeof(float32_t);
-        LOG_INFO("WaitAndFormatOutput start");
+        //LOG_INFO("WaitAndFormatOutput start");
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, stride, flagNum);
-        LOG_INFO("WaitAndFormatOutput start");
+        //LOG_INFO("WaitAndFormatOutput start");
         //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (isArrived) {
             // LOG_INFO("WaitAndFormatOutput index:", index);
@@ -2416,7 +2418,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::V_S>();
     flagRecvGatherMask_.SetValue(0, 1);
     SyncFunc<AscendC::HardEvent::S_V>();
-    PipeBarrier<PIPE_ALL>();
+    //PipeBarrier<PIPE_ALL>();
     WaitAndFormatOutput(tBuf, validNum);
 }
 
