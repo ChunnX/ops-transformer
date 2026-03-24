@@ -21,6 +21,7 @@ constexpr uint64_t LARGE_K_BOUNDARY = 8192;
 constexpr double COMPUTE_TIME_SCALE_FACTOR = 1.5;
 constexpr double TIME_LOWER_RATIO = 2.0;
 constexpr double TIME_UPPER_RATIO = 3.0;
+constexpr uint64_t EXPANSION_RATIO = 2;
 
 class AlltoAllMM : public OneCalcOneCommBase {
 public:
@@ -31,6 +32,9 @@ public:
     {
         if (isCommunicationBefore) {
             // 如果是AllToAllMatmul，设置CommShapeLen为k轴的长度
+            if (args.geAType == ge::DT_FLOAT4_E2M1) {
+                commPerf_.SetCommDtypeSizeExpansionFraction(EXPANSION_RATIO);
+            }
             commPerf_.SetCommShapeLen(clusterInfo_.kValue);
             commPerf_.SetCommDTypeSize(clusterInfo_.inMatrixADtypeSize);
         } else {
