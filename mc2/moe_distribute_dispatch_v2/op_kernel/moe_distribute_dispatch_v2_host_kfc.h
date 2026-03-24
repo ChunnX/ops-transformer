@@ -1326,10 +1326,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     TBuf<> tokenFlagBuf;
     TBuf<> cleanBuf;
 
-    bufferNum_ = 1; //TODO:
-    tpipe_->InitBuffer(tokenInQueue_, bufferNum_, sendTokenLengthAlign_); // token输入队列
-    tpipe_->InitBuffer(xInQueue_, bufferNum_, hAlignSize_); // 14K * 2
-    tpipe_->InitBuffer(xOutQueue_, bufferNum_, hOutAlignUbSize_); // 7K * 2 + 32 + 6
+    tpipe_->InitBuffer(tokenInQueue_, BUFFER_NUM, sendTokenLengthAlign_); // token输入队列
+    tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hAlignSize_); // 14K * 2
+    tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hOutAlignUbSize_); // 7K * 2 + 32 + 6
     tpipe_->InitBuffer(flagBuf_, commFlagSize);
     tpipe_->InitBuffer(tokenRcvStatusBuf, TOKEN_RECV_CNT_MAX * sizeof(uint32_t)); // 一个server最多发512个token给
     tpipe_->InitBuffer(tokenFlagBuf, flagMaxRecvBuf); 
