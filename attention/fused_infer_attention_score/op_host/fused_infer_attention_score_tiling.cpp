@@ -1040,7 +1040,7 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
         return ge::GRAPH_FAILED;
     }
     int32_t sparseMode = static_cast<int32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
-    if (sparseMode == 4 && CheckSparseModeParams(context, actSeqLenDims) != ge::GRAPH_SUCCESS) {
+    if (sparseMode == 4 && CheckSparseModeParams(context, actSeqLenDims) != ge::GRAPH_SUCCESS) { // 4: sparseMode
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
