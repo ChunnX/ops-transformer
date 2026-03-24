@@ -1023,10 +1023,11 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     //LOG_INFO("WaitFlag waitNum", waitNum);
     //LOG_INFO("WaitFlag stride", stride);
+    uint32_t copyNum = stride == 0? 1 : waitNum; // 如果stride为0，表示所有数据全部在一起，直接一起拷贝进来
+    uint32_t copyBlockLength = stride == 0 ? waitNum * sizeof(float32_t) : sizeof(float32_t);
     GlobalTensor<float32_t> flagInGMTensor;
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(flagAddr));
-    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(waitNum), static_cast<uint32_t>(sizeof(float)),
-                                        static_cast<uint32_t>(stride), 0, 0};
+    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(copyNum), copyBlockLength, static_cast<uint32_t>(stride), 0, 0};
     DataCopyPadExtParams<float32_t> flagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
     uint32_t  rcvCnt = 0;
     uint64_t count =0; //TODO:
