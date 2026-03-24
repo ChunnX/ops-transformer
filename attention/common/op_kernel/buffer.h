@@ -16,9 +16,7 @@
 #define BUFFER_H
 #include<type_traits>
 #include"lib/matmul_intf.h"
-#include"kernel_event.h"
-#include"kernel_common.h"
-#include"kernel_tpipe.h"
+#include"kernel_basic_intf.h"
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
