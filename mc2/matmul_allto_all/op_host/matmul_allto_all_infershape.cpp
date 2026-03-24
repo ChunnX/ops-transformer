@@ -48,14 +48,15 @@ constexpr uint64_t X1_MX_QUANT_NUM = 6;
 constexpr uint64_t X2_MX_QUANT_NUM = 6;
 constexpr int64_t OUTPUT_INFER_SHAPE = 2;
 static const char* INNER_DEBUG = "MC2: MatmulAlltoAll InferShape Debug";
-const std::set<int64_t> SUPPORT_RANK_NUM{2, 4, 8, 16};
+const std::vector<int64_t> SUPPORT_RANK_NUM{2, 4, 8, 16};
 
 struct MatmulAlltoAllShapeInfo {
     int64_t outputDim;
     int64_t rankNum;
+    int64_t k1;
+    int64_t k2;
     int64_t m;
     int64_t n;
-    int64_t k;
 };
 
 /**
@@ -90,11 +91,22 @@ static ge::graphStatus CheckShapeForMatmulAlltoAll(const gert::InferShapeContext
         "x1 does not support transpose in matmul allto all."), return ge::GRAPH_FAILED);
     const bool* isTransX2 = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_X2);
     const bool transX2 = ((isTransX2 != nullptr) && (*isTransX2));
-    shape.m = x1Shape->GetDim(0U);
-    shape.k = x1Shape->GetDim(1U);
-    shape.n = transX2 ? x2Shape->GetDim(0U) : x2Shape->GetDim(1U);
     shape.outputDim = x1Shape->GetDimNum();
-    OP_LOGD(INNER_DEBUG, "Matmul m %ld n %ld k %ld.", shape.m, shape.n, shape.k);
+    shape.m = x1Shape->GetDim(0U);
+    shape.n = transX2 ? x2Shape->GetDim(0U) : x2Shape->GetDim(1U);
+    shape.k1 = x1Shape->GetDim(1U);
+    shape.k2 = transX2 ? x2Shape->GetDim(1U) : x2Shape->GetDim(0U);
+
+    if (shape.m != NUM_MINUS_ONE) {
+        if (shape.k1 != shape.k2) {
+            OP_LOGE(context->GetNodeName(),
+                    "In matmul_allto_all x1.k must be the same to x2.k, but actual get x1.k: %ld, x2.k: %ld",
+                    shape.k1, shape.k2);
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    OP_LOGD(INNER_DEBUG, "Matmul m is: %ld, n is: %ld, k1 is: %ld, k2 is: %ld.", shape.m, shape.n, shape.k1, shape.k2);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -111,8 +123,10 @@ static ge::graphStatus CheckRankDim(gert::InferShapeContext* context, MatmulAllt
     OPS_CHECK(rankDim == nullptr,
         CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Rank number is null in matmul allto all."),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(SUPPORT_RANK_NUM.find(*rankDim) == SUPPORT_RANK_NUM.end(),
-                    OP_LOGE(INNER_DEBUG, "Rank number should be 2 or 4 or 8 or 16, but the actual value is %ld.", *rankDim),
+    OP_TILING_CHECK(std::find(SUPPORT_RANK_NUM.begin(), SUPPORT_RANK_NUM.end(), *rankDim) >= SUPPORT_RANK_NUM.end(),
+                    OP_LOGE(INNER_DEBUG,
+                            "Rank number should be in %s, but the actual value is %ld.",
+                            VectorToString(SUPPORT_RANK_NUM).c_str(), *rankDim),
                     return ge::GRAPH_FAILED);
     shape.rankNum = *rankDim;
     return ge::GRAPH_SUCCESS;
@@ -128,13 +142,14 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
     OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
     MatmulAlltoAllShapeInfo shape;
     OPS_CHECK(
-        CheckShapeForMatmulAlltoAll(context, shape) != ge::GRAPH_SUCCESS,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check shape for matmul allto all"),
-        return ge::GRAPH_FAILED);
-    OPS_CHECK(
         CheckRankDim(context, shape) != ge::GRAPH_SUCCESS,
         CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check rank dim for matmul allto all."),
         return ge::GRAPH_FAILED);
+    OPS_CHECK(
+        CheckShapeForMatmulAlltoAll(context, shape) != ge::GRAPH_SUCCESS,
+        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check shape for matmul allto all"),
+        return ge::GRAPH_FAILED);
+
     auto shapeOut = context->GetOutputShape(INDEX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shapeOut);
     shapeOut->SetDimNum(OUTPUT_INFER_SHAPE);
