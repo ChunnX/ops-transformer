@@ -742,12 +742,12 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
-        if (xDtype != ge::DT_FLOAT && xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(context, 
-            "When quant_mode=%ld, xDtype should be DT_FLOAT, DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-            quantMode, xDtype);
-            return ge::GRAPH_FAILED;
-        }
+        // if (xDtype != ge::DT_FLOAT && xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
+        //     OP_LOGE(context, 
+        //     "When quant_mode=%ld, xDtype should be DT_FLOAT, DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
+        //     quantMode, xDtype);
+        //     return ge::GRAPH_FAILED;
+        // }
     }
 
     if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
@@ -833,13 +833,13 @@ static ge::graphStatus InferShapeRange4MoeInitRoutingV3(gert::InferShapeRangeCon
         const int64_t *quantModePtr = attrsPtr->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
         OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
         int64_t quantMode = *quantModePtr;
-        if (quantModeMode == QuantMode::MXQUANT_FP4_E2M1) {
-            expanded_scale->GetMin()->SetDimNum(DIM_THREE);
-            expanded_scale->GetMax()->SetDimNum(DIM_THREE);
-            for (size_t i = 0; i < DIM_THREE; i++) {
-                expanded_scale->GetMin()->SetDim(i, 0);
-                expanded_scale->GetMax()->SetDim(i, -1);
-            }
+        if (quantMode == QuantMode::MXQUANT_FP4_E2M1) {
+            // expanded_scale->GetMin()->SetDimNum(DIM_THREE);
+            // expanded_scale->GetMax()->SetDimNum(DIM_THREE);
+            // for (size_t i = 0; i < DIM_THREE; i++) {
+            //     expanded_scale->GetMin()->SetDim(i, 0);
+            //     expanded_scale->GetMax()->SetDim(i, -1);
+            // }
         } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
             expanded_scale->GetMin()->SetDimNum(DIM_TWO);
             expanded_scale->GetMax()->SetDimNum(DIM_TWO);
