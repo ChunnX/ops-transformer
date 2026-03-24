@@ -2306,8 +2306,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
     flagRecvTensor_ = tBuf.GetWithOffset<float32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
-    LOG_INFO("WaitAndFormatOutput validNum:", validNum);
-    LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
+    // LOG_INFO("WaitAndFormatOutput validNum:", validNum);
+    // LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
     int count = 0;
     while (true) {
         count ++;
@@ -2330,9 +2330,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (isArrived) {
-            LOG_INFO("WaitAndFormatOutput index:", index);
-            LOG_INFO("arriveCount:", arriveCount);
-            LOG_INFO("copyCnt:", copyCnt);
+            // LOG_INFO("WaitAndFormatOutput index:", index);
+            // LOG_INFO("arriveCount:", arriveCount);
+            // LOG_INFO("copyCnt:", copyCnt);
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
