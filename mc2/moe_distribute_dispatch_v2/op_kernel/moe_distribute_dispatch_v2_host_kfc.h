@@ -2330,9 +2330,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         //arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (isArrived) {
-            LOG_INFO("WaitAndFormatOutput index:", index);
-            LOG_INFO("arriveCount:", arriveCount);
-            LOG_INFO("copyCnt:", copyCnt);
+            // LOG_INFO("WaitAndFormatOutput index:", index);
+            // LOG_INFO("arriveCount:", arriveCount);
+            // LOG_INFO("copyCnt:", copyCnt);
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
