@@ -19,7 +19,7 @@
 #include "../util_regbase.h"
 #include "../kv_quant_sparse_flash_attention_pioneer_common.h"
 
-namespace QSFaVectorApi {
+namespace QSFAPVectorApi {
 constexpr uint16_t REDUCE_SIZE = 1;
 /* **************************************************************************************************
  * FlashUpdate, fp32
