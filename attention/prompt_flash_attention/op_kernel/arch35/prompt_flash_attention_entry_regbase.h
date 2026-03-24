@@ -179,7 +179,7 @@ using namespace regbaseutil;
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FABlockVecFullquantDummy<__VA_ARGS__>, BaseApi::FABlockVecInferGqaFullquant<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op;                                                                                  \
         op.InitBaseAPI(query, key, value, pseShift, nullptr, nullptr, attenMask, nullptr, actualSeqLengths,                             \
-            actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, key_antiquant_scale, value_antiquant_scale, nullptr, postQuantScale,                 \
+            actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, key_antiquant_scale, value_antiquant_scale, quant_scale1, postQuantScale,                 \
             postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, nullptr, &tPipe);            \
         op.Process();                                                                                                                   \
     } while (0)
@@ -254,7 +254,7 @@ using namespace regbaseutil;
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FABlockVecFullquantDummy<__VA_ARGS__>, BaseApi::FABlockVecInferGqaFullquant<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op;                                                                                  \
         op.InitBaseAPI(query, key, value, pseShift, nullptr, nullptr, attenMask, nullptr, actualSeqLengths,                             \
-            actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, key_antiquant_scale, value_antiquant_scale, nullptr, postQuantScale,                 \
+            actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, key_antiquant_scale, value_antiquant_scale, quant_scale1, postQuantScale,                 \
             postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, tilingData, &tPipe);        \
         op.Process();                                                                                                                   \
     } while (0)
