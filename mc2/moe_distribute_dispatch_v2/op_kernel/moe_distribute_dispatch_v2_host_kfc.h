@@ -998,8 +998,8 @@ template <bool isContinueWait>
 __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
-    LOG_INFO("WaitFlag waitNum", waitNum);
-    LOG_INFO("WaitFlag stride", stride);
+    // LOG_INFO("WaitFlag waitNum", waitNum);
+    // LOG_INFO("WaitFlag stride", stride);
     uint32_t copyNum = 1; // 如果stride为0，表示所有数据全部在一起，直接一起拷贝进来
     uint32_t copyBlockLength = waitNum * sizeof(float32_t);
     uint32_t calCnt = waitNum;
@@ -1037,7 +1037,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     }while(isContinueWait);
 
-    LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+    //LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return rcvCnt == waitNum;
 }
 
