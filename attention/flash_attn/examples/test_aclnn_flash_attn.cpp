@@ -22,6 +22,23 @@
 
 namespace {
 
+static float fp16_to_float(uint16_t h) {
+    uint32_t sign = (h >> 15) & 0x1u;
+    uint32_t exp  = (h >> 10) & 0x1fu;
+    uint32_t mant = h & 0x3ffu;
+    uint32_t f;
+    if (exp == 0) {
+        f = (sign << 31) | (mant << 13);  // zero / denormal → treat as zero here
+    } else if (exp == 31) {
+        f = (sign << 31) | 0x7f800000u | (mant << 13);  // inf / nan
+    } else {
+        f = (sign << 31) | ((exp + 127u - 15u) << 23) | (mant << 13);
+    }
+    float result;
+    std::memcpy(&result, &f, sizeof(result));
+    return result;
+}
+
 #define CHECK_RET(cond)  ((cond) ? true : (false))
 
 #define LOG_PRINT(message, ...)                                                                                        \
@@ -100,8 +117,8 @@ int main()
     // 2. 构造输入与输出
     // BNSD推理场景：B=1, N_q=8, N_kv=2 (GQA 4:1), S_q=S_kv=128, D=64
     const int64_t B   = 1;
-    const int64_t N_q = 8;
-    const int64_t N_kv = 2;   // GQA：每2个q heads共享1个kv head
+    const int64_t N_q = 1;
+    const int64_t N_kv = 1;   // GQA：每2个q heads共享1个kv head
     const int64_t S_q = 128;
     const int64_t S_kv = 128;
     const int64_t D   = 64;
@@ -217,7 +234,7 @@ int main()
         return ret;
     }
     for (int64_t i = 0; i < std::min(outSize, int64_t(8)); i++) {
-        LOG_PRINT("attentionOut[%ld] = 0x%04x (FP16)\n", i, resultData[i]);
+        LOG_PRINT("attentionOut[%ld] = %f (0x%04x)\n", i, fp16_to_float(resultData[i]), resultData[i]);
     }
 
     // 6. 释放aclTensor资源

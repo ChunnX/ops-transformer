@@ -353,7 +353,9 @@ ge::graphStatus FlashAttnTilingRegbase::DoOpTiling()
 
     int32_t usedCoreNum = static_cast<int32_t>(
         std::min(totalSz, static_cast<int64_t>(aivNum)));
-    multiCoreParamsRegbase_->set_coreNum(usedCoreNum);
+    OP_LOGD(context_, "FlashAttn totalSz=%ld aivNum=%ld usedCoreNum=%ld\n.",
+            totalSz, aivNum, usedCoreNum);
+    multiCoreParamsRegbase_->set_coreNum(1);
 
     // 均匀分配：前formerNum个核各处理splitFactor个任务，其余核处理splitFactorTail个
     int64_t splitFactor     = FA_CeilDiv(totalSz, static_cast<int64_t>(usedCoreNum));
@@ -368,7 +370,7 @@ ge::graphStatus FlashAttnTilingRegbase::DoOpTiling()
             static_cast<int64_t>(i) * splitFactor);
     }
     multiCoreParamsRegbase_->set_bnStartIdx(bnStartIdxArr);
-    multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(0LL);
+    multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(-1);
     multiCoreParamsRegbase_->set_splitCoreMode(0U);
     // sparseStartIdx 全零（无稀疏注意力）
     int64_t sparseArr[48] = {};
@@ -440,7 +442,7 @@ ge::graphStatus FlashAttnTilingRegbase::PostTiling()
     //     return ge::GRAPH_FAILED;
     // }
 
-    context_->SetBlockDim(32);
+    context_->SetBlockDim(1);
     // auto platformInfoPtr = context_->GetPlatformInfo();
     // if (platformInfoPtr != nullptr) {
     //     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);

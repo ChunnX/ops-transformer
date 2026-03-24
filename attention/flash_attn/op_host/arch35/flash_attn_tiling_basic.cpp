@@ -76,8 +76,8 @@ protected:
         uint8_t lseFlag = static_cast<uint8_t>(returnSoftmaxLse != 0 ? 1 : 0);
         uint8_t impl = static_cast<uint8_t>(implMode);
         OP_LOGD(opName, "impl:%d layout:%d s1Type:%d s2Type:%d dType:%d atten:%d paFlag:%d lseFlag:%d .", impl, layout, s1Type, s2Type, dType, atten, paFlag, lseFlag);
-        return GET_TPL_TILING_KEY(0, impl, layout, s1Type, s2Type, dType, 0,
-                                  atten, paFlag, lseFlag, 1);
+        return GET_TPL_TILING_KEY(0, 0, 0, 128, 128, 64, 0,
+                                  0, 0, 0, 1);
     }
 
     ge::graphStatus PostTiling() override

@@ -105,20 +105,20 @@ inline __aicore__ void flash_attn_regbase(
 // AscendC::DumpTensor(vBuff, 3, 128);
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    AscendC::printf("-----------kernel----------");
+    AscendC::printf("-----------kernel----------\n");
     #if (ORIG_DTYPE_Q == DT_FLOAT)
-        AscendC::printf("-----------DT_FLOAT----------");
-        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
+        AscendC::printf("-----------DT_FLOAT----------\n");
+        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(64), DTemplateType(64), PseTypeEnum(9), 0, 0, 0);
         return;
     #endif
     #if (ORIG_DTYPE_Q == DT_BF16)
-        AscendC::printf("-----------DT_BF16----------");
-        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
+        AscendC::printf("-----------DT_BF16----------\n");
+        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(64), DTemplateType(64), PseTypeEnum(9), 0, 0, 0);
         return;
     #endif
     #if (ORIG_DTYPE_Q == DT_FLOAT16)
-        AscendC::printf("-----------DT_FLOAT16----------");
-        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, half, float, half, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(128), DTemplateType(128), PseTypeEnum(0), 0, 0, 0);
+        AscendC::printf("-----------DT_FLOAT16----------\n");
+        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, half, float, half, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(64), DTemplateType(64), PseTypeEnum(9), 0, 0, 0);
         return;
     #endif
 #endif

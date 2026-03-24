@@ -36,43 +36,43 @@ static bool IsEmptyInput(gert::TilingContext *context)
 
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
 {
-    OP_LOGW(context, "FlashAttn TilingFlashAttn start.");
+    // OP_LOGW(context, "FlashAttn TilingFlashAttn start.");
 
-    auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr,
-        OP_LOGE(context, "platformInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+    // auto platformInfoPtr = context->GetPlatformInfo();
+    // OP_CHECK_IF(platformInfoPtr == nullptr,
+    //     OP_LOGE(context, "platformInfoPtr is null"),
+    //     return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (IsEmptyInput(context)) {
-            return ge::GRAPH_SUCCESS;
-        }
-    }
+    // auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    // if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    //     if (IsEmptyInput(context)) {
+    //         return ge::GRAPH_SUCCESS;
+    //     }
+    // }
 
     return TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context)
 {
-    auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr,
-        OP_LOGE(context, "platformInfoPtr is null"),
-        return ge::GRAPH_FAILED);
-    auto compileInfoPtr = context->GetCompiledInfo<FlashAttnCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context, "compileInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+    // auto platformInfoPtr = context->GetPlatformInfo();
+    // OP_CHECK_IF(platformInfoPtr == nullptr,
+    //     OP_LOGE(context, "platformInfoPtr is null"),
+    //     return ge::GRAPH_FAILED);
+    // auto compileInfoPtr = context->GetCompiledInfo<FlashAttnCompileInfo>();
+    // OP_CHECK_IF(compileInfoPtr == nullptr,
+    //     OP_LOGE(context, "compileInfoPtr is null"),
+    //     return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    compileInfoPtr->aivNum     = ascendcPlatform.GetCoreNumAiv();
-    compileInfoPtr->aicNum     = ascendcPlatform.GetCoreNumAic();
-    compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
-    compileInfoPtr->npuArch    = ascendcPlatform.GetCurNpuArch();
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB,   compileInfoPtr->ubSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1,   compileInfoPtr->l1Size);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0cSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2,   compileInfoPtr->l2CacheSize);
+    // auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    // compileInfoPtr->aivNum     = ascendcPlatform.GetCoreNumAiv();
+    // compileInfoPtr->aicNum     = ascendcPlatform.GetCoreNumAic();
+    // compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+    // compileInfoPtr->npuArch    = ascendcPlatform.GetCurNpuArch();
+    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB,   compileInfoPtr->ubSize);
+    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1,   compileInfoPtr->l1Size);
+    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0cSize);
+    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2,   compileInfoPtr->l2CacheSize);
 
     return ge::GRAPH_SUCCESS;
 }
