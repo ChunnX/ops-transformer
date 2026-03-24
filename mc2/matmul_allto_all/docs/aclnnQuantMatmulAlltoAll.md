@@ -67,7 +67,7 @@ int64_t            commQuantDtype,
 int64_t            groupSize,
 bool               transposeX1,
 bool               transposeX2,
-aclTensor*         output,
+const aclTensor*   output,
 uint64_t*          workspaceSize,
 aclOpExecutor**    executor);
 ```
