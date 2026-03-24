@@ -1018,9 +1018,19 @@ bool PromptFlashAttentionTilingV2::CheckPerblockQuantParams(const ContextParamsF
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "dequantScaleQuery, keyAntiquantScale or valueAntiquantScale is nullptr in per-block quant scenario."),
         return false);
-    OP_CHECK_IF((deqScale1Shape != nullptr) || (quantScale1Shape != nullptr) || (deqScale2Shape != nullptr),
+    OP_CHECK_IF((deqScale1Shape != nullptr) || (deqScale2Shape != nullptr),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "deqScale1, quantScale1 or deqScale2 is not supported in per-block quant scenario."),
+            "deqScale1 or deqScale2 is not supported in per-block quant scenario."),
+        return false);
+    OP_CHECK_IF((quantScale1Shape != nullptr) && (quantScale1Shape->GetStorageShape().GetDimNum() != 1),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "quantScale1's dim must be must be 1 in per-block quant scenario, "
+            "now quantScale1's dim is %zu.", quantScale1Shape->GetStorageShape().GetDimNum()),
+        return false);
+    OP_CHECK_IF((quantScale1Shape != nullptr) && (quantScale1Shape->GetStorageShape().GetDimNum() == 1) && (quantScale1Shape->GetStorageShape().GetDim(0) != 1),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "quantScale1's shape must be must be [1] in per-block quant scenario, "
+            "now quantScale1's shape is [%u].", quantScale1Shape->GetStorageShape().GetDim(0)),
         return false);
     OP_CHECK_IF(antiquantScaleShape != nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
