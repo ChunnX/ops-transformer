@@ -375,8 +375,8 @@ def block_allclose_map(
     ref: torch.Tensor,
     block_h: int,
     block_w: int,
-    rtol: float = 0.05,
-    atol: float = 0.05,
+    rtol: float = 0.01,
+    atol: float = 0.01,
     print_map: bool = False,
 ) -> torch.Tensor:
     """

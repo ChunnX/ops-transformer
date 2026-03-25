@@ -82,7 +82,7 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
                                                   force_dense_sm=(sparsity == 0))   
     
     # Check correctness with reasonable tolerances (moved to CPU for comparison)
-    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.05, atol=0.05):
+    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.01, atol=0.01):
         pytest.fail(
             f"Outputs don't match for b={b}, h={h}, s_q={s_q}, s_kv={s_kv}, d={d}, sparsity={sparsity}"
         )
