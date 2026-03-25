@@ -343,6 +343,9 @@ static ge::graphStatus ConvertAttrsPFA(gert::TilingContext &context, ContextPara
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support query dequant now"),
         return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(*contextKeyParams.sparseMode == 9U,
+        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support Tree Sparse(9) now"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1052,7 +1055,7 @@ ge::graphStatus CheckFAIQKV(gert::TilingContext *context, bool isPageAttention)
     auto kDataType = context->GetInputDesc(KEY_INDEX)->GetDataType();
     auto vDataType = context->GetInputDesc(VALUE_INDEX)->GetDataType();
     OP_CHECK_IF((qDataType != kDataType) || (qDataType != vDataType),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be consitent"),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be consistent"),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF((qDataType != ge::DT_FLOAT16) && (qDataType != ge::DT_BF16),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be FP16 or BF16"),
@@ -1616,7 +1619,7 @@ bool IsMlaIfaOrMtp(gert::TilingContext &context, const string inputLayoutStr, co
         if (queryS == 1)  {
             return true;
         }
-        if ((queryS > 1 && queryS <= 16) && (queryD == 512)) { // 16: mtp; 512: qD need 512
+        if ((queryS > 1 && queryS <= 32) && (queryD == 512)) { // 16: mtp; 512: qD need 512
             return true;
         }
     }

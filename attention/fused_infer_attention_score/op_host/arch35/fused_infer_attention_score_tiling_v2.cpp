@@ -746,6 +746,14 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
     if (tempKVN == 0U) {
         tempKVN = tempN;
     }
+
+    // sparse9 暂不支持A5
+    int32_t tempSparseMode = *attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX);
+    OP_CHECK_IF(tempSparseMode == 9, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+        "Ascend910_95 currently does not support sparse9!"),
+        return ge::GRAPH_FAILED);
+
+
     if (enablePA) {
         size_t vDim = tempV->GetStorageShape().GetDimNum();
         if (vDim == 3) {         // BBH, dim num: 3
@@ -754,6 +762,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
             valueD = tempV->GetStorageShape().GetDim(VALUE_DIM_2) * tempV->GetStorageShape().GetDim(VALUE_DIM_4);
         }
     }
+
     const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     int64_t s = 0;
     int64_t b = tempQ->GetStorageShape().GetDim(QUERY_DIM_0);

@@ -38,6 +38,7 @@ enum class SparseMode : uint8_t {
     RIGHT_DOWN_CAUSAL,
     BAND,
     SPARSE_BUTT,
+    TREE = 9,
 };
 
 template<class T>
