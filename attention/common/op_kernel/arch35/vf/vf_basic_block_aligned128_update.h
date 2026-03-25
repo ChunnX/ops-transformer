@@ -230,8 +230,13 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
             ((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum, ureg_exp_sum, 1);
         if constexpr (isMlaFullQuant) {
             LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_rowmax_p, pScaleUb + i);
-            USE_MLA_FULLQUANT_V1_P(vreg_exp_even, vreg_rowmax_p, preg_all);
-            USE_MLA_FULLQUANT_V1_P(vreg_exp_odd, vreg_rowmax_p, preg_all);
+            if constexpr (IsSameType<T2, int8_t>::value) {
+                USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp_even, vreg_rowmax_p, preg_all);
+                USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp_odd, vreg_rowmax_p, preg_all);
+            } else {
+                USE_MLA_FULLQUANT_V1_P(vreg_exp_even, vreg_rowmax_p, preg_all);
+                USE_MLA_FULLQUANT_V1_P(vreg_exp_odd, vreg_rowmax_p, preg_all);
+            }
         }
 
         // dropmask compute
@@ -294,6 +299,28 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
             Gather(vreg_exp_merge_f8e4m3, vreg_exp_merge_tmp_f8e4m3, vreg_exp_merge_f8e4m3_indexes);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp_merge_f8e4m3, blockStride, repeatStride, preg_all_b8_128);
+        } else if constexpr (IsSameType<T2, int8_t>::value) {
+            // 硬件不支持 float → int8 直接转换，需要分两步：float → half → int8
+            RegTensor<int8_t> vreg_exp_merge_tmp_int8;
+            RegTensor<int8_t> vreg_exp_merge_int8;
+            MaskReg preg_all_f16 = CreateMask<half, MaskPattern::ALL>();
+            uint32_t maskLen = 128;
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+            // float → half → Or → half → int8 → Gather
+            static constexpr MicroAPI::CastTrait castTrait0 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+            static constexpr MicroAPI::CastTrait castTrait1 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
+                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+            Cast<half, T, castTrait0>(vreg_exp_even_f16, vreg_exp_even, preg_all);
+            Cast<half, T, castTrait1>(vreg_exp_odd_f16, vreg_exp_odd, preg_all);
+            Or<uint16_t, MicroAPI::MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vreg_exp_f16,
+                (MicroAPI::RegTensor<uint16_t>&)vreg_exp_even_f16,
+                (MicroAPI::RegTensor<uint16_t>&)vreg_exp_odd_f16, preg_all_f16);
+            Cast<T2, half, castTrait0>(vreg_exp_merge_tmp_int8, vreg_exp_f16, preg_all_f16);
+            MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>((MicroAPI::RegTensor<uint8_t>&)vreg_exp_merge_int8,
+                    (MicroAPI::RegTensor<uint16_t>&)vreg_exp_merge_tmp_int8);
+            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                ((__ubuf__ int8_t *&) expUb), vreg_exp_merge_int8, blockStride, repeatStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
             RegTensor<hifloat8_t> vreg_exp_even_hif8;
             RegTensor<hifloat8_t> vreg_exp_odd_hif8;
