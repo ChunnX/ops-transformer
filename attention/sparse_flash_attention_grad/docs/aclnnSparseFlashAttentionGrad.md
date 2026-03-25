@@ -862,9 +862,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(actSeqKvLenHostData, actSeqKvLenshape, &actSeqKvLenDeviceAddr, aclDataType::ACL_INT32, &actSeqKvLen);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(qRopeHostData, qRopeShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &qRope);
+  ret = CreateAclTensor(qRopeHostData, qRopeShape, &qRopeDeviceAddr, aclDataType::ACL_FLOAT16, &qRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kRopeHostData, kRopeShape, &dkDeviceAddr, aclDataType::ACL_FLOAT16, &kRope);
+  ret = CreateAclTensor(kRopeHostData, kRopeShape, &kRopeDeviceAddr, aclDataType::ACL_FLOAT16, &kRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dqHostData, qShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &dq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
