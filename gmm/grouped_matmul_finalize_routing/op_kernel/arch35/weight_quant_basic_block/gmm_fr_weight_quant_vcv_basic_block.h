@@ -107,6 +107,7 @@ protected:
     uint64_t cvLoopIdx_ = 0;
     uint64_t weightL1DbOffset_ = 0;
     uint64_t biasL1DbOffset_ = 0;
+    uint64_t rlLoopIdx_ = 0;
     bool hasBias_ = false;
 
     LocalTensor<xType> weightL1_;
@@ -138,6 +139,11 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::Init(bool hasB
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
     } else {
+        constexpr uint64_t ubOffset =
+            WeightQuantBatchMatmulV2::Arch35::GetGmmFRMxA8W4BufferInfo<vecConfig>().weightLowbitTotalSize;
+        constexpr uint64_t highBitSize =
+            WeightQuantBatchMatmulV2::Arch35::GetGmmFRMxA8W4BufferInfo<vecConfig>().weightLowbitTotalSize;
+        ubOutputF32Buffer_ = LocalTensor<float>(TPosition::LCM, ubOffset, highBitSize);
         vecCompute_.Init(hasBias_, sharedInputWeight, y);
     }
     cvLoopIdx_ = 0;
@@ -147,13 +153,13 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitAtomicGm(uint64_t initSize, uint64_t sharedInputStartSize, uint64_t sharedInputSize, __gm__ sharedInputDType *shareInputAddr)
 {
     // 首4轮的mte3写出
-    constexpr uint64_t initZeroBufferSize = GetGmmFRMxA8W4BufferInfo<vecConfig>().highBitDataUbSingleBufferSize / sizeof(float);
+    constexpr uint64_t initZeroBufferSize = GetGmmFRMxA8W4BufferInfo<vecConfig>().weightHighBitSingleBufferSize / sizeof(float);
     uint64_t yGmOffset = GetBlockIdx() * initZeroBufferSize;
     InitGmZeroWithIterate(yGmOffset, Min(QUADRUPLE_BUFFER_NUM * AscendC::GetBlockNum() * initZeroBufferSize, initSize), sharedInputStartSize, sharedInputSize);
 
     // shared input mte3写出
     constexpr uint64_t mte2BufferSize =
-        WeightQuantBatchMatmulV2::Arch35::GetMxA8W4NzBufferInfo<vecConfig>().weightInputLowBitUbSingleBufferSize / sizeof(sharedInputDType);
+        WeightQuantBatchMatmulV2::Arch35::GetGmmFRMxA8W4BufferInfo<vecConfig>().weightLowBitSingleBufferSize / sizeof(sharedInputDType);
     for (uint64_t sharedInputGmOffset = AscendC::GetBlockIdx() * mte2BufferSize; sharedInputGmOffset <= sharedInputSize;
          sharedInputGmOffset += AscendC::GetBlockNum() * mte2BufferSize) {
         uint64_t initSharedInputRealSize = sharedInputGmOffset + mte2BufferSize > sharedInputSize ?
@@ -229,6 +235,16 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
     
     VecComputeNzNkWithStartLimit(kMte2Offset, Min(curOffsetParam.kSize, DOUBLE_BUFFER_NUM * curOffsetParam.kbL1Size), 
                          curOffsetParam);
+
+    vecCompute_.WaitSToMTE2(rlLoopIdx_);
+    vecCompute_.WaitFrVToMTE2(rlLoopIdx_);
+    uint64_t mSingleVec = CeilDivide(curOffsetParam.mL1Size, 2UL);
+    vecCompute_.CopyRowIndexLogitsGmToUb(curOffsetParam.mOffset +
+                                         GetSubBlockIdx() * mSingleVec,
+                                        GetSubBlockIdx() == 0 ? mSingleVec : curOffsetParam.mL1Size - mSingleVec,
+                                    rlLoopIdx_);
+    vecCompute_.SetMte2ToS(rlLoopIdx_);
+    rlLoopIdx_++;
     if (curCvLoopIdx > 0) {
         // y反量化在vec上两core切m
         uint64_t lastBasicBlockMSize = lastOffsetParam.mL1Size - (lastOffsetParam.mL1Size >> 1);
@@ -237,14 +253,16 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
 
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
         WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
-        // MulLogits not needed for weight quant - skipping
-        vecCompute_.CopyYUbToGm(lastOffsetParam.nL1Size, lastBasicBlockMSize,
-                                reinterpret_cast<__gm__ half *>(lastOffsetParam.yGmAddr), lastOffsetParam,
-                                lastBasicBlockMOffset);
+
+        vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam);
+        vecCompute_.SetFrToMTE2(rlLoopIdx_ - 1);
+        vecCompute_.WaitMte2ToS(rlLoopIdx_ - 1);
+        vecCompute_.RoutingYToGm(lastBasicBlockMSize,ubOutputF32Buffer_,
+                                lastOffsetParam);
+        vecCompute_.SetSToMTE2(rlLoopIdx_ - 1);
     }
     // todo 先不搞preload mte2, 收益有限
     VecComputeNzNkWithStartLimit(kMte2Offset, curOffsetParam.kSize, curOffsetParam);
-    vecCompute_.CopyRowIndexLogitsGmToUb();
 }
 
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
@@ -305,30 +323,32 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
     }
 }
 
-
-
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffsetParam &lastOffsetParam)
 {
     if ASCEND_IS_AIC {
         if (cvLoopIdx_ > 0) {
             WaitAivToAic<PIPE_FIX>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
-            cubeCompute_.GetTensorC(ubOutputF32Buffer_, curOffsetParam);
+            cubeCompute_.GetTensorC(ubOutputF32Buffer_, lastOffsetParam);
             SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
         }
         cubeCompute_.EndSync();
     } else {
-        if (cvLoopIdx_ > 0) {
-            SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
-            uint64_t lastBasicBlockMSize = curOffsetParam.mL1Size - (curOffsetParam.mL1Size >> 1);
+        if (cvLoopIdx_ > 0) {       
+            uint64_t lastBasicBlockMSize = lastOffsetParam.mL1Size - (lastOffsetParam.mL1Size >> 1);
             uint64_t lastBasicBlockMOffset = GetSubBlockIdx() == 0 ? 0 : lastBasicBlockMSize;
-            lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (curOffsetParam.mL1Size >> 1);
+            lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (lastOffsetParam.mL1Size >> 1);
+
+            SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
             WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
-            // MulLogits not needed for weight quant - skipping
-            vecCompute_.CopyYUbToGm(curOffsetParam.nL1Size, lastBasicBlockMSize,
-                                    reinterpret_cast<__gm__ half *>(curOffsetParam.yGmAddr), curOffsetParam,
-                                    lastBasicBlockMOffset);
-            
+
+            vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam);
+
+            vecCompute_.WaitMte2ToS(rlLoopIdx_ - 1);
+            vecCompute_.RoutingYToGm(lastBasicBlockMSize,ubOutputF32Buffer_,
+                                    lastOffsetParam);
+            vecCompute_.SetSToMTE2(rlLoopIdx_ - 1);
+
         }
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
