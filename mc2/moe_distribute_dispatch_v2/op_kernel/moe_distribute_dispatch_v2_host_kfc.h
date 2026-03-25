@@ -2250,7 +2250,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (processNum == 0) {
         return;
     }
-    InitLocalCopyBuffer();
+    InitLocalCopyBuffer(processNum);
     WaitCumSumFlag(); // 软同步
     // //LOG_INFO("after WaitCumSumFlag");
 
