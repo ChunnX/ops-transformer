@@ -357,7 +357,7 @@ __aicore__ inline void SparseAttnSharedkvSwa<CubeBlockType, VecBlockType>::Proce
                 GlobalTensor<int32_t> tmpTensor;
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQAddr, tmpTensor,
-                        false, runParam, this->constInfo);
+                        false, tmpTensor, false, runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;

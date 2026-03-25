@@ -98,6 +98,7 @@ def save_result(result, fulfill_percent, params, result_path='./result/sas_resul
         "ori_kv_datarange": None if len(params) == 25 else params[27],
         "cmp_kv_datarange": None if len(params) == 25 else params[28],
         "ori_kv_topk_mode": None if len(params) < 32 else params[31],
+        "cmp_kv_topk_mode": None if len(params) < 33 else params[32],
         "result": result,
         "fulfill_percent": fulfill_percent,
     }

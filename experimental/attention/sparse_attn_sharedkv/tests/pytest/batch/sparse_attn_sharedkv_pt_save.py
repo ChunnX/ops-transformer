@@ -65,6 +65,7 @@ for params in ENABLED_PARAMS_FROM_FILE:
         "ori_kv_datarange": params.get("ori_kv_datarange", [None]),
         "cmp_kv_datarange": params.get("cmp_kv_datarange", [None]),
         "ori_kv_topk_mode": params.get("ori_kv_topk_mode", [None]),
+        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", [None]),
         "testcase_name": params.get("testcase_name"),
     }
 
@@ -108,11 +109,12 @@ def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
     ori_kv_datarange = ast.literal_eval(param_combinations['ori_kv_datarange']) if param_combinations['ori_kv_datarange'] is not None else [-10,10]
     cmp_kv_datarange = ast.literal_eval(param_combinations['cmp_kv_datarange']) if param_combinations['cmp_kv_datarange'] is not None else [-10,10]
     ori_kv_topk_mode = param_combinations['ori_kv_topk_mode']
+    cmp_kv_topk_mode = param_combinations['cmp_kv_topk_mode']
     
     test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1, \
                 block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
                 ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode
+                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode
 
     print("data parsed.", test_data)
     print("strat to generate data")
