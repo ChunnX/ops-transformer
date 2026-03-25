@@ -209,7 +209,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::UpdateGlo
     if constexpr (IsSameType<xType, int8_t>::value) {
         antiQuantYPerTokenScaleGlobal_.SetGlobalBuffer(perTokenScale);
         antiQuantYPerChannelScaleGlobal_.SetGlobalBuffer(perChannelScale);
-        antiQuantYBiasGlobal_.SetGlobalBuffer(bias);
+        antiQuantYBiasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(bias));
     } else {
         antiQuantOffsetGlobal_.SetGlobalBuffer(antiQuantOffset);
     }
