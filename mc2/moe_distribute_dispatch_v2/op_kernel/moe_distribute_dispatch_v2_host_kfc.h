@@ -1616,11 +1616,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitStatusTensor()
 {
+    uint32_t rcvExpertDataSize = SPLIT_BLOCK_DATA_SIZE * blockCntExpertPerServer_;
     uint32_t flagMaxRecvNum = blockCntExpertPerServer_;
     uint32_t flagBufferSize = flagMaxRecvNum * UB_ALIGN;
+    uint32_t statusBufBufferSize = flagBufferSize > rcvExpertDataSize ? flagBufferSize : rcvExpertDataSize;
     uint64_t mask[2] = {0x101010101010101, 0}; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000
     TBuf flagRecvBuf;
-    tpipe_->InitBuffer(flagRecvBuf, flagBufferSize);
+    tpipe_->InitBuffer(flagRecvBuf, statusBufBufferSize);
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign_ * UB_ALIGN);
     flagRecvTensor_ = flagRecvBuf.Get<float32_t>();
     statusBufCntAlign_ = Ceil(expertNumInServer_ * serverNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
@@ -1666,16 +1668,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         statusWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(serverRcvAddr));
 
         WaitFlag<true>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntExpertPerServer_);
-
+        LocalTensor<uint32_t> rcvExpertCntTensor = flagRecvTensor_.template ReinterpretCast<uint32_t>(); // buf复用
+        ReadDataFromWindows<uint32_t>(serverRcvAddr, blockCntExpertPerServer_, rcvExpertCntTensor);
+        SyncFunc<AscendC::HardEvent::MTE2_S>(); 
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
-            uint32_t srcPos = expertIndex / 120 * 128 + expertIndex % 120;
-            statusTensor_(expertIndex * 8 + 1) = statusWinGMTensor(srcPos);
-            // //LOG_INFO("srcPos",srcPos);
-            // //LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
+            statusTensor_(expertIndex * 8 + 1) = rcvExpertCntTensor[expertIndex];
         }
+        // for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
+        //     uint32_t srcPos = expertIndex / 120 * 128 + expertIndex % 120;
+        //     statusTensor_(expertIndex * 8 + 1) = statusWinGMTensor(srcPos);
+        //     // //LOG_INFO("srcPos",srcPos);
+        //     // //LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
+        // }
 
         //LOG_INFO("[statusTensor_]",statusTensor_,{moeExpertNum_,8});
-        PipeBarrier<PIPE_ALL>();
+        PipeBarrier<PIPE_ALL>(); //todo: 优化PIPE_ALL
         SyncFunc<AscendC::HardEvent::S_MTE3>(); 
         GlobalTensor<int32_t> rankGMTensor;
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
