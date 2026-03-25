@@ -104,6 +104,8 @@ public:
     __aicore__ inline void Process();
 
 private:
+
+    __aicore__ inline void InitLocalCopyBuffer(uint32_t processNum);
     __aicore__ inline void CleanTokenFlag(uint32_t serverId, uint32_t startTokenId, uint32_t cleanTokenNum);
     __aicore__ inline void CalServerSplitCore(uint32_t serverNum, uint32_t startAivId, uint32_t useAivNum,
                                               uint32_t &startServerId, uint32_t &endServerId, uint32_t &useAivPerServer);
