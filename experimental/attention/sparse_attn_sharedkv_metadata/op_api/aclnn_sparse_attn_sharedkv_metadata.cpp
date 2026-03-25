@@ -57,7 +57,7 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional,
                                bool hasOriKvOptional,
                                bool hasCmpKvOptional,
                                const aclTensor* metaData) {
-  return ACLNN_SUCCESS;
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnSparseAttnSharedkvMetadataGetWorkspaceSize(
@@ -88,48 +88,62 @@ aclnnStatus aclnnSparseAttnSharedkvMetadataGetWorkspaceSize(
     const aclTensor* metaData,
     uint64_t* workspaceSize,
     aclOpExecutor** executor) {
-  L2_DFX_PHASE_1(aclnnSparseAttnSharedkvMetadata,
-                 DFX_IN(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
-                        sequsedKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, 
-                        batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, 
-                        cmpRatioOptional, oriMaskModeOptional, cmpMaskModeOptional, oriWinLeftOptional, 
-                        oriWinRightOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional, hasCmpKvOptional),
-                 DFX_OUT(metaData));
+    L2_DFX_PHASE_1(aclnnSparseAttnSharedkvMetadata,
+                   DFX_IN(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
+                          sequsedKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, 
+                          batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, 
+                          cmpRatioOptional, oriMaskModeOptional, cmpMaskModeOptional, oriWinLeftOptional, 
+                          oriWinRightOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional, hasCmpKvOptional),
+                   DFX_OUT(metaData));
 
-  auto uniqueExecutor = CREATE_EXECUTOR();
-  CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-  auto ret = ParamsCheck(
-      cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, sequsedKvOptional, 
-      oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
-      maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, cmpRatioOptional, oriMaskModeOptional, 
-      cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, layoutQOptional, layoutKvOptional, 
-      hasOriKvOptional, hasCmpKvOptional, metaData);
-  CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
+                           sequsedKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, 
+                           headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, 
+                           cmpTopKOptional, cmpRatioOptional, oriMaskModeOptional, cmpMaskModeOptional, 
+                           oriWinLeftOptional, oriWinRightOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional, 
+                           hasCmpKvOptional, metaData);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-  const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
-  uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
-  uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-  const char *socVersion = npuInfo.GetSocLongVersion().c_str();
-  auto output = l0op::SparseAttnSharedkvMetadata(
-      cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, sequsedKvOptional, 
-      oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
-      maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, cmpRatioOptional, oriMaskModeOptional, 
-      cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, layoutQOptional, layoutKvOptional, 
-      hasOriKvOptional, hasCmpKvOptional, socVersion, aicCoreNum, aivCoreNum, metaData, 
-      uniqueExecutor.get());
-  CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
+    uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
+    uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
+    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
+    auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
+    CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto cuSeqLensOriKvOptionalContiguous = l0op::Contiguous(cuSeqLensOriKvOptional, uniqueExecutor.get());
+    CHECK_RET(cuSeqLensOriKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto cuSeqLensCmpKvOptionalContiguous = l0op::Contiguous(cuSeqLensCmpKvOptional, uniqueExecutor.get());
+    CHECK_RET(cuSeqLensCmpKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+    CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto sequsedKvOptionalContiguous = l0op::Contiguous(sequsedKvOptional, uniqueExecutor.get());
+    CHECK_RET(sequsedKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto oriTopkLengthOptionalContiguous = l0op::Contiguous(oriTopkLengthOptional, uniqueExecutor.get());
+    CHECK_RET(oriTopkLengthOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto cmpTopkLengthOptionalContiguous = l0op::Contiguous(cmpTopkLengthOptional, uniqueExecutor.get());
+    CHECK_RET(cmpTopkLengthOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto output = l0op::SparseAttnSharedkvMetadata(
+        cuSeqLensQOptionalContiguous, cuSeqLensOriKvOptionalContiguous, cuSeqLensCmpKvOptionalContiguous, 
+        sequsedQOptionalContiguous, sequsedKvOptionalContiguous, oriTopkLengthOptionalContiguous, 
+        cmpTopkLengthOptionalContiguous, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, 
+        maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, cmpRatioOptional, oriMaskModeOptional, 
+        cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, layoutQOptional, layoutKvOptional, 
+        hasOriKvOptional, hasCmpKvOptional, socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
+    CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-  *workspaceSize = 0;
-  uniqueExecutor.ReleaseTo(executor);
-  return ACLNN_SUCCESS;
+    *workspaceSize = 0;
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
 }
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnSparseAttnSharedkvMetadata(void *workspace, uint64_t workspaceSize,
                                 aclOpExecutor *executor, aclrtStream stream) {
-  L2_DFX_PHASE_2(aclnnSparseAttnSharedkvMetadata);
-  return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+    L2_DFX_PHASE_2(aclnnSparseAttnSharedkvMetadata);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
