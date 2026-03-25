@@ -10,6 +10,7 @@
 
 if (BUILD_OPEN_PROJECT)
     set(grouped_matmul_finalize_routing_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_finalize_routing.")
+    set(grouped_matmul_finalize_routing_apt_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_finalize_routing_apt.")
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_finalize_routing_def.cpp
     )
@@ -18,6 +19,7 @@ if (BUILD_OPEN_PROJECT)
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
+                --save-temp-files
     )
 endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
