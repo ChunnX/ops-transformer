@@ -60,12 +60,13 @@ SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 # For the block mask
 BLOCK_SIZE_Q = 128
-BLOCK_SIZE_KV = 512
+BLOCK_SIZE_KV = 128
 BLOCK_MASK_SEED = 1234
 
 # Force a frame of blocks to be alwasy selected (still requires to be in the sparsity budget)
 # cols are in the number of kv_block lengths (e.g. 512 tokens) rows are in terms of q-block length (e.g. 128 tokens)
-FRAME = FrameWidths(left_cols=8, right_cols=1, top_rows=29, bottom_rows=1) # set to zeroes to disable the frame forcing
+# FRAME = FrameWidths(left_cols=8, right_cols=1, top_rows=29, bottom_rows=1) # kv-512 set to zeroes to disable the frame forcing
+FRAME = FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1) # kv-128 set to zeroes to disable the frame forcing
 
 # For the band mask
 BAND_PRE_TOKENS = 8

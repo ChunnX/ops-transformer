@@ -30,7 +30,7 @@ DEVICE = "npu:0"
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = 'BNSD'
 BLOCK_SIZE_Q = 128
-BLOCK_SIZE_KV = 512
+BLOCK_SIZE_KV = 128
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters

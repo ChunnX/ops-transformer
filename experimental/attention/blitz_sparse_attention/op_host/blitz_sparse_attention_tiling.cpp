@@ -118,8 +118,8 @@ constexpr uint32_t CVDIFF_SMALL_QS_THRESHOLDS = 16;
 constexpr uint32_t CVDIFF_MM1RES_UB_SIZE = 16384; // 128 * 128
 constexpr uint32_t CVDIFF_SOUTER_FACTOR_DEFAULT = 128;
 constexpr uint32_t CVDIFF_SMALL_KV_THRESHOLDS = 1024;
-constexpr uint32_t CVDIFF_SINNER_FACTOR_SMALL_KVS = 512;   // kv_s <= 512 scene sinner slice size
-constexpr uint32_t CVDIFF_SINNER_FACTOR_DEFAULT = 1024;    // CV diff general scene sinner slice size
+constexpr uint32_t CVDIFF_SINNER_FACTOR_SMALL_KVS = 128;   // kv_s <= 512 scene sinner slice size
+constexpr uint32_t CVDIFF_SINNER_FACTOR_DEFAULT = 128;    // CV diff general scene sinner slice size
 constexpr uint32_t CVDIFF_SINNER_FACTOR_SMALL_QS = 2048;   // q_s <= 16 scene sinner slice size
 constexpr uint32_t CVDIFF_MSD_BUFFER_SIZE_512B = 512; // 0.5k
 constexpr uint32_t CVDIFF_MSD_BUFFER_SIZE_1024B = 1024; // 0.5k
@@ -6697,19 +6697,19 @@ ge::graphStatus BlitzSparseAttentionTiling::AdjustCVTilingCVDiff(int64_t ubSize,
         (inputType == ge::DT_BF16)) {  // When high-precision mode or BF16 takes effect, adjust the starting tiling block.
         if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 200) {           // D: [200, ...)
             minFactor = 64U;            // 64:  Adjust the size of the basic block Souter to 64.
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512.
+            rectangleFactor = 128U;     // 512: Adjust the size of the basic block Sinner to 512.
             softmaxSOuterFactor = 8U;   // 8:   Adjust softmaxSOuter to 8.
         } else if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 128) {    // D: [128, 200)
             minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128.
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512.
+            rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128.
             softmaxSOuterFactor = 8U;   // 8:   Adjust softmaxSOuter to 8
         } else if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 32) {     // D: [32, 128)
             minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128.
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512.
+            rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128.
             softmaxSOuterFactor = 16U;  // 16:  Adjust softmaxSOuter to 16.
         } else {                                                                           // D: (0, 32)
             minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512
+            rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128
             softmaxSOuterFactor = 32U;  // 32:  Adjust softmaxSOuter to 32
         }
     }
