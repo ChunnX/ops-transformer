@@ -1643,8 +1643,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
 
     InitStatusTensor();
-
-
+    
     for(int serverIdx = startServerId; serverIdx < endServerId; serverIdx++) {
         GM_ADDR serverRcvAddr = reinterpret_cast<GM_ADDR>(GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, serverId_) +
                                                           blockCntExpertPerServer_ * SERVER_STATE_ALIGN * serverIdx);
@@ -1653,10 +1652,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GlobalTensor<uint32_t> statusWinGMTensor;
         statusWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(serverRcvAddr));
 
-        
-
-
-        WaitFlag<true>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, flagMaxRecvNum);
+        WaitFlag<true>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntExpertPerServer_);
 
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
             uint32_t srcPos = expertIndex / 120 * 128 + expertIndex % 120;
