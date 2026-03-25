@@ -21,6 +21,49 @@
 namespace AscendC {
 
 template <typename T>
+__simd_vf__ void VecMulMatVFImpl(__ubuf__ T* outputUb, __ubuf__ T* rowVecUb, __ubuf__ T* matrixUb,
+    const uint32_t floatRepSize, uint16_t dLoops, uint32_t dTail, uint16_t dTailLoop, const uint16_t row, const uint32_t col)
+{
+    MicroAPI::RegTensor<T> vregMatrix;
+    MicroAPI::RegTensor<T> vregRowVec;
+    MicroAPI::RegTensor<T> vregOutput;
+    MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg tailMask;
+    tailMask = MicroAPI::UpdateMask<float>(dTail);
+    constexpr static MicroAPI::CastTrait castTraitPack2 = {
+        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    constexpr static MicroAPI::CastTrait castTraitF32ToHalf = {
+        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
+
+    uint32_t colOffset = 0;
+    uint32_t rowOffset = 0;
+    for (uint16_t j = 0; j < dLoops; j++) {
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + colOffset);
+        rowOffset = 0;
+        for (uint16_t i = 0; i < row; i++) {
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMatrix, matrixUb + colOffset + rowOffset);
+            MicroAPI::Mul(vregOutput, vregMatrix, vregRowVec, fullMask);
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputUb + colOffset + rowOffset, vregOutput, fullMask);
+            rowOffset += col;
+        }
+        colOffset += floatRepSize;
+    }
+
+    if (dTailLoop > 0) {
+        rowOffset = 0;
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + dLoops * floatRepSize);
+        for (uint16_t i = 0; i < row; i++) {
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMatrix, matrixUb + dLoops * floatRepSize + rowOffset);
+            MicroAPI::Mul(vregOutput, vregMatrix, vregRowVec, tailMask);
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputUb + dLoops * floatRepSize + rowOffset, vregOutput, tailMask);
+            rowOffset += col;
+        }
+    }
+}
+
+template <typename T>
 __aicore__ inline void VecMulMatVF(const LocalTensor<T>& matrixOutUb, const LocalTensor<T>& rowVecInUb,
                                    const LocalTensor<T>& matrixInUb, const uint16_t row, const uint32_t col)
 {
@@ -33,46 +76,7 @@ __aicore__ inline void VecMulMatVF(const LocalTensor<T>& matrixOutUb, const Loca
     uint32_t dTail = col % floatRepSize;
     uint16_t dTailLoop = dTail > 0 ? 1 : 0;
 
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<T> vregMatrix;
-        MicroAPI::RegTensor<T> vregRowVec;
-        MicroAPI::RegTensor<T> vregOutput;
-        MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg tailMask;
-        tailMask = MicroAPI::UpdateMask<float>(dTail);
-        constexpr static MicroAPI::CastTrait castTraitPack2 = {
-            MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-            MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-        constexpr static MicroAPI::CastTrait castTraitF32ToHalf = {
-            MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-            MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
-
-        uint32_t colOffset = 0;
-        uint32_t rowOffset = 0;
-        for (uint16_t j = 0; j < dLoops; j++) {
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + colOffset);
-            rowOffset = 0;
-            for (uint16_t i = 0; i < row; i++) {
-                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMatrix, matrixUb + colOffset + rowOffset);
-                MicroAPI::Mul(vregOutput, vregMatrix, vregRowVec, fullMask);
-                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputUb + colOffset + rowOffset, vregOutput, fullMask);
-                rowOffset += col;
-            }
-            colOffset += floatRepSize; 
-        }
-
-        if (dTailLoop > 0) {
-            rowOffset = 0;
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + dLoops * floatRepSize);
-            for (uint16_t i = 0; i < row; i++) {
-                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMatrix, matrixUb + dLoops * floatRepSize + rowOffset);
-                MicroAPI::Mul(vregOutput, vregMatrix, vregRowVec, tailMask);
-                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputUb + dLoops * floatRepSize + rowOffset, vregOutput, tailMask);
-                rowOffset += col;
-            }
-        }
-    }
+    VecMulMatVFImpl<T>(outputUb, rowVecUb, matrixUb, floatRepSize, dLoops, dTail, dTailLoop, row, col);
 }
 
 } // namespace
