@@ -37,3 +37,7 @@ MANIFEST.in
 
 # third_party
 third_party/
+
+# ai
+.agents/
+.opencode/

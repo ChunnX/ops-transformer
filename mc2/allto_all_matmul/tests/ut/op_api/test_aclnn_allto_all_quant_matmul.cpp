@@ -13,6 +13,7 @@
 #include <vector>
 #include "gtest/gtest.h"
 #include <gmock/gmock.h>
+#include "test_allto_all_matmul_api_ut_param.h"
 #include "../../../op_api/aclnn_allto_all_quant_matmul.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -709,3 +710,58 @@ TEST_F(test_aclnn_allto_all_quant_matmul, MXQuant_cases_params)
         }
     }
 }
+
+
+namespace AlltoAllMatmulUT {
+
+class AclnnAlltoAllQuantMatmulTest : public testing::TestWithParam<AlltoAllMatmulApiUtParam> {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "AlltoAllMatmul AclnnAlltoAllQuantMatmulTest SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "AlltoAllMatmul AclnnAlltoAllQuantMatmulTest TearDown" << std::endl;
+    }
+};
+
+TEST_P(AclnnAlltoAllQuantMatmulTest, param)
+{
+    auto param = GetParam();
+    op::SetPlatformSocVersion(param.soc);
+    aclTensor* bias_opt = param.bias.GetViewDims().empty() ? nullptr : param.bias.ToAclTypeRawPtr();
+    aclTensor* x1_scale_opt = param.x1Scale.GetViewDims().empty() ? nullptr : param.x1Scale.ToAclTypeRawPtr();
+    aclTensor* allto_all_out_opt = param.alltoAllOut.GetViewDims().empty() ? nullptr : param.alltoAllOut.ToAclTypeRawPtr();
+    aclTensor* comm_scale = nullptr;
+    aclTensor* x1_offset = nullptr;
+    aclTensor* x2_offset = nullptr;
+    int64_t comm_quant_mode = 0;
+    int64_t comm_quant_dtype = -1;
+    auto ut = OP_API_UT(
+        aclnnAlltoAllQuantMatmul,
+        INPUT(param.x1, param.x2, bias_opt, x1_scale_opt, param.x2Scale, comm_scale,
+              x1_offset, x2_offset, param.group.c_str(), param.alltoAllAxes,
+              param.x1QuantMode, param.x2QuantMode, comm_quant_mode, comm_quant_dtype, param.x1QuantDtype,
+              param.groupSize, param.transposeX1, param.transposeX2),
+        OUTPUT(param.output, allto_all_out_opt)
+    );
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    if (param.expectResult == ACLNN_SUCCESS) {
+        EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+    } else {
+        EXPECT_EQ(param.expectResult, aclnnRet);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AlltoAllMatmul,
+    AclnnAlltoAllQuantMatmulTest,
+    testing::ValuesIn(GetCasesFromCsv<AlltoAllMatmulApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<AlltoAllMatmulApiUtParam>
+);
+
+} // namespace AlltoAllMatmulUT
