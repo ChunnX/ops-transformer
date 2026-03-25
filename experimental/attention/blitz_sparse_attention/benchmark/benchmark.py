@@ -362,11 +362,13 @@ def make_band_mask(
 def make_custom_mask(
     s_q: int,
     s_kv: int,
+    block_size_q: int, 
+    block_size_kv: int,
     device: str = "npu:0",
 ) -> torch.Tensor:
     # single block mask
     mask_2d = torch.zeros(s_q, s_kv, device=device)
-    mask_2d[:BLOCK_SIZE_Q, :BLOCK_SIZE_KV] = 1
+    mask_2d[:block_size_q, :block_size_kv] = 1
     return mask_2d.unsqueeze(0).unsqueeze(0).bool()
 
 
@@ -491,7 +493,9 @@ def gen_pfa_inputs(
     return q, k, v, actseqlen, actseqlenkv
 
 
-def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, frame:FrameWidths, device, emit_atten_mask: bool = True):
+def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, 
+                          block_size_q: int, block_size_kv: int, frame:FrameWidths, 
+                          device: str, emit_atten_mask: bool = True):
     """
     Creates the (token)-level attention mask and the sabi - necessary for the blocks_optimized_batched
     sparse patterns
@@ -503,9 +507,9 @@ def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, frame:
 
     if attention_matrix == "sparse_block_all_same":
         if sparsity > 0:
-            block_indices = generate_sparse_blocks_by_row(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, sparsity, 
+            block_indices = generate_sparse_blocks_by_row(s_q, s_kv, block_size_q, block_size_kv, sparsity, 
                                                           seed=BLOCK_MASK_SEED, frame=None)
-            pfa_atten_mask = bsa_atten_mask = make_block_mask(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, block_indices, 
+            pfa_atten_mask = bsa_atten_mask = make_block_mask(s_q, s_kv, block_size_q, block_size_kv, block_indices, 
                                                           device=device)
             sm = 1
     elif attention_matrix == "lower_triangular":
@@ -521,25 +525,25 @@ def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, frame:
             sm, pre_tok, post_tok = 4, BAND_PRE_TOKENS, BAND_POST_TOKENS
     elif attention_matrix == "blocks_optimized":
         if emit_atten_mask and sparsity > 0:
-            per_head_block_ids = generate_sparse_blocks_by_row_per_head(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, 
+            per_head_block_ids = generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, 
                                                                             sparsity, h, frame, BLOCK_MASK_SEED)
-            pfa_atten_mask = make_block_mask_per_head(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, per_head_block_ids, 
+            pfa_atten_mask = make_block_mask_per_head(s_q, s_kv, block_size_q, block_size_kv, per_head_block_ids, 
                                                       device)
             sabi = torch.tensor(per_head_block_ids, dtype=torch.uint16, device=device)
     elif attention_matrix == "blocks_optimized_batched":
         per_batch_head_block_indices = [
-            generate_sparse_blocks_by_row_per_head(s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, sparsity, h, 
+            generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, sparsity, h, 
                                                    frame, BLOCK_MASK_SEED + bidx)
             for bidx in range(b)
         ]
         sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
         if emit_atten_mask and sparsity > 0:
             pfa_atten_mask = torch.cat([make_block_mask_per_head(
-                                     s_q, s_kv, BLOCK_SIZE_Q, BLOCK_SIZE_KV, bi, device=device
+                                     s_q, s_kv, block_size_q, block_size_kv, bi, device=device
                                      ) for bi in per_batch_head_block_indices], dim=0)
     elif attention_matrix == "custom":
         if sparsity > 0:
-            pfa_atten_mask = make_custom_mask(s_q, s_kv, device=device)
+            pfa_atten_mask = make_custom_mask(s_q, s_kv, block_size_q, block_size_kv, device=device)
             sm = 1
         bsa_atten_mask = pfa_atten_mask
     else:
@@ -637,6 +641,8 @@ def benchmark_blitz_sparse_attention():
     # Print table header
     logger.info("=" * 90)
     logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
+    logger.info(f"  {BLOCK_SIZE_Q=}  {BLOCK_SIZE_KV=}")
+    logger.info(f"  {FRAME}")
     logger.info("=" * 90)
     logger.info(
         f"{'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} {'Outputs_equal':>15} "
@@ -649,7 +655,9 @@ def benchmark_blitz_sparse_attention():
 
         # Build attention mask and related parameters for this configuration
         pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-            b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME ,device=DEVICE, emit_atten_mask=run_ref)
+            b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME, block_size_q=BLOCK_SIZE_Q, 
+            block_size_kv=BLOCK_SIZE_KV, device=DEVICE, emit_atten_mask=run_ref)
+
         if PRINT_MASK and pfa_atten_mask is not None:
             logger.info(pfa_atten_mask.int())
             logger.info(pfa_atten_mask.shape)

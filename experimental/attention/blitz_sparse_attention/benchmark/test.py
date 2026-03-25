@@ -29,6 +29,8 @@ SEED = 42
 DEVICE = "npu:0"
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = 'BNSD'
+BLOCK_SIZE_Q = 128
+BLOCK_SIZE_KV = 512
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
@@ -59,7 +61,9 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
 
     # Generate attention mask and parameters
     pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame, device=DEVICE, emit_atten_mask=True
+        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame, 
+        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV, 
+        device=DEVICE, emit_atten_mask=True
     )
     
     # Generate input tensors
