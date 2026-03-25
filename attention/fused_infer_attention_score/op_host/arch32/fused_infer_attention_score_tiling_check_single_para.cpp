@@ -633,10 +633,11 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaSparseMode() const
         SPARSE_MODE_ALL_MASK,
         SPARSE_MODE_LEFT_UP,
         SPARSE_MODE_RIGHT_DOWN,
-        SPARSE_MODE_BAND
+        SPARSE_MODE_BAND,
+        SPARSE_MODE_TREE
     };
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(opParamInfo_.sparseMode, sparseModeList, SPARSE_MODE_NAME)) {
-        OP_LOGE(opName_, "sparseMode only supports 0/1/2/3/4, but got %u", *opParamInfo_.sparseMode);
+        OP_LOGE(opName_, "sparseMode only supports 0/1/2/3/4/9, but got %u", *opParamInfo_.sparseMode);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

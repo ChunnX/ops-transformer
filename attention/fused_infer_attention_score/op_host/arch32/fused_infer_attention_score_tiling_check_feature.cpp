@@ -167,8 +167,71 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMla()
     return ge::GRAPH_SUCCESS;
 }
 
+// 补充sparse9特性的拦截校验
+ge::graphStatus FiaTilingCheck::CheckFeatureSparseMode() const
+{
+    int32_t sparseMode = fiaInfo_.sparseMode;
+    // sparse9 仅在rope分离场景下存在，不支持左padding、PSE、公共前缀、后量化等特性 拦截s2 >= s1
+    if (sparseMode == SPARSE_MODE_TREE) {
+        // 特性校验
+        OP_CHECK_IF(ropeMode_ != RopeMode::ROPE_SPLIT,
+            OP_LOGE(opName_,
+                    "In %s situation, when query_rope and key_rope not exist, %s does not support sparse(%d).", 
+                    QuantModeToSerialString(quantMode_).c_str(), SPARSE_MODE_NAME.c_str(), sparseMode),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(fiaInfo_.qPaddingSizeFlag || fiaInfo_.kvPaddingSizeFlag,
+            OP_LOGE(opName_,
+                    "In %s situation, when sparse is %d, query_padding_size or kv_padding_size should be not exist.", 
+                    QuantModeToSerialString(quantMode_).c_str(), sparseMode),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(fiaInfo_.pseShiftFlag,
+            OP_LOGE(opName_, 
+                    "In %s situation, when sparse is %d, pse_shift should be not exist.", 
+                    QuantModeToSerialString(quantMode_).c_str(), sparseMode),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(fiaInfo_.sysPrefixFlag,
+            OP_LOGE(opName_, 
+                    "In %s situation, when sparse is %d, key_shared_prefix and key_shared_prefix should be not exist.",
+                    QuantModeToSerialString(quantMode_).c_str(), sparseMode),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(outputType_ == ge::DT_INT8,
+            OP_LOGE(opName_, 
+                    "In %s situation, when sparse is %d, output dtype %d is not currently supported.", 
+                    QuantModeToSerialString(quantMode_).c_str(), sparseMode, static_cast<int32_t>(outputType_)),
+            return ge::GRAPH_FAILED);
+
+        // s2 >= s1拦截
+        // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
+        if (fiaInfo_.isMaxWorkspace) {
+            return ge::GRAPH_SUCCESS;
+        }
+        // s2=0 的 batch（入图padding或空tensor场景）不校验 s1<=s2
+        int32_t actualSeqSize = std::min(qSize.size(), kvSize.size());
+        for (int32_t i = 0; i < actualSeqSize; i++) {
+            if (kvSize[i] == 0) {
+                continue;
+            }
+            OP_CHECK_IF(qSize[i] > kvSize[i],
+                OP_LOGE(opName_,
+                        "In %s situation, when sparse is %d, qSize[%d] should less than or equal to kvSize[%d],"
+                        "but got qSize %d and kvSize %d.",
+                        QuantModeToSerialString(quantMode_).c_str(), sparseMode, i, i, qSize[i], kvSize[i]),
+            return ge::GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
 {
+    if (ge::GRAPH_SUCCESS != CheckFeatureSparseMode()) {
+        return ge::GRAPH_FAILED;
+    }
+
     if ((!attenMaskFlag_) && (fiaInfo_.sparseMode != SPARSE_MODE_NO_MASK)) {
         OP_LOGE(opName_, "when %s is %d, it not 0, %s should not be null.",
             SPARSE_MODE_NAME.c_str(), fiaInfo_.sparseMode, ATTEN_MASK_NAME.c_str());
@@ -201,10 +264,11 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
 
     if (ropeMode_ == RopeMode::ROPE_SPLIT && vHeadDim_ == 512U) {
         int32_t sparseMode = fiaInfo_.sparseMode;
-        if (sparseMode != SPARSE_MODE_NO_MASK && sparseMode != SPARSE_MODE_RIGHT_DOWN && sparseMode != SPARSE_MODE_BAND) {
+        if (sparseMode != SPARSE_MODE_NO_MASK && sparseMode != SPARSE_MODE_RIGHT_DOWN && 
+            sparseMode != SPARSE_MODE_BAND && sparseMode != SPARSE_MODE_TREE) {
             OP_LOGE(opName_,
                     "In %s situation, when query_rope and key_rope exsists and the head dim of value is %u, %s only "
-                    "support 0/3/4, but got %d.",
+                    "support 0/3/4/9, but got %d.",
                     QuantModeToSerialString(quantMode_).c_str(), vHeadDim_, SPARSE_MODE_NAME.c_str(), sparseMode);
             return ge::GRAPH_FAILED;
         }
@@ -312,13 +376,13 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLeftPadding() const
 
         OP_CHECK_IF(kvStorageMode_ == KvStorageMode::TENSOR_LIST,
             OP_LOGE(opName_,
-                "when query_padding_size or kv_padding_size exists, key/value tensorlist is not suppoprted; in this "
+                "when query_padding_size or kv_padding_size exists, key/value tensorlist is not supported; in this "
                 "case, the tensor number of key/value should be 1"),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvStorageMode_ == KvStorageMode::PAGE_ATTENTION,
             OP_LOGE(opName_,
-                "when query_padding_size or kv_padding_size exists, page attention is not suppoprted; in this case, "
+                "when query_padding_size or kv_padding_size exists, page attention is not supported; in this case, "
                 "block_table should exist and block_size is not 0"),
             return ge::GRAPH_FAILED);
 
