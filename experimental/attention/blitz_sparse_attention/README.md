@@ -92,7 +92,22 @@ the output should be:
 ```
 
 ## Kernel integration plan
-If this block sparse kernel is of an interest, please consider merging it with the official attention/prompt_flash_attention. Its source code is based on attention/prompt_flash_attention taken from git commit a574b5d71faa7c360934a6c7d1b4aa85e1a49147
+If this block sparse kernel is of an interest, please consider merging it with the official attention/prompt_flash_attention. Its source code is based on attention/prompt_flash_attention taken from git commit a574b5d71faa7c360934a6c7d1b4aa85e1a49147.
+
+## Useful - this kernel is compiled in 6 variants:
+
+All 6 variants use SABI - the differentiator is the dtype combination:
+
+| Variant	| hash code appended to kernel name | Q/K/V dtype	| atten_mask dtype |	Output dtype |
+|---------|-----------------------------------|-------------|------------------|---------------|
+|0	      | 2ad3cf6768a72f0973ebe8ee1c8bb05f  | float16	    | float16	         |   float16     |
+|1	      | 818336327b27f912b9a48cff3654f4eb  | float16	    | bool	           |   int8        |
+|2	      | 6bef8107fae19793f01f334db68fe6e1  | bfloat16	  | bool	           |   bfloat16    |
+|3	      | f15cddcfd1c9fe426075b16824a6b31c  | int8	      | bool	           |   float16     |
+|4	      | f6be907da9badbf0cf71456e7c466197  | int8	      | bool	           |   int8        |
+|5	      | aa172a5d9ea668f6b2110718890ad5fc  | bfloat16	  | bool	           |   int8        |
+
+It is common to select which of the variants to compile by passing --op-variant=2 to the build.sh script.
 
 ## 产品支持情况
 

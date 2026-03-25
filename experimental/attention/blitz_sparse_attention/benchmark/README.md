@@ -4,10 +4,19 @@
 
 To install the sparse kernel go in the `ops-transformer` project home folder and run:
 
-```bash
+```shell
 bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention
 ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
 (cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
+```
+Fast recompilation only of bf16 kernel variant
+```shell
+bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention --op-variant=2
+./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
+```
+Oneliner smoketest and benchmark
+```shell
+(cd experimental/attention/blitz_sparse_attention/benchmark && python test.py && python benchmark.py)
 ```
 
 ## Parameters
