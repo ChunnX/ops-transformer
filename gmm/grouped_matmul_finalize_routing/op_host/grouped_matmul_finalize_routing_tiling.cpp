@@ -13,12 +13,15 @@
  * \brief
  */
 #include "grouped_matmul_finalize_routing_tiling.h"
+#include "op_tiling/arch35/grouped_matmul_finalize_routing_quant_tiling.h"
+#include "op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.h"
 #include "grouped_matmul_finalize_routing_base_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "err/ops_err.h"
 
+using namespace optiling::GroupedMatmulFinalizeRoutingArch35TilingConstant;
 using namespace optiling::grouped_matmul_finalize_routing;
 
 namespace {
@@ -43,6 +46,19 @@ static ge::graphStatus GroupedMatmulFinalizeRoutingTilingFunc(gert::TilingContex
             OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
             return ge::GRAPH_FAILED);
     if (compileInfoPtr->npuArch== NpuArch::DAV_3510) {
+        OP_CHECK_NULL_WITH_CONTEXT(context, context);
+        auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
+        OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);  // check xDesc is not null
+        ge::DataType xDType = xDesc->GetDataType();
+        auto w0Desc = context->GetDynamicInputDesc(W_INDEX, 0);
+        OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
+        ge::DataType weightDtype = w0Desc->GetDataType();
+        if (GetSizeByDataType(xDType) != GetSizeByDataType(weightDtype)) {
+            OP_LOGI(context->GetNodeName(), "Enter WeightQuant Tiling of A5");
+            std::vector<int32_t> tilingRegisterList = {
+                optiling::GroupedMatmulFinalizeRoutingArch35WeightQuantTiling::GMMFR_WEIGHT_QUANT_TILING_VEC_ANTIQUANT};
+            return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context, tilingRegisterList);
+        }
         std::vector<int32_t> tilingRegisterList = {1};
         OP_LOGD("GroupedMatmulFinalizeRoutingTilingFunc", "Using the tiling strategy of A5");
         return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context, tilingRegisterList);
