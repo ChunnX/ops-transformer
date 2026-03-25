@@ -2399,7 +2399,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {   
     if ASCEND_IS_AIV { //todo:最开始清理server cnt flag
         CalTokenMask();
-        SyncAll<true>();
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
@@ -2412,6 +2411,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+        uint32_t count = 0;
+        while(count < 10000000){
+            count++;
+        }
         LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
