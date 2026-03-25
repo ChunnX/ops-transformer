@@ -495,7 +495,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
                     continue;
                 }
                 if constexpr (hasSink) {
-                    runParam.s2LoopEndIdx += 1;
+                    if (runParam.s2LoopEndIdx > 0) {
+                        runParam.s2LoopEndIdx += 1;
+                    }
                 }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;
             } else {
@@ -605,17 +607,16 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = constInfo.s2BaseSize;
     runInfo.s2AlignedSize = runInfo.s2RealSize;
+    int64_t curS2LoopCnt =runInfo.s2LoopCount;
     if constexpr (hasSink) {
-        int64_t curS2LoopCnt = runInfo.s2LoopCount - 1;
-        if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-            runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
-            runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+        if (runInfo.s2LoopCount == 0) {
+            return;
         }
-    } else {
-        if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-            runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-            runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
-        }
+        curS2LoopCnt -= 1;
+    }
+    if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
+        runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
+        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
     }
 }
 }
