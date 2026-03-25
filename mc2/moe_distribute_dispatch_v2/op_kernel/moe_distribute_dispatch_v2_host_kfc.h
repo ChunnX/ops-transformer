@@ -1484,7 +1484,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             CopyInAndOut(serverIdx, dstPosition, processTokenNumPerBatch);
             LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", dstPosition);
             SendToExpert(dstPosition);
-            tokenRcvStatus_(dstPosition) = 1;
+            tokenRcvStatus_(rcvStatusIndex) = 1;
             rcvTokenSum++;
             if (rcvTokenSum == tokenCnt) {
                 LOG_INFO("[BATCHWRITE][WaitToken] finishNum:");
