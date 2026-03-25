@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file grouped_matmul_finalize_routing.h
+ * \file recurrent_gated_delta_rule.h
  * \brief
  */
 
-#ifndef __RECURRENT_GATED_DELTA_RULE_KERNEL_H_
-#define __RECURRENT_GATED_DELTA_RULE_KERNEL_H_
+#ifndef RECURRENT_GATED_DELTA_RULE_H
+#define RECURRENT_GATED_DELTA_RULE_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -26,12 +26,91 @@ namespace RecurrentGatedDeltaRule {
 
 using namespace matmul;
 using namespace AscendC;
-constexpr uint64_t BUFFER_NUM = 1;
+constexpr uint64_t SINGLE_BUFFER = 1;
+constexpr uint64_t DOUBLE_BUFFER = 2;
 constexpr uint64_t MAX_MTP = 8;
 constexpr uint64_t BF16_NUM_PER_BLOCK = 16;
-constexpr uint64_t FP32_NUM_PER_BLOCK = 8;
-constexpr uint32_t REPEAT_LENTH = 64; // 256Byte for float
-constexpr uint32_t MAX_REPEAT_TIME = 255;
+
+// BUFFER的字节数
+static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
+static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
+static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
+static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
+static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
+static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
+static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
+static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+
+// GM->UB
+/*
+* dealRowCount: 需要拷贝的行数
+* actDataLen: 一行需要拷贝的元素数
+* srcRowStride: gm上两行数据起始位置之间间隔元素数
+* dstRowStride: ub上两行数据起始位置之间间隔元素数
+* enableLargeStride默认为false, 当srcStrideOfDataCopy超过datacopypad范围时开启
+*/
+template <typename T, bool enableLargeStride = false>
+__aicore__ inline void CopySingleMatrixNDToND(LocalTensor<T> ubTensor, const GlobalTensor<T> gmTensor,
+    uint32_t dealRowCount, uint32_t actDataLen, uint64_t srcRowStride, uint64_t dstRowStride)
+{
+    constexpr uint64_t UINT16_MAX_VALUE = 65535u;
+    constexpr uint64_t UINT32_MAX_VALUE = 4294967295u;
+    uint32_t blockElemNum = 32UL / sizeof(T);
+    if constexpr (IsSameType<T, int4b_t>::value) {
+        constexpr uint32_t HALF_SIZE_DIVISOR = 2;
+        blockElemNum = blockElemNum * HALF_SIZE_DIVISOR;
+        actDataLen = actDataLen / HALF_SIZE_DIVISOR;
+        srcRowStride = srcRowStride / HALF_SIZE_DIVISOR;
+    }
+    if constexpr (enableLargeStride) {
+        uint64_t srcStrideOfDataCopyPad = (srcRowStride - actDataLen) * sizeof(T);
+        if (unlikely(srcStrideOfDataCopyPad > UINT32_MAX_VALUE)) {
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = actDataLen * sizeof(T);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+
+            DataCopyPadExtParams<T> dataCopyPadParams;
+            dataCopyPadParams.isPad = true;
+            dataCopyPadParams.leftPadding = 0;
+            dataCopyPadParams.rightPadding = (blockElemNum - (actDataLen % blockElemNum)) % blockElemNum;
+            dataCopyPadParams.paddingValue = 0;
+
+            for (uint32_t i = 0; i < dealRowCount; ++i) {
+                DataCopyPad(ubTensor[i * dstRowStride], gmTensor[i * srcRowStride], dataCopyParams, dataCopyPadParams);
+            }
+            return;
+        }
+    }
+    bool isPad = ((actDataLen % blockElemNum) != 0 || (srcRowStride % blockElemNum) != 0 ||
+                  (dstRowStride % blockElemNum) != 0); // 判断是否32字节对齐，确定是否走datacopypad
+    uint64_t srcStrideOfDataCopy = (srcRowStride - actDataLen) / blockElemNum;
+    // 在有pad或srcStrideOfDataCopy不符合datacopy范围时，使用datacopypad拷贝完成
+    if (unlikely(isPad || (srcStrideOfDataCopy > UINT16_MAX_VALUE))) {
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = static_cast<uint16_t>(dealRowCount); // 外部传入
+        dataCopyParams.blockLen = actDataLen * sizeof(T);
+        dataCopyParams.srcStride = (srcRowStride - actDataLen) * sizeof(T);
+        dataCopyParams.dstStride = (dstRowStride - actDataLen) / blockElemNum; // 外部传入
+
+        DataCopyPadExtParams<T> dataCopyPadParams;
+        dataCopyPadParams.isPad = true;
+        dataCopyPadParams.leftPadding = 0;
+        dataCopyPadParams.rightPadding = (blockElemNum - (actDataLen % blockElemNum)) % blockElemNum;
+        dataCopyPadParams.paddingValue = 0;
+        DataCopyPad(ubTensor, gmTensor, dataCopyParams, dataCopyPadParams);
+    } else { // 其他情况使用datacopy拷贝完成
+        DataCopyParams repeatParams;
+        repeatParams.blockCount = static_cast<uint16_t>(dealRowCount);
+        repeatParams.blockLen = actDataLen / blockElemNum;
+        repeatParams.srcStride = (srcRowStride - actDataLen) / blockElemNum;
+        repeatParams.dstStride = (dstRowStride - actDataLen) / blockElemNum;
+        DataCopy(ubTensor, gmTensor, repeatParams);
+    }
+}
 
 struct RGDRInitParams {
     GM_ADDR query;
@@ -56,17 +135,20 @@ public:
         B_ = tilingData->b;
         T_ = tilingData->t;
         NK_ = tilingData->nk;
-        realK_ = tilingData->dk;
+        DK_ = tilingData->dk;
         NV_ = tilingData->nv;
-        realV_ = tilingData->dv;
+        DV_ = tilingData->dv;
         scale_ = tilingData->scale;
         hasAcceptedTokens_ = (tilingData->hasAcceptedTokens == 1);
         hasGama_ = (tilingData->hasGama == 1);
         hasGamaK_ = (tilingData->hasGamaK == 1);
-        vStep_ = tilingData->vStep;
-        restUbSize_ = tilingData->ubRestBytes;
-        alignK_ = Ceil(tilingData->dk, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
-        alignV_ = Ceil(tilingData->dv, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
+        alignDK_ = Ceil(tilingData->dk, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
+        alignDV_ = Ceil(tilingData->dv, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
+        vStep_ = 8192 / alignDK_;
+        if (vStep_ > 256) { 
+            vStep_ = 255;
+        }
+        vStep_ = vStep_ / BF16_NUM_PER_BLOCK * BF16_NUM_PER_BLOCK;
         load = 0;
         usedblk = 0;
     }
@@ -101,261 +183,253 @@ public:
 
     __aicore__ inline void InitLocalBuffers()
     {
-        uint32_t cubeSize = alignK_ * vStep_ * sizeof(float);
-        uint32_t singleVSize = vStep_ * sizeof(float);
-        uint32_t vSize = MAX_MTP * alignV_ * sizeof(float);
-        uint32_t kSize = MAX_MTP * alignK_ * sizeof(float);
-        uint32_t betaUbSize =
-            Ceil(MAX_MTP * NV_, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK * sizeof(float); //  8: 8 * 4 = 32B;
-        pipe_->InitBuffer(qInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
-        pipe_->InitBuffer(kInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
-        pipe_->InitBuffer(vInQueue_, BUFFER_NUM, MAX_MTP * alignV_ * sizeof(inType));
-        pipe_->InitBuffer(stateInQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(inType));
-        if (hasGama_) {
-            pipe_->InitBuffer(gamaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(float));
-        }
-        if (hasGamaK_) {
-            pipe_->InitBuffer(gamaKInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(float));
-        }
-        pipe_->InitBuffer(betaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(inType));
-        pipe_->InitBuffer(stateOutQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(outType));
-        pipe_->InitBuffer(attnOutQueue_, BUFFER_NUM, vStep_ * sizeof(outType));
-        pipe_->InitBuffer(tmpBuff, restUbSize_);
-        uint32_t buffOffset = 0;
-        deltaInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(vStep_), buffOffset);
-        buffOffset += singleVSize;
-        attnInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(vStep_), buffOffset);
-        buffOffset += singleVSize;
-        vInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(MAX_MTP * alignV_), buffOffset);
-        buffOffset += vSize;
-        qInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(MAX_MTP * alignK_), buffOffset);
-        buffOffset += kSize;
-        kInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(MAX_MTP * alignK_), buffOffset);
-        buffOffset += kSize;
-        stateInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
-        buffOffset += cubeSize;
-        broadTmpInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
-        buffOffset += cubeSize;
-        betaInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(betaUbSize), buffOffset);
+        pipe_->InitBuffer(inputQueue1_, DOUBLE_BUFFER, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(stateOutQueue_, SINGLE_BUFFER, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(attnOutQueue_, SINGLE_BUFFER, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(gamaBuff_, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(stateBuff_, BUFFER_SIZE_BYTE_32K);
+        pipe_->InitBuffer(queryBuff_, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(keyBuff_, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(valueBuff_, BUFFER_SIZE_BYTE_16K);
+        pipe_->InitBuffer(tmpBuff2_, BUFFER_SIZE_BYTE_32K);
+        pipe_->InitBuffer(tmpBuff1_, BUFFER_SIZE_BYTE_2K);
+
+        gamaUb_ = gamaBuff_.Get<float>();
+        stateUb_ = stateBuff_.Get<float>();
+        queryUb_ = queryBuff_.Get<float>();
+        keyUb_ = keyBuff_.Get<float>();
+        valueUb_ = valueBuff_.Get<float>();
     }
 
     __aicore__ inline void ComputeAvgload()
     {
         uint64_t realT = 0;
+        uint32_t maxSeqLen = 0;
         for (uint64_t batch_i = 0; batch_i < B_; batch_i++) {
-            realT += cuSeqlensGm_.GetValue(batch_i);
+            uint32_t bSeqLen = cuSeqlensGm_.GetValue(batch_i);
+            realT += bSeqLen;
+            if (bSeqLen > maxSeqLen) {
+                maxSeqLen = bSeqLen;
+            }
         }
         avgload = Ceil(realT * NV_, GetBlockNum());
+        if (maxSeqLen > avgload) {
+            avgload = maxSeqLen;
+        }
     }
 
     __aicore__ inline void Process()
     {
         ComputeAvgload();
-        int32_t seq1 = 0;
+        uint32_t seq1 = 0;
         for (uint64_t batch_i = 0; batch_i < B_; batch_i++) {
-            int32_t seq0 = seq1;
-            seq1 += cuSeqlensGm_.GetValue(batch_i);
+            uint32_t seq0 = seq1;
+            seq1 += (uint32_t)cuSeqlensGm_.GetValue(batch_i);
             uint32_t copyFlag = 0;
-            uint64_t stateOffset;
-            for (uint64_t head_i = 0; head_i < NV_; head_i++) {
+            uint32_t stateBlockIdx = 0;
+            for (uint32_t head_i = 0; head_i < NV_; head_i++) {
                 if (!IsCurrentBlock(seq1 - seq0)) {
                     continue;
                 }
                 copyFlag++;
                 if (copyFlag == 1) {
-                    stateOffset = hasAcceptedTokens_ ?
-                                      ssmStateIndicesGm_.GetValue(seq0 + numAcceptedTokensGm_.GetValue(batch_i) - 1) :
-                                      ssmStateIndicesGm_.GetValue(seq0);
-                    CopyInGamaBeta(seq0, seq1);
+                    // 每个batch首次计算时才计算stateOffset, 可以减少scalar计算量
+                    uint32_t stateIdx = seq0;
+                    if (hasAcceptedTokens_) {
+                        stateIdx += numAcceptedTokensGm_.GetValue(batch_i) - 1;
+                    }
+                    stateBlockIdx = ssmStateIndicesGm_.GetValue(stateIdx);
                 }
-                ProcessHead(seq0, seq1, head_i, stateOffset);
-            }
-            if (hasGama_ && copyFlag != 0) {
-                gamaInQueue_.FreeTensor(gamaInUb);
+                ProcessHead(seq0, seq1, head_i, stateBlockIdx);
             }
         }
     }
 
 private:
-    __aicore__ inline void CopyInQKV(uint64_t vOffset, uint64_t qkOffset, int32_t seqLen)
+    __aicore__ inline void CopyInGamaK(uint32_t tIdxStart, uint32_t tIdxEnd, uint32_t head_i)
     {
-        LocalTensor<inType> qLocal = qInQueue_.AllocTensor<inType>();
-        LocalTensor<inType> kLocal = kInQueue_.AllocTensor<inType>();
-        LocalTensor<inType> vLocal = vInQueue_.AllocTensor<inType>();
-        DataCopyExtParams qkInParams{static_cast<uint16_t>(seqLen), static_cast<uint32_t>(realK_ * sizeof(inType)),
-                                     static_cast<uint32_t>((NK_ - 1) * realK_ * sizeof(inType)), 0, 0};
-        DataCopyExtParams vInParams{static_cast<uint16_t>(seqLen), static_cast<uint32_t>(realV_ * sizeof(inType)),
-                                    static_cast<uint32_t>((NV_ - 1) * realV_ * sizeof(inType)), 0, 0};
-        DataCopyPadExtParams<inType> qkPadParams{true, 0, static_cast<uint8_t>(alignK_ - realK_), 0};
-        DataCopyPadExtParams<inType> vPadParams{true, 0, static_cast<uint8_t>(alignV_ - realV_), 0};
         if (hasGamaK_) {
-            uint32_t alignKGamma = Ceil(realK_, FP32_NUM_PER_BLOCK) * FP32_NUM_PER_BLOCK;
-            uint32_t stride = alignKGamma < alignK_ ? 1 : 0;
-            DataCopyExtParams gkInParams{static_cast<uint16_t>(seqLen), static_cast<uint32_t>(realK_ * sizeof(float)),
-                                     static_cast<uint32_t>((NV_ - 1) * realK_ * sizeof(float)), stride, 0};
-            DataCopyPadExtParams<float> gkPadParams{true, 0, static_cast<uint8_t>(alignKGamma - realK_), 0};
-            LocalTensor<float> gamaKLocal = gamaKInQueue_.AllocTensor<float>();
-            Duplicate<float>(gamaKLocal, 0, alignK_ * seqLen);
-            TEventID evevtIdVtoMte2 = GetTPipePtr()->FetchEventID(HardEvent::V_MTE2);
-            SetFlag<HardEvent::V_MTE2>(evevtIdVtoMte2);
-            WaitFlag<HardEvent::V_MTE2>(evevtIdVtoMte2);
-            DataCopyPad(gamaKLocal, gamaKGm_[vOffset / realV_ * realK_], gkInParams, gkPadParams);
-            gamaKInQueue_.EnQue<float>(gamaKLocal);
-            gamaKInUb = gamaKInQueue_.DeQue<float>();
-            Exp(gamaKInUb, gamaKInUb, alignK_ * seqLen);
-            AscendC::PipeBarrier<PIPE_V>();
+            uint64_t gkGmOffset = (uint64_t)tIdxStart * NV_ * DK_ + (uint64_t)head_i * DK_;
+            uint32_t dealRowCount = tIdxEnd - tIdxStart;
+            uint32_t actDataLen = DK_;
+            uint64_t srcRowStride = NV_ * DK_;
+            uint64_t dstRowStride = alignDK_;
+            LocalTensor<float> gamaKInUb = inputQueue1_.AllocTensor<float>();
+            CopySingleMatrixNDToND(gamaKInUb, gamaKGm_[gkGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
+            inputQueue1_.EnQue<float>(gamaKInUb);
+            inputQueue1_.DeQue<float>();
+            DataCopy(gamaUb_, gamaKInUb, dealRowCount * dstRowStride);
+            inputQueue1_.FreeTensor(gamaKInUb);
+        } else {
+            Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
         }
-        DataCopyPad(qLocal, queryGm_[qkOffset], qkInParams, qkPadParams);
-        DataCopyPad(kLocal, keyGm_[qkOffset], qkInParams, qkPadParams);
-        DataCopyPad(vLocal, valueGm_[vOffset], vInParams, vPadParams);
-        qInQueue_.EnQue<inType>(qLocal);
-        kInQueue_.EnQue<inType>(kLocal);
-        vInQueue_.EnQue<inType>(vLocal);
-        qLocal = qInQueue_.DeQue<inType>();
-        kLocal = kInQueue_.DeQue<inType>();
-        vLocal = vInQueue_.DeQue<inType>();
-        Cast(qInUb, qLocal, AscendC::RoundMode::CAST_NONE, alignK_ * seqLen);
-        Cast(kInUb, kLocal, AscendC::RoundMode::CAST_NONE, alignK_ * seqLen);
-        Cast(vInUb, vLocal, AscendC::RoundMode::CAST_NONE, alignV_ * seqLen);
+    }
+
+    __aicore__ inline void CopyInQK(uint32_t tIdxStart, uint32_t tIdxEnd, uint32_t head_i)
+    {
+        uint32_t kHeadIdx = head_i / (NV_ / NK_);
+        uint64_t qkGmOffset = (uint64_t)tIdxStart * NK_ * DK_ + (uint64_t)kHeadIdx * DK_;
+        uint64_t vGmOffset = (uint64_t)tIdxStart * NV_ * DV_ + (uint64_t)head_i * DV_;
+
+        uint32_t dealRowCount = tIdxEnd - tIdxStart;
+        uint32_t actDataLen = DK_;
+        uint64_t srcRowStride = NK_ * DK_;
+        uint64_t dstRowStride = alignDK_;
+        LocalTensor<inType> queryInUb = inputQueue1_.AllocTensor<inType>();
+        CopySingleMatrixNDToND(queryInUb, queryGm_[qkGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
+        inputQueue1_.EnQue<inType>(queryInUb);
+        inputQueue1_.DeQue<inType>();
+        Cast(queryUb_, queryInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
         AscendC::PipeBarrier<PIPE_V>();
-        Muls(qInUb, qInUb, scale_, seqLen * alignK_);
-        qInQueue_.FreeTensor(qLocal);
-        kInQueue_.FreeTensor(kLocal);
-        vInQueue_.FreeTensor(vLocal);
+        Muls(queryUb_, queryUb_, scale_, dealRowCount * dstRowStride);
+        inputQueue1_.FreeTensor(queryInUb);
+
+        LocalTensor<inType> keyInUb = inputQueue1_.AllocTensor<inType>();
+        CopySingleMatrixNDToND(keyInUb, keyGm_[qkGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
+        inputQueue1_.EnQue<inType>(keyInUb);
+        inputQueue1_.DeQue<inType>();
+        Cast(keyUb_, keyInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        inputQueue1_.FreeTensor(keyInUb);
+    }
+    __aicore__ inline void CopyInV(uint32_t tIdxStart, uint32_t tIdxEnd, uint32_t head_i)
+    {
+        uint64_t vGmOffset = (uint64_t)tIdxStart * NV_ * DV_ + (uint64_t)head_i * DV_;
+        uint32_t dealRowCount = tIdxEnd - tIdxStart;
+        uint32_t actDataLen = DV_;
+        uint64_t srcRowStride = NV_ * DV_;
+        uint64_t dstRowStride = alignDV_;
+        LocalTensor<inType> valueInUb = inputQueue1_.AllocTensor<inType>();
+        CopySingleMatrixNDToND(valueInUb, valueGm_[vGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
+        inputQueue1_.EnQue<inType>(valueInUb);
+        inputQueue1_.DeQue<inType>();
+        Cast(valueUb_, valueInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        inputQueue1_.FreeTensor(valueInUb);
     }
 
-    __aicore__ inline void CopyInState(uint64_t stateOffest, uint32_t curSingleV)
+    __aicore__ inline void CopyInState(uint32_t stateBlockIdx, uint32_t head_i, uint32_t dvIdx, uint32_t curSingleV)
     {
-        LocalTensor<inType> stateLocal = stateInQueue_.AllocTensor<inType>();
-        DataCopyExtParams stateInParams{static_cast<uint16_t>(curSingleV),
-                                        static_cast<uint16_t>(realK_ * sizeof(inType)), 0, 0, 0};
-        DataCopyPadExtParams<inType> padParams{true, 0, static_cast<uint8_t>(alignK_ - realK_), 0};
-        DataCopyPad(stateLocal, initStateGm_[stateOffest], stateInParams, padParams);
-        stateInQueue_.EnQue<inType>(stateLocal);
-        stateLocal = stateInQueue_.DeQue<inType>();
-        Cast(stateInUb, stateLocal, AscendC::RoundMode::CAST_NONE, alignK_ * curSingleV);
-        stateInQueue_.FreeTensor(stateLocal);
+        uint64_t stateGmOffset = (uint64_t)stateBlockIdx * NV_ * DV_ * DK_ +
+                                 (uint64_t)head_i * DV_ * DK_ +
+                                 (uint64_t)dvIdx * DK_;
+        uint32_t dealRowCount = curSingleV;
+        uint32_t actDataLen = DK_;
+        uint64_t srcRowStride = DK_;
+        uint64_t dstRowStride = alignDK_;
+        LocalTensor<inType> stateInUb = inputQueue1_.AllocTensor<inType>();
+        CopySingleMatrixNDToND(stateInUb, initStateGm_[stateGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
+        inputQueue1_.EnQue<inType>(stateInUb);
+        inputQueue1_.DeQue<inType>();
+        Cast(stateUb_, stateInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        inputQueue1_.FreeTensor(stateInUb);
     }
 
-    __aicore__ inline void MatVecMul(const LocalTensor<float> &cubeTensor, const LocalTensor<float> &vecTensor,
-                                          LocalTensor<float> &dstTensor, uint32_t cols, bool isAdd)
+    __aicore__ inline void UpdateGamaBeta(uint32_t tIdx, uint32_t bSeqIdx, uint32_t head_i, uint32_t dvIdx)
     {
-        uint8_t repeatStride = alignK_ / FP32_NUM_PER_BLOCK;
-        for (uint32_t i = 0; i < alignK_; i += REPEAT_LENTH) {
-            uint64_t mask = Std::min(REPEAT_LENTH, alignK_ - i);
-            for (uint32_t j = 0; j < cols; j += MAX_REPEAT_TIME) {
-                uint64_t repeatTime = Std::min(MAX_REPEAT_TIME, cols - j);
-                if (isAdd) {
-                    MulAddDst(dstTensor[j * alignK_ + i], cubeTensor[j * alignK_ + i], vecTensor[i], mask, repeatTime,
-                              {1, 1, 1, repeatStride, repeatStride, 0});
-                } else {
-                    Mul(dstTensor[j * alignK_ + i], cubeTensor[j * alignK_ + i], vecTensor[i], mask, repeatTime,
-                        {1, 1, 1, repeatStride, repeatStride, 0});
-                }
+        uint64_t gamaBetaGmOffset = tIdx * NV_ + head_i;
+        if (dvIdx == 0) {
+            if (hasGama_) {
+                gama_ = gamaGm_.GetValue(gamaBetaGmOffset);
+                Adds(gamaUb_[bSeqIdx * alignDK_], gamaUb_[bSeqIdx * alignDK_], gama_, alignDK_);
+                AscendC::PipeBarrier<PIPE_V>();
             }
-        }
-    }
-
-    __aicore__ inline void Compute(uint32_t curSingleV, uint64_t curQKOffset, uint64_t curVOffset)
-    {
-        uint32_t stateShape[2] = {curSingleV, alignK_};
-        uint32_t ktShape[2] = {1, alignK_};
-        uint32_t deltaShape[2] = {curSingleV, 1};
-        if (hasGama_) {
+            Exp(gamaUb_[bSeqIdx * alignDK_], gamaUb_[bSeqIdx * alignDK_], alignDK_);
             AscendC::PipeBarrier<PIPE_V>();
-            Muls(stateInUb, stateInUb, gama_, alignK_ * curSingleV);
         }
-        if (hasGamaK_) {
-            VecMulMatVF<float>(stateInUb, gamaKInUb[curQKOffset], stateInUb, static_cast<uint16_t>(curSingleV), alignK_);
-        }
-        AscendC::PipeBarrier<PIPE_V>();
-        VecMulMatVF<float>(broadTmpInUb, kInUb[curQKOffset], stateInUb, static_cast<uint16_t>(curSingleV), alignK_);
-        AscendC::PipeBarrier<PIPE_V>();
-        ReduceSum<float, Pattern::Reduce::AR, true>(deltaInUb, broadTmpInUb, stateShape, true);
-        AscendC::PipeBarrier<PIPE_V>();
-        deltaInUb = vInUb[curVOffset] - deltaInUb;
-        AscendC::PipeBarrier<PIPE_V>();
-        Muls(deltaInUb, deltaInUb, beta_, curSingleV);
-        AscendC::PipeBarrier<PIPE_V>();
-        OuterAddVF(stateInUb, deltaInUb, kInUb[curQKOffset], stateInUb, static_cast<uint16_t>(curSingleV), static_cast<uint16_t>(alignK_));
-        AscendC::PipeBarrier<PIPE_V>();
-        VecMulMatVF<float>(broadTmpInUb, qInUb[curQKOffset], stateInUb, static_cast<uint16_t>(curSingleV), alignK_);
-        AscendC::PipeBarrier<PIPE_V>();
-        ReduceSum<float, Pattern::Reduce::AR, true>(attnInUb, broadTmpInUb, stateShape, true);
+        beta_ = Cast(betaGm_.GetValue(gamaBetaGmOffset));
+    }
+
+    __aicore__ inline void CopyOutState(LocalTensor<float> &outStateFp32Ub, uint32_t tIdx, uint32_t head_i, uint32_t dvIdx, uint32_t curSingleV)
+    {
         LocalTensor<outType> stateOutLocal = stateOutQueue_.AllocTensor<outType>();
-        LocalTensor<outType> attnOutLocal = attnOutQueue_.AllocTensor<outType>();
-        Cast(stateOutLocal, stateInUb, AscendC::RoundMode::CAST_RINT, alignK_ * curSingleV);
+        Cast(stateOutLocal, outStateFp32Ub, AscendC::RoundMode::CAST_RINT, alignDK_ * curSingleV);
         stateOutQueue_.EnQue<outType>(stateOutLocal);
-        AscendC::PipeBarrier<PIPE_V>();
-        Cast(attnOutLocal, attnInUb, AscendC::RoundMode::CAST_RINT, curSingleV);
-        attnOutQueue_.EnQue<outType>(attnOutLocal);
-    }
-
-    __aicore__ inline void CopyOutAttn(uint64_t attnOffset, uint32_t curSingleV)
-    {
-        LocalTensor<outType> attnLocal = attnOutQueue_.DeQue<outType>();
-        DataCopyParams attnOutParams{1, static_cast<uint16_t>(curSingleV * sizeof(outType)), 0, 0};
-        DataCopyPad(attnOutGm_[attnOffset], attnLocal, attnOutParams);
-        attnOutQueue_.FreeTensor(attnLocal);
-    }
-
-    __aicore__ inline void CopyOutState(uint64_t stateOffset, uint32_t curSingleV)
-    {
-        LocalTensor<outType> stateOutLocal = stateOutQueue_.DeQue<outType>();
-        DataCopyParams stateOutParams{static_cast<uint16_t>(curSingleV),
-                                      static_cast<uint16_t>(realK_ * sizeof(outType)), 0, 0};
-        DataCopyPad(finalStateGm_[stateOffset], stateOutLocal, stateOutParams);
+        stateOutQueue_.DeQue<outType>();
+        DataCopyExtParams stateOutParams;
+        stateOutParams.blockCount = curSingleV;
+        stateOutParams.blockLen = DK_ * sizeof(outType);
+        stateOutParams.srcStride = (alignDK_ - DK_) / (32UL / sizeof(outType));
+        stateOutParams.dstStride = 0;
+        uint64_t outStateGmOffset = (uint64_t)ssmStateIndicesGm_.GetValue(tIdx) * NV_ * DV_ * DK_ +
+                                    (uint64_t)head_i * DV_ * DK_ +
+                                    (uint64_t)dvIdx * DK_;
+        DataCopyPad(finalStateGm_[outStateGmOffset], stateOutLocal, stateOutParams);
         stateOutQueue_.FreeTensor(stateOutLocal);
     }
 
-    __aicore__ inline void CopyInGamaBeta(int32_t seq0, int32_t seq1)
+    __aicore__ inline void CopyAttentionOut(LocalTensor<float> &attnOutFp32Ub, uint32_t tIdx, uint32_t head_i, uint32_t dvIdx, uint32_t curSingleV)
     {
-        int32_t seqLen = seq1 - seq0;
-        uint64_t bBatchSize = Ceil(seqLen * NV_, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
-        LocalTensor<inType> betaLocal = betaInQueue_.AllocTensor<inType>();
-        DataCopyParams betaInParams{1, static_cast<uint16_t>(seqLen * NV_ * sizeof(inType)), 0, 0};
-        DataCopyPadParams padParams;
-        DataCopyPad(betaLocal, betaGm_[seq0 * NV_], betaInParams, padParams);
-        betaInQueue_.EnQue<inType>(betaLocal);
-        betaLocal = betaInQueue_.DeQue<inType>();
-        Cast(betaInUb, betaLocal, AscendC::RoundMode::CAST_NONE, bBatchSize);
-        betaInQueue_.FreeTensor(betaLocal);
-        if (hasGama_) {
-            LocalTensor<float> gamaLocal = gamaInQueue_.AllocTensor<float>();
-            DataCopyParams gamaInParams{1, static_cast<uint16_t>(seqLen * NV_ * sizeof(float)), 0, 0};
-            DataCopyPad(gamaLocal, gamaGm_[seq0 * NV_], gamaInParams, padParams);
-            gamaInQueue_.EnQue<float>(gamaLocal);
-            gamaInUb = gamaInQueue_.DeQue<float>();
-            Exp(gamaInUb, gamaInUb, seqLen * NV_);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
+        LocalTensor<outType> attnOutLocal = attnOutQueue_.AllocTensor<outType>();
+        Cast(attnOutLocal, attnOutFp32Ub, AscendC::RoundMode::CAST_RINT, curSingleV);
+        AscendC::PipeBarrier<PIPE_V>();
+        attnOutQueue_.EnQue<outType>(attnOutLocal);
+        attnOutQueue_.DeQue<outType>();
+        DataCopyExtParams attnOutParams;
+        attnOutParams.blockCount = 1;
+        attnOutParams.blockLen = curSingleV * sizeof(outType);
+        attnOutParams.srcStride = 0;
+        attnOutParams.dstStride = 0;
+        uint64_t attnOutGmOffset = (uint64_t)tIdx * NV_ * DV_  + (uint64_t)head_i * DV_ + dvIdx;
+        DataCopyPad(attnOutGm_[attnOutGmOffset], attnOutLocal, attnOutParams);
+        attnOutQueue_.FreeTensor(attnOutLocal);
     }
 
-    __aicore__ inline void ProcessHead(int32_t seq0, int32_t seq1, uint64_t head_i, uint64_t stateOffset)
+    __aicore__ inline void Compute(uint32_t seq0, uint32_t seq1, uint32_t tIdx, uint32_t head_i, uint32_t dvIdx,
+        uint32_t curSingleV)
     {
-        uint64_t vOffset = (seq0 * NV_ + head_i) * realV_;
-        uint64_t qkOffset = (seq0 * NK_ + head_i / (NV_ / NK_)) * realK_;
-        CopyInQKV(vOffset, qkOffset, seq1 - seq0);
-        for (uint64_t v_i = 0; v_i < realV_; v_i += vStep_) {
-            uint32_t curSingleV = v_i + vStep_ > realV_ ? realV_ - v_i : vStep_;
-            uint64_t curStateOffset = ((stateOffset * NV_ + head_i) * realV_ + v_i) * realK_;
-            CopyInState(curStateOffset, curSingleV);
-            for (uint64_t seq_i = seq0; seq_i < seq1; seq_i++) {
-                uint64_t gbOffset = head_i + (seq_i - seq0) * NV_;
-                uint64_t curQKOffset = (seq_i - seq0) * alignK_;
-                uint64_t curVOffset = (seq_i - seq0) * alignV_ + v_i;
-                uint64_t attnOffset = (seq_i * NV_ + head_i) * realV_ + v_i;
-                uint64_t curStateOutOffset =
-                    ((ssmStateIndicesGm_.GetValue(seq_i) * NV_ + head_i) * realV_ + v_i) * realK_;
-                gama_ = hasGama_ ? gamaInUb.GetValue(gbOffset) : 1;
-                beta_ = betaInUb.GetValue(gbOffset);
-                Compute(curSingleV, curQKOffset, curVOffset);
-                CopyOutAttn(attnOffset, curSingleV);
-                CopyOutState(curStateOutOffset, curSingleV);
-            }
+        uint32_t bSeqIdx = tIdx - seq0;
+        uint32_t stateShape[2] = {curSingleV, alignDK_};
+        VecMulMatVF(stateUb_, gamaUb_[bSeqIdx * alignDK_], stateUb_, curSingleV, alignDK_);
+        if (dvIdx == 0 && bSeqIdx == 0) {
+            CopyInQK(seq0, seq1, head_i);
         }
-        if (hasGamaK_) {
-            gamaKInQueue_.FreeTensor(gamaKInUb);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        // VecMulMat + RowSum
+        LocalTensor<float> tmpUb = tmpBuff2_.Get<float>();
+        VecMulMatVF(tmpUb, keyUb_[bSeqIdx * alignDK_], stateUb_, curSingleV, alignDK_);
+        AscendC::PipeBarrier<PIPE_V>();
+        LocalTensor<float> reduceSumResUb = tmpBuff1_.Get<float>();
+        /* ReduceSum高阶API接口说明:
+         * 1.isReuseSource设置成true时,接口不再申请额外UB内存
+         * 2.接口当前reduce的列数是stateShape[1],不支持实际需参与计算的有效数据列数与UB上存储列数不相等的情况.
+         *   此处stateShape[1]可以设置成alignDK_,而不设置成DK_是因为:
+         *   拷贝queryGm&keyGm时无效数据pad为0了,计算后tmpUb每行的无效列也是0
+         */
+        ReduceSum<float, Pattern::Reduce::AR, true>(reduceSumResUb, tmpUb, stateShape, true);
+        if (dvIdx == 0 && bSeqIdx == 0) {
+            CopyInV(seq0, seq1, head_i);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+        Sub(reduceSumResUb, valueUb_[bSeqIdx * alignDV_ + dvIdx], reduceSumResUb, curSingleV);
+        AscendC::PipeBarrier<PIPE_V>();
+        Muls(reduceSumResUb, reduceSumResUb, beta_, curSingleV);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        // Outer + Add
+        OuterAddVF(stateUb_, reduceSumResUb, keyUb_[bSeqIdx * alignDK_], stateUb_, curSingleV, alignDK_);
+        AscendC::PipeBarrier<PIPE_V>();
+        CopyOutState(stateUb_, tIdx, head_i, dvIdx, curSingleV);
+
+        // State * query * scale
+        VecMulMatVF(tmpUb, queryUb_[bSeqIdx * alignDK_], stateUb_, curSingleV, alignDK_);
+        AscendC::PipeBarrier<PIPE_V>();
+        ReduceSum<float, Pattern::Reduce::AR, true>(reduceSumResUb, tmpUb, stateShape, true);
+        AscendC::PipeBarrier<PIPE_V>();
+        CopyAttentionOut(reduceSumResUb, tIdx, head_i, dvIdx, curSingleV);
+    }
+
+    __aicore__ inline void ProcessHead(uint32_t seq0, uint32_t seq1, uint32_t head_i, uint32_t stateBlockIdx)
+    {
+        CopyInGamaK(seq0, seq1, head_i);
+        AscendC::PipeBarrier<PIPE_V>();
+        for (uint64_t dvIdx = 0; dvIdx < DV_; dvIdx += vStep_) {
+            uint32_t curSingleV = (dvIdx + vStep_ > DV_) ? (DV_ - dvIdx) : vStep_;
+            CopyInState(stateBlockIdx, head_i, dvIdx, curSingleV);
+            AscendC::PipeBarrier<PIPE_V>();
+            for (uint64_t tIdx = seq0; tIdx < seq1; tIdx++) {
+                UpdateGamaBeta(tIdx, tIdx - seq0, head_i, dvIdx);
+                Compute(seq0, seq1, tIdx, head_i, dvIdx, curSingleV);
+            }
         }
     }
 
@@ -384,46 +458,44 @@ private:
     GlobalTensor<outType> finalStateGm_;
     GlobalTensor<outType> attnOutGm_;
     TPipe *pipe_;
-    TQue<QuePosition::VECIN, 1> qInQueue_;
-    TQue<QuePosition::VECIN, 1> kInQueue_;
-    TQue<QuePosition::VECIN, 1> vInQueue_;
-    TQue<QuePosition::VECIN, 1> gamaInQueue_;
-    TQue<QuePosition::VECIN, 1> gamaKInQueue_;
-    TQue<QuePosition::VECIN, 1> betaInQueue_;
-    TQue<QuePosition::VECIN, 1> stateInQueue_;
+
+    TQue<QuePosition::VECIN, 1> inputQueue1_;
     TQue<QuePosition::VECOUT, 1> attnOutQueue_;
     TQue<QuePosition::VECOUT, 1> stateOutQueue_;
-    TBuf<TPosition::VECCALC> tmpBuff;
-    LocalTensor<float> qInUb;
-    LocalTensor<float> kInUb;
-    LocalTensor<float> vInUb;
-    LocalTensor<float> gamaInUb;
-    LocalTensor<float> gamaKInUb;
-    LocalTensor<float> betaInUb;
-    LocalTensor<float> deltaInUb;
-    LocalTensor<float> broadTmpInUb;
-    LocalTensor<float> attnInUb;
-    LocalTensor<float> stateInUb;
+    TBuf<TPosition::VECCALC> gamaBuff_;
+    TBuf<TPosition::VECCALC> stateBuff_;
+    TBuf<TPosition::VECCALC> queryBuff_;
+    TBuf<TPosition::VECCALC> keyBuff_;
+    TBuf<TPosition::VECCALC> valueBuff_;
+    TBuf<TPosition::VECCALC> tmpBuff1_;
+    TBuf<TPosition::VECCALC> tmpBuff2_;
+
+    LocalTensor<float> gamaUb_;
+    LocalTensor<float> stateUb_;
+    LocalTensor<float> queryUb_;
+    LocalTensor<float> keyUb_;
+    LocalTensor<float> valueUb_;
+
     uint32_t B_;
     uint32_t T_;
     uint32_t NK_;
-    uint32_t alignK_;
-    uint32_t realK_;
+    uint32_t alignDK_;
+    uint32_t DK_;
     uint32_t NV_;
-    uint32_t alignV_;
-    uint32_t realV_;
+    uint32_t alignDV_;
+    uint32_t DV_;
     uint32_t vStep_;
-    uint32_t restUbSize_;
     uint32_t load;
     uint32_t usedblk;
     uint32_t avgload;
     bool hasAcceptedTokens_;
     bool hasGama_;
     bool hasGamaK_;
-    float gama_;
-    float beta_;
     float scale_;
     uint64_t blockIdx;
+
+    float gama_;
+    float beta_;
 };
 } // namespace RecurrentGatedDeltaRule
 #endif
