@@ -1253,21 +1253,31 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     CalExpertOffset(startTokenId, endTokenId);
     LocalTensor<XType> sendTokenTensor = xSendBuf_.Get<XType>();
-    //DataCopyPad(sendTokenTensor, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
-
-
-ProcessToken(GM_ADDR rankGM,
-            LocalTensor<XType>& tokenData, uint32_t tokenIndex, uint32_t topKIndex, uint32_t expertIndex,
-            uint32_t srcRankIndex, float expertScale)
-
     #if defined(__DAV_C310__)
         if constexpr (QuantMode > UNQUANT && ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT))) {
             // 由于MX以及PERGROUP量化在计算scales时每次搬入256字节数据，所以在token搬入前需要对空间填0，避免引入脏数据
-            LocalTensor<uint8_t> singleByteTok = tokenData_.template ReinterpretCast<uint8_t>();
+            LocalTensor<uint8_t> singleByteTok = sendTokenTensor.template ReinterpretCast<uint8_t>();
             Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(XType)); 
             PipeBarrier<PIPE_V>();
         }
     #endif
+    float expertScale = float(1.0);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; tokenIndex++) {
+        DataCopyPad(sendTokenTensor, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
+        for (uint32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {
+            uint32_t expertIndex = tokenIndex * axisK_ + topKIndex;
+            uint32_t dstExpertId = expertIdsTensor_(expertIndex);
+            uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
+             uint32_t curExpertCnt = expertOffsetCntTensor_
+            ProcessToken(sendTokenTensor, tokenIndex, topKIndex, expertIndex, srcRankIndex, expertScale);
+       }
+    }
+
+
+    //DataCopyPad(sendTokenTensor, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
+
+
     tokenInQueue_.EnQue(recvTmpTensor_);  
     recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
     DataCopy(tokenData_, recvTmpTensor_, hAlignSize_ / sizeof(XType));
