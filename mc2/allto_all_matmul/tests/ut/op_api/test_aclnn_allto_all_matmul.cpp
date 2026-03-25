@@ -13,6 +13,7 @@
 #include <vector>
 #include "gtest/gtest.h"
 #include <gmock/gmock.h>
+#include "test_allto_all_matmul_api_ut_param.h"
 #include "../../../op_api/aclnn_allto_all_matmul.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -372,3 +373,50 @@ TEST_F(TestAclnnAlltoAllMatmul, casesParams)
         }
     }
 }
+
+namespace AlltoAllMatmulUT {
+
+class AclnnAlltoAllMatmulTest : public testing::TestWithParam<AlltoAllMatmulApiUtParam> {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "AlltoAllMatmul AclnnAlltoAllMatmulTest SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "AlltoAllMatmul AclnnAlltoAllMatmulTest TearDown" << std::endl;
+    }
+};
+
+TEST_P(AclnnAlltoAllMatmulTest, param)
+{
+    auto param = GetParam();
+    op::SetPlatformSocVersion(param.soc);
+    aclTensor* x1 = param.x1.GetViewDims().empty() ? nullptr : param.x1.ToAclTypeRawPtr();
+    aclTensor* x2 = param.x2.GetViewDims().empty() ? nullptr : param.x2.ToAclTypeRawPtr();
+    aclTensor* output = param.output.GetViewDims().empty() ? nullptr : param.output.ToAclTypeRawPtr();
+    auto ut = OP_API_UT(
+        aclnnAlltoAllMatmul,
+        INPUT(x1, x2, param.bias, param.alltoAllAxes, param.group.c_str(),
+              param.transposeX1, param.transposeX2),
+        OUTPUT(output, param.alltoAllOut)
+    );
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    if (param.expectResult == ACLNN_SUCCESS) {
+        EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+    } else {
+        EXPECT_EQ(param.expectResult, aclnnRet);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AlltoAllMatmul,
+    AclnnAlltoAllMatmulTest,
+    testing::ValuesIn(GetCasesFromCsv<AlltoAllMatmulApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<AlltoAllMatmulApiUtParam>
+);
+
+} // namespace AlltoAllMatmulUT

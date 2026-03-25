@@ -128,6 +128,10 @@ TensorDesc& TensorDesc::ValidCount(int32_t cnt) {
   return *this;
 }
 
+const std::vector<int64_t>& TensorDesc::GetViewDims() const {
+  return view_dims_;
+}
+
 int64_t TensorDesc::GetViewCount() const {
   const auto & v = view_dims_;
   return accumulate(v.cbegin(), v.cend(), 1, multiplies<int64_t>());
