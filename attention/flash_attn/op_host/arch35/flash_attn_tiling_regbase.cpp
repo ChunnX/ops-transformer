@@ -236,9 +236,9 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
     //   属性: softmaxMode=0→scale=0.125f, maskMode=0, returnSoftmaxLse=0
     // ================================================================
     bSize  = 1LL;     // batch size
-    n1Size = 8LL;     // Q head 数，来自 qShape[1]=8
-    n2Size = 2LL;     // KV head 数，来自 kShape[2]=2（BSND格式）
-    gSize  = 4LL;     // GQA 比例 = n1Size/n2Size = 8/2
+    n1Size = 1LL;     // Q head 数，来自 qShape[1]=8
+    n2Size = 1LL;     // KV head 数，来自 kShape[2]=2（BSND格式）
+    gSize  = 1LL;     // GQA 比例 = n1Size/n2Size = 8/2
     s1Size = 128LL;   // Q 序列长度，来自 qShape[2]=128
     s2Size = 128LL;   // KV 序列长度，来自 kShape[1]=128
     dSize  = 64LL;    // Q/K head 维度，来自 qShape[3]=64
@@ -279,8 +279,8 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
     inputParamsRegbase_->set_preTokens(65536LL);             // 全量注意力：preTokens = 大值
     inputParamsRegbase_->set_nextTokens(0LL);                // 无因果掩码
     // --- GQA ---
-    inputParamsRegbase_->set_isGqa(1U);                      // n1(8) != n2(2) → GQA 有效
-    inputParamsRegbase_->set_headNumRatio(4U);               // n1/n2 = 8/2 = 4
+    inputParamsRegbase_->set_isGqa(0U);                      // n1(8) != n2(2) → GQA 有效
+    inputParamsRegbase_->set_headNumRatio(1U);               // n1/n2 = 8/2 = 4
     // --- 输出控制 ---
     inputParamsRegbase_->set_isSoftMaxLseEnable(0U);         // returnSoftmaxLse=0，不输出 lse
     // --- dropout（无） ---
@@ -298,7 +298,7 @@ ge::graphStatus FlashAttnTilingRegbase::GetShapeAttrsInfo()
     inputParamsRegbase_->set_isActualSeqLengthsNull(1U);     // cuSeqlensQ = nullptr
     inputParamsRegbase_->set_isActualSeqLengthsKVNull(1U);   // cuSeqlensKv = nullptr
     // --- prefix（无） ---
-    inputParamsRegbase_->set_isActualSharedPrefixLenNull(0u);
+    inputParamsRegbase_->set_isActualSharedPrefixLenNull(1u);
     // --- 分页注意力（无） ---
     inputParamsRegbase_->set_blockSize(0);
     inputParamsRegbase_->set_blockTableDim2(0);
@@ -400,7 +400,7 @@ ge::graphStatus FlashAttnTilingRegbase::DoOpTiling()
     initOut->set_totalOutputSize(totalOutElems);               // 65536
     initOut->set_totalSoftMaxLseOutputSize(0LL);               // 不输出 softmax_lse
     initOut->set_needInit(0U);                                 // 推理无需初始化输出
-    initOut->set_isOneN(0U);                                   // n1Size=8 ≠ 1
+    initOut->set_isOneN(1U);                                   // n1Size=8 ≠ 1
     initOut->set_singleCoreSize(
         usedCoreNum > 0 ? static_cast<uint32_t>(totalOutElems / usedCoreNum) : 0U);  // 8192
 
