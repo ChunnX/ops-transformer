@@ -714,10 +714,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<uint32_t>(commFlagTensor_, 0x3F800000, mask, commRepeatTime, uint16_t(1), uint8_t(8)); // 0x3F800000是float的1
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertIdsCnt_);
     
-    // LOG_INFO("[blockCntPerToken_]", blockCntPerToken_);
-    // LOG_INFO("[blockCntExpertPerServer_]", blockCntExpertPerServer_);
-    // LOG_INFO("[blockCntPerTokenToExpert_]", blockCntPerTokenToExpert_);
-    // LOG_INFO("[maxBlockCnt_]", maxBlockCnt_);
+    LOG_INFO("[blockCntPerToken_]", blockCntPerToken_);
+    LOG_INFO("[blockCntExpertPerServer_]", blockCntExpertPerServer_);
+    LOG_INFO("[blockCntPerTokenToExpert_]", blockCntPerTokenToExpert_);
+    LOG_INFO("[maxBlockCnt_]", maxBlockCnt_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -970,9 +970,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
         int32_t tokenSendOffset = tokenSendMap_.GetValue(offset);
-        LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
+        //LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
         if(tokenSendOffset == -1) {
-            LOG_INFO("ScatterToken not send");
+            //LOG_INFO("ScatterToken not send");
             continue;
         }
         SingleTokenProcess(startIndex, tokenIndex, serverId, tokenSendOffset); // 将数据写入对应的发送区
@@ -1096,7 +1096,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     uint64_t dstOffset = startTokenId * axisK_ * sizeof(int16_t);
     uint32_t computeRow = endTokenId - startTokenId;
     uint32_t expertOffsetNum = computeRow * moeCntRowAlign_; //32B对齐
-    LOG_INFO("expertOffsetNum",expertOffsetNum);
+    //LOG_INFO("expertOffsetNum",expertOffsetNum);
     GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(gmExpertOffsetCnt + dstFlag);
     LocalTensor<float32_t> flagInLTTensor = dstExpBuf_.Get<float32_t>();
     LocalTensor<int16_t> expertCntTensor = dstExpBuf_.Get<int16_t>();
@@ -1105,12 +1105,12 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     DataCopyPadParams expertCntPadParams{false, 0, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE2>(); //这里复用了dstExpBuf_ ，必须等待完成。TODO：
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
-    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
-    LOG_INFO("CalExpertOffset start waitFlg");
+    //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
+    //LOG_INFO("CalExpertOffset start waitFlg");
     // WaitFlag(flagAddr, flagInLTTensor,  usedCoreNum);
     WaitFlag<true>(flagAddr, flagInLTTensor, 0, usedCoreNum); //TODO:0魔鬼数字
-    LOG_INFO("CalExpertOffset end waitFlg");
-    LOG_INFO("usedCoreNum",usedCoreNum);
+    //LOG_INFO("CalExpertOffset end waitFlg");
+    //LOG_INFO("usedCoreNum",usedCoreNum);
     PipeBarrier<PIPE_V>();
     for(uint32_t index =0 ;index < usedCoreNum; index++) {
         // 计算每个核心的专家偏移量
@@ -1128,7 +1128,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
         //LOG_INFO("CalExpertOffset for expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
     }
-    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
+    //LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, moeCntRowAlign_});
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1543,8 +1543,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
-        //DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
-        // LOG_INFO("xOutTensor_", xOutTensor_);
         WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_);
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     }
@@ -2110,6 +2108,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     GlobalTensor<ExpandXOutType> dataFlagGlobal, expandXOutGlobal;
     dataFlagGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+    GlobalTensor<float32_t> dataFlagGlobal_test;
+    dataFlagGlobal_test.SetGlobalBuffer((__gm__ float32_t *)(wAddr)); // todo:
+    uint32_t t= arriveCount * 8;
+    LOG_INFO("[CopyOut][moe] dataFlagGlobal", dataFlagGlobal_test,{16, t});
     expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (dstPosition) * axisH_);
     DataCopyParams srcTokenCopyParams{static_cast<uint16_t>(blockCntPerTokenToExpert_ * arriveCount), 
         static_cast<uint16_t>(SPLIT_BLOCK_DATA_SIZE), static_cast<uint16_t>(UB_ALIGN), 0};
@@ -2383,7 +2385,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t endtime = GetSystemCycle();
     uint64_t usetime = endtime -starttime;
     // LOG_INFO("CalTokenSendExpertOffset use time",usetime);
-    LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
+    //LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
     WriteExpertOffset(); // 计算完成将结果写入GM并写flag
 }
 
