@@ -138,14 +138,14 @@ __simd_vf__ inline void FrMulLogitsVf(uint16_t mSize, uint64_t nLoopCnt, __ubuf_
     MicroAPI::RegTensor<float> logits;
     MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
     for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(logits, logitsUbAddr + mId);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(logits, logitsUbAddr + mIdx);
 
         for (uint16_t nLoopIdx = 0; nLoopIdx < nLoopCnt; ++nLoopIdx) {
             MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(yFp32, yUbAddr + mIdx * 256 +
                                                                                  nLoopIdx * VEC_MAX_ELEM_B32);
 
             MicroAPI::Muls(yFp32, yFp32, 64.0f, maskAll);
-            MicroAPI::Mul(yFp32, logits, 64.0f, maskAll);
+            MicroAPI::Mul(yFp32, yFp32, logits, maskAll);
 
             MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<float>(mIdx, 256, nLoopIdx, VEC_MAX_ELEM_B32);
             MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(yUbAddr, yFp32, outAddrReg, maskAll);
