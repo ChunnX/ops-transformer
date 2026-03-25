@@ -1326,9 +1326,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     TBuf<> tokenFlagBuf;
     TBuf<> cleanBuf;
 
-    tpipe_->InitBuffer(tokenInQueue_, BUFFER_NUM, sendTokenLengthAlign_); // token输入队列
-    tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hAlignSize_); // 14K * 2
-    tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hOutAlignUbSize_); // 7K * 2 + 32 + 6
+    tpipe_->InitBuffer(tokenInQueue_, 1, sendTokenLengthAlign_); // token输入队列
+    tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 14K * 2
+    tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); // 7K * 2 + 32 + 6
     tpipe_->InitBuffer(flagBuf_, commFlagSize);
     tpipe_->InitBuffer(tokenRcvStatusBuf, TOKEN_RECV_CNT_MAX * sizeof(uint32_t)); // 一个server最多发512个token给
     tpipe_->InitBuffer(tokenFlagBuf, flagMaxRecvBuf); 
@@ -2411,11 +2411,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-        uint32_t count = 0;
-        while(count < 10000000){
-            count++;
-        }
         LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
