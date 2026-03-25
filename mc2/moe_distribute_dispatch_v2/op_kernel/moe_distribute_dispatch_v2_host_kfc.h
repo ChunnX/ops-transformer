@@ -1993,7 +1993,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();
     tokenNumToExpertTensor_ = dstExpBuf_.Get<int32_t>();
     Duplicate<int32_t>(tokenNumToExpertTensor_, 0, moeExpertNum_);
-    //LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
+    LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
     PipeBarrier<PIPE_V>();
     for (int32_t expertIndex = 0; expertIndex < moeExpertNum_; expertIndex++) { //处理moe专家
         int32_t dstExpertId = expertIndex;
