@@ -188,11 +188,20 @@ private:
     uint64_t ubAntiquantYLoopIdx_ = 0;
 
     static constexpr uint32_t EVENT_ID_V_TO_MTE2 = 0;
-    static constexpr uint32_t EVENT_ID_BIAS_FR_V_TO_MTE2 = EVENT_ID_V_TO_MTE2 + QUADRUPLE_BUFFER_NUM;
+    static constexpr uint32_t EVENT_ID_FR_V_TO_MTE2 = EVENT_ID_V_TO_MTE2 + QUADRUPLE_BUFFER_NUM;
+
     static constexpr uint32_t EVENT_ID_MTE2_TO_V = 0;
+    static constexpr uint32_t EVENT_ID_RL_MTE2_TO_V = 1;
+
     static constexpr uint32_t EVENT_ID_MTE3_TO_V = 0;
     static constexpr uint32_t EVENT_ID_BIAS_FR_MTE3_TO_V = EVENT_ID_MTE3_TO_V + QUADRUPLE_BUFFER_NUM;
+ 
     static constexpr uint32_t EVENT_ID_V_TO_MTE3 = 0;
+
+    static constexpr uint32_t EVENT_ID_S_TO_MTE2 = 0
+    
+    static constexpr uint32_t EVENT_ID_MTE2_TO_S = 0;
+
 
     float sharedInputWeight_ = 0.0f;
 
@@ -297,8 +306,8 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(b
     }
     
     for (uint16_t idx = 0; idx < DOUBLE_BUFFER_NUM; idx++) {
-        // SetFlag<HardEvent::V_MTE2>(EVENT_ID_BIAS_FR_V_TO_MTE2 + idx);
-        // SetFlag<HardEvent::MTE3_V>(EVENT_ID_BIAS_FR_MTE3_TO_V + idx);
+        SetFlag<HardEvent::S_MTE2>(EVENT_ID_S_TO_MTE2 + idx);
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID_FR_V_TO_MTE2 + idx);
     }
 
     for (uint16_t idx = 0; idx < vecConfig.ubMte2BufferNum; idx++) {
@@ -411,6 +420,44 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::SetVTo
 {
     SetFlag<HardEvent::V_MTE2>(EVENT_ID_V_TO_MTE2 + (weightMte2LoopIdx_ & (vecConfig.ubMte2BufferNum - 1)));
     weightMte2LoopIdx_++;
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WaitSToMTE2(uint64_t rlLoopIdx)
+{
+    WaitFlag<HardEvent::V_MTE2>(EVENT_ID_S_TO_MTE2 + (rlLoopIdx & 1));
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::SetSToMTE2(uint64_t rlLoopIdx)
+{
+    SetFlag<HardEvent::V_MTE2>(EVENT_ID_S_TO_MTE2 + (rlLoopIdx & 1));
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WaitFrVToMTE2(uint64_t rlLoopIdx)
+{
+    WaitFlag<HardEvent::V_MTE2>(EVENT_ID_FR_V_TO_MTE2 + (rlLoopIdx & 1));
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::SetFrToMTE2(uint64_t rlLoopIdx)
+{
+    SetFlag<HardEvent::V_MTE2>(EVENT_ID_FR_V_TO_MTE2 + (rlLoopIdx & 1));
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::SetMTE2ToS(rlLoopIdx)
+{
+    SetFlag<HardEvent::V_MTE2>(EVENT_ID_MTE2_TO_S + (rlLoopIdx & 1));
+    SetFlag<HardEvent::V_MTE2>(EVENT_ID_RL_MTE2_TO_V + (rlLoopIdx & 1));
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WaitMTE2ToS(rlLoopIdx)
+{
+    WaitFlag<HardEvent::V_MTE2>(EVENT_ID_MTE2_TO_S + (rlLoopIdx & 1));
+    WaitFlag<HardEvent::V_MTE2>(EVENT_ID_RL_MTE2_TO_V + (rlLoopIdx & 1));
 }
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -568,11 +615,26 @@ GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyYUbToGm(uint64_t nRealL0S
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::MulLogits(
-    uint64_t nRealL0Size, uint64_t mRealL0Size)
+    const LocalTensor<float> &ubOutputF32Buffer, uint64_t mRealSize, const BasicBlockOffsetParam &offsetParam)
 {
-    // TODO: Implement multiplication of logits
-    // This is a placeholder - implement based on actual algorithm requirements
-    // For now, this function is empty to allow compilation
+    FrMulLogitsVf(mRealSize, CeilDivide(offsetParam.nL1Size, VEC_MAX_ELEM_B32),
+                  logits_.GetPhyAddr((rlLoopIdx & 1) * UB_BUFFER_INFO.logitseSingleBufferSize),
+                  ubOutputF32Buffer_.GetPhyAddr());
+}
+
+GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::RoutingYToGm(uint64_t mRealSize, const LocalTensor<float> &ubOutputF32Buffer, const BasicBlockOffsetParam &offsetParam)
+{
+    SetAtomicAdd<float>();
+    for (uint32_t mIdx = 0; mIdx < mRealSize; mIdx++)
+    {
+        uint64_t mGmOffset = static_cast<uint64_t>(rowIndex_.GetValue(mIdx));
+        
+        DataCopyPad2D(yFp32Global_[mGmOffset * offsetParam.nSize + offsetParam.nOffset], ubOutputF32Buffer[mIdx * 256],
+                  1, offsetParam.nL1Size, offsetParam.nL1Siz, offsetParam.nL1Siz);
+    }
+
+    SetAtomicNone();
 }
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -589,13 +651,13 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
 }
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyRowIndexLogitsGmToUb(uint64_t mGmOffset, uint64_t mRealSize)
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyRowIndexLogitsGmToUb(uint64_t mGmOffset, uint64_t mRealSize, uint64_t rlLoopIdx)
 {
-    DataCopyPad2D(rowIndex_[(rlMte2LoopIdx_ & 1) *
+    DataCopyPad2D(rowIndex_[(rlLoopIdx & 1) *
                                                   UB_BUFFER_INFO.rowIndexSingleBufferSize],
                   rowIndexGlobal_[mGmOffset], 1, mRealSize, mRealSize,
                   mRealSize);
-    DataCopyPad2D(logits_[(rlMte2LoopIdx_ & 1) *
+    DataCopyPad2D(logits_[(rlLoopIdx & 1) *
                                                   UB_BUFFER_INFO.logitseSingleBufferSize],
                   logitsGlobal_[mGmOffset], 1, mRealSize, mRealSize,
                   mRealSize);
