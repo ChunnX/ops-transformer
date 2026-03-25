@@ -54,7 +54,8 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ floa
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
                 if constexpr (isUpdatePre) {
                     Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
@@ -112,7 +113,8 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float * dstUb, __ubuf__ fl
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
                 if constexpr (isUpdatePre) {
                     Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
@@ -129,7 +131,8 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float * dstUb, __ubuf__ fl
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_tail_d);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
                 if constexpr (isUpdatePre) {
                     Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
@@ -213,6 +216,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
+    constexpr float int8MaxValueRec = 1 / 127.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
@@ -229,7 +233,8 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
                 if constexpr (isUpdatePre) {
                     Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
@@ -238,7 +243,11 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
             if constexpr (isMlaFullQuant) {
-                Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
+                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
+                } else {
+                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                }
             }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div, preg_all);
@@ -293,7 +302,8 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float * dstUb, __ubuf_
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
                 if constexpr (isUpdatePre) {
                     Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
@@ -312,7 +322,8 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float * dstUb, __ubuf_
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_tail_d);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
                 if constexpr (isUpdatePre) {
                     Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
@@ -392,6 +403,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
     constexpr uint16_t floatRepSize = 64;
     const uint16_t dLoops = d >> 6;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
+    constexpr float int8MaxValueRec = 1 / 127.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         uint32_t sreg_init = d;
@@ -402,12 +414,17 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value) {
+                            IsSameType<INPUT_T, hifloat8_t>::value ||
+                            IsSameType<INPUT_T, int8_t>::value) {
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
             }
             Div(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update);
             if constexpr (isMlaFullQuant) {
-                Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
+                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
+                } else {
+                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                }
             }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div, preg_update);

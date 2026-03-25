@@ -26,6 +26,7 @@ constexpr uint32_t floatRepSize = 64;
 constexpr uint32_t halfRepSize = 128;
 constexpr uint32_t blockBytesU8 = 32;
 constexpr float fp8e4m3MaxValue = 448.0f;
+constexpr float int8MaxValue = 127.0f;
 constexpr float floatEps = 2.220446049250313e-16;
 /* **************************************************************************************************
  * Muls + Select(optional) + SoftmaxFlashV2 + Cast(fp32->fp16/bf16) + ND2NZ
@@ -92,6 +93,12 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintThree = {
     do {                                                            \
         Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg);         \
         Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);            \
+    } while (0)
+    
+#define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg) \
+    do {                                                              \
+        Muls(vreg_exp, vreg_exp, int8MaxValue, MaskReg);              \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);              \
     } while (0)
 } // namespace
 
