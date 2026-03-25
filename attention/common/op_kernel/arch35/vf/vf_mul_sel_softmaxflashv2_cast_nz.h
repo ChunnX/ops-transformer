@@ -85,7 +85,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
         } else if constexpr (oriNRange == EQ_128) {
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value) {
+                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
                 indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
             }
             ProcessVec1NoUpdateImpl128<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd, isMlaFullQuant>(dstTensor, indexesTensor, expSumTensor,
@@ -94,7 +94,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
         } else if constexpr (oriNRange == GT_0_AND_LTE_64) {
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value) {
+                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
                 indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
             }
             ProcessVec1NoUpdateImpl64<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd, isMlaFullQuant>(dstTensor, indexesTensor, expSumTensor,
@@ -111,7 +111,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
         } else { // GT_64_AND_LTE_128
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value) {
+                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
                 indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
             }
             ProcessVec1NoUpdateGeneralImpl128<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd, isMlaFullQuant>(dstTensor, indexesTensor,
@@ -252,7 +252,7 @@ __aicore__ inline void ProcessVec1Update(
         } else if constexpr (oriNRange == EQ_128) {
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value) {
+                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
                 indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
             }
             ProcessVec1UpdateImpl128<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd, isMlaFullQuant>(
@@ -262,7 +262,7 @@ __aicore__ inline void ProcessVec1Update(
         } else if constexpr (oriNRange == GT_0_AND_LTE_64) {
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value) {
+                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
                 indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
             }
             ProcessVec1UpdateImpl64<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd, isMlaFullQuant>(
@@ -282,7 +282,7 @@ __aicore__ inline void ProcessVec1Update(
         } else { // GT_64_AND_LTE_128
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value) {
+                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
                 indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
             }
             ProcessVec1UpdateGeneralImpl128<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd, isMlaFullQuant>(
@@ -331,8 +331,8 @@ __aicore__ inline void ProcessVec1Vf(const LocalTensor<T2>& dstTensor, TBuf<> *v
         static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
     }
     static_assert(IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, float>::value ||
-                  IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value || IsSameType<T2, hifloat8_t>::value,
-                  "VF mul_sel_softmaxflashv2_cast_nz, T2 must be half, bfloat16 or float or fp8");
+                  IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value || IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value,
+                  "VF mul_sel_softmaxflashv2_cast_nz, T2 must be half, bfloat16 or float or fp8 or int8");
     static_assert(oriNRange < N_INVALID, "VF mul_sel_softmaxflashv2_cast_nz, oriNRange is invalid");
 
     if constexpr (!isUpdate) {

@@ -1861,10 +1861,15 @@ bool PromptFlashAttentionTilingV2::CheckIFAMLA(ContextParamsForPFATiling& contex
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "input query's sequence length is %u, it should be "
                 "in range of [1, %u] when enable ifa mla fullquant", queryShapeInfo.s, maxQuerySeqLenInIfaMla),
             return false);
-        static const std::set<uint32_t> supportNumHeadInIfaMla = {32U, 64U, 128U}; // ifa mla场景qN支持范围
-        OP_CHECK_IF((supportNumHeadInIfaMla.find(queryShapeInfo.n) == supportNumHeadInIfaMla.end()),
+        static const std::set<uint32_t> supportNumHeadInIfaMlaInt8 = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla fullquant int8场景qN支持范围
+        OP_CHECK_IF((supportNumHeadInIfaMlaInt8.find(queryShapeInfo.n) == supportNumHeadInIfaMlaInt8.end() && contextKeyParams.inputDataType == ge::DT_INT8),
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "input query's heads num is %u, it should be in range of "
-                "{32, 64, 128} when enable ifa mla fullquant", queryShapeInfo.n),
+                "{1, 2, 4, 8, 16, 32, 64, 128} when enable ifa mla int8 fullquant", queryShapeInfo.n),
+            return false);
+        static const std::set<uint32_t> supportNumHeadInIfaMlaFp8 = {32U, 64U, 128U}; // ifa mla fp8场景qN支持范围
+        OP_CHECK_IF((supportNumHeadInIfaMlaFp8.find(queryShapeInfo.n) == supportNumHeadInIfaMlaFp8.end() && contextKeyParams.inputDataType == ge::DT_FLOAT8_E4M3FN),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "input query's heads num is %u, it should be in range of "
+                "{32, 64, 128} when enable ifa mla fp8 fullquant", queryShapeInfo.n),
             return false);
     } else {
         OP_CHECK_IF((queryShapeInfo.s < 1),
@@ -2073,17 +2078,30 @@ bool PromptFlashAttentionTilingV2::CheckMLAFullQuant(ContextParamsForPFATiling& 
     // check layout
     std::string layoutStr(contextKeyParams.layout);
     const std::vector<std::string> supportedLayoutList = {"BSH", "BSND", "BNSD", "TND"};
-    OP_CHECK_IF(std::find(supportedLayoutList.begin(), supportedLayoutList.end(), layoutStr) == supportedLayoutList.end(),
+    OP_CHECK_IF(std::find(supportedLayoutList.begin(), supportedLayoutList.end(), layoutStr) == supportedLayoutList.end() && contextKeyParams.inputDataType == ge::DT_FLOAT8_E4M3FN,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "When MLAFullQuant enables, the layout of Q(%s) must be BSH/BSND/BNSD/TND.", layoutStr.c_str()), return false);
     // check DSize
     OP_CHECK_IF((queryShapeInfo.d != 512), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "When MLAFullQuant enables, the d(%d) size of query should be 512.", queryShapeInfo.d), return false);
-    // check QKV dtype for fp8_e4m3, output dtype for bf16, QK Rope Type for bf16
-    OP_CHECK_IF((contextKeyParams.inputDataType != ge::DT_FLOAT8_E4M3FN || contextKeyParams.kDataType != ge::DT_FLOAT8_E4M3FN ||
-        contextKeyParams.vDataType != ge::DT_FLOAT8_E4M3FN || contextKeyParams.outputDataType != ge::DT_BF16),
+    // 新增对int8的拦截,关于layout的拦截
+    const std::vector<std::string> supportedLayoutListInt8 = {"BSH", "BSND", "TND", "BSH_NBSD", "BSND_NBSD", "TND_NTD"};
+    OP_CHECK_IF(std::find(supportedLayoutListInt8.begin(), supportedLayoutListInt8.end(), layoutStr) == supportedLayoutListInt8.end() && contextKeyParams.inputDataType == ge::DT_INT8,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "When MLAFullQuant enables, dataType of Q(%s), K(%s) and V(%s) must be fp8_e4m3, datatype of output(%s) must be bf16.",
+            "When MLAFullQuant INT8 is enabled, the layout of Q(%s) must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD.",
+            layoutStr.c_str()),
+        return false);
+    // 新增对int8的拦截,关于输入K/V必须为五维的拦截
+    const gert::StorageShape* keyShape = contextKeyParams.keyInputShape;
+    OP_CHECK_IF((keyShape->GetStorageShape().GetDimNum()!= KV_CACHE_DIM_NUMS_5 && contextKeyParams.inputDataType == ge::DT_INT8),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "when the dtype of query is int8 in MLA, KV layout must be PANZ."), return false);
+    // check QKV dtype for fp8_e4m3/int8, output dtype for bf16, QK Rope Type for bf16
+    std::vector<ge::DataType> allowedDtypes = {ge::DT_FLOAT8_E4M3FN, ge::DT_INT8};
+    auto inputTypeCheck = std::find(allowedDtypes.begin(), allowedDtypes.end(), contextKeyParams.inputDataType);
+    OP_CHECK_IF((inputTypeCheck == allowedDtypes.end() || contextKeyParams.outputDataType != ge::DT_BF16),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "When MLAFullQuant enables, dataType of Q(%s), K(%s) and V(%s) must be fp8_e4m3/int8, datatype of output(%s) must be bf16.",
             GetPfaDataTypeStr(contextKeyParams.inputDataType).c_str(), GetPfaDataTypeStr(contextKeyParams.kDataType).c_str(),
             GetPfaDataTypeStr(contextKeyParams.vDataType).c_str(), GetPfaDataTypeStr(contextKeyParams.outputDataType).c_str()),
         return false);
@@ -2725,12 +2743,21 @@ bool PromptFlashAttentionTilingV2::CheckMaskCrossIFAMLA(ContextParamsForPFATilin
                     *sparseMode, enableMask ? " " : " no "),
                 return false);
         } else {
-            OP_CHECK_IF(!(((*sparseMode == SPARSE_MODE_RIGHT_DOWN) && (enableMask)) || ((*sparseMode == SPARSE_MODE_NO_MASK) && (!enableMask))),
+            if (contextKeyParams.inputDataType == ge::DT_FLOAT8_E4M3FN) {
+                OP_CHECK_IF(!(((*sparseMode == SPARSE_MODE_RIGHT_DOWN) && (enableMask)) || ((*sparseMode == SPARSE_MODE_NO_MASK) && (!enableMask))),
+                    OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                        "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla fullquant fp8 and query's sequence length is > 1, "
+                        "input sparse mode is %d and there has%smask",
+                        *sparseMode, enableMask ? " " : " no "),
+                    return false);
+            } else if (contextKeyParams.inputDataType == ge::DT_INT8) {
+                OP_CHECK_IF(!((*sparseMode == SPARSE_MODE_RIGHT_DOWN) && (enableMask)),
                 OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-                    "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla fullquant and query's sequence length is > 1, "
+                    "Only support sparse 3 with mask, when ifa mla fullquant int8 and query's sequence length is > 1, "
                     "input sparse mode is %d and there has%smask",
                     *sparseMode, enableMask ? " " : " no "),
                 return false);
+            }
         }
     } else {
         OP_CHECK_IF(!(((*sparseMode == SPARSE_MODE_RIGHT_DOWN) && (enableMask)) || (*sparseMode == SPARSE_MODE_NO_MASK) || ((*sparseMode == SPARSE_MODE_BAND) && (enableMask))),
@@ -4330,14 +4357,19 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
         (actSeqLenData->GetData<int64_t>() == nullptr));
     enableActSeqLenKV = !((actSeqLenKVDims == 0) || (actSeqLenDataKV == nullptr) ||
         (actSeqLenDataKV->GetData<int64_t>() == nullptr));
+    
+    //per-tensor or per-block check
+    if (contextKeyParams.inputDataType == ge::DT_INT8 && !(contextKeyParams.queryRopeInputShape != nullptr && contextKeyParams.keyRopeInputShape != nullptr)) {
+        enablePertensorQuant = true;
+    }
 
     // PA check
     if (contextKeyParams.blockTable != nullptr) {
         OP_CHECK_IF(contextKeyParams.blockSize == nullptr, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "blockSize can't be null when PA enable"),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(contextKeyParams.inputDataType == ge::DT_INT8, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "Query dataType can't be INT8 when PA enable."),
+        OP_CHECK_IF(enablePertensorQuant == true, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "Query dataType can't be INT8 when PA enable, except when mlafullquant int8 is used."),
             return ge::GRAPH_FAILED);
         enablePA = true;
     }
@@ -4384,15 +4416,11 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
         enablePostQuant = true;
     }
 
-    //per-tensor or per-block check
-    if (contextKeyParams.inputDataType == ge::DT_INT8) {
-        enablePertensorQuant = true;
-    }
-
     // mla fullquant check
     if((contextKeyParams.queryRopeInputShape != nullptr && contextKeyParams.keyRopeInputShape != nullptr) &&
-        (contextKeyParams.inputDataType == ge::DT_FLOAT8_E4M3FN && contextKeyParams.kDataType == ge::DT_FLOAT8_E4M3FN &&
-        contextKeyParams.vDataType == ge::DT_FLOAT8_E4M3FN)) {
+        ((contextKeyParams.inputDataType == ge::DT_FLOAT8_E4M3FN && contextKeyParams.kDataType == ge::DT_FLOAT8_E4M3FN &&
+        contextKeyParams.vDataType == ge::DT_FLOAT8_E4M3FN) || (contextKeyParams.inputDataType == ge::DT_INT8 && 
+        contextKeyParams.kDataType == ge::DT_INT8 && contextKeyParams.vDataType == ge::DT_INT8))) {
         enableIFAMLAFullQuant = true;
     }
 
