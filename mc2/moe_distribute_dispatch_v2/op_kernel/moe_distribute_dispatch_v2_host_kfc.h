@@ -635,7 +635,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_;
     hOutAlignUbSize_ = Ceil(hScaleIdxSize_, UB_ALIGN) * UB_ALIGN;
     maxBlockCnt_ = max(max(blockCntPerToken_, blockCntExpertPerServer_), blockCntPerTokenToExpert_);
-    // LOG_INFO("hOutAlignUbSize_",hOutAlignUbSize_);
+    LOG_INFO("hOutAlignUbSize_",hOutAlignUbSize_);
+    LOG_INFO("hScaleIdxSize_",hScaleIdxSize_);
 }
 
 template <TemplateDispatchKFCTypeClass>
