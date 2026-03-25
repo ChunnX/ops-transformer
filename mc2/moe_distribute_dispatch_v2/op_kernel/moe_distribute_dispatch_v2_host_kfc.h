@@ -116,7 +116,7 @@ private:
     template <bool isStoreOffset> __aicore__ inline void CalServerSendCnt();
     __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
-    template <typename T> __aicore__ inline void ReadDataFromWinIn(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
+    template <typename T> __aicore__ inline void ReadDataFromWindows(GM_ADDR dataAddr, uint32_t blockCnt, LocalTensor<T> &xInTensor);
     __aicore__ inline void SendExpertCnt();
     __aicore__ inline void InitGatherTokenBuffer();
     __aicore__ inline void CalExpertTotalSendCnt();
@@ -1436,6 +1436,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                                                                 uint32_t processTokenNum)
 {
     GM_ADDR dataAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + dstPosition * sendTokenLengthAlign_;
+
     GlobalTensor<XType> dataFlagGlobal;
     dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(dataAddr));
 
@@ -1475,7 +1476,12 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntPerToken_);
         if (isArrived) { // 处理到达的情况
             uint32_t dstPosition = rcvStatusIndex + startTokenIdx;
-            CopyInAndOut(serverIdx, dstPosition, processTokenNumPerBatch);
+            uint32_t processTokenBlock = blockCntPerToken_ * processTokenNumPerBatch;
+            GM_ADDR dataAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) +
+                                                           SERVER_STATE_ALIGN + dstPosition * sendTokenLengthAlign_;
+            recvTmpTensor_ = tokenInQueue_.DeQue<XType>();                                            
+            ReadDataFromWindows<XType>(dataAddr, processTokenBlock, recvTmpTensor_);
+            //CopyInAndOut(serverIdx, dstPosition, processTokenNumPerBatch);
             //LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", dstPosition);
             SendToExpert(dstPosition);
             tokenRcvStatus_(rcvStatusIndex) = 1;
@@ -1560,6 +1566,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             PipeBarrier<PIPE_V>();
         }
     #endif
+    tokenInQueue_.EnQue(recvTmpTensor_);  
     recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
     DataCopy(tokenData_, recvTmpTensor_, hAlignSize_ / sizeof(XType));
 
@@ -1626,9 +1633,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
 template <TemplateDispatchKFCTypeClass>
 template <typename T>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ReadDataFromWinIn(LocalTensor<T> &xInTensor, GM_ADDR rankGM, uint32_t blockCnt)
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ReadDataFromWindows(GM_ADDR dataAddr, uint32_t blockCnt, LocalTensor<T> &xInTensor)
 {
+    GlobalTensor<T> dataFlagGlobal;
+    dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(dataAddr));
 
+    DataCopyParams srcTokenCopyParams{static_cast<uint16_t>(blockCnt), static_cast<uint32_t>(SPLIT_BLOCK_DATA_SIZE),
+                                      static_cast<uint32_t>(SERVER_STATE_ALIGN - SPLIT_BLOCK_DATA_SIZE), 0};
+    DataCopyPadParams srcTokenPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(xInTensor, dataFlagGlobal, srcTokenCopyParams, srcTokenPadParams);
 }
 
 template <TemplateDispatchKFCTypeClass>
