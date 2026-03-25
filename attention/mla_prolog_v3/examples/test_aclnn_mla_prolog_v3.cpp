@@ -14,6 +14,7 @@
  */
 
 #include <iostream>
+#include <cstring>
 #include <vector>
 #include <cstdint>
 #include "acl/acl.h"
@@ -61,6 +62,7 @@ int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hos
     // 调用aclrtMallocHost申请host侧内存
     ret = aclrtMallocHost(hostAddr, size);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+    memset(*hostAddr, 0, size);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
@@ -80,6 +82,7 @@ int CreateAclTensorNZ(const std::vector<T>& shape, void** deviceAddr, void** hos
     // 调用aclrtMallocHost申请host侧内存
     ret = aclrtMallocHost(hostAddr, size);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+    memset(*hostAddr, 0, size);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
                               shape.data(), shape.size(), *deviceAddr);
