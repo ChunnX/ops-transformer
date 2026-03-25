@@ -60,8 +60,7 @@ public:
     __aicore__ inline void Init(uint64_t totalSize, uint64_t weightL1Space, uint64_t aPrefetchSize,
                                 const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe,
                                 uint64_t mxBiasL1DbOffset);
-    __aicore__ inline void MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize, uint64_t l1StartSize,
-                                      uint64_t mxBiasL1DbOffset, const TCubeTiling *__restrict matmulTiling,
+    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
                                       const LocalTensor<biasType> &biasL1);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
@@ -481,9 +480,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize,
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize,
                                                             uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
-                                                            const TCubeTiling *__restrict matmulTiling,
                                                             const LocalTensor<biasType> &biasL1)
 {
     //  MxA8W4场景空间分配: 其中 weight\Bias为全局分配，此处不感知
@@ -512,7 +510,6 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
     aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
     aL1DbOffset_ = l1RemainSize >> 1;                                      // 最后剩余空间全部给AL1开DB
 
-    PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
     mmObj_.Init();
     InitSync();
 }

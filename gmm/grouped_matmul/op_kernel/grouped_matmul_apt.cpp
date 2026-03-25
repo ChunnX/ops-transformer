@@ -49,13 +49,14 @@ using WeightQuantBatchMatmulV2::Arch35::MXA8W4_NZNK;
 using WeightQuantBatchMatmulV2::Arch35::S8S4_NZKN_G;
 using WeightQuantBatchMatmulV2::Arch35::WeightQuantMatmulBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WeightQuantVcvMatmulBasicBlock;
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_0 = {2, 512};
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_1 = {4, 512};
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_2 = {2, 1024};
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_3 = {4, 256};
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_4 = {3, 512};
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_5 = {3, 384};
-static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_0;
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_1;
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_2;
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_3;
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_4;
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_5;
+using WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_DYNAMIC;
+
 #if defined(DT_FLOAT) && defined(ORIG_DTYPE_WEIGHT) && ORIG_DTYPE_WEIGHT == DT_FLOAT
     #undef DTYPE_WEIGHT
     #define DTYPE_WEIGHT fp4x2_e2m1_t
