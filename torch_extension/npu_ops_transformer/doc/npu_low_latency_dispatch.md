@@ -96,7 +96,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 -   **expert\_token\_nums\_type** (`int`)：可选参数，表示输出`expert_token_nums`的值类型，取值范围[0, 1]，0表示每个专家收到token数量的前缀和，1表示每个专家收到的token数量（默认）。
 
--   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
+-   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
 
 ## 输出说明<a name="zh-cn_topic_0000002203575833_section22231435517"></a>
 
@@ -119,7 +119,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 -   参数里Shape使用的变量如下：
     -   A：表示本卡接收的最大token数量，取值范围如下
         -   对于共享专家，要满足A=BS\*shared\_expert\_num/shared\_expert\_rank\_num。
-        -   对于MoE专家，当`num_max_dispatch_tokens_per_rank`为0时，要满足A\>=BS\*ep\_world\_size\*min\(local\_expert\_num, K\)；当`num_max_dispatch_tokens_per_rank`不为0时，要满足A\>=num_max\_dispatch\_tokens\_per\_rank\* min\(local\_expert\_num, K\)。
+        -   对于MoE专家，当`num_max_dispatch_tokens_per_rank`为0时，要满足A \>= BS \* ep\_world\_size \* min\(local\_expert\_num, K\)；当`num_max_dispatch_tokens_per_rank`不为0时，要满足A \>= num_max\_dispatch\_tokens\_per\_rank \* ep\_world\_size \* min\(local\_expert\_num, K\)。
 
     -   H：表示hidden size隐藏层大小。取值为\[1024, 8192\]。
 
@@ -133,10 +133,11 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 -   HCCL通信域缓存区大小:
     调用本接口前需检查HCCL\_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
-    - 该场景不仅支持通过环境变量HCCL\_BUFFSIZE配置，还支持通过hccl_buffer_size配置（参考《[PyTorch训练模型迁移调优](https://hiascend.com/document/redirect/canncommercial-ptmigr)》中“性能调优>性能调优方法>通信优化>优化方法>hccl_buffer_size”章节）。
-    - ep通信域内，comm\_alg配置为"fullmesh_v1"或"": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
-    - ep通信域内，comm\_alg配置为"fullmesh_v2": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* 480Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
-    - 其中 480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
+    -   该场景仅支持通过环境变量HCCL\_BUFFSIZE配置，该环境变量按通信域粒度管理，每个通信域独占一组“2*HCCL\_BUFFSIZE”大小的内存。
+    -   ep通信域内，comm\_alg配置为"fullmesh_v1"或"": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
+    -   ep通信域内，comm\_alg配置为"fullmesh_v2": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* 480Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
+    -   其中 480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
+    -   通信域开设大小可通过调用MoeDistributeBuffer.get_low_latency_ccl_buffer_size接口计算。
 
 -   本文公式中的“/”表示整除。
 
@@ -197,12 +198,12 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 
     def gen_const_expert_alpha_1():
-        const_expert_alpha_1 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_1 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_1
 
 
     def gen_const_expert_alpha_2():
-        const_expert_alpha_2 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_2 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_2
 
 
@@ -451,12 +452,12 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 
     def gen_const_expert_alpha_1():
-        const_expert_alpha_1 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_1 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_1
 
 
     def gen_const_expert_alpha_2():
-        const_expert_alpha_2 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_2 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_2
 
 
