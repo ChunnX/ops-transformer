@@ -537,7 +537,7 @@ ge::graphStatus IFATiling::GetRopeAndGqaFlag(const uint32_t sOfQuery, const uint
             OP_LOGE(ifaContext_->opName, "In case where MLA is not applied, S of Query:%u is invalid. It should be in range [1, 16]", sOfQuery),
                    return ge::GRAPH_FAILED);
     } else if (layout != "TND" && layout != "TND_NTD") {
-        OP_CHECK_IF(sOfQuery > 16, OP_LOGE(ifaContext_->opName, "QueryS(%u) should not be bigger than 16 in MLA.", sOfQuery),
+        OP_CHECK_IF(sOfQuery > 32, OP_LOGE(ifaContext_->opName, "QueryS(%u) should not be bigger than 32 in MLA.", sOfQuery),
                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(layout == "TND" && headDim_ == 512 && !ropeFlag_, OP_LOGE(ifaContext_->opName,
@@ -588,12 +588,13 @@ ge::graphStatus IFATiling::QKVPreProcess4TND(const std::string layout)
         std::vector<int64_t> actualSeqQ(actualLenQDims_);
         int64_t tmpQSeqSize = 0;
 
-        for (int b = 0; b < static_cast<int>(actualLenQDims_); b++) {
+        for (int32_t b = 0; b < static_cast<int>(actualLenQDims_); b++) {
             actualSeqQ[b] = (b <= 0) ? actualSeqQTnd[0] : (actualSeqQTnd[b] - actualSeqQTnd[b - 1]);
-            OP_CHECK_IF((actualSeqQ[b] < 0) || (actualSeqQ[b] > 16), // 16 MTP最大QS
-                       OP_LOGE(ifaContext_->opName, "%s QS(%ld) of batch(%d) computed by the query's actual sequence lengths should be in range [0, 16].", layout.c_str(), actualSeqQ[b], b),
+            OP_CHECK_IF((actualSeqQ[b] < 0) || (actualSeqQ[b] > 32), // 32 MTP最大QS
+                       OP_LOGE(ifaContext_->opName, "%s QS(%ld) of batch(%d) computed by the query's actual sequence lengths should be in range [0, 32].", layout.c_str(), actualSeqQ[b], b),
                        return ge::GRAPH_FAILED);
             tmpQSeqSize = std::max(tmpQSeqSize, actualSeqQ[b]);
+            qSeqSquareSum_ += actualSeqQ[b] * actualSeqQ[b];
         }
 
         OP_CHECK_IF((tSeqSize_ != actualSeqQTnd[actualLenQDims_ - 1]),
@@ -1973,14 +1974,14 @@ void IFATiling::GetActualSeqInfo(const int64_t *actualSeqKv, ActualSeqInfo &actu
         // TND格式，actual_seq_q定义为累积长度，这里做转化再分核
         const int64_t *actualSeqQTnd = ifaContext_->actualSeqLengthsQ.tensor->GetData<int64_t>();
         actualSeqInfo.actualSeqQ[0] = actualSeqQTnd[0];
-        for (int b = 1; b < static_cast<int>(bSize); b++) {
+        for (int32_t b = 1; b < static_cast<int>(bSize); b++) {
             actualSeqInfo.actualSeqQ[b] = actualSeqQTnd[b] - actualSeqQTnd[b - 1];
             if (actualLenDims_ != 1U) {
                 actualSeqInfo.maxActualseqkv = std::max(actualSeqInfo.maxActualseqkv, actualSeqKv[b]);
             }
         }
     } else {
-        for (int b = 0; b < static_cast<int>(bSize); b++) {
+        for (int32_t b = 0; b < static_cast<int>(bSize); b++) {
             actualSeqInfo.actualSeqQ[b] = qSeqSize_; // 需要检查
             if (actualLenDims_ != 1U) {
                 actualSeqInfo.maxActualseqkv = std::max(actualSeqInfo.maxActualseqkv, actualSeqKv[b]);
@@ -3220,8 +3221,10 @@ void IFATiling::FillTilingBaseParamsMla()
     tilingDataMla_.baseParams.set_actualLenDims(actualLenDims_);
     tilingDataMla_.baseParams.set_attenMaskFlag(attenMaskFlag_ ? 1 : 0);
     tilingDataMla_.baseParams.set_attenMaskSize(attenMaskSize_);
+    tilingDataMla_.baseParams.set_sparseMode(sparseMode_);
     tilingDataMla_.baseParams.set_outputLayout(static_cast<uint32_t>(outputLayout_));
     tilingDataMla_.baseParams.set_softmaxLseFlag(softmaxLseFlag_ ? 1 : 0);
+    tilingDataMla_.baseParams.set_tSeqSize(tSeqSize_);
 }
 
 // for flash decode
@@ -4107,7 +4110,7 @@ uint32_t IFATiling::GetTotalQBlockNum() const
         uint32_t totalQblockSum = 0;
         uint32_t curSeqLenQ = 0;
         uint32_t preSeqLenQ = 0;
-        for (int bIdx = 0; bIdx < static_cast<int>(actualLenQDims_); bIdx++) {
+        for (int32_t bIdx = 0; bIdx < static_cast<int>(actualLenQDims_); bIdx++) {
             // actualLenDataQ里的值单调递增
             curSeqLenQ = static_cast<uint32_t>(actualLenDataQ[bIdx]);
             uint32_t tmpBlkNum = static_cast<uint32_t>(curSeqLenQ - preSeqLenQ + seqStepQ_ - 1) / seqStepQ_;

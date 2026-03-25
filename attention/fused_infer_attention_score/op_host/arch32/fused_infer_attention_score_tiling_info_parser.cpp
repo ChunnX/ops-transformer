@@ -372,6 +372,9 @@ ge::graphStatus FiaInfoParser::GetPreNextToken()
     } else if (sparseMode == SPARSE_MODE_LEFT_UP || sparseMode == SPARSE_MODE_RIGHT_DOWN) {
         nextToken_ = 0;
         preToken_ = SPARSE_MODE_INT_MAX;
+    } else if (sparseMode == SPARSE_MODE_TREE) {
+        nextToken_ = 0;
+        preToken_ = SPARSE_MODE_INT_MAX;
     }
 
     // 边界场景需要更新值
@@ -808,10 +811,39 @@ ge::graphStatus FiaInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
+{
+    // sparse9时，mask形状：TND时传入∑s1²，其余场景传入[B,S1,S1]
+    auto *maskTensor = opParamInfo_.attenMask.tensor;
+    uint32_t maskDimNum = maskTensor->GetStorageShape().GetDimNum();
+
+    // TND传入的mask
+    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+        if (maskDimNum == 1U) {
+            attenMaskBatchStride_ = 1;
+            attenMaskStride_ = 1;
+        } else {
+            OP_LOGE(opName_, "When layout is TND/NTD, Tree mask(%u) matrix dim only support 1.", *opParamInfo_.sparseMode);
+        }
+    } else {
+        if (maskDimNum == 3U) {
+            attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum-1) * \
+                                    maskTensor->GetStorageShape().GetDim(maskDimNum-2);
+            attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
+        } else {
+            OP_LOGE(opName_, "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.", *opParamInfo_.sparseMode);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
 {
     // only bss & b1ss & bs need to calc attenMaskSize_ , attenMaskSize_ is uesed to calc batch offset
     if (attenMaskFlag_) {
+        if (*opParamInfo_.sparseMode == 9U) {
+            return GetAttenMaskSparse9Info();
+        }
         auto *maskTensor = opParamInfo_.attenMask.tensor;
         uint32_t maskDimNum = maskTensor->GetStorageShape().GetDimNum();
         if (maskDimNum == 2U){

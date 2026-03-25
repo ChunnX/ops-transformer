@@ -15,6 +15,7 @@
 | 6          | prefix压缩模式。                      | -       |
 | 7          | varlen外切场景，rightDownCausal模式。 | 仅varlen场景支持。 |
 | 8          | varlen外切场景，leftUpCausal模式。    | 仅varlen场景支持。 |
+| 9          | treeMask模式。                        | 非量化支持GQA和MLA场景，全量化仅支持MLA场景。 |
 
 attenMask的工作原理为，在Mask为True的位置遮蔽query(Q)与key(K)的转置矩阵乘积的值，示意如下：
 
@@ -147,3 +148,27 @@ Masked $QK^T$矩阵示意如下，在第二个batch对query进行切分，key和
   - preTokens >= first_Skv。
   - nextTokens >= first_Sq - first_Skv，根据实际情况进行配置。
   - 当前模式下不支持可选输入pse。
+
+## sparseMode=9
+
+sparseMode为9时，代表treeMask模式，用于推测解码（speculative decoding）场景下的树形注意力掩码。用户需传入自定义的树形mask，mask中值为1的位置会被遮蔽。
+
+树形mask矩阵特征如下：
+- 对角线位置（s1==s2）：值为0，表示token关注自身。
+- 上三角位置（s1<s2）：值为1，表示不关注未来token。
+- 下三角位置（s1>s2）：值为0或1，由树结构决定部分注意力关系。
+
+attenMask输入格式：
+- inputLayout为BSH、BSND或BNSD时：attenMask的shape为(B, S1, S1)，每个batch传入S1×S1大小的tree mask。
+
+  ![原理图](../figures/sparsemode为9_BSND_BNSD示意图.png)
+
+- inputLayout为TND时：attenMask为1D紧凑格式，shape为(∑S1i²,)，即每个batch的S1i×S1i mask拼接传入。
+
+  ![原理图](../figures/sparsemode为9_TND示意图.png)
+
+约束说明：
+- 非量化场景支持GQA和MLA，全量化场景仅支持MLA。
+- 不支持左padding、pseShift、sharedPrefix。
+- 输出dtype不支持INT8。
+- 每个batch需满足Q_S ≤ KV_S。

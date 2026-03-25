@@ -210,6 +210,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 </ul>
             </li>
             <li>sparseMode = 2、3、4时，attenMaskOptional的shape输入支持(2048, 2048)或(1,2048,2048)或(1,1,2048,2048)</li>
+            <li>sparseMode = 9时：
+                <ul>
+                    <li>inputLayout为BSH、BSND、BNSD时，attenMaskOptional的shape输入支持(B, Q_S, Q_S)</li>
+                    <li>inputLayout为TND时，attenMaskOptional的shape输入支持(∑Q_Si²,)，即每个batch的Q_Si×Q_Si mask拼接为1D tensor</li>
+                </ul>
+            </li>
         </ul>
         </td>
         <td>×</td>
@@ -955,6 +961,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>block_local</td>
             <td>不支持</td>
         </tr>
+        <tr>
+            <td>9</td>
+            <td>treeMask模式，用于推测解码场景的树形注意力掩码。需传入自定义的tree mask。</td>
+            <td>非量化支持GQA和MLA场景，全量化仅支持MLA场景。不支持左padding、pseShift、sharedPrefix。输出dtype不支持INT8。每个batch需满足Q_S≤KV_S。inputLayout为BSH/BSND/BNSD时mask shape为(B,Q_S,Q_S)；inputLayout为TND时mask shape为(∑Q_Si²,)。</td>
+        </tr>
         </tbody>
     </table>
 
@@ -1492,7 +1503,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td>sparseMode</td>
-        <td>支持0, 3, 4</td>
+        <td>支持0, 3, 4, 9</td>
     </tr>
     <tr>
         <td rowspan="2">PagedAttention</td>
@@ -1541,6 +1552,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>sparse=0（attenMask为nullptr）</li>
                     <li>sparse=3（传优化后的attenMask）</li>
                     <li>sparse=4（传优化后的attenMask，需满足：Q_D=K_D=V_D≤256 或 Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
+                    <li>sparse=9（传入tree mask，inputLayout为BSH/BSND/BNSD时shape为(B,Q_S,Q_S)，inputLayout为TND时shape为(∑Q_Si²,)）</li>
                     </ul>
                 </li>
                 <li>innerPrecise：仅支持0（不带行无效的高精度模式）</li>
@@ -1641,7 +1653,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         <tr>
             <td>MASK</td>
             <td>sparseMode</td>
-            <td>sparseMode支持0, 3, 4</td>
+            <td>sparseMode支持0, 3, 4, 9</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1692,8 +1704,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tr>
         <tr>
             <td>sparseMode</td>
-            <td>全量化场景sparseMode仅支持0,3</td>
-            <td>qs=1时，仅支持sparseMode=0，且attenMask为nullptr; qs>1时，仅支持sparseMode=3，且attenMask的shape为[2048,2048]</td>
+            <td>全量化场景sparseMode仅支持0,3,9</td>
+            <td>qs=1时，仅支持sparseMode=0，且attenMask为nullptr; qs>1时，支持sparseMode=3（attenMask的shape为[2048,2048]）或sparseMode=9（attenMask的shape见Mask章节）</td>
         </tr>
         <tr>
             <td>blockSize</td>
@@ -1806,7 +1818,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td colspan="2">Mask</td>
-        <td colspan="3">当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3且传入优化后的attenMask矩阵，attenMask矩阵shape必须传入（2048*2048）；</td>
+        <td colspan="3">当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3（传入优化后的attenMask矩阵，shape为2048*2048）或sparseMode=9（传入tree mask，inputLayout为BSH/BSND时shape为(B,Q_S,Q_S)，inputLayout为TND时shape为(∑Q_Si²,)）；</td>
     </tr>
     <tr>
         <td rowspan="9">伪量化</td>
@@ -1977,6 +1989,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <li>sparseMode = 0时，attenMaskOptional如果为空指针，或者在左padding场景传入attenMaskOptional，则忽略入参preTokens、nextTokens。</li>
                 <li>sparseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048），且需要用户保证传入的attenMaskOptional为下三角，attenMaskOptional为nullptr或者传入的shape不正确报错。</li>
                 <li>sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。</li>
+                <li>sparseMode = 9时，非量化支持GQA和MLA场景，全量化仅支持MLA场景。attenMaskOptional不能为空。inputLayout为BSH/BSND/BNSD时shape为(B,Q_S,Q_S)；inputLayout为TND时shape为(∑Q_Si²,)。不支持左padding、pseShift、sharedPrefix。输出dtype不支持INT8。每个batch需满足Q_S≤KV_S。</li>
                 <li>sparseMode取其它值时会报错</li>
                 </ul>
                 </td>

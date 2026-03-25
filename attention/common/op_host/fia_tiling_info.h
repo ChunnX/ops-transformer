@@ -70,6 +70,7 @@ constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
 constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
 constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
+constexpr int32_t SPARSE_MODE_TREE = 9;
 
 enum class FiaLayout : uint32_t {
     // stardard
@@ -96,6 +97,7 @@ enum class FiaLayout : uint32_t {
     B1S1S2 = 19,
     IS1S2 = 20,
     I1S1S2 = 21,
+    S1S1 = 22,
 };
 
 enum class FiaAxis : uint32_t {
