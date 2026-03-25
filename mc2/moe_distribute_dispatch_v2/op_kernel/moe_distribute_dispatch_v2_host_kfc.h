@@ -1350,12 +1350,16 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CleanTokenFlag(uint32_t serverId, uint32_t startTokenId, uint32_t cleanTokenNum)
 {
     uint32_t cleanUpNum = blockCntPerToken_ * cleanTokenNum;
-    GM_ADDR cleanAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverId) + SERVER_STATE_ALIGN + startTokenId * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE;
+    //GlobalTensor<uint32_t> statusCntGlobal;
+    GM_ADDR dataCleanAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverId) + SERVER_STATE_ALIGN + startTokenId * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE;
+    GM_ADDR flagCleanAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverId);
+    //statusCntGlobal.SetGlobalBuffer((__gm__ uint32_t *)flagCleanAddr);
     GlobalTensor<float32_t> cleanGlobal;
-    cleanGlobal.SetGlobalBuffer((__gm__ float32_t *)cleanAddr);
+    cleanGlobal.SetGlobalBuffer((__gm__ float32_t *)dataCleanAddr);
     DataCopyExtParams cleanUpParams = {uint16_t(cleanUpNum), sizeof(float32_t), 0U,
                                     SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
     DataCopyPad(cleanGlobal, statusCleanFp32Tensor_, cleanUpParams);
+    //statusCntGlobal.SetValue(SERVER_CNT_OFFSET, 0); // 清理状态 TODO:
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1427,7 +1431,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     DataCopy(tokenCntTensor, statusCntGlobal, SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    statusCntGlobal.SetValue(SERVER_CNT_OFFSET, 0); // 清理状态
     rcvTokenCnt = tokenCntTensor.GetValue(0);
 }
 
