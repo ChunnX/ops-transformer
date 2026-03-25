@@ -2183,13 +2183,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             expertFinishNumTensor_(index) += copyCnt;
             expertLeftNumTensor_(index) -= copyCnt;
             if (expertLeftNumTensor_(index) == 0) {
-                uint32_t cleanUpNum = expertFinishNumTensor_(index) * blockCntPerTokenToExpert_;
-                DataCopyExtParams cleanUoParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U, SERVER_STATE_ALIGN - sizeof(int32_t), 0U};
-                LocalTensor<int32_t> cleanTensor = tBuf.GetWithOffset<int32_t>(cleanUpNum * UB_ALIGN, 0); // 在0偏移位置存放比较结果
-                cleanGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(wAddr));
-                SyncFunc<AscendC::HardEvent::MTE3_V>();
-                Duplicate<int32_t>(cleanTensor, 0, UB_ALIGN_DATA_COUNT);
-                SyncFunc<AscendC::HardEvent::V_MTE3>();
+                // uint32_t cleanUpNum = expertFinishNumTensor_(index) * blockCntPerTokenToExpert_;
+                // DataCopyExtParams cleanUoParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U, SERVER_STATE_ALIGN - sizeof(int32_t), 0U};
+                // LocalTensor<int32_t> cleanTensor = tBuf.GetWithOffset<int32_t>(cleanUpNum * UB_ALIGN, 0); // 在0偏移位置存放比较结果
+                // cleanGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(wAddr));
+                // SyncFunc<AscendC::HardEvent::MTE3_V>();
+                // Duplicate<int32_t>(cleanTensor, 0, UB_ALIGN_DATA_COUNT);
+                // SyncFunc<AscendC::HardEvent::V_MTE3>();
                 //DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanTensor, cleanUoParams); //todo:需要重写
                 finishNum++;
             }
