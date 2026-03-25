@@ -424,7 +424,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::AddApeToScore(LocalTensor<T>
 {
     for(uint16_t i = 0; i < tcDealSize; i++){
         LocalTensor<T> dstLocal = scoreLocal[i * dDealSize * constInfo_.cmpRatio * ((uint32_t)COMP::coff)];
-        AddVF(dstLocal, apeUb, 0, ((uint32_t)COMP::coff), dDealSize, constInfo_.cmpRatio);
+        AddVF(dstLocal, apeUb, constInfo_.cmpRatio * ((uint32_t)COMP::coff), dDealSize, dDealSize);
     }
 }
 
@@ -815,7 +815,7 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::KvMulReduceScore(
     LocalTensor<T> &kvLocal, LocalTensor<T>& scoreLocal, LocalTensor<T> &dstLocal,uint32_t tcDealSize, uint32_t dDealSize)
 {
-    MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, (uint32_t)COMP::coff, constInfo_.cmpRatio, 0, dDealSize, tcDealSize * constInfo_.cmpRatio);
+    MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, (uint32_t)COMP::coff, constInfo_.cmpRatio, dDealSize, tcDealSize);
 }
 
 template <typename COMP>
