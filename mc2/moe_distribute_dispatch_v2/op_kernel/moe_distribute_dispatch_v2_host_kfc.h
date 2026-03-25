@@ -2397,7 +2397,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
 {   
-    if ASCEND_IS_AIV {
+    if ASCEND_IS_AIV { //todo:最开始清理server cnt flag
         CalTokenMask();
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
