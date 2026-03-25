@@ -1386,7 +1386,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         Duplicate<uint32_t>(tokenRcvStatus_, 0, TOKEN_RECV_CNT_MAX);
         SyncFunc<AscendC::HardEvent::V_S>();
-        tokenInQueue_.EnQue<XType>(recvTmpTensor_);
+        tokenInQueue_.EnQue(recvTmpTensor_);
         WaitToken(sendTokenNum, serverIndex, startTokenId);
         CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
     }
@@ -1435,7 +1435,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
     DataCopyPad(recvTmpTensor_, dataFlagGlobal, srcTokenCopyParams, srcTokenPadParams);
-    tokenInQueue_.EnQue<XType>(recvTmpTensor_);
+    tokenInQueue_.EnQue(recvTmpTensor_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1443,7 +1443,7 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t tokenCnt, uint32_t serverIdx,
                                                                uint32_t startTokenIdx)
 {
-    LocalTensor<float> xOutFp32Tensor = recvTmpTensor_.template ReinterpretCast<float>();
+    LocalTensor<float> xOutFp32Tensor = recvTmpTensor_.template ReinterpretCast<float>(); // todo
     LocalTensor<int32_t> xOutInt32Tensor = recvTmpTensor_.template ReinterpretCast<int32_t>();
     uint32_t rcvStatusIndex = 0;
     uint32_t rcvTokenSum = 0;
@@ -1585,7 +1585,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ProcessToken(rankGM, tokenIndex, topKIndex,
                     padParams, scaleInParams, dstExpertId + sharedExpertNum_, tokenData_, srcRankIndex, expertScale);
     }
-    tokenInQueue_.EnQue<XType>(recvTmpTensor_);
+    tokenInQueue_.EnQue(recvTmpTensor_);
 
     for (int32_t shareIndex = 0; shareIndex < sharedExpertNum_; shareIndex++) { // 发共享专家
         uint32_t rankIDSharedGroup = epRankId_ % rankNumPerSharedExpert_;
