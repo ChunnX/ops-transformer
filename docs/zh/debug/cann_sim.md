@@ -20,7 +20,7 @@ CANN Simulator是一款面向算子开发场景的SoC级芯片仿真工具，用
 * 本工具为开发工具，不建议在生产环境使用。
 * 工具的仿真功能仅支持单卡场景，无法仿真多卡环境，代码中只能设置为0卡。若修改可见卡号，将导致仿真失败。
 * 仿真环境仅支持AI Core计算类算子（不支持MC2和HCCL类型的算子）。
-* Cannsim工具目前处于尝鲜版本阶段，仅支持Ascend950PR芯片，建议仿真器运行环境配置为16核CPU和32GB以上内存。
+* CANN Simulator工具目前处于尝鲜版本阶段，仅支持Ascend950PR芯片，建议仿真器运行环境配置为16核CPU和32GB以上内存。
 * 目前不支持arm环境仿真。
 
 ## 环境准备
@@ -93,9 +93,9 @@ cannsim record [options] user_app --user_options
 
 |参数|可选/必选|说明|
 | --- | --- | --- |
-|-s <value> 或 --soc_version <value> [options]参数 | 必选 | 指定模拟目标芯片版本（如：Ascend950）。|
-|-o <value> 或 --output <value> [options]参数 | 可选| 生成文件所在路径，可配置为绝对路径或者相对路径，并且执行工具的用户需要具有读写权限。如果未指定路径，则默认在当前目录下保存数据。|
-|-g 或 --gen-report[options]参数 | 可选 | 启用仿真完成后是否进行自动解析，并生成分析报告。默认不自动解析。|
+|-s  或 --soc_version  [options]参数 | 必选 | 指定模拟目标芯片版本（如：Ascend950）。|
+|-o  或 --output  [options]参数 | 可选| 生成文件所在路径，可配置为绝对路径或者相对路径，并且执行工具的用户需要具有读写权限。如果未指定路径，则默认在当前目录下保存数据。|
+|-g 或 --gen-report [options]参数 | 可选 | 启用仿真完成后是否进行自动解析，并生成分析报告。默认不自动解析。|
 |user_app|必选|算子可执行文件。|
 --user_options|可选|算子可执行文件的运行参数。|
 
@@ -117,33 +117,11 @@ cannsim record [options] user_app --user_options
     ```
     ├─cannsim_{timestamp}_${user_app}
     ├── cannsim.log
-    ├── log
-    │   ├── AIC_0_0_0_0_ChiWrap.log0
-    │   ├── ccum_0_0_2.txt0
-    │   ├── hha_0_0_0_states.log
-    │   ├── L2Buf_0_0_0_0.txt0
-    │   ├── L2cache_stats.log
-    │   ├── lpddr_state0.log
-    │   ├── ManyRing_0_0_0_0DatPerf.txt0
-    │   ├── sdmam_0_0_0_debug.log0
-    │   ├── sllc_chip_0_die_0_1_0_0_perf.log
-    │   ├── STARS_ChiWrapper_0_1.log0
-    │   ├── Tg_Log_File_0_0.txt
-    │   ├── UB_0_0_2_0_ChiWrap.log0
-    │   └── ub_log
-    │       ├── UB_0_0_2_BA_0_statis.log
-    ├── log_ca
-    │   ├── core0.cubecore0_su_perf_summary_log
-    │   ├── core0_summary_log
-    │   ├── core0.wrapper_log.dump
-    │   ├── mcu_log.dump
-    │   ├── stars_log0_0.dump
-    │   └── stars_log0_1.dump
     ```
 
 4. 用户可以获取算子执行结果，并进行精度的对比，结果展示在cannsim.log，示例如下
 
-    以下输出仅为AscendC单算子直调精度比较结果举例，因版本不同略有差异，请以实际输出为准。
+    以下输出仅为Ascend C单算子直调精度比较结果举例，因版本不同略有差异，请以实际输出为准。
 
     ```
     INFO:root:[INFO] compare data case[ case001]
@@ -170,7 +148,7 @@ cannsim report [options]
 
 |参数 | 可选/必选 | 说明|
 | --- | --- | --- |
-|-e <value> 或 --export <value> [options]参数 | 必选 | 原始结果文件目录，需指定为仿真执行后生成的结果目录，指定到cannsim_{timestamp}_${user_app}层，可配置为绝对路径或者相对路径，并且工具执行用户具有可读写权限。|
+|-e  或 --export  [options]参数 | 必选 | 原始结果文件目录，需指定为仿真执行后生成的结果目录，指定到cannsim_{timestamp}_${user_app}层，可配置为绝对路径或者相对路径，并且工具执行用户具有可读写权限。|
 |-o  或 --output  [options]参数 | 可选 | 解析结果输出目录，可配置为绝对路径或者相对路径，且执行用户需具有读写权限。若未指定路径，默认在当前目录下保存数据。如果生成的结果文件与现有文件同名，则会覆盖原有文件。|
 |-n 或 --core-id  [options]参数 | 可选 | 指定生成指令流水的核ID，不指定默认生成0核的指令流水。配置的格式如下：生成所有核的流水，配置为‘all’。指定核ID的范围，如：‘0-1’。指定单核ID，如‘5’。|
 
@@ -209,7 +187,7 @@ cannsim report [options]
     |MTE1|数据搬运流水，数据搬运方向为：L1 ->{L0A/L0B, UBUF}。|
     |MTE2|数据搬运流水，数据搬运方向为：{DDR/GM, L2} ->{L1, L0A/B, UBUF}。|
     |MTE3|数据搬运流水，数据搬运方向为：UBUF -> {DDR/GM, L2, L1}、L1->{DDR/L2}。|
-    |FIXP|数据搬运流水，数据搬运方向为：FIXPIPE L0C -> OUT/L1。（仅 Atlas A2 训练系列产品 / Atlas A2 推理系列产品 支持展示）|
+    |FIXP|数据搬运流水，数据搬运方向为：FIXPIPE L0C -> OUT/L1。|
     |FLOWCTRL|控制流指令。|
     |ICACHELOAD|查看未命中的ICache。|
 
