@@ -92,28 +92,6 @@ struct U16T4View {
     }
 };
 
-__aicore__ inline int32_t LastValidIndex(const U16VecView& v)
-{
-    if (!v.IsValid()) return -1;
-
-    for (int32_t i = static_cast<int32_t>(v.len) - 1; i >= 0; --i) {
-        if (v.ptr[i] != kPadU16) return i;
-    }
-    return -1;
-}
-
-__aicore__ inline int32_t LastValidLowerThan(const U16VecView& v, uint16_t limit)
-{
-    if (!v.IsValid()) return -1;
-
-    for (int32_t i = static_cast<int32_t>(v.len) - 1; i >= 0; --i) {
-        const uint16_t x = v.ptr[i];
-        if (x == kPadU16) continue;
-        if (x < limit) return i;
-    }
-    return -1;
-}
-
 __aicore__ inline int32_t FirstGreaterEqual(const U16VecView& v, uint16_t lower)
 {
     if (!v.IsValid()) return -1;
