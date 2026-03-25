@@ -88,15 +88,16 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
 static bool CheckMmOptionalConsistency(const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
                                        const aclTensor *mmYOptional)
 {
-    if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) &&
-        (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))) {
+    const bool hasMmX = (mmXOptional != nullptr);
+    const bool hasMmWeight = (mmWeightOptional != nullptr);
+    const bool hasMmY = (mmYOptional != nullptr);
+    const bool allPresent = hasMmX && hasMmWeight && hasMmY;
+    const bool allAbsent = !hasMmX && !hasMmWeight && !hasMmY;
+    if (!allPresent && !allAbsent) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, "
-                "left: %u, right: %u, mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is "
-                "nullptr: %u",
-                (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))),
-                (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))),
-                mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
+                "mmXOptional, mmWeightOptional, and mmYOptional must be either all empty or all non-empty, "
+                "but got: mmXOptional is %s, mmWeightOptional is %s, mmYOptional is %s.",
+                hasMmX ? "non-empty" : "empty", hasMmWeight ? "non-empty" : "empty", hasMmY ? "non-empty" : "empty");
         return false;
     }
     return true;
@@ -110,7 +111,11 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
                             const aclTensor *mmYOptional)
 {
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, 
+            "sendCountsTensorOptional and recvCountsTensorOptional should be all empty, "
+            "but got: sendCountsTensorOptional is %s, recvCountsTensorOptional is %s.",
+            sendCountsTensorOptional ? "non-empty" : "empty",
+            recvCountsTensorOptional ? "non-empty" : "empty");
         return false;
     }
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) { // HCCL_GROUP_NAME_MAX = 128U
@@ -151,22 +156,20 @@ static bool CheckNotEmptyTensor(const aclTensor *gmmX, const aclTensor *gmmWeigh
                                 const aclTensor *mmYOptional)
 {
     auto h1Val = gmmX->GetViewShape().GetDim(1);
-
     auto h1Val2 = gmmWeight->GetViewShape().GetDim(1);
     auto n1Val = gmmWeight->GetViewShape().GetDim(DIM_TWO);
     auto yMval = y->GetViewShape().GetDim(0);
     auto yNval = y->GetViewShape().GetDim(1);
-
     OP_API_CHECK((h1Val == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmX is empty tensor with zero dimN, which is unsupported.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmX is empty tensor with zero dimH1, which is unsupported.");
         return false;
     });
     OP_API_CHECK((h1Val2 == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with zero dimN, which is unsupported.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with zero dimH1, which is unsupported.");
         return false;
     });
     OP_API_CHECK((n1Val == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with zero dimK, which is unsupported.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with zero dimN1, which is unsupported.");
         return false;
     });
     OP_API_CHECK((yMval == 0), {
@@ -177,27 +180,24 @@ static bool CheckNotEmptyTensor(const aclTensor *gmmX, const aclTensor *gmmWeigh
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "y is empty tensor with zero dimN, which is unsupported.");
         return false;
     });
-
     if (mmXOptional == nullptr || mmWeightOptional == nullptr || mmYOptional == nullptr) {
         return true;
     }
-
     auto mmDim0 = mmXOptional->GetViewShape().GetDim(0);
     auto mmDim1 = mmXOptional->GetViewShape().GetDim(1);
-
     auto mmWdim0 = mmWeightOptional->GetViewShape().GetDim(0);
     auto mmWdim1 = mmWeightOptional->GetViewShape().GetDim(1);
-
     auto mmYdim0 = mmYOptional->GetViewShape().GetDim(0);
     auto mmYdim1 = mmYOptional->GetViewShape().GetDim(1);
-
-    OP_API_CHECK(
-        ((!((mmDim0 != 0) && (mmDim1 != 0) && (mmWdim0 != 0) && (mmWdim1 != 0) && (mmYdim0 != 0) && (mmYdim1 != 0))) &&
-         (!((mmDim0 == 0) && (mmDim1 == 0) && (mmWdim0 == 0) && (mmWdim1 == 0) && (mmYdim0 == 0) && (mmYdim1 == 0)))),
-        {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "mmXOptional, mmWeightOptional and mmYOptional should all be empty tensor or all not be empty tensor.");
+    const bool mmXEmpty = (mmDim0 == 0 || mmDim1 == 0);
+    const bool mmWEmpty = (mmWdim0 == 0 || mmWdim1 == 0);
+    const bool mmYEmpty = (mmYdim0 == 0 || mmYdim1 == 0);
+    const bool allEmpty = mmXEmpty && mmWEmpty && mmYEmpty;
+    const bool allNonEmpty = !mmXEmpty && !mmWEmpty && !mmYEmpty;
+    OP_API_CHECK((!allEmpty && !allNonEmpty), { OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "mmXOptional, mmWeightOptional, and mmYOptional must be either all empty or all non-empty,"
+                "but got: mmXOptional shape is [%ld, %ld], mmWeightOptional shape is [%ld, %ld], mmYOptional shape "
+                "is [%ld, %ld].", mmDim0, mmDim1, mmWdim0, mmWdim1, mmYdim0, mmYdim1);
             return false;
         });
 
