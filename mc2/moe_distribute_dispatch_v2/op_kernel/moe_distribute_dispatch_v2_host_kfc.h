@@ -1469,20 +1469,20 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote()
 {
     LOG_INFO("[GatherTokenFrRemote] start");
-    // InitGatherTokenBuffer();
-    // TBuf<> serverFlagBuf;
-    // uint32_t startServerId, endServerId, useAivPerServer;
-    // uint32_t startTokenId, endTokenId, sendTokenNum;
-    // uint32_t firstAivId;
-    // CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ + aivUsedRemotComm_, aivUsedGather_, 
-    //                    startServerId, endServerId, useAivPerServer, firstAivId);
-    // if (useAivPerServer == 0 || startServerId == endServerId) { // 出现serverNum比核数大的情况 TODO：
-    //     return ;
-    // }
-    // //LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
-    // //LOG_INFO("[GatherTokenFrRemote] startServerId_",startServerId);
-    // //LOG_INFO("[GatherTokenFrRemote] endServerId_",endServerId);
-    // //LOG_INFO("[GatherTokenFrRemote] useAivPerServer_",useAivPerServer);
+    InitGatherTokenBuffer();
+    TBuf<> serverFlagBuf;
+    uint32_t startServerId, endServerId, useAivPerServer;
+    uint32_t startTokenId, endTokenId, sendTokenNum;
+    uint32_t firstAivId;
+    CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ + aivUsedRemotComm_, aivUsedGather_, 
+                       startServerId, endServerId, useAivPerServer, firstAivId);
+    if (useAivPerServer == 0 || startServerId == endServerId) { // 出现serverNum比核数大的情况 TODO：
+        return ;
+    }
+    LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
+    LOG_INFO("[GatherTokenFrRemote] startServerId_",startServerId);
+    LOG_INFO("[GatherTokenFrRemote] endServerId_",endServerId);
+    LOG_INFO("[GatherTokenFrRemote] useAivPerServer_",useAivPerServer);
     // tpipe_->InitBuffer(serverFlagBuf, UB_ALIGN);
     // //LOG_INFO("[GatherTokenFrRemote] relativeAivId_",relativeAivId);
     // //LOG_INFO("[GatherTokenFrRemote] firstAivId_",firstAivId);
