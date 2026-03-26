@@ -95,8 +95,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -1476,7 +1476,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t firstAivId;
     CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ + aivUsedRemotComm_, aivUsedGather_, 
                        startServerId, endServerId, useAivPerServer, firstAivId);
-    if (useAivPerServer == 0 || startServerId == endServerId) { // 出现serverNum比核数大的情况 TODO：
+    if (useAivPerServer == 0 || startServerId >= endServerId) { // 出现serverNum比核数大的情况 TODO：
         return ;
     }
     LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
