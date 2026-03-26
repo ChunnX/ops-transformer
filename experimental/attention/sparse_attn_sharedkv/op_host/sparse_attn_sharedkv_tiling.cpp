@@ -1014,17 +1014,17 @@ ge::graphStatus SASTilingCheck::CheckSingleParaCmpSparseIndices() const
             ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(cmpSparseIndicesLayout_, &opParamInfo_.cmpSparseIndices.tensor->GetShape(), CMP_SPARSE_INDICES)) {
             return ge::GRAPH_FAILED;
         }
-        if (cmpSparseIndicesLayout_ == SASLayout::TND) {
-            OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1) != TOPK_LIMIT),
-                        OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT,
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1)),
-                        return ge::GRAPH_FAILED);
-        } else {
-            OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1) != TOPK_LIMIT),
-                        OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT,
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1)),
-                        return ge::GRAPH_FAILED);
-        }
+        // if (cmpSparseIndicesLayout_ == SASLayout::TND) {
+        //     OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1) != TOPK_LIMIT),
+        //                 OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT,
+        //                 opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1)),
+        //                 return ge::GRAPH_FAILED);
+        // } else {
+        //     OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1) != TOPK_LIMIT),
+        //                 OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT,
+        //                 opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1)),
+        //                 return ge::GRAPH_FAILED);
+        // }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1101,11 +1101,11 @@ ge::graphStatus SASTilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaCmpRatio() const
 {
-    if (sasInfo_.perfMode == optiling::SASTemplateMode::CFA_TEMPLATE_MODE || sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        OP_CHECK_IF(cmpRatio_ != 128 && cmpRatio_ != 4,
-                    OP_LOGE(opName_, "cmpRatio should be 128 or 4, but got %u", cmpRatio_),
-                    return ge::GRAPH_FAILED);
-    }
+    // if (sasInfo_.perfMode == optiling::SASTemplateMode::CFA_TEMPLATE_MODE || sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE) {
+    //     OP_CHECK_IF(cmpRatio_ != 128 && cmpRatio_ != 4,
+    //                 OP_LOGE(opName_, "cmpRatio should be 128 or 4, but got %u", cmpRatio_),
+    //                 return ge::GRAPH_FAILED);
+    // }
     return ge::GRAPH_SUCCESS;
 }
 

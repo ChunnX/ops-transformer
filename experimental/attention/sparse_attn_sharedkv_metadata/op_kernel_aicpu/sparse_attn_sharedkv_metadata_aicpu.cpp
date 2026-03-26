@@ -361,14 +361,14 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckFeature()
     // 压缩率校验
     if (hasCmpKv_) { 
         // cmp_topk 校验
- 	    if (cmpTopK_ != 0 && cmpTopK_ != 512 ) {
- 	    KERNEL_LOG_ERROR("cmp_topk should be 0 or 512, but got %d", cmpTopK_);
-        return false;
-        }
-        if (cmpRatio_ != 4 && cmpRatio_ != 128) {
-            KERNEL_LOG_ERROR("In CFA or SCFA, cmpRatio_ should only be 4 or 128, but got %d", cmpRatio_);
-            return false;
-        }
+ 	    // if (cmpTopK_ != 0 && cmpTopK_ != 512 ) {
+ 	    // KERNEL_LOG_ERROR("cmp_topk should be 0 or 512, but got %d", cmpTopK_);
+        // return false;
+        // }
+        // if (cmpRatio_ != 4 && cmpRatio_ != 128) {
+        //     KERNEL_LOG_ERROR("In CFA or SCFA, cmpRatio_ should only be 4 or 128, but got %d", cmpRatio_);
+        //     return false;
+        // }
     }
     return true;
 }
