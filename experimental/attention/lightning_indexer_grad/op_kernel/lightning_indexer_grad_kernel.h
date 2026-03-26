@@ -394,6 +394,8 @@ __aicore__ inline void LIGKernel<LIGT>::ProcessVec2(uint64_t taskId)
     AscendC::WaitEvent(SYNC_C1_V2_FLAG);
     if (runInfoStore[taskId].realTopk > 0) {
         vectorService.ReluGrad(reluInGm, reluGradGm, dyGm, reluGradGm, dweightsGm, constInfo, runInfoStore[taskId]);
+    } else {
+        vectorService.InitOutputDqAndDweights(dweightsGm, dqGm, constInfo, runInfoStore[taskId]);
     }
     AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V2_C2_FLAG);
 }
