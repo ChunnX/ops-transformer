@@ -161,12 +161,13 @@ static aclnnStatus ConvertWeightNdToNz(const aclTensor *&weight, aclOpExecutor *
 
 static aclnnStatus PrepareWeightFormat(const aclTensor *&weight, aclOpExecutor *exec) {
   uint64_t weightDimNum = weight->GetViewShape().GetDimNum();
+  uint64_t weightStorageDimNum = weight->GetStorageShape().GetDimNum();
   if (weightDimNum == ND_DIMNUM &&
       (weight->GetStorageFormat() == op::Format::FORMAT_ND || weight->GetStorageFormat() == op::Format::FORMAT_NCL)) {
     return ConvertWeightNdToNz(weight, exec);
-  } else if (weightDimNum != NZ_DIMNUM || weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
+  } else if (weightStorageDimNum != NZ_DIMNUM || weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "weight is not in 3-dim shape (G, N, K) or 5-dim (G, K//32, N//16, 16, 32), please check");
+            "weight is not in 5-dim (G, K//32, N//16, 16, 32), please check");
     return ACLNN_ERR_PARAM_INVALID;
   }
   return ACLNN_SUCCESS;
