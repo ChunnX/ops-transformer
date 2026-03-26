@@ -14,47 +14,28 @@ import torch
 
 # 定义测试参数组合
 TEST_PARAMS = {
-    "all_scfa_g128_test_prefill_TND_batch":{
-        "layout_q": ["TND"],
-        "layout_kv": ["TND"],
+    "ori_cmp_scfa_g64_test_prefill_BSND_batch":{
+        "layout_q": ["BSND"],
+        "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
-        "B": [1],
-        "S1": [16],
-        "T1": [1, 16, 33, 128, 159, 160],
-        "T2": [1, 16, 33, 128, 159, 160],
-        "N1": [128],
+        "cmp_kv_type": [torch.bfloat16],
+        "B": [1,5],
+        "S1": [1, 16, 33, 128, 159, 166],
+        "S2": [1, 16, 33, 128, 159, 166],
+        "N1": [64],
         "N2": [1],
         "D": [512],
         "K1": [1, 2, 64, 129, 512],
+        "K": [512],
         "softmax_scale": [0.04419417],
         "cmp_ratio": [1],
         "ori_mask_mode": [0],
-        "cmp_mask_mode": [3],
+        "cmp_mask_mode": [0],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "ori_kv_topk_mode": ["no","full","random"]
-    },
-    "all_scfa_g128_test_prefill_TND_batch_large":{
-        "layout_q": ["TND"],
-        "layout_kv": ["TND"],
-        "q_type": [torch.bfloat16],
-        "ori_kv_type": [torch.bfloat16],
-        "B": [1],
-        "S1": [16],
-        "T1": [8192],
-        "T2": [8192],
-        "N1": [128],
-        "N2": [1],
-        "D": [512],
-        "K1": [2, 64, 512],
-        "softmax_scale": [0.04419417],
-        "cmp_ratio": [1],
-        "ori_mask_mode": [0],
-        "cmp_mask_mode": [3],
-        "ori_win_left": [127],
-        "ori_win_right": [0],
-        "ori_kv_topk_mode": ["random"]
+        "ori_kv_topk_mode": ["no","full","random"],
+        "cmp_kv_topk_mode": ["no","full","random"]
     },
 }
 

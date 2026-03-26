@@ -881,7 +881,7 @@ def gen_data(params):
             'cmp_topk_length': cmp_topk_length,
             'B': B,
             'max_seqlen_q': max_seqlen_q,
-            'max_seqlen_kv': max(seqused_kv) if seqused_kv != None else T2,
+            'max_seqlen_kv': max(seqused_kv) if seqused_kv != None else (T2 if layout_kv == "TND" else S2),
             'K1': K1,
             'K': K,
             'cmp_ratio': cmp_ratio,
