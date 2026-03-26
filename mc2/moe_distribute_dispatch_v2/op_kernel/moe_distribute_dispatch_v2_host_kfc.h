@@ -2505,7 +2505,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
-            // CalTokenSendExpertOffset();
+            CalTokenSendExpertOffset();
             // if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
             //     ScatterTokenToRemote();  //4 20  5
             // } else {
