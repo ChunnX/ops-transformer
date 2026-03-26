@@ -387,6 +387,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 - query与dy/attentionIn shape需相同。
 - softmaxMax与softmaxSum shape需相同。
 - D只支持32/64/128。
+- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降，此时建议使用小算子拼接替换实现。
 
 ## 调用示例
 
