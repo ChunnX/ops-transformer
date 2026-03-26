@@ -2,7 +2,7 @@
 
 ## Context
 
-The MLA Prolog split-N kernel (`kernel_mla_prolog_split_n.h`) processes vector operations on Ascend NPU with a 192KB UB (Unified Buffer). The UB is partitioned into **fixed buffers** (persistent constants like gamma, scales) and a **shareBuffer_** (reused across mutually-exclusive vector modules). This report analyzes the exact UB footprint of every vector module under each of the 10 quant modes, enabling an optimizer to calculate the maximum `subrow` (vectorRow_ or stepNumHeadDequant) that can be processed per iteration.
+The MLA Prolog split-N kernel (`kernel_mla_prolog_split_n.h`) processes vector operations on Ascend NPU with a 192KB UB (Unified Buffer). The UB is partitioned into **fixed buffers** (persistent constants like gamma, scales) and a **shareBuffer_** (reused across mutually-exclusive vector modules). Since modules execute sequentially and never concurrently, each module has the **full shareBuffer_** available and can independently maximize its own row count. This report analyzes the exact UB footprint of every vector module under each of the 10 quant modes, enabling an optimizer to calculate the **independent max subrow for each module**.
 
 ## Source Files
 
@@ -166,10 +166,19 @@ Total = (4 * Hcq + 8) * 4 bytes
 | 3-6 | 1,600 + 24,608 | **26,208** |
 | 7-9 | 1,824 + 18,432 | **20,256** |
 
-**Max vectorRow_ formula**:
+**Max vectorRow_ formula** (independent — this module gets full shareBuffer_):
 ```
 maxVectorRow = floor((shareBuffer_ - scaleHeader) / (Hcq * sizeof(outType) + shareTmpUb_perRow))
 ```
+
+Example max values (curVecToken=1):
+
+| Mode | shareBuffer_ | maxVectorRow |
+|------|-------------|-------------|
+| 0 | 190,752 | 15 |
+| 1-2 | 184,608 / 182,304 | 7 |
+| 3-6 | 176,160 / 168,448 | 7 / 6 |
+| 7-9 | 182,304 / 174,624 | 9 |
 
 ---
 
@@ -242,6 +251,17 @@ Default (!enableDequantOpt): **32 bytes**
 | 8 | 512*1 = 512 | 6,176 | **6,688** |
 | 9 | Align(512+tileNum*4, 32) ~ 528 | ~8,224 | **~8,752** |
 
+**Max vectorRow_ for RmsNormAndScatterCkv** (independent — full shareBuffer_ available):
+```
+maxVectorRow = floor((shareBuffer_ - parentHeader) / (outputLocalSize_perRow + rmsNormShareTmpUb_perRow))
+```
+
+| Mode | Per-row cost | Max vectorRow_ (mode's shareBuffer_) |
+|------|-------------|--------------------------------------|
+| 0, 1, 3, 7 | Hckv*2 + 2*Hckv*4 + 32 = 5,152 | 35-38 |
+| 2, 4, 8 | Hckv*1 + 3*Hckv*4 + 32 = 6,688 | 25-27 |
+| 5, 6, 9 (pertile) | ~8,752 | 18-20 |
+
 ---
 
 #### 3.3b RopeAndScatterKr (L1577)
@@ -286,13 +306,29 @@ Special: mode 2 (krCacheType=int8) adds RopePostQuantPerChannel requiring extra 
 | 8 | 64*2=128 | 18*64=1,152 | -- | **1,280** |
 | 9 | 64*2=128 | 18*64=1,152 | -- | **1,280** |
 
+**Max vectorRow_ for RopeAndScatterKr** (independent — full shareBuffer_ available):
+```
+maxVectorRow = floor((shareBuffer_ - parentHeader) / perRowCost)
+```
+
+| Mode | Per-row cost | Max vectorRow_ |
+|------|-------------|----------------|
+| 0, 1, 5 (bf16 CkvKr) | Dr*2 + 14*Dr = 1,024 | 180-186 |
+| 2 (int8 kr, +quant) | Dr*1 + 14*Dr + Dr*4 = 1,216 | 149 |
+| 3, 4, 6 (int32 CkvKr) | Dr*2 + 20*Dr = 1,408 | 117-122 |
+| 7, 8, 9 (float CkvKr) | Dr*2 + 18*Dr = 1,280 | 133-140 |
+
 ---
 
 #### 3.3c Combined RmsNormRopeScatterCkvKr
 
+**Note**: RmsNormAndScatterCkv and RopeAndScatterKr are called **sequentially within the same parent function** (L1680-1706), sharing the same shareTmpUb after the parent header. Since they execute one after the other, the parent function's peak UB is:
+
 ```
 Total = parentHeader + max(RmsNormAndScatterCkv, RopeAndScatterKr)
 ```
+
+However, for the optimizer, each sub-module's max vectorRow_ should be computed **independently** (as shown in 3.3a and 3.3b above), then the parent function's effective max vectorRow_ is `min(maxRow_ckv, maxRow_kr)` since both must fit within the same call.
 
 | Mode | parentHeader | max(CKV, KR) | **Grand Total** |
 |------|-------------|-------------|-----------------|
@@ -423,6 +459,8 @@ UB = count * 8 + 32 = stepBS * (D / cvRatio) * 8 + 32
 
 **Default** (stepBS=32, D=128, cvRatio=2): 32 * 64 * 8 + 32 = **16,416 bytes**
 
+**Max row** (independent): `floor((shareBuffer_ - 32) / ((D / cvRatio) * 8))`. With shareBuffer_=168,448 (mode 4): max row = **328**. Row is fixed at stepBS in current code, but has large headroom.
+
 ---
 
 ### 3.8 CastQcQrSplitN (L1880, enableDequantOpt path)
@@ -459,11 +497,14 @@ RotaryPosEmbPerHead internal (cnt = ropeCnt * Dr):
 | int32 (modes 1-6) | ropeCnt * Dr * (2 + 20) = ropeCnt * Dr * 22 | 16 * 64 * 22 = **22,528** |
 | float (modes 7-9) | ropeCnt * Dr * (2 + 18) = ropeCnt * Dr * 20 | 16 * 64 * 20 = **20,480** |
 
-**Max ropeCnt**:
+**Max ropeCnt** (independent — full shareBuffer_ available):
 ```
 maxRopeCnt_int32 = floor(shareBuffer_ / (Dr * 22))
 maxRopeCnt_float = floor(shareBuffer_ / (Dr * 20))
 ```
+
+Example: mode 4 (int32, shareBuffer_=168,448): maxRopeCnt = floor(168448 / 1408) = **119**
+Example: mode 8 (float, shareBuffer_=172,576): maxRopeCnt = floor(172576 / 1280) = **134**
 
 ---
 
@@ -512,7 +553,13 @@ UB ~ subRow * Hckv * 2                       # inputHalf
 = ~119,520 bytes
 ```
 
-This is the **largest UB consumer** across all modules.
+This is the largest single-module UB consumer but it runs **independently** and does not constrain other modules' row counts.
+
+**Max subRow** (independent — full shareBuffer_ available):
+The subRow is the internal chunking parameter (16 for cv1:2, 8 for cv1:1). Since the total UB (~119KB) fits within even the smallest shareBuffer_ (168KB for mode 4), the current tuning is safe. Increasing subRow beyond 16 would require:
+```
+maxSubRow ~ floor((shareBuffer - row*Dr*2 - fixedOverhead) / (Hckv * 14))
+```
 
 ---
 
@@ -537,117 +584,228 @@ This is the **largest UB consumer** across all modules.
 
 ---
 
-## 5. Bottleneck Summary per Mode
+## 5. Independent Max Subrow per Module
+
+Since all vector modules use shareBuffer_ **sequentially** (never concurrently), each module independently gets the full shareBuffer_ budget. There is no cross-module bottleneck — each module can maximize its own row count independently.
 
 ### 5.1 Normal path (!enableDequantOpt)
 
-| Mode | Largest Module | UB (bytes) | Available shareBuffer_ | Headroom |
-|------|---------------|------------|----------------------|----------|
-| 0 | RopeQr (bf16) | 32,768 | 190,752 | 157,984 |
-| 1 | DequantQc | 57,504 | 184,608 | 127,104 |
-| 2 | DequantQc | 57,504 | 182,304 | 124,800 |
-| 3 | DequantQc | 57,504 | 176,160 | 118,656 |
-| **4** | **DynQuantQnAndMulQr** | **~119,520** | **176,128** | **56,608** |
-| 5 | DequantQc | 57,504 | 184,608 | 127,104 |
-| 6 | DequantQc | 57,504 | 176,160 | 118,656 |
-| 7 | RopeQr (fp8) | 40,960 | 182,304 | 141,344 |
-| **8** | **DynQuantQnAndMulQr** | **~119,520** | **180,256** | **60,736** |
-| 9 | RopeQr (fp8) | 40,960 | 182,304 | 141,344 |
+#### Mode 0 (NO_QUANT) — shareBuffer_ = 190,752 B
+
+| Module | Subrow Param | UB at default | Max Subrow | Formula |
+|--------|-------------|--------------|------------|---------|
+| GatherSinCos | curVecToken | 256 | 745 | floor(190752 / (4 * Dr)) |
+| RmsNormCq (Normal) | vectorRow_ | 15,456 | 15 | floor((190752 - 3136) / (Hcq*2 + 2*Hcq*4+32)) |
+| RmsNormAndScatterCkv (bf16) | vectorRow_ | 5,152 | 38 | floor((190752 - parentHdr) / (Hckv*2 + 2*Hckv*4+32)) |
+| RopeAndScatterKr (bf16) | vectorRow_ | 1,024 | 186 | floor((190752 - parentHdr) / (Dr*2 + 14*Dr)) |
+| RopeQr (bf16) | N (fixed=32) | 32,768 | N/A | fixed: N*Dr*16 |
+
+#### Modes 1-2 (PARTIAL_QUANT) — shareBuffer_ = 184,608 / 182,304 B
+
+| Module | Subrow Param | UB at default | Max Subrow (mode 1) | Formula |
+|--------|-------------|--------------|---------------------|---------|
+| RmsNormCq (DynQuant) | vectorRow_ | 26,208 | 7 | floor((S - 1600) / ((4*Hcq+8)*4)) |
+| RmsNormAndScatterCkv | vectorRow_ | 5,152 (m1) / 6,688 (m2) | 35 / 27 | per mode (see Sec 3.3a) |
+| RopeAndScatterKr | vectorRow_ | 1,024 (m1) / 1,216 (m2) | 180 / 149 | per mode (see Sec 3.3b) |
+| DequantQc | stepNumHeadDequant | 57,504 | 102 | floor((S - 160) / (D * 14)) |
+| RopeQr (int8) | N (fixed=32) | 53,248 | N/A | fixed: N*Dr*26 |
+
+#### Modes 3, 5, 6 (FULL/PARTIAL + non-pertensor KV) — shareBuffer_ = 176,160 / 184,608 / 176,160 B
+
+| Module | Subrow Param | Max Subrow (mode 3) | Max Subrow (mode 5) | Max Subrow (mode 6) |
+|--------|-------------|---------------------|---------------------|---------------------|
+| RmsNormCq (DynQuant) | vectorRow_ | 7 | 7 | 7 |
+| RmsNormAndScatterCkv | vectorRow_ | 33 | 19 (pertile) | 18 (pertile) |
+| RopeAndScatterKr | vectorRow_ | 122 | 180 | 122 |
+| DequantQc | stepNumHeadDequant | 98 | 102 | 98 |
+| RopeQr (int8) | N (fixed=32) | N/A | N/A | N/A |
+
+#### Mode 4 (FULL_QUANT_KV_PERTENSOR) — shareBuffer_ = 176,128 B
+
+| Module | Subrow Param | UB at default | Max Subrow | Formula |
+|--------|-------------|--------------|------------|---------|
+| RmsNormCq (DynQuant) | vectorRow_ | 26,208 | 7 | floor((S - 1600) / ((4*Hcq+8)*4)) |
+| RmsNormAndScatterCkv (int8) | vectorRow_ | 6,688 | 26 | floor((S - parentHdr) / (Hckv + 3*Hckv*4+32)) |
+| RopeAndScatterKr (bf16 kr) | vectorRow_ | 1,408 | 122 | floor((S - parentHdr) / (Dr*2 + 20*Dr)) |
+| DequantQc | stepNumHeadDequant | 57,504 | 98 | floor((S - 160) / (D * 14)) |
+| RopeQr (int8) | N (fixed=32) | 53,248 | N/A | fixed |
+| DynQuantQnAndMulQr | subRow | ~119,520 | 16* | *subRow internally tuned |
+
+#### Modes 7, 9 (MXFP8, non-pertensor KV) — shareBuffer_ = 182,304 B
+
+| Module | Subrow Param | UB at default | Max Subrow | Formula |
+|--------|-------------|--------------|------------|---------|
+| RmsNormCq (fp8 DynQuant) | vectorRow_ | 20,256 | 9 | floor((S - 1824) / (Hcq + 3*Hcq*4)) |
+| RmsNormAndScatterCkv | vectorRow_ | 5,152 (m7) / ~8,752 (m9) | 35 / 19 | per mode |
+| RopeAndScatterKr (bf16 kr) | vectorRow_ | 1,280 | 140 | floor((S - parentHdr) / (Dr*2 + 18*Dr)) |
+| CastQc | stepNumHeadDequant | 24,608 | 237 | floor((S - 32) / (D * 6)) |
+| RopeQr (fp8) | N (fixed=32) | 40,960 | N/A | fixed |
+
+#### Mode 8 (MXFP8_KV_PERTENSOR) — shareBuffer_ = 180,256 B
+
+| Module | Subrow Param | UB at default | Max Subrow | Formula |
+|--------|-------------|--------------|------------|---------|
+| RmsNormCq (fp8 DynQuant) | vectorRow_ | 20,256 | 9 | floor((S - 1824) / (Hcq + 3*Hcq*4)) |
+| RmsNormAndScatterCkv (fp8) | vectorRow_ | 6,688 | 26 | per variant |
+| RopeAndScatterKr (bf16 kr) | vectorRow_ | 1,280 | 139 | per variant |
+| CastQc | stepNumHeadDequant | 24,608 | 234 | floor((S - 32) / (D * 6)) |
+| RopeQr (fp8) | N (fixed=32) | 40,960 | N/A | fixed |
+| DynQuantQnAndMulQr | subRow | ~119,520 | 16* | *subRow internally tuned |
 
 ### 5.2 enableDequantOpt path
 
-| Mode | Largest Module | UB (bytes) | Available shareBuffer_ | Headroom |
-|------|---------------|------------|----------------------|----------|
-| 1 | RmsNormCq (DynQuant) | 26,208 | 176,928 | 150,720 |
-| 2 | RmsNormCq (DynQuant) | 26,208 | 174,368 | 148,160 |
-| 3 | RmsNormCq (DynQuant) | 26,208 | 168,480 | 142,272 |
-| 4 | RmsNormCq (DynQuant) | 26,208 | 168,448 | 142,240 |
-| 5 | RmsNormCq (DynQuant) | 26,208 | 176,928 | 150,720 |
-| 6 | RmsNormCq (DynQuant) | 26,208 | 168,480 | 142,272 |
-| 7 | RmsNormCq (fp8) | 20,256 | 174,624 | 154,368 |
-| 8 | RopeQrSplitN (fp8) | 20,480 | 172,576 | 152,096 |
-| 9 | RmsNormCq (fp8) | 20,256 | 174,624 | 154,368 |
+#### Modes 1-6 (int8 QcQr) — shareBuffer_ varies by mode
+
+| Module | Subrow Param | UB at default | Max Subrow (mode 1, S=176928) | Max Subrow (mode 4, S=168448) |
+|--------|-------------|--------------|-------------------------------|-------------------------------|
+| RmsNormCq (DynQuant) | vectorRow_ | 26,208 | 7 | 6 |
+| RmsNormAndScatterCkv | vectorRow_ | varies | 33 (m1) / 26 (m4) | per mode |
+| RopeAndScatterKr | vectorRow_ | varies | 172 (m1) / 117 (m4) | per mode |
+| DequantQcQrSplitN | row (fixed=stepBS) | 16,416 | N/A | N/A (row fixed) |
+| RopeQrSplitN | ropeCnt | 22,528 | 125 | 119 |
+
+Formula for RopeQrSplitN max ropeCnt: `floor(shareBuffer_ / (Dr * 22))`
+
+#### Modes 7-9 (fp8 QcQr) — shareBuffer_ varies by mode
+
+| Module | Subrow Param | UB at default | Max Subrow (mode 7, S=174624) | Max Subrow (mode 8, S=172576) |
+|--------|-------------|--------------|-------------------------------|-------------------------------|
+| RmsNormCq (fp8 DynQuant) | vectorRow_ | 20,256 | 9 | 9 |
+| RmsNormAndScatterCkv | vectorRow_ | varies | 33 (m7) / 26 (m8) | per mode |
+| RopeAndScatterKr | vectorRow_ | varies | 135 (m7) / 133 (m8) | per mode |
+| CastQcQrSplitN | row (fixed=stepBS) | 8,192 | N/A | N/A (row fixed) |
+| RopeQrSplitN | ropeCnt | 20,480 | 136 | 134 |
+
+Formula for RopeQrSplitN max ropeCnt: `floor(shareBuffer_ / (Dr * 20))`
 
 ---
 
 ## 6. Optimizer Design
 
-### 6.1 Algorithm
+### 6.1 Core Principle: Independent Per-Module Optimization
+
+Since all vector modules use shareBuffer_ sequentially, **each module can independently maximize its own row count**. The optimizer computes a separate max subrow for each module — there is no single "bottleneck" that constrains all modules.
 
 ```python
-def compute_max_subrow(quant_mode, enable_dequant_opt, dims):
+def compute_all_max_subrows(quant_mode, enable_dequant_opt, dims):
     """
     Returns: dict mapping module_name -> (subrow_param_name, max_value)
+    Each module's max is computed independently against the full shareBuffer_.
     """
-    # Step 1: compute fixed buffer total
     fixed = compute_fixed_buffers(quant_mode, enable_dequant_opt, dims)
     share_buf = MAX_UB_SIZE - fixed
 
-    # Step 2: for each active module, compute max subrow
     results = {}
     for module in active_modules(quant_mode, enable_dequant_opt):
         header, per_row_cost, param_name = module.ub_formula(quant_mode, dims)
         if per_row_cost > 0:
             max_val = (share_buf - header) // per_row_cost
         else:
-            max_val = float('inf')  # fixed-size module
+            max_val = float('inf')  # fixed-size module (e.g., RopeQr)
         results[module.name] = (param_name, max_val)
 
-    # Step 3: identify bottleneck (minimum max_subrow per param group)
-    bottleneck = min(results.items(), key=lambda x: x[1][1])
-    return results, bottleneck
+    return results
 ```
 
-### 6.2 Subrow Parameter Groups
+### 6.2 Per-Module Subrow Parameters
 
-Different modules use different subrow parameters. The optimizer should track them separately:
+Each module has its own independently configurable row parameter:
 
-| Param Group | Modules | Typical Range |
-|-------------|---------|---------------|
-| `vectorRow_` | RmsNormCq, RmsNormAndScatterCkv, RopeAndScatterKr | 1 - 8 |
-| `stepNumHeadDequant` | DequantQc, CastQc | 1 - N (32) |
-| `ropeCnt` | RopeQrSplitN | 1 - stepBS/cvRatio (16) |
-| N/A (fixed dims) | RopeQr, DequantQcQrSplitN, CastQcQrSplitN, GatherSinCos | fixed by config |
-| `row` (curStepBatchSizeVec) | DynQuantQnAndMulQr | 1 - stepBS/cvRatio (16) |
+| Module | Subrow Param | Current Value | Description |
+|--------|-------------|---------------|-------------|
+| GatherSinCos | curVecToken | 1 | Tokens to load sin/cos for |
+| RmsNormCq | vectorRow_ | 1 | Tokens processed per RmsNorm Cq call |
+| RmsNormAndScatterCkv | vectorRow_ | 1 | Tokens processed per RmsNorm Ckv + scatter |
+| RopeAndScatterKr | vectorRow_ | 1 | Tokens processed per RoPE Kr + scatter |
+| RopeQr | N (numHeadSize) | 32 | Fixed by model config (not tunable) |
+| DequantQc | stepNumHeadDequant | N (32) | Heads processed per dequant chunk |
+| CastQc | stepNumHeadDequant | N (32) | Heads processed per cast chunk |
+| DequantQcQrSplitN | row (stepBS) | 32 | Fixed by tiling (not tunable at this level) |
+| CastQcQrSplitN | row (stepBS) | 32 | Fixed by tiling (not tunable at this level) |
+| RopeQrSplitN | ropeCnt | stepBS/cvRatio | Tokens per split-N RoPE call |
+| DynQuantQnAndMulQr | subRow | 16 (cv1:2) / 8 (cv1:1) | Tokens per dynamic quant chunk |
 
-### 6.3 Per-Param Max Subrow Formulas
+**Note**: Although RmsNormCq, RmsNormAndScatterCkv, and RopeAndScatterKr currently share the same `vectorRow_` member variable (L185), they can be given separate row parameters since they execute independently. The optimizer should compute a separate max for each.
 
-**vectorRow_ max** (bottleneck is usually RmsNormCq):
+### 6.3 Per-Module Max Subrow Formulas
+
+**RmsNormCq**:
 ```
-vectorRow_max = min(
-    (shareBuffer - rmsCq_scaleHeader) / (Hcq * sizeof(outType) + rmsCq_perRow),
-    (shareBuffer - ckvkr_parentHeader) / max(ckv_outputSize + ckv_perRow, kr_outputSize + kr_perRow)
-)
+# Mode 0 (bf16 output)
+maxRow = floor((shareBuffer - scaleHeader) / (Hcq * 2 + 2 * Hcq * 4 + 32))
+
+# Modes 1-6 (int8 output, arch32)
+maxRow = floor((shareBuffer - scaleHeader) / (Hcq * 1 + (4 * Hcq + 8) * 4))
+
+# Modes 7-9 (fp8 output, arch35 VF)
+maxRow = floor((shareBuffer - scaleHeader) / (Hcq * 1 + 3 * Hcq * 4))
 ```
 
-**stepNumHeadDequant max**:
+**RmsNormAndScatterCkv**:
 ```
-# int8 DequantQc (modes 1-6)
-stepNumHeadDequant_max = (shareBuffer - 160) / (D * 14)
+# bf16 output (modes 0, 1, 3, 7)
+maxRow = floor((shareBuffer - parentHeader) / (Hckv * 2 + 2 * Hckv * 4 + 32))
 
-# fp8 CastQc (modes 7-9)
-stepNumHeadDequant_max = (shareBuffer - 32) / (D * 6)
+# int8 output, non-pertile (modes 2, 4)
+maxRow = floor((shareBuffer - parentHeader) / (Hckv * 1 + 3 * Hckv * 4 + 32))
+
+# int8 output, pertile (modes 5, 6)
+maxRow = floor((shareBuffer - parentHeader) / (Align(Hckv + tileNum*4, 32) + 3*Hckv*4 + 32 + pertileExtra))
 ```
 
-**ropeCnt max** (RopeQrSplitN):
+**RopeAndScatterKr**:
+```
+# bf16 CkvKr output (modes 0, 1, 5)
+maxRow = floor((shareBuffer - parentHeader) / (Dr * 2 + 14 * Dr))
+
+# int32 CkvKr output (modes 3, 4, 6)
+maxRow = floor((shareBuffer - parentHeader) / (Dr * 2 + 20 * Dr))
+
+# float CkvKr output (modes 7, 8, 9)
+maxRow = floor((shareBuffer - parentHeader) / (Dr * 2 + 18 * Dr))
+
+# int8 kr output (mode 2) — includes post-quant
+maxRow = floor((shareBuffer - parentHeader) / (Dr * 1 + 14 * Dr + Dr * 4))
+```
+
+**DequantQc** (modes 1-6, !enableDequantOpt):
+```
+maxStepNumHeadDequant = floor((shareBuffer - 160) / (D * 14))
+```
+
+**CastQc** (modes 7-9, !enableDequantOpt):
+```
+maxStepNumHeadDequant = floor((shareBuffer - 32) / (D * 6))
+```
+
+**RopeQrSplitN** (enableDequantOpt):
 ```
 # int8 path (modes 1-6)
-ropeCnt_max = shareBuffer / (Dr * 22)
+maxRopeCnt = floor(shareBuffer / (Dr * 22))
 
 # fp8 path (modes 7-9)
-ropeCnt_max = shareBuffer / (Dr * 20)
+maxRopeCnt = floor(shareBuffer / (Dr * 20))
+```
+
+**DynQuantQnAndMulQr** (modes 4, 8):
+```
+# Per-row cost depends on subRow and col; subRow is the tunable param
+# Approximate: per subRow cost ~ Hckv * 14 + Dr * 4 (see Section 3.10)
+maxSubRow = floor((shareBuffer - row*Dr*2 - fixedOverhead) / (Hckv * 14))
 ```
 
 ### 6.4 Key Considerations
 
-1. **vectorRow_ is currently hardcoded to 1** (L185). Increasing it reduces loop iterations but increases per-iteration UB. The optimizer should compute the maximum safe value.
+1. **Independent optimization**: Each module gets the full shareBuffer_ budget. The optimizer should compute max subrow for each module separately — not take the min across modules.
 
-2. **enableDequantOpt changes the bottleneck profile significantly** -- it trades larger sincosBuffer_ for simpler per-module UB (split-N modules vs full DequantQc/RopeQr).
+2. **Currently shared variable**: RmsNormCq, RmsNormAndScatterCkv, and RopeAndScatterKr share the `vectorRow_` member (L185, hardcoded to 1). To exploit independent optimization, either (a) introduce separate row params per module, or (b) keep the shared variable and set it to the min of the three modules' maxima.
 
-3. **DynamicQuantQnAndMulQr is the clear bottleneck** for modes 4 and 8 (full quant + KV quant). Its subRow is already tuned (16 for cv1:2, 8 for cv1:1) -- the optimizer should verify this fits.
+3. **enableDequantOpt changes available modules** — it trades larger sincosBuffer_ for simpler per-module UB (split-N modules vs full DequantQc/RopeQr).
 
-4. **shareBuffer_ is always the last allocation** (L576-578). Its size = MAX_UB_SIZE - all prior allocations. The optimizer must accurately replicate the fixed buffer calculation.
+4. **DynamicQuantQnAndMulQr** (modes 4, 8) has the largest per-call footprint (~119KB) but runs independently — its subRow=16/8 is already tuned and does not constrain other modules.
 
-5. **Per-tile quant modes (5, 6, 9)** have larger RmsNormAndScatterCkv footprints due to QuantPerTile needing aMax, aMaxBrcb, DynamicQuant, and CastFP32ToINT8 buffers. These modes need more careful UB budgeting.
+5. **shareBuffer_ is always the last allocation** (L576-578). Its size = MAX_UB_SIZE - all prior allocations. The optimizer must accurately replicate the fixed buffer calculation.
 
-6. **Arch35 VF vs Arch32**: The RmsNormDynamicQuant path has different UB requirements on Arch35 (VectorFlow IP uses dedicated hardware, often lower UB) vs Arch32 (software implementation, higher UB). The optimizer should detect the target architecture.
+6. **Per-tile quant modes (5, 6, 9)** have larger RmsNormAndScatterCkv footprints due to QuantPerTile. This only constrains RmsNormAndScatterCkv's own max row — not other modules.
+
+7. **Arch35 VF vs Arch32**: The RmsNormDynamicQuant path has different UB requirements per architecture. This affects RmsNormCq's max row independently.
