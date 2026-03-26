@@ -1484,34 +1484,34 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         return ;
     }
     
-    // tpipe_->InitBuffer(serverFlagBuf, UB_ALIGN);
-    // //LOG_INFO("[GatherTokenFrRemote] relativeAivId_",relativeAivId);
-    // //LOG_INFO("[GatherTokenFrRemote] firstAivId_",firstAivId);
-    // for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-    //     if (serverIndex == serverId_) { // 本server不用从其他server接收token，直接跳过
-    //         continue;
-    //     }
-    //     uint32_t tokenCnt;
-    //     WaitStatusFlag(serverIndex, serverFlagBuf, tokenCnt);
-    //     if (tokenCnt == 0) {
-    //         continue;
-    //     }
-    //     SplitToCore(tokenCnt, firstAivId, useAivPerServer, startTokenId, endTokenId, sendTokenNum);
-    //     if (startTokenId >= endTokenId || sendTokenNum == 0) {
-    //         continue;   
-    //     }
-    //     LOG_INFO("[GatherTokenFrRemote] tokenCnt",tokenCnt);
-    //     //LOG_INFO("[GatherTokenFrRemote] startTokenId_",startTokenId);
-    //     //LOG_INFO("[GatherTokenFrRemote] endTokenId_",endTokenId);
-    //     //LOG_INFO("[GatherTokenFrRemote] sendTokenNum_",sendTokenNum);
-    //     Duplicate<uint32_t>(tokenRcvStatus_, 0, TOKEN_RECV_CNT_MAX);
-    //     SyncFunc<AscendC::HardEvent::V_S>();
-    //     tokenInQueue_.EnQue(recvTmpTensor_);
-    //     WaitToken(sendTokenNum, serverIndex, startTokenId);
-    //     CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
-    // }
-    // xInQueue_.FreeTensor<XType>(tokenData_);
-    // tokenInQueue_.FreeTensor<XType>(recvTmpTensor_);
+    tpipe_->InitBuffer(serverFlagBuf, UB_ALIGN);
+    //LOG_INFO("[GatherTokenFrRemote] relativeAivId_",relativeAivId);
+    //LOG_INFO("[GatherTokenFrRemote] firstAivId_",firstAivId);
+    for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
+        if (serverIndex == serverId_) { // 本server不用从其他server接收token，直接跳过
+            continue;
+        }
+        uint32_t tokenCnt;
+        WaitStatusFlag(serverIndex, serverFlagBuf, tokenCnt);
+        if (tokenCnt == 0) {
+            continue;
+        }
+        SplitToCore(tokenCnt, firstAivId, useAivPerServer, startTokenId, endTokenId, sendTokenNum);
+        if (startTokenId >= endTokenId || sendTokenNum == 0) {
+            continue;   
+        }
+        LOG_INFO("[GatherTokenFrRemote] tokenCnt",tokenCnt);
+        //LOG_INFO("[GatherTokenFrRemote] startTokenId_",startTokenId);
+        //LOG_INFO("[GatherTokenFrRemote] endTokenId_",endTokenId);
+        //LOG_INFO("[GatherTokenFrRemote] sendTokenNum_",sendTokenNum);
+        Duplicate<uint32_t>(tokenRcvStatus_, 0, TOKEN_RECV_CNT_MAX);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        tokenInQueue_.EnQue(recvTmpTensor_);
+        WaitToken(sendTokenNum, serverIndex, startTokenId);
+        CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
+    }
+    xInQueue_.FreeTensor<XType>(tokenData_);
+    tokenInQueue_.FreeTensor<XType>(recvTmpTensor_);
     LOG_INFO("[GatherTokenFrRemote] end");
 }
 
