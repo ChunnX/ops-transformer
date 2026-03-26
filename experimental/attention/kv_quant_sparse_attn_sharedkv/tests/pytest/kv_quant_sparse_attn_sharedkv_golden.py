@@ -613,7 +613,7 @@ def gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, n
     ori_sparse_data = None  # SCFA
     ori_sparse_indices = None
     if (template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA") and ori_max_s2 != 0:
-        if topk_value_mode == '1':
+        if topk_value_mode == 1:
             if layout_q == "BSND":
                 ori_sparse_data, ori_sparse_indices = gen_sparse_indices_bsnd(1, B, S1, N2, K, seqused_kv, ori_mask_mode, ori_topk_length)
             elif layout_q == "TND":
@@ -704,7 +704,7 @@ def gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_
     ori_sparse_data = None  # SCFA
     ori_sparse_indices = None
     if (template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA") and ori_max_s2 != 0:
-        if topk_value_mode == '1':
+        if topk_value_mode == 1:
             if layout_q == "BSND":
                 ori_sparse_data, ori_sparse_indices = gen_sparse_indices_bsnd(1, B, S1, N2, K, seqused_kv, ori_mask_mode, ori_topk_length)
             elif layout_q == "TND":
@@ -734,7 +734,7 @@ def gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, ro
                 topk_value_mode, cmp_topk_length, quant_param_range_left, quant_param_range_right):
     print("generating pa cmp kv.......")
     if cmp_max_s2 == 0:
-            return None, None, None, None
+            return None, None, None, None, None
     # cmp kv处理
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
         (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
