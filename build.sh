@@ -1610,6 +1610,22 @@ function set_compute_unit_option() {
     fi
 }
 
+# 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
+function set_compute_unit_option_ut() {	 
+    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组	 
+    local COMPUTE_UNIT_SHORT=""	 
+    for soc in "${SOC_ARRAY[@]}"; do	 
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do	 
+        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')	 
+        if [[ "$lowercase_word" == *"$support_unit"* ]]; then	 
+        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;" 
+        break 
+        fi	 
+    done 
+    done	 
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"	 
+ }
+
 CUSTOM_OPTION="${CUSTOM_OPTION} -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH} -DCHECK_COMPATIBLE=${CHECK_COMPATIBLE}"
 
 ########################################################################################################################
@@ -1796,7 +1812,7 @@ function build_pr_ut_mc2()
             fi
             echo "start to test $element"
             process_soc_input "$element"
-            set_compute_unit_option
+            set_compute_unit_option_ut
             build_ut ${BUILD}
             UT_TEST_CNT=$((UT_TEST_CNT +1))
     done
@@ -1817,7 +1833,7 @@ function build_pr_ut_exclude_mc2()
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_EXCLUDE_MC2}"
     process_soc_input "ascend310p,ascend910b,ascend950"
-    set_compute_unit_option
+    set_compute_unit_option_ut
     build_ut ${BUILD}
 }
 
@@ -1826,7 +1842,7 @@ if [[ "$ENABLE_TEST" == "TRUE" ]]; then
         build_pr_ut_exclude_mc2
         build_pr_ut_mc2
     else
-        set_compute_unit_option
+        set_compute_unit_option_ut
         build_ut ${BUILD}
     fi
     exit 0
