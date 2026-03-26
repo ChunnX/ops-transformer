@@ -324,19 +324,27 @@ struct Vec1SplitInfo {
     uint32_t dBaseSize = 0;
     uint32_t vec1GroupSize = 0;
     uint32_t vec1GroupNum = 0;
+    uint32_t dealTcSize = 0;
     uint32_t dealTcNum = 0;
     uint32_t dealBatchNum = 0;
-    uint32_t dealTcSize = 0;
     uint32_t preDealTcSize = 0;
     uint32_t preDealBatchNum = 0;
     uint32_t curBStart = 0;
     uint32_t curSStart = 0;
-    uint32_t preCompressedCnt = 0;
     uint32_t curCompressedCnt = 0;
+    uint32_t preCompressedCnt = 0;
     uint32_t totalCompressedCnt = 0;
     uint32_t tcSplitSize = 0;
     uint32_t dSplitSize = 0;
     uint32_t dLoopCount = 0;
+};
+
+struct Vec2SplitInfo {
+    uint32_t dealedScCnt = 0;
+    uint32_t preScCnt = 0;
+    uint32_t dealScNum = 0;
+    uint32_t curBStart = 0;
+    uint32_t curScStart = 0;
 };
 
 // BUFFER的字节数
@@ -355,6 +363,18 @@ inline constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 // BLOCK和REPEAT的字节数
 inline constexpr uint64_t BYTE_BLOCK = 32UL;
 inline constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
+
+template <typename T>
+__aicore__ inline constexpr T BlockElementNum()
+{
+    return BYTE_BLOCK / sizeof(T);
+}
+
+template <typename T>
+__aicore__ inline constexpr T RepeatElementNum()
+{
+    return REPEAT_BLOCK_BYTE / sizeof(T);
+}
 // BLOCK和REPEAT的FP32元素数
 inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
 inline constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(bfloat16_t);    // 16

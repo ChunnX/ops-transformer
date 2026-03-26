@@ -1320,10 +1320,10 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
     // RopeVF返回类型为X_T，rope部分直接拷贝至outputUb，nope部分单独cast成X_T到outputUb
     uint64_t mask = REPEAT_BLOCK_BYTE / sizeof(T); // 每个迭代处理64个元素
     uint8_t repeatTime = normNum / mask;           // nope部分迭代次数，rope部分不做处理
-    for (uint32_t i = 0; i < dealRowCount; i++) {
-        Cast(outputUb[i * constInfo_.headDim], normResUb[i * constInfo_.headDim], RoundMode::CAST_ROUND, mask,
-             repeatTime, {1, 1, 4, 8});
-    }
+    // for (uint32_t i = 0; i < dealRowCount; i++) {
+    //     Cast(outputUb[i * constInfo_.headDim], normResUb[i * constInfo_.headDim], RoundMode::CAST_ROUND, mask,
+    //          repeatTime, {1, 1, 4, 8});
+    // }
 
     uint32_t bStartIdx = OutputBStartIdx;
     uint32_t sStartIdx = OutputSStartIdx;
@@ -1340,18 +1340,18 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
         curDealScSize = dealRowCount;
         uint32_t computeSize = curDealScSize * constInfo_.ropeHeadDim;
         uint64_t SinCosOffset = globalScStart * constInfo_.ropeHeadDim;
-        LocalTensor<T> tmpRopeInUb = tmpBuff1.Get<T>();
+        // LocalTensor<T> tmpRopeInUb = tmpBuff1.Get<T>();
         uint32_t offset = computeSize * sizeof(T);
         LocalTensor<X_T> tmpRopeOutUb = tmpBuff1.GetWithOffset<X_T>(computeSize, offset);
         offset += computeSize * sizeof(X_T);
 
         // 分离rope部分
-        DataCopyParams ropeCopyParams;
-        ropeCopyParams.blockCount = static_cast<uint16_t>(curDealScSize);
-        ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(T) / DATABLOCK_BYTES);
-        ropeCopyParams.srcStride = static_cast<uint16_t>(normNum * sizeof(T) / DATABLOCK_BYTES);
-        ropeCopyParams.dstStride = 0;
-        DataCopy(tmpRopeInUb, normResUb[normNum], ropeCopyParams);
+        // DataCopyParams ropeCopyParams;
+        // ropeCopyParams.blockCount = static_cast<uint16_t>(curDealScSize);
+        // ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(T) / DATABLOCK_BYTES);
+        // ropeCopyParams.srcStride = static_cast<uint16_t>(normNum * sizeof(T) / DATABLOCK_BYTES);
+        // ropeCopyParams.dstStride = 0;
+        // DataCopy(tmpRopeInUb, normResUb[normNum], ropeCopyParams);
         // sin与cos各占一半, 实际分别最多只会用8K,总占用16K
         LocalTensor<X_T> cosUb = inputQue2.AllocTensor<X_T>();
         LocalTensor<X_T> sinUb = cosUb[BUFFER_SIZE_BYTE_8K / sizeof(X_T)];
@@ -1362,15 +1362,18 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
 
         bool isInterleave = (COMP::rotaryMode == ROTARY_MODE::INTERLEAVE) ? true : false;
         PipeBarrier<PIPE_V>();
-        RopeVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1, isInterleave);
+        RopeVF<COMP::rotaryMode>(sinUb, cosUb, normResUb,
+                   outputUb, curDealScSize,
+                   constInfo_.ropeHeadDim, constInfo_.headDim, constInfo_.headDim - constInfo_.ropeHeadDim);
+        // RopeVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1, isInterleave);
         PipeBarrier<PIPE_V>();
         inputQue2.FreeTensor(sinUb);
         // rope搬到outputUb
-        ropeCopyParams.blockCount = curDealScSize;
-        ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(X_T) / DATABLOCK_BYTES);
-        ropeCopyParams.srcStride = 0;
-        ropeCopyParams.dstStride = static_cast<uint16_t>(normNum * sizeof(X_T) / DATABLOCK_BYTES);
-        DataCopy(outputUb[normNum], tmpRopeOutUb, ropeCopyParams);
+        // ropeCopyParams.blockCount = curDealScSize;
+        // ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(X_T) / DATABLOCK_BYTES);
+        // ropeCopyParams.srcStride = 0;
+        // ropeCopyParams.dstStride = static_cast<uint16_t>(normNum * sizeof(X_T) / DATABLOCK_BYTES);
+        // DataCopy(outputUb[normNum], tmpRopeOutUb, ropeCopyParams);
 
         while (dealScSize > 0) {
             UpdateOutputIdx(bStartIdx, sStartIdx, dealScSize, curDealScSize);
@@ -1388,20 +1391,20 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
             if (curDealScSize) {
                 uint32_t computeSize = curDealScSize * constInfo_.ropeHeadDim;
                 uint64_t SinCosOffset = globalScStart * constInfo_.ropeHeadDim;
-                LocalTensor<T> tmpRopeInUb = tmpBuff1.Get<T>();
+                // LocalTensor<T> tmpRopeInUb = tmpBuff1.Get<T>();
                 uint32_t offset = computeSize * sizeof(T);
                 LocalTensor<X_T> tmpRopeOutUb = tmpBuff1.GetWithOffset<X_T>(computeSize, offset);
                 offset += computeSize * sizeof(X_T);
 
                 // 分离rope部分
-                DataCopyParams ropeCopyParams;
-                ropeCopyParams.blockCount = static_cast<uint16_t>(curDealScSize);
-                ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(T) / DATABLOCK_BYTES);
-                ropeCopyParams.srcStride = static_cast<uint16_t>(normNum * sizeof(T) / DATABLOCK_BYTES);
-                ropeCopyParams.dstStride = 0;
-                DataCopy(tmpRopeInUb,
-                         normResUb[normNum + (dealRowCount - dealScSize - curDealScSize) * constInfo_.headDim],
-                         ropeCopyParams);
+                // DataCopyParams ropeCopyParams;
+                // ropeCopyParams.blockCount = static_cast<uint16_t>(curDealScSize);
+                // ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(T) / DATABLOCK_BYTES);
+                // ropeCopyParams.srcStride = static_cast<uint16_t>(normNum * sizeof(T) / DATABLOCK_BYTES);
+                // ropeCopyParams.dstStride = 0;
+                // DataCopy(tmpRopeInUb,
+                //          normResUb[normNum + (dealRowCount - dealScSize - curDealScSize) * constInfo_.headDim],
+                //          ropeCopyParams);
 
                 // sin与cos各占一半, 实际分别最多只会用8K,总占用16K
                 LocalTensor<X_T> cosUb = inputQue2.AllocTensor<X_T>();
@@ -1413,16 +1416,20 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
 
                 bool isInterleave = (COMP::rotaryMode == ROTARY_MODE::INTERLEAVE) ? true : false;
                 PipeBarrier<PIPE_V>();
-                RopeVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1, isInterleave);
+                RopeVF<COMP::rotaryMode>(sinUb, cosUb, normResUb[(dealRowCount - dealScSize - curDealScSize) * constInfo_.headDim],
+                   outputUb[(dealRowCount - dealScSize - curDealScSize) * constInfo_.headDim], curDealScSize,
+                   constInfo_.ropeHeadDim, constInfo_.headDim, constInfo_.headDim - constInfo_.ropeHeadDim);
+            
+                // RopeVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1, isInterleave);
                 PipeBarrier<PIPE_V>();
                 inputQue2.FreeTensor(sinUb);
                 // rope搬到outputUb
-                ropeCopyParams.blockCount = curDealScSize;
-                ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(X_T) / DATABLOCK_BYTES);
-                ropeCopyParams.srcStride = 0;
-                ropeCopyParams.dstStride = static_cast<uint16_t>(normNum * sizeof(X_T) / DATABLOCK_BYTES);
-                DataCopy(outputUb[normNum + (dealRowCount - dealScSize - curDealScSize) * constInfo_.headDim],
-                         tmpRopeOutUb, ropeCopyParams);
+                // ropeCopyParams.blockCount = curDealScSize;
+                // ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(X_T) / DATABLOCK_BYTES);
+                // ropeCopyParams.srcStride = 0;
+                // ropeCopyParams.dstStride = static_cast<uint16_t>(normNum * sizeof(X_T) / DATABLOCK_BYTES);
+                // DataCopy(outputUb[normNum + (dealRowCount - dealScSize - curDealScSize) * constInfo_.headDim],
+                //          tmpRopeOutUb, ropeCopyParams);
             }
             CalcGlobalScStart(preOutputBStartIdx, preOutputSStartIdx, bStartIdx, sStartIdx, globalScStart);
             ubProcessedCount += curDealScSize;

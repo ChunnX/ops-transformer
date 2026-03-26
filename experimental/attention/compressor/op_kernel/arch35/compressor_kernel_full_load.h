@@ -325,7 +325,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1(const Vec1Run
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
     // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
-    blockVec_.ComputeVec1(info);
+    blockVec_.ComputeVec1();
     CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
@@ -335,7 +335,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1(const Vec1Run
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec2(const Vec2RunInfo &info) {
     // printf("[VEC2] bStart:%u, sStart:%u, bCompressedId:%u, dealScSize:%u, v2DbIdx:%u\n", info.bStart, info.sStart, info.bCompressedId, info.dealScSize, info.v2DbIdx);
-    blockVec_.ComputeVec2(info);
+    blockVec_.ComputeVec2();
 }
 
 template <typename COMP>

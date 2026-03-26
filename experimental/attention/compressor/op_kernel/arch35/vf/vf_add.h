@@ -25,14 +25,14 @@ constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t HALFCORED = 128;
 
 template <typename T>
-struct RegList {
+struct AddRegList {
     MicroAPI::RegTensor<T> vreg;
     MicroAPI::RegTensor<T> vregape;
 };
 
 
 template <typename T>
-__simd_callee__ void AddVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, RegList<T> &regList, uint32_t row,
+__simd_callee__ void AddVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, AddRegList<T> &regList, uint32_t row,
                                uint32_t col, uint64_t offset0, uint64_t offset1)
 {
     uint32_t maskValue = col;
@@ -44,7 +44,7 @@ __simd_callee__ void AddVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, RegLi
 }
 
 template <bool IS_FIRST, typename T>
-__simd_callee__ void MultiAddVFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, RegList<T> &regList, uint32_t row,
+__simd_callee__ void MultiAddVFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, AddRegList<T> &regList, uint32_t row,
                                     uint32_t col, uint64_t offset, uint32_t repeatNum, uint64_t repeatOffset)
 {
     uint32_t maskValue = col;
@@ -63,7 +63,7 @@ __simd_callee__ void MultiAddVFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAdd
 template <typename T>
 __simd_vf__ void Add64VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t col, uint32_t actualCol0, uint32_t actualCol1)
 {
-    RegList<T> regList[4];
+    AddRegList<T> regList[4];
     uint32_t loopTimes = row / 4;
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset0 = idx * 4 * actualCol0;
@@ -90,7 +90,7 @@ __simd_vf__ void Add64VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_
 template <typename T>
 __simd_vf__ void Add128VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t actualCol0, uint32_t actualCol1)
 {
-    RegList<T> regList[4];
+    AddRegList<T> regList[4];
     uint32_t loopTimes = row / 2;
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset0 = idx * 2 * actualCol0;
@@ -110,7 +110,7 @@ __simd_vf__ void Add128VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
 template <typename T>
 __simd_vf__ void Add256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t actualCol0, uint32_t actualCol1)
 {
-    RegList<T> regList[4];
+    AddRegList<T> regList[4];
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     for (uint32_t idx = 0; idx < row; idx++) {
         uint64_t offset0 = idx * actualCol0;
@@ -125,7 +125,7 @@ __simd_vf__ void Add256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
 template <typename T>
 __simd_vf__ void Add512VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t actualCol0, uint32_t actualCol1)
 {
-    RegList<T> regList[8];
+    AddRegList<T> regList[8];
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     for (uint32_t idx = 0; idx < row; idx++) {
         uint64_t offset0 = idx * actualCol0;
@@ -145,7 +145,7 @@ template <bool IS_FIRST, typename T>
 __simd_vf__ void MultiAdd64VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, uint32_t row, uint32_t col,
                                   uint32_t actualCol, uint32_t repeatNum, uint64_t repeatOffset)
 {
-    RegList<T> regList[4];
+    AddRegList<T> regList[4];
     uint32_t loopTimes = row / 4;
     uint32_t maskValue = col;
     uint32_t initialRepeatIdx = IS_FIRST ? 1 : 0;
@@ -194,7 +194,7 @@ template <bool IS_FIRST, typename T>
 __simd_vf__ void MultiAdd128VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, uint32_t row, uint32_t col,
                                    uint32_t actualCol, uint32_t repeatNum, uint64_t repeatOffset)
 {
-    RegList<T> regList[4];
+    AddRegList<T> regList[4];
     uint32_t loopTimes = row / 2;
     uint32_t initialRepeatIdx = IS_FIRST ? 1 : 0;
     __ubuf__ T *initialAddr = IS_FIRST ? inputAddr : outputAddr;
@@ -231,10 +231,10 @@ __simd_vf__ void MultiAdd128VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
 }
 
 template <bool IS_FIRST, typename T>
-__simd_vf__ void MultiAdd256VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, uint32_t row, uint32_t col,
+__simd_vf__ void MultiAdd256VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, uint32_t row,
                                    uint32_t actualCol, uint32_t repeatNum, uint64_t repeatOffset)
 {
-    RegList<T> regList[4];
+    AddRegList<T> regList[4];
     uint32_t loopTimes = row;
     uint32_t initialRepeatIdx = IS_FIRST ? 1 : 0;
     __ubuf__ T *initialAddr = IS_FIRST ? inputAddr : outputAddr;
@@ -264,10 +264,10 @@ __simd_vf__ void MultiAdd256VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
 }
 
 template <bool IS_FIRST, typename T>
-__simd_vf__ void MultiAdd512VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, uint32_t row, uint32_t col,
+__simd_vf__ void MultiAdd512VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr, uint32_t row,
                                    uint32_t actualCol, uint32_t repeatNum, uint64_t repeatOffset)
 {
-    RegList<T> regList[8];
+    AddRegList<T> regList[8];
     uint32_t loopTimes = row;
     uint32_t initialRepeatIdx = IS_FIRST ? 1 : 0;
     __ubuf__ T *initialAddr = IS_FIRST ? inputAddr : outputAddr;
@@ -369,9 +369,9 @@ __aicore__ inline void MultiAddVF(const LocalTensor<T> &outputLocal, const Local
     } else if (col == 128) {
         MultiAdd128VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, col, actualCol, repeatNum, repeatOffset);
     } else if (col == 256) {
-        MultiAdd256VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, col, actualCol, repeatNum, repeatOffset);
+        MultiAdd256VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, actualCol, repeatNum, repeatOffset);
     } else if (col == 512) {
-        MultiAdd512VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, col, actualCol, repeatNum, repeatOffset);
+        MultiAdd512VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, actualCol, repeatNum, repeatOffset);
     }
 }
 
