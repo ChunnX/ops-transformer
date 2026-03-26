@@ -169,6 +169,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &tok
         cmpS2LoopCnt -= runInfo.oriKvLoopEndIdx;
     } else if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
         sparseBlockCount = constInfo.oriSparseBlockCount;
+    } else if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        sparseBlockCount = runInfo.isCmp ? constInfo.cmpSparseBlockCount : constInfo.oriSparseBlockCount;
+        cmpS2LoopCnt = runInfo.isCmp ? (cmpS2LoopCnt - runInfo.oriKvLoopEndIdx) : cmpS2LoopCnt;
     }
     int64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
@@ -178,10 +181,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &tok
         topkBS1Idx += runInfo.boIdx * constInfo.s1Size * sparseBlockCount +
             runInfo.s1oIdx * sparseBlockCount; // B, S1, N2(1), K
     }
-    int64_t curSparseBlockCount = sparseBlockCount;
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
-        curSparseBlockCount = runInfo.oriSparseBlockCount;
-    }
+    int64_t curSparseBlockCount = runInfo.isCmp ? runInfo.cmpSparseBlockCount : runInfo.oriSparseBlockCount;
+
     int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
     if (unlikely(topkKIdx >= curSparseBlockCount)) {
         token0Idx = -1;
@@ -306,11 +307,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
-        sparseIndicesGm = oriSparseIndicesGm;
-    } else {
-        sparseIndicesGm = cmpSparseIndicesGm;
-    }
     if constexpr (IS_SPLIT_G) {
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
@@ -335,12 +331,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunIn
         }
         sparseS2End = sparseS2Start + sparseCalSize;
     } else {
-        int64_t s2PerVecLoop = 2LL;
-        int64_t vecNum = 2LL;
-        int64_t s2Loops = CeilDiv(CeilDiv(runInfo.s2RealSize, vecNum), s2PerVecLoop);
-        sparseS2Start = GetSubBlockIdx() == 0 ? 0 : Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize);
-        sparseS2End = GetSubBlockIdx() == 0 ? Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize) : runInfo.s2RealSize;
-        sparseCalSize = sparseS2End - sparseS2Start;
+        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
+        sparseCalSize = GetSubBlockIdx() == 0 ? v0S2SizeFirstCore : runInfo.s2RealSize - v0S2SizeFirstCore;
+        sparseS2Start = GetSubBlockIdx() == 0 ? 0 : v0S2SizeFirstCore;
+        sparseS2End = sparseS2Start + sparseCalSize;
     }
 }
 
@@ -350,14 +344,27 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         outputL1.WaitCrossCore();
         v0ResGm.WaitCrossCore();
-        keyGm = oriKVGm;
+        if (runInfo.isCmp) {
+            keyGm = cmpKVGm;
+            sparseIndicesGm = cmpSparseIndicesGm;
+        } else {
+            keyGm = oriKVGm;
+            sparseIndicesGm = oriSparseIndicesGm;
+        }
         if constexpr (IS_PA) {
-            blockTableGm = oriBlockTableGm;
-            blockSize = constInfo.oriBlockSize;
-            maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
+            if (runInfo.isCmp) {
+                blockTableGm = cmpBlockTableGm;
+                blockSize = constInfo.cmpBlockSize;
+                maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
+            } else {
+                blockTableGm = oriBlockTableGm;
+                blockSize = constInfo.oriBlockSize;
+                maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
+            }
         }
         CalSparseCalSize(runInfo, constInfo);
         ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
@@ -396,7 +403,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (sparseCalSize == 0) {
             return;
         }
@@ -695,10 +702,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint
     if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
         oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
     }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
     }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
         if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
             cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
@@ -756,7 +763,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
         tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 24 * sizeof(KV_T)); // V0阶段每次处理24个seq, 开2 buffer
         tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (24 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
     }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         // tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
         // tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (16 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
         tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T));

@@ -23,6 +23,9 @@ import time
 import random
 from batch import sparse_attn_sharedkv_process
 
+save_pt = False
+pt_save_path = "data"
+
 # 处理所有参数组合
 param_combinations = []
 result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx')
@@ -59,6 +62,7 @@ for params in ENABLED_PARAMS:
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
         "ori_kv_topk_mode": params.get("ori_kv_topk_mode", [None]),
+        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", [None]),
     }
 
     # 生成参数名和值列表
@@ -105,6 +109,7 @@ def test_example(param_combinations):
     ori_kv_datarange = [-10, 10]
     cmp_kv_datarange = [-10, 10]
     ori_kv_topk_mode = param_combinations['ori_kv_topk_mode']
+    cmp_kv_topk_mode = param_combinations['cmp_kv_topk_mode']
     testcase_name = "case_" + str(int(time.time() * 1000000))
 
     torch_npu.npu.set_device(0)
@@ -112,10 +117,12 @@ def test_example(param_combinations):
     test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1, \
                 block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
                 ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode
+                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_attn_sharedkv_golden.gen_data(test_data)
+    if save_pt:
+        sparse_attn_sharedkv_golden.save_test_case(input_data, pt_save_path)
     npu_result, softmax_lse = sparse_attn_sharedkv_process.call_npu(input_data)
     print("npu_result.size():", npu_result.size())
 

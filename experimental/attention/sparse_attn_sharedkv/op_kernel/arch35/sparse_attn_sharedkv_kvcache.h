@@ -100,7 +100,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     int32_t gs1LoopEndIdx = 0;
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE || \
-        TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+        TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         gs1LoopEndIdx = runParam.actualS1Size; // 对于SCFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
     } else { // SWA/CFA
         // 不需要取topk, 每次计算gSize行, 循环qs次
@@ -213,7 +213,8 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm__ int32_t *cuSeqlensQAddr,
-    GlobalTensor<int32_t>& oriTopkLengthGm, bool hasOriTopkLength, RunParamStr& runParam, const ConstInfo &constInfo)
+    GlobalTensor<int32_t>& oriTopkLengthGm, bool hasOriTopkLength, GlobalTensor<int32_t>& cmpTopkLengthGm,
+    bool hasCmpTopkLength, RunParamStr& runParam, const ConstInfo &constInfo)
 {
     if (runParam.actualS2Size == 0) {
         runParam.oriKvLoopEndIdx = 0;
@@ -227,7 +228,10 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
         0, runParam.actualS2Size);
     runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
         runParam.s1RealSize, 0, runParam.actualS2Size);
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+
+    // 计算topk length
+    runParam.oriSparseBlockCount = constInfo.oriSparseBlockCount;
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (hasOriTopkLength) {
             if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
                 uint64_t actualSeqQPrefixSum = cuSeqlensQAddr[bnIndex];
@@ -237,25 +241,41 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
                 int64_t topkBS1Idx = bnIndex * constInfo.s1Size + gS1Index;
                 runParam.oriSparseBlockCount = oriTopkLengthGm.GetValue(topkBS1Idx);
             }
-        } else {
-            runParam.oriSparseBlockCount = constInfo.oriSparseBlockCount;
         }
+    }
+    runParam.cmpSparseBlockCount = constInfo.cmpSparseBlockCount;
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        if (hasCmpTopkLength) {
+            if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+                uint64_t actualSeqQPrefixSum = cuSeqlensQAddr[bnIndex];
+                int64_t topkBS1Idx = actualSeqQPrefixSum + gS1Index;
+                runParam.cmpSparseBlockCount = cmpTopkLengthGm.GetValue(topkBS1Idx);
+            } else {
+                int64_t topkBS1Idx = bnIndex * constInfo.s1Size + gS1Index;
+                runParam.cmpSparseBlockCount = cmpTopkLengthGm.GetValue(topkBS1Idx);
+            }
+        }
+    }
+    // 计算cmp部分循环次数
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SWA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+        runParam.s2CmpLineEndIdx = 0;
+        runParam.cmpKvLoopEndIdx = 0;
+    } else if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
+        runParam.s2CmpLineEndIdx = runParam.s2LineEndIdx / constInfo.cmpRatio;
+        runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
+    } else { // SCFA_TEMPLATE_MODE / ORI_CMP_SCFA_TEMPLATE_MODE
+        runParam.s2CmpLineEndIdx = Min(runParam.s2LineEndIdx / constInfo.cmpRatio, runParam.cmpSparseBlockCount); // 当前LI输出的block size只可能是1
+        runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
+    }
+
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx, runParam.oriSparseBlockCount);
         runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
     } else {
         runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
     }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SWA_TEMPLATE_MODE || \
-        TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
-        runParam.cmpKvLoopEndIdx = 0;
-        runParam.s2CmpLineEndIdx = 0;
-    } else if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
-        runParam.s2CmpLineEndIdx = runParam.s2LineEndIdx / constInfo.cmpRatio;
-        runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
-    } else { // SCFA_TEMPLATE_MODE
-        runParam.s2CmpLineEndIdx = Min(runParam.s2LineEndIdx / constInfo.cmpRatio, constInfo.cmpSparseBlockCount); // 当前LI输出的block size只可能是1
-        runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
-    }
+    
     runParam.s2LoopEndIdx = runParam.oriKvLoopEndIdx + runParam.cmpKvLoopEndIdx;
     return (runParam.s2LoopEndIdx == 0);
 }
@@ -273,6 +293,8 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
     runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
     runInfo.oriSparseBlockCount = runParam.oriSparseBlockCount;
+    runInfo.cmpSparseBlockCount = runParam.cmpSparseBlockCount;
+    runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
 }
 
 #endif  // SPARSE_ATTN_SHAREDKV_KVCACHE_H

@@ -175,7 +175,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
             this->cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
         }
         if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE || \
-            TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || IS_SPLIT_G) {
+            TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
+            TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || IS_SPLIT_G) {
             mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
@@ -571,7 +572,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     }
 
     // 加载当前轮的右矩阵到L1
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         inputRightBuf.WaitCrossCore();
         SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
         WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
@@ -678,7 +680,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
 
     inputLeftBuf.SetCrossCore();
     // bmm2才释放KV，在这里释放
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         inputRightBuf.SetCrossCore();
     } else {
         if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // orikv阶段不需要取topk, 核内同步

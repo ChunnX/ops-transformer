@@ -71,26 +71,30 @@ def call_npu(input_data):
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
     ori_topk_length = metadata_input['ori_topk_length'].npu() if metadata_input['ori_topk_length'] is not None else None
+    cmp_topk_length = metadata_input['cmp_topk_length'].npu() if metadata_input['cmp_topk_length'] is not None else None
 
     # 路由到三个算子的逻辑：
     template_idx = 0
     if K is None :
         if K1 is not None:
-            template_idx = 3
+            template_idx = 3 # ori scfa
         elif cmp_ratio is None:
             template_idx = 0  # SWA
         else:
             template_idx = 1  # CFA
     else:
-        template_idx = 2  # SCFA
+        if K1 is None:
+            template_idx = 2  # SCFA
+        else:
+            template_idx = 4 # ori and cmp scfa
 
-    if template_idx == 1 or template_idx == 2:
+    if template_idx == 1 or template_idx == 2 or template_idx == 4:
         cmp_k_in_pa_shape = cmp_k_in_pa_shape.npu()
         if cmp_block_table is not None:
             cmp_block_table = cmp_block_table.npu()
-    if template_idx == 2:
+    if template_idx == 2 or template_idx == 4:
         cmp_sparse_indices = cmp_sparse_indices.npu()
-    if template_idx == 3:
+    if template_idx == 3 or template_idx == 4:
         ori_sparse_indices = ori_sparse_indices.npu()
 
     q = q.npu()
@@ -119,7 +123,7 @@ def call_npu(input_data):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        print("npu_kv_quant_sparse_attn_sharedkv...")
+        print("npu_sparse_attn_sharedkv...")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                             ori_kv=ori_k_in_pa_shape,
                                                             ori_block_table=ori_block_table,
@@ -157,7 +161,7 @@ def call_npu(input_data):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        print("npu_kv_quant_sparse_attn_sharedkv...")
+        print("npu_sparse_attn_sharedkv...")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                             ori_kv=ori_k_in_pa_shape,
                                                             cmp_kv=cmp_k_in_pa_shape,
@@ -200,7 +204,7 @@ def call_npu(input_data):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        print("npu_kv_quant_sparse_attn_sharedkv...")
+        print("npu_sparse_attn_sharedkv...")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                                 ori_kv=ori_k_in_pa_shape,
                                                                 cmp_kv=cmp_k_in_pa_shape,
@@ -220,7 +224,7 @@ def call_npu(input_data):
                                                                 ori_win_right=ori_win_right,
                                                                 layout_q=layout_q,
                                                                 layout_kv=layout_kv)
-    else:
+    elif template_idx == 3:
         print("npu_sparse_attn_sharedkv_metadata...")
         metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
             num_heads_q=N1,
@@ -244,7 +248,7 @@ def call_npu(input_data):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        print("npu_kv_quant_sparse_attn_sharedkv...")
+        print("npu_sparse_attn_sharedkv...")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                                 ori_kv=ori_k_in_pa_shape,
                                                                 cmp_kv=cmp_k_in_pa_shape,
@@ -265,7 +269,56 @@ def call_npu(input_data):
                                                                 ori_win_left=ori_win_left,
                                                                 ori_win_right=ori_win_right,
                                                                 layout_q=layout_q,
-                                                                layout_kv=layout_kv)    
+                                                                layout_kv=layout_kv)
+    elif template_idx == 4:
+        print("npu_sparse_attn_sharedkv_metadata...")
+        metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
+            num_heads_q=N1,
+            num_heads_kv=N2,
+            head_dim=D,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_ori_kv=torch.tensor([]).npu(),
+            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            batch_size=B,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=ori_max_s2,
+            ori_topk_length=ori_topk_length,
+            cmp_topk_length=cmp_topk_length,
+            ori_topk=K1,
+            cmp_topk=K,
+            cmp_ratio=cmp_ratio,
+            ori_mask_mode=ori_mask_mode,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            has_ori_kv=ori_k_in_pa_shape != None,
+            has_cmp_kv=cmp_k_in_pa_shape != None)
+        print("npu_sparse_attn_sharedkv...")
+        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
+                                                                ori_kv=ori_k_in_pa_shape,
+                                                                cmp_kv=cmp_k_in_pa_shape,
+                                                                ori_sparse_indices=ori_sparse_indices,
+                                                                cmp_sparse_indices=cmp_sparse_indices,
+                                                                ori_block_table=ori_block_table,
+                                                                cmp_block_table=cmp_block_table,
+                                                                cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
+                                                                seqused_q=seqused_q if used_seqused_q_flag else None,
+                                                                seqused_kv=seqused_kv,
+                                                                ori_topk_length=ori_topk_length,
+                                                                cmp_topk_length=cmp_topk_length,
+                                                                sinks=sinks,
+                                                                metadata=metadata,
+                                                                softmax_scale=softmax_scale,
+                                                                cmp_ratio=cmp_ratio,
+                                                                ori_mask_mode=ori_mask_mode,
+                                                                cmp_mask_mode=cmp_mask_mode,
+                                                                ori_win_left=ori_win_left,
+                                                                ori_win_right=ori_win_right,
+                                                                layout_q=layout_q,
+                                                                layout_kv=layout_kv)
 
     torch.npu.synchronize()
     return npu_result, softmax_lse

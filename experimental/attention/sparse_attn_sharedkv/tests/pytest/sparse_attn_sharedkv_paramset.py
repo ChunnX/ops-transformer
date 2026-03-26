@@ -156,7 +156,7 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "all_scfa_g128_test_decode":{
+    "ori_scfa_g128_test_decode":{
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -180,7 +180,7 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["no"]
     },
-    "all_scfa_g128_test_prefill":{
+    "ori_scfa_g128_test_prefill":{
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -204,7 +204,7 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["full"]
     },
-    "all_scfa_g128_test_prefill_unbanlance1":{
+    "ori_scfa_g128_test_prefill_unbanlance1":{
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -228,7 +228,7 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["full"]
     },
-    "all_scfa_g128_test_prefill_unbanlance2":{
+    "ori_scfa_g128_test_prefill_unbanlance2":{
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -252,7 +252,7 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["random"]
     },
-    "all_scfa_g128_test_prefill_TND":{
+    "ori_scfa_g128_test_prefill_TND":{
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -274,7 +274,7 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["full"]
     },
-    "all_scfa_g128_test_prefill_unbanlance1_TND":{
+    "ori_scfa_g128_test_prefill_unbanlance1_TND":{
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -296,7 +296,7 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["full"]
     },
-    "all_scfa_g128_test_prefill_unbanlance2_TND":{
+    "ori_scfa_g128_test_prefill_unbanlance2_TND":{
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -318,7 +318,34 @@ TEST_PARAMS = {
         "ori_win_right": [0],
         "ori_kv_topk_mode": ["random"]
     },
+    "ori_cmp_scfa_g64_test_prefill":{
+        "layout_q": ["BSND"],
+        "layout_kv": ["BSND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.bfloat16],
+        "cmp_kv_type": [torch.bfloat16],
+        "B": [1],
+        "S1": [38],
+        "T1": [38],
+        "T2": [166],
+        "S2": [166],
+        "N1": [64],
+        "N2": [1],
+        "D": [512],
+        "K1": [128],
+        "K": [512],
+        "cu_seqlens_q": [[0, 38]],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [4],
+        "ori_mask_mode": [0],
+        "cmp_mask_mode": [0],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "ori_kv_topk_mode": ["full"],
+        "cmp_kv_topk_mode": ["full"]
+    },
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+#ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+ENABLED_PARAMS = [TEST_PARAMS["ori_cmp_scfa_g64_test_prefill"]]

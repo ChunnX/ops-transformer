@@ -53,9 +53,9 @@ public:
 private:
     __aicore__ inline void ProcessMainLoop();
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-        __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
-        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
-        __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *sinks,
+        __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
+        __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+        __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
         __gm__ uint8_t *workspace, const SparseAttnSharedkvTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
@@ -89,7 +89,9 @@ private:
     __gm__ int32_t *actualSeqKvlenAddr = nullptr;
     __gm__ int32_t *actualSeqQlenAddr = nullptr;
     GlobalTensor<int32_t> oriTopkLengthGm;
+    GlobalTensor<int32_t> cmpTopkLengthGm;
     bool hasOriTopkLength = false;
+    bool hasCmpTopkLength = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> v0ResGmBuffers;
     /* 核Index信息 */
@@ -158,7 +160,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
     this->sharedParams.isActualSeqLengthsKVNull = (sequsedKv == nullptr);
     this->constInfo.isActualLenDimsKVNull = (sequsedKv == nullptr);
     this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
-        cuSeqlensQ, sequsedQ, sequsedKv, oriTopkLength, sinks, workspace, tiling, tPipe); // gm设置
+        cuSeqlensQ, sequsedQ, sequsedKv, oriTopkLength, cmpTopkLength, sinks, workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }
 
@@ -167,7 +169,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-    __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace,
     const SparseAttnSharedkvTilingData *__restrict tiling, TPipe *tPipe)
 {
     if (cuSeqlensQ != nullptr) {
@@ -179,10 +181,17 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
     if (sequsedQ != nullptr) {
         actualSeqQlenAddr = (__gm__ int32_t *)sequsedQ;
     }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (oriTopkLength != nullptr) {
             oriTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)oriTopkLength);
             hasOriTopkLength = true;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        if (cmpTopkLength != nullptr) {
+            cmpTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)cmpTopkLength);
+            hasCmpTopkLength = true;
         }
     }
 
@@ -218,7 +227,8 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
-    if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+    if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
         int64_t totalOffset;
         if constexpr (IS_SPLIT_G) {
@@ -399,7 +409,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                     runParam, this->constInfo, gS1Index, this->cuSeqlensQAddr);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQAddr, oriTopkLengthGm,
-                        hasOriTopkLength, runParam, this->constInfo);
+                        hasOriTopkLength, cmpTopkLengthGm, hasCmpTopkLength, runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
@@ -412,7 +422,8 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+                if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
+                    TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
                     if (notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
