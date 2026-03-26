@@ -1306,7 +1306,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(COMM_EP_IDX, dstRankId) +
                                             (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
                                             dstExpertId % moeExpertNumPerRank_)) + hCommuSize_ * curExpertCnt); // 计算地址偏移
-            ProcessToken(rankGM, tokenIndex, topKIndex, expertIndex, epRankId_, expertScale);
+            ProcessToken(rankGM, tokenIndex, topKIndex, dstExpertId + sharedExpertNum_, epRankId_, expertScale);
        }
 
        for (int32_t shareIndex = 0; shareIndex < sharedExpertNum_; shareIndex++) { // 发共享专家
