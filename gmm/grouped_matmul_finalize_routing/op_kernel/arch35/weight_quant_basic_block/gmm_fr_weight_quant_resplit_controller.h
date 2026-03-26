@@ -152,7 +152,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
                 // 主块
-                SplitNByMultiCore(offsetParam, ctrlParam, tiling_->coreNum,
+                SplitNByMultiCore(offsetParam, ctrlParam, toffsetParam[0].nSize / 256,
                                   256);
                 ctrlParam.basicBlockLimit += tiling_->coreNum;
             }
