@@ -1272,8 +1272,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     #endif
 }
 
-
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendTokenToLocalServer(uint32_t firstAivId, uint32_t usedAivNum)
 {
@@ -1281,6 +1279,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t startTokenId, endTokenId, sendTokenNum;
     DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(axisK_ * sizeof(uint32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
+    DataCopyPadParams copyPadExtParams{true, 0U, 0U, 0U};
     SplitToCore(totalSendCnt, firstAivId, usedAivNum, startTokenId, endTokenId, sendTokenNum);
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return ;
