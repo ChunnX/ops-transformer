@@ -110,6 +110,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitQuantBuffer();
     __aicore__ inline void InitScatterBuffer(uint32_t serverId);
     __aicore__ inline void SendTokenToLocalServer(uint32_t firstAivId, uint32_t usedAivNum);
     __aicore__ inline void InitLocalCopyBuffer(uint32_t processNum);
