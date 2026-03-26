@@ -531,9 +531,14 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
 
 template <typename Q_T, typename KV_T>
 __aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T>& outputUb,  LocalTensor<KV_T>& inputUb,
-    LocalTensor<float>& scaleUb, uint32_t dealRowCount)
+    LocalTensor<float>& scaleUb, uint32_t dealRowCount, bool isContinuous)
 {
-    __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
+    __ubuf__ int8_t* ubSrcAddr;
+    if (isContinuous) {
+        ubSrcAddr = (__ubuf__ int8_t*)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
+    } else {
+        ubSrcAddr = (__ubuf__ int8_t*)(inputUb.GetPhyAddr());
+    }
     __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
     __ubuf__ float* ubScaleAddr = (__ubuf__ float*)(scaleUb.GetPhyAddr());
 
@@ -547,9 +552,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> a
     // srcTensor是rope(448) + nope(64) + scale + pad, dstTensor是nope(448) + rope(64)
     LocalTensor<float> floatScale = dequantScaleBuff.Get<float>();
     CastScale<Q_T, KV_T>(floatScale, srcTensor, dealRow);
-    AntiquantVFFp8D448<Q_T, KV_T>(antiKvTensorAsB16, srcTensor, floatScale, dealRow);
+    AntiquantVFFp8D448<Q_T, KV_T>(antiKvTensorAsB16, srcTensor, floatScale, dealRow, KV_QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS);
 
-    LocalTensor<Q_T> kRopeUb = srcTensor.template ReinterpretCast<Q_T>();
+    LocalTensor<Q_T> kRopeUb;
+    if constexpr (KV_QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
+        kRopeUb = srcTensor.template ReinterpretCast<Q_T>();
+    } else {
+        kRopeUb = srcTensor[448].template ReinterpretCast<Q_T>();
+    }
     LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)]; // V0单次处理16行数据
     Copy(kRopeUbNz, kRopeUb,
         constInfo.dSizeRope, // mask 处理多少列数据
