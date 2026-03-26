@@ -1437,13 +1437,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         fp32InQueue_.EnQue(invRmsGradBuf);
         LocalTensor<P> invRmsGradUb = fp32InQueue_.DeQue<P>();
 
-        PipeBarrier<PIPE_MTE2>();
-        LocalTensor<P> invRmsGradBuf = fp32InQueue_.AllocTensor<P>();
-        DataCopyPad(invRmsGradBuf, workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(bsChunkStart)], bsCopyParams,
-                    copyPadParams);
-        fp32InQueue_.EnQue(invRmsGradBuf);
-        LocalTensor<P> invRmsGradUb = fp32InQueue_.DeQue<P>();
-
         // 13-15 计算inv_rms = (-1/nD) * pow(inv_rms, 3) * inv_rms_grad (当前chunk)
         // Mul(invRmsUb, invRmsInBuf, invRmsInBuf, currentChunkSize); // inv_rms^2
         // PipeBarrier<PIPE_V>();
