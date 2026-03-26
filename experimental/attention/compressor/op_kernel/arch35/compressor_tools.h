@@ -746,20 +746,22 @@ __aicore__ inline StatisticInfo& CompressorVec1SliceIterator<COMP>::FullIterator
 
 struct Vec2SliceInfo{
     __aicore__ inline Vec2SliceInfo(){};
-    __aicore__ inline Vec2SliceInfo(uint32_t bIdx, uint32_t scIdx) : bIdx(bIdx), scIdx(scIdx) {}
+    __aicore__ inline Vec2SliceInfo(uint32_t bIdx, uint32_t scIdx) : bIdx(bIdx), scIdx(scIdx)
+    {
+    }
 
     uint32_t bIdx = 0U;
     uint32_t scIdx = 0U;
     uint32_t scNum = 0U;
-    uint32_t remainScCnt = 0U;
+    uint32_t remainScCnt = 0U;     // 当前batch剩余sc数量
     uint32_t bStartPos = 0U;
     uint32_t bSeqUsed = 0U;
     uint32_t bSeqLength = 0U;
-    uint32_t dealedScCnt = 0U;
-    uint32_t curDealScNum = 0U;
-    uint32_t bOutputScLen = 0U;
-    uint32_t padScIdx = 0U;
-    uint32_t loopDealedScCnt = 0U;
+    uint32_t dealedScCnt = 0U;     // 全局的dealedScCnt（Reset刷新）
+    uint32_t curDealScNum = 0U;    // 当前循环处理的sc数量（IteratorSlice刷新）
+    uint32_t bOutputScLen = 0U;    // BSH场景每个batch填充后的输出长度
+    uint32_t padScIdx = 0U;        // 当前sc输出位置，TH场景为全局的dealedScCnt，BSH场景则为填充后全局的索引（Reset刷新）
+    uint32_t loopDealedScCnt = 0U; // 当前迭代已处理的sc数量（Reset刷新）
 };
 
 
@@ -792,11 +794,11 @@ __aicore__ inline void CompressorVec2SliceIterator<COMP>::Reset(uint32_t bIdx, u
     sliceInfo_.bIdx = bIdx;
     sliceInfo_.scIdx = scIdx;
     sliceInfo_.dealedScCnt = dealedScCnt;
-    sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
-    sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
-    sliceInfo_.scNum = (sliceInfo_.bStartPos + sliceInfo_.bSeqUsed) / cmpRatio - sliceInfo_.bStartPos / cmpRatio;
-    sliceInfo_.remainScCnt = sliceInfo_.scNum - sliceInfo_.scIdx;
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
+        sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+        sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
+        sliceInfo_.scNum = (sliceInfo_.bStartPos + sliceInfo_.bSeqUsed) / cmpRatio - sliceInfo_.bStartPos / cmpRatio;
+        sliceInfo_.remainScCnt = sliceInfo_.scNum - sliceInfo_.scIdx;
         sliceInfo_.bOutputScLen = CeilDivT(tools_.GetSeqLength(sliceInfo_.bIdx), cmpRatio);
         sliceInfo_.padScIdx = sliceInfo_.bIdx * sliceInfo_.bOutputScLen + sliceInfo_.scIdx;
     } else {
@@ -822,25 +824,25 @@ __aicore__ inline void CompressorVec2SliceIterator<COMP>::SetNeedDealScSize(uint
 template <typename COMP>
 __aicore__ inline void CompressorVec2SliceIterator<COMP>::IteratorSlice()
 {
-    if (needDealScSize_ <= sliceInfo_.remainScCnt) {
-        sliceInfo_.scIdx += sliceInfo_.curDealScNum;
+    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         sliceInfo_.padScIdx += sliceInfo_.curDealScNum;
     } else {
-        uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+        if (needDealScSize_ <= sliceInfo_.remainScCnt) {
+            sliceInfo_.scIdx += sliceInfo_.curDealScNum;
             sliceInfo_.padScIdx += sliceInfo_.curDealScNum;
         } else {
+            uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
             sliceInfo_.padScIdx += sliceInfo_.bOutputScLen - sliceInfo_.scIdx;
+            sliceInfo_.bIdx++;
+            sliceInfo_.scIdx = 0;
+            sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+            sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
+            sliceInfo_.scNum = (sliceInfo_.bStartPos + sliceInfo_.bSeqUsed) / cmpRatio - sliceInfo_.bStartPos / cmpRatio;
         }
-        sliceInfo_.bIdx++;
-        sliceInfo_.scIdx = 0;
-        sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
-        sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
-        sliceInfo_.scNum = (sliceInfo_.bStartPos + sliceInfo_.bSeqUsed) / cmpRatio - sliceInfo_.bStartPos / cmpRatio;
+        sliceInfo_.remainScCnt = sliceInfo_.scNum - sliceInfo_.scIdx;
     }
-    sliceInfo_.remainScCnt = sliceInfo_.scNum - sliceInfo_.scIdx;
-    needDealScSize_ -= sliceInfo_.curDealScNum;
     sliceInfo_.dealedScCnt += sliceInfo_.curDealScNum;
+    needDealScSize_ -= sliceInfo_.curDealScNum;
     sliceInfo_.loopDealedScCnt += sliceInfo_.curDealScNum;
 }
 
@@ -860,7 +862,11 @@ __aicore__ inline bool CompressorVec2SliceIterator<COMP>::IsEnd()
 template <typename COMP>
 __aicore__ inline Vec2SliceInfo &CompressorVec2SliceIterator<COMP>::GetSlice()
 {
-    sliceInfo_.curDealScNum = min(sliceInfo_.remainScCnt, needDealScSize_);
+    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+        sliceInfo_.curDealScNum = needDealScSize_;
+    } else {
+        sliceInfo_.curDealScNum = min(sliceInfo_.remainScCnt, needDealScSize_);
+    }
     return sliceInfo_;
 }
 
