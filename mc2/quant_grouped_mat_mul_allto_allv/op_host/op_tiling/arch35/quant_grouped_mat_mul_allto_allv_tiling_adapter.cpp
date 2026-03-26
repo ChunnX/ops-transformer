@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "common/utils/op_mc2.h"
+#include "op_mc2.h"
 #include "mc2_log.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
 
