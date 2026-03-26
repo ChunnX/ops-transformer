@@ -589,7 +589,7 @@ def gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, n
             feat_rope_raw = ori_k_rope_bnsd[i_B, :, start_s:actual_end_s, :].contiguous()
             feat_rope_fp8 = feat_rope_raw.view(torch.float8_e4m3fn) # [N, S, 128]
 
-            feat_all = torch.concat([feat_rope_fp8, feat_nope], dim=-1) # [N, S, 576]
+            feat_all = torch.concat([feat_nope, feat_rope_fp8], dim=-1) # [N, S, 576]
 
             # 写入物理内存：前 block_size * 576 字节
             # 为了实现 block_size 连排，需要将 [N, S, 576] 转为 [N, S*576]
@@ -922,7 +922,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
             f_rope = cmp_k_rope_bnsd_npu[i_B, :, start_s:actual_end_s, :].contiguous().view(torch.float8_e4m3fn)
 
             # 拼接成 [N, S, 576]
-            feat_all = torch.concat([f_rope, f_nope], dim=-1)
+            feat_all = torch.concat([f_nope, f_rope], dim=-1)
 
             # --- B. 准备 Metadata 数据 (scale + pad) ---
             m_scale = cmp_kv_quant_param_tensor_npu[i_B, :, start_s:actual_end_s, :].view(torch.float8_e4m3fn)
