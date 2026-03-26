@@ -1350,7 +1350,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </tr>
             <tr>
                 <td rowspan="2">per-token</td>
-                <td rowspan="2">支持kv_dtype为INT8、INT4(INT32)</td>
+                <td rowspan="2">支持kv_dtype为INT8、INT4(INT32)、FLOAT8_E4M3FN</td>
                 <td>Q_S>1</td>
                 <td rowspan="2">1</td>
                 <td> shape为(1, B, S)，( B, S)。数据类型固定为FLOAT32</td>
@@ -1373,7 +1373,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <td>shape为(B, N, S)，数据类型固定为FLOAT32</td>
             </tr>
             <td>per-token模式使用page attention管理scale/offset</td>
-            <td>支持kv_dtype为INT8</td>
+            <td>支持kv_dtype为INT8、FLOAT8_E4M3FN</td>
             <td>-</td>
             <td>4</td>
             <td>shape为(blocknum, blocksize)，数据类型固定为FLOAT32</td>
@@ -1408,6 +1408,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td colspan="8">
                     <ul>
                         <li>INT4(INT32)、FLOAT4_E2M1伪量化场景不支持后量化</li>
+                        <li>FLOAT8_E4M3伪量化场景下，当keyAntiquantMode和valueAntiquantMode为1或4时不支持后量化</li>
                         <li>INT8伪量化场景下，当keyAntiquantMode=0且valueAntiquantMode=1时，query和output仅支持FP16</li>
                     </ul>
                 <td>
