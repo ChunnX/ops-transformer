@@ -245,6 +245,7 @@ public:
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
                                      uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
     __aicore__ inline void VFDoV1ProcessInvRmsGrad(__ubuf__ P *h1GradIn, __ubuf__ P *hMixIn, uint16_t dealBSSize);
+    __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &h1GradBuf, uint64_t currentDealBsNum);
     __aicore__ inline void InitCube();
     __aicore__ inline void AICProcess(GlobalTensor<P> x, GlobalTensor<P> y, GlobalTensor<P> z, uint64_t m, uint64_t n,
                                       uint64_t k);
@@ -539,7 +540,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
         ProcessV2Pipeline();
     }
 
-    if ASCEND_IS_AIV {
+    if ASCEND_IS_AIV { //把前面的计算结果累加起来
         if (GetBlockIdx() == (GetBlockNum() - 1)) {
             ProcessV3();
         }
@@ -821,27 +822,39 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     DataCopyPad(fp32InputBuf, hCombBeforeGradGm_[runBSStart * N_ * N_], dataCopyParams_, dataCopyPadParams_);
     fp32InQueue_.EnQue(fp32InputBuf);
     LocalTensor<P> hCombBeforeGradBuf = fp32InQueue_.DeQue<P>();
+    //grad_h_res结果存在buffers.hCombBufS1中
 
     // Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, hCombBeforeGradBufLen_); // A3最近修复的pre反向问题：A3跑100多次会挂死
     Muls(buffers.hCombBufS1, hCombBeforeGradBuf, 1.0f, buffers.stepLength * N_);
     PipeBarrier<PIPE_V>();
     fp32InQueue_.FreeTensor(hCombBeforeGradBuf);
+    // if (!alphaBufInitialized_) {
+    //     uint32_t xRowSumBroadCastDst[2] = {vecDealChunk_, fusionSize_};
+    //     uint32_t xRowSumBroadCastSrc[2] = {1, fusionSize_};
+    //     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    //     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    //     BroadCast<float, 2, 0>(alphaBuf_, alphaTmpBuf_, xRowSumBroadCastDst, xRowSumBroadCastSrc, buffers.brcbTmpBuf);
+    //     PipeBarrier<PIPE_V>();
+    //     alphaBufInitialized_ = true;
+    // }
 
-    if (!alphaBufInitialized_) {
-        uint32_t xRowSumBroadCastDst[2] = {vecDealChunk_, fusionSize_};
-        uint32_t xRowSumBroadCastSrc[2] = {1, fusionSize_};
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        BroadCast<float, 2, 0>(alphaBuf_, alphaTmpBuf_, xRowSumBroadCastDst, xRowSumBroadCastSrc, buffers.brcbTmpBuf);
-        PipeBarrier<PIPE_V>();
-        alphaBufInitialized_ = true;
+    // Gather(buffers.gatherFusionBuf, buffers.hFusionBuf1, gatherOffsetBuf_, uint32_t(0), buffers.gatherLength);
+    // PipeBarrier<PIPE_V>();
+
+    // Mul(h1GradBuf, buffers.gatherFusionBuf, alphaBuf_, buffers.gatherLength);
+    // PipeBarrier<PIPE_V>();
+    /*
+    todo
+    在这里使用原来的逻辑，使用vf替换，总共有三个环节，gather，mul1，mul2
+    gather，我们使用搬运来替换BroadCast的操作，分三个矩阵块搬出到gatherFusionBuf
+    mul1，gather的同时，我们在去alpha[i]，乘以每一行（256），得到h1GradBuf
+    */
+    uint32_t runBSEnd = runBSStart + vecDealChunk_;
+    if (runBSEnd > dealEndBS_) {
+        runBSEnd = dealEndBS_;
     }
-
-    Gather(buffers.gatherFusionBuf, buffers.hFusionBuf1, gatherOffsetBuf_, uint32_t(0), buffers.gatherLength);
-    PipeBarrier<PIPE_V>();
-
-    Mul(h1GradBuf, buffers.gatherFusionBuf, alphaBuf_, buffers.gatherLength);
-    PipeBarrier<PIPE_V>();
+    uint32_t currentDealBsNum = runBSEnd - runBSStart;
+    AIV02Process(buffers, h1GradBuf, currentDealBsNum);
 }
 
 template <class T, class P>
