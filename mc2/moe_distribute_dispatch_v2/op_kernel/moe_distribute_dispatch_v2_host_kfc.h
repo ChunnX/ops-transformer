@@ -1365,7 +1365,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (serverCountTensor_.GetValue(serverIndex) == 0){
             continue;
         }
-        if (serverIndex == serverNum_) {
+        if (serverIndex == serverId_) {
             SendTokenToLocalServer(firstAivId, useAivPerServer);
             continue;
         }
