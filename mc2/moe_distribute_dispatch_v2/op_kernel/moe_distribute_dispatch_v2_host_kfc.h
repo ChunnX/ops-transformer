@@ -1275,6 +1275,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendTokenToLocalServer(uint32_t firstAivId, uint32_t usedAivNum)
 {
+    LOG_INFO("[SendTokenToLocalServer] start");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
     DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(axisK_ * sizeof(uint32_t)), 0U, 0U, 0U};
@@ -1318,6 +1319,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
     }
     xInQueue_.FreeTensor<XType>(tokenData_);
+    LOG_INFO("[SendTokenToLocalServer] start");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1350,18 +1352,24 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedRemotComm_, aivUsedScatter_, 
                        startServerId, endServerId, useAivPerServer, firstAivId);
-    if (useAivPerServer == 0 || startServerId == endServerId) { // 出现serverNum比核数大的情况
+    if (useAivPerServer == 0 || startServerId >= endServerId) { // 出现serverNum比核数大的情况
         return ;
     }
+    LOG_INFO("[ScatterTokenToRemote] serverNum_",serverNum_);
+    LOG_INFO("[ScatterTokenToRemote] startServerId_",startServerId);
+    LOG_INFO("[ScatterTokenToRemote] endServerId_",endServerId);
+    LOG_INFO("[ScatterTokenToRemote] useAivPerServer_",useAivPerServer);
+    LOG_INFO("[ScatterTokenToRemote] firstAivId_",firstAivId);
     InitScatterBuffer(startServerId); // todo:
     for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
+        if (serverCountTensor_.GetValue(serverIndex) == 0){
+            continue;
+        }
         if (serverIndex == serverNum_) {
             SendTokenToLocalServer(firstAivId, useAivPerServer);
             continue;
         }
-        if (serverCountTensor_.GetValue(serverIndex) == 0){
-            continue;
-        }
+        LOG_INFO("[ScatterTokenToRemote] OUT continue");
         SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
     }
     LOG_INFO("[ScatterTokenToRemote] end");
