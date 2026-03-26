@@ -511,6 +511,16 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
                                             fagShape.t1, fagShape.t2, sumSeqQLen, sumSeqKvLen);
                 return ACLNN_ERR_PARAM_INVALID;
             }
+            // 校验EOD场景尾部是否补0
+            if (fagShape.t1 > sumSeqQLen && fagShape.t2 > sumSeqKvLen) {
+                int64_t actSeqQLenEnd = static_cast<int64_t>((*actualSeqQLenOptional)[actualSeqQLenOptional->Size() - 1]);
+                int64_t actSeqKvLenEnd = static_cast<int64_t>((*actualSeqKvLenOptional)[actualSeqKvLenOptional->Size() - 1]);
+                if (actSeqQLenEnd != 0 || actSeqKvLenEnd !=0) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
+                                            actSeqQLenEnd, actSeqKvLenEnd);
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
         }
     } else {
         fagShape.needPadDimD = false;
