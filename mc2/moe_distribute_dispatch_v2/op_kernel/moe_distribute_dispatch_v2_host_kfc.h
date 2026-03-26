@@ -110,6 +110,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitScatterBuffer(uint32_t serverId);
     __aicore__ inline void SendTokenToLocalServer(uint32_t firstAivId, uint32_t usedAivNum);
     __aicore__ inline void InitLocalCopyBuffer(uint32_t processNum);
     __aicore__ inline void CleanTokenFlag(uint32_t serverId, uint32_t startTokenId, uint32_t cleanTokenNum);
@@ -1141,7 +1142,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitScatterBuffer(uint32_t serverId)
 {
-    if (serverId == severId_) {
+    if (serverId == serverId_) {
         InitQuantBuffer<CommMode::INTRA_NODE>(); // 初始化量化参数
         tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 16K 
         tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16K
