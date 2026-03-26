@@ -1336,6 +1336,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterTokenToRemote()
 {
+    LOG_INFO("[ScatterTokenToRemote] start");
     CalServerSendCnt<true>();
     if (aivId_ < aivUsedCumSum_ + aivUsedRemotComm_) {
         SetServerFlag(); // 需要先发送Token总数，每个核负责一个server
@@ -1353,16 +1354,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         return ;
     }
     InitScatterBuffer(startServerId); // todo:
-    for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-        if (serverIndex == serverNum_) {
-            SendTokenToLocalServer(firstAivId, useAivPerServer);
-            continue;
-        }
-        if (serverCountTensor_.GetValue(serverIndex) == 0){
-            continue;
-        }
-        SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
-    }
+    // for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
+    //     if (serverIndex == serverNum_) {
+    //         SendTokenToLocalServer(firstAivId, useAivPerServer);
+    //         continue;
+    //     }
+    //     if (serverCountTensor_.GetValue(serverIndex) == 0){
+    //         continue;
+    //     }
+    //     SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
+    // }
+    LOG_INFO("[ScatterTokenToRemote] end");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1466,6 +1468,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote()
 {
+    LOG_INFO("[GatherTokenFrRemote] start");
     InitGatherTokenBuffer();
     TBuf<> serverFlagBuf;
     uint32_t startServerId, endServerId, useAivPerServer;
@@ -1496,7 +1499,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (startTokenId >= endTokenId || sendTokenNum == 0) {
             continue;   
         }
-        //LOG_INFO("[GatherTokenFrRemote] tokenCnt",tokenCnt);
+        LOG_INFO("[GatherTokenFrRemote] tokenCnt",tokenCnt);
         //LOG_INFO("[GatherTokenFrRemote] startTokenId_",startTokenId);
         //LOG_INFO("[GatherTokenFrRemote] endTokenId_",endTokenId);
         //LOG_INFO("[GatherTokenFrRemote] sendTokenNum_",sendTokenNum);
@@ -1508,6 +1511,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     xInQueue_.FreeTensor<XType>(tokenData_);
     tokenInQueue_.FreeTensor<XType>(recvTmpTensor_);
+    LOG_INFO("[GatherTokenFrRemote] end");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2509,8 +2513,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
