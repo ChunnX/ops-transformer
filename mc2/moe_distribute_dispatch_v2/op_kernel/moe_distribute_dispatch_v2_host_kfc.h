@@ -1306,7 +1306,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             uint32_t expertIndex = tokenIndex * axisK_ + topKIndex;
             uint32_t dstExpertId = expertIdsTensor_(expertIndex);
             uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
-            uint32_t expertCntIndex = (tokenIndex - startTokenId) * moeCntRowAlign_ + tokenIndex;
+            uint32_t expertCntIndex = (tokenIndex - startTokenId) * moeCntRowAlign_ + topKIndex;
             uint32_t curExpertCnt = expertOffsetCntTensor_(expertCntIndex);
             expertScale = expertScalesTensor_(topKIndex);
             GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(COMM_EP_IDX, dstRankId) +
