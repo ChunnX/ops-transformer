@@ -42,17 +42,12 @@ using namespace AscendC;
 
 namespace Catlass::Gemm::Kernel {
 
-constexpr uint16_t SYNCFLAGC2V = 9;
-constexpr uint16_t SYNCFLAGV2C = 10;
-constexpr uint16_t CROSS_CORE_FLAG_MAX_SET_COUNT = 15;
-
 template <
     class BlockMmad_,
     class BlockScheduler_,
     class ElementGroupList_,
     class BlockEpilogue1_,
-    class BlockEpilogue2_,
-    bool IS_A2
+    class BlockEpilogue2_
 >
 class DispatchFFNCombineBF16Kernel {
 public:
@@ -1055,7 +1050,7 @@ private:
         PeermemInfo(){}
 
         CATLASS_DEVICE
-        PeermemInfo(const Params & params, const HcclShmem<IS_A2> & shmem) {
+        PeermemInfo(const Params & params, const HcclShmem<false> & shmem) {
             offsetA = 0;
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
             offsetD = offsetPeerPerTokenScale + MB_SIZE;
@@ -1087,7 +1082,7 @@ private:
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
 
     Layout3D tokenPerExpertLayout;
-    HcclShmem<IS_A2> shmem;
+    HcclShmem<false> shmem;
 };
 
 } // namespace Catlass::Gemm::Kernel

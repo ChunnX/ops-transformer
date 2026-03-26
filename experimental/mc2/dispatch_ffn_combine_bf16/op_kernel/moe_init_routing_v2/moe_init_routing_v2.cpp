@@ -12,7 +12,8 @@
  * \file moe_init_routing_v2.cpp
  * \brief
  */
-
+#ifndef MOE_INIT_ROUTING_V2_HPP
+#define MOE_INIT_ROUTING_V2_HPP
 
 #ifdef __DAV_C310__
 #include "arch35/moe_v2_mrgsort_out.h"
@@ -123,3 +124,5 @@ __aicore__ inline  void moe_init_routing_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADD
     gatherPipe.Destroy();
 
 }
+
+#endif // MOE_INIT_ROUTING_V2_HPP

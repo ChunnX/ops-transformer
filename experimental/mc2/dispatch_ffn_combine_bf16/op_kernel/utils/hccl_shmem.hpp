@@ -182,7 +182,64 @@ public:
         #endif
     }
 
+    FORCE_INLINE_AICORE
+    GM_ADDR windowsOutAddr() const {
+        #ifdef HCCL_COMM
+            if constexpr(IS_A2) {
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsOut[WinContext_->rankId]);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localOutput.addr);
+                }
+            } else {
+                return nullptr;
+            }
+        #else
+            return nullptr;
+        #endif
+    }
 
+    FORCE_INLINE_AICORE
+    GM_ADDR windowsOutAddr(int32_t rankId) const {
+        #ifdef HCCL_COMM
+            if constexpr(IS_A2) {
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsOut[rankId]);
+                } else {
+                    if (rankId == WinContext_->rankId) {
+                        return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr);
+                    } else {
+                        return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr);
+                    }
+                }
+            } else {
+                return nullptr;
+            }
+        #else
+            return nullptr;
+        #endif
+    }
+
+    FORCE_INLINE_AICORE
+    GM_ADDR windowsOutAddr(int64_t offset, int32_t rankId) const {
+        #ifdef HCCL_COMM
+            if constexpr(IS_A2) {
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsOut[rankId] + offset);
+                } else {
+                    if (rankId == WinContext_->rankId) {
+                        return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr + offset);
+                    } else {
+                        return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr + offset);
+                    }
+                }
+            } else {
+                return nullptr;
+            }
+        #else
+            return nullptr;
+        #endif
+    }
 
     FORCE_INLINE_AICORE
     size_t SegmentSize() const {
