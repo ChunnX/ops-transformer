@@ -36,14 +36,14 @@
 #define DEQUANT_ARGS_CALL() \
     rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), \
     tileM0, tileN0, pValue, swizzlDirect, swizzlCount, blockSt, blockSize, \
-    blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken
+    blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
 
 #define DEQUANT_ARGS_FUN() \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
     __gm__ int32_t *workspace, GM_ADDR output,                                                            \
     uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
     uint64_t blockSt, uint64_t blockSize, uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,        \
-    Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
+    Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
 
 template <typename OutputType> 
 class DequantRunner {
@@ -133,13 +133,13 @@ public:
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
                               perTokenScale + perTokenScaleOffset, layoutPerTokenScale, workspace + dataOffset, layoutC,
-                              gmD + dataOffset, layoutC, blockSizeCoord);
+                              gmD + dataOffset, layoutC, blockSizeCoord, isInt4Type);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, workspace + dataOffset,
-                              layoutC, gmD + dataOffset, layoutC, blockSizeCoord);
+                              layoutC, gmD + dataOffset, layoutC, blockSizeCoord, isInt4Type);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + perTokenScaleOffset, layoutPerTokenScale, gmD + dataOffset, layoutC,
-                              blockSizeCoord);
+                              blockSizeCoord, isInt4Type);
             }
         }
     }
