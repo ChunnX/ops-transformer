@@ -98,6 +98,7 @@ private:
     static constexpr uint32_t EVENT_ID_SCALE_MTE1_TO_MTE2 = 5;
     static constexpr uint32_t EVENT_ID_M_TO_MTE1 = 3;
     static constexpr uint32_t EVENT_ID_MTE1_TO_M = 3;
+    static constexpr uint32_t EVENT_ID_MTE2_TO_MTE1 = 3;
     uint64_t aL1Count_;
     uint64_t aL1MaxHalfCount_;
     uint64_t mxScaleBufIdx_ = 0;
@@ -105,8 +106,6 @@ private:
 
     AscendC::TEventID cubeEventIdsMxScaleMte1ToMte2_[DOUBLE_BUFFER_NUM];
     AscendC::TEventID cubeEventIdsMte1ToMte2_[DOUBLE_BUFFER_NUM];
-    AscendC::TEventID cubeEventIdMte2ToMte1_;
-    AscendC::TEventID eventIdMToMte1_;
     GlobalTensor<xType> xGlobal_;
     GlobalTensor<biasType> biasGlobal_;
     GlobalTensor<fp8_e8m0_t> mxScaleAGlobal_;
@@ -229,7 +228,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uin
 {
     if ((kaGmOffset + offsetParam.kbL1Size) % offsetParam.kaL1Size == 0 ||
                                           kaGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
-        SetFlag<HardEvent::MTE1_MTE2>(cubeEventIdsMte1ToMte2_[aL1BufIdx_ & 1]);
+        SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_MTE2 + (aL1BufIdx_ & 1));
         aL1BufIdx_++;
     }
 }
@@ -302,8 +301,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
                                                               uint64_t kbL1RealSize, uint64_t cvLoopIdx,
                                                               const BasicBlockOffsetParam &param)
 {
-    SetFlag<HardEvent::MTE2_MTE1>(cubeEventIdMte2ToMte1_);
-    WaitFlag<HardEvent::MTE2_MTE1>(cubeEventIdMte2ToMte1_);
+    SetFlag<HardEvent::MTE2_MTE1>(EVENT_ID_MTE2_TO_MTE1);
+    WaitFlag<HardEvent::MTE2_MTE1>(EVENT_ID_MTE2_TO_MTE1);
     uint64_t aL1Offset = 0;
 
     aL1Offset = (aL1BufIdx_ & 1) * aL1DbOffset_;
@@ -337,7 +336,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
 
         uint64_t realL0k = isLastL1K ? kbL1RealSize - l1KOffset : l0CopyAndCalcParams.kL0Size;
         uint64_t loopId = l0LoopIdx_ % L0_BUF_NUM; // 等价于 l0LoopIdx_ % L0_BUF_NUM，减少scalar
-        WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + loopId);
+        WaitFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
         LoadAAndScaleL1ToL0(l0a_[loopId * L0_BUF_OFFSET_B8],
                             aL1_[aL1Offset + mL1AlignSize * ((l1KOffset + kbOffset) % param.kaL1Size)],
                             mxScaleAL1_[(mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_ +
@@ -361,7 +360,7 @@ WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
             MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
                     l0CopyAndCalcParams);
         }
-        SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + loopId);
+        SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
         l0LoopIdx_++;
     }
 }
