@@ -55,12 +55,12 @@ bool MxQuantGroupedMatmulAllToAllvTiling::IsCapable()
 {
     QuantModePair mode = GetQuantMode(context_, opName_);
     OP_TILING_CHECK(mode == QUANT_PAIR_ERROR, OP_LOGE(opName_, "Fail to get attr quant mode."), return false);
-    OP_LOGI(opName_, "mode is: %d", mode);
+    OP_LOGD(opName_, "QuantMode=%d, expected MX mode=%d", mode, QUANT_PAIR_MX);
     if (mode == QUANT_PAIR_MX) {
-        OP_LOGI(opName_, "MxQuantGroupedMatmulAllToAllvTiling MX mode capable.");
+        OP_LOGD(opName_, "MxQuantGroupedMatmulAllToAllvTiling MX mode capable.");
         return true;
     }
-    OP_LOGI(opName_, "Skip MxQuantGroupedMatmulAllToAllvTiling MX.");
+    OP_LOGD(opName_, "Skip MxQuantGroupedMatmulAllToAllvTiling, mode mismatch.");
     return false;
 }
 
@@ -348,6 +348,9 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLoca
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantDtypeConstraints()
 {
+    if (!localParams_.hasSharedMm) {
+        return ge::GRAPH_SUCCESS;
+    }
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmXDtype,
         OP_LOGE(opName_, "The input mmX Dtype should be equal to gmmX Dtype, but now, gmmX Dtype is %s, mmX is %s.",
         Ops::Base::ToString(localParams_.gmmXDtype).c_str(), Ops::Base::ToString(localParams_.mmXDtype).c_str()), return ge::GRAPH_FAILED);
@@ -418,6 +421,9 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantGmmScaleShapes(
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantMmScaleShapes()
 {
+    if(!localParams_.hasSharedMm){
+      return ge::GRAPH_SUCCESS;
+    }
     bool TransmmWeightFlag = false;
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "The context Attrs is nullptr."), return ge::GRAPH_FAILED);
