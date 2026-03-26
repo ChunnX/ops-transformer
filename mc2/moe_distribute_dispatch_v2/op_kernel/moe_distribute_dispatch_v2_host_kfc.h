@@ -110,6 +110,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void QuantCleanTensor();
     template <CommMode mode> __aicore__ inline void InitQuantBuffer();
     __aicore__ inline void InitScatterBuffer(uint32_t serverId);
     __aicore__ inline void SendTokenToLocalServer(uint32_t firstAivId, uint32_t usedAivNum);
@@ -1663,14 +1664,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendToExpert(uint32_t rcvCnt)
 {
     //LOG_INFO("[SendToExpert][moe] rcvCnt",rcvCnt);
-    #if defined(__DAV_C310__)
-        if constexpr (QuantMode > UNQUANT && ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT))) {
-            // 由于MX以及PERGROUP量化在计算scales时每次搬入256字节数据，所以在token搬入前需要对空间填0，避免引入脏数据
-            LocalTensor<uint8_t> singleByteTok = tokenData_.template ReinterpretCast<uint8_t>();
-            Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(XType)); 
-            PipeBarrier<PIPE_V>();
-        }
-    #endif
+    QuantCleanTensor();
     tokenInQueue_.EnQue(recvTmpTensor_);  
     recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
     DataCopy(tokenData_, recvTmpTensor_, hAlignSize_ / sizeof(XType));
