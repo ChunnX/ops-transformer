@@ -237,6 +237,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     n_loop = tilingData.cocTiling.nLoop;
     k_loop = tilingData.cocTiling.kLoop;
     pValue = tilingData.cocTiling.pValue;
+
     max_ub_ping_pong_size = tilingData.cocTiling.ubMoveNum / MAX_BLOCK_COUNT;
     comm_npu_split = tilingData.cocTiling.commNpuSplit;   // tiling 寻优
     comm_data_split = tilingData.cocTiling.commDataSplit; // tiling 寻优
@@ -590,8 +591,14 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
     __gm__ int32_t* workspace = needPerChannel ? reinterpret_cast<__gm__ int32_t*>(gm_accum) : nullptr;
     __gm__ YType* output = reinterpret_cast<__gm__ YType*>(cGM_);
+    
+    // 当 X1Type 为 int4_t 时，只让 subblockIdx == 1 的核参与计算
+    constexpr bool isInt4Type = std::is_same_v<X1Type, AscendC::int4b_t>;
+    if (isInt4Type && aivIdx != 1) {
+        return;
+    }
+    
     dequantRunner.Run(DEQUANT_ARGS_CALL());
-    SetAndWaitAivSync(FLAG_VALUE);
 }
 
 template <TemplateAGMMClass>
@@ -870,6 +877,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
             // dequant
  	        if (cal_idx >= MAX_BLOCK_COUNT) {
  	            Dequant(cal_idx - MAX_BLOCK_COUNT);
+                SetAndWaitAivSync(FLAG_VALUE);
  	        }
         }
 
@@ -891,3 +899,4 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
 }
 
 } // namespace AllGatherMatmulAIVModeImpl
+
