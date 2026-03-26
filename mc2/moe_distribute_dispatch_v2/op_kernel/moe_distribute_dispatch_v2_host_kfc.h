@@ -1285,6 +1285,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return ;
     }
+    LOG_INFO("[SendTokenToLocalServer] startTokenId: ", startTokenId);
+    LOG_INFO("[SendTokenToLocalServer] endTokenId: ", endTokenId);
+    LOG_INFO("[SendTokenToLocalServer] sendTokenNum: ", sendTokenNum);
+    LOG_INFO("[SendTokenToLocalServer] firstAivId: ", firstAivId);
+    LOG_INFO("[SendTokenToLocalServer] usedAivNum: ", usedAivNum);
+
     CalExpertOffset(startTokenId, endTokenId);
     SyncFunc<AscendC::HardEvent::V_S>();
     float expertScale = float(1.0);
@@ -1322,7 +1328,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
     }
     xInQueue_.FreeTensor<XType>(tokenData_);
-    LOG_INFO("[SendTokenToLocalServer] start");
+    LOG_INFO("[SendTokenToLocalServer] end");
 }
 
 template <TemplateDispatchKFCTypeClass>
