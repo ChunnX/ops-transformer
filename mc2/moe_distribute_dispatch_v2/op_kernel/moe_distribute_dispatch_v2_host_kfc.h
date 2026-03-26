@@ -1469,48 +1469,48 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote()
 {
     LOG_INFO("[GatherTokenFrRemote] start");
-    InitGatherTokenBuffer();
-    TBuf<> serverFlagBuf;
-    uint32_t startServerId, endServerId, useAivPerServer;
-    uint32_t startTokenId, endTokenId, sendTokenNum;
-    uint32_t firstAivId;
-    CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ + aivUsedRemotComm_, aivUsedGather_, 
-                       startServerId, endServerId, useAivPerServer, firstAivId);
-    if (useAivPerServer == 0 || startServerId == endServerId) { // 出现serverNum比核数大的情况 TODO：
-        return ;
-    }
-    //LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
-    //LOG_INFO("[GatherTokenFrRemote] startServerId_",startServerId);
-    //LOG_INFO("[GatherTokenFrRemote] endServerId_",endServerId);
-    //LOG_INFO("[GatherTokenFrRemote] useAivPerServer_",useAivPerServer);
-    tpipe_->InitBuffer(serverFlagBuf, UB_ALIGN);
-    //LOG_INFO("[GatherTokenFrRemote] relativeAivId_",relativeAivId);
-    //LOG_INFO("[GatherTokenFrRemote] firstAivId_",firstAivId);
-    for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-        if (serverIndex == serverId_) { // 本server不用从其他server接收token，直接跳过
-            continue;
-        }
-        uint32_t tokenCnt;
-        WaitStatusFlag(serverIndex, serverFlagBuf, tokenCnt);
-        if (tokenCnt == 0) {
-            continue;
-        }
-        SplitToCore(tokenCnt, firstAivId, useAivPerServer, startTokenId, endTokenId, sendTokenNum);
-        if (startTokenId >= endTokenId || sendTokenNum == 0) {
-            continue;   
-        }
-        LOG_INFO("[GatherTokenFrRemote] tokenCnt",tokenCnt);
-        //LOG_INFO("[GatherTokenFrRemote] startTokenId_",startTokenId);
-        //LOG_INFO("[GatherTokenFrRemote] endTokenId_",endTokenId);
-        //LOG_INFO("[GatherTokenFrRemote] sendTokenNum_",sendTokenNum);
-        Duplicate<uint32_t>(tokenRcvStatus_, 0, TOKEN_RECV_CNT_MAX);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        tokenInQueue_.EnQue(recvTmpTensor_);
-        WaitToken(sendTokenNum, serverIndex, startTokenId);
-        CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
-    }
-    xInQueue_.FreeTensor<XType>(tokenData_);
-    tokenInQueue_.FreeTensor<XType>(recvTmpTensor_);
+    // InitGatherTokenBuffer();
+    // TBuf<> serverFlagBuf;
+    // uint32_t startServerId, endServerId, useAivPerServer;
+    // uint32_t startTokenId, endTokenId, sendTokenNum;
+    // uint32_t firstAivId;
+    // CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ + aivUsedRemotComm_, aivUsedGather_, 
+    //                    startServerId, endServerId, useAivPerServer, firstAivId);
+    // if (useAivPerServer == 0 || startServerId == endServerId) { // 出现serverNum比核数大的情况 TODO：
+    //     return ;
+    // }
+    // //LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
+    // //LOG_INFO("[GatherTokenFrRemote] startServerId_",startServerId);
+    // //LOG_INFO("[GatherTokenFrRemote] endServerId_",endServerId);
+    // //LOG_INFO("[GatherTokenFrRemote] useAivPerServer_",useAivPerServer);
+    // tpipe_->InitBuffer(serverFlagBuf, UB_ALIGN);
+    // //LOG_INFO("[GatherTokenFrRemote] relativeAivId_",relativeAivId);
+    // //LOG_INFO("[GatherTokenFrRemote] firstAivId_",firstAivId);
+    // for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
+    //     if (serverIndex == serverId_) { // 本server不用从其他server接收token，直接跳过
+    //         continue;
+    //     }
+    //     uint32_t tokenCnt;
+    //     WaitStatusFlag(serverIndex, serverFlagBuf, tokenCnt);
+    //     if (tokenCnt == 0) {
+    //         continue;
+    //     }
+    //     SplitToCore(tokenCnt, firstAivId, useAivPerServer, startTokenId, endTokenId, sendTokenNum);
+    //     if (startTokenId >= endTokenId || sendTokenNum == 0) {
+    //         continue;   
+    //     }
+    //     LOG_INFO("[GatherTokenFrRemote] tokenCnt",tokenCnt);
+    //     //LOG_INFO("[GatherTokenFrRemote] startTokenId_",startTokenId);
+    //     //LOG_INFO("[GatherTokenFrRemote] endTokenId_",endTokenId);
+    //     //LOG_INFO("[GatherTokenFrRemote] sendTokenNum_",sendTokenNum);
+    //     Duplicate<uint32_t>(tokenRcvStatus_, 0, TOKEN_RECV_CNT_MAX);
+    //     SyncFunc<AscendC::HardEvent::V_S>();
+    //     tokenInQueue_.EnQue(recvTmpTensor_);
+    //     WaitToken(sendTokenNum, serverIndex, startTokenId);
+    //     CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
+    // }
+    // xInQueue_.FreeTensor<XType>(tokenData_);
+    // tokenInQueue_.FreeTensor<XType>(recvTmpTensor_);
     LOG_INFO("[GatherTokenFrRemote] end");
 }
 
@@ -2506,10 +2506,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalCumSum();
         } else {
             CalTokenSendExpertOffset();
-            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+            if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
                 //ScatterTokenToRemote();  //4 20  5
             } else {
-                //GatherTokenFrRemote();
+                GatherTokenFrRemote();
             }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
