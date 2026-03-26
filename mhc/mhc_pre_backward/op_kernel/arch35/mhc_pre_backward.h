@@ -1281,7 +1281,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         }
         PipeBarrier<PIPE_V>();
 
-        uint32_t srcReduceShape[] = {currentChunkSize, copySizeND}; // 64，64
+        // uint32_t srcReduceShape[] = {currentChunkSize, copySizeND}; // 64，64
         if (withGamma_) {
             __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf.GetPhyAddr();
             __ubuf__ P *xRsFp32BufAddr = (__ubuf__ P *)xRsFp32Buf.GetPhyAddr();
