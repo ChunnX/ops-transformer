@@ -1436,3 +1436,16 @@ mhc:
     test:
       examples: False
       ut: True
+  mhc_pre:
+    module: True
+    src:
+      - mhc/mhc_pre
+    exclude:
+      - mhc/mhc_pre/docs
+      - mhc/mhc_pre/README.md
+    ut_cov_exclude:
+      - mhc/mhc_pre/examples
+      - mhc/mhc_pre/tests
+    test:
+      examples: False
+      ut: True
