@@ -1290,9 +1290,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     float expertScale = float(1.0);
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; tokenIndex++) {
         QuantCleanTensor();
+        xInQueue_.EnQue(tokenData_);
+        tokenData_ = xInQueue_.DeQue<XType>();
         DataCopyPad(tokenData_, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
         DataCopyPad(expertScalesTensor_, expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
+        
         for (uint32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {
             uint32_t expertIndex = tokenIndex * axisK_ + topKIndex;
             uint32_t dstExpertId = expertIdsTensor_(expertIndex);
