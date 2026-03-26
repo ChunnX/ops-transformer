@@ -303,22 +303,8 @@ namespace SplitFuse {
                 int32_t stackSeqCount = 0;
 #ifdef __DAV_C220_CUBE__
                 LayoutQ layoutQTemp(rowNum, embed);
-                uint32_t kRow = strideK;
-                uint32_t kCol = blockStackNum * pagedBlockSize;
-                uint32_t vRow = blockStackNum * pagedBlockSize;
-                uint32_t vCol = strideV;
                 LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
                 LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
-                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
-                    kRow = blockStackNum * strideK;
-                    kCol = pagedBlockSize;
-                    layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
-                }
-                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
-                    vRow = pagedBlockSize;
-                    vCol = blockStackNum * strideV;
-                    layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
-                }
 #endif
                 for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
 
@@ -347,9 +333,6 @@ namespace SplitFuse {
                                 static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetK = kBOffset + kNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embed);
-                            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
-                                gmOffsetK = kBOffset + kvNIncreIdx * embed * pagedBlockSize;
-                            }
                             uint32_t sWorkspaceIncreOffset = kvNIncreIdx * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =
                                 static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
@@ -418,9 +401,6 @@ namespace SplitFuse {
                         for (uint32_t kvNIncreIdx = 0; kvNIncreIdx < kvNBlockSize; kvNIncreIdx++) {
                             uint64_t gmOffsetV = vBOffset + vNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embedV);
-                            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::zN>) {
-                                gmOffsetV = vBOffset + kvNIncreIdx * embedV * pagedBlockSize;
-                            }
                             uint64_t gmOffsetO = oBOffset + oSOffset + oNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetLse = lseBOffset + lseTokenOffset + qNStartIdx +

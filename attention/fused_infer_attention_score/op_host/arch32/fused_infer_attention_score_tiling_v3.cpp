@@ -1048,17 +1048,6 @@ bool CheckSpecConditions(const gert::TilingContext *context)
             if (isFAIDSize && blockSizeSupported) {
                 specConditionFlag = true;
             }
-        } else if (kvDimNum == 5U) {
-            int64_t tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) * 16;
-            int64_t tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) * 16;
-            int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
-            bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
-                    (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
-            bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) &&
-                    (blockSize <= MAX_BLOCK_SIZE);
-            if (isFAIDSize && blockSizeSupported) {
-                specConditionFlag = true;
-            }
         }
     }
     return specConditionFlag;

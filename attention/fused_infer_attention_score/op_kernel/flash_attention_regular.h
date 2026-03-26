@@ -512,12 +512,6 @@ namespace SplitFuse {
             uint64_t gmOffsetO = oBOffset +
                 static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
                 static_cast<uint64_t>(qNStartIdx * embedV);
-            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
-                gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
-            }
-            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
-                gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
-            }
             uint64_t gmOffsetLse = lseBOffset +
                 static_cast<uint64_t>(lseTokenOffset + qNStartIdx);
             uint64_t gmOffsetSink = qNStartIdx;
@@ -622,22 +616,8 @@ namespace SplitFuse {
 #endif
 #ifdef __DAV_C220_CUBE__
                 LayoutQ layoutQTemp(rowNum, embed);
-                uint32_t kRow = strideK;
-                uint32_t kCol = stackSeqTile;
-                uint32_t vRow = stackSeqTile;
-                uint32_t vCol = strideV;
                 LayoutK layoutKTemp(strideK, stackSeqTile);
                 LayoutV layoutVTemp(stackSeqTile, strideV);
-                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
-                    kRow = blockStackNum * strideK;
-                    kCol = pagedBlockSize;
-                    layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
-                }
-                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
-                    vRow = pagedBlockSize;
-                    vCol = blockStackNum * strideV;
-                    layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
-                }
                 blockMmadQK.resetBlockStart();
                 blockMmadPV.resetBlockStart();
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
@@ -821,9 +801,8 @@ namespace SplitFuse {
                                         isLastStackTile);
                                 } else {
                                     bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
-                                    uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
-                                    uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ? NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
-                                                                                            NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
+                                    uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
+                                    alignedKvSeqlenLimit = NpuArch::Detail::Alignment::RoundDown(alignedKvSeqlenLimit, MAX_KV_STACK_LEN);
                                     uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
                                     Arch::CrossCoreWaitFlag(qkReady);
                                     epilogueOnlineSoftmax(
@@ -834,7 +813,7 @@ namespace SplitFuse {
                                         layOutS,
                                         actualBlockShapeQK,
                                         (stackSeqCount == 0),
-                                        (stackSeqCount == noMaskStackSeqNum - 1),
+                                        ((isLastNoMaskStackTile && (kvSLoopNumTotal - kvStart != 2 || kvSIdx - kvStart == 1)) ? (stackSeqCount == noMaskStackSeqNum) : (stackSeqCount == noMaskStackSeqNum - 1)),
                                         qSBlockSize,
                                         qNBlockSize,
                                         curStackTileMod,
