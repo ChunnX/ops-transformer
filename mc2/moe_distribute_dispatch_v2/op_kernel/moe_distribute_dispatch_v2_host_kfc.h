@@ -2506,11 +2506,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalCumSum();
         } else {
             CalTokenSendExpertOffset();
-            // if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-            //     ScatterTokenToRemote();  //4 20  5
-            // } else {
-            //     GatherTokenFrRemote();
-            // }
+            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+                //ScatterTokenToRemote();  //4 20  5
+            } else {
+                GatherTokenFrRemote();
+            }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
