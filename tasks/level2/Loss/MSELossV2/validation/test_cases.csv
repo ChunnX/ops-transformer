@@ -1,0 +1,9 @@
+case_id;shape;dtype;reduction
+0;[64, 128];float16;mean
+1;[32, 256];float32;mean
+2;[16, 512];float32;sum
+3;[8, 128, 64];float16;none
+4;[128];float32;mean
+5;[48, 96];bfloat16;sum
+6;[4, 8, 16, 32];float16;none
+7;[256, 512];float32;mean
