@@ -1354,16 +1354,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         return ;
     }
     InitScatterBuffer(startServerId); // todo:
-    // for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-    //     if (serverIndex == serverNum_) {
-    //         SendTokenToLocalServer(firstAivId, useAivPerServer);
-    //         continue;
-    //     }
-    //     if (serverCountTensor_.GetValue(serverIndex) == 0){
-    //         continue;
-    //     }
-    //     SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
-    // }
+    for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
+        if (serverIndex == serverNum_) {
+            SendTokenToLocalServer(firstAivId, useAivPerServer);
+            continue;
+        }
+        if (serverCountTensor_.GetValue(serverIndex) == 0){
+            continue;
+        }
+        SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
+    }
     LOG_INFO("[ScatterTokenToRemote] end");
 }
 
@@ -2508,7 +2508,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         } else {
             CalTokenSendExpertOffset();
             if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
-                //ScatterTokenToRemote();  //4 20  5
+                ScatterTokenToRemote();  //4 20  5
             } else {
                 GatherTokenFrRemote();
             }
