@@ -2268,8 +2268,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count ++;
         if(count > 1000000) {
-            //LOG_INFO("WaitAndFormatOutput error count");
-            //break;
+            LOG_INFO("WaitAndFormatOutput error count");
+            break;
         }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
