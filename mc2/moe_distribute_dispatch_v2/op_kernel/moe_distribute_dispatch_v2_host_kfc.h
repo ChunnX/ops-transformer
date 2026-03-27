@@ -964,7 +964,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
 template <TemplateDispatchKFCTypeClass>
 template <typename T>
 __aicore__ inline void
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor
+MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor,
                                                                        GM_ADDR rankGM, uint32_t blockCnt)
 {
     DataCopyParams insertDataParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U, INSERT_DATA_STRIDE};
