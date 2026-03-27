@@ -1681,7 +1681,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     xInQueue_.EnQue(tokenData_);
     tokenData_ = xInQueue_.DeQue<XType>();
     xTempQueue_.EnQue(insertFlagTensor_);
-    insertFlagTensor_ = xTempQueue_.DeQue<XType>();
+    insertFlagTensor_ = xTempQueue_.DeQue<ExpandXOutType>();
     if constexpr (QuantMode > UNQUANT) {
         xOutTensor_ = xOutQueue_.AllocTensor<ExpandXOutType>();
         quantInst_.QuantProcess(xOutTensor_, tokenData_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
