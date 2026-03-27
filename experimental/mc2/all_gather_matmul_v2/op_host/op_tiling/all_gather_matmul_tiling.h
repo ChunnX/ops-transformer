@@ -19,7 +19,7 @@
 #pragma once
 #include "all_gather_matmul_tiling_base.h"
 #include "register/tilingdata_base.h"
-#include "mc2_matmul_tiling_cfg.h"
+#include "experimental/mc2/common/op_host/op_tiling/mc2_matmul_tiling_cfg.h"
 #include "../../op_kernel/all_gather_matmul_tiling.h"
 
 namespace optiling {
