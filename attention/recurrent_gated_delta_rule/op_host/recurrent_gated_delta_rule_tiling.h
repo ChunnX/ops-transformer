@@ -12,8 +12,8 @@
  * \file recurrent_gated_delta_rule_tiling.h
  * \brief
  */
-#ifndef __OP_HOST_RECURRENT_GETED_DELTA_RULE_TILING_H__
-#define __OP_HOST_RECURRENT_GETED_DELTA_RULE_TILING_H__
+#ifndef RECURRENT_GATED_DELTA_RULE_TILING_H
+#define RECURRENT_GATED_DELTA_RULE_TILING_H
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
