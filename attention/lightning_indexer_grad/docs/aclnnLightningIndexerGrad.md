@@ -9,7 +9,6 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。
@@ -282,7 +281,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -317,7 +315,6 @@ aclnnStatus aclnnLightningIndexerGrad(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnLightningIndexerGrad
 
@@ -362,7 +359,6 @@ aclnnStatus aclnnLightningIndexerGrad(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -378,7 +374,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   - S2（Seq-LengthK）：取值范围为topK\~128K。
   - D（Head-Dim）：取值为128。
   - TopK：取值为2048
-
 
 ## 调用示例
 

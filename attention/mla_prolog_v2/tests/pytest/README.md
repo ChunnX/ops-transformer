@@ -12,6 +12,7 @@ pytest/
 ## 功能说明
 
 基于pytest测试框架，实现MlaPrologV2算子的功能验证：
+
 - **CPU侧**：复现算子功能用以生成golden数据
 - **NPU侧**：通过torch_npu进行算子直调获取实际数据， 通过torchair入图暂不支持
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
@@ -54,17 +55,21 @@ pytest/
 在pytest文件夹路径下执行：
 
 ### 运行方式：运行泛化测试用例
+
 单算子直调+图模式
+
 ```bash
 python3 -m pytest -rA -s test.py
 ```
 
 单算子直调
+
 ```bash
 python3 -m pytest -rA -s test.py -v -m ci
 ```
 
 图模式
+
 ```bash
 python3 -m pytest -rA -s test.py -v -m graph
 ```

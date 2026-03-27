@@ -119,6 +119,7 @@ if (ret == ACLNN_SUCCESS) {
     aclrtFree(workspace);
 }
 ```
+
 ## 稀疏模式说明
 
 ### BlockSparseMask稀疏pattern

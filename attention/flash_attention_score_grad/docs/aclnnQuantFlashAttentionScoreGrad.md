@@ -57,8 +57,6 @@
   dK=\frac{(\hat{(dS)}^T*\hat{Q})}{\sqrt{d}} * (dS_{ds} * dS_q)
   $$
   
-    
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantFlashAttentionScoreGradGetWorkspace”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScoreGrad”接口执行计算。
@@ -80,7 +78,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspace(
   const aclTensor   *dsScale, 
   const aclTensor   *pScale,
   double             scaleValueOptional, 
-  int64_t 			 preTokensOptional,
+  int64_t 			     preTokensOptional,
   int64_t            nextTokensOptional,
   int64_t            headNum, 
   char              *inputLayout,
@@ -391,7 +389,6 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tr>
   </tbody>
   </table>
-  
   
 - **返回值：**
 

@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。
@@ -278,7 +277,6 @@ aclnnStatus aclnnNsaSelectedAttention(
     </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -313,7 +311,6 @@ aclnnStatus aclnnNsaSelectedAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnNsaSelectedAttention
 
@@ -358,7 +355,6 @@ aclnnStatus aclnnNsaSelectedAttention(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -382,7 +378,6 @@ aclnnStatus aclnnNsaSelectedAttention(
   - G（Group）：取值范围为1\~32。
   - S（Seq-Length）：取值范围为1\~128K。同时需要满足S_kv >= selectedBlockSize * selectedBlockCount，且S_kv长度为selectedBlockSize的整数倍。
   - D（Head-Dim）：D_qk=192，D_v=128。
-
 
 ## 调用示例
 

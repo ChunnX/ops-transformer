@@ -13,7 +13,6 @@
 
 ## 功能说明
 
-
 - 算子功能：Attention和FFN分离部署场景下，Attention侧数据扫描算子。该算子接收来自FFNToAttention算子的输出数据，并对数据进行逐步扫描，确保数据准备就绪。
 
   **该算子不建议单独使用，建议与FFNToAttention和AttentionWorkerCombine算子配合使用，形成完整的工作流。**
@@ -50,7 +49,6 @@ $$
 $$
 
 备注：micro_batch_size、selected_expert_num、run_flag、micro_batch_id是入参ScheduleContext结构体的参数，该结构体信息在调用示例中进行展示说明。
-
 
 ## 参数说明
 
@@ -112,6 +110,7 @@ $$
   </table>
 
 ## 约束说明
+
 无。
 
 ## 调用说明
