@@ -1637,12 +1637,12 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             recvTmpTensor_ = tokenInQueue_.DeQue<XType>();                                            
             ReadDataFromWindows<XType>(dataAddr, processTokenBlock, recvTmpTensor_);
             //CopyInAndOut(serverIdx, dstPosition, processTokenNumPerBatch);
-            //LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", dstPosition);
+            LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", dstPosition);
             SendToExpert(dstPosition);
             tokenRcvStatus_(rcvStatusIndex) = 1;
             rcvTokenSum++;
             if (rcvTokenSum == tokenCnt) {
-                //LOG_INFO("[BATCHWRITE][WaitToken] finishNum:");
+                LOG_INFO("[BATCHWRITE][WaitToken] finishNum:");
                 break;
             }
             continue;
