@@ -14,9 +14,9 @@
  */
 #include "aclnn_moe_distribute_combine_setup.h"
 #include <algorithm>
-#include "common/utils/op_mc2.h"
-#include "common/op_host/op_api/matmul_util.h"
-#include "common/utils/op_mc2_def.h"
+#include "op_mc2.h"
+// #include "common/op_host/op_api/matmul_util.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
@@ -60,10 +60,10 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-static inline int64_t AlignUp(int64_t x, int64_t base)
+static inline int64_t Align(int64_t x, int64_t base)
 {
     if (base == 0) {
-        OP_LOGD("AlignUp: base cannot be zero");
+        OP_LOGD("Align: base cannot be zero");
         return 0;
     }
     return ((x + base - 1) / base) * base;
@@ -141,8 +141,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
 {
     OP_LOGD("aclnnMoeDistributeCombineSetupGetWorkspaceSize start.");
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch. Only support %d, now get %d.", NpuArch::DAV_3510,
-                GetCurrentPlatformInfo().GetCurNpuArch());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -191,7 +190,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     }
 
     tokenMsgSize =
-        static_cast<uint64_t>(AlignUp(AlignUp(h, ALIGN_32) + AlignUp(h, ALIGN_8) / ALIGN_8 * sizeof(float), ALIGN_512));
+        static_cast<uint64_t>(Align(Align(h, ALIGN_32) + Align(h, ALIGN_8) / ALIGN_8 * sizeof(float), ALIGN_512));
     commCmdInfoOutSize = static_cast<uint64_t>((a + epWorldSize) * COMM_CMD_INFO_BASE);
     return ACLNN_SUCCESS;
 }
