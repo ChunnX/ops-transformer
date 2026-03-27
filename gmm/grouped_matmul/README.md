@@ -235,6 +235,19 @@
   - 输入参数biasOptional不支持BFLOAT16。
   - 输入参数scaleOptional不支持INT64类型。
 
+- Kirin X90/Kirin 9030 处理器系列产品:
+  - x 数据类型仅支持 FLOAT16
+  - weight 数据类型仅支持 FLOAT16
+  - bias 数据类型仅支持 FLOAT16
+  - scale 数据类型仅支持 UINT64
+  - offset 数据类型仅支持 FLOAT
+  - antiquant_scale 数据类型仅支持 FLOAT16
+  - antiquant_offset 数据类型仅支持 FLOAT16
+  - group_list 数据类型仅支持 INT64
+  - per_token_scale 数据类型仅支持 FLOAT16
+  - y 数据类型仅支持 FLOAT16
+
+
 ## 约束说明
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 输入数据类型和格式如下说明（1.除weight外，其余格式都为ND；2.groupList是否传值与使用场景有关，具体请参考<a href="#groupType-constraints">groupType支持场景</a>约束）：
