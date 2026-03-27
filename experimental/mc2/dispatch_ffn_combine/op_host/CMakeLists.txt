@@ -27,6 +27,7 @@ endif()
 list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_SOURCE_DIR}/experimental/third_party/catlass/include)
 list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_CURRENT_SOURCE_DIR})
 list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel)
+list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel)
 
 
 # Copy moe_distribute_base.h to op_kernel/utils and rename HcclOpResParam to HcclOpResParamCustom
