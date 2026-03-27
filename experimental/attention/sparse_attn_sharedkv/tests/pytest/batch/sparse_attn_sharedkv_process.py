@@ -290,6 +290,7 @@ def call_npu(input_data):
             cmp_topk=K,
             cmp_ratio=cmp_ratio,
             ori_mask_mode=ori_mask_mode,
+            cmp_mask_mode=cmp_mask_mode,
             ori_win_left=ori_win_left,
             ori_win_right=ori_win_right,
             layout_q=layout_q,

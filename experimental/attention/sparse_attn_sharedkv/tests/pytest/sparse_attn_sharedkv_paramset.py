@@ -347,5 +347,4 @@ TEST_PARAMS = {
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-#ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
-ENABLED_PARAMS = [TEST_PARAMS["ori_cmp_scfa_g64_test_prefill"]]
+ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
