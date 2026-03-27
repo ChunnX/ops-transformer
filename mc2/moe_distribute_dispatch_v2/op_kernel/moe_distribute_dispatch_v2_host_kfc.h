@@ -1403,10 +1403,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (serverCountTensor_.GetValue(serverIndex) == 0){
             continue;
         }
-        if (serverIndex == serverId_) {
-            SendTokenToLocalServer(firstAivId, useAivPerServer);
-            continue;
-        }
+        // if (serverIndex == serverId_) {
+        //     SendTokenToLocalServer(firstAivId, useAivPerServer);
+        //     continue;
+        // }
         LOG_INFO("[ScatterTokenToRemote] OUT continue");
         SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
     }
@@ -1422,19 +1422,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (useAivPerServer > 0) { // 一个server多个核处理
         uint32_t relativeAivId = aivId_ - startAivId; // 相对Id
         startServerId = relativeAivId / useAivPerServer; // 当前核需要处理的
-        endServerId = startServerId + 1; 
+        endServerId = startServerId + 1;
+        firstAivId = startAivId + startServerId * useAivPerServer + remainderAivNum;
         if (startServerId < remainderAivNum) { // 如果有剩余的核
             useAivPerServer += 1; // 前面的server多分一个核
+            firstAivId = startAivId + startServerId * useAivPerServer;
         }
     } else { // 一般不会出现serverNum比核数大的情况
         useAivPerServer = 0;
         startServerId = 0;
         endServerId = 0;
-    }
-    if ( startServerId == serverNum_ -1) {
-        firstAivId = aivNum_ - aivUsedGather_ - useAivPerServer;
-    } else {
-        firstAivId  = startServerId * useAivPerServer + (aivUsedCumSum_  + aivUsedRemotComm_);
     }
 }
 
@@ -1536,9 +1533,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LOG_INFO("[GatherTokenFrRemote] relativeAivId_",relativeAivId);
     //LOG_INFO("[GatherTokenFrRemote] firstAivId_",firstAivId);
     for (uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-        if (serverIndex == serverId_) { // 本server不用从其他server接收token，直接跳过
-            continue;
-        }
+        // if (serverIndex == serverId_) { // 本server不用从其他server接收token，直接跳过
+        //     continue;
+        // }
         uint32_t tokenCnt;
         WaitStatusFlag(serverIndex, serverFlagBuf, tokenCnt);
         if (tokenCnt == 0) {
