@@ -77,6 +77,8 @@ constexpr uint32_t SIZE_ALIGN_256 = 256U;
 constexpr uint32_t TOKEN_RECV_CNT_MAX = 512U;
 constexpr uint32_t SERVER_CNT_OFFSET = 0U;
 constexpr uint32_t INSERT_DATA_STRIDE = 1U;
+constexpr uint32_t COMM_COPY_BLOCK = 15U;  // 480 / 32 =15
+constexpr uint32_t FLAG_COPY_BLOCK = 1U;  // 32 / 32 =1
 constexpr uint32_t INSERT_FLAG_STRIDE = 15U; // 480 / 32 =15
 constexpr uint32_t COMM_FLAG_COPY_STRIDE = 508; // WIN_ADDR_ALIGN - sizeof(float32_t)copy flag的间隔
 constexpr uint32_t EXPERT_CNT_FLAG_SPACE = 0; // 专家结果flag全部顺序存放
@@ -967,8 +969,8 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor,
                                                                        GM_ADDR rankGM, uint32_t blockCnt)
 {
-    DataCopyParams insertDataParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U, INSERT_DATA_STRIDE};
-    DataCopyParams insertFlagParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U, INSERT_FLAG_STRIDE};
+    DataCopyParams insertDataParams = {static_cast<uint16_t>(blockCnt), COMM_COPY_BLOCK, 0U, INSERT_DATA_STRIDE};
+    DataCopyParams insertFlagParams = {static_cast<uint16_t>(blockCnt), FLAG_COPY_BLOCK, 0U, INSERT_FLAG_STRIDE};
     LocalTensor<uint32_t> xFlagTensor = xTempTensor.template ReinterpretCast<uint32_t>();
     DataCopy(xTempTensor, xOutTensor, insertDataParams);
     DataCopy(xFlagTensor, commFlagTensor_, insertFlagParams);
