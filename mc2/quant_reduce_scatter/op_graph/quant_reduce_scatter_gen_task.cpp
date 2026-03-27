@@ -16,25 +16,14 @@
 #include <platform/platform_info.h>
 #include "common/utils/op_mc2.h"
  
-#ifdef BUILD_OPEN_PROJECT
 #include "register/op_impl_registry.h"
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
 #include "op_graph/mc2_moe_gen_task_ops_utils.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
-#else
-#include "ops_error.h"
-#include "register/op_ext_gentask_registry.h"
-#include "register/op_ct_impl_registry.h"
-#include "op_graph/mc2_gen_task_utils.h"
-#include "mc2_gen_task_moe.h"
-#include "op_graph/mc2_a5_gen_task_utils.h"
-#endif
 
 namespace ops {
-
-#ifdef BUILD_OPEN_PROJECT
 
 static ge::Status QuantReduceScatterCalcOpParam(gert::ExeResGenerationContext *context)
 {
@@ -61,38 +50,4 @@ static ge::Status QuantReduceScatterGenTask(const gert::ExeResGenerationContext 
 IMPL_OP(QuantReduceScatter)
     .CalcOpParam(QuantReduceScatterCalcOpParam)
     .GenerateTask(QuantReduceScatterGenTask);
-
-#else
-
-static ge::Status QuantReduceScatterCalcOpParam(gert::ExeResGenerationContext *context)
-{
-    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 MTE CalcParam in QuantReduceScatter");
-        return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "mte server", "mte_stream");
-    }
-    const ge::AscendString name = "aicpu kfc server";
-    const ge::AscendString reuseKey = "kfc_stream";
-    return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, name, reuseKey);
-}
-
-static ge::Status QuantReduceScatterGenTask(const gert::ExeResGenerationContext *context,
-                                         std::vector<std::vector<uint8_t>> &tasks)
-{
-    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do MTE general GenTask in QuantReduceScatter");
-        // 这里调用moe的接口
-        return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallbackV2);
-    }
-    OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask in QuantReduceScatter");
-    return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2A5GenTaskUtils::Mc2GenTaskCallBack910A5);
-}
-
-IMPL_OP_CT(QuantReduceScatter)
-    .CalcOpParam(QuantReduceScatterCalcOpParam)
-    .GenerateTask(QuantReduceScatterGenTask);
-
-REGISTER_EXT_TASK_TYPE(QuantReduceScatter, fe::ExtTaskType::kAicoreTask);
-
-#endif
-
 } // namespace ops
