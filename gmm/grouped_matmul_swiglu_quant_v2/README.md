@@ -12,6 +12,7 @@
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
+
 - 算子功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
 - 计算公式：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -178,6 +179,7 @@
             | FLOAT8_E4M3FN |  8   |
             |  FLOAT8_E5M2  |  15  |
             |  FLOAT4_E2M1  |  2   |
+
           - $blocksize$：指每次量化的元素个数，仅支持32。
     </details>
 
@@ -350,7 +352,9 @@
     - outputScale支持数据类型FLOAT8_E8M0，shape支持3维，形如(M, ceil((N / 2) / 64), 2)。
 
 ## 约束说明
+
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
     - A8W8/A8W4量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
         <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
@@ -392,7 +396,6 @@
 
       - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
       - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - MX量化场景下需满足以下约束条件：

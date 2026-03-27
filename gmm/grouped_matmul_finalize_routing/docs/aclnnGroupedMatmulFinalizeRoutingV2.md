@@ -55,7 +55,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
     aclrtStream    stream)
 ```
 
-
 ## aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize
 
 - **参数说明**
@@ -387,12 +386,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
   |------|------|-------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
   | INT8 | INT4 | INT64 | FLOAT32 | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
+
     - 在该场景中，scaleOptional代表per-channel和per-group离线融合的结果。
     - 在该场景中，biasOptional代表离线计算的辅助结果，值要求为$8 \times w \times scaleOptional$，并在第一维累加。
     - 该场景支持对称量化和非对称量化。在对称量化时，offsetOptional需要设置为空；在非对称量化时，offsetOptional代表离线计算的辅助结果，即为$antiquantOffsetOptional \times   scaleOptional$的结果。
     - 在该场景中，antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
   ```Cpp

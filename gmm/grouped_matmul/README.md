@@ -13,12 +13,12 @@
 
 ## 功能说明
 
--   算子功能：实现分组矩阵乘计算。如$y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中g为分组个数。当前支持m轴和k轴分组，对应的功能为：
+- 算子功能：实现分组矩阵乘计算。如$y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中g为分组个数。当前支持m轴和k轴分组，对应的功能为：
 
     - m轴分组：$k_i$、$n_i$各组相同，$m_i$可以不相同。
     - k轴分组：$m_i$、$n_i$各组相同，$k_i$可以不相同。
 
--   计算公式：
+- 计算公式：
     - **非量化场景：**
     $$
      y_i=x_i\times weight_i + bias_i
@@ -66,8 +66,8 @@
       y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
     $$
 
-
 ## 参数说明
+
 <table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
@@ -222,7 +222,6 @@
   </tbody>
 </table>
 
-
 - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
 
   - 上表数据类型列中的角标“1”代表该系列不支持的数据类型。
@@ -249,6 +248,7 @@
 
 
 ## 约束说明
+
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 输入数据类型和格式如下说明（1.除weight外，其余格式都为ND；2.groupList是否传值与使用场景有关，具体请参考<a href="#groupType-constraints">groupType支持场景</a>约束）：
 
