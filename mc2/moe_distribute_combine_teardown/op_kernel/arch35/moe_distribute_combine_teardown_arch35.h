@@ -43,8 +43,6 @@ class MoeDistributeCombineTeardown {
     constexpr static uint64_t STATE_OFFSET = 512U;       // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;            // UB按32字节对齐
-    constexpr static uint64_t WIN_STATE_OFFSET = 350UL * 1024;
-    constexpr static uint64_t STATE_WIN_OFFSET = 950UL * 1024;
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
     constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
@@ -68,13 +66,13 @@ private:
 
     __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
-        return (GM_ADDR)(hcclContext_->windowsIn[rankId]) + winDataSizeOffset_ +
+        return (GM_ADDR)(hcclContext_->windowsIn[rankId]) + STATE_SIZE + winDataSizeOffset_ +
                expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
     }
 
     __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(hcclContext_->windowsOut[rankId]) + COMBINE_STATE_OFFSET +
+        return (GM_ADDR)(hcclContext_->windowsIn[rankId]) + COMBINE_STATE_OFFSET +
                WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
     }
 
@@ -140,7 +138,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
     // 在teardown内进行状态切换，到setup内时，state即目标flag
     GlobalTensor<int32_t> selfDataStatusTensor;
-    GM_ADDR statusDataSpaceGm = (GM_ADDR)hcclContext_->windowsOut[moeDistributeCombineTeardownInfo_->epRankId];
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)hcclContext_->windowsIn[moeDistributeCombineTeardownInfo_->epRankId];
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
                                                             STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
