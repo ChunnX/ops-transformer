@@ -141,7 +141,7 @@ private:
     __aicore__ inline void WaitDispatchClearStatus();
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t startTokenIndex, uint32_t tokenIndex);
     template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
-    template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor
+    template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor,
                                                                        GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SingleTokenProcess(uint32_t startTokenIndex, uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
     __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId);
