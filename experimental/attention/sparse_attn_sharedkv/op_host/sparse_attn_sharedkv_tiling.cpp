@@ -583,6 +583,7 @@ ge::graphStatus SASInfoParser::GetS2SizeForPageAttention()
         return ge::GRAPH_FAILED;
     }
     s2Size_ = oriMaxBlockNumPerBatch_ * oriBlockSize_;
+    cmpS2Size_ = cmpMaxBlockNumPerBatch_ * cmpBlockSize_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -590,9 +591,11 @@ ge::graphStatus SASInfoParser::GetS2Size()
 {
     if (kvLayout_ == SASLayout::TND) {
         s2Size_ = GetAxisNum(oriKvShape_, SASAxis::T, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, SASAxis::T, kvLayout_);
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == SASLayout::BSND) {
         s2Size_ = GetAxisNum(oriKvShape_, SASAxis::S, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, SASAxis::S, kvLayout_);
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == SASLayout::PA_BNBD) {
         // 获取S2基准值:PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
@@ -699,6 +702,7 @@ void SASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
     sasInfo.n2Size = n2Size_;
     sasInfo.s1Size = s1Size_;
     sasInfo.s2Size = s2Size_;
+    sasInfo.cmpS2Size = cmpS2Size_;
     sasInfo.gSize = gSize_;
     sasInfo.qHeadDim = qHeadDim_;
     sasInfo.oriKvHeadDim = oriKvHeadDim_;
@@ -799,6 +803,7 @@ void SASTilingCheck::Init()
     n2Size_ = sasInfo_.n2Size;
     s1Size_ = sasInfo_.s1Size;
     s2Size_ = sasInfo_.s2Size;
+    cmpS2Size_ = sasInfo_.cmpS2Size;
     gSize_ = sasInfo_.gSize;
     qHeadDim_ = sasInfo_.qHeadDim;
     oriKvHeadDim_ = sasInfo_.oriKvHeadDim;
@@ -1510,6 +1515,7 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
 
     tilingData_.cmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
     tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
+    tilingData_.cmpParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.cmpParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.cmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
 

@@ -265,6 +265,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Comp
     }
     constInfo.n2Size = sharedParams.n2Size;
     constInfo.s2Size = sharedParams.s2Size;
+    constInfo.cmpS2Size = sharedParams.cmpS2Size;
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeVInput = sharedParams.dSizeVInput;
     constInfo.dSizeRope = sharedParams.dSizeRope;
