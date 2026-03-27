@@ -11,10 +11,6 @@
 add_op_to_compiled_list()
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    return()
-endif()
-
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         recurrent_gated_delta_rule_def.cpp
