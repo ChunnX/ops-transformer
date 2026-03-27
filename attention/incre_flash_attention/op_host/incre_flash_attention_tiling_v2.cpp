@@ -1847,7 +1847,10 @@ ge::graphStatus IFATilingV2::ProcessAttenMask() {
   if (isPFAFlag_) {
     return ge::GRAPH_SUCCESS;
   }
-
+  OP_CHECK_IF((sparseMode_ != SPARSE_MODE_NO_MASK),
+    OP_LOGE(ifaContext_->opName, "When S of query equal to 1, sparseMode only support 0(defaultMask),"
+            "but got %u.", sparseMode_),
+            return ge::GRAPH_FAILED);
   auto maskShape = ifaContext_->attenMask.tensor;  // input shape = 4
   if (maskShape == nullptr) {
     attenMaskFlag_ = false;
@@ -2591,10 +2594,18 @@ ge::graphStatus IFATilingV2::CheckAntiQuantParam(const int64_t antiquantMode, co
   gert::Shape expectedShape1 = gert::Shape({1});
   if (antiquantMode == PER_CHANNEL_MODE) {
     // per-tensor
-    OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
-                OP_LOGE(ifaContext_->opName,
-                        "In per-tensor mode, the input key/value type should be int8, but now is %s.", DataTypeToString(inputKvType_).c_str()),
-                return ge::GRAPH_FAILED);
+    if (inputKvType_ == ge::DT_INT4 || inputKvType_ == ge::DT_INT32) {
+      OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
+                  OP_LOGE(ifaContext_->opName,
+                          "In per-tensor mode, the data type of key/value should be int8, but now is INT4/INT32."),
+                  return ge::GRAPH_FAILED);
+    } else {
+      OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
+                  OP_LOGE(ifaContext_->opName,
+                          "In per-tensor mode, the data type of key/value should be int8, but now is %s.",
+                          DataTypeToString(inputKvType_).c_str()),
+                  return ge::GRAPH_FAILED);
+    }
   }
   return ge::GRAPH_SUCCESS;
 }
