@@ -74,7 +74,7 @@ constexpr uint32_t USED_AIV_NUMS = 40U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr uint32_t SDMA_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr uint32_t COMM_CMD_INFO_SIZE = 16U;
-constexpr int64_t MIN_AVAILABLE_BUFF_SIZE = 2;
+constexpr uint64_t MIN_AVAILABLE_BUFF_SIZE = 2;
 constexpr int64_t HCCL_BUFFER_SIZE = 44;
 } // namespace
 namespace MC2Tiling {
@@ -456,7 +456,7 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
 
     if (tilingData_->moeDistributeCombineTeardownInfo.hasSharedExpertX) {
         auto sharedExpertXStorageShape =
-            context_->GetOptionalInputShape(SHARED_EXPERT_X_INDEX); // Bs, H 或 a, b, H (a * b = Bs)
+            context_->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);                 // Bs, H 或 a, b, H (a * b = Bs)
         if (sharedExpertXStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) { // Bs, H
             OP_TILING_CHECK(sharedExpertXStorageShape->GetStorageShape().GetDim(0) != Bs,
                             OP_LOGE(nodeName_, "sharedExpertX's dim0[%ld] should be equal to Bs[%ld]",
@@ -610,7 +610,7 @@ void MoeDistributeCombineTeardownTilingBase::SetTilingKey()
 
 ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckHcclBuffsize()
 {
-    const int64_t hcclBuffSize = static_cast<int64_t>(mc2tiling::Mc2TilingUtils::GetMaxWindowSize());
+    const uint64_t hcclBuffSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
     OP_TILING_CHECK(hcclBuffSize < MIN_AVAILABLE_BUFF_SIZE,
                     OP_LOGE(nodeName_, "HCCL_BUFFSIZE[%ld] is less than [%ld]", hcclBuffSize, MIN_AVAILABLE_BUFF_SIZE),
                     return ge::GRAPH_FAILED);
@@ -633,13 +633,15 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckHcclBuffsize()
                     OP_LOGE(nodeName_, "HCCL_BUFFSIZE[%ld] is less than [%ld]", hcclBuffSize, tempBuffSize),
                     return ge::GRAPH_FAILED);
 
+    tilingData_->moeDistributeCombineTeardownInfo.totalWinSize = hcclBuffSize;
+
     return ge::GRAPH_SUCCESS;
 }
 
 void MoeDistributeCombineTeardownTilingBase::SetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    uint32_t aivNum = USED_AIV_NUMS;
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t blockDim = 1U;
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);

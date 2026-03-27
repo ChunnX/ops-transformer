@@ -112,8 +112,8 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>√</td>
     </tr>
     <tr>
-        <td rowspan="2">expertIds（aclTensor*）</td>
-        <td rowspan="2">输入</td>
+        <td>expertIds（aclTensor*）</td>
+        <td>输入</td>
         <td>每个token的topK个专家索引</td>
         <td>不支持空Tensor。</td>
         <td>INT32</td>
@@ -122,6 +122,8 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>√</td>
     </tr>
     <tr>
+        <td>expandIdx（aclTensor*）</td>
+        <td>输入</td>
         <td>对应aclnnMoeDistributeDispatchSetup中的expandIdx输出</td>
         <td>不支持空Tensor。</td>
         <td>INT32</td>
@@ -142,7 +144,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     <tr>
         <td>commCmdInfo（aclTensor*）</td>
         <td>输入</td>
-        <td>aclnnMoeDistributeDispatchSetup的输出，通信的cmd信息</td>
+        <td>aclnnMoeDistributeCombineSetup的输出，通信的cmd信息</td>
         <td>不支持空Tensor。</td>
         <td>INT32</td>
         <td>ND</td>
@@ -220,7 +222,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>-</td>
     </tr>
     <tr>
-        <td>sharedExpertNum </td>
+        <td>sharedExpertNum</td>
         <td>输入</td>
         <td>共享专家数量</td>
         <td>当前取值范围[0, 4]。0表示无共享专家。当前仅支持无共享专家。</td>
@@ -253,7 +255,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>commQuantMode</td>
         <td>输入</td>
         <td>通信量化类型</td>
-        <td>取值范围[0, 1, 2]，0表示通信时不进行量化，当前仅支持0。</td>
+        <td>取值范围[0, 2]，0表示通信时不进行量化，当前仅支持0。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -263,7 +265,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>commType</td>
         <td>输入</td>
         <td>通信方案选择</td>
-        <td>取值范围[0, 1, 2]，0表示AICPU-SDMA方案，1表示CCU方案，2表示URMA方案，当前仅支持2。</td>
+        <td>取值范围[0, 2]，0表示AICPU-SDMA方案，1表示CCU方案，2表示URMA方案，当前仅支持2。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -273,7 +275,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>commAlg</td>
         <td>输入</td>
         <td>通信算法选择</td>
-        <td>仅支持传入空指针</td>
+        <td>仅支持传入空指针或空字符串</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -313,18 +315,22 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 
   - Ascend 950PR/Ascend 950DT：
     - 不支持共享专家场景。
-    - epWorldSize当前取值仅支持2、4、8。
+    - epWorldSize当前取值仅支持2、8。
+    - moeExpertNum表示MoE专家数量，当前仅能传入32。
     - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum表示共享专家数量，当前不支持共享专家，仅能传入0。
+    - sharedExpertRankNum表示共享专家卡数，当前不支持共享专家，仅能传入0。
     - commQuantMode当前仅支持传入0，表示不进行量化。
     - commType取值范围[0, 2]，当前仅支持2，表示URMA通路。
     - commAlg 当前版本不支持，传空指针即可。
   
   - Atlas A3 训练系列产品/Atlas A3 推理系列产品：
     - 不支持共享专家场景。
-    - epWorldSize当前取值仅支持2、4、8。
+    - epWorldSize当前取值仅支持2、8。
+    - moeExpertNum表示MoE专家数量，当前仅能传入32。
     - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum表示共享专家数量，当前不支持共享专家，仅能传入0。
+    - sharedExpertRankNum表示共享专家卡数，当前不支持共享专家，仅能传入0。
     - commQuantMode当前仅支持传入0，表示不进行量化。
     - commType取值范围[0, 2]，当前仅支持2，表示URMA通路。
     - commAlg 当前版本不支持，传空指针即可。
@@ -420,14 +426,15 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
   - A：表示本卡需要分发的最大token数量，取值范围如下：
     - 对于共享专家，要满足A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum；当globalBs非0时，要满足A = globalBs\* sharedExpertNum / sharedExpertRankNum。
     - 对于MoE专家，当globalBs为0时，要满足A >= BS \* epWorldSize \* min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs \* min(localExpertNum, K)。
-  - H：表示hidden size隐藏层大小。取值为[1024, 8196]。当前仅支持4096。
+  - H：表示hidden size隐藏层大小。取值为[1024, 8196]。当前仅支持4096、7168。
   - HS：表示通信时的数据大小，Align512( Align32(H) + Align8(H) / 8 *sizeof(float) )，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32，Align8(x) = ((x + 8 - 1) / 8) \* 8。
-  - BS：表示batch sequence size，即本卡最终输出的token数量。取值范围为0 < BS ≤ 512。当前仅支持16。
-  - K：表示选取topK个专家，取值范围为0 < K ≤ 16同时满足0 < K ≤ moeExpertNum。当前仅支持6。
+  - BS：表示batch sequence size，即本卡最终输出的token数量。取值范围为0 < BS ≤ 512。当前仅支持8、16、256。
+  - K：表示选取topK个专家，取值范围为0 < K ≤ 16同时满足0 < K ≤ moeExpertNum。当前仅支持6、8。
   - localExpertNum：表示本卡专家数量。
     - 对于共享专家卡，localExpertNum = 1
-    - 对于MoE专家卡，localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)，localExpertNum > 1时，不支持TP域通信。当前仅支持每卡16个专家。
-  - 当前不支持共享专家。
+    - 对于MoE专家卡，localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)。moeExpertNum当前仅支持32。
+  - tokenMsgSize：表示每个token在数据通信时的维度信息，计算公式为Align512(Align32(H)+Align8(H)/8\*sizeof(float))，其中AlignN(x)=((x+N-1)/N*N)。
+  - 当前不支持共享专家。sharedExpertNum和sharedExpertRankNum当前仅支持0。
 - HCCL_BUFFSIZE：
   调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
   - Ascend 950PR/Ascend 950DT：
