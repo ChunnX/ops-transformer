@@ -220,6 +220,9 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
             weightNDim_ = transposeWeight_ ? wDimNum - DIM_THREE : wDimNum - DIM_FOUR;
             nzFactor_ = transposeWeight_ ? BASIC_BLOCK_SIZE_16 : static_cast<int64_t>(c0);
         }
+        OP_CHECK_IF(!CheckWeightNZShape(context, static_cast<int64_t>(c0)),
+                    OP_LOGE(context->GetNodeName(), "The shape of nz weight is invalid."),
+                    return false);
     }
 
     if (groupType_ == SPLIT_K) {
@@ -238,6 +241,24 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
             "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
             isSingleWeight_, isSingleX_, isSingleY_);
     return false;
+}
+
+bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk)
+{
+    OP_CHECK_IF(numInOneBlk <= 0, OP_LOGE(context->GetNodeName(), "the value of numInOneBlk is invalid, %ld", numInOneBlk), return false);
+    uint32_t i = 0;
+    while (true) {
+        auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i++);
+        if (wTensor == nullptr) { break; }
+        auto wShape = wTensor->GetOriginShape();
+        size_t kValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 1 : 2));
+        size_t nValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 2 : 1));
+        OP_CHECK_IF((kValue % numInOneBlk != 0 || nValue % numInOneBlk != 0),
+                    OP_LOGE(context->GetNodeName(),
+                    "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+                    return false);
+    }
+    return true;
 }
 
 bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
@@ -396,6 +417,12 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
+    if (isSingleX_ && !isSingleWeight_ && !isSingleY_) {  // splitK, s-m-m
+      return SplitKSingleXSeparatedWeight(context, xShape, wShape);
+    }
+    if (!isSingleX_ && isSingleWeight_) {  // splitK, m-s-m/m-s-s
+      return SeparatedXSingleWeight(context, wShape);
+    }
     OP_LOGE(context->GetNodeName(),
             "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
             isSingleWeight_, isSingleX_, isSingleY_);
@@ -468,7 +495,7 @@ bool GroupedNoQuantMatmulTiling::SeparatedXSeparatedWeight(const gert::TilingCon
     return true;
 }
 
-/** @brief split M : multi-single-multi(m-s-m), share the same function
+/** @brief split M : multi-single-multi(m-s-m), split K : multi-single-multi(m-s-m), share the same function
  */
 bool GroupedNoQuantMatmulTiling::SeparatedXSingleWeight(const gert::TilingContext *context, const gert::Shape wShape)
 {
@@ -510,6 +537,29 @@ bool GroupedNoQuantMatmulTiling::SplitKSingleXSingleWeightSingleY(const gert::Ti
     m_ = static_cast<uint64_t>(m);
     n_ = static_cast<uint64_t>(n);
     k_ = static_cast<uint64_t>(k);
+    return true;
+}
+
+/** @brief split K single-multi-multi(s-m-m)
+ */
+bool GroupedNoQuantMatmulTiling::SplitKSingleXSeparatedWeight(const gert::TilingContext *context,
+                                                              const gert::Shape xShape, const gert::Shape wShape)
+{
+    int64_t m = xShape.GetDim(1);
+    int64_t k = xShape.GetDim(xKDim_);
+    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
+        auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i);
+        if (wTensor == nullptr) {
+            break;
+        }
+        auto wTensorShape = wTensor->GetOriginShape();
+        groupNum_ += 1U;
+        int64_t n = wTensorShape.GetDim(weightNDim_) * nzFactor_;
+        n_ = std::max(n_, static_cast<uint64_t>(n));
+    }
+    m_ = static_cast<uint64_t>(m);
+    k_ = static_cast<uint64_t>(k);
+    groupType_ = NO_SPLIT;
     return true;
 }
 
