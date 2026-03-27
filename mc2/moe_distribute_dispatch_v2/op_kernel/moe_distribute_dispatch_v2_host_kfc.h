@@ -99,8 +99,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -1051,11 +1051,11 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t rcvCnt = 0;
     // uint64_t count =0; //TODO:
     do{
-        // count++;
-        // if(count > 1000000){
-        //     //LOG_INFO("error WaitFlag,error count");
-        //     //break;
-        // }
+        count++;
+        if(count > 1000000){
+            LOG_INFO("error WaitFlag,error count");
+            break;
+        }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ////LOG_INFO("WaitFlag flagInLTTensor", flagInLTTensor, {1, waitNum});
@@ -1618,8 +1618,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
     while (true) {
         count++;
         if (count == 1000000) {
-            //LOG_INFO("[BATCHWRITE][WaitToken] error count.");
-            //break;
+            LOG_INFO("[BATCHWRITE][WaitToken] error count.");
+            break;
         }
         if (tokenRcvStatus_(rcvStatusIndex) == 1) {
             rcvStatusIndex = (rcvStatusIndex + 1) % tokenCnt; // 轮询查询每个有效的index
@@ -2009,8 +2009,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // //LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
         if(count == 10000000) {
-            //LOG_INFO("waitDispatch error count");
-            //break;
+            LOG_INFO("waitDispatch error count");
+            break;
         }
     }
     // 清状态
@@ -2213,8 +2213,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count++;
         if(count == 1000000) {
-            //LOG_INFO("WaitCumSumFlag error count");
-            //break;
+            LOG_INFO("WaitCumSumFlag error count");
+            break;
         }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
