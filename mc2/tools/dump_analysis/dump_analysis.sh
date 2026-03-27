@@ -17,21 +17,22 @@ chmod 777 *
 
 # 文件运行使用方法 #####################
 # 使用方法
-# bash dump_analysis.sh TARGET_DIR=xxx TOOL_PATH=xxx SOC_VERSION=xxx SP_MOE_NUM=x TP_WORLDSIZE=x SHARE_EXPERT_CARD_COUNT=x SHARE_EXPERT_NUM=x ---正常调用"
+# bash dump_analysis.sh PROFILING_PATH=xxx TARGET_DIR=xxx TOOL_PATH=xxx SOC_VERSION=xxx SP_MOE_NUM=x TP_WORLDSIZE=x SHARE_EXPERT_CARD_COUNT=x SHARE_EXPERT_NUM=x ---正常调用"
 # bash dump_analysis.sh -h -----查看参数列表"
 
 function help {
     echo "执行方法"
-    echo "bash dump_analysis.sh TARGET_DIR=xxx TOOL_PATH=xxx SOC_VERSION=xxx SP_MOE_NUM=x TP_WORLDSIZE=x SHARE_EXPERT_CARD_COUNT=x SHARE_EXPERT_NUM=x ---正常调用"
+    echo "bash dump_analysis.sh TARGET_DIR=xxx TOOL_PATH=xxx PROFILING_PATH=xxx SOC_VERSION=xxx SP_MOE_NUM=x TP_WORLDSIZE=x SHARE_EXPERT_CARD_COUNT=x SHARE_EXPERT_NUM=x ---正常调用"
     echo "bash dump_analysis.sh -h -----查看参数列表"
     echo "参数列表"
-    echo "TARGET_DIR(必填):指向dump数据的路径,例:xxx/xxx/data-dump/"
-    echo "TOOL_PATH(必填):指向装包路径下tools目录所在的路径,例:xxx/xxx/pkg/8cann-8.x.0/"
-    echo "SOC_VERSION(必填):所需要分析的数据的芯片版本,910_93 or 950"
+    echo "TARGET_DIR(选填,分析win区dump数据必填):指向dump数据的路径,例:xxx/xxx/data-dump/"
+    echo "TOOL_PATH(选填,分析win区dump数据必填):指向装包路径下tools目录所在的路径,例:xxx/xxx/pkg/8cann-8.x.0/"
+    echo "SOC_VERSION(选填,分析win区dump数据必填):所需要分析的数据的芯片版本,910_93 or 950"
     echo "SP_MOE_NUM(选填):所需要分析的数据使用的特殊专家数(SP_MOE_NUM>0),不填默认为0"
     echo "TP_WORLDSIZE(选填):所需要分析的数据使用的TP_WORLDSIZE(TP_WORLDSIZE>1),不填默认为1"
     echo "SHARE_EXPERT_CARD_COUNT(选填):所需要分析的数据输入的共享专家卡数(SHARE_EXPERT_CARD_COUNT>0),不填默认为0"
     echo "SHARE_EXPERT_NUM(选填):所需要分析的数据输入的共享专家数(SHARE_EXPERT_NUM>0),不填默认为0"
+    echo "PROFILING_PATH(选填,分析profiling数据必填):profiling数据存放的路径,不填默认在TARGET_DIR指定的路径下查找"
     exit 0
 }
 #获取sh脚本的文件路径
@@ -65,7 +66,10 @@ for arg in "$@"; do
     if [[ "$arg" == SHARE_EXPERT_NUM=* ]]; then
         SHARE_EXPERT_NUM="${arg#*=}"
     fi
-    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=) ]]; then
+    if [[ "$arg" == PROFILING_PATH=* ]]; then
+        PROFILING_PATH="${arg#*=}"
+    fi
+    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=) ]]; then
         echo "warning: 未知参数 $arg ,使用 -h or -help 查看帮助"
     fi
 done
@@ -73,31 +77,25 @@ done
 judge=0
 #判断TARGET_DIR
 if [ ! -n "$TARGET_DIR" ]; then
-    echo "error:TARGET_DIR undefind"
-    judge=1
+    echo "warning:TARGET_DIR undefind,不进行dump数据解析"
 fi
 if [ ! -d "$TARGET_DIR" ]; then
-    echo "error: unfind $TARGET_DIR"
-    judge=1
+    echo "warning: unfind TARGET_DIR:$TARGET_DIR,不进行dump数据解析"
 fi
 #判断TOOL_PATH
 if [ ! -n "$TOOL_PATH" ]; then
-    echo "error:TOOL_PATH undefind"
-    judge=1
+    echo "warning:TOOL_PATH undefind"
 fi
 if [ ! -e "$TOOL_PATH/tools/msaicerr/msaicerr.py" ]; then
-    echo "error: unfind $TOOL_PATH/tools/msaicerr/msaicerr.py"
-    judge=1
+    echo "warning: unfind TOOL_PATH:$TOOL_PATH/tools/msaicerr/msaicerr.py"
 fi
 #判断SOC_VERSION
 if [ ! -n "$SOC_VERSION" ]; then
-    echo "error:SOC_VERSION undefind"
-    judge=1
+    echo "warning:SOC_VERSION undefind,不进行dump数据解析"
 fi
 
 if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
-    echo "error:SOC_VERSION:$SOC_VERSION 为非法输入"
-    judge=1
+    echo "warning:SOC_VERSION:$SOC_VERSION 为非法输入"
 fi
 #判断SP_MOE_NUM,TP_WORLDSIZE
 if [ ! -n "$SP_MOE_NUM" ]; then
@@ -133,6 +131,11 @@ if [ "$SHARE_EXPERT_NUM" -lt 0 ]; then
     echo "error:SHARE_EXPERT_NUM:$SHARE_EXPERT_NUM should > 0"
     judge=1
 fi
+#判断profiling路径
+if [ ! -n "$PROFILING_PATH" ]; then
+    PROFILING_PATH=$TARGET_DIR
+    echo "warning:PROFILING_PATH undefind,使用默认值 PROFILING_PATH = TARGET_DIR"
+fi
 
 if [ "$judge" = "1" ]; then
     help
@@ -147,6 +150,7 @@ echo "SP_MOE_NUM = $SP_MOE_NUM"
 echo "TP_WORLDSIZE = $TPWORLDSIZE"
 echo "SHARE_EXPERT_CARD_COUNT = $SHARE_EXPERT_CARD_COUNT"
 echo "SHARE_EXPERT_NUM = $SHARE_EXPERT_NUM"
+echo "PROFILING_PATH = $PROFILING_PATH"
 echo "-----------------------------"
 echo "-----------------------------"
 
@@ -304,5 +308,20 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
         fi
     else
         echo "error:路径 $TARGET_DIR 下没有以mc2_exception_info开头的dump数据"
+    fi
+fi
+
+#profiling_path判断
+if [ ! -d "$PROFILING_PATH" ]; then
+    echo "warning: profiling数据指定的路径 $PROFILING_PATH 不存在"
+    echo "warning:不进行profiling数据解析"
+else
+    floder_count=$(find "$PROFILING_PATH" -type d -name "ma-job*" | wc -l)
+    if [ "$floder_count" -eq 0 ]; then
+        echo "warning: profiling数据指定的路径 $PROFILING_PATH 下未找到profiling文件"
+        echo "warning:不进行profiling数据解析"
+    else
+        echo "在指定的路径 $PROFILING_PATH 下找到 $floder_count 张卡的profiling数据"
+        python3 profiling_analysis.py $PROFILING_PATH $floder_count
     fi
 fi
