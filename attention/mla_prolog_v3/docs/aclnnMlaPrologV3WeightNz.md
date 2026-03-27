@@ -242,7 +242,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         - int8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
         - queryOut的shape为(T, N, Hckv)
         - queryRopeOut的shape为(T, N, Dr)
-        - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为(1)
+        - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
     - 若tokenX的维度不采用BS合轴，即(B, S, He)
         - ropeSin和ropeCos的shape为(B, S, Dr)
         - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
@@ -250,7 +250,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         - int8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
         - queryOut的shape为(B, S, N, Hckv)
         - queryRopeOut的shape为(B, S, N, Dr)
-        - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为(1)
+        - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(B\*S, N, 1)，其他场景下为nullptr
     - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
         - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
         - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
@@ -264,6 +264,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         - krCache的维度应包含0，支持维度为(0)
 
 - 特殊约束
+  - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
   - per-tile量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
   - per-tile量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
@@ -716,6 +717,7 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
 
   ```Cpp
   #include <iostream>
+  #include <cstring>
   #include <vector>
   #include <cstdint>
   #include "acl/acl.h"
@@ -761,8 +763,9 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
       // 调用aclrtMalloc申请host侧内存
-      ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+      ret = aclrtMallocHost(hostAddr, size);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+      memset(*hostAddr, 0, size);
       // 调用aclCreateTensor接口创建aclTensor
       *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
                                 shape.data(), shape.size(), *deviceAddr);
@@ -780,8 +783,9 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
       // 调用aclrtMalloc申请host侧内存
-      ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+      ret = aclrtMallocHost(hostAddr, size);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+      memset(*hostAddr, 0, size);
       // 调用aclCreateTensor接口创建aclTensor
       *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
                                 shape.data(), shape.size(), *deviceAddr);
@@ -1108,6 +1112,7 @@ A5示例代码如下，仅供参考。
 
   ```Cpp
 #include <iostream>
+#include <cstring>
 #include <vector>
 #include <cstdint>
 #include "acl/acl.h"
@@ -1153,8 +1158,9 @@ int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hos
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
     // 调用aclrtMalloc申请host侧内存
-    ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMallocHost(hostAddr, size);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+    memset(*hostAddr, 0, size);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
@@ -1172,8 +1178,9 @@ int CreateAclTensorNZ(const std::vector<T>& shape, void** deviceAddr, void** hos
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
     // 调用aclrtMalloc申请host侧内存
-    ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMallocHost(hostAddr, size);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+    memset(*hostAddr, 0, size);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
                               shape.data(), shape.size(), *deviceAddr);

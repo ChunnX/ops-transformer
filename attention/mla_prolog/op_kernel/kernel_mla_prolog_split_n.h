@@ -521,7 +521,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         usedBytes += dequantScaleWDqSize;
 
         uint64_t dequantScaleWDkvKrSize = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) * sizeof(float);
-        pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, dequantScaleWDqSize); // [1, 512 + 64]
+        pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, dequantScaleWDkvKrSize); // [1, 512 + 64]
         dequantScaleWDkvKrLocal_ = dequantScaleWDkvKrBuffer_.Get<float>();
         usedBytes += dequantScaleWDkvKrSize;
 
