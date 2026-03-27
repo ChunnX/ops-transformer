@@ -129,6 +129,9 @@
   </table>
 
 
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+
+
 ## 约束说明
 - Tensor中shape使用的变量说明：
   - A：表示token个数，取值要求Sum(expert_token_num_per_rank)=A。

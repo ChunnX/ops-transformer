@@ -259,6 +259,16 @@
     </tr>
   </tbody></table>
 
+- Kirin X90/Kirin 9030 处理器系列产品:
+  - positions 数据类型不支持 INT32
+  - queryIn 数据类型不支持 BFLOAT16
+  - keyIn 数据类型不支持 BFLOAT16
+  - cosSinCache 数据类型不支持 BFLOAT16
+  - queryOut 数据类型不支持 BFLOAT16
+  - keyOut 数据类型支持 FLOAT、FLOAT16；不支持INT32
+
+
+
 ## 约束说明
 
 - queryIn、keyIn、cosSinCache只支持2维shape输入。
