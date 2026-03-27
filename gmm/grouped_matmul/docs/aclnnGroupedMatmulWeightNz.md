@@ -65,7 +65,6 @@
           y_i=(x_i \times weight_i) * scale_i * per\_token\_scale_i  + bias_i
           $$
 
-
       - **量化场景 (mx量化，当前无bias无激活层)：**
 
         $$
@@ -505,7 +504,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 - 确定性计算：
   - aclnnGroupedMatmulWeightNz默认确定性实现。
 
-
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
 
@@ -528,12 +526,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - 伪量化场景支持的输入类型为：
 
     - 伪量化参数antiquantScaleOptional和antiquantOffsetOptional的shape要满足下表（其中g为matmul组数，G为pergroup数，$G_i$为第i个tensor的pergroup数）：
+
         | 使用场景 | 子场景 | shape限制 |
         |:---------:|:-------:| :-------|
         | 伪量化perchannel | weight单 | $[E, N]$|
         | 伪量化perchannel | weight多 | $[n_i]$|
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
+
     - x为INT8、weight为INT4、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。此场景支持对称量化和非对称量化：
 
       - 对称量化场景：
@@ -569,6 +569,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，x，y中tensor需为2维<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，当groupListType为2时，第二列数值的总和与x中tensor的第一维相等<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持weight转置<br>6）x不支持转置 |
       | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等且长度最大为128，当groupListType为2时，第二列数值的总和与x中tensor的第一维相等且长度最大为128<br>3）x,weight,y中tensor需为2维<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置 |
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x,weight,y中tensor需为2维<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为128，当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应，且长度最大为128<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置 |
+
 </details>
 
 <details>
@@ -585,6 +586,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - 输入weight矩阵的n轴与k轴需要满足32B对齐
     - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
+
       |groupType| x       | weight  | biasOptional | out     |
       |:-------:|:-------:|:-------:| :------      |:------ |
       |-1/0   |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
@@ -593,6 +595,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - 伪量化场景支持的数据类型为：
     - 以下入参为空：offsetOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
+
       |groupType| x       |perTokenScaleOptional| weight  |antiquantScaleOptional|scaleOptional|antiquantOffsetOptional| biasOptional | out     | perTokenScaleOptional Shape | weight Shape | antiquantScaleOptional Shape| scaleOptional shape|bias shape|
       |:-------:|:-------:|:-------------------:|:-------:|:--------------------:|:-----------:|:---------------------:|:------------:|:-------:|:---------------------------:|:------------:|:---------------------------:|:------------------:|:--------:|
       |0   |BFLOAT16      |null          |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/FLOAT32/null     |BFLOAT16 |null             |(g, K, N)   |(g, K/groupSize, N) |null   |(g, N) |
@@ -607,6 +610,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT32         |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize/2, 2) |(g, N, K/8) |(g, N, K/groupSize/2, 2) |null   |(g, N) |
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |BFLOAT16 |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
+
     - 约束说明：
       - 当x为FLOAT8_E4M3FN/FLOAT16/BFLOAT16，weight为FLOAT4_E2M1/FLOAT32的场景， groupSize只支持32。
       - 当x为INT8， weight为INT4/INT32的场景， groupSize只支持128、192、256、512。
@@ -617,27 +621,36 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - 静态量化场景支持的输入类型为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
+
       |groupType| x       | weight  | biasOptional | scaleOptional | out     |
       |:-------:|:-------:|:-------:| :------      |:-------       | :------ |
       |0|INT8     |INT8     |INT32/null    | UINT64/INT64  |BFLOAT16/FLOAT16|
       |0|INT8     |INT8     |INT32/BFLOAT16/FLOAT32/null    | BFLOAT16/FLOAT32  |BFLOAT16|
       |0|INT8     |INT8     |INT32/FLOAT16/FLOAT32/null    | FLOAT32  |FLOAT16|
+
     - scaleOptional要满足下表（其中g为matmul组数即分组数）：
+
       |groupType| 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
       |0|weight单tensor|perchannel场景：每个tensor 2维， shape为（g, N）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,）|
+
   - 动态量化（K-T && K-C量化）场景支持的输入类型为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
+
       |groupType| x       | weight  | biasOptional | scaleOptional | perTokenScaleOptional |out     |
       |:-------:|:-------:|:-------:| :------      |:-------    | :------   | :------ |
       |0|INT8  |INT8| INT32/BFLOAT16/FLOAT32/null     |BFLOAT16/FLOAT32    | FLOAT32   | BFLOAT16 |
       |0|INT8  |INT8| INT32/FLOAT16/FLOAT32/null     |FLOAT32    | FLOAT32   | FLOAT16 |
+
     - scaleOptional要满足下表（其中g为matmul组数即分组数）
+
       | groupType | 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
       |0|weight单tensor|perchannel场景：每个tensor 2维，shape为（g, N）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,）|
+
     - perTokenScaleOptional要满足下表：
+
       | groupType | 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
       |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
@@ -656,9 +669,11 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 </details>
 
 ## 调用示例
+
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 伪量化调用示例
+
 ```c++
 #include <iostream>
 #include <vector>
@@ -954,7 +969,9 @@ int main() {
   return 0;
 }
 ```
+
 全量化调用示例
+
 ```c++
 #include <iostream>
 #include <memory>

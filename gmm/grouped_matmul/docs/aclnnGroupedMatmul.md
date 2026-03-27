@@ -336,6 +336,7 @@ aclnnStatus aclnnGroupedMatmul(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnGroupedMatmul默认确定性实现。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
