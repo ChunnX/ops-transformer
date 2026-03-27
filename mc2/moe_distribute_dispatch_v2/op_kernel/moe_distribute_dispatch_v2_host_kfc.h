@@ -1725,19 +1725,19 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<float> xInToFloatTensor = recvTmpTensor_.template ReinterpretCast<float>();
     uint32_t srcRankIndex = xInTensor(sendXTypeElemAlign_);
     uint32_t tokenIndex = xInTensor(sendXTypeElemAlign_ + 1);
-    //LOG_INFO("[SendToExpert][moe] srcRankIndex",srcRankIndex);
-    //LOG_INFO("[SendToExpert][moe] tokenIndex",tokenIndex);
+    LOG_INFO("[SendToExpert][moe] srcRankIndex",srcRankIndex);
+    LOG_INFO("[SendToExpert][moe] tokenIndex",tokenIndex);
     float expertScale = float(1.0);
     for (int32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {                      // 发moe专家
         uint32_t dstExpertId = xInTensor(moeListAlign_ + topKIndex);                    // 取出专家id
         uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
         uint32_t curExpertCnt = xInTensorInt16(moeCntAlign_ + topKIndex);                    // 取出cnt
         expertScale = xInToFloatTensor(moeExpertScalesAlign_ + topKIndex); 
-        //LOG_INFO("[SendToExpert][moe] topKIndex",topKIndex);
-        //LOG_INFO("[SendToExpert][moe] dstExpertId",dstExpertId);
-        //LOG_INFO("[SendToExpert][moe] dstRankId",dstRankId);
-        //LOG_INFO("[SendToExpert][moe] curExpertCnt",curExpertCnt);
-        //LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
+        LOG_INFO("[SendToExpert][moe] topKIndex",topKIndex);
+        LOG_INFO("[SendToExpert][moe] dstExpertId",dstExpertId);
+        LOG_INFO("[SendToExpert][moe] dstRankId",dstRankId);
+        LOG_INFO("[SendToExpert][moe] curExpertCnt",curExpertCnt);
+        LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
         
         if (dstExpertId >= moeExpertNum_ || !IsInSameServer(dstRankId)) { // 无效数据或者不在本server
             continue;
