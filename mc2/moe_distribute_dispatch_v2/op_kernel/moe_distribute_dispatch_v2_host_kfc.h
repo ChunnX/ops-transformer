@@ -76,6 +76,8 @@ constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 constexpr uint32_t TOKEN_RECV_CNT_MAX = 512U;
 constexpr uint32_t SERVER_CNT_OFFSET = 0U;
+constexpr uint32_t INSERT_DATA_STRIDE = 1U;
+constexpr uint32_t INSERT_FLAG_STRIDE = 15U; // 480 / 32 =15
 constexpr uint32_t COMM_FLAG_COPY_STRIDE = 508; // WIN_ADDR_ALIGN - sizeof(float32_t)copy flag的间隔
 constexpr uint32_t EXPERT_CNT_FLAG_SPACE = 0; // 专家结果flag全部顺序存放
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
@@ -139,6 +141,8 @@ private:
     __aicore__ inline void WaitDispatchClearStatus();
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t startTokenIndex, uint32_t tokenIndex);
     template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
+    template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor
+                                                                       GM_ADDR rankGM, uint32_t blockCnt)
     __aicore__ inline void SingleTokenProcess(uint32_t startTokenIndex, uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
     __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, TBuf<> &serverFlagBuf, uint32_t &rcvTokenCnt);
@@ -287,6 +291,7 @@ private:
     LocalTensor<int32_t> tpTmpTensor_;
     LocalTensor<float> floatLocalTemp_;
     LocalTensor<ExpandXOutType> xOutTensor_;
+    LocalTensor<ExpandXOutType> insertFlagTensor_;
     LocalTensor<XType> tokenData_;
     LocalTensor<int32_t> expertIdsTensor_;
     LocalTensor<float> rowMaxTensor_;
@@ -346,7 +351,7 @@ private:
     TQue<QuePosition::VECIN, 1> tokenInQueue_; // token输入队列
     TQue<QuePosition::VECIN, 1> xInQueue_;     // 量化使用，量化前的输入
     TQue<QuePosition::VECOUT, 1> xOutQueue_;   // 量化使用，量化后的输出
-
+    TQue<QuePosition::VECOUT, 1> xTempQueue_;   // 用于填充flag
 
     
     
@@ -470,6 +475,7 @@ private:
     uint32_t perServerMapLength_{0};
     uint32_t perServerMapCnt_{0};
     uint32_t moeCntRowAlign_{0};
+    uint32_t hcommBlockCnt_{0};
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
@@ -686,7 +692,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     totalUsedUB_ += maxSize_;
 
     if (isExpertMaskFlag_) { //zeroComputeExpertNum_ TODO:零专家视乎没有加上
-        tpipe_->InitBuffer(expertMaskInputBuf_, expertIdsCnt_ * sizeof(bool));
+        tpipe_->InitBuffer(expertMaskInputBuf_, expertIdsCnt_ * sizeof(bool)); //16k
         totalUsedUB_ += expertIdsCnt_ * sizeof(bool);
         expertMaskInputTensor_ = expertMaskInputBuf_.Get<bool>();
     }
@@ -707,7 +713,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t mask[1] = {0x0101010101010101};
 
     tpipe_->InitBuffer(serverCountBuf_, serverBuferLength * sizeof(uint32_t));
-    tpipe_->InitBuffer(serverMapBuf_, serverMapLength * sizeof(uint32_t)); // max server = 8, per server = 2K
+    tpipe_->InitBuffer(serverMapBuf_, serverMapLength); // max server = 8, per server = 2K
     tpipe_->InitBuffer(expertOffsetCntBuf_, expertOffsetCntSize); // 16K
     tpipe_->InitBuffer(flagBuf_, commFlagSize);
 
@@ -954,6 +960,25 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], commFlagTensor_, flagCopyOutParams);
 }
 
+
+template <TemplateDispatchKFCTypeClass>
+template <typename T>
+__aicore__ inline void
+MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(LocalTensor<T> &xOutTensor,  LocalTensor<T> &xTempTensor
+                                                                       GM_ADDR rankGM, uint32_t blockCnt)
+{
+    DataCopyParams insertDataParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U, INSERT_DATA_STRIDE};
+    DataCopyParams insertFlagParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U, INSERT_FLAG_STRIDE};
+    LocalTensor<uint32_t> xFlagTensor = xTempTensor.template ReinterpretCast<uint32_t>();
+    DataCopy(xTempTensor, xOutTensor, insertDataParams);
+    DataCopy(xFlagTensor, commFlagTensor_, insertFlagParams);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    uint32_t copyCount = blockCnt * SERVER_STATE_ALIGN / sizeof(T);
+    GlobalTensor<T> dataDstWinGMTensor;
+    dataDstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(rankGM));
+    DataCopy(dataDstWinGMTensor, xTempTensor, copyCount);
+}
+
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SingleTokenProcess(uint32_t startTokenIndex, uint32_t tokenIndex,
                                                                                                uint32_t dstServerId,
@@ -1146,10 +1171,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     if (serverId == serverId_) {
         InitQuantBuffer<CommMode::INTRA_NODE>(); // 初始化量化参数
-        tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 16K 
-        tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16K
+        tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 17.5K 
+        tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16.03K
         tpipe_->InitBuffer(expertScalesBuf_, axisK_ * sizeof(float)); //16 * 4
+        tpipe_->InitBuffer(xTempQueue_, 1, hCommuSize_); // 17.5KB
         tokenData_ = xInQueue_.AllocTensor<XType>();
+        insertFlagTensor_ = xTempQueue_.AllocTensor<ExpandXOutType>();
         expertScalesTensor_ = expertScalesBuf_.Get<float>();
     } else {
         tpipe_->InitBuffer(xSendBuf_,sendTokenLength_); //17K
@@ -1294,7 +1321,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     CalExpertOffset(startTokenId, endTokenId);
     SyncFunc<AscendC::HardEvent::V_S>();
     float expertScale = float(1.0);
-    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; tokenIndex++) {
+    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; tokenIndex++) { //TODO：没有考虑是否需要发送的问题
         QuantCleanTensor();
         xInQueue_.EnQue(tokenData_);
         tokenData_ = xInQueue_.DeQue<XType>();
@@ -1454,9 +1481,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(tokenRcvStatusBuf, TOKEN_RECV_CNT_MAX * sizeof(uint32_t)); // 一个server最多发512个token给
     tpipe_->InitBuffer(tokenFlagBuf, flagMaxRecvBuf); 
     tpipe_->InitBuffer(cleanBuf, tokenFlagSize); // 每个Token的flag个数为 blockCntPerToken_
+    tpipe_->InitBuffer(xTempQueue_, BUFFER_NUM, hCommuSize_); // 17.5KB
 
     commFlagTensor_ = flagBuf_.Get<uint32_t>();
     tokenData_ = xInQueue_.AllocTensor<XType>();
+    insertFlagTensor_ = xTempQueue_.AllocTensor<ExpandXOutType>();
     recvTmpTensor_ = tokenInQueue_.AllocTensor<XType>();
     tokenRcvStatus_ = tokenRcvStatusBuf.Get<uint32_t>();
     flagRecvTensor_ = tokenFlagBuf.Get<float32_t>();
@@ -1651,13 +1680,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     xInQueue_.EnQue(tokenData_);
     tokenData_ = xInQueue_.DeQue<XType>();
+    xTempQueue_.EnQue(insertFlagTensor_);
+    insertFlagTensor_ = xTempQueue_.DeQue<XType>();
     if constexpr (QuantMode > UNQUANT) {
         xOutTensor_ = xOutQueue_.AllocTensor<ExpandXOutType>();
         quantInst_.QuantProcess(xOutTensor_, tokenData_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
-        WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_);
+
+        WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     } else {
         
@@ -1675,7 +1707,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
-        WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_);
+        WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); 
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     }
 }
