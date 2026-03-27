@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file recurrent_gated_delta_rule.cpp
+ * \file recurrent_gated_delta_rule_apt.cpp
  * \brief
  */
 #include "arch35/recurrent_gated_delta_rule.h"
