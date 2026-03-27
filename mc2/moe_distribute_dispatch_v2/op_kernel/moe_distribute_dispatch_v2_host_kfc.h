@@ -973,7 +973,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyParams insertFlagParams = {static_cast<uint16_t>(blockCnt), FLAG_COPY_BLOCK, 0U, INSERT_FLAG_STRIDE};
     LocalTensor<uint32_t> xFlagTensor = xTempTensor.template ReinterpretCast<uint32_t>();
     DataCopy(xTempTensor, xOutTensor, insertDataParams);
-    DataCopy(xFlagTensor, commFlagTensor_, insertFlagParams);
+    DataCopy(xFlagTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], commFlagTensor_, insertFlagParams);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     uint32_t copyCount = blockCnt * SERVER_STATE_ALIGN / sizeof(T);
     GlobalTensor<T> dataDstWinGMTensor;
