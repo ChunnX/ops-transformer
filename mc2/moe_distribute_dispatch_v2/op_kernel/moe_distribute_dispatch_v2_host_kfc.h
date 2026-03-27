@@ -99,8 +99,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -1719,6 +1719,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     QuantCleanTensor();
     tokenInQueue_.EnQue(recvTmpTensor_);  
     recvTmpTensor_ = tokenInQueue_.DeQue<XType>();
+    xInQueue_.EnQue(tokenData_);
+    tokenData_ = xInQueue_.DeQue<XType>();
     DataCopy(tokenData_, recvTmpTensor_, hAlignSize_ / sizeof(XType));
     LocalTensor<int16_t> xInTensorInt16 = recvTmpTensor_.template ReinterpretCast<int16_t>();
     LocalTensor<uint32_t> xInTensor = recvTmpTensor_.template ReinterpretCast<uint32_t>();
