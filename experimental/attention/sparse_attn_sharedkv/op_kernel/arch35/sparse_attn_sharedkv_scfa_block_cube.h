@@ -161,13 +161,13 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
 {
     if ASCEND_IS_AIC {
         this->oriKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)oriKv);
-        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BNBD) {
             this->oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
         }
         if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE && \
             TEMPLATE_MODE != SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
             this->cmpKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)cmpKv);
-            if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+            if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BNBD) {
                 this->cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
             }
         }

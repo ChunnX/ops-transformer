@@ -48,8 +48,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::map<std::string, std::vector<SASLayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME,            {SASLayout::BSND, SASLayout::TND}},
-    {ORI_KV_NAME,               {SASLayout::PA_ND, SASLayout::TND, SASLayout::BSND}},
-    {CMP_KV_NAME,             {SASLayout::PA_ND, SASLayout::TND, SASLayout::BSND}},
+    {ORI_KV_NAME,               {SASLayout::PA_BNBD, SASLayout::TND, SASLayout::BSND}},
+    {CMP_KV_NAME,             {SASLayout::PA_BNBD, SASLayout::TND, SASLayout::BSND}},
     {ATTEN_OUT_NAME,         {SASLayout::BSND, SASLayout::TND}},
     {ORI_SPARSE_INDICES,         {SASLayout::BSND, SASLayout::TND}},
     {CMP_SPARSE_INDICES,         {SASLayout::BSND, SASLayout::TND}},
@@ -96,7 +96,7 @@ std::string SASLayoutToSerialString(SASLayout layout)
     switch (layout) {
         case SASLayout::BSND: return "BSND";
         case SASLayout::TND: return "TND";
-        case SASLayout::PA_ND: return "PA_ND";
+        case SASLayout::PA_BNBD: return "PA_BNBD";
         default: return "UNKNOWN";
     }
 }
@@ -108,13 +108,13 @@ struct SASCompileInfo {
 static const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {
     {SASLayout::BSND, {SASAxis::B, SASAxis::S, SASAxis::N, SASAxis::D}},
     {SASLayout::TND, {SASAxis::T, SASAxis::N, SASAxis::D}},
-    {SASLayout::PA_ND, {SASAxis::Bn, SASAxis::Bs, SASAxis::N, SASAxis::D}},
+    {SASLayout::PA_BNBD, {SASAxis::Bn, SASAxis::Bs, SASAxis::N, SASAxis::D}},
 };
 
 static const std::map<SASLayout, size_t> SAS_LAYOUT_DIM_MAP = {
     {SASLayout::BSND, DIM_NUM_FOUR},
     {SASLayout::TND, DIM_NUM_THREE},
-    {SASLayout::PA_ND, DIM_NUM_FOUR},
+    {SASLayout::PA_BNBD, DIM_NUM_FOUR},
 };
 
 static std::string SASDataTypeToSerialString(ge::DataType type)
@@ -137,7 +137,7 @@ ge::graphStatus SASInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of oriKv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (opParamInfo_.layoutKv == "PA_ND") {
+    if (opParamInfo_.layoutKv == "PA_BNBD") {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr, OP_LOGE(opName_, "tensor of oriBlockTable is nullptr"),
                     return ge::GRAPH_FAILED);
     }
@@ -356,7 +356,7 @@ ge::graphStatus SASInfoParser::GetQueryAndOutLayout()
 ge::graphStatus SASInfoParser::GetKvLayout()
 {
     const map<string, SASLayout> layoutKVMap = {
-        {"PA_ND",     SASLayout::PA_ND},
+        {"PA_BNBD",     SASLayout::PA_BNBD},
         {"TND",       SASLayout::TND},
         {"BSND",      SASLayout::BSND},
     };
@@ -594,7 +594,7 @@ ge::graphStatus SASInfoParser::GetS2Size()
     } else if (kvLayout_ == SASLayout::BSND) {
         s2Size_ = GetAxisNum(oriKvShape_, SASAxis::S, kvLayout_);
         return ge::GRAPH_SUCCESS;
-    } else if (kvLayout_ == SASLayout::PA_ND) {
+    } else if (kvLayout_ == SASLayout::PA_BNBD) {
         // 获取S2基准值:PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
         return GetS2SizeForPageAttention();
     }
@@ -658,7 +658,7 @@ ge::graphStatus SASInfoParser::GetActualseqInfo()
             actualLenDimsQ_ = opParamInfo_.seqUsedQ.tensor->GetShapeSize();
         }
     }
-    if (kvLayout_ == SASLayout::PA_ND) {
+    if (kvLayout_ == SASLayout::PA_BNBD) {
         if (opParamInfo_.sequsedKv.tensor != nullptr) {
             if (qLayout_ == SASLayout::BSND){
                 if (opParamInfo_.sequsedKv.tensor->GetShapeSize() != bSize_) {
@@ -675,13 +675,13 @@ ge::graphStatus SASInfoParser::GetActualseqInfo()
             }
             actualLenDimsKV_ = opParamInfo_.sequsedKv.tensor->GetShapeSize();
         } else {
-            OP_LOGE(opName_, "Input sequsedKv must be provided when kv layout is PA_ND");
+            OP_LOGE(opName_, "Input sequsedKv must be provided when kv layout is PA_BNBD");
             return ge::GRAPH_FAILED;
         }
     } else if (kvLayout_ == SASLayout::TND) {
     } else if (kvLayout_ == SASLayout::BSND) {
     } else {
-        OP_LOGE(opName_, "oriKV and cmpKv only support PA_ND, TND and BSND layout, but got %d.", kvLayout_);
+        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BNBD, TND and BSND layout, but got %d.", kvLayout_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1031,7 +1031,7 @@ ge::graphStatus SASTilingCheck::CheckSingleParaCmpSparseIndices() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaOriBlockTable() const
 {
-    if (kvLayout_ != SASLayout::PA_ND) {
+    if (kvLayout_ != SASLayout::PA_BNBD) {
         return ge::GRAPH_SUCCESS;
     }
     const std::vector<size_t> oriBlockTableDimNumList = {DIM_NUM_TWO};
@@ -1050,7 +1050,7 @@ ge::graphStatus SASTilingCheck::CheckSingleParaOriBlockTable() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaCmpBlockTable() const
 {
-    if (kvLayout_ != SASLayout::PA_ND) {
+    if (kvLayout_ != SASLayout::PA_BNBD) {
         return ge::GRAPH_SUCCESS;
     }
     if (sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE ||

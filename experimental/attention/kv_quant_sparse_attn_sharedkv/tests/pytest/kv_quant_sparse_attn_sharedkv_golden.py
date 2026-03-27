@@ -74,7 +74,7 @@ class GeneralizedSFAQuant:
         for i_B in range(B):
             print(f"i_B = {i_B}/{B}")
             cur_act_q = act_q[i_B]
-            if self.layout_kv == "PA_ND":
+            if self.layout_kv == "PA_BNBD":
                 cur_ori_act_kv = seqused_kv[i_B]
             else: # self.layout_kv == "TND"
                 cur_ori_act_kv = cu_seqlens_kv[i_B + 1] - cu_seqlens_kv[i_B]
@@ -1022,8 +1022,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     else:
         raise ValueError(f"layout_q is not support {layout_q}")
 
-    # generate ori_kv/cmp_kv (only support PA_ND when Q layout is BSND and support TND and PA_ND when Q layout is TND)
-    if layout_kv == "PA_ND" or layout_kv == "TND":
+    # generate ori_kv/cmp_kv (only support PA_BNBD when Q layout is BSND and support TND and PA_BNBD when Q layout is TND)
+    if layout_kv == "PA_BNBD" or layout_kv == "TND":
         pass
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
@@ -1031,7 +1031,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     ori_max_block_num_per_batch = 0
     cmp_max_s2 = 0
     cmp_max_block_num_per_batch = 0
-    if layout_kv == "PA_ND":
+    if layout_kv == "PA_BNBD":
         if len(seqused_kv) != B:
             raise ValueError(f"len(seqused_kv) != B, which is {len(seqused_kv)} != {B}")
         else:
@@ -1065,7 +1065,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
     # generate ori_kv tensor
     if kv_quant_mode == 1:
-        if layout_kv == "PA_ND":
+        if layout_kv == "PA_BNBD":
             ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data = gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                                                 pad_d, block_num, block_size1, ori_max_s2, ori_max_block_num_per_batch, cu_seqlens_q,
                                                 seqused_kv, ori_mask_mode, template_run_mode, topk_value_mode, ori_topk_length, quant_param_range_left, quant_param_range_right)
@@ -1079,7 +1079,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # generate cmp_kv and sparse_indices
     if template_run_mode == "CFA" or template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA":
         if kv_quant_mode == 1:
-            if layout_kv == "PA_ND":
+            if layout_kv == "PA_BNBD":
                 cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data = gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                                                     pad_d, block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q,
                                                     seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode, topk_value_mode, cmp_topk_length,
@@ -1101,7 +1101,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_block_table = None
         cmp_k_cal = None
 
-    if layout_kv == "PA_ND" and (template_run_mode == "CFA" or template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA"):
+    if layout_kv == "PA_BNBD" and (template_run_mode == "CFA" or template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA"):
         fusionBlock = torch.zeros((block_num, block_size1 + block_size2, N2, d_combined + pad_d), dtype=ori_kv_type)
         fusionBlock.view(block_num, -1)[:, : block_size1 * N2 * (d_combined + pad_d)] = ori_k_in_pa_shape.view(block_num, -1)
         fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :] = cmp_k_in_pa_shape.view(block_num, -1)
@@ -1124,7 +1124,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     else:
         cu_seqlens_q = None
         max_seqlen_q = S1
-    max_seqlen_kv = seqused_kv.max().item() if layout_kv == "PA_ND" else get_max_adjacent_diff(cu_seqlens_ori_kv).item()
+    max_seqlen_kv = seqused_kv.max().item() if layout_kv == "PA_BNBD" else get_max_adjacent_diff(cu_seqlens_ori_kv).item()
 
     # 保存pt
     input_data = {

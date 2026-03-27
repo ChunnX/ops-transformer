@@ -61,7 +61,7 @@ struct SASTilingOptionalParaInfo {
 enum class SASLayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_ND = 2
+    PA_BNBD = 2
 };
 
 enum class SASAxis : uint32_t {
@@ -205,13 +205,13 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
 const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {
     {SASLayout::BSND, {SASAxis::B, SASAxis::S, SASAxis::N, SASAxis::D}},
     {SASLayout::TND, {SASAxis::T, SASAxis::N, SASAxis::D}},
-    {SASLayout::PA_ND, {SASAxis::Bn, SASAxis::Bs, SASAxis::N, SASAxis::D}},
+    {SASLayout::PA_BNBD, {SASAxis::Bn, SASAxis::Bs, SASAxis::N, SASAxis::D}},
 };
 
 const std::map<SASLayout, size_t> SAS_LAYOUT_DIM_MAP = {
     {SASLayout::BSND, DIM_NUM_FOUR},
     {SASLayout::TND, DIM_NUM_THREE},
-    {SASLayout::PA_ND, DIM_NUM_FOUR},
+    {SASLayout::PA_BNBD, DIM_NUM_FOUR},
 };
 
 std::string SASDataTypeToSerialString(ge::DataType type);
@@ -319,7 +319,7 @@ public:
 
     // Layout
     SASLayout qLayout = SASLayout::BSND;
-    SASLayout kvLayout = SASLayout::PA_ND;
+    SASLayout kvLayout = SASLayout::PA_BNBD;
     SASLayout outLayout = SASLayout::BSND;
 };
 
@@ -400,7 +400,7 @@ public:
     // Layout
     SASLayout qLayout_ = SASLayout::BSND;
     SASLayout outLayout_ = SASLayout::BSND;
-    SASLayout kvLayout_ = SASLayout::PA_ND;
+    SASLayout kvLayout_ = SASLayout::PA_BNBD;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -574,7 +574,7 @@ private:
 
     SASLayout qLayout_ = SASLayout::BSND;
     SASLayout outLayout_ = SASLayout::BSND;
-    SASLayout kvLayout_ = SASLayout::PA_ND;
+    SASLayout kvLayout_ = SASLayout::PA_BNBD;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;

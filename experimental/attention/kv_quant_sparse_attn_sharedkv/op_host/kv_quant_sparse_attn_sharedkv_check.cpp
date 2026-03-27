@@ -38,7 +38,7 @@ std::string KvQuantSASLayoutToSerialString(SASLayout layout)
     switch (layout) {
         case SASLayout::BSND: return "BSND";
         case SASLayout::TND: return "TND";
-        case SASLayout::PA_ND: return "PA_ND";
+        case SASLayout::PA_BNBD: return "PA_BNBD";
         default: return "UNKNOWN";
     }
 }
@@ -96,7 +96,7 @@ void KvQuantSASTilingCheck::Init()
     socVersion_ = sasInfo_.socVersion;
 
     kvLayout_ = sasInfo_.kvLayout;
-    if (kvLayout_ == SASLayout::PA_ND) {
+    if (kvLayout_ == SASLayout::PA_BNBD) {
         bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
     } else {
         bSize_ = sasInfo_.actualLenDimsKV;

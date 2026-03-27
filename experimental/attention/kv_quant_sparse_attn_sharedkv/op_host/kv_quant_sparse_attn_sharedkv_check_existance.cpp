@@ -30,14 +30,12 @@ static constexpr uint32_t DIM_3 = 3;
 
 ge::graphStatus KvQuantSASTilingCheck::CheckParaExistenceAntiquant() const
 {
-    if (kvLayout_ == SASLayout::BSND) {
-        return ge::GRAPH_SUCCESS;
-    }  else if (kvLayout_ == SASLayout::PA_ND) {
+    if (kvLayout_ == SASLayout::PA_BNBD) {
         OP_CHECK_IF(opParamInfo_.sequsedKv.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_kv is PA_ND, actualSeqLengthsKv must not be null"),
+            OP_LOGE(opName_, "when layout_kv is PA_BNBD, actualSeqLengthsKv must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((opParamInfo_.oriBlockTable.tensor == nullptr) && (opParamInfo_.cmpBlockTable.tensor == nullptr),
-            OP_LOGE(opName_, "when layout_kv is PA_ND, oriBlockTable and cmpBlockTable must be one "),
+            OP_LOGE(opName_, "when layout_kv is PA_BNBD, oriBlockTable and cmpBlockTable must be one "),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -67,22 +65,16 @@ ge::graphStatus KvQuantSASTilingCheck::CheckParaExistence()
 
 ge::graphStatus KvQuantSASTilingCheck::CheckSequsedKvExistence() const
 {
-    OP_CHECK_IF(kvLayout_ == SASLayout::TND && opParamInfo_.sequsedKv.tensor != nullptr,
-        OP_LOGE(opName_, "When kvLayout is TND, sequsedKv should be none, but now it's not empty"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kvLayout_ == SASLayout::PA_ND && opParamInfo_.sequsedKv.tensor == nullptr,
-        OP_LOGE(opName_, "When kvLayout is PA_ND, sequsedKv should not be none, but now it's empty"),
+    OP_CHECK_IF(kvLayout_ == SASLayout::PA_BNBD && opParamInfo_.sequsedKv.tensor == nullptr,
+        OP_LOGE(opName_, "When kvLayout is PA_BNBD, sequsedKv should not be none, but now it's empty"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus KvQuantSASTilingCheck::CheckCuSeqLensOriKvExistence() const
 {
-    OP_CHECK_IF(kvLayout_ == SASLayout::TND && opParamInfo_.cuSeqLensOriKv.tensor == nullptr,
-        OP_LOGE(opName_, "When kvLayout is TND, cuSeqLensOriKv should not be none, but now it's empty"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kvLayout_ == SASLayout::PA_ND && opParamInfo_.cuSeqLensOriKv.tensor != nullptr,
-        OP_LOGE(opName_, "When kvLayout is PA_ND, sequsedKv should be none, but now it's not empty"),
+    OP_CHECK_IF(kvLayout_ == SASLayout::PA_BNBD && opParamInfo_.cuSeqLensOriKv.tensor != nullptr,
+        OP_LOGE(opName_, "When kvLayout is PA_BNBD, sequsedKv should be none, but now it's not empty"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -96,11 +88,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckCuSeqLensCmpKvExistence() const
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(kvLayout_ == SASLayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr,
-        OP_LOGE(opName_, "When kvLayout is TND and cmpKv is provided, sequsedKv should not be none, but now it's empty"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kvLayout_ == SASLayout::PA_ND && opParamInfo_.cuSeqLensCmpKv.tensor != nullptr,
-        OP_LOGE(opName_, "When kvLayout is PA_ND and cmpKv is provided, sequsedKv should be none, but now it's not empty"),
+    OP_CHECK_IF(kvLayout_ == SASLayout::PA_BNBD && opParamInfo_.cuSeqLensCmpKv.tensor != nullptr,
+        OP_LOGE(opName_, "When kvLayout is PA_BNBD and cmpKv is provided, sequsedKv should be none, but now it's not empty"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -136,7 +125,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSWAExistence()
     if (perfMode_ != SASTemplateMode::SWA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && kvLayout_ == SASLayout::PA_ND &&
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && kvLayout_ == SASLayout::PA_BNBD &&
         opParamInfo_.oriBlockTable.tensor == nullptr,
         OP_LOGE(opName_, "oriBlockTable must not be empty when cmpKv is not provided. "),
         return ge::GRAPH_FAILED);
@@ -161,8 +150,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckCFAExistence()
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
-        opParamInfo_.cmpBlockTable.tensor == nullptr && kvLayout_ == SASLayout::PA_ND,
-        OP_LOGE(opName_, "cmpBlockTable must not be empty when cmpKv is provided and cmpSparseIndices is not provided and kvLayout is PA_ND."),
+        opParamInfo_.cmpBlockTable.tensor == nullptr && kvLayout_ == SASLayout::PA_BNBD,
+        OP_LOGE(opName_, "cmpBlockTable must not be empty when cmpKv is provided and cmpSparseIndices is not provided and kvLayout is PA_BNBD."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

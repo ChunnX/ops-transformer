@@ -67,7 +67,7 @@ kv_quant_sparse_attn_sharedkv(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     SAS_OP_IMPL(BaseApi::KvQuantSparseAttnSharedkvScfa, KvQuantSparseAttnSharedkvTilingData, bfloat16_t,
-        fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == static_cast<int>(SAS_LAYOUT::PA_ND),
+        fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == static_cast<int>(SAS_LAYOUT::PA_BNBD),
         static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
         static_cast<SASTemplateMode>(TEMPLATE_MODE), SPLIT_G,
         static_cast<SCALE_CONTIGUOUS_MODE>(KV_QUANT_MODE), static_cast<TopkValueMode>(TOPK_VALUE_MODE));

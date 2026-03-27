@@ -547,7 +547,7 @@ def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, T2, N2, K, cu_seqlens_q, sequse
 
 def gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, K1, block_num1, block_size1, cu_seqlens_q, seqused_kv, ori_mask_mode, template_idx,
                data_range_left=DATA_RANGE_LEFT, data_range_right=DATA_RANGE_RIGHT):
-    if layout_kv == "PA_ND":
+    if layout_kv == "PA_BNBD":
         ori_max_s2 = max(seqused_kv)
         ori_max_block_num_per_batch = math.ceil(ori_max_s2 / block_size1)
 
@@ -617,7 +617,7 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, N2, D, K, bl
     if cmp_ratio == 0:
         raise ValueError(f"cmp_ratio can't be 0")
 
-    if layout_kv == "PA_ND":
+    if layout_kv == "PA_BNBD":
         ori_max_s2 = max(seqused_kv)
         cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
@@ -689,7 +689,7 @@ def gen_data(params):
     block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, \
     ori_win_left, ori_win_right, case_name, S2, q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q, \
     ori_kv_topk_mode, cmp_kv_topk_mode = params
-    if layout_kv == "PA_ND" and len(seqused_kv) != B:
+    if layout_kv == "PA_BNBD" and len(seqused_kv) != B:
         raise ValueError(f"len(seqused_kv) != B, which is {len(seqused_kv)} != {B}")
     elif layout_kv == "TND" and B != 1:
         raise ValueError(f"only support B = 1 for TND, B = {B}")
@@ -741,8 +741,8 @@ def gen_data(params):
     else:
         raise ValueError(f"layout_q is not support {layout_q}")
 
-    # generate ori_kv/cmp_kv (only support PA_ND)
-    if layout_kv in ["PA_ND", "TND", "BSND"]:
+    # generate ori_kv/cmp_kv (only support PA_BNBD)
+    if layout_kv in ["PA_BNBD", "TND", "BSND"]:
         pass
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
@@ -776,7 +776,7 @@ def gen_data(params):
             template_run_mode = 'ALL_SCFA'
             K, K1 = int(K), int(K1)
 
-    if layout_kv == "PA_ND":
+    if layout_kv == "PA_BNBD":
         block_size1, block_num1 = int(block_size1), int(block_num1)
         if template_idx != 0 and template_idx != 3:
             block_size2, block_num2 = int(block_size2), int(block_num2)

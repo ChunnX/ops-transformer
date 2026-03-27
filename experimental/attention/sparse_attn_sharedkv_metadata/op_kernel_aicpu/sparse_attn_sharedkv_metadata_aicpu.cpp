@@ -128,8 +128,8 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckSingleParamN128()
         return false;
     }
     // layout_kv 校验
-    if (layoutKv_ != "PA_ND" && layoutKv_ != "TND" && layoutKv_ != "BSND") {
-        KERNEL_LOG_ERROR("layout_kv must be TND, BSND or PA_ND!");
+    if (layoutKv_ != "PA_BNBD" && layoutKv_ != "TND" && layoutKv_ != "BSND") {
+        KERNEL_LOG_ERROR("layout_kv must be TND, BSND or PA_BNBD!");
         return false;
     }
     // layout交叉校验
@@ -166,10 +166,10 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckExistenceN128()
     //         return false;
     //     }
     // }
-    // layoutKv_ "PA_ND" 存在性校验
-    if (layoutKv_ == "PA_ND") {
+    // layoutKv_ "PA_BNBD" 存在性校验
+    if (layoutKv_ == "PA_BNBD") {
         if (isInvalid(seqUsedKv_)) {
-            KERNEL_LOG_ERROR("For layout_kv PA_ND, seqused_kv must be provided!");
+            KERNEL_LOG_ERROR("For layout_kv PA_BNBD, seqused_kv must be provided!");
             return false;
         }
     }
@@ -254,8 +254,8 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckSingleParam()
         return false;
     }
     // layout_kv 校验
-    if (layoutKv_ != "PA_ND" && layoutKv_ != "TND" && layoutKv_ != "BSND") {
-        KERNEL_LOG_ERROR("layout_kv must be TND, BSND or PA_ND!");
+    if (layoutKv_ != "PA_BNBD" && layoutKv_ != "TND" && layoutKv_ != "BSND") {
+        KERNEL_LOG_ERROR("layout_kv must be TND, BSND or PA_BNBD!");
         return false;
     }
     // layout交叉校验
@@ -292,10 +292,10 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckExistence()
         //     return false;
         // }
     }
-    // layoutKv_ "PA_ND" 存在性校验
-    if (layoutKv_ == "PA_ND") {
+    // layoutKv_ "PA_BNBD" 存在性校验
+    if (layoutKv_ == "PA_BNBD") {
         if (isInvalid(seqUsedKv_)) {
-            KERNEL_LOG_ERROR("For layout_kv PA_ND, seqused_kv must be provided!");
+            KERNEL_LOG_ERROR("For layout_kv PA_BNBD, seqused_kv must be provided!");
             return false;
         }
     }
