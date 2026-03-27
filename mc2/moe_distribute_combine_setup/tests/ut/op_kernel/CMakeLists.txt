@@ -9,5 +9,5 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
-    # AddOpTestCase(moe_distribute_combine_setup "Ascend910_9599" "-DDTYPE_X_REF=half" "")
+    # AddOpTestCase(moe_distribute_combine_setup "Ascend950PR_9599" "-DDTYPE_X_REF=half" "")
 endif()
