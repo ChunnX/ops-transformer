@@ -323,8 +323,8 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
 
         const gert::Tensor *tempData = fiaInfo_.opParamInfo.actualSeqLengthsQ.tensor;
         const gert::Tensor *tempDataKV = fiaInfo_.opParamInfo.actualSeqLengths.tensor;
-        const int64_t *preTokens = fiaInfo_.opParamInfo.preToken;
-        const int64_t *nextTokens = fiaInfo_.opParamInfo.nextToken;
+        const int64_t preTokens = fiaInfo_.opParamInfo.preToken == nullptr ? 0 : *opParamInfo_.preToken;
+        const int64_t nextTokens = fiaInfo_.opParamInfo.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
         int64_t actualLenDims = (tempData != nullptr) ? tempData->GetShapeSize() : 0;
         int64_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
         for (uint32_t i = 0; i < fiaInfo_.bSize; i++) {
@@ -391,7 +391,7 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
                         "participate in the calculation, "
                         "the accuracy of the final result will be incorrect. Please see the "
                         "documentation for more details.",
-                        fiaInfo_.sparseMode, *preTokens, *nextTokens),
+                        fiaInfo_.sparseMode, preTokens, nextTokens),
                 return ge::GRAPH_FAILED);
         }
     }
