@@ -2140,6 +2140,9 @@ static aclnnStatus CheckQuantGMMWeightNz(DataType x1Dtype, DataType weightDtype,
             gmm::dTypeToString(x1Dtype).c_str(), gmm::dTypeToString(weightDtype).c_str(),
             gmm::dTypeToString(yDtype).c_str());
         return ACLNN_SUCCESS;
+    } else if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+               x1Dtype == DataType::DT_FLOAT8_E4M3FN && weightDtype == DataType::DT_FLOAT8_E4M3FN) {
+        return ACLNN_SUCCESS;
     }
     return ACLNN_ERR_PARAM_INVALID;
 }
@@ -2177,7 +2180,7 @@ static aclnnStatus ParamsWeightNzDtype(gmm::GroupedMatmulParams &params) {
     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "The dtypes of x[%s]-weight[%s] do not match with required dtype."
             "Only supported x-weight: INT8-INT8, BF16-BF16, FP16-FP16, INT8-INT4, INT4-INT4, FP16/BF16-FP4_E2M1, "
-            "FP8_E4M3FN-FP4_E2M1",
+            "FP8_E4M3FN-FP4_E2M1, FP8_E4M3FN-FP8_E4M3FN.",
             gmm::dTypeToString(x1Dtype).c_str(), gmm::dTypeToString(weightDtype).c_str());
     return ACLNN_ERR_PARAM_INVALID;
 }
