@@ -111,7 +111,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>融合算子的左矩阵输入，对应公式中的x1。</td>
     <td>该输入作为MatMul计算的左矩阵输入；根据设备型号对数据类型有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
-    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、INT8</td>
+    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8</td>
     <td>ND</td>
     <td>2维，shape为(BS, H1)</td>
     <td>x</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>融合算子的右矩阵输入，对应公式中的x2。</td>
     <td>直接作为MatMul计算的右矩阵输入；根据设备型号对数据类型和非连续有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
-    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、INT8</td>
+    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8</td>
     <td>ND</td>
     <td>2维，shape为(H1, H2)</td>
     <td>√</td>
@@ -492,6 +492,9 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
           | FLOAT8_E5M2 | FLOAT8_E5M2 | FLOAT32 | FLOAT16 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
           | FLOAT8_E5M2 | FLOAT8_E5M2 | FLOAT32 | BFLOAT16 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
           | FLOAT8_E5M2 | FLOAT8_E5M2 | FLOAT32 | FLOAT32 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
+          | FLOAT4_E2M1 | FLOAT4_E2M1 | FLOAT32 | FLOAT16 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
+          | FLOAT4_E2M1 | FLOAT4_E2M1 | FLOAT32 | BFLOAT16 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
+          | FLOAT4_E2M1 | FLOAT4_E2M1 | FLOAT32 | FLOAT32 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
     * 维度约束：
       * H1范围仅支持[1, 65535]。
       * mx量化场景下，x2必须转置，shape为(H2, H1)，transposeX2为True。

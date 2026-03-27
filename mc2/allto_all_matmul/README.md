@@ -105,14 +105,14 @@
     <td>x1</td>
     <td>输入</td>
     <td>融合算子的左矩阵，即公式中的输入x1。</td>
-    <td>FLOAT16、BFLOAT16、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+    <td>FLOAT16、BFLOAT16、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>x2</td>
     <td>输入</td>
     <td>融合算子的右矩阵，也是Matmul的右矩阵，即公式中的输入x2。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
     <td>ND</td>
     </tr>
     <tr>
@@ -297,7 +297,8 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值跟[量化模式](../../doc
         - A3目前不支持量化场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - 非量化场景下，x1/x2计算输入的数据类型为FLOAT16时，bias计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，bias计算输入的数据类型支持BFLOAT16和FLOAT32。
-        - 量化场景下，支持K-C动态量化模式和mx量化模式，x1计算输入数据类型根据量化模式有所不同。在K-C动态量化模式下，x1计算输入的数据类型为FLOAT16、BFLOAT16；在mx量化模式下，x1计算输入的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2。x2计算输入的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2，bias的数据类型为FLOAT32或者bias为空，可自由组合。
+        - 量化场景下，支持K-C动态量化模式和mx量化模式，x1计算输入的数据类型为FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1，x2计算输入的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1，bias的数据类型为FLOAT32或者bias为空，具体类型组合详见[量化aclnn约束说明](./docs/aclnnAlltoAllQuantMatmul.md#约束说明)。
+        - mx量化模式下，当x1和x2的数据类型为FLOAT4_E2M1时，两者的数据类型必须一致。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
 
