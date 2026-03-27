@@ -235,6 +235,10 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") && (std::string(opParamInfo_.layOutQuery) != "TND")),
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
+        ((std::string(opParamInfo_.layOutKey) != "PA_BSND") && (std::string(opParamInfo_.layOutKey) != "BSND") && 
+        (std::string(opParamInfo_.layOutKey) != "TND")), OP_LOGE(opName_, "input attr layout_key only supported PA_BSND、BSND or TND, "
+        "but now layout_key is %s.", layout_key.c_str()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BSND") &&
         (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
         OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
