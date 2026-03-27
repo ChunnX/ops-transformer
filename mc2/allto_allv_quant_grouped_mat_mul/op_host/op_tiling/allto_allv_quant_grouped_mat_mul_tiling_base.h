@@ -1,14 +1,14 @@
-/**
-* Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+/* *
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-/*!
+/* !
  * \file allto_allv_quant_grouped_mat_mul_tiling_base.h
  * \brief
  */
@@ -60,6 +60,7 @@ constexpr uint32_t DIM_ZERO = 0;
 constexpr uint32_t DIM_ONE = 1;
 constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
+constexpr uint32_t DIM_FOUR = 4;
 // input data range
 constexpr uint64_t BSK_MIN_VALUE = 0;
 constexpr uint64_t BSK_MAX_VALUE = 52428800;
@@ -90,10 +91,11 @@ constexpr uint64_t L1_ALIGN_SIZE = 32;
 // quant mode
 constexpr uint64_t NO_QUANT_MODE = 0;
 constexpr uint64_t PERTENSOR_QUANT_MODE = 1;
+constexpr uint64_t MX_QUANT_MODE = 6;
 
-class AlltoAllvGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit AlltoAllvGmmTilingBase(gert::TilingContext *context)
+    explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:

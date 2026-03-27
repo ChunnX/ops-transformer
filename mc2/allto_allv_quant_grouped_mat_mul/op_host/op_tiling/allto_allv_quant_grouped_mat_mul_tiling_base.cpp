@@ -20,7 +20,7 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 // protected
-ge::graphStatus AlltoAllvGmmTilingBase::GetCommonPlatformInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCommonPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr,
@@ -39,7 +39,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetCommonPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckCommonPlatformInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommonPlatformInfo()
 {
     OP_TILING_CHECK((aicCoreNum_ == 0U),
         OP_LOGE(context_->GetNodeName(), "platform info is invalid, aic num can not be 0."), return ge::GRAPH_FAILED);
@@ -58,7 +58,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckCommonPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetCommonShapeAttrsInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCommonShapeAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetCommonShapeAttrsInfo.");
     auto getAttrsInfoStatus = GetAttrsInfo();
@@ -74,7 +74,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetCommonShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckCommonShapeAttrsInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommonShapeAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckCommonShapeAttrsInfo.");
     auto checkAttrsInfoStatus = CheckAttrsInfo();
@@ -95,7 +95,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckCommonShapeAttrsInfo()
 
 // private
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetAttrsInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetAttrsInfo.");
     auto attrs = context_->GetAttrs();
@@ -143,7 +143,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckAttrsInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckAttrsInfo.");
     if (CheckEpWorldSizeValue() != ge::GRAPH_SUCCESS) {
@@ -159,7 +159,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckEpWorldSizeValue()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
 {
     // check epWorldSize in socVersion
     std::vector<int64_t> epWorldSizeValueList;
@@ -185,7 +185,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckEpWorldSizeValue()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckCommCountsRange()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
 {
     // check sendCounts/recvCounts size
     uint64_t sendCountsSize = sendCountsPtr_->GetSize();
@@ -209,7 +209,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckCommCountsRange()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckCommCountsValue()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsValue()
 {
     // check sendCounts range
     for (uint64_t index = 0U; index < e_ * epWorldSize_; index++) {
@@ -241,7 +241,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckCommCountsValue()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetShapeInfo.");
     if (GetGmmXShapeInfo() != ge::GRAPH_SUCCESS) {
@@ -272,7 +272,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckShapeInfo.");
     if (CheckGmmXShapeInfo() != ge::GRAPH_SUCCESS) {
@@ -303,7 +303,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetGmmXShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmXShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetGmmXShapeInfo.");
     // check gmmX not null
@@ -318,7 +318,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetGmmXShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmXShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmXShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmXShapeInfo.");
     // check dim = 2
@@ -340,7 +340,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmXShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetGmmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmWeightShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetGmmWeightShapeInfo.");
     OP_TILING_CHECK(context_->GetInputShape(GMM_WEIGHT_INDEX) == nullptr,
@@ -355,7 +355,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetGmmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmWeightShapeInfo.");
     // check dim
@@ -384,11 +384,11 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetCountsTensorShapeInfo() {
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo() {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckCountsTensorShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCountsTensorShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckCountsTensorShapeInfo.");
     // sendCountsTensor only support nullptr
@@ -401,7 +401,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckCountsTensorShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetMmxShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmxShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetMmxShapeInfo.");
     // optional input mmX
@@ -417,7 +417,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetMmxShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckMmxShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmxShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckMmxShapeInfo.");
     if (!hasSharedExpertFlag_) {
@@ -451,12 +451,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckMmxShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetMmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmWeightShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetMmWeightShapeInfo.");
     if (context_->GetOptionalInputShape(MM_WEIGHT_INDEX) != nullptr) {
         n2_ = transMmWeight_ ? context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ZERO) :
-                               context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+                               context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ONE);                               
         OP_TILING_CHECK(n2_ <= N2_MIN_VALUE || n2_ >= N2_MAX_VALUE,
             OP_LOGE(context_->GetNodeName(), "N2 should be in (%lu, %lu), but got %lu!", N2_MIN_VALUE, N2_MAX_VALUE, n2_),
             return ge::GRAPH_FAILED);
@@ -468,7 +468,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetMmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckMmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmWeightShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckMmWeightShapeInfo.");
     if (context_->GetOptionalInputShape(MM_WEIGHT_INDEX) == nullptr) {
@@ -492,7 +492,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckMmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetGmmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmYShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetGmmYShapeInfo.");
     // output gmmY
@@ -503,7 +503,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetGmmYShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmYShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmYShapeInfo.");
     // check dim
@@ -512,15 +512,18 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckGmmYShapeInfo()
             context_->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
+    uint64_t gmmYdim2 = context_->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    OP_TILING_CHECK(gmmYdim2 != n1_, OP_LOGE(context_->GetNodeName(), "gmmY second dim should be same as N1(%lu), but got %lu.", \
+        n1_, gmmYdim2), return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckGmmYShapeInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetMmYShapeInfo() {
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmYShapeInfo() {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckMmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckMmYShapeInfo.");
     // check mmX, mmWeight and mmY all be nullptr or all be not nullptr
@@ -545,12 +548,15 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckMmYShapeInfo()
         uint64_t mmYBS = context_->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
         OP_TILING_CHECK(bs_ != mmYBS,
             OP_LOGE(context_->GetNodeName(), "The BS %lu of mmX(BS, H2) should be equal to the BS %lu of mmY(BS, N2)!", bs_, mmYBS), return ge::GRAPH_FAILED);
+        uint64_t mmYdim2 = context_->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+        OP_TILING_CHECK(mmYdim2 != n2_, OP_LOGE(context_->GetNodeName(), "mmY second dim should be same as N2(%lu), but got %lu.", \
+            n2_, mmYdim2), return ge::GRAPH_FAILED);
     }
     OP_LOGD(context_->GetNodeName(), "end CheckMmYShapeInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetPermuteOutShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetPermuteOutShapeInfo.");
     if (!permuteOutFlag_) {
@@ -563,7 +569,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetPermuteOutShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckPermuteOutShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckPermuteOutShapeInfo.");
     if (!permuteOutFlag_) {
@@ -602,46 +608,43 @@ ge::graphStatus AlltoAllvGmmTilingBase::CheckPermuteOutShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::CheckFormat()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckFormat()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckFormat.");
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
-    OP_TILING_CHECK(gmmXDesc == nullptr, 
-        OP_LOGE(context_->GetNodeName(), "gmmX tensor desc can not be null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gmmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE(context_->GetNodeName(), "gmmX storage format should be ND."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXDesc == nullptr, OP_LOGE(context_->GetNodeName(), "gmmX tensor desc can not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmX storage format should be ND, "
+        "but actual is %s.", Ops::Base::ToString(gmmXDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
     auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
-    OP_TILING_CHECK(gmmWeightDesc == nullptr,
-        OP_LOGE(context_->GetNodeName(), "gmmWeight tensor desc can not be null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gmmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE(context_->GetNodeName(), "gmmWeight storage format should be ND."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightDesc == nullptr, OP_LOGE(context_->GetNodeName(), "gmmWeight tensor desc can not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmWeight storage format should be ND, "
+        "but actual is %s.", Ops::Base::ToString(gmmWeightDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
     auto mmXDesc = context_->GetOptionalInputDesc(MM_X_INDEX);
     if (mmXDesc != nullptr) {
-        OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-            OP_LOGE(context_->GetNodeName(), "mmX storage format should be ND."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "mmX storage format should be ND, "
+            "but actual is %s.", Ops::Base::ToString(mmXDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
     }
     auto mmWeightDesc = context_->GetOptionalInputDesc(MM_WEIGHT_INDEX);
     if (mmWeightDesc != nullptr) {
-        OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-            OP_LOGE(context_->GetNodeName(), "mmWeight storage format should be ND."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "mmWeight storage format should be ND, "
+            "but actual is %s.", Ops::Base::ToString(mmWeightDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
     }
     auto gmmYDesc = context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX);
-    OP_TILING_CHECK(gmmYDesc == nullptr,
-        OP_LOGE(context_->GetNodeName(), "gmmY tensor desc can not be null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gmmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE(context_->GetNodeName(), "gmmY storage format should be ND."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmYDesc == nullptr, OP_LOGE(context_->GetNodeName(), "gmmY tensor desc can not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmY storage format should be ND, "
+        "but actual is %s.", Ops::Base::ToString(gmmYDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_INDEX);
         if (mmYDesc != nullptr) {
-            OP_TILING_CHECK(mmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                OP_LOGE(context_->GetNodeName(), "mmY storage format should be ND."), return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(mmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "mmY storage format should be ND, "
+                "but actual is %s.", Ops::Base::ToString(mmYDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
         }
     }
     auto permuteOutDesc = context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX);
     if (permuteOutFlag_) {
         if (permuteOutDesc != nullptr) {
-            OP_TILING_CHECK(permuteOutDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                OP_LOGE(context_->GetNodeName(), "permuteOut storage format should be ND."), return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(permuteOutDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "permuteOut storage format should be ND, "
+                "but actual is %s.", Ops::Base::ToString(permuteOutDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
         }
     }
     OP_LOGD(context_->GetNodeName(), "end CheckFormat.");

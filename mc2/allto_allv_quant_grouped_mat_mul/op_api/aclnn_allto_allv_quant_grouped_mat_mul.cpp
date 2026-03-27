@@ -75,7 +75,7 @@ static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const acl
     return true;
 }
 
-// 检查必要输入是否为空/quantMode=1，必须非空/1
+// 检查必要输入是否为空/quantMode为1或6，必须非空/1或6
 static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmY,
                          const aclTensor *gmmXScale, const aclTensor *gmmWeightScale, int64_t gmmXQuantMode,
                          int64_t gmmWeightQuantMode)
@@ -100,24 +100,20 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeightScale should not be null.");
         return false;
     }
-    if (gmmXQuantMode != static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXQuantMode should be 1, but actual is %lu.", gmmXQuantMode);
-        return false;
-    }
-    if (gmmWeightQuantMode != static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeightQuantMode should be 1, but actual is %lu.", gmmWeightQuantMode);
+    if ((gmmXQuantMode != static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT)) &&
+        (gmmXQuantMode != static_cast<int64_t>(QuantModeType::MX_QUANT))) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXQuantMode should be 1(pertensor quant) or 6(mx quant), but actual is %lu.", gmmXQuantMode);
         return false;
     }
     return true;
 }
 
 // 根据API定义，列出输入的所能支持的所有dtype
-static const std::initializer_list<op::DataType> IN_DTYPE_SUPPORT_LIST = {op::DataType::DT_HIFLOAT8};
+static const std::initializer_list<op::DataType> IN_DTYPE_SUPPORT_LIST = {op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2};
 // 根据API定义，列出输入Scale所能支持的所有dtype
-static const std::initializer_list<op::DataType> SCALE_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> SCALE_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT, op::DataType::DT_FLOAT8_E8M0};
 // 根据API定义，列出输出output所能支持的所有dtype
-static const std::initializer_list<op::DataType> OUT_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16,
-                                                                           op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> OUT_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
 // 校验所有输入的参数类型是否正确
 static bool CheckDtypesValid(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
                              const aclTensor *gmmWeightScale, const aclTensor *mmXOptional,

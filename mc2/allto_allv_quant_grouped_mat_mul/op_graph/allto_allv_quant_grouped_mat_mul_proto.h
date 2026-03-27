@@ -23,16 +23,16 @@ namespace ge {
 /**
 * @brief Fusion of alltoallv and grouped matmul.
 * @par Inputs:
-* @li gmm_x: A matrix Tensor of shape [BSK, H1]. The data type of elements supports float16, bfloat16 or hifloat8; the format supports ND.
-* @li gmm_weight: A matrix Tensor of shape [e, H1, N1]. The data type of elements supports float16, bfloat16 or hifloat8 and should match that of gmm_x; the format supports ND.
-* @li send_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
-* @li recv_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
-* @li mm_x: A matrix Tensor of shape [BS, H1]. The data type of elements supports float16, bfloat16 or hifloat8; the format supports ND.
-* @li mm_weight: A matrix Tensor of shape [H2, N2]. The data type of elements supports float16, bfloat16 or hifloat8 and should match that of mm_x; the format supports ND.
-* @li gmm_x_scale: A matrix Tensor. The type support float32. The format supports ND.
-* @li gmm_weight_scale: A matrix Tensor. The type support float32. The format supports ND.
-* @li mm_x_scale: A matrix Tensor. The type support float32. The format supports ND.
-* @li mm_weight_scale: A matrix Tensor. The type support float32. The format supports ND.
+* @li gmm_x: A matrix Tensor of shape [BSK, H1]. The data type of elements supports hifloat8, float8_e4m3fn or float8_e5m2; the format supports ND.
+* @li gmm_weight: A matrix Tensor of shape [e, H1, N1]. The data type of elements supports hifloat8, float8_e4m3fn or float8_e5m2 and should match that of gmm_x; the format supports ND.
+* @li send_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int64; the format supports ND.
+* @li recv_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int64; the format supports ND.
+* @li mm_x: A matrix Tensor of shape [BS, H1]. The data type of elements supports hifloat8, float8_e4m3fn or float8_e5m2 and should match that of gmm_x; the format supports ND.
+* @li mm_weight: A matrix Tensor of shape [H2, N2]. The data type of elements supports hifloat8, float8_e4m3fn or float8_e5m2 and should match that of gmm_weight; the format supports ND.
+* @li gmm_x_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
+* @li gmm_weight_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
+* @li mm_x_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
+* @li mm_weight_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
 *
 * @par Attributes:
 * @li group: A required String identifying the expert group of ranks.
@@ -51,11 +51,11 @@ namespace ge {
 *        - 5：PerBlock Quantization
 *        - 6：Mx Quant Quantization
 * @li gmm_weight_quant_mode: An int. Quantization mode of gmm_weight. Default: 0.
-* @li mm_x_quant_mode: An int. Quantization mode of mm_x. Default: 0.
-* @li mm_weight_quant_mode: An int. Quantization mode of mm_weight. Default: 0.
+* @li mm_x_quant_mode: An int. Quantization mode of mm_x and should be same as gmm_x_quant_mode. Default: 0.
+* @li mm_weight_quant_mode: An int. Quantization mode of mm_weight and should be same as gmm_weight_quant_mode. Default: 0.
 * @li group_size: An int. Default: 0.
 * @li y_dtype: An int. Declare the gmm_y dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) is 28.
-* @li mm_dtype: An int. Declare the mm_y dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) is 28.
+* @li mm_dtype: An int. Declare the mm_y dtype and should be same as y_dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) is 28.
 *
 * @par Outputs:
 * @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
@@ -63,19 +63,19 @@ namespace ge {
 * @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true. The data type of elements supports float16, bfloat16 or hifloat8; the format supports ND.
 */
 REG_OP(AlltoAllvQuantGroupedMatMul)
-      .INPUT(gmm_x, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
-      .INPUT(gmm_weight, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
-      .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT32, DT_INT64}))
-      .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT32, DT_INT64}))
-      .OPTIONAL_INPUT(mm_x, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
-      .OPTIONAL_INPUT(mm_weight, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
-      .OPTIONAL_INPUT(gmm_x_scale, TensorType({DT_FLOAT}))
-      .OPTIONAL_INPUT(gmm_weight_scale, TensorType({DT_FLOAT}))
-      .OPTIONAL_INPUT(mm_x_scale, TensorType({DT_FLOAT}))
-      .OPTIONAL_INPUT(mm_weight_scale, TensorType({DT_FLOAT}))
+      .INPUT(gmm_x, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+      .INPUT(gmm_weight, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+      .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT64}))
+      .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT64}))
+      .OPTIONAL_INPUT(mm_x, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+      .OPTIONAL_INPUT(mm_weight, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+      .INPUT(gmm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+      .INPUT(gmm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+      .OPTIONAL_INPUT(mm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+      .OPTIONAL_INPUT(mm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
       .OUTPUT(gmm_y, TensorType({DT_FLOAT16, DT_BF16}))
       .OUTPUT(mm_y, TensorType({DT_FLOAT16, DT_BF16}))
-      .OUTPUT(permute_out, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
+      .OUTPUT(permute_out, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
       .REQUIRED_ATTR(group, String)
       .REQUIRED_ATTR(ep_world_size, Int)
       .REQUIRED_ATTR(send_counts, ListInt)
@@ -83,8 +83,8 @@ REG_OP(AlltoAllvQuantGroupedMatMul)
       .ATTR(trans_gmm_weight, Bool, false)
       .ATTR(trans_mm_weight, Bool, false)
       .ATTR(permute_out_flag, Bool, false)
-      .ATTR(gmm_x_quant_mode, Int, 0)
-      .ATTR(gmm_weight_quant_mode, Int, 0)
+      .REQUIRED_ATTR(gmm_x_quant_mode, Int)
+      .REQUIRED_ATTR(gmm_weight_quant_mode, Int)
       .ATTR(mm_x_quant_mode, Int, 0)
       .ATTR(mm_weight_quant_mode, Int, 0)
       .ATTR(group_size, Int, 0)

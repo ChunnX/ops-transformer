@@ -990,6 +990,24 @@ mc2:
         examples: False
       options:
         - allto_allv_grouped_mat_mul
+  
+    allto_allv_quant_grouped_mat_mul:
+      module: True
+      src:
+        - mc2/allto_allv_quant_grouped_mat_mul
+        - mc2/common
+        - mc2/3rd/grouped_matmul
+      exclude:
+        - mc2/allto_allv_quant_grouped_mat_mul/docs
+        - mc2/allto_allv_quant_grouped_mat_mul/README.md
+      ut_cov_exclude:
+        - mc2/allto_allv_quant_grouped_mat_mul/op_api
+        - mc2/allto_allv_quant_grouped_mat_mul/op_graph
+        - mc2/allto_allv_quant_grouped_mat_mul/op_kernel
+      test:
+        examples: False
+      options:
+        - allto_allv_quant_grouped_mat_mul
 
     allto_all_matmul:
       module: True
