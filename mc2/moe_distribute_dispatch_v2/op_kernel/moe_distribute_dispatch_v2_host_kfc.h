@@ -1049,7 +1049,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams flagCopyParams{static_cast<uint16_t>(copyNum), copyBlockLength, static_cast<uint32_t>(stride), 0, 0};
     DataCopyPadExtParams<float32_t> flagPadParams{true, 0U, 0U, 0U}; // 全部填充为0
     uint32_t rcvCnt = 0;
-    // uint64_t count =0; //TODO:
+    uint64_t count =0; //TODO:
     do{
         count++;
         if(count > 1000000){
