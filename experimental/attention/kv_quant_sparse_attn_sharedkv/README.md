@@ -27,8 +27,8 @@
 |-------------|------------|------|-----|-----|
 |q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为[B, S1, N1, D]，当layout_q为TND时shape为[T1, N1, D]。|BFLOAT16|ND|
 |kv_quant_mode|属性|kv nope的量化模式，仅支持1，表示K、V nope为per_tile量化，量化后的KV数据类型为FLOAT8_E4M3FN|INT32|-|。
-|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，不支持非连续，layout_kv为PA_ND时shape为[block_num1, block_size1, KV_N, D]|FLOAT8_E4M3FN|ND|
-|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，不支持非连续，layout_kv为PA_ND时shape为[block_num2, block_size2, KV_N, D]|FLOAT8_E4M3FN|ND|
+|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，不支持非连续，layout_kv为PA_BNBD时shape为[block_num1, block_size1, KV_N, D]|FLOAT8_E4M3FN|ND|
+|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，不支持非连续，layout_kv为PA_BNBD时shape为[block_num2, block_size2, KV_N, D]|FLOAT8_E4M3FN|ND|
 |ori_sparse_indices|可选输入|预留参数，当前不生效，代表离散取oriKvCache的索引，不支持非连续，layout_q为BSND时shape为[B, Q_S, KV_N, K1]，layout_q为TND时shape为[T1, KV_N, K1]|INT32|ND|
 |cmp_sparse_indices|可选输入|代表离散取cmpKvCache的索引，不支持非连续，layout_q为BSND时shape为[B, Q_S, KV_N, K2]，layout_q为TND时shape为[T1, KV_N, K2]|INT32|ND|
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
@@ -49,7 +49,7 @@
 |ori_win_left|可选属性|表示q和ori_kv计算中q对过去token计算的数量，仅支持默认值127|INT32|-|
 |ori_win_right|可选属性|表示q和ori_kv计算中q对未来token计算的数量，仅支持默认值0|INT32|-|
 |layout_q|可选属性|用于标识输入q的数据排布格式，支持BSND和TND，默认值为BSND|STRING|-|
-|layout_kv|可选属性|用于标识输入ori_kv和cmp_kv的数据排布格式，仅支持传入默认值PA_ND（PageAttention）|STRING|-|
+|layout_kv|可选属性|用于标识输入ori_kv和cmp_kv的数据排布格式，仅支持传入默认值PA_BNBD（PageAttention）|STRING|-|
 |return_softmax_lse|可选属性|预留参数，当前暂不支持，表示是否返回softmax_lse。True表示返回，False表示不返回，默认值为False|BOOL|-|
 |attention_out|输出|当layout_q为BSND时shape为[B, S1, N1, D]，当layout_q为TND时shape为[T1, N1, D]|BFLOAT16|ND|
 |softmax_lse|输出|输出q乘ori_kv的结果先取max得到softmax_max，query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。当layout_q为BSND时shape为[B, N2, S1, N1/N2]，当layout_q为TND时shape为[N2, T1, N1/N2]。目前softmax_lse输出为无效值|FLOAT32|ND|

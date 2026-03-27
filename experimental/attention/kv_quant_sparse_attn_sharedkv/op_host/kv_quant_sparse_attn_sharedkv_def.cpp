@@ -118,7 +118,7 @@ public:
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_ND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BNBD");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("ori_kv_stride").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_kv_stride").AttrType(OPTIONAL).Int(0);

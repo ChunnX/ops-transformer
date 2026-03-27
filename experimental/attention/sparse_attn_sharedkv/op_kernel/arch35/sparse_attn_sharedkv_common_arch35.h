@@ -66,7 +66,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
     X(IS_FD, bool, false) \
     X(IS_PA, bool, true) \
     X(LAYOUT_T, SAS_LAYOUT, SAS_LAYOUT::BSND) \
-    X(KV_LAYOUT_T, SAS_LAYOUT, SAS_LAYOUT::PA_ND) \
+    X(KV_LAYOUT_T, SAS_LAYOUT, SAS_LAYOUT::PA_BNBD) \
     X(TEMPLATE_MODE, SASTemplateMode, SASTemplateMode::SCFA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
 

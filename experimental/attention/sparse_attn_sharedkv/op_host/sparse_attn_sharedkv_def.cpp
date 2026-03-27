@@ -110,12 +110,12 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(1);
-        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4); // ori_mask_mode默认值4
-        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3); // cmp_mask_mode默认值3
-        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
-        this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
+        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(0); // ori_mask_mode默认值0
+        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(0); // cmp_mask_mode默认值0
+        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1
+        this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1); // ori_win_right默认值-1
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_ND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("ori_kv_stride").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_kv_stride").AttrType(OPTIONAL).Int(0);

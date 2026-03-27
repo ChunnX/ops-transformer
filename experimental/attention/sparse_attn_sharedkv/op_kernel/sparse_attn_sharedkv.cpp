@@ -89,11 +89,11 @@ sparse_attn_sharedkv(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE || TEMPLATE_MODE == ORI_SCFA_TEMPLATE || \
             TEMPLATE_MODE == ORI_CMP_SCFA_TEMPLATE || SPLIT_G == 1) {
             SAS_OP_IMPL(SASKernel::SparseAttnSharedkvScfa, SparseAttnSharedkvTilingData, bfloat16_t,
-                bfloat16_t, float, bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SAS_LAYOUT_PA_ND), static_cast<SAS_LAYOUT>(LAYOUT_T),
+                bfloat16_t, float, bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SAS_LAYOUT_PA_BNBD), static_cast<SAS_LAYOUT>(LAYOUT_T),
                 static_cast<SAS_LAYOUT>(KV_LAYOUT_T), static_cast<SASTemplateMode>(TEMPLATE_MODE), SPLIT_G);
         } else {
             SAS_OP_IMPL(SASKernel::SparseAttnSharedkvSwa, SparseAttnSharedkvTilingData, bfloat16_t,
-                bfloat16_t, float, bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SAS_LAYOUT_PA_ND), static_cast<SAS_LAYOUT>(LAYOUT_T),
+                bfloat16_t, float, bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SAS_LAYOUT_PA_BNBD), static_cast<SAS_LAYOUT>(LAYOUT_T),
                 static_cast<SAS_LAYOUT>(KV_LAYOUT_T), static_cast<SASTemplateMode>(TEMPLATE_MODE), false);
         }
     #else

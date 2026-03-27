@@ -38,7 +38,7 @@
 |ori_win_left|可选属性|表示q和ori_kv计算中q对过去token计算的数量，仅支持默认值127。|INT32|-|
 |ori_win_right|可选属性|表示q和ori_kv计算中q对未来token计算的数量，仅支持默认值0。|INT32|-|
 |layout_q|可选属性|用于标识输入q的数据排布格式，支持BSND和TND，默认值为BSND。|STRING|-|
-|layout_kv|可选属性|用于标识输入ori_kv和cmp_kv的数据排布格式，仅支持传入默认值PA_ND（PageAttention）。|STRING|-|
+|layout_kv|可选属性|用于标识输入ori_kv和cmp_kv的数据排布格式，仅支持传入默认值PA_BNBD（PageAttention）。|STRING|-|
 |has_ori_kv|可选属性|用于标识是否含有ori_kv。|BOOL|-|
 |has_cmp_kv|可选属性|用于标识是否含有cmp_kv。|BOOL|-|
 |device|可选属性|用于获取设备信息。|STRING|-|

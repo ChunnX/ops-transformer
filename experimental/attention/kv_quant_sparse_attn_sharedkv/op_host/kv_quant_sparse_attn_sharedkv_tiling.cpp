@@ -202,8 +202,7 @@ ge::graphStatus KvQuantSASInfoParser::GetQueryAndOutLayout()
 ge::graphStatus KvQuantSASInfoParser::GetKvLayout()
 {
     const map<string, SASLayout> layoutKVMap = {
-        {"PA_ND",     SASLayout::PA_ND},
-        {"TND",       SASLayout::TND},
+        {"PA_BNBD",     SASLayout::PA_BNBD}
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -352,9 +351,6 @@ ge::graphStatus KvQuantSASInfoParser::GetS1Size()
 
 ge::graphStatus KvQuantSASInfoParser::GetMaxBlockNumPerBatch()
 {
-    if (kvLayout_ == SASLayout::TND) {
-        return ge::GRAPH_SUCCESS;
-    }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
         OP_LOGE(opName_, "the layout_kv is %s and topk_value_mode is 1, blockTable must be provided.", KvQuantSASLayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
@@ -438,7 +434,7 @@ ge::graphStatus KvQuantSASInfoParser::GetSparseBlockCount()
 ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = static_cast<uint32_t>(s2Size_);
-    if (kvLayout_ == SASLayout::PA_ND) {
+    if (kvLayout_ == SASLayout::PA_BNBD) {
         if (opParamInfo_.sequsedKv.tensor != nullptr) {
             actualLenDimsKV_ = opParamInfo_.sequsedKv.tensor->GetShapeSize();
         }

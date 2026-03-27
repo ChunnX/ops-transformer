@@ -333,7 +333,7 @@ private:
     int64_t winLeft_ = 127;
     int64_t winRight_ = 0;
     std::string layoutQuery_ = "BSND";
-    std::string layoutKv_ = "PA_ND";
+    std::string layoutKv_ = "PA_BNBD";
     bool hasOriKv_ = true;
     bool hasCmpKv_ = true;
     uint32_t aicCoreNum_ = 24U;

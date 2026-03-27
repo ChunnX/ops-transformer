@@ -16,7 +16,7 @@ import torch
 TEST_PARAMS = {
     "decode_first":{
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BNBD"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
@@ -52,7 +52,7 @@ TEST_PARAMS = {
 
     "prefill_first":{
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BNBD"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
@@ -87,7 +87,7 @@ TEST_PARAMS = {
     },
     "decode_g128_test":{
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BNBD"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
@@ -159,7 +159,7 @@ TEST_PARAMS = {
     },
     "decode_g128_test1":{
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BNBD"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],

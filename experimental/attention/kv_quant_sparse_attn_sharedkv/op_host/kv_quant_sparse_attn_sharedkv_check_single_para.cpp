@@ -46,8 +46,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::map<std::string, std::vector<SASLayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME,             {SASLayout::BSND, SASLayout::TND}},
-    {ORI_KV_NAME,            {SASLayout::PA_ND, SASLayout::TND}},
-    {CMP_KV_NAME,            {SASLayout::PA_ND, SASLayout::TND}},
+    {ORI_KV_NAME,            {SASLayout::PA_BNBD, SASLayout::TND}},
+    {CMP_KV_NAME,            {SASLayout::PA_BNBD, SASLayout::TND}},
     {ATTEN_OUT_NAME,         {SASLayout::BSND, SASLayout::TND}},
 };
 
@@ -200,7 +200,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
         ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    if (kvLayout_ == SASLayout::PA_ND) {
+    if (kvLayout_ == SASLayout::PA_BNBD) {
         OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
             OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
             oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
@@ -230,7 +230,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
         OP_CHECK_IF(cmpKvN2Size_ != n2Size_,
             OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
             return ge::GRAPH_FAILED);
-        if (kvLayout_ == SASLayout::PA_ND) {
+        if (kvLayout_ == SASLayout::PA_BNBD) {
             OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
                 OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be in range (0, %u].",
                 cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
