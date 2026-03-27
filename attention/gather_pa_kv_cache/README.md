@@ -20,9 +20,10 @@
   - 如果isSeqLensCumsum为false，则seqLens中所有值的累加和即为keyRef/valueRef的第一个维度大小：keyRef[dim0] = sum(seqLens)
 
   关于**keyRef**、**valueRef**的一些限制条件如下：
-  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型， num_heads * head_size(keyRef/valueRef)取128*576。
+  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型，num_heads * head_size(keyRef/valueRef)取128*576。
 
 - 示例：
+
   ```
     keyCache_shape: [128, 128, 16, 144]
     valueCache_shape: [128, 128, 16, 128]
@@ -49,8 +50,8 @@
 | cacheMode                     | 输入 | 表示输入的数据排布格式，支持Norm、PA_NZ | String      | ND         |
 | isSeqLensCumsum                     | 输入 | 表示seqLens是否为累加和。false表示非累加和 | BOOL       | ND         |
 
-
 ## 约束说明
+
 无
 
 ## 调用说明

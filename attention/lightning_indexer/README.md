@@ -13,16 +13,15 @@
 
 ## 功能说明
 
--   API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
+- API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
 
--   计算公式：
+- 计算公式：
 
      $$
      Indices=\text{Top-}k\left\{[1]_{1\times g}@\left[(W@[1]_{1\times S_{k}})\odot\text{ReLU}\left(Q_{index}@K_{index}^T\right)\right]\right\}
      $$
 
      对于某个token对应的Index Query $Q_{index}\in\R^{g\times d}$，给定上下文Index Key $K_{index}\in\R^{S_{k}\times d},W\in\R^{g\times 1}$，其中$g$为GQA对应的group size，$d$为每一个头的维度，$S_{k}$是上下文的长度。
-
 
 ## 参数说明
 
@@ -269,12 +268,12 @@
 
 ## 约束说明
 
--   该接口支持图模式。
--   参数query中的N支持小于等于64，key的N支持1。
--   headdim支持128。
--   block_size取值为16的倍数，最大支持1024。
--   参数query、key的数据类型应保持一致。
--   参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
+- 该接口支持图模式。
+- 参数query中的N支持小于等于64，key的N支持1。
+- headdim支持128。
+- block_size取值为16的倍数，最大支持1024。
+- 参数query、key的数据类型应保持一致。
+- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
 
 ## 调用示例
 

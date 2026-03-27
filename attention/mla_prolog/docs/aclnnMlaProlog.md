@@ -12,8 +12,8 @@
 
 ## 功能说明
 
--  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
--  **计算公式**：
+- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
+- **计算公式**：
 
     RmsNorm公式
 
@@ -61,7 +61,6 @@
     k^R = Cache(ROPE(x \cdot W^{KR}))
     $$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaProlog”接口执行计算。
@@ -106,7 +105,7 @@ aclnnStatus aclnnMlaProlog(
 
 ## aclnnMlaPrologGetWorkspaceSize
 
--  **参数说明**
+- **参数说明**
 
     | 参数名 | 输入/输出 | 描述 | 使用说明   | 数据类型 | 数据格式   | 维度(shape) | 非连续Tensor |
     |----------------------------|-----------|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|------------|---------------------------|-------------------------|
@@ -137,7 +136,7 @@ aclnnStatus aclnnMlaProlog(
     | workspaceSize              | 输出      | 返回需在Device侧申请的workspace大小。                                  | - 仅用于输出结果，无需输入配置 <br> - 数据类型为uint64_t*                                                                                 | -              | -          | -                         | -                       |
     | executor                   | 输出      | 返回op执行器，包含算子计算流程。                                      |  - 仅用于输出结果，无需输入配置 <br> - 数据类型为aclOpExecutor**                                                                           | -              | -          | -                         | -                       |
 
--  **返回值**
+- **返回值**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。</br>
     第一段接口完成入参校验，出现以下场景时报错：
@@ -160,18 +159,17 @@ aclnnStatus aclnnMlaProlog(
   | executor      | aclOpExecutor\*  | op执行器，包含了算子计算流程。                                      |
   | stream        | aclrtStream      | 指定执行任务的Stream。|
 
--  **返回值**
+- **返回值**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnMlaProlog默认确定性实现。
 具体说明如下
--  shape 格式字段含义说明
+- shape 格式字段含义说明
+
     | 字段名       | 英文全称/含义                  | 取值规则与说明                                                                 |
     |--------------|--------------------------------|------------------------------------------------------------------------------|
     | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
@@ -186,6 +184,7 @@ aclnnStatus aclnnMlaProlog(
     | BlockNum     | PagedAttention 场景下的块数    | 取值为计算 `B*Skv/BlockSize` 的结果后向上取整（Skv 表示 kv 的序列长度，允许取 0） |
     | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                                          |
     | T            | BS 合轴后的大小                | A2、A3取值范围：0~1048576；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维  |
+
 - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k，n）。
 - aclnnMlaProlog接口支持场景：A2、A3支持以下所有场景
   <table style="table-layout: auto;" border="1">
@@ -437,7 +436,6 @@ aclnnStatus aclnnMlaProlog(
     </tr>
   </table>
   </div>
-
 
   <!-- 参数解释请参见**算子执行接口**。 -->
 
@@ -741,6 +739,3 @@ aclnnStatus aclnnMlaProlog(
       return 0;
   }
   ```
-
-
-

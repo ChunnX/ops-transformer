@@ -12,14 +12,14 @@
 
 ## 功能说明
 
--  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路；
-    -  首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
-    -  第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；
-    -  第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
-    -  第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
-    -  权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
+- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路；
+    - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
+    - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；
+    - 第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
+    - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
+    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
 
--  **计算公式**：
+- **计算公式**：
 
     RmsNorm公式
 
@@ -77,7 +77,6 @@
     q^{N} = {round(q^{N} / dequantScaleQNope)}
     $$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologV2WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV2WeightNz”接口执行计算。
@@ -120,7 +119,6 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
   aclOpExecutor     *executor, 
   const aclrtStream stream)
 ```
-
 
 ## aclnnMlaPrologV2WeightNzGetWorkspaceSize
 
@@ -179,7 +177,6 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
   | executor      | aclOpExecutor\*  | op执行器，包含了算子计算流程。                                       |
   | stream        | aclrtStream      | 指定执行任务的Stream。                                   |
       
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -207,8 +204,8 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
   | T            | BS 合轴后的大小                | A2、A3取值范围：0~1048576；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 <br>A5暂不支持BS合轴 |
 
 - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k，n）。
--   shape约束：
-    -   若tokenX的维度采用BS合轴，即(T, He)
+- shape约束：
+    - 若tokenX的维度采用BS合轴，即(T, He)
         - ropeSin和ropeCos的shape为(T, Dr)
         - cacheIndex的shape为(T)
         - dequantScaleXOptional的shape为(T, 1)
@@ -222,7 +219,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
         - queryOut的shape为(B, S, N, Hckv)
         - queryRopeOut的shape为(B, S, N, Dr)
         - int8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为(1)
-    -   B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
+    - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
         - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
         - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
 - aclnnMlaPrologV2WeightNz接口支持场景：A2、A3支持以下所有场景，A5当前仅支持非量化场景
@@ -961,7 +958,9 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       return 0;
   }
   ```
+
   A5示例代码如下，仅供参考。
+
   ```Cpp
   #include <iostream>
   #include <vector>

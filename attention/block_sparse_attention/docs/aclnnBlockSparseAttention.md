@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - **接口功能**：BlockSparseAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
@@ -33,7 +32,6 @@
   当前支持的布局：
   - qInputLayout: "TND" "BNSD"
   - kvInputLayout: "TND" "BNSD"
-
 
 ## 函数原型
 
@@ -402,7 +400,6 @@ aclnnStatus aclnnBlockSparseAttention(
   </tbody>
   </table>
 
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -443,7 +440,6 @@ aclnnStatus aclnnBlockSparseAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnBlockSparseAttention
 
@@ -510,7 +506,6 @@ aclnnStatus aclnnBlockSparseAttention(
 - maskType当前只支持输入0，表示不加mask。
 - blockSize当前只支持输入0，表示不支持paged cache。
 - preTokens和nextTokens当前只支持输入2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
-
 
 ## 调用示例
 

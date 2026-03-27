@@ -13,15 +13,13 @@
 | <term>Atlas 推理系列加速卡产品</term>                        | √        |
 | <term>Atlas 训练系列产品</term>                              | ×        |
 
-##  功能说明
+## 功能说明
 
 - 接口功能：兼容（[aclnnIncreFlashAttentionV2](aclnnIncreFlashAttentionV2.md)）接口功能，在其基础上**新增位置编码，page attention，KV cache反量化特性**。
 
   对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过KV Cache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。
 
   相比全量场景的FlashAttention算子（[PromptFlashAttention](../../prompt_flash_attention/README.md)），增量推理的流程与正常全量推理并不完全等价，不过增量推理的精度并无明显劣化。
-
-  
 
     **说明：**
 
@@ -31,31 +29,21 @@
 
   self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n$d的矩阵。
 
-  
-
     self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。
-
-  
 
   $$
      Attention(Q,K,V)=Score(Q,K)V
   $$
 
-  
-
     本算子中Score函数采用Softmax函数，self-attention计算公式为：
-
-  
 
   $$
    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
   $$
 
-  
-
     其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-##  函数原型
+## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnIncreFlashAttentionV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttentionV3”接口执行计算。
 
@@ -353,7 +341,6 @@ aclnnStatus aclnnIncreFlashAttentionV3(
       </tr>
     </tbody></table></div>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -389,7 +376,6 @@ aclnnStatus aclnnIncreFlashAttentionV3(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnIncreFlashAttentionV3
 
@@ -434,7 +420,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-##   约束说明
+## 约束说明
 
 - 确定性计算：
   - aclnnIncreFlashAttentionV3默认确定性实现。
@@ -664,4 +650,3 @@ int main() {
   return 0;
 }
 ```
-

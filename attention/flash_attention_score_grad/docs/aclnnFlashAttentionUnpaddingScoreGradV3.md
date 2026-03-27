@@ -65,8 +65,6 @@
   dkRope=\frac{((dS)^T*qRope)}{\sqrt{d}}
   $$
 
-
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV3”接口执行计算。
@@ -110,6 +108,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
   void             *workspace,
@@ -117,7 +116,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize
 
@@ -544,7 +542,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 
 ## aclnnFlashAttentionUnpaddingScoreGradV3
 
--   **参数说明**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -596,10 +594,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 - queryRope/keyRope的d大小必须相同，d必须是8的整数倍，且需小于等于query/key的d。
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
-    -   T：取值范围为1\~1M。
-    -   N：取值范围为1\~256。
-    -   D：取值范围为1\~768。
-    -   KeepProb：取值范围为1。
+    - T：取值范围为1\~1M。
+    - N：取值范围为1\~256。
+    - D：取值范围为1\~768。
+    - KeepProb：取值范围为1。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
@@ -617,7 +615,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 - pseShiftOptional必须为空。
 - dropMaskOptional必须为空。
 - attenMaskOptional不能为空。
-
 
 ## 调用示例
 

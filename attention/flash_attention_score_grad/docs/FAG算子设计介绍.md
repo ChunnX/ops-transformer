@@ -75,7 +75,7 @@ Bmm((S2_i,S1_i)*(S1_i,D));  // dkv，最终结果输出到workspace
 
 为了追求极致性能，必须充分利用硬件资源，通常需要进行不同pipeline的流水设计。流水设计的宗旨是尽量使某一条pipeline达成bound效果，使硬件的某一个单元一直在工作，达到性能上限。
 
-###  4.1 V侧流水
+### 4.1 V侧流水
 
 V侧流水设计需要考虑Vector的搬运及计算过程，实施的优化手段主要是double buffer。
 以下面的流水任务示意图为例，Vec的功能被拆分成2个流水任务：subA、subB，每个任务专注于完成单一功能；需要处理的数据被切分成2片，使用ping-pong表示两个数据处理任务，每个任务需要依次搬运DataCopy与计算Clc（Clc表示Vector计算）操作。任务间的箭头表示数据间的依赖关系，比如subA处理完DataCopy之后，subB才能对Clc进行处理。
@@ -125,8 +125,6 @@ FAG（FlashAttentionScoreGrad，简称FAG）融合算子的多模板设计思路
 
   FAG算子包含B、N2(key和value的N)、G(query_N/kv_N)、S1(query的S)、S2(key和value的S)共5个轴，切分顺序是先核内再核间，核内切分依据基本块大小选择切分轴，核间切分是把核内切分后剩余的轴合并后依据AI Core核数再进行切分。由于shape的大小不同，切分轴会发生变化，从Vector视角，FAG算子划分为如下几类模板，模板按序号排优先级，序号越小，优先级越高，越先匹配。
 
-  
-
 - **FAG算子根据适用范围不同，划分成以下几类模板：**
 
 **<term>Atlas A2 训练系列产品</term>**
@@ -147,9 +145,6 @@ FAG（FlashAttentionScoreGrad，简称FAG）融合算子的多模板设计思路
   </tr>
 </thead>
 <tbody>
-​    
-
-
   <tr>
     <td>B模板</td>
     <td>多核切B</td>
@@ -248,8 +243,6 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 - **根据不同计算流水进行模板特化**
 
   为了充分发挥硬件优势，通常融合算子都需要进行流水设计，以提高融合算子性能，不同的流水设计对代码的架构影响非常大，为了提升代码的可维可测可读性，需要根据不同的计算流水进行模板特化，达到特定场景的极致性能。
-
-
 
 ### 5.1 多模板详细设计
 
