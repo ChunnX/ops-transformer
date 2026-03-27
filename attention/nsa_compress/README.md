@@ -8,7 +8,6 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：训练场景下，使用Nsa Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。
@@ -20,8 +19,6 @@
 $$
 \tilde{K}_t^{\text{cmp}} = f_K^{\text{cmp}}(k_{:t}) = \left\{ \varphi(k_{id+1:id+l}) \bigg| 0 \leq i \leq \left\lfloor \frac{t-l}{d} \right\rfloor \right\}
 $$
-
-
 
 ## 参数说明
 
@@ -53,5 +50,3 @@ $$
 | 调用方式        | 调用样例        | 说明                                                 |
 |----------------|----------------|------------------------------------------------------|
 | aclnn调用 | [test_aclnn_nsa_compress](./examples/test_aclnn_nsa_compress.cpp) | 非TND场景，通过[aclnnNsaCompress](./docs/aclnnNsaCompress.md)接口方式调用NsaCompress算子。|
-
-

@@ -39,7 +39,6 @@
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV2GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV2”接口执行计算。
@@ -642,7 +641,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   </tbody>
   </table>
 
-
 ## aclnnFusedInferAttentionScoreV2
 
 - **参数说明**
@@ -681,7 +679,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
     </tr>
   </tbody>
   </table>
-
 
 - **返回值**
 
@@ -1036,8 +1033,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   - page attention场景：
 
     - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-      -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16。
-      -  <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16。
+      - <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
     - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention 伪量化场景
@@ -1413,4 +1410,3 @@ int main()
   return 0;
 }
 ```
-

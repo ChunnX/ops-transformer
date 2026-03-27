@@ -1,4 +1,4 @@
-#  FusedInferAttentionScore
+# FusedInferAttentionScore
 
 ## 产品支持情况
 
@@ -153,7 +153,7 @@
     </table>
     </div>
 
-  -  D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
+  - D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
 - 当Q_S等于1时：query，key，value输入，功能使用限制如下：
 
