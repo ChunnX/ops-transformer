@@ -167,6 +167,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(
   uint64_t        *workspaceSize, 
   aclOpExecutor  **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
   void          *workspace, 
@@ -412,7 +413,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
 
   - 1.x的尾轴长度不能大于等于65536。
   - 2.N轴长度不能超过10240。
-
 
 - A8W4场景（`A`指激活矩阵（左矩阵），`W`指权重矩阵（右矩阵），`4`指数据类型为`INT4`）
 

@@ -244,8 +244,10 @@
             | FLOAT8_E4M3FN |  8   |
             |  FLOAT8_E5M2  |  15  |
             |  FLOAT4_E2M1  |  2   |
+
           - $blocksize$：指每次量化的元素个数，仅支持32。
     </details>
+
     <details>
     <summary>Pertoken量化场景：</summary>
 
@@ -282,6 +284,7 @@
  	 
  	           $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
     </details>
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuantV2”接口执行计算。
@@ -306,6 +309,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     uint64_t            *workspaceSize, 
     aclOpExecutor       **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     void          *workspace, 
@@ -552,7 +556,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
       - weight和weightScale目前仅支持tensorlist长度为1。
-
 
 - **返回值**
   
@@ -947,8 +950,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
     ```cpp
     #include <iostream>
     #include <vector>
@@ -1175,6 +1181,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     ```
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
+
     ```cpp
     #include <iostream>
     #include <memory>
@@ -1430,3 +1437,4 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         return 0;
     }
     ```
+    
