@@ -88,6 +88,10 @@
   </table>
 </div>
 
+
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+
+
 # 约束说明
 
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
