@@ -31,7 +31,7 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 static constexpr uint64_t L0AB_OPERATE_UNIT = 512L; // L0上搬运单位512Byte
 static constexpr int32_t UNIT_FALG_UPDATE = 3;      // 检查并更新标记位
 static constexpr int32_t UNIT_FALG_CHECK_ONLY = 2;  // 只检查标记位
-static constexpr uint64_t FIXP_DST_STRIDE = 128L;   // fixp搬出N方向stride固定128元素
+static constexpr uint64_t FIXP_DST_STRIDE = 256L;   // fixp搬出N方向stride固定256元素
 static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
 static constexpr uint64_t K_ALIGNMENT64 = 64UL;     // 处理K轴非64对齐的场景
