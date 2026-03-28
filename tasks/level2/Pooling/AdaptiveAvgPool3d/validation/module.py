@@ -13,7 +13,7 @@ class Model(nn.Module):
 
     def forward(self, x: torch.Tensor, output_size: List[int]) -> torch.Tensor:
         m = torch.nn.AdaptiveAvgPool3d(output_size)
-        return m(x.npu()).cpu()
+        return m(x.to(torch.float32)).to(x.dtype)
 
 class ModelNew(nn.Module):
     def __init__(self):

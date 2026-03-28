@@ -12,8 +12,8 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
     def forward(self, x: torch.Tensor, output_size: List[int]) -> torch.Tensor:
-        output, indices = torch.nn.functional.adaptive_max_pool3d(x.npu().to(torch.float32), output_size, True)
-        return [output.to(x.dtype).cpu(), indices.to(torch.int32).cpu()]
+        output, indices = torch.nn.functional.adaptive_max_pool3d(x.to(torch.float32), output_size, True)
+        return [output.to(x.dtype).cpu(), indices.to(torch.int32)]
 
 class ModelNew(nn.Module):
     def __init__(self):
