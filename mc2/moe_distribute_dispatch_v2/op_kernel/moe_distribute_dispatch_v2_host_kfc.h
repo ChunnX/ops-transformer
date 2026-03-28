@@ -205,14 +205,14 @@ private:
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
         //return GetBaseWindOutAddrByServer(winContext_[ctxIdx], serverId, curRankId);
-        return gmTemp + 2 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
+        return gmTemp + 20 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
     }
 
     __aicore__ inline GM_ADDR GetReceiveAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
         //return GetBaseWindInAddrByServer(winContext_[ctxIdx], serverId, curRankId);
-        return gmTemp + 2 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
+        return gmTemp + 20 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
     }
 
     __aicore__ inline GM_ADDR GetSendStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
@@ -1586,6 +1586,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         count++;
         if(count >10000000) {
             LOG_INFO("WaitStatusFlag error count");
+
             break;
         }
         DataCopy(statusFlagTensor, statusCntGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)],
