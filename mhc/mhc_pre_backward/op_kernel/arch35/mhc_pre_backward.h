@@ -17,6 +17,7 @@
 #ifndef __MHC_PRE_BACKWARD_KERNEL_H_
 #define __MHC_PRE_BACKWARD_KERNEL_H_
 
+#include "mm_extension_interface/mm_custom_mm_policy.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -126,10 +127,21 @@ struct V0V1Buffers {
     uint32_t preProcessUbOffset; // Offset after hPreGradBuf for PreProcessV0 temporary buffers
 };
 
+// using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+// using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+// using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+// using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
+
 using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
+using biasT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using cT_C0 = MatmulType<TPosition::VECCALC, CubeFormat::ND_ALIGN, float>;
+using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT, QuantUtils::MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG,
+               MatmulCallBackFunc<nullptr, nullptr, nullptr>, MmCustomMatmulPolicy>;
+// constexpr MatmulConfig MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG = GetMDLConfig(false, false, 0, false, false, false, true);
+// using biasT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+// using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG,
+//     MatmulCallBackFunc<nullptr, nullptr, nullptr>, AscendC::Impl:Detail:SplitNMatmulPolicy>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
@@ -1573,6 +1585,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         offset += vecIdx * (ND_BLOCK_SIZE / 2); // 在 1024 * 128 内的偏移
 
         DataCopyPad(workSpaceGm_[offset], gammaOutUb, fp32ExtCopyParams);
+
+        Nd2NzParams copyParams
+        copyParams.ndNum = 1;
+        copyParams.nValue = currentChunkSize;
+        copyParams.dValue = copySizeND;
+        copyParams.srcNdMatrixStride = 0;
+        copyParams.srcDValue = ;
+        copyParams.dstNzC0Stride = ;
+        copyParams.dstNzNStride = ;
+        copyParams.dstNzMatrixStride = 0;
+
         bf16OutQueue_.FreeTensor(gammaOutUb);
         //do it 
         // const uint32_t xRsGradInvBroadCastDst[2] = {currentChunkSize, copySizeND};
