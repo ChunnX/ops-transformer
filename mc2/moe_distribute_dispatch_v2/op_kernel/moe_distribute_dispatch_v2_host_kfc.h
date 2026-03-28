@@ -1674,7 +1674,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillTriple(LocalTen
     xOutTint32(tokenQuantAlign_ + 2) = k;
     xOutTfloat(expertScaleAlign_) = expertScale;
     SyncFunc<AscendC::HardEvent::S_V>();
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    // SyncFunc<AscendC::HardEvent::S_MTE3>();
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1699,8 +1699,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
 
-        WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
-        //WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
+        //WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
+        WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     } else {
         
@@ -1718,8 +1718,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
-        WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
-        //WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); 
+        //WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
+        WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); 
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     }
 }
