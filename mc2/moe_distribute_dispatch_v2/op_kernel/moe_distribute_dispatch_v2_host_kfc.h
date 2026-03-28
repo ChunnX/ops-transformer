@@ -732,7 +732,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     
     //LOG_INFO("[blockCntPerToken_]", blockCntPerToken_);
     //LOG_INFO("[blockCntExpertPerServer_]", blockCntExpertPerServer_);
-    //LOG_INFO("[blockCntPerTokenToExpert_]", blockCntPerTokenToExpert_);
+    LOG_INFO("[blockCntPerTokenToExpert_]", blockCntPerTokenToExpert_);
     //LOG_INFO("[maxBlockCnt_]", maxBlockCnt_);
 }
 
