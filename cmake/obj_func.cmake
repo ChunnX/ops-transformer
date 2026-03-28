@@ -13,6 +13,12 @@
 # ACLNNEXTRAVERSION 算子版本(ex., v2, v3, v5, etc.)
 # OPTYPE 和 ACLNNTYPE 需一一对应
 
+function(extract_mc2_ops_name SOURCE_DIR OUTPUT_VAR)
+  get_filename_component(PARENT_DIR ${SOURCE_DIR} DIRECTORY)
+  get_filename_component(MC2_NAME ${PARENT_DIR} NAME)
+  set(${OUTPUT_VAR} ${MC2_NAME} PARENT_SCOPE)
+endfunction()
+
 # 用于custom自定算子包host侧obj生成
 macro(add_modules_sources)
   set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE)
@@ -99,13 +105,78 @@ macro(add_modules_sources)
       target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${PROTO_STUB_FILE})
   endif()
 
-  file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
-  file(GLOB OPTILING_SRCS 
-      ${SOURCE_DIR}/*fallback*.cpp
-      ${SOURCE_DIR}/*_tiling*.cpp
-      ${SOURCE_DIR}/op_tiling/arch35/*.cpp
-      ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-      ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp)
+  if (MODULE_OP_MC2_ENABLE)
+      message(STATUS "MC2 TILING PRINT: ${SOURCE_DIR}")
+      # set ARCH_VERSION based on ASCEND_COMPUTE_UNIT 
+      set(ARCH_VERSIONS "")
+      foreach(COMPUTE_UNIT IN LISTS ASCEND_COMPUTE_UNIT)
+          if("${COMPUTE_UNIT}" STREQUAL "ascend310p")
+              list(APPEND ARCH_VERSIONS "arch31")
+          elseif("${COMPUTE_UNIT}" STREQUAL "ascend910b" OR "${COMPUTE_UNIT}" STREQUAL "ascend910_93")
+              list(APPEND ARCH_VERSIONS "arch32")
+          elseif("${COMPUTE_UNIT}" STREQUAL "ascend950")
+              list(APPEND ARCH_VERSIONS "arch35")
+          endif()
+      endforeach()
+      
+      # If no ARCH_VERSION is set, use arch32 as default versions
+      if(NOT ARCH_VERSIONS)
+          message(STATUS "ARCH_VERSIONS is empty, ASCEND_COMPUTE_UNIT is ${ASCEND_COMPUTE_UNIT}, default arch32 is applied")
+          list(APPEND ARCH_VERSIONS "arch32")
+      endif()
+      
+      # deduplicate
+      list(REMOVE_DUPLICATES ARCH_VERSIONS)
+      
+      message(STATUS "Selected ARCH_VERSIONS: ${ARCH_VERSIONS} for ASCEND_COMPUTE_UNIT: ${ASCEND_COMPUTE_UNIT}")
+      
+      set(SUB_OPTILING_SRC "")  # MC2分支不需要SUB_OPTILING_SRC，但是还是进行显式初始化避免意外行为
+      
+      file(GLOB OPTILING_BASE_SRCS 
+        ${SOURCE_DIR}/*fallback*.cpp
+        ${SOURCE_DIR}/op_tiling/*.cpp
+        ${SOURCE_DIR}/op_tiling/common/*.cpp
+        ${SOURCE_DIR}/../op_graph/fallback_*.cpp
+        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
+      )
+      extract_mc2_ops_name(${SOURCE_DIR} MC2_OPS_NAME)
+      if(NOT MC2_OPS_NAME)
+          message(WARNING "failed to extract MC2_OPS_NAME, SOURCE_DIR: ${SOURCE_DIR}")
+          return()
+      endif()
+  
+      if("${MC2_OPS_NAME}" STREQUAL "moe_distribute_dispatch_v2" OR 
+        "${MC2_OPS_NAME}" STREQUAL "moe_distribute_combine_v2")
+          list(APPEND ARCH_VERSIONS arch35)
+          message(STATUS "${MC2_OPS_NAME} appended ARCH_VERSIONS: arch35")
+      endif()
+      set(OPTILING_SRCS ${OPTILING_BASE_SRCS})
+      foreach(ARCH_VERSION IN LISTS ARCH_VERSIONS)
+          set(ARCH_DIR "${SOURCE_DIR}/op_tiling/${ARCH_VERSION}")
+          
+          if(EXISTS ${ARCH_DIR} AND IS_DIRECTORY ${ARCH_DIR})
+              file(GLOB ARCH_SPECIFIC_SRCS ${ARCH_DIR}/*.cpp)
+              if(ARCH_SPECIFIC_SRCS)
+                  list(APPEND OPTILING_SRCS ${ARCH_SPECIFIC_SRCS})
+                  message(STATUS "Added architecture-specific files from: ${ARCH_DIR}")
+              else()
+                  message(STATUS "No .cpp files found in architecture directory: ${ARCH_DIR}")
+              endif()
+          else()
+              message(STATUS "Architecture directory not found: ${ARCH_DIR}")
+          endif()
+      endforeach()
+    else()
+      message(STATUS "OTHERS TILING PRINT: ${SOURCE_DIR}")
+      file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
+      file(GLOB OPTILING_SRCS 
+        ${SOURCE_DIR}/*fallback*.cpp
+        ${SOURCE_DIR}/*_tiling*.cpp
+        ${SOURCE_DIR}/op_tiling/arch35/*.cpp
+        ${SOURCE_DIR}/../op_graph/fallback_*.cpp
+        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp)
+    endif()
+
   if (OPTILING_SRCS OR SUB_OPTILING_SRC)
     # tiling
     add_tiling_modules()
