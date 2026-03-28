@@ -1143,16 +1143,16 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetServerFlag()
 {
-    ////LOG_INFO("SetServerFlag start");
+    LOG_INFO("SetServerFlag start");
     uint32_t totalSeverCnt = serverNum_;
     uint32_t startServerNum, endServerNum, sendServerNum;
     SplitToCore(totalSeverCnt, aivUsedCumSum_, aivUsedRemotComm_, startServerNum, endServerNum, sendServerNum);
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
-    // //LOG_INFO("startServerNum", startServerNum);
-    // //LOG_INFO("endServerNum", endServerNum);
-    // //LOG_INFO("sendServerNum", sendServerNum);
+    LOG_INFO("startServerNum", startServerNum);
+    LOG_INFO("endServerNum", endServerNum);
+    LOG_INFO("sendServerNum", sendServerNum);
     GlobalTensor<uint32_t> dstStateGMTensor;
     TBuf<> tempbuf;
     tpipe_->InitBuffer(tempbuf, SERVER_STATE_ALIGN);
@@ -1164,9 +1164,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         dstStateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetSendAddrBetweenServer(COMM_EP_IDX, index)));
         outTensor(0) = serverCountTensor_(index);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
+        LOG_INFO("SetServerFlag outTensor",outTensor,{16,8});
         DataCopy(dstStateGMTensor, outTensor, SERVER_STATE_ALIGN/sizeof(uint32_t));
     }
-    ////LOG_INFO("SetServerFlag end");
+    LOG_INFO("SetServerFlag end");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1580,8 +1581,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     statusCntGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
     statusFlagTensor = serverFlagBuf.Get<uint32_t>();
     tokenCntTensor = serverFlagBuf.Get<uint32_t>();
-
+    uint32_t count = 0;
     while (true) {
+        count++;
+        if(count >10000000) {
+            LOG_INFO("WaitStatusFlag error count");
+            break;
+        }
         DataCopy(statusFlagTensor, statusCntGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)],
                  (SERVER_STATE_ALIGN - SPLIT_BLOCK_DATA_SIZE) / sizeof(uint32_t)); // 搬运后续的8个数据
         SyncFunc<AscendC::HardEvent::MTE2_S>();
