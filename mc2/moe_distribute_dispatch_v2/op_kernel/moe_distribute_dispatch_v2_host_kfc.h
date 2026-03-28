@@ -99,8 +99,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -1033,8 +1033,8 @@ template <bool isContinueWait>
 __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor,
                                                                                              uint32_t stride, uint32_t waitNum) 
 {
-    LOG_INFO("WaitFlag waitNum", waitNum);
-    LOG_INFO("WaitFlag stride", stride);
+    // LOG_INFO("WaitFlag waitNum", waitNum);
+    // LOG_INFO("WaitFlag stride", stride);
     uint32_t copyNum = 1; // 如果stride为0，表示所有数据全部在一起，直接一起拷贝进来
     uint32_t copyBlockLength = waitNum * sizeof(float32_t);
     uint32_t calCnt = waitNum;
@@ -1072,7 +1072,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     }while(isContinueWait);
 
-    LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
+    // LOG_INFO("WaitFlag flagInLTTensor.GetValue(0)",flagInLTTensor.GetValue(0));
     return rcvCnt == waitNum;
 }
 
@@ -1324,14 +1324,18 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     CalExpertOffset(startTokenId, endTokenId);
     SyncFunc<AscendC::HardEvent::V_S>();
     float expertScale = float(1.0);
-    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; tokenIndex++) { //TODO：没有考虑是否需要发送的问题
+    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; tokenIndex++) {
+        uint32_t offset = serverId_ * perServerMapCnt_ + tokenIndex;
+        int32_t tokenSendOffset = tokenSendMap_.GetValue(offset); // tdo:换成每个server只处理自己的，不在同一计算
+        if(tokenSendOffset == -1) {
+            continue;
+        }
         QuantCleanTensor();
         xInQueue_.EnQue(tokenData_);
         tokenData_ = xInQueue_.DeQue<XType>();
         DataCopyPad(tokenData_, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
         DataCopyPad(expertScalesTensor_, expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        
         for (uint32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {
             uint32_t expertIndex = tokenIndex * axisK_ + topKIndex;
             uint32_t dstExpertId = expertIdsTensor_(expertIndex);
@@ -1367,6 +1371,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
     SplitToCore(totalSendCnt, firstAivId, usedAivNum, startTokenId, endTokenId, sendTokenNum);
+    LOG_INFO("[SendTokenToRemoteServer] startTokenId",startTokenId);
+    LOG_INFO("[SendTokenToRemoteServer] endTokenId",endTokenId);
+    LOG_INFO("[SendTokenToRemoteServer] sendTokenNum",sendTokenNum);
+    LOG_INFO("[SendTokenToRemoteServer] firstAivId",firstAivId);
+    LOG_INFO("[SendTokenToRemoteServer] usedAivNum",usedAivNum);
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return ;
     }
@@ -1514,7 +1523,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote()
 {
-    LOG_INFO("[GatherTokenFrRemote] start");
+    // LOG_INFO("[GatherTokenFrRemote] start");
     InitGatherTokenBuffer();
     TBuf<> serverFlagBuf;
     uint32_t startServerId, endServerId, useAivPerServer;
@@ -1522,10 +1531,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t firstAivId;
     CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ + aivUsedRemotComm_, aivUsedGather_, 
                        startServerId, endServerId, useAivPerServer, firstAivId);
-    LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
-    LOG_INFO("[GatherTokenFrRemote] startServerId_",startServerId);
-    LOG_INFO("[GatherTokenFrRemote] endServerId_",endServerId);
-    LOG_INFO("[GatherTokenFrRemote] useAivPerServer_",useAivPerServer);
+    // LOG_INFO("[GatherTokenFrRemote] serverNum_",serverNum_);
+    // LOG_INFO("[GatherTokenFrRemote] startServerId_",startServerId);
+    // LOG_INFO("[GatherTokenFrRemote] endServerId_",endServerId);
+    // LOG_INFO("[GatherTokenFrRemote] useAivPerServer_",useAivPerServer);
     if (useAivPerServer == 0 || startServerId >= endServerId) { // 出现serverNum比核数大的情况 TODO：
         return ;
     }
@@ -1558,7 +1567,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     xInQueue_.FreeTensor<XType>(tokenData_);
     tokenInQueue_.FreeTensor<XType>(recvTmpTensor_);
-    LOG_INFO("[GatherTokenFrRemote] end");
+    //LOG_INFO("[GatherTokenFrRemote] end");
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1638,7 +1647,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             recvTmpTensor_ = tokenInQueue_.DeQue<XType>();                                            
             ReadDataFromWindows<XType>(dataAddr, processTokenBlock, recvTmpTensor_);
             //CopyInAndOut(serverIdx, dstPosition, processTokenNumPerBatch);
-            LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", dstPosition);
+            //LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", dstPosition);
             SendToExpert(dstPosition);
             tokenRcvStatus_(rcvStatusIndex) = 1;
             rcvTokenSum++;
