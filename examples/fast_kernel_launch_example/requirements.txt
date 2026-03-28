@@ -4,3 +4,4 @@ build
 pyyaml
 numpy<2
 pytest
+wheel

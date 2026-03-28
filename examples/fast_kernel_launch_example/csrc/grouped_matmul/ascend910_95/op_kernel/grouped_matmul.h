@@ -75,6 +75,22 @@ struct MNConfig {
     int64_t scaleIndex = -1;
 };
 
+__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset,
+                                                     const GMMBaseParams* __restrict &gmmBaseParams,
+                                                     const GlobalTensor<int64_t> &groupListGm) {
+    int32_t splitValue = 0;
+    if (likely(gmmBaseParams->groupType != -1)) {  // -1: no  need to split
+        if (gmmBaseParams->groupListType == 0) {
+            int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
+            splitValue = offset - preOffset;
+            preOffset = offset;
+        } else {
+            splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
+        }
+    }
+    return splitValue;
+}
+
 __aicore__ inline void MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock,
     const uint32_t count, const uint32_t thresholdM_dimN) {
     if (mnConfig.blockDimM <= thresholdDimM || thresholdDimM == 1) {

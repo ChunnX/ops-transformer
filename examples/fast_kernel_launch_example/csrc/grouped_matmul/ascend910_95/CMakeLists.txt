@@ -16,4 +16,4 @@ file(GLOB GMM_TILING_SOURCES ${GMM_TILING_DIR}/*.cpp)
 set(GMM_TILING_SOURCES "")
 
 # TODO: arch
-add_sources("--npu-arch=dav-2201" "${GMM_TILING_SOURCES}")
+add_sources("--npu-arch=dav-3510 --cce-aicore-input-parameter-size=4096" "${GMM_TILING_SOURCES}")
