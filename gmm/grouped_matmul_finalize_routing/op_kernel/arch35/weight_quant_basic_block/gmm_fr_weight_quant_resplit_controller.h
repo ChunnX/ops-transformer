@@ -41,12 +41,12 @@ namespace GROUPED_MATMUL_FINALIZE_ROUTING {
 #define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                               \
     template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType, \
               typename perTokenScaleType, typename biasType, typename yType, typename sharedInputDType,                  \
-              const WqmmConfig &wqmmConfig,      \
+               typename logitsType,  typename rowIndexType, const WqmmConfig &wqmmConfig,      \
               const VecAntiQuantConfig &vecConfig>
 
 #define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS                                                                              \
     GMMFRWeightQuantResplitController<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType, \
-                                    wqmmConfig, vecConfig>
+                                    logitsType,  rowIndexType, wqmmConfig, vecConfig>
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMFRWeightQuantResplitController {
@@ -71,12 +71,13 @@ private:
     __gm__ xType *xGm_;
     __gm__ wType *weightGm_;
     __gm__ antiQuantScaleType *antiquantScaleGm_;
-    __gm__ xType *antiquantOffsetGm_;
     __gm__ biasType *biasGm_;
     __gm__ yType *yGm_;
     __gm__ perTokenScaleType *perTokenScaleGm_;
     __gm__ scaleType *scaleGm_;
     __gm__ sharedInputDType *shareInputAddr_;
+    __gm__ logitsType logitsAddr_;
+    __gm__ rowIndexType rowIndexAddr_;
     GlobalTensor<int64_t> groupListGm_;
     WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType, wqmmConfig, vecConfig>
         basicBlock_;
@@ -95,7 +96,8 @@ private:
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale,
-    GM_ADDR antiquantOffset, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale,
+    GM_ADDR antiquantOffset, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR logitsAddr,
+    GM_ADDR rowIndexAddr,
     GM_ADDR y, GM_ADDR shareInput, const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling)
 {
     tiling_ = baseTiling;
@@ -105,8 +107,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     biasGm_ = reinterpret_cast<__gm__ biasType *>(bias);
     scaleGm_ = reinterpret_cast<__gm__ scaleType *>(scale);
     antiquantScaleGm_ = reinterpret_cast<__gm__ antiQuantScaleType *>(antiquantScale);
-    antiquantOffsetGm_ = reinterpret_cast<__gm__ xType *>(antiquantOffset);
     perTokenScaleGm_ = reinterpret_cast<__gm__ perTokenScaleType *>(perTokenScale);
+    logitsAddr_ =logitsAddr;
+    rowIndexAddr_ = rowIndexAddr;
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     shareInputAddr_ = reinterpret_cast<__gm__ sharedInputDType *>(shareInput);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
@@ -143,8 +146,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
-            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, antiquantOffsetGm_,
-                                         scaleGm_, perTokenScaleGm_, biasGm_, yGm_, tiling_->hasBias,
+            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_,
+                                         perTokenScaleGm_, biasGm_, yGm_,     logitsAddr_
+                                         rowIndexAddr_, tiling_->hasBias,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
             ctrlParam.curBasicBlockId =
                 cubeBlockIdx >= startBasicBlockId ? cubeBlockIdx : cubeBlockIdx + tiling_->coreNum;
@@ -222,31 +226,17 @@ GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize)
 {
     xGm_ += mSize * kSize;
-    if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
-                  IsSameType<wType, fp4x2_e1m2_t>::value) {
-        weightGm_ += (nSize * kSize) >> 1;
-    } else {
-        weightGm_ += nSize * kSize;
-    }
+    weightGm_ += (nSize * kSize) >> 1;
 
-    if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP || wqmmConfig.antiQuantType == QuantType::MX) {
-        antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));
-        antiquantOffsetGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));
-    } else {
-        antiquantScaleGm_ += nSize;
-        antiquantOffsetGm_ += nSize;
-    }
+    antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));
 
-    scaleGm_ += nSize;
-
-    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        perTokenScaleGm_ += mSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));
-    } else {
-        perTokenScaleGm_ += mSize;
-    }
+    perTokenScaleGm_ += mSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));
 
     biasGm_ += nSize;
     yGm_ += mSize * nSize;
+    
+    logitsAddr_ += mSize;
+    rowIndexAddr_ += mSize;
 }
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM

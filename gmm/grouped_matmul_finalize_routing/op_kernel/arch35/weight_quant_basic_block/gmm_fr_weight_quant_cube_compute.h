@@ -228,7 +228,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uin
 {
     if ((kaGmOffset + offsetParam.kbL1Size) % offsetParam.kaL1Size == 0 ||
                                           kaGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
-        SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_MTE2 + (aL1BufIdx_ & 1));
+        SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
         aL1BufIdx_++;
     }
 }
