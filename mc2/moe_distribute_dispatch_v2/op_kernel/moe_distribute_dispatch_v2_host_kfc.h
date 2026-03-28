@@ -624,7 +624,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     hScaleIdxSize_ = Ceil(hScaleIdxSize_, UB_ALIGN) * UB_ALIGN; 
     expertScaleAlign_ = hScaleIdxSize_ / sizeof(uint32_t);
-    hScaleIdxSize_ = hScaleIdxSize_ + sizeof(float); //用于存放expertscale 16.06KB
+    hScaleIdxSize_ = hScaleIdxSize_ + UB_ALIGN; //用于存放expertscale 16.06KB
+
     //框间使用
     sendXTypeElemAlign_ = hAlignSize_ / sizeof(uint32_t);
     uint32_t moeListSizeAlign = hAlignSize_ + UB_ALIGN; // moeExpertIdList起始偏移
