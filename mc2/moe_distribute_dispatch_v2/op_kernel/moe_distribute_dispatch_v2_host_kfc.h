@@ -99,8 +99,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -1698,8 +1698,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
-
-        //WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
         WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     } else {
@@ -1718,7 +1716,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
-        //WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_); //TODO:可以继续优化
         WriteDataToWinOut(xOutTensor_, insertFlagTensor_, rankGM, blockCntPerTokenToExpert_); 
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     }
