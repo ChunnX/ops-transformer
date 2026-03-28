@@ -7,10 +7,10 @@ def get_inputs(param, device=None):
     """
     dtype_str = param.get('dtype', 'float16')
     dtype = getattr(torch, dtype_str)
-    steps = param.get('steps', '1')
+    steps = int(param.get('steps', '1'))
 
-    start = torch.randn([1], device=device, dtype=dtype)
-    end = torch.randn([1], device=device, dtype=dtype)
+    start = torch.tensor([float(param.get('start', '1'))], device=device, dtype=dtype)
+    end = torch.tensor([float(param.get('end', '1'))], device=device, dtype=dtype)
 
     return (start, end, steps)
 
