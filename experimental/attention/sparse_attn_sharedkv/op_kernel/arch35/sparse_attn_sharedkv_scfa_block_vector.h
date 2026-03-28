@@ -211,7 +211,12 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Id
             static_cast<int64_t>(blockSize) * constInfo.dSizeVInput +
             blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else {
-        realkeyOffset = runInfo.boIdx * constInfo.n2S2Dv + runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSize; // BSN(1)D
+        if (runInfo.isCmp) {
+            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
+                runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
+        } else {
+            realkeyOffset = runInfo.boIdx * constInfo.n2S2Dv + runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSize; // BSN(1)D
+        }
     }
     return realkeyOffset;
 }
@@ -431,7 +436,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
                     break;
                 }
             }
-            if (dealRow  == 0) {
+            if (dealRow == 0) {
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
                 pingPong ^= 1;
                 return;
@@ -797,6 +802,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup; 
     sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
     sharedParams.s2Size = sparseAttnSharedkvBaseParams.kvSeqSize;
+    sharedParams.cmpS2Size = sparseAttnSharedkvCmpParams.cmpKvSeqSize;
     sharedParams.oriSparseBlockCount = sparseAttnSharedkvBaseParams.oriSparseBlockCount;
     sharedParams.cmpSparseBlockCount = sparseAttnSharedkvCmpParams.cmpSparseBlockCount;
     sharedParams.cmpRatio = sparseAttnSharedkvCmpParams.cmpRatio;
