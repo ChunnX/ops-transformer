@@ -1,4 +1,4 @@
-case_id;steps;dtype
-0;128;float32
-1;16;float32
-2;128;float16
+case_id;steps;dtype;start;end
+0;128;float32;1;128
+1;16;float32;1;16
+2;128;float16;1;128

@@ -1,7 +1,7 @@
-case_id;steps;dtype
-0;128;bfloat16
-1;128;uint8
-2;128;int8
-3;128;int16
-4;128;int32
-5;16;int32
+case_id;steps;dtype;start;end
+0;128;bfloat16;1;128
+1;128;uint8;1;128
+2;64;int8;1;64
+3;128;int16;1;128
+4;128;int32;1;128
+5;16;int32;1;16

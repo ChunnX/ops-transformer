@@ -12,7 +12,7 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
     def forward(self, start: torch.Tensor, end: torch.Tensor, steps: int) -> torch.Tensor:
-        return torch.linspace(float(start[0].item()), float(end[0].item()), steps, dtype=start.dtype, device="npu").cpu()
+        return torch.linspace(float(start[0].item()), float(end[0].item()), steps, dtype=start.dtype)
 
 class ModelNew(nn.Module):
     def __init__(self):
