@@ -40,7 +40,7 @@ TEST_CONFIGS = [
 def generate_group_list_tensor(E, M, PERGROUP):
     group_list = torch.zeros(E, dtype=torch.int64)
     total_group = PERGROUP
-    
+
     for i in range(E):
         if total_group <= M:
             group_list[i] = PERGROUP
@@ -48,21 +48,21 @@ def generate_group_list_tensor(E, M, PERGROUP):
         else:
             group_list[i] = PERGROUP - (total_group - M)
             break
-    
+
     return group_list
 
 def calculate_pytorch_grouped_matmul(x_list, weight_list, group_list, M, E, data_type):
     x = x_list[0].to(torch.float32)
     weight = weight_list[0].to(torch.float32)
-    
+
     group_size = M // E
     remainder = M % E
     split_sizes = [group_size] * E
     if remainder > 0:
         split_sizes[-1] += remainder
-    
+
     x_splits = torch.split(x, split_sizes, dim=0)
-    
+
     split_results = []
     for x_split in x_splits:
         split_matmul = torch.matmul(x_split, weight)
@@ -75,28 +75,28 @@ def calculate_pytorch_grouped_matmul(x_list, weight_list, group_list, M, E, data
 def test_grouped_matmul_operator(config, data_type):
     """
     Test the functionality of the grouped_matmul operator with different configurations.
-    
+
     Parameters:
         config: Tuple of (E, M, K, N, PERGROUP)
         data_type: Data type
     """
     E, M, K, N, PERGROUP = config
-    
+
     print(f"\nTesting with config: E={E}, M={M}, K={K}, N={N}, PERGROUP={PERGROUP}, dtype={data_type}")
     group_list = generate_group_list_tensor(E, M, PERGROUP)
-    
+
     # Generate input data
     x_cpu = torch.rand(M, K, dtype=data_type)
     x_list = [x_cpu]
-    
+
     weight_cpu = torch.rand(K, N, dtype=data_type)
     weight_list = [weight_cpu]
-    
+
     # Move data to NPU
     x_list_npu = [x_i.npu() for x_i in x_list]
     weight_list_npu = [weight_i.npu() for weight_i in weight_list]
     group_list_npu = group_list.npu()
-    
+
     # Call grouped_matmul operator
     try:
         npu_result = torch.ops.ascend_ops.grouped_matmul(
@@ -113,37 +113,38 @@ def test_grouped_matmul_operator(config, data_type):
             0,                    # int groupType
             1,                    # int groupListType
             0,                    # int actType
-            None                  # int[]? tuningConfigOptional (可选)
+            None,                 # int[]? tuningConfigOptional (可选)
+            None                  # torch.dtype output_dtype(可选)
         )
         npu_result_cpu = npu_result.cpu()
         print(f"Result shape: {npu_result.shape} \n",npu_result_cpu)
-        
+
     except Exception as e:
         pytest.fail(f"Error calling grouped_matmul operator: {e}")
-    
+
     # Calculate expected result using PyTorch
     try:
         expected_result = calculate_pytorch_grouped_matmul(x_list, weight_list, group_list, M, E, data_type)
         print(f"Expected result shape: {expected_result.shape}")
-        
+
     except Exception as e:
         pytest.fail(f"Error calculating expected result with PyTorch: {e}")
-    
+
     # Compare results
     assert npu_result_cpu.shape == expected_result.shape, \
         f"Shape mismatch! NPU: {npu_result_cpu.shape}, PyTorch: {expected_result.shape}"
-    
+
     # Convert to float32 for accurate comparison
     npu_float = npu_result_cpu.to(torch.float32)
     expected_float = expected_result.to(torch.float32)
-    
+
     # Calculate absolute difference
     abs_diff = torch.abs(npu_float - expected_float)
     max_diff = torch.max(abs_diff).item()
-    
+
     assert max_diff < EPS, \
         f"Grouped matmul failed for config {config}, dtype {dtype}. " \
         f"Max diff: {max_diff:.6f}, threshold: {EPS:.6f}"
-    
+
     print(f"✓ Test passed! Max diff: {max_diff:.6f}")
 

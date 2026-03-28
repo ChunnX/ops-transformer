@@ -52,9 +52,10 @@ const std::vector<TypeCombo> &getSupportedCombos()
 // Register the operator's schema
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
-    m.def("grouped_matmul(Tensor[] x, Tensor[] weight, Tensor[]? bias, Tensor[]? scale, Tensor[]? offset, Tensor[]? "
-          "antiquantScale, Tensor[]? antiquantOffset, Tensor? groupList, Tensor[]? perTokenScale, int splitItem, int "
-          "groupType, int groupListType, int actType,int[]? tuningConfigOptional) -> Tensor");
+    m.def(
+        "grouped_matmul(Tensor[] x, Tensor[] weight, Tensor[]? bias, Tensor[]? scale, Tensor[]? offset, Tensor[]? "
+        "antiquantScale, Tensor[]? antiquantOffset, Tensor? groupList, Tensor[]? perTokenScale, int splitItem, int "
+        "groupType, int groupListType, int actType, int[]? tuningConfigOptional, ScalarType? output_dtype) -> Tensor");
 }
 
 __global__ __aicore__ void groupedmatmul_kernel(__gm__ uint8_t *x, __gm__ uint8_t *weight, __gm__ uint8_t *bias,
@@ -128,7 +129,7 @@ torch::Tensor grouped_matmul_npu(
     const c10::optional<torch::TensorList> &antiquantScale, const c10::optional<torch::TensorList> &antiquantOffset,
     const c10::optional<torch::Tensor> &groupList, const c10::optional<torch::TensorList> &perTokenScale,
     const int64_t splitItem, const int64_t groupType, const int64_t groupListType, const int64_t actType,
-    const c10::optional<c10::IntArrayRef> &tuningConfigOptional)
+    const c10::optional<c10::IntArrayRef> &tuningConfigOptional, c10::optional<at::ScalarType> outputDtype)
 {
     // OptionalDeviceGuard 确保后续操作在正确的设备上下文执行
     // 它会记录当前设备状态，执行完作用域代码后自动恢复
@@ -153,7 +154,7 @@ torch::Tensor grouped_matmul_npu(
     }
 
     const auto &matched_combo = SUPPORTED_COMBOS[matched_index];
-    const c10::ScalarType output_type = matched_combo.output;
+    const c10::ScalarType output_type = outputDtype.value_or(matched_combo.output);
     auto shapeX = getTensorListFirstShape(x);
     int64_t m = shapeX[0];
     auto shapeWeight = getTensorListFirstShape(weight);
