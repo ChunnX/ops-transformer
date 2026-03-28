@@ -21,7 +21,7 @@
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
 #include "catlass/epilogue/tile/tile_copy.hpp"
- 
+
 #ifndef HCCL_COMM
     #include "block_mmad_preload_async_fixpipe_quant.hpp"
     #include "copy_gm_to_l1_custom.hpp"
@@ -233,13 +233,11 @@ private:
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrcumsumMM));
-        // gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrA));
         gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem() + peermemInfo.offsetA));
         gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
         gmPermutedToken.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrPermutedToken));
         gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
         gmPerTokenScale1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
-        // gmPerTokenScale1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale));
         gmPerTokenScale2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
         tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
         tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
@@ -512,7 +510,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void GetCumsumForMMAIVV2(AscendC::GlobalTensor<int32_t> & tokenPerExpert, AscendC::GlobalTensor<int32_t> & result, uint32_t expertPerRank, uint32_t EP)
+    void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> & tokenPerExpert, AscendC::GlobalTensor<int32_t> & result, uint32_t expertPerRank, uint32_t EP)
     {
         int32_t expertPerRankAligned = (EP * expertPerRank + 8 - 1) / 8 * 8;
         AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1044,7 +1042,7 @@ private:
         // ── V3 分发通信：epoch flag 替代 NaN in-band，批量 RDMA 替代逐 token RDMA ────────
 
         if (coreIdx == 0) {
-            GetCumsumForMMAIVV2(tokenPerExpert, cumsumMM, params.expertPerRank, params.EP);
+            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.EP);
         }
 
         int32_t prevSum = 0;
@@ -1057,9 +1055,7 @@ private:
         ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.ptrExpertTokenNums));
         if(coreIdx == 0)
         {
-            // CopyGMToGM(ExpertTokenNums, cumsumMM[tokenPerExpertLayout(params.EP - 1, params.rank, 0)], params.expertPerRank, params.ubMoveNum);
-            uint32_t cumsumRow = AlignUp(params.EP * params.expertPerRank, ALIGN_128);
-            CopyGMToGM(ExpertTokenNums, cumsumMM, params.EP * cumsumRow, params.ubMoveNum);
+            CopyGMToGM(ExpertTokenNums, cumsumMM[tokenPerExpertLayout(params.EP - 1, params.rank, 0)], params.expertPerRank, params.ubMoveNum);
         }
 
         uint16_t syncgmm1Idx = 0;
@@ -1162,34 +1158,8 @@ private:
 
         }
 
-        // if (params.rank == 1 && coreIdx == 0) {
-        //     uint32_t stride = params.problemShape.k() + ALIGN_512;
-        //     for (int i = 0; i < 531; i++) {
-        //         uint32_t lastTokenOffset = i * stride;  // 第531个token（0-based index 530）
-        //         AscendC::DumpTensor(gmA[lastTokenOffset], /*dumpId=*/i, 128);
-        //     }
-        // }
         uint32_t n2 = params.problemShape.k();
-        AscendC::SyncAll<true>();
-        // === 等待 AIC GMM1 完成，然后 dump gmC → ptrOutput ===
-        // GMM1 通过 Finalize 发送 SYNCFLAGC2V 信号 (可能 1~2 次)
-        AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
-        AscendC::SyncAll<true>();
-        if (params.epilogueGranularity < params.expertPerRank && params.epilogueGranularity > 0) {
-            AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
-            AscendC::SyncAll<true>();
-        }
 
-        // AIV core 0 执行 gmC → ptrOutput 拷贝
-        if (coreIdx == 0) {
-            AscendC::GlobalTensor<ElementC> outGMDump;
-            outGMDump.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(params.ptrOutput));
-            uint32_t dumpElements = params.maxOutputSize * params.problemShape.n();
-            uint32_t safeUbMoveNum = 32 * 1024 / sizeof(ElementC);
-            CopyGMToGM<ElementC>(outGMDump, gmC, dumpElements, safeUbMoveNum);
-        }
-        AscendC::SyncAll<true>();
-        return;
         typename BlockEpilogue2::Params epilogueParams{
             static_cast<int32_t>(params.EP),
             static_cast<int32_t>(params.expertPerRank),
@@ -1242,6 +1212,8 @@ private:
         }
 
         blockEpilogue1.Finalize();
+
+        return; // moe_init_routing_quant + dispatch + GMM1 + SWGLU 调试
 
         CombineSetFlag();
 
@@ -1373,7 +1345,6 @@ private:
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
 
-            // workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             workspaceOffset +=  AlignUp(params.EP * params.expertPerRank, 128) * params.EP * sizeof(int32_t);
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
