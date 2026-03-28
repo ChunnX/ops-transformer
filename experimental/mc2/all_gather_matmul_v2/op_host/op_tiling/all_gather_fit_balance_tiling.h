@@ -16,7 +16,7 @@
 #define __ALL_GATHER_FIT_BALANCE_TILING_H__
 
 #pragma once
-#include "experimental/mc2/common/op_host/op_tiling/mc2_fit_based_balance_tiling.h"
+#include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 
 class AllGatherMMFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:

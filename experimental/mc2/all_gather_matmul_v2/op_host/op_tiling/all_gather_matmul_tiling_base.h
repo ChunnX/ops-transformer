@@ -19,9 +19,9 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
-#include "experimental/mc2/common/op_host/op_tiling/mc2_tiling_struct.h"
-#include "experimental/mc2/common/op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "experimental/mc2/common/op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_struct.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/all_gather_matmul_tiling.h"
 
 using Ops::Transformer::OpTiling::TilingBaseClass;
