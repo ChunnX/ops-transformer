@@ -113,7 +113,7 @@ class GeneralizedSFAQuant:
                     if self.template_run_mode == "SCFA" and cmp_sparse_indices_bnsd is not None:
                         topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
 
-                        empty_flag, k_sparse = self.gather_cmp_kv(cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.cmp_mask_mode, cmp_topk_length_bnsd, self.cmp_ratio)
+                        empty_flag, k_sparse = self.gather_kv(False, cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.cmp_mask_mode, cmp_topk_length_bnsd, self.cmp_ratio)
                         if empty_flag != True:
                             k_concat = torch.concat([cur_ori_k_bnsd, k_sparse], dim=0)
                     elif self.template_run_mode == "CFA":
@@ -123,15 +123,15 @@ class GeneralizedSFAQuant:
                     elif self.template_run_mode == "ORI_SCFA" and ori_sparse_indices_bnsd is not None:
                         topk_id = ori_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
 
-                        empty_flag, k_sparse = self.gather_cmp_kv(ori_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.ori_mask_mode, ori_topk_length_bnsd, 1)
+                        empty_flag, k_sparse = self.gather_kv(True, ori_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.ori_mask_mode, ori_topk_length_bnsd, 1)
                         if empty_flag != True:
                             k_concat = k_sparse
                     elif self.template_run_mode == "ALL_SCFA" and ori_sparse_indices_bnsd is not None and cmp_sparse_indices_bnsd is not None:
                         ori_topk_id = ori_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
-                        ori_empty_flag, ori_k_sparse = self.gather_cmp_kv(ori_k_bnsd, ori_topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.ori_mask_mode, ori_topk_length_bnsd, 1)
+                        ori_empty_flag, ori_k_sparse = self.gather_kv(True, ori_k_bnsd, ori_topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.ori_mask_mode, ori_topk_length_bnsd, 1)
 
                         cmp_topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
-                        cmp_empty_flag, cmp_k_sparse = self.gather_cmp_kv(cmp_k_bnsd, cmp_topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.cmp_mask_mode, cmp_topk_length_bnsd, self.cmp_ratio)
+                        cmp_empty_flag, cmp_k_sparse = self.gather_kv(False, cmp_k_bnsd, cmp_topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q, self.cmp_mask_mode, cmp_topk_length_bnsd, self.cmp_ratio)
                         if ori_empty_flag != True and cmp_empty_flag != True:
                             k_concat = torch.concat([ori_k_sparse, cmp_k_sparse], dim=0)
 
@@ -150,7 +150,7 @@ class GeneralizedSFAQuant:
                     attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = v2_res
         return attn_out
 
-    def gather_cmp_kv(self, k_tensor, topk_id, i_B, i_N2, i_S1, cur_act_kv, cur_act_q, mask_mode, topk_length_bnsd, cmp_ratio, sparse_block_size = 1):
+    def gather_kv(self, isOri, k_tensor, topk_id, i_B, i_N2, i_S1, cur_act_kv, cur_act_q, mask_mode, topk_length_bnsd, cmp_ratio, sparse_block_size = 1):
         s2_sparse = list()
         cur_cmp_act_kv = math.floor(cur_act_kv / cmp_ratio)
         threshold = 0
@@ -160,6 +160,8 @@ class GeneralizedSFAQuant:
             threshold = math.floor(cur_act_kv / cmp_ratio)
         if topk_length_bnsd != None:
             valid_count = min(topk_length_bnsd[i_B, 0, 0, 0], math.ceil(threshold / sparse_block_size))
+        elif not isOri and cmp_ratio == 4:
+            valid_count = min(512, math.ceil(threshold / sparse_block_size))
         else:
             valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
         for i_valid in range(valid_count):
@@ -407,7 +409,10 @@ def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, topk
                 valid_blocks_max = max(0, cur_valid_s2_max)
                 valid_blocks_max = min(valid_blocks_max, topk_length[i_B]) if topk_length != None else valid_blocks_max
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
-                valid_blocks_topk = min(valid_blocks_max, K)
+                if cmp_ratio == 4:
+                    valid_blocks_topk = min(valid_blocks_max, 512)
+                else:
+                    valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return sparse_data, sparse_data
 
@@ -436,7 +441,10 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, to
                     blkTableOffset = k % block_size
                     block_offset[i] = block_table[i_B, blkTableIdx] * block_size + blkTableOffset
                     i = i + 1
-                valid_blocks_topk = min(valid_blocks_max, K)
+                if cmp_ratio == 4:
+                    valid_blocks_topk = min(valid_blocks_max, 512)
+                else:
+                    valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
     return sparse_data, sparse_indices
@@ -460,7 +468,10 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, ma
                 valid_blocks_max = max(0, cur_valid_s2_max)
                 valid_blocks_max = min(valid_blocks_max, topk_length[i_B]) if topk_length != None else valid_blocks_max
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
-                valid_blocks_topk = min(valid_blocks_max, K)
+                if cmp_ratio == 4:
+                    valid_blocks_topk = min(valid_blocks_max, 512)
+                else:
+                    valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return sparse_data, sparse_data
 
@@ -491,7 +502,10 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
                     blkTableOffset = k % block_size
                     block_offset[i] = block_table[i_B, blkTableIdx] * block_size + blkTableOffset
                     i = i + 1
-                valid_blocks_topk = min(valid_blocks_max, K)
+                if cmp_ratio == 4:
+                    valid_blocks_topk = min(valid_blocks_max, 512)
+                else:
+                    valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
     return sparse_data, sparse_indices
