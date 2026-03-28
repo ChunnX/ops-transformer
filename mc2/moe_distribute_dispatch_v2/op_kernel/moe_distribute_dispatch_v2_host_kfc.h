@@ -2345,10 +2345,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_ +
                                                      beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE);  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
-        LOG_INFO("[WaitAndFormatOutput] start");
+        // LOG_INFO("[WaitAndFormatOutput] start");
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, flagNum);
-        LOG_INFO("[WaitAndFormatOutput] end");
-        LOG_INFO("WaitAndFormatOutput index:", index);
+        // LOG_INFO("[WaitAndFormatOutput] end");
+        // LOG_INFO("WaitAndFormatOutput index:", index);
         if (isArrived) {
             //LOG_INFO("WaitAndFormatOutput index:", index);
             //LOG_INFO("arriveCount:", arriveCount);
