@@ -99,8 +99,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -2574,8 +2574,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
