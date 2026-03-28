@@ -7,7 +7,3 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
-if (UT_TEST_ALL OR OP_KERNEL_UT)
-    # AddOpTestCase(moe_distribute_combine_teardown "Ascend910_9599" "-DDTYPE_X_REF=half" "")
-endif()

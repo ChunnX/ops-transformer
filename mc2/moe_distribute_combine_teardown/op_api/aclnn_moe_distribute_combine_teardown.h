@@ -31,30 +31,27 @@ extern "C" {
  * @param [in] expandX: 计算输入，Tensor，数据类型float16, bfloat16，必须为2维，数据格式支持ND。
  * @param [in] quantExpandX: 计算输入，Tensor，数据类型int8，必须为2维，数据格式支持ND。
  * @param [in] expertIds: 计算输入，Tensor，数据类型int32，必须为2维，数据格式支持ND。
- * @param [in] expandIdx: 计算输入，Tensor，数据类型int32，必须为2维，数据格式支持ND，token由多少个MOE专家处理。
+ * @param [in] expandIdx: 计算输入，Tensor，数据类型int32，必须为2维，数据格式支持ND。
  * @param [in] expertScales: 计算输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。
  * @param [in] commCmdInfo:
- * 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND，aclnnMoeDistributeDispatchSetUp的输出。
+ * 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND，aclnnMoeDistributeCombineSetUp的输出。
  * @param [in] xActiveMaskOptional:
  * 计算输入，Tensor，数据类型bool，必须为1维，数据格式支持ND。预留参数，暂未使用，传空即可。
- * @param [in] sharedExpertXOptional:计算输入，Tensor，数据类型与expandX保持一致。维度维2维或3维，数据格式支持ND。
- * @param [in] groupEp: 计算输入，str。ep通信域名称，专家并行的通信域。字符串长度范围为[1, 128)，不能和groupTp相同。
- * @param [in] epWorldSize: 计算输入，int64。ep通信域size。在昇腾910_93场景中取值支持8/16/32/64/128/144/256/288。
- * @param [in] epRankId: 计算输入，int64。ep本卡Id。取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不能重复。
- * @param [in] moeExpertNum: 计算输入，int64。MOE专家数量。取值范围[1,
- * 512]，且需满足moeExpertNum%(epWorldSize-sharedExpertRankNum)等于0.
- * @param [in] expertShardType: 计算输入，int64。专家共享类型。当前仅支持传0。
- * @param [in] sharedExpertNum: 计算输入，int64。共享专家数量。取值范围[0, 1]。0表示无共享专家。
- * @param [in] sharedExpertRankNum:
- * 计算输入，int64。共享专家数量。支持传0表示无共享专家卡，不为0时需要满足sharedExpertRankNum < epWorldSize且epWorldSize
- * % sharedExpertRankNum等于0
- * @param [in] globalBs: 计算输入，int64。在910_93中，当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或
- * globalBs = 0; 当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize, 其中maxBs表示单卡Bs最大值。
- * @param [in] commQuantMode: 计算输入，int64。通信量化类型。预留参数，暂未使用，传0即可。
- * @param [in] commType: 计算输入，int64。0：系统自选择 1：AIV-SDMA。
- * @param [in] commAlg: 计算输入，str。通信算法选择，预留参数，暂未使用，传0即可。
- * @param [out] xOut: 计算输出，Tensor，数据类型支持float16，bfloat16，仅支持2维，数据格式支持ND。
- * @param [out] workspaceSize:出参，返回需要在npu device侧申请的workspace大小。
+ * @param [in] sharedExpertXOptional:
+ * 计算输入，Tensor，数据类型与expandX保持一致，必须为2维，数据格式支持ND。预留参数，暂未使用，传空即可。
+ * @param [in] groupEp: 计算输入，str。ep通信域名称，专家并行的通信域。不能和groupTp相同。
+ * @param [in] epWorldSize: 计算输入，int。ep通信域size。
+ * @param [in] epRankId: 计算输入，int。ep本卡Id。同一个EP通信域中各卡的epRankId不能重复。
+ * @param [in] moeExpertNum: 计算输入，int。MOE专家数量。
+ * @param [in] expertShardType: 计算可选输入，int。共享专家卡分布类型。当前仅支持传0。
+ * @param [in] sharedExpertNum: 计算可选输入，int。共享专家数量。当前仅支持传0。
+ * @param [in] sharedExpertRankNum: 计算可选输入，int。共享专家卡数量。当前仅支持传0。
+ * @param [in] globalBs: 计算可选输入，int。
+ * @param [in] commQuantMode: 计算可选输入，int。通信量化类型。预留参数，暂未使用，传0即可。
+ * @param [in] commType: 计算可选输入，int。通信方案选择。预留参数，暂未使用，传0即可。
+ * @param [in] commAlg: 计算可选输入，str。通信算法类型。预留参数，暂未使用。
+ * @param [out] xOut: 计算输出，Tensor，必选输出，数据类型支持float16，bfloat16，仅支持2维，数据格式支持ND。
+ * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 出参，返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回值，返回状态码。
  */
@@ -68,12 +65,12 @@ ACLNN_API aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
 
 /**
  * @brief aclnnMoeDistributeCombineTeardown的第二段接口，用于执行计算。
- * @param [in] workspce: 在npu device侧申请的workspace内存地址。
- * @param [in] workspace_size: 在npu
- * device侧申请的workspace大小，由第一段接口aclnnMoeDistributeCombineTeardownGetWorkspaceSize获取。
+ * @param [in] workspace: 在npu device侧申请的workspace内存地址。
+ * @param [in] workspace_size: 在npu device侧申请的workspace大小，
+ * 由第一段接口aclnnMoeDistributeCombineTeardownGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
- * @return aclnnStatus: 返回状态码
+ * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnMoeDistributeCombineTeardown(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream);
