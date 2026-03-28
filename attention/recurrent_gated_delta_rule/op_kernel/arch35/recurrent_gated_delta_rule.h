@@ -258,7 +258,18 @@ private:
             CopySingleMatrixNDToND(gamaKInUb, gamaKGm_[gkGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
             inputQueue1_.EnQue<float>(gamaKInUb);
             inputQueue1_.DeQue<float>();
-            DataCopy(gamaUb_, gamaKInUb, dealRowCount * dstRowStride);
+
+            if (DK_ != alignDK_) {
+                Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+            uint32_t blockElemNum = 32UL / sizeof(float);
+            DataCopyParams repeatParams;
+            repeatParams.blockCount = static_cast<uint16_t>(dealRowCount);
+            repeatParams.blockLen = Ceil(DK_, blockElemNum);
+            repeatParams.srcStride = (dstRowStride - repeatParams.blockLen) / blockElemNum;
+            repeatParams.dstStride = (dstRowStride - repeatParams.blockLen) / blockElemNum;
+            DataCopy(gamaUb_, gamaKInUb, repeatParams);
             inputQueue1_.FreeTensor(gamaKInUb);
         } else {
             Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
