@@ -1163,7 +1163,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for (uint32_t index = startServerNum; index < endServerNum; index++) {
         dstStateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetSendAddrBetweenServer(COMM_EP_IDX, index)));
         outTensor(0) = serverCountTensor_(index);
-        SyncFunc<AscendC::HardEvent::S_MTE2>();
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopy(dstStateGMTensor, outTensor, SERVER_STATE_ALIGN/sizeof(uint32_t));
     }
     ////LOG_INFO("SetServerFlag end");
@@ -1590,7 +1590,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             break;
         }
     }
-    DataCopy(tokenCntTensor, statusCntGlobal, SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t));
+    DataCopy(tokenCntTensor, statusCntGlobal, UB_ALIGN / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     rcvTokenCnt = tokenCntTensor.GetValue(0);
 }
