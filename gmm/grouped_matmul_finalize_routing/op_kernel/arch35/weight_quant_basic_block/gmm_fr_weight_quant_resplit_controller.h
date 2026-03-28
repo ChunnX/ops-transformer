@@ -54,6 +54,7 @@ public:
     __aicore__ inline GMMFRWeightQuantResplitController(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale,
                                 GM_ADDR antiquantOffset, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale,
+                                GM_ADDR logitsAddr, GM_ADDR rowIndexAddr,
                                 GM_ADDR y, GM_ADDR shareInput, const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling);
     __aicore__ inline void Process();
 
@@ -76,10 +77,10 @@ private:
     __gm__ perTokenScaleType *perTokenScaleGm_;
     __gm__ scaleType *scaleGm_;
     __gm__ sharedInputDType *shareInputAddr_;
-    __gm__ logitsType logitsAddr_;
-    __gm__ rowIndexType rowIndexAddr_;
+    __gm__ logitsType *logitsAddr_;
+    __gm__ rowIndexType *rowIndexAddr_;
     GlobalTensor<int64_t> groupListGm_;
-    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType, wqmmConfig, vecConfig>
+    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType, logitsType, rowIndexType, wqmmConfig, vecConfig>
         basicBlock_;
 
     uint64_t preOffset_ = 0;
@@ -108,8 +109,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     scaleGm_ = reinterpret_cast<__gm__ scaleType *>(scale);
     antiquantScaleGm_ = reinterpret_cast<__gm__ antiQuantScaleType *>(antiquantScale);
     perTokenScaleGm_ = reinterpret_cast<__gm__ perTokenScaleType *>(perTokenScale);
-    logitsAddr_ =logitsAddr;
-    rowIndexAddr_ = rowIndexAddr;
+    logitsAddr_ = reinterpret_cast<__gm__ logitsType *>(logitsAddr);
+    rowIndexAddr_ = reinterpret_cast<__gm__ rowIndexType *>(rowIndexAddr);
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     shareInputAddr_ = reinterpret_cast<__gm__ sharedInputDType *>(shareInput);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
@@ -146,8 +147,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
-            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_,
-                                         perTokenScaleGm_, biasGm_, yGm_,     logitsAddr_
+            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, nullptr,
+                                         perTokenScaleGm_, biasGm_, yGm_, logitsAddr_,
                                          rowIndexAddr_, tiling_->hasBias,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
             ctrlParam.curBasicBlockId =
@@ -156,7 +157,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
                 // 主块
-                SplitNByMultiCore(offsetParam, ctrlParam, toffsetParam[0].nSize / 256,
+                SplitNByMultiCore(offsetParam, ctrlParam, offsetParam[0].nSize / 256,
                                   256);
                 ctrlParam.basicBlockLimit += tiling_->coreNum;
             }
