@@ -215,6 +215,7 @@ def check_single_op_is_void(root_dir):
 def gen_all_config(root_dir, soc, out_dir, skip_binary_info_config):
     suffix = 'json'
     config = {BINARY_INFO_CONFIG_JSON: {}}
+    os.makedirs(out_dir, exist_ok=True)
     check_single_op_is_void(root_dir)
     all_json_files = get_specified_suffix_file(root_dir, suffix)
 
