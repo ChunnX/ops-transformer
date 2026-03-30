@@ -215,7 +215,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
         allToAllBuilder
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.hcclGeType,
                             contextInfo.hcclGeType)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(AICPU_ENGINE)
             .build();
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());

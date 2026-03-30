@@ -419,7 +419,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
         allToAllMatmulBuilder
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, hcclDtype,
                             hcclDtype)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(AICPU_ENGINE)
             .build();
     if (!allToAllMatmulBuilder.isSuccess()) {
         OP_LOGE(opName_, "Allto All Matmul build hccl tiling config failed: %s", allToAllMatmulBuilder.errorMsg().c_str());

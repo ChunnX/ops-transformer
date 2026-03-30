@@ -21,6 +21,9 @@ using namespace AscendC;
 using namespace Mc2Tiling;
 
 namespace MC2Tiling {
+namespace {
+constexpr uint8_t AICPU_ENGINE = 2;
+} // namespace
 
 /**
  * @brief AlltoAllMatmul非量化的准入条件，当前仅实现非量化，所以直接return true
@@ -172,7 +175,7 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
     
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
-    AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(mc2tiling::A5_CCU_ENGINE).
+    AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(AICPU_ENGINE).
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geAType, contextInfo.args_.geAType).build();
     if (!allToAllBuilder.isSuccess()) {
         return ge::GRAPH_FAILED;
