@@ -64,6 +64,8 @@ def test_sas_quant_process_graph(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     input = test_data['input']
+    metadata_input['layout_kv'] = "PA_BNBD" if metadata_input['layout_kv'] == "PA_ND" else metadata_input['layout_kv']
+    input['layout_kv'] = "PA_BNBD" if input['layout_kv'] == "PA_ND" else input['layout_kv']
     cpu_output = test_data['cpu_output']
     torch_npu.npu.set_device(device_id)
 
@@ -96,7 +98,8 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                                                         batch_size = metadata_input['batch_size'],
                                                         max_seqlen_q = metadata_input['max_seqlen_q'],
                                                         max_seqlen_kv = metadata_input['max_seqlen_kv'],
-                                                        cmp_topk = metadata_input['topk'],
+                                                        ori_topk = metadata_input['topk'] if input.get('ori_sparse_data') is not None else 0,
+                                                        cmp_topk = input['ori_sparse_data'].shape[2] if input.get('cmp_sparse_data') is not None else 0,
                                                         cmp_ratio = metadata_input['cmp_ratio'] if params[-1] != "SWA" else 1,
                                                         ori_mask_mode = metadata_input['ori_mask_mode'],
                                                         cmp_mask_mode = metadata_input['cmp_mask_mode'],
@@ -177,6 +180,8 @@ def test_sas_quant_process_ci(test_data, device_id=0):
     metadata_input = test_data['metadata_input']
     input = test_data['input']
     cpu_output = test_data['cpu_output']
+    metadata_input['layout_kv'] = "PA_BNBD" if metadata_input['layout_kv'] == "PA_ND" else metadata_input['layout_kv']
+    input['layout_kv'] = "PA_BNBD" if input['layout_kv'] == "PA_ND" else input['layout_kv']
     torch_npu.npu.set_device(device_id)
     
     print("test_data:", params)
@@ -196,7 +201,8 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                                         batch_size = metadata_input['batch_size'],
                                                         max_seqlen_q = metadata_input['max_seqlen_q'],
                                                         max_seqlen_kv = metadata_input['max_seqlen_kv'],
-                                                        cmp_topk = metadata_input['topk'],
+                                                        ori_topk = metadata_input['topk'] if input.get('ori_sparse_data') is not None else 0,
+                                                        cmp_topk = input['cmp_sparse_data'].shape[2] if input.get('cmp_sparse_data') is not None else 0,
                                                         cmp_ratio = metadata_input['cmp_ratio'] if params[-1] != "SWA" else 1,
                                                         ori_mask_mode = metadata_input['ori_mask_mode'],
                                                         cmp_mask_mode = metadata_input['cmp_mask_mode'],
