@@ -180,6 +180,39 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
     return false;
 }
 
+// 检查tensor是否因为切片导致非连续
+bool IsSliceNonContiguous(const aclTensor *tensor) {
+    // 当输入tensor的shape小于2或者大于6的时候，返回错误
+    if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
+        return false;
+    }
+    
+    // 如果是转置导致的非连续，返回false
+    if (IsTransposeLastTwoDims(tensor)) {
+        return false;
+    }
+    
+    int64_t dimNum = tensor->GetViewShape().GetDimNum();
+    auto strides = tensor->GetViewStrides();
+    auto viewShape = tensor->GetViewShape();
+    
+    // 检查stride是否连续
+    // 连续的条件：stride[i] == stride[i+1] * viewShape.GetDim(i+1)
+    // 最后一个维度的stride应该是1
+    if (strides[dimNum - 1] != 1) {
+        return true;
+    }
+    
+    for (int64_t i = dimNum - 2; i >= 0; i--) {
+        int64_t expectedStride = strides[i + 1] * viewShape.GetDim(i + 1);
+        if (strides[i] != expectedStride) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 // 检查x2是否合法
 aclnnStatus CheckX2Valid(const aclTensor* x2) {
     if (x2 == nullptr) {
