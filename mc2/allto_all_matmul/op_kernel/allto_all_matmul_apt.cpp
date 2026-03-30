@@ -33,7 +33,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef ALLTO_ALL_MATMUL_APT_FP_IMPL
 #define ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe)                                                                 \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,             \
                                           AlltoAllMatmulTilingData, MC2AlltoAllPrimitives, 0, 1, CommunicationType);   \
         CommunicationType commImplName(&tilingData);                                                                   \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_X1, TransposeType);                                            \
@@ -55,7 +55,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef ALLTO_ALL_KC_QUANT_MATMUL_IMPL
 #define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, MMDataTypeX1)                                                 \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,             \
                                           AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
@@ -78,7 +78,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef ALLTO_ALL_MX_QUANT_MATMUL_IMPL
 #define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, commDataTypeX1, isMxFp4)                                      \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,             \
                                           AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \

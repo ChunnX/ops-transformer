@@ -172,7 +172,7 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
     
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
-    AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(mc2tiling::A5_CCU_ENGINE).
+    AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(2).
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geAType, contextInfo.args_.geAType).build();
     if (!allToAllBuilder.isSuccess()) {
         return ge::GRAPH_FAILED;
