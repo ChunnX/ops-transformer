@@ -16,8 +16,6 @@
 #ifndef VF_MUL_H
 #define VF_MUL_H
 
-// #include "vf_comm.h"
-// #include "../compressor_comm.h"
 #include "kernel_operator.h"
 #include <cstdint>
 using namespace AscendC;
@@ -54,7 +52,6 @@ template <typename T>
 __simd_callee__ void LoadMulAddVFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAddr, ReduceMulRegList<T> &regList, uint64_t offset, uint32_t maskValue)
 {
     MicroAPI::MaskReg mask = MicroAPI::UpdateMask<T>(maskValue);
-    // MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::LoadAlign(regList.vreg0, kvAddr + offset);
     MicroAPI::LoadAlign(regList.vreg1, scoreAddr + offset);
     MicroAPI::Mul(regList.vregMul, regList.vreg0, regList.vreg1, mask);
@@ -69,9 +66,6 @@ __simd_vf__ void MulReduceSumbase8VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAd
                                          const uint32_t baseD)
 {
     ReduceMulRegList<T> regList;
-    // MicroAPI::RegTensor<T> vreg0;
-    // MicroAPI::RegTensor<T> vreg1;
-    // MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregSum0;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskL32 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL32>();
@@ -200,14 +194,6 @@ __simd_vf__ void MulReduceSumbase128VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
                                            const uint32_t baseD)
 {
     ReduceMulRegList<T> regList[2];
-    // MicroAPI::RegTensor<T> vreg00;
-    // MicroAPI::RegTensor<T> vreg01;
-    // MicroAPI::RegTensor<T> vreg10;
-    // MicroAPI::RegTensor<T> vreg11;
-    // MicroAPI::RegTensor<T> vregMul0;
-    // MicroAPI::RegTensor<T> vregMul1;
-    // MicroAPI::RegTensor<T> vregSum0;
-    // MicroAPI::RegTensor<T> vregSum1;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     uint32_t offset = 0;
     uint32_t rCnt = coff * cmpRatio;
@@ -217,14 +203,6 @@ __simd_vf__ void MulReduceSumbase128VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
         for (uint32_t rLoop = 0; rLoop < rCnt; rLoop++) {
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[0], offset, baseD64);
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[1], offset + baseD64, baseD64);
-            // MicroAPI::LoadAlign(vreg00, kvAddr + offset);
-            // MicroAPI::LoadAlign(vreg01, kvAddr + offset + baseD64);
-            // MicroAPI::LoadAlign(vreg10, scoreAddr + offset);
-            // MicroAPI::LoadAlign(vreg11, scoreAddr + offset + baseD64);
-            // MicroAPI::Mul(vregMul0, vreg00, vreg10, mask);
-            // MicroAPI::Mul(vregMul1, vreg01, vreg11, mask);
-            // MicroAPI::Add(vregSum0, vregSum0, vregMul0, mask);
-            // MicroAPI::Add(vregSum1, vregSum1, vregMul1, mask);
             offset += baseD;
         }
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD, regList[0].vregSum, mask);
@@ -238,22 +216,6 @@ __simd_vf__ void MulReduceSumbase256VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
                                            const uint32_t baseD)
 {
     ReduceMulRegList<T> regList[4];
-    // MicroAPI::RegTensor<T> vreg00;
-    // MicroAPI::RegTensor<T> vreg01;
-    // MicroAPI::RegTensor<T> vreg02;
-    // MicroAPI::RegTensor<T> vreg03;
-    // MicroAPI::RegTensor<T> vreg10;
-    // MicroAPI::RegTensor<T> vreg11;
-    // MicroAPI::RegTensor<T> vreg12;
-    // MicroAPI::RegTensor<T> vreg13;
-    // MicroAPI::RegTensor<T> vregMul0;
-    // MicroAPI::RegTensor<T> vregMul1;
-    // MicroAPI::RegTensor<T> vregMul2;
-    // MicroAPI::RegTensor<T> vregMul3;
-    // MicroAPI::RegTensor<T> vregSum0;
-    // MicroAPI::RegTensor<T> vregSum1;
-    // MicroAPI::RegTensor<T> vregSum2;
-    // MicroAPI::RegTensor<T> vregSum3;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     uint32_t offset = 0;
     uint32_t rCnt = coff * cmpRatio;
@@ -267,32 +229,12 @@ __simd_vf__ void MulReduceSumbase256VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[1], offset + baseD64, baseD64);
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[2], offset + 2 * baseD64, baseD64);
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[3], offset + 3 * baseD64, baseD64);
-            // MicroAPI::LoadAlign(vreg00, kvAddr + offset);
-            // MicroAPI::LoadAlign(vreg01, kvAddr + offset + baseD64);
-            // MicroAPI::LoadAlign(vreg02, kvAddr + offset + 2 * baseD64);
-            // MicroAPI::LoadAlign(vreg03, kvAddr + offset + 3 * baseD64);
-            // MicroAPI::LoadAlign(vreg10, scoreAddr + offset);
-            // MicroAPI::LoadAlign(vreg11, scoreAddr + offset + baseD64);
-            // MicroAPI::LoadAlign(vreg12, scoreAddr + offset + 2 * baseD64);
-            // MicroAPI::LoadAlign(vreg13, scoreAddr + offset + 3 * baseD64);
-            // MicroAPI::Mul(vregMul0, vreg00, vreg10, mask);
-            // MicroAPI::Mul(vregMul1, vreg01, vreg11, mask);
-            // MicroAPI::Mul(vregMul2, vreg02, vreg12, mask);
-            // MicroAPI::Mul(vregMul3, vreg03, vreg13, mask);
-            // MicroAPI::Add(vregSum0, vregSum0, vregMul0, mask);
-            // MicroAPI::Add(vregSum1, vregSum1, vregMul1, mask);
-            // MicroAPI::Add(vregSum2, vregSum2, vregMul2, mask);
-            // MicroAPI::Add(vregSum3, vregSum3, vregMul3, mask);
             offset += baseD;
         }
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD, regList[0].vregSum, mask);
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD + baseD64, regList[1].vregSum, mask);
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 2 * baseD64, regList[2].vregSum, mask);
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 3 * baseD64, regList[3].vregSum, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + baseD64, vregSum1, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 2 * baseD64, vregSum2, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 3 * baseD64, vregSum3, mask);
     }
 }
 
@@ -302,38 +244,6 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
                                            const uint32_t baseD)
 {
     ReduceMulRegList<T> regList[8];
-    // MicroAPI::RegTensor<T> vreg00;
-    // MicroAPI::RegTensor<T> vreg01;
-    // MicroAPI::RegTensor<T> vreg02;
-    // MicroAPI::RegTensor<T> vreg03;
-    // MicroAPI::RegTensor<T> vreg04;
-    // MicroAPI::RegTensor<T> vreg05;
-    // MicroAPI::RegTensor<T> vreg06;
-    // MicroAPI::RegTensor<T> vreg07;
-    // MicroAPI::RegTensor<T> vreg10;
-    // MicroAPI::RegTensor<T> vreg11;
-    // MicroAPI::RegTensor<T> vreg12;
-    // MicroAPI::RegTensor<T> vreg13;
-    // MicroAPI::RegTensor<T> vreg14;
-    // MicroAPI::RegTensor<T> vreg15;
-    // MicroAPI::RegTensor<T> vreg16;
-    // MicroAPI::RegTensor<T> vreg17;
-    // MicroAPI::RegTensor<T> vregMul0;
-    // MicroAPI::RegTensor<T> vregMul1;
-    // MicroAPI::RegTensor<T> vregMul2;
-    // MicroAPI::RegTensor<T> vregMul3;
-    // MicroAPI::RegTensor<T> vregMul4;
-    // MicroAPI::RegTensor<T> vregMul5;
-    // MicroAPI::RegTensor<T> vregMul6;
-    // MicroAPI::RegTensor<T> vregMul7;
-    // MicroAPI::RegTensor<T> vregSum0;
-    // MicroAPI::RegTensor<T> vregSum1;
-    // MicroAPI::RegTensor<T> vregSum2;
-    // MicroAPI::RegTensor<T> vregSum3;
-    // MicroAPI::RegTensor<T> vregSum4;
-    // MicroAPI::RegTensor<T> vregSum5;
-    // MicroAPI::RegTensor<T> vregSum6;
-    // MicroAPI::RegTensor<T> vregSum7;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     uint32_t offset = 0;
     uint32_t rCnt = coff * cmpRatio;
@@ -346,14 +256,6 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
         MicroAPI::Duplicate(regList[5].vregSum, 0, mask);
         MicroAPI::Duplicate(regList[6].vregSum, 0, mask);
         MicroAPI::Duplicate(regList[7].vregSum, 0, mask);
-        // MicroAPI::Duplicate(vregSum0, 0, mask);
-        // MicroAPI::Duplicate(vregSum1, 0, mask);
-        // MicroAPI::Duplicate(vregSum2, 0, mask);
-        // MicroAPI::Duplicate(vregSum3, 0, mask);
-        // MicroAPI::Duplicate(vregSum4, 0, mask);
-        // MicroAPI::Duplicate(vregSum5, 0, mask);
-        // MicroAPI::Duplicate(vregSum6, 0, mask);
-        // MicroAPI::Duplicate(vregSum7, 0, mask);
         for (uint32_t rLoop = 0; rLoop < rCnt; rLoop++) {
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[0], offset, baseD64);
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[1], offset + baseD64, baseD64);
@@ -363,38 +265,6 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[5], offset + 5 * baseD64, baseD64);
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[6], offset + 6 * baseD64, baseD64);
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList[7], offset + 7 * baseD64, baseD64);
-            // MicroAPI::LoadAlign(vreg00, kvAddr + offset);
-            // MicroAPI::LoadAlign(vreg01, kvAddr + offset + baseD64);
-            // MicroAPI::LoadAlign(vreg02, kvAddr + offset + 2 * baseD64);
-            // MicroAPI::LoadAlign(vreg03, kvAddr + offset + 3 * baseD64);
-            // MicroAPI::LoadAlign(vreg04, kvAddr + offset + 4 * baseD64);
-            // MicroAPI::LoadAlign(vreg05, kvAddr + offset + 5 * baseD64);
-            // MicroAPI::LoadAlign(vreg06, kvAddr + offset + 6 * baseD64);
-            // MicroAPI::LoadAlign(vreg07, kvAddr + offset + 7 * baseD64);
-            // MicroAPI::LoadAlign(vreg10, scoreAddr + offset);
-            // MicroAPI::LoadAlign(vreg11, scoreAddr + offset + baseD64);
-            // MicroAPI::LoadAlign(vreg12, scoreAddr + offset + 2 * baseD64);
-            // MicroAPI::LoadAlign(vreg13, scoreAddr + offset + 3 * baseD64);
-            // MicroAPI::LoadAlign(vreg14, scoreAddr + offset + 4 * baseD64);
-            // MicroAPI::LoadAlign(vreg15, scoreAddr + offset + 5 * baseD64);
-            // MicroAPI::LoadAlign(vreg16, scoreAddr + offset + 6 * baseD64);
-            // MicroAPI::LoadAlign(vreg17, scoreAddr + offset + 7 * baseD64);
-            // MicroAPI::Mul(vregMul0, vreg00, vreg10, mask);
-            // MicroAPI::Mul(vregMul1, vreg01, vreg11, mask);
-            // MicroAPI::Mul(vregMul2, vreg02, vreg12, mask);
-            // MicroAPI::Mul(vregMul3, vreg03, vreg13, mask);
-            // MicroAPI::Mul(vregMul4, vreg04, vreg14, mask);
-            // MicroAPI::Mul(vregMul5, vreg05, vreg15, mask);
-            // MicroAPI::Mul(vregMul6, vreg06, vreg16, mask);
-            // MicroAPI::Mul(vregMul7, vreg07, vreg17, mask);
-            // MicroAPI::Add(vregSum0, vregSum0, vregMul0, mask);
-            // MicroAPI::Add(vregSum1, vregSum1, vregMul1, mask);
-            // MicroAPI::Add(vregSum2, vregSum2, vregMul2, mask);
-            // MicroAPI::Add(vregSum3, vregSum3, vregMul3, mask);
-            // MicroAPI::Add(vregSum4, vregSum4, vregMul4, mask);
-            // MicroAPI::Add(vregSum5, vregSum5, vregMul5, mask);
-            // MicroAPI::Add(vregSum6, vregSum6, vregMul6, mask);
-            // MicroAPI::Add(vregSum7, vregSum7, vregMul7, mask);
             offset += baseD;
         }
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD, regList[0].vregSum, mask);
@@ -405,14 +275,6 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 5 * baseD64, regList[5].vregSum, mask);
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 6 * baseD64, regList[6].vregSum, mask);
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 7 * baseD64, regList[7].vregSum, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + baseD64, vregSum1, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 2 * baseD64, vregSum2, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 3 * baseD64, vregSum3, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 4 * baseD64, vregSum4, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 5 * baseD64, vregSum5, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 6 * baseD64, vregSum6, mask);
-        // MicroAPI::StoreAlign(outputAddr + scLoop * baseD + 7 * baseD64, vregSum7, mask);
     }
 }
 

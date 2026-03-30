@@ -907,13 +907,15 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
 
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
-        uint32_t writeSeqStartIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, constInfo_.cmpRatio) - (coff_ - 1) * constInfo_.cmpRatio;
+        uint32_t writeSeqStartIdx =
+            Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, constInfo_.cmpRatio) - (coff_ - 1) * constInfo_.cmpRatio;
         if (endSeqIdx <= writeSeqStartIdx) {
             return;
         }
+        srcBaseOffset += (max(startSeqIdx, writeSeqStartIdx) - startSeqIdx) * coff_ * dDealSize;
         startSeqIdx = max(startSeqIdx, writeSeqStartIdx);
     }
-    
+
     if constexpr (COMP::coff == COFF::OVERLAP) {
         WriteToCacheState(stateGm, blockTableGm, srcLocal[srcBaseOffset], sliceInfo.bIdx, startSeqIdx, endSeqIdx,
                           dStartIdx, dDealSize, stateIdx);

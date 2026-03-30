@@ -226,7 +226,6 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::CopyXGmToL1(LocalTensor<X_T> xL1Tensor,
     uint32_t hIdx, uint32_t kBase)
 {
-    // uint32_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
     uint32_t copySeqCnt = constInfo_.mEnd - constInfo_.mStart;    //info.dealSeqCnt; // 此基本块处理的长度
 
     uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
@@ -236,7 +235,6 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::CopyXGmToL1(LocalTenso
     uint32_t dValue = kBase;  // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
-    // printf("copySeqCnt=%d, sIdx=%d\n", copySeqCnt, sIdx);
     CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
@@ -244,8 +242,6 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
     uint32_t hIdx, uint32_t kBase, uint32_t coffId)
 {
-    // coffId=0, 搬运左矩阵的数据; coffId=1, 搬运右矩阵的数据
-    // printf("constInfo_.nStart=%d\n", constInfo_.nStart);
     uint64_t gmOffset = coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
     uint32_t wkvL1Offset = 0;
     uint32_t wgateL1Offset = constInfo_.dBaseSize * (32 / sizeof(X_T)); // wgate与wkv的起始点相隔dBaseSize个32B
@@ -310,7 +306,6 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::MatrixMmad(LocalTensor
     mmadParams.cmatrixInitVal = isInitL0C;
     mmadParams.cmatrixSource = false;
     Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-    // PipeBarrier<PIPE_M>();
 }
 
 template <typename COMP>
@@ -348,7 +343,6 @@ __aicore__ inline uint32_t CompressorBlockCubeFullLoad<COMP>::GetMSize(const Run
 template <typename COMP>
 __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunInfo &info)
 {
-    // printf("info.dealSeqCnt=%d\n", info.dealSeqCnt);
     uint32_t mSize = info.dealSeqCnt;
     if (mSize == 0) {
         return;
@@ -363,8 +357,6 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
     uint32_t hStart = constInfo_.kStart;
     uint32_t hSize = constInfo_.kEnd - constInfo_.kStart;
     uint32_t hIdxStart = (constInfo_.aiCoreIdx % constInfo_.dBasicBlockNum) * K_L1_BASE;  // 每组核内的h循环起始不同
-    // printf("hStart=%d, hSize=%d, hIdxStart=%d\n", hStart, hSize, hIdxStart);
-    // printf("cube1\n");
     uint32_t kSize = K_L1_BASE;
     for (uint32_t h = 0; h < hSize; h += kSize) {
         uint32_t hIdx = (h + hIdxStart) % hSize;    // h方向错位搬运
@@ -389,8 +381,6 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
                 SetFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
                 WaitFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
 
-                // uint32_t mSize = GetMSize(info, coffId);
-                // printf("mSize=%d\n", mSize);
                 uint32_t actMDealSize = M_L0_BASE;
                 for (uint32_t mL0 = 0; mL0 < mSize; mL0 += M_L0_BASE) {
                     if (mL0 + M_L0_BASE > mSize) {
@@ -440,7 +430,6 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
             xBufId = (xBufId + 1) % 2;
     }
 }
-    // printf("cube2\n");
 
 } // namespace Compressor
 

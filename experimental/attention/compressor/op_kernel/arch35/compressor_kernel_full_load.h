@@ -83,8 +83,8 @@ private:
     static constexpr uint32_t SYNC_C1_FLAG = 3;
     static constexpr uint32_t SYNC_V1_FLAG = 4;
     static constexpr uint32_t SYNC_V1_FLAG2 = 5;
-    static constexpr uint32_t SYNC_C1_V1_FLAG = 6;
-    static constexpr uint32_t SYNC_V1_C1_FLAG = 8;
+    static constexpr uint32_t SYNC_C1_V1_FLAG = 7;
+    static constexpr uint32_t SYNC_V1_C1_FLAG = 9;
 
     // ==============================TilingData&TPipe==============================
     TPipe* pipe_;
@@ -141,7 +141,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
         constInfo.aiCoreIdx = GetBlockIdx();
     }
 
-    // printf("====3====constInfo.aiCoreIdx=%d===\n", constInfo.aiCoreIdx);
     InitTilingData();
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
@@ -191,8 +190,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitTilingData() {
     constInfo.batchSize = tilingData_->baseParams.batchSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
-    // constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;
-    // constInfo.kBaseNum = 1;
     constInfo.headDim = tilingData_->baseParams.headDim;
     constInfo.hSize = tilingData_->baseParams.hiddenSize;
     constInfo.sSize = tilingData_->baseParams.seqSize;
@@ -252,14 +249,10 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcSplitCoreInfo()
     constInfo.dBasicBlockNum = constInfo.headDim / constInfo.dBaseSize;
     // 核的组数
     constInfo.coreGroupNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
-    // 每个核处理的d方向的索引
-    // constInfo.dIdx = constInfo.aiCoreIdx % constInfo.dBasicBlockNum;
     // 当前组id
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
     constInfo.mGroupNum = constInfo.coreGroupNum;
     constInfo.mCurGroupIdx = constInfo.curGroupIdx;
-
-    // constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
     uint32_t coff = (uint32_t)COMP::coff;
     constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
@@ -267,8 +260,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcSplitCoreInfo()
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
-
-    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, dBaseSize:%u, dBasicBlockNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.dBaseSize, constInfo.dBasicBlockNum, constInfo.curGroupIdx, constInfo.mBaseSize);
 }
 
 template <typename COMP>
@@ -324,7 +315,6 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1(const Vec1RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
-    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1();
     CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
@@ -334,7 +324,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1(const Vec1Run
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec2(const Vec2RunInfo &info) {
-    // printf("[VEC2] bStart:%u, sStart:%u, bCompressedId:%u, dealScSize:%u, v2DbIdx:%u\n", info.bStart, info.sStart, info.bCompressedId, info.dealScSize, info.v2DbIdx);
     blockVec_.ComputeVec2();
 }
 
@@ -376,8 +365,8 @@ __aicore__ inline bool CompressorKernelFullLoad<COMP>::IsNeedExcuteC1(RunInfo in
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcCubeParams(RunInfo &info)
 {
-    info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));//
-    info.dealSeqCnt = constInfo.mEnd - constInfo.mStart;//
+    info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));
+    info.dealSeqCnt = constInfo.mEnd - constInfo.mStart;
 }
 
 template <typename COMP>

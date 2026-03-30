@@ -63,7 +63,7 @@ def output_operator(params):
         seqused = torch.tensor(seqused).to(torch.int32)
     if start_pos is not None:
         start_pos = torch.tensor(start_pos).to(torch.int32)
-    else:
+    elif start_p is not None:
         start_pos = torch.full((batch_size,), start_p, dtype=torch.int32)
 
     if layout_x == "TH":
@@ -77,11 +77,19 @@ def output_operator(params):
         else:
             cu_seqlens = torch.tensor(cu_seqlens).to(torch.int32)
         for i in range(batch_size):
-            if start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
-                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] 
+            if start_pos is not None:
+                if start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
+                    S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] 
+            else:
+                if cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
+                    S_max = cu_seqlens[i + 1] - cu_seqlens[i] 
+
     else:
         cu_seqlens = None
-        S_max = max(start_pos) + Seq_len
+        if start_pos is not None:
+            S_max = max(start_pos) + Seq_len
+        else:
+            S_max = Seq_len
     print(f"params = {params}")
 
     run_compressor_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = Seq_len, start_pos = start_pos, \
