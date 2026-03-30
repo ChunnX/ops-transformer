@@ -63,7 +63,7 @@ TEST_F(AclnnAllGatherMatmulNullptrTest, TestStreamModeInvalid)
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
-
+  
 TEST_F(AclnnAllGatherMatmulNullptrTest, TestAscend910A5Platform)
 {
     op::SetPlatformNpuArch(NpuArch::DAV_3510);
