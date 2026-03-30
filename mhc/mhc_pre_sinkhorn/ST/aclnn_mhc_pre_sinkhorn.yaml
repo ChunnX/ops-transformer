@@ -1,0 +1,70 @@
+api: pytorch
+api_type: ascend_function_mhc_pre_sinkhorn
+version: v2.1
+aclnn_name: MhcPreSinkhorn
+generate: ascend_generate_mhc_pre_sinkhorn
+dtype_numbers: 100
+extra_numbers: 0
+standard:
+  acc: default
+inputs:
+  - name: h_res
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[ -10, 10 ]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+      dim_values:
+        values: [[ 1,100 ], [ 4,4 ], [ 4,4 ]]
+  - name: eps
+    type: attr
+    required: true
+    dtypes:
+      values: [float]
+    ranges:
+      valid:
+        values: [ [ 1e-8, 1e-4 ] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: []
+      dim_values:
+        values: []
+  - name: num_iters
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [ [ 1, 100 ] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: []
+      dim_values:
+        values: []
+  - name: out_flag
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [ [ 0, 1 ] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: []
+      dim_values:
+        values: []
