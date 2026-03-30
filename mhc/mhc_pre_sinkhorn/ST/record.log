@@ -1,0 +1,24 @@
+ct isclose /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/res/output/cpu_0/all_aclnn_mhc_pre_sinkhorn/0/output_2.pt /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/res/output/pyaclnn_0/all_aclnn_mhc_pre_sinkhorn/0/output_2.pt
+
+
+
+clear;atk node --backend pyaclnn --devices 5 node --backend cpu task -c *.json --task accuracy -p MhcPreSinkhorn.py -e 1 --save_data output
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
