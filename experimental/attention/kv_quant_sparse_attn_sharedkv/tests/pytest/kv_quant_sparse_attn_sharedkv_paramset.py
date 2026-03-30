@@ -26,7 +26,8 @@ TEST_PARAMS = {
         "N1": [64],
         "N2": [1],
         "D": [512],
-        "K": [512],
+        "K1": [None],
+        "K2": [None],
         "block_num1": [None],
         "block_num2": [None],
         "block_size1": [128],
@@ -39,15 +40,17 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "kv_quant_mode": [1],
+        "kv_quant_mode": [2],
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"], # SWA SCFA CFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False],
-        "ori_kv_topk_mode":["no"],
+        "ori_kv_topk_mode":["no"],    # toklength: full rullK random
         "cmp_kv_topk_mode":["no"],
-        "topk_value_mode":[1],
+        "ori_sparse_indices_mode":[None],  # full ramdom None
+        "cmp_sparse_indices_mode":[None],
+        "topk_value_mode":[2]
     },
 
     "prefill_first":{
@@ -62,7 +65,8 @@ TEST_PARAMS = {
         "N1": [64],
         "N2": [1],
         "D": [512],
-        "K": [512],
+        "K1": [None],
+        "K2": [None],
         "block_num1": [None],
         "block_num2": [None],
         "block_size1": [128],
@@ -81,9 +85,11 @@ TEST_PARAMS = {
         "template_run_mode": ["SWA"], # SWA SCFA CFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False],
-        "ori_kv_topk_mode":["no"],
+        "ori_kv_topk_mode":["no"],    # toklength: full rullK random
         "cmp_kv_topk_mode":["no"],
-        "topk_value_mode":[1],
+        "ori_sparse_indices_mode":[None],  # full ramdom None
+        "cmp_sparse_indices_mode":[None],
+        "topk_value_mode":[2]
     },
     "decode_g128_test":{
         "layout_q": ["TND"],
@@ -97,7 +103,8 @@ TEST_PARAMS = {
         "N1": [128],
         "N2": [1],
         "D": [512],
-        "K": [128],
+        "K1": [128],
+        "K2": [512],
         "block_num1": [None],
         "block_num2": [None],
         "block_size1": [128],
@@ -116,9 +123,11 @@ TEST_PARAMS = {
         "template_run_mode": ["ALL_SCFA"], # SWA SCFA CFA ALL_SCFA ORI_SCFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False],
-        "ori_kv_topk_mode":["full"],       # random full
-        "cmp_kv_topk_mode":["full"],       # random full
-        "topk_value_mode":[2],
+        "ori_kv_topk_mode":["no"],    # toklength: full rullK random
+        "cmp_kv_topk_mode":["no"],
+        "ori_sparse_indices_mode":[None],  # full ramdom None
+        "cmp_sparse_indices_mode":[None],
+        "topk_value_mode":[2]
     },
     "tnd_decode_first":{
         "layout_q": ["TND"],
@@ -132,7 +141,8 @@ TEST_PARAMS = {
         "N1": [64],
         "N2": [1],
         "D": [512],
-        "K": [512],
+        "K1": [None],
+        "K2": [None],
         "block_num1": [None],
         "block_num2": [None],
         "block_size1": [128],
@@ -152,10 +162,12 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"], # SWA SCFA CFA
         "actlen_mode":["full"],       # random full
-        "cmp_kv_topk_mode":["full"],       # random full
-        "topk_value_mode":[2],
         "S1EQS2":[False],
-        "ori_kv_topk_mode":["no"],
+        "ori_kv_topk_mode":["no"],    # toklength: full rullK random
+        "cmp_kv_topk_mode":["no"],
+        "ori_sparse_indices_mode":[None],  # full ramdom None
+        "cmp_sparse_indices_mode":[None],
+        "topk_value_mode":[2]
     },
     "decode_g128_test1":{
         "layout_q": ["TND"],
@@ -169,7 +181,8 @@ TEST_PARAMS = {
         "N1": [128],
         "N2": [1],
         "D": [512],
-        "K": [128],
+        "K1": [128],
+        "K2": [512],
         "block_num1": [None],
         "block_num2": [None],
         "block_size1": [128],
@@ -190,9 +203,11 @@ TEST_PARAMS = {
         "template_run_mode": ["ALL_SCFA"], # SWA SCFA CFA ALL_SCFA ORI_SCFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False],
-        "ori_kv_topk_mode":["full"],       # random full
-        "cmp_kv_topk_mode":["full"],       # random full
-        "topk_value_mode":[2],
+        "ori_kv_topk_mode":["fullK"],    # toklength: full rullK random
+        "cmp_kv_topk_mode":["fullK"],
+        "ori_sparse_indices_mode":["full"],  # full ramdom None
+        "cmp_sparse_indices_mode":["full"],
+        "topk_value_mode":[2]
     },
 }
 

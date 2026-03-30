@@ -163,7 +163,7 @@ def combin_params(ENABLED_PARAMS, pytest_paramset=True):
             "Testcase_Prefix", "Testcase_Number", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
             "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "seqused_kv", "softmax_scale", "cmp_ratio",
             "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
-            "ori_kv_topk_mode", "cmp_kv_topk_mode", "topk_value_mode", "template_run_mode", "actlen_mode","S1EQS2"
+            "ori_kv_topk_mode", "cmp_kv_topk_mode", "topk_value_mode", "sparse_indices_mode", "template_run_mode", "actlen_mode","S1EQS2"
         ]
 
         param_values = [
@@ -180,7 +180,8 @@ def combin_params(ENABLED_PARAMS, pytest_paramset=True):
             input_params["param_N1"],
             input_params["param_N2"],
             input_params["param_D"],
-            input_params["param_K"],
+            input_params["param_K1"],
+            input_params["param_K2"],
             input_params.get("param_block_num1", [None]),
             input_params.get("param_block_num2", [None]),
             input_params["param_block_size1"],
@@ -198,9 +199,10 @@ def combin_params(ENABLED_PARAMS, pytest_paramset=True):
             input_params["param_kv_quant_mode"],
             input_params["param_tile_size"],
             input_params["param_rope_head_dim"],
-            input_params.get("param_ori_kv_topk_mode", [None]),
-            input_params.get("param_cmp_kv_topk_mode", [None]),
-            input_params.get("param_topk_value_mode", [None]),
+            input_params.get("param_ori_kv_topk_mode", ["no"]),
+            input_params.get("param_cmp_kv_topk_mode", ["no"]),
+            input_params.get("param_topk_value_mode", [2]),
+            input_params.get("param_sparse_indices_mode", [None]),
             input_params["param_template_run_mode"],
             input_params["param_actlen_mode"],
             input_params["param_S1EQS2"],
@@ -228,7 +230,8 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     N1 = param_combination['N1']
     N2 = param_combination['N2']
     D = param_combination['D']
-    K = param_combination['K']
+    K1 = param_combination['K1']
+    K2 = param_combination['K2']
     block_num1 = param_combination['block_num1']
     block_num2 = param_combination['block_num2']
     block_size1 = param_combination['block_size1']
@@ -249,6 +252,7 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     ori_kv_topk_mode = param_combination['ori_kv_topk_mode']
     cmp_kv_topk_mode = param_combination['cmp_kv_topk_mode']
     topk_value_mode = param_combination.get('topk_value_mode') or 1
+    sparse_indices_mode = param_combination['sparse_indices_mode']
     template_run_mode = param_combination['template_run_mode']
     actlen_mode = param_combination['actlen_mode']
     S1EQS2 = param_combination['S1EQS2']
@@ -294,40 +298,6 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
     T2 = cu_seqlens_ori_kv[-1] if layout_kv == "TND" else None
     T3 = cu_seqlens_cmp_kv[-1] if (template_run_mode != "SWA" and layout_kv == "TND") else None
-    # 生成ori_kv_topk
-    if template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA":
-        if ori_kv_topk_mode == "full":
-            if layout_q == "TND" or layout_q == "BSND":
-                ori_topk_length = torch.tensor(np.random.uniform(K, K, (B, 1))).to(torch.int32)
-            else:
-                raise ValueError(f"layout_q is not support {layout_q}")
-        elif ori_kv_topk_mode == "random":
-            if layout_q == "TND" or layout_q == "BSND":
-                ori_topk_length = torch.tensor(np.random.uniform(1, K, (B, 1))).to(torch.int32)
-            else:
-                raise ValueError(f"layout_q is not support {layout_q}")
-        else:
-            ori_topk_length = None
-    else:
-        ori_topk_length = None
-
-    # 生成cmp_kv_topk
-    if template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA":
-        cmp_topK = 512 if cmp_ratio == 4 else S2 // cmp_ratio
-        if cmp_kv_topk_mode == "full":
-            if layout_q == "TND" or layout_q == "BSND":
-                cmp_topk_length = torch.tensor(np.random.uniform(cmp_topK, cmp_topK, (B, 1))).to(torch.int32)
-            else:
-                raise ValueError(f"layout_q is not support {layout_q}")
-        elif cmp_kv_topk_mode == "random":
-            if layout_q == "TND" or layout_q == "BSND":
-                cmp_topk_length = torch.tensor(np.random.uniform(1, cmp_topK, (B, 1))).to(torch.int32)
-            else:
-                raise ValueError(f"layout_q is not support {layout_q}")
-        else:
-            cmp_topk_length = None
-    else:
-        cmp_topk_length = None
 
     # maxSeqLen / block_size向上取整
     ori_block_num_per_batch = []
@@ -347,10 +317,9 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     block_num1 = ori_block_num_sum
     block_num2 = cmp_block_num_sum
 
-    params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K, block_num1, \
+    params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K1, K2, block_num1, \
                 block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
-                cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_topk_length, cmp_topk_length, \
-                topk_value_mode, template_run_mode
+                cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_kv_topk_mode, cmp_kv_topk_mode, sparse_indices_mode, topk_value_mode, template_run_mode
 
     # 输入参数的合法性校验
     try:
