@@ -36,6 +36,7 @@ class MC2AlltoAllPrimitives {
 public:
     __aicore__ inline AscendC::HcclHandle Prepare(HcclType *hccl, MC2AlltoAllContext *context, uint32_t taskIndex)
     {
+        AscendC::PRINTF("----------alltoall_kernel-alltoall------------\n");
         return hccl->template AlltoAll<false>(context->sendBuffer + taskIndex * context->sendOffset,
                                               context->recvBuffer + taskIndex * context->recvOffset, context->sendCount,
                                               (AscendC::HcclDataType)(static_cast<uint8_t>(context->hcclDataType)),
