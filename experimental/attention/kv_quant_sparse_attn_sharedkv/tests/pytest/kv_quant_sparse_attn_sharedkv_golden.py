@@ -26,7 +26,7 @@ FP8_DATA_RANGE_LEFT = -1
 FP8_DATA_RANGE_RIGHT = 1
 
 class GeneralizedSFAQuant:
-    def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K, block_num1, block_num2,
+    def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K1, K2, block_num1, block_num2,
                  block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
                  ori_win_left, ori_win_right, kv_quant_mode, topk_value_mode, tile_size, rope_head_dim, ori_topk_length, cmp_topk_length, template_run_mode):
         self.layout_q = layout_q
@@ -42,7 +42,8 @@ class GeneralizedSFAQuant:
         self.N1 = N1
         self.N2 = N2
         self.D = D
-        self.K = K
+        self.K1 = K1
+        self.K2 = K2
         self.block_num1 = block_num1
         self.block_num2 = block_num2
         self.block_size1 = block_size1
@@ -160,10 +161,10 @@ class GeneralizedSFAQuant:
             threshold = math.floor(cur_act_kv / cmp_ratio)
         if topk_length_bnsd != None:
             valid_count = min(topk_length_bnsd[i_B, 0, 0, 0], math.ceil(threshold / sparse_block_size))
-        elif not isOri and cmp_ratio == 4:
-            valid_count = min(512, math.ceil(threshold / sparse_block_size))
+        elif not isOri:
+            valid_count = min(self.K2, math.ceil(threshold / sparse_block_size))
         else:
-            valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
+            valid_count = min(self.K1, math.ceil(threshold / sparse_block_size))
         for i_valid in range(valid_count):
             cur_topk_id = topk_id[i_valid]
 
@@ -392,9 +393,22 @@ def get_max_adjacent_diff(cu_seqlens):
 
     return max_diff
 
-def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, topk_length):
+def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode):
+    if sparse_indices_mode == None: # 不传默认取full, 兼容老用例
+        sparse_indices_mode = "full"
+    if sparse_indices_mode not in ["full", "random"]:
+        raise ValueError(f"sparse_indices_mode only support full/random, which is {mask_mode}")
+    if kv_topk_mode not in ["full", "fullK", "random", "no"]:
+        raise ValueError(f"kv_topk_mode only support no/full/random, which is {mask_mode}")
+
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     sparse_data = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
+
+    if kv_topk_mode == "no":
+        topk_length = None
+    else:
+        topk_length = torch.zeros((B), dtype = torch.int32)
+
     for i_B in range(B):
         cur_act_kv = seqused_kv[i_B]
         for i_N2 in range(N2):
@@ -405,21 +419,53 @@ def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, topk
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
                 else:
                     raise ValueError(f"mask_mode only support 1 and 3, which is {mask_mode}")
-
-                valid_blocks_max = max(0, cur_valid_s2_max)
-                valid_blocks_max = min(valid_blocks_max, topk_length[i_B]) if topk_length != None else valid_blocks_max
-                block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
-                if cmp_ratio == 4:
-                    valid_blocks_topk = min(valid_blocks_max, 512)
+                
+                # 根据sparse_indices_mode生成当前的topklenght
+                if sparse_indices_mode == "random": # sparse_indices random模式, 长度随机值生成
+                    if cur_valid_s2_max > 1:
+                        cur_valid_s2_max_update = torch.randint(1, cur_valid_s2_max, (1, 1))[0]
+                    else:
+                        cur_valid_s2_max_update = 1
                 else:
-                    valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
-    return sparse_data, sparse_data
+                    cur_valid_s2_max_update = cur_valid_s2_max
+ 	 
+                valid_blocks_max = max(0, cur_valid_s2_max_update)
+                block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
 
-def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, topk_length, block_table, max_block_num_per_batch, block_size):
+                valid_blocks_topk = min(valid_blocks_max, K)
+                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
+
+            # gen tok length
+            if kv_topk_mode != "no":
+                # if kv_topk_mode == "full":
+                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
+                if kv_topk_mode == "fullK":
+                    topk_length[i_B] = min(cur_valid_s2_max, K)
+                elif kv_topk_mode == "random":
+                    if K > 1:
+                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
+                    else:
+                        topk_length[i_B] = 1
+
+    return sparse_data, sparse_data, topk_length
+
+def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode, block_table, max_block_num_per_batch, block_size):
+    if sparse_indices_mode == None: # 不传默认取full, 兼容老用例
+        sparse_indices_mode = "full"
+    if sparse_indices_mode not in ["full", "random"]:
+        raise ValueError(f"sparse_indices_mode only support full/random, which is {mask_mode}")
+    if kv_topk_mode not in ["full", "fullK", "random", "no"]:
+        raise ValueError(f"kv_topk_mode only support no/full/random, which is {mask_mode}")
+    
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     sparse_data = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
+
+    if kv_topk_mode == "no":
+        topk_length = None
+    else:
+        topk_length = torch.zeros((B), dtype = torch.int32)
+        
     for i_B in range(B):
         cur_act_kv = seqused_kv[i_B]
         for i_N2 in range(N2):
@@ -431,8 +477,17 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, to
                 else:
                     raise ValueError(f"mask_mode only support 1 and 3, which is {mask_mode}")
 
-                valid_blocks_max = max(0, cur_valid_s2_max)
-                valid_blocks_max = min(valid_blocks_max, topk_length[i_B]) if topk_length != None else valid_blocks_max
+                # 根据sparse_indices_mode生成当前的topklenght
+                if sparse_indices_mode == "random": # sparse_indices random模式, 长度随机值生成
+                    if cur_valid_s2_max > 1:
+                        cur_valid_s2_max_update = torch.randint(1, cur_valid_s2_max, (1, 1))[0]
+                    else:
+                        cur_valid_s2_max_update = 1
+                else:
+                    cur_valid_s2_max_update = cur_valid_s2_max
+ 	 
+                valid_blocks_max = max(0, cur_valid_s2_max_update)
+            
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 block_offset = torch.zeros(valid_blocks_max).to(torch.int32)
                 i = 0
@@ -441,17 +496,41 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, to
                     blkTableOffset = k % block_size
                     block_offset[i] = block_table[i_B, blkTableIdx] * block_size + blkTableOffset
                     i = i + 1
-                if cmp_ratio == 4:
-                    valid_blocks_topk = min(valid_blocks_max, 512)
-                else:
-                    valid_blocks_topk = min(valid_blocks_max, K)
+
+                valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
-    return sparse_data, sparse_indices
 
-def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, mask_mode, topk_length):
+            # gen tok length
+            if kv_topk_mode != "no":
+                # if kv_topk_mode == "full":
+                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
+                if kv_topk_mode == "fullK":
+                    topk_length[i_B] = min(cur_valid_s2_max, K)
+                elif kv_topk_mode == "random":
+                    if K > 1:
+                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
+                    else:
+                        topk_length[i_B] = 1
+
+    return sparse_data, sparse_indices, topk_length
+
+def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode):
+    if sparse_indices_mode == None: # 不传默认取full, 兼容老用例
+        sparse_indices_mode = "full"
+    if sparse_indices_mode not in ["full", "random"]:
+        raise ValueError(f"sparse_indices_mode only support full/random, which is {mask_mode}")
+    if kv_topk_mode not in ["full", "fullK", "random", "no"]:
+        raise ValueError(f"kv_topk_mode only support no/full/random, which is {mask_mode}")\
+
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     sparse_data = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
+
+    if kv_topk_mode == "no":
+        topk_length = None
+    else:
+        topk_length = torch.zeros((B), dtype = torch.int32)
+
     for i_B in range(B):
         cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
@@ -464,21 +543,52 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, ma
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
                 else:
                     raise ValueError(f"mask_mode only support 1 and 3, which is {mask_mode}")
-
-                valid_blocks_max = max(0, cur_valid_s2_max)
-                valid_blocks_max = min(valid_blocks_max, topk_length[i_B]) if topk_length != None else valid_blocks_max
-                block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
-                if cmp_ratio == 4:
-                    valid_blocks_topk = min(valid_blocks_max, 512)
+                
+                if sparse_indices_mode == "random": # sparse_indices random模式, 长度随机值生成
+                    if cur_valid_s2_max > 1:
+                        cur_valid_s2_max_update = torch.randint(1, cur_valid_s2_max, (1, 1))[0]
+                    else:
+                        cur_valid_s2_max_update = 1
                 else:
-                    valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
-    return sparse_data, sparse_data
+                    cur_valid_s2_max_update = cur_valid_s2_max
 
-def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, mask_mode, topk_length, block_table, max_block_num_per_batch, block_size):
+                valid_blocks_max = max(0, cur_valid_s2_max_update)
+                block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
+
+                valid_blocks_topk = min(valid_blocks_max, K)
+                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
+
+            # gen tok length
+            if kv_topk_mode != "no":
+                # if kv_topk_mode == "full":
+                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
+                if kv_topk_mode == "fullK":
+                    topk_length[i_B] = min(cur_valid_s2_max, K)
+                elif kv_topk_mode == "random":
+                    if K > 1:
+                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
+                    else:
+                        topk_length[i_B] = 1
+
+    return sparse_data, sparse_data, topk_length
+
+def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode, block_table, max_block_num_per_batch, block_size):
+    if sparse_indices_mode == None: # 不传默认取full, 兼容老用例
+        sparse_indices_mode = "full"
+    if sparse_indices_mode not in ["full", "random"]:
+        raise ValueError(f"sparse_indices_mode only support full/random, which is {mask_mode}")
+    if kv_topk_mode not in ["full", "fullK", "random", "no"]:
+        raise ValueError(f"kv_topk_mode only support no/full/random, which is {mask_mode}")\
+    
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     sparse_data = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
     sparse_indices = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
+
+    if kv_topk_mode == "no":
+        topk_length = None
+    else:
+        topk_length = torch.zeros((B), dtype = torch.int32)
+
     for i_B in range(B):
         cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
@@ -491,9 +601,16 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
                 else:
                     raise ValueError(f"mask_mode only support 1 and 3, which is {mask_mode}")
+                
+                if sparse_indices_mode == "random": # sparse_indices random模式, 长度随机值生成
+                    if cur_valid_s2_max > 1:
+                        cur_valid_s2_max_update = torch.randint(1, cur_valid_s2_max, (1, 1))[0]
+                    else:
+                        cur_valid_s2_max_update = 1
+                else:
+                    cur_valid_s2_max_update = cur_valid_s2_max
 
-                valid_blocks_max = max(0, cur_valid_s2_max)
-                valid_blocks_max = min(valid_blocks_max, topk_length[i_B]) if topk_length != None else valid_blocks_max
+                valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 block_offset = torch.zeros(valid_blocks_max).to(torch.int32)
                 i = 0
@@ -502,16 +619,27 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
                     blkTableOffset = k % block_size
                     block_offset[i] = block_table[i_B, blkTableIdx] * block_size + blkTableOffset
                     i = i + 1
-                if cmp_ratio == 4:
-                    valid_blocks_topk = min(valid_blocks_max, 512)
-                else:
-                    valid_blocks_topk = min(valid_blocks_max, K)
+
+                valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
-    return sparse_data, sparse_indices
+
+            # gen tok length
+            if kv_topk_mode != "no":
+                # if kv_topk_mode == "full":
+                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
+                if kv_topk_mode == "fullK":
+                    topk_length[i_B] = min(cur_valid_s2_max, K)
+                elif kv_topk_mode == "random":
+                    if K > 1:
+                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
+                    else:
+                        topk_length[i_B] = 1
+
+    return sparse_data, sparse_indices, topk_length
 
 def gen_ori_kv_quant_1_tnd(q_type, B, T1, T2, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
-        pad_d, cu_seqlens_q, cu_seqlens_ori_kv, ori_mask_mode, ori_topk_length, quant_param_range_left, quant_param_range_right):
+        pad_d, cu_seqlens_q, cu_seqlens_ori_kv, ori_mask_mode, quant_param_range_left, quant_param_range_right):
     print("generating tnd ori kv.......")
     # 1. 生成并处理 Nope (448) 和 Rope (64) -> Feature (512)
     ori_k_nope_tnd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
@@ -537,11 +665,11 @@ def gen_ori_kv_quant_1_tnd(q_type, B, T1, T2, N2, K, rope_head_dim, nope_head_di
     ori_pad_tensor = torch.tensor(np.random.uniform(0, 0, (T2, N2, pad_d))).to(torch.float8_e8m0fnu)
     ori_k_tnd_npu = torch.concat([ori_k_rope_tnd.view(torch.float8_e4m3fn), ori_k_nope_tnd_npu,
         ori_kv_quant_param_tensor_npu.view(torch.float8_e4m3fn), ori_pad_tensor.view(torch.float8_e4m3fn)], dim=-1)
-    return ori_k_tnd.clone(), None, ori_k_tnd_npu, None, None
+    return ori_k_tnd.clone(), None, ori_k_tnd_npu, None, None, None
 
 def gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch, cu_seqlens_q,  seqused_kv, ori_mask_mode,
-               template_run_mode, topk_value_mode, ori_topk_length, quant_param_range_left, quant_param_range_right):
+               template_run_mode, topk_value_mode, quant_param_range_left, quant_param_range_right, ori_sparse_indices_mode, kv_topk_mode):
     # 1. 生成并处理 Nope (448) 和 Rope (64) -> Feature (512)
     ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
         (B, N2, ori_max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
@@ -626,19 +754,20 @@ def gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, n
     # generate ori_sparse_data
     ori_sparse_data = None  # SCFA
     ori_sparse_indices = None
+    ori_topk_length = None
     if (template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA") and ori_max_s2 != 0:
         if topk_value_mode == 1:
             if layout_q == "BSND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_indices_bsnd(1, B, S1, N2, K, seqused_kv, ori_mask_mode, ori_topk_length)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_indices_bsnd(1, B, S1, N2, K, seqused_kv, ori_mask_mode, ori_sparse_indices_mode, kv_topk_mode)
             elif layout_q == "TND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_indices_tnd(1, B, T1, N2, K, cu_seqlens_q, seqused_kv, ori_mask_mode, ori_topk_length)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(1, B, T1, N2, K, cu_seqlens_q, seqused_kv, ori_mask_mode, ori_sparse_indices_mode, kv_topk_mode)
         else:
             if layout_q == "BSND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_offset_bsnd(1, B, S1, N2, K, d_combined + pad_d, seqused_kv, ori_mask_mode, ori_topk_length, \
-                    ori_block_table, ori_max_block_num_per_batch, block_size1)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_offset_bsnd(1, B, S1, N2, K, d_combined + pad_d, seqused_kv, ori_mask_mode, \
+                    ori_sparse_indices_mode, kv_topk_mode, ori_block_table, ori_max_block_num_per_batch, block_size1)
             elif layout_q == "TND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_offset_tnd(1, B, T1, N2, K, d_combined + pad_d, cu_seqlens_q, seqused_kv, \
-                    ori_mask_mode, ori_topk_length, ori_block_table, ori_max_block_num_per_batch, block_size1)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_offset_tnd(1, B, T1, N2, K, d_combined + pad_d, cu_seqlens_q, seqused_kv, \
+                    ori_mask_mode, ori_sparse_indices_mode, kv_topk_mode, ori_block_table, ori_max_block_num_per_batch, block_size1)
 
     # if topk_value_mode == 1:
     #     ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
@@ -649,12 +778,12 @@ def gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, n
     ori_v_bnsd = ori_k_bnsd.clone()
     ori_v_in_pa_shape = ori_k_in_pa_shape.clone()
 
-    return ori_k_bnsd, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data
+    return ori_k_bnsd, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data, ori_topk_length
 
 
 def gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch, cu_seqlens_q,  seqused_kv, ori_mask_mode,
-               template_run_mode, topk_value_mode, ori_topk_length, quant_param_range_left, quant_param_range_right):
+               template_run_mode, topk_value_mode, quant_param_range_left, quant_param_range_right, ori_sparse_indices_mode, kv_topk_mode):
     print("generating pa ori kv.......")
     # ori_kv处理流程
     ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
@@ -717,19 +846,20 @@ def gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_
     # generate ori_sparse_data
     ori_sparse_data = None  # SCFA
     ori_sparse_indices = None
+    ori_topk_length = None
     if (template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA") and ori_max_s2 != 0:
         if topk_value_mode == 1:
             if layout_q == "BSND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_indices_bsnd(1, B, S1, N2, K, seqused_kv, ori_mask_mode, ori_topk_length)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_indices_bsnd(1, B, S1, N2, K, seqused_kv, ori_mask_mode, ori_sparse_indices_mode, kv_topk_mode)
             elif layout_q == "TND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_indices_tnd(1, B, T1, N2, K, cu_seqlens_q, seqused_kv, ori_mask_mode, ori_topk_length)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(1, B, T1, N2, K, cu_seqlens_q, seqused_kv, ori_mask_mode, ori_sparse_indices_mode, kv_topk_mode)
         else:
             if layout_q == "BSND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_offset_bsnd(1, B, S1, N2, K, d_aligned_128, seqused_kv, ori_mask_mode, ori_topk_length, \
-                    ori_block_table, ori_max_block_num_per_batch, block_size1)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_offset_bsnd(1, B, S1, N2, K, d_aligned_128, seqused_kv, ori_mask_mode, \
+                    ori_sparse_indices_mode, kv_topk_mode, ori_block_table, ori_max_block_num_per_batch, block_size1)
             elif layout_q == "TND":
-                ori_sparse_data, ori_sparse_indices = gen_sparse_offset_tnd(1, B, T1, N2, K, d_aligned_128, cu_seqlens_q, seqused_kv, \
-                    ori_mask_mode, ori_topk_length, ori_block_table, ori_max_block_num_per_batch, block_size1)
+                ori_sparse_data, ori_sparse_indices, ori_topk_length = gen_sparse_offset_tnd(1, B, T1, N2, K, d_aligned_128, cu_seqlens_q, seqused_kv, \
+                    ori_mask_mode, ori_sparse_indices_mode, kv_topk_mode, ori_block_table, ori_max_block_num_per_batch, block_size1)
 
     # if topk_value_mode == 1:
     #     ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
@@ -740,15 +870,15 @@ def gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_
     ori_v_bnsd = ori_k_bnsd.clone()
     ori_v_in_pa_shape = ori_k_in_pa_shape.clone()
 
-    return ori_k_bnsd, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data
+    return ori_k_bnsd, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data, ori_topk_length
 
 
 def gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                 pad_d, block_num2, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-                topk_value_mode, cmp_topk_length, quant_param_range_left, quant_param_range_right):
+                topk_value_mode, quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, kv_topk_mode):
     print("generating pa cmp kv.......")
     if cmp_max_s2 == 0:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
     # cmp kv处理
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
         (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
@@ -809,19 +939,22 @@ def gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, ro
     # --- 4. 生成 Sparse Indices (保持不变) ---
     cmp_sparse_data = None
     cmp_sparse_indices = None
+    cmp_topk_length = None
     if (template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA") and cmp_max_s2 != 0:
         if topk_value_mode == 1:
             if layout_q == "BSND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, seqused_kv, cmp_mask_mode, cmp_topk_length)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, seqused_kv, cmp_mask_mode, \
+                    cmp_sparse_indices_mode, kv_topk_mode)
             elif layout_q == "TND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, cu_seqlens_q, seqused_kv, cmp_mask_mode, cmp_topk_length)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, cu_seqlens_q, seqused_kv, \
+                    cmp_mask_mode, cmp_sparse_indices_mode, kv_topk_mode)
         else:
             if layout_q == "BSND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, d_aligned_128, seqused_kv, cmp_mask_mode, cmp_topk_length, \
-                    cmp_block_table, cmp_max_block_num_per_batch, block_size2)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, d_aligned_128, seqused_kv, cmp_mask_mode, \
+                    cmp_sparse_indices_mode, kv_topk_mode, cmp_block_table, cmp_max_block_num_per_batch, block_size2)
             elif layout_q == "TND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, d_aligned_128, cu_seqlens_q, seqused_kv, \
-                    cmp_mask_mode, cmp_topk_length, cmp_block_table, cmp_max_block_num_per_batch, block_size2)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, d_aligned_128, cu_seqlens_q, seqused_kv, \
+                    cmp_mask_mode,cmp_sparse_indices_mode, kv_topk_mode,  cmp_block_table, cmp_max_block_num_per_batch, block_size2)
 
     # if topk_value_mode == 1:
     #     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
@@ -830,14 +963,14 @@ def gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, ro
     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
     cmp_v_in_pa_shape = cmp_k_in_pa_shape.clone()
 
-    return cmp_k_bnsd, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data
+    return cmp_k_bnsd, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data, cmp_topk_length
 
 def gen_cmp_kv_quant_1_tnd(q_type, B, T1, T3, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
-                pad_d, cmp_max_s2, cu_seqlens_q, cu_seqlens_ori_kv, cmp_ratio, cmp_mask_mode, template_run_mode, topk_length,
-                quant_param_range_left, quant_param_range_right):
+                pad_d, cmp_max_s2, cu_seqlens_q, cu_seqlens_ori_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
+                quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, kv_topk_mode):
     print("generating tnd ori kv.......")
     if cmp_max_s2 == 0:
-        return None, None, None, None
+        return None, None, None, None, None, None
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
         (T3, N2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
@@ -856,14 +989,14 @@ def gen_cmp_kv_quant_1_tnd(q_type, B, T1, T3, N2, K, rope_head_dim, nope_head_di
     cmp_pad_tensor = torch.tensor(np.random.uniform(0, 0, (T3, N2, pad_d))).to(torch.float8_e8m0fnu)
     cmp_k_tnd_npu = torch.concat([cmp_k_rope_tnd.view(torch.float8_e4m3fn), cmp_k_nope_tnd_npu, cmp_kv_quant_param_tensor_npu.view(torch.float8_e4m3fn), cmp_pad_tensor.view(torch.float8_e4m3fn)], dim=-1)
     act_kv = prefix_sum_to_original(cu_seqlens_ori_kv)
-    cmp_sparse_indices, _ = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, act_kv, cmp_mask_mode, topk_length)
-    return cmp_k_tnd.clone(), cmp_sparse_indices, cmp_k_tnd_npu, None, cmp_sparse_indices 
+    cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, act_kv, cmp_mask_mode, cmp_sparse_indices_mode, kv_topk_mode)
+    return cmp_k_tnd.clone(), cmp_sparse_indices, cmp_k_tnd_npu, None, cmp_sparse_indices, cmp_topk_length
 
 def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined,
                 pad_d, block_num2, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-                topk_value_mode, cmp_topk_length, quant_param_range_left, quant_param_range_right):
+                topk_value_mode, quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, kv_topk_mode):
     if cmp_max_s2 == 0:
-        return None, None, None, None
+        return None, None, None, None, None, None
     # --- 1. 生成原始数据 ---
     # 量化参数 (7字节)
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
@@ -964,19 +1097,20 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     # --- 4. 生成 Sparse Indices (保持不变) ---
     cmp_sparse_data = None
     cmp_sparse_indices = None
+    cmp_topk_length = None
     if (template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA") and cmp_max_s2 != 0:
         if topk_value_mode == 1:
             if layout_q == "BSND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, seqused_kv, cmp_mask_mode, cmp_topk_length)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mode, cmp_sparse_indices_mode, kv_topk_mode)
             elif layout_q == "TND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, cu_seqlens_q, seqused_kv, cmp_mask_mode, cmp_topk_length)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, cmp_mask_mode, cmp_sparse_indices_mode, kv_topk_mode)
         else:
             if layout_q == "BSND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, d_combined + pad_d, seqused_kv, cmp_mask_mode, cmp_topk_length, \
-                    cmp_block_table, cmp_max_block_num_per_batch, block_size2)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, d_combined + pad_d, seqused_kv, cmp_mask_mode, \
+                    cmp_sparse_indices_mode, kv_topk_mode, cmp_block_table, cmp_max_block_num_per_batch, block_size2)
             elif layout_q == "TND":
-                cmp_sparse_data, cmp_sparse_indices = gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, d_combined + pad_d, cu_seqlens_q, seqused_kv, \
-                    cmp_mask_mode, cmp_topk_length, cmp_block_table, cmp_max_block_num_per_batch, block_size2)
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, d_combined + pad_d, cu_seqlens_q, seqused_kv, \
+                    cmp_mask_mode, cmp_sparse_indices_mode, kv_topk_mode, cmp_block_table, cmp_max_block_num_per_batch, block_size2)
 
     # if topk_value_mode == 1:
     #     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
@@ -985,7 +1119,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
     cmp_v_in_pa_shape = cmp_k_in_pa_shape.clone()
 
-    return cmp_k_bnsd, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data
+    return cmp_k_bnsd, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data, cmp_topk_length
 
 
 def save_test_case(input_data, output_dir):
@@ -1013,9 +1147,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return test_data
     '''
 
-    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K, block_num1, block_num2, \
+    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K1, K2, block_num1, block_num2, \
     block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, \
-    ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_topk_length, cmp_topk_length, topk_value_mode, template_run_mode = params
+    ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_kv_topk_mode, cmp_kv_topk_mode, ori_sparse_indices_mode, cmp_sparse_indices_mode, topk_value_mode, \
+    template_run_mode = params
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     cu_seqlens_ori_kv = torch.tensor(cu_seqlens_ori_kv).to(torch.int32) if cu_seqlens_ori_kv is not None else None
@@ -1080,38 +1215,39 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # generate ori_kv tensor
     if kv_quant_mode == 1:
         if layout_kv == "PA_BNBD":
-            ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data = gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
+            ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data, ori_topk_length = gen_ori_kv_quant_1_pa(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K1, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                                                 pad_d, block_num, block_size1, ori_max_s2, ori_max_block_num_per_batch, cu_seqlens_q,
-                                                seqused_kv, ori_mask_mode, template_run_mode, topk_value_mode, ori_topk_length, quant_param_range_left, quant_param_range_right)
+                                                seqused_kv, ori_mask_mode, template_run_mode, topk_value_mode, quant_param_range_left, quant_param_range_right, ori_sparse_indices_mode, ori_kv_topk_mode)
         else:
-            ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data = gen_ori_kv_quant_1_tnd(q_type, B, T1, T2, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
- 	                pad_d, cu_seqlens_q, cu_seqlens_ori_kv, ori_mask_mode, ori_topk_length, quant_param_range_left, quant_param_range_right)
+            ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data, ori_topk_length = gen_ori_kv_quant_1_tnd(q_type, B, T1, T2, N2, K1, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
+ 	                pad_d, cu_seqlens_q, cu_seqlens_ori_kv, ori_mask_mode, quant_param_range_left, quant_param_range_right, ori_sparse_indices_mode, ori_kv_topk_mode)
     else:
-        ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data = gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined,
+        ori_k_cal, ori_sparse_indices, ori_k_in_pa_shape, ori_block_table, ori_sparse_data, ori_topk_length = gen_ori_kv(q_type, layout_q, ori_kv_type, B, S1, T1, N2, K1, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined,
                                                 pad_d, block_num, block_size1, ori_max_s2, ori_max_block_num_per_batch, cu_seqlens_q,
-                                                seqused_kv, ori_mask_mode, template_run_mode, topk_value_mode, ori_topk_length, quant_param_range_left, quant_param_range_right)
+                                                seqused_kv, ori_mask_mode, template_run_mode, topk_value_mode, quant_param_range_left, quant_param_range_right, ori_sparse_indices_mode, ori_kv_topk_mode)
     # generate cmp_kv and sparse_indices
     if template_run_mode == "CFA" or template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA":
         if kv_quant_mode == 1:
             if layout_kv == "PA_BNBD":
-                cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data = gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
+                cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data, cmp_topk_length = gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                                                     pad_d, block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q,
-                                                    seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode, topk_value_mode, cmp_topk_length,
-                                                    quant_param_range_left, quant_param_range_right)
+                                                    seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode, topk_value_mode,
+                                                    quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, cmp_kv_topk_mode)
             
             else:
-                cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data = gen_cmp_kv_quant_1_tnd(q_type, B, T1, T3, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
-                                                    pad_d, cmp_max_s2, cu_seqlens_q, cu_seqlens_ori_kv, cmp_ratio, cmp_mask_mode, template_run_mode, cmp_topk_length,
-                                                    quant_param_range_left, quant_param_range_right)
+                cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data, cmp_topk_length = gen_cmp_kv_quant_1_tnd(q_type, B, T1, T3, N2, K2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
+                                                    pad_d, cmp_max_s2, cu_seqlens_q, cu_seqlens_ori_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
+                                                    quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, cmp_kv_topk_mode)
         else:
-            cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data = gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined,
+            cmp_k_cal, cmp_sparse_indices, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_data, cmp_topk_length = gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined,
                                                     pad_d, block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q,
-                                                    seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode, topk_value_mode, cmp_topk_length,
-                                                    quant_param_range_left, quant_param_range_right)
+                                                    seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode, topk_value_mode,
+                                                    quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, cmp_kv_topk_mode)
     else:
         cmp_k_in_pa_shape = None
         cmp_sparse_data = None
         cmp_sparse_indices = None
+        cmp_topk_length = None
         cmp_block_table = None
         cmp_k_cal = None
 
@@ -1123,7 +1259,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, : block_size1 * N2 * (d_combined + pad_d)].view(block_num, block_size1, N2, d_combined + pad_d)
         cmp_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :].view(block_num, block_size2, N2, d_combined + pad_d)
 
-    test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K,
+    test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K1, K2,
                               block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, softmax_scale, cmp_ratio,
                               ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, topk_value_mode, tile_size, rope_head_dim,
                               ori_topk_length, cmp_topk_length, template_run_mode)
@@ -1160,7 +1296,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'batch_size': B,
             'max_seqlen_q': max_seqlen_q,
             'max_seqlen_kv': max_seqlen_kv,
-            'topk': K if template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA" else 0, # SCFA和ALL_SCFA需要
+            'topk': K1 if template_run_mode == "ORI_SCFA" or template_run_mode == "ALL_SCFA" else 0, # SCFA和ALL_SCFA需要
+            'cmp_topk': K2 if template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA" else 0, # SCFA和ALL_SCFA需要
             'cmp_ratio': cmp_ratio if template_run_mode != "SWA" else 1,  # 仅SWA 不需要
             'ori_mask_mode': ori_mask_mode,
             'cmp_mask_mode': cmp_mask_mode,
