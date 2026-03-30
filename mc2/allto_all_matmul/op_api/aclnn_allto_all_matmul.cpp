@@ -304,7 +304,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmul(void *workspace, uint64_t workspaceSi
         } else if (GetCurrentPlatformInfo().GetSocVersion()== SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     aclnnStatus ret = aclnnInnerAlltoAllMatmul(workspace, workspaceSize, executor, stream);

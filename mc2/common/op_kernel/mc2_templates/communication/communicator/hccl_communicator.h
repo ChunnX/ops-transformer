@@ -86,7 +86,6 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
             notifyFlag_ = true;
         }
     }
-
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tiling_->mc2InitTiling));
     hccl_.SetCcTilingV2(offsetof(TilingDataType, mc2CcTiling));
     if constexpr (SendCnt == 1U && RecvCnt == 0U) {
@@ -127,6 +126,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         for (uint32_t i = 0; i < taskCnt; i++) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
+            AscendC::PRINTF("----------alltoall_kernel-Commit------------\n");
             taskSuccess_[startIndex_ + i] = false;
         }
     }
@@ -144,6 +144,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     }
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         hccl_.Wait(hTasks_[startIndex_ + taskIndex]);
+        AscendC::PRINTF("----------alltoall_kernel-Wait------------\n");
         taskSuccess_[startIndex_ + taskIndex] = true;
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hccl_.Commit(hTasks_[startIndex_ + taskIndex]);
