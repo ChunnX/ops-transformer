@@ -34,4 +34,21 @@ bool IsNeedScaleTrans(const aclTensor *mxScaleTensor)
     }
     return transposeFlag;
 }
+
+bool IsTensorContiguous(const aclTensor *tensor)
+{
+    int dimNum = tensor->GetViewShape().GetDimNum();
+    auto strides = tensor->GetViewStrides();
+    auto shape = tensor->GetViewShape();
+    int64_t expectedStride = 1;
+    for (int i = dimNum - 1; i >= 0; i--) {
+        int currentStride = strides[i];
+        if (currentStride != expectedStride) {
+            return false;
+        }
+        expectedStride *= shape.GetDim(i);
+    }
+    return true;
+}
+
 } // namespace MC2Aclnn
