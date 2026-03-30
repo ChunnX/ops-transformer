@@ -186,8 +186,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \
     uint8_t multiCoreIdxMod3 = 0; \
-    int64_t sOuterOffset; \
-    bool isSinkBlock = false
+    int64_t sOuterOffset
 
 template<bool isInfer = false>
 struct RunInfo;
@@ -297,11 +296,7 @@ struct RunInfo<false> {
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
-    float sinkValue = 0.0f; \
-    int64_t sinkLength;\
-    int64_t sinkBlockCnt;\
-    int64_t keyNoContinuesStride;\
-    int64_t keyRopeNoContinuesStride;
+    float sinkValue = 0.0f;
 
 
 #define ROPE_INFO \
@@ -399,8 +394,7 @@ struct RunInfo<false> {
     uint32_t sparseType : 8;  \
     uint32_t dSizeRope : 11; \
     uint32_t splitCoreMode : 1; \
-    uint32_t coreNum;\
-    uint32_t sinkLength;
+    uint32_t coreNum
 
 #define FAG_CV_SHARED_PARAMS \
     /* base params */ \
