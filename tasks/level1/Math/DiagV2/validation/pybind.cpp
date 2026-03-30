@@ -8,16 +8,9 @@
 
 at::Tensor custom_pybind_api(at::Tensor &x, int32_t diagonal = 0)
 {
-    TORCH_CHECK(x.dim() == 1 || x.dim() == 2, "diag_v2 only support 1D or 2D tensor");
+    TORCH_CHECK(x.dim() == 2, "diag_v2 only support 2D tensor");
     at::Tensor result;
-    if (x.dim() == 2) {
-        int64_t M = x.size(0);
-        result = torch::empty({M}, x.options());
-    }else {
-        int64_t N = x.size(0);
-        int64_t k_abs = std::abs(diagonal);
-        result = torch::empty({N + k_abs, N + k_abs}, x.options());
-    }
+    result = torch::empty({std::min(x.size(0), x.size(1))}, x.options());
     EXEC_NPU_CMD(aclnnCustomOp, x, diagonal, result);
     return result;
 

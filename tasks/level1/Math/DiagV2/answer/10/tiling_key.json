@@ -1,7 +1,0 @@
-{
-    "ID": 10,
-    "TILING_KEY": [
-        104
-    ],
-    "DESCRIPTION": "该执行路径主要应用于DiagFlatND2To2DB16More64场景（input number more than 64, input type is complex128）。"
-}
