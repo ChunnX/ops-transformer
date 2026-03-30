@@ -774,6 +774,7 @@ public:
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t scIdx, uint32_t dealedScCnt);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
     __aicore__ inline void SetNeedDealScSize(uint32_t needDealScSize);
+    __aicore__ inline void ResetLoopDealedScCnt();
     __aicore__ inline uint32_t GetNeedDealScSize();
     __aicore__ inline bool IsEnd();
     __aicore__ inline void IteratorSlice();
@@ -805,8 +806,15 @@ __aicore__ inline void CompressorVec2SliceIterator<COMP>::Reset(uint32_t bIdx, u
         sliceInfo_.padScIdx = sliceInfo_.dealedScCnt;
     }
     sliceInfo_.loopDealedScCnt = 0U;
-    // SetCompressoredScCnt(compressoredScCnt);
 }
+
+template <typename COMP>
+__aicore__ inline void CompressorVec2SliceIterator<COMP>::ResetLoopDealedScCnt()
+{
+    sliceInfo_.loopDealedScCnt = 0U;
+}
+
+
 
 template <typename COMP>
 __aicore__ inline void CompressorVec2SliceIterator<COMP>::SetMaxBatchSize(uint32_t batch_size)

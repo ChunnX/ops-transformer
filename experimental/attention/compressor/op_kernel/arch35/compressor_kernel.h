@@ -55,7 +55,7 @@ private:
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     // ================================Process functions================================
     __aicore__ inline void InitTilingData();
-    __aicore__ inline void SetBaseSize();
+    __aicore__ inline void SplitK();
     // 获取基本块数量
     __aicore__ inline uint32_t GetLoopTimes();
     __aicore__ inline void SkipInvalidBatch(BatchInfo &batchInfo);
@@ -87,8 +87,8 @@ private:
     static constexpr uint32_t SYNC_C1_FLAG = 3;
     static constexpr uint32_t SYNC_V1_FLAG = 4;
     static constexpr uint32_t SYNC_V1_FLAG2 = 5;
-    static constexpr uint32_t SYNC_C1_V1_FLAG = 6;
-    static constexpr uint32_t SYNC_V1_C1_FLAG = 8;
+    static constexpr uint32_t SYNC_C1_V1_FLAG = 7;
+    static constexpr uint32_t SYNC_V1_C1_FLAG = 9;
 
     // ==============================TilingData&TPipe==============================
     TPipe* pipe_;
@@ -118,6 +118,8 @@ private:
     uint32_t cubeLoop = 0;
     uint32_t vec1Loop = 0;
     uint32_t vec2Loop = 0;
+    uint32_t kStartIdx_ = 0;
+    uint32_t dealKSize_ = 0;
     bool isFirstUpdateCurGroup = true;
 };
 
@@ -165,8 +167,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     // 0. 计算最后一个Tc块的起始位置
     constInfo.bIdxOfLastTc = constInfo.batchSize - 1;
     // 1. 计算head_dim的切分大小, 构建ConstInfo的其他信息
-    SetBaseSize(); // 设置基本块大小
     CalcSplitCoreInfo();
+    SplitK(); // K轴切分
     // 2. 计算循环次数
     loopTimes = GetLoopTimes();     // TODO 似乎可以不用计算
     // 3. 初始化workspace
@@ -192,6 +194,9 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.batchSize = tilingData_->baseParams.batchSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
+    constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
+    constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;
+    constInfo.kBaseNum = 1;
     constInfo.headDim = tilingData_->baseParams.headDim;
     constInfo.hSize = tilingData_->baseParams.hiddenSize;
     constInfo.sSize = tilingData_->baseParams.seqSize;
@@ -211,74 +216,36 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernel<COMP>::SetBaseSize()
+__aicore__ inline void CompressorKernel<COMP>::SplitK()
 {
     uint32_t mSize = 0;
-    uint32_t minMBaseSize = 0;
-    bool sameSeqUsed = true;
-    uint32_t firstBatchSeqUsed = tools_.GetSeqLength(0);
     for (uint32_t i = 0; i < constInfo.batchSize; i++) {
         uint32_t bSeqUsed = tools_.GetSeqLength(i);
-        uint32_t bStartPos = tools_.GetStartPos(i);
         // 获取m大小
         mSize += bSeqUsed;
-        // 获取是否等长
-        if (sameSeqUsed && (bSeqUsed != firstBatchSeqUsed)) {
-            sameSeqUsed = false;
-        }
-        // 获取m轴最小切分大小
-        if (minMBaseSize != constInfo.cmpRatio) {
-            uint32_t startCmpIdx = bStartPos / constInfo.cmpRatio;
-            uint32_t endCmpIdx = (bStartPos + bSeqUsed) / constInfo.cmpRatio;
-            if (startCmpIdx == endCmpIdx) {
-                if (bSeqUsed > minMBaseSize) {
-                    minMBaseSize = bSeqUsed;
-                }
-            } else if (startCmpIdx + 1 == endCmpIdx) {
-                uint32_t startCmpValidSeqCnt = constInfo.cmpRatio - (bStartPos % constInfo.cmpRatio);
-                uint32_t endCmpValidSeqCnt = (bStartPos + bSeqUsed) % constInfo.cmpRatio;
-                if (startCmpValidSeqCnt > minMBaseSize) {
-                    minMBaseSize = startCmpValidSeqCnt;
-                }
-                if (endCmpValidSeqCnt > minMBaseSize) {
-                    minMBaseSize = endCmpValidSeqCnt;
-                }
-            } else {
-                minMBaseSize = constInfo.cmpRatio;
-            }
-        }
+    }
+    uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
+    if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum) {
+        constInfo.kBaseNum = CeilDivT(constInfo.usedCoreNum, constInfo.dBasicBlockNum);
+        constInfo.kBaseSize  = CeilDivT(Align(constInfo.hSize, static_cast<uint32_t>(32 / sizeof(X_T))), constInfo.kBaseNum);
+        // 当切m轴无法满足开满核时，不切m轴(切m处理有点复杂)
+        constInfo.mGroupNum = 1;        // 在m轴处理上所有核当一个组
+        constInfo.mCurGroupIdx = 0;     // 只有一个组
     }
 
-    uint32_t aiCoreNum = constInfo.usedCoreNum;
-    constInfo.dBaseSize = 64;
-    uint32_t dBaseBlockNum = constInfo.headDim / constInfo.dBaseSize;
-    if (sameSeqUsed && mSize <= (constInfo.mBaseSize * (aiCoreNum / dBaseBlockNum))) {
-        if constexpr (COMP::coff == COFF::OVERLAP) {
-            if (constInfo.headDim == 128) {
-                dBaseBlockNum = 8;
-            } else if (constInfo.headDim == 512) {
-                dBaseBlockNum = 16;
-            }
+    // 每轮固定不变，预计算后主循环直接复用
+    if (constInfo.kBaseNum > 1) {
+        kStartIdx_ = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
+        if (constInfo.curGroupIdx + 1 < constInfo.coreGroupNum) {
+            dealKSize_ = constInfo.kBaseSize;
         } else {
-            if (constInfo.headDim == 128) {
-                dBaseBlockNum = 8;
-            } else if (constInfo.headDim == 512) {
-                dBaseBlockNum = 16;
+            dealKSize_ = constInfo.hSize - kStartIdx_ * constInfo.kBaseSize;
             }
-        }
-        // 核数足够时, 修改才生效
-        if (aiCoreNum >= dBaseBlockNum) {
-            constInfo.dBaseSize = constInfo.headDim / dBaseBlockNum;
-            // 开启全核
-            uint32_t coreGroupNum = aiCoreNum / dBaseBlockNum;
-            uint32_t newMBaseSize = (constInfo.batchSize + coreGroupNum - 1) / coreGroupNum * firstBatchSeqUsed;
-            if (newMBaseSize > minMBaseSize && newMBaseSize < constInfo.mBaseSize) {
-                constInfo.mBaseSize = newMBaseSize;
-}
-        }
+    } else {
+        kStartIdx_ = 0;
+        dealKSize_ = constInfo.hSize;
     }
-}
-
+ }
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
@@ -336,9 +303,9 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
 {
     BasicBlockInfo basicBlockInfo{};
     isFirstUpdateCurGroup = true;
-    uint32_t curGroupQuota = constInfo.mBaseSize * constInfo.curGroupIdx;       // m轴当前组起始
+    uint32_t curGroupQuota = constInfo.mBaseSize * constInfo.mCurGroupIdx;       // m轴当前组起始
     bool curGroupStartFlag = false;
-    uint32_t quota = constInfo.coreGroupNum * constInfo.mBaseSize;
+    uint32_t quota = constInfo.mGroupNum * constInfo.mBaseSize;
 
     for (; batchInfo.bIdx < constInfo.batchSize;) {
         uint32_t curDealSeq = 0;
@@ -384,9 +351,9 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
             SkipInvalidBatch(batchInfo);
         }
     }
-    uint32_t totalDataSize = constInfo.coreGroupNum * constInfo.mBaseSize - quota;
+    uint32_t totalDataSize = constInfo.mGroupNum * constInfo.mBaseSize - quota;
     // 2. 当前组的起始偏移
-    uint32_t currentGroupStart = constInfo.curGroupIdx * constInfo.mBaseSize;
+    uint32_t currentGroupStart = constInfo.mCurGroupIdx * constInfo.mBaseSize;
 
     // 3. 安全判断
     if (currentGroupStart >= totalDataSize) {
@@ -422,9 +389,11 @@ __aicore__ inline void CompressorKernel<COMP>::CalcSplitCoreInfo()
     // 核的组数
     constInfo.coreGroupNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
     // 每个核处理的d方向的索引
-    constInfo.dIdx = (constInfo.aiCoreIdx % constInfo.dBasicBlockNum) * constInfo.dBaseSize;
+    constInfo.dIdx = constInfo.aiCoreIdx % constInfo.dBasicBlockNum;
     // 当前组id
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
+    constInfo.mGroupNum = constInfo.coreGroupNum;
+    constInfo.mCurGroupIdx = constInfo.curGroupIdx;
 
     constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
@@ -552,6 +521,8 @@ __aicore__ inline void CompressorKernel<COMP>::CalcC1V1Params(RunInfo &info, Vec
     info.dealTcNum = basicBlockInfo.dealTcNum;
     info.bStart = basicBlockInfo.bIdx;
     info.sStart = basicBlockInfo.sIdx;
+    info.kStartIdx = kStartIdx_;
+    info.dealKSize = dealKSize_;
     vec1Info.dealTcNum = basicBlockInfo.dealTcNum;
     vec1Info.dealScSize = basicBlockInfo.compressedTcNum;
     allCompressedTcNum_ += basicBlockInfo.compressedTcNum;

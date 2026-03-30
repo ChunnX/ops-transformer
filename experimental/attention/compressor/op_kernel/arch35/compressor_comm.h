@@ -268,7 +268,6 @@ struct Vec2RunInfo {
     // v2分核信息 sc是左闭右开
     uint32_t scStart = 0;
     uint32_t scEnd = 0;
-    // uint32_t dealScSize = 0;
 
     // 增加字段
     uint32_t bStart = 0;
