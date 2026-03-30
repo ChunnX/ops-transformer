@@ -75,7 +75,6 @@ private:
     __gm__ biasType *biasGm_;
     __gm__ yType *yGm_;
     __gm__ perTokenScaleType *perTokenScaleGm_;
-    __gm__ scaleType *scaleGm_;
     __gm__ sharedInputDType *shareInputAddr_;
     __gm__ logitsType *logitsAddr_;
     __gm__ rowIndexType *rowIndexAddr_;
@@ -106,7 +105,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     xGm_ = reinterpret_cast<__gm__ xType *>(x);
     weightGm_ = reinterpret_cast<__gm__ wType *>(weight);
     biasGm_ = reinterpret_cast<__gm__ biasType *>(bias);
-    scaleGm_ = reinterpret_cast<__gm__ scaleType *>(scale);
     antiquantScaleGm_ = reinterpret_cast<__gm__ antiQuantScaleType *>(antiquantScale);
     perTokenScaleGm_ = reinterpret_cast<__gm__ perTokenScaleType *>(perTokenScale);
     logitsAddr_ = reinterpret_cast<__gm__ logitsType *>(logitsAddr);
