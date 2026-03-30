@@ -86,8 +86,9 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
             notifyFlag_ = true;
         }
     }
-
+    AscendC::PRINTF("----------alltoall_kernel-initv2------------");
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tiling_->mc2InitTiling));
+    AscendC::PRINTF("----------alltoall_kernel-setcctilingv2------------");
     hccl_.SetCcTilingV2(offsetof(TilingDataType, mc2CcTiling));
     if constexpr (SendCnt == 1U && RecvCnt == 0U) {
         communicationType_ = Communicationtype::COMMUNICATION_SEND_ONE;
@@ -126,7 +127,9 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     // 如果是先通后算就全量启动通信
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         for (uint32_t i = 0; i < taskCnt; i++) {
+            AscendC::PRINTF("----------alltoall_kernel-Commit1------------");
             hccl_.Commit(hTasks_[startIndex_ + i]);
+            AscendC::PRINTF("----------alltoall_kernel-Commit2------------");
             taskSuccess_[startIndex_ + i] = false;
         }
     }
@@ -143,7 +146,9 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         return;
     }
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
+        AscendC::PRINTF("----------alltoall_kernel-Wait1------------");
         hccl_.Wait(hTasks_[startIndex_ + taskIndex]);
+        AscendC::PRINTF("----------alltoall_kernel-Wait2------------");
         taskSuccess_[startIndex_ + taskIndex] = true;
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hccl_.Commit(hTasks_[startIndex_ + taskIndex]);
