@@ -157,7 +157,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
                 // 主块
                 SplitNByMultiCore(offsetParam, ctrlParam, offsetParam[0].nSize / 256,
                                   256);
-                ctrlParam.basicBlockLimit += tiling_->coreNum;
+                ctrlParam.basicBlockLimit += offsetParam[0].nSize / 256;
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % tiling_->coreNum;
         }
