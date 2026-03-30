@@ -14,7 +14,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "common/op_api/mc2_aclnn_util.h"
+#include "common/inc/mc2_aclnn_util.h"
 
 using namespace op;
 

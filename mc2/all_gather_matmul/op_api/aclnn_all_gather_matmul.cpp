@@ -23,7 +23,7 @@
 #include "opdev/platform.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "hccl_util.h"
-#include "common/op_api/mc2_aclnn_util.h"
+#include "common/inc/mc2_aclnn_util.h"
 
 using namespace Ops::Transformer;
 using namespace op;
