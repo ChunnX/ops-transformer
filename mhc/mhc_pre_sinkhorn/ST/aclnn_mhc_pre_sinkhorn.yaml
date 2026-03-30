@@ -1,0 +1,120 @@
+api: pytorch
+api_type: ascend_function_mhc_pre_sinkhorn
+version: v2.1
+aclnn_name: MhcPreSinkhorn
+generate: ascend_generate_mhc_pre_sinkhorn
+dtype_numbers: 100
+extra_numbers: 0
+standard:
+  acc: default
+inputs:
+  - name: x
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16]
+    ranges:
+      valid:
+        values: [[-5, 5]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [4]
+      dim_values:
+        values: [[1, 4], [1, 256], [4, 8], [256, 4096]]
+  - name: phi
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[-5, 5]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        values: [[24, 96], [256, 32768]]
+  - name: alpha
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[0, 2]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[3, 3]]
+  - name: bias
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[0, 2]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[24, 96]]
+  - name: hcMult
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[4, 8]]
+      invalid:
+        values: []
+  - name: numIters
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[20, 20]]
+      invalid:
+        values: []
+  - name: hcEps
+    type: attr
+    required: true
+    dtypes:
+      values: [float]
+    ranges:
+      valid:
+        values: [[1e-6, 1e-6]]
+      invalid:
+        values: []
+  - name: normEps
+    type: attr
+    required: true
+    dtypes:
+      values: [float]
+    ranges:
+      valid:
+        values: [[1e-6, 1e-6]]
+      invalid:
+        values: []
+  - name: needBackward
+    type: attr
+    required: true
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [[true, false]]
+      invalid:
+        values: []
