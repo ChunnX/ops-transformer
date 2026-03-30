@@ -32,6 +32,8 @@
 #endif
 
 #include "moe_distribute_a2_base.h"
+#include "moe_distribute_a2_adump.h"
+#include "moe_distribute_a2_constant.h"
 
 namespace MoeDistributeDispatchA2Impl {
 #define TemplateMC2TypeA2layeredClass typename XType, typename ExpandXOutType,bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
@@ -191,6 +193,7 @@ private:
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     MoeDistributeA2Base::MoeDistributeA2DispatchAddrInfo addrInfo_;
+    Mc2A2Kernel::MoeDistributeA2ADump aDump_;
 };
 
 template <TemplateMC2TypeA2layeredClass>
@@ -314,6 +317,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     // 每次调用magic++,用来区分不同轮次
     magicVal_ = addrInfo_.GetMagicValue();
+    GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
+    aDump_.InitWinState(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicVal_ % 2U,
+        1U, aivNum_);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
@@ -1326,29 +1332,39 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     if ASCEND_IS_AIV { // 全aiv处理
         ReorderTokens();
         PipeBarrier<PIPE_ALL>();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_REORDER_TOKEN);
         SyncAll<true>();
         if(aivId_ < serverNum){
             if(aivId_ != serverId_){
                 SendDataToServer(aivId_);
+                aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_SEND_DATA_TO_SERVER);
             }
             CreateInnerReduceInfo(aivId_);
+            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_CREATE_INNER_REDUCE_INFO);
         } else if (aivId_ == serverNum) {
             CreateOuterReduceInfo();
+            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_CREATE_OUTER_REDUCE_INFO);
         } else {
             Win2Ipc();
+            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_WIN2IPC);
         }
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         SetIpcFlag(IPC_FLAG_STEP_1);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_SET_IPC_FLAG);
         WaitIpcFlag(IPC_FLAG_STEP_1);
         PipeBarrier<PIPE_ALL>();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_WAIT_IPC_FLAG);
         SyncAll<true>();
         Ipc2Out();
         PipeBarrier<PIPE_ALL>();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_IPC2OUT);
         CleanUp();
         PipeBarrier<PIPE_ALL>();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_CLEANUP);
         SyncAll<true>();
         CopyPerformanceInfo();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_COPY_PERFORMANCE_INFO);
         // hccl_.Finalize();
     }
 }
