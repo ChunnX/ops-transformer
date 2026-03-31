@@ -1,0 +1,17 @@
+case_id;dtype;batch;input_h;input_w;channels;num_rois;pooled_h;pooled_w;spatial_scale;sampling_ratio;aligned;clockwise
+0;float32;2;24;32;8;8;4;4;0.25;0;True;False
+1;float32;2;16;24;8;6;3;3;0.5;0;True;True
+2;float32;1;32;40;8;10;5;5;0.125;0;False;False
+3;float32;3;20;28;8;12;2;7;0.25;0;False;True
+4;float32;2;18;18;8;4;6;6;1.0;2;True;False
+5;float32;1;48;48;8;16;4;4;0.0625;0;True;True
+6;float32;2;22;30;8;8;3;5;0.25;3;False;False
+7;float32;2;26;26;8;8;4;4;0.2;0;True;False
+8;float32;1;36;36;16;6;4;4;0.1;0;True;True
+9;float32;2;14;20;8;5;2;2;0.5;1;False;True
+10;float32;2;28;32;8;9;5;3;0.25;0;False;False
+11;float32;1;40;32;8;7;7;7;0.125;0;True;False
+12;float32;2;30;24;8;11;4;6;0.33;0;True;True
+13;float32;2;20;20;8;6;3;3;1.0;0;False;False
+14;float32;1;24;48;8;8;4;8;0.25;2;True;False
+15;float32;3;16;16;8;4;2;2;0.5;0;True;True
