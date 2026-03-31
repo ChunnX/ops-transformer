@@ -135,6 +135,10 @@ public:
         }
     }
 
+    __aicore__ inline Buffer(TensorType tensor, uint32_t size, uint32_t id0, uint32_t id1,
+                             TEventID p2cId, TEventID c2pId)
+        : tensor_(tensor), size_(size), id0_(id0), id1_(id1), p2cEventId_(p2cId), c2pEventId_(c2pId) {}
+
     __aicore__ inline void Init() {
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
