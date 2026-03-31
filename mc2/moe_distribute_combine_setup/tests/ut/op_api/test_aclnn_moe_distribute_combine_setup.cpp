@@ -26,6 +26,27 @@
 using namespace op;
 
 namespace MoeDistributeCombineSetupUT {
+static aclTensor *CreateAclTensor(const std::vector<int64_t> shape, aclDataType dataType, aclFormat format)
+{
+    void *storage_data = nullptr;
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    aclTensor *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, shape.data(),
+                                        shape.size(), storage_data);
+    assert(tensor != nullptr);
+    return tensor;
+}
+
+static aclTensor *CreateAclTensorOrNull(const std::vector<int64_t> shape, aclDataType dataType, aclFormat format)
+{
+    if (shape.empty()) {
+        return nullptr;
+    }
+    return CreateAclTensor(shape, dataType, format);
+}
+
 class TestAclnnMoeDistributeCombineSetup : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -52,6 +73,16 @@ struct MoeDistributeCombineSetupAclnnTestParam {
 
     // 通信域标识
     char *groupEp;
+    int64_t epWorldSize;
+    int64_t epRankId;
+    int64_t moeExpertNum;
+    int64_t expertShardType;
+    int64_t sharedExpertNum;
+    int64_t sharedExpertRankNum;
+    int64_t globalBs;
+    int64_t commQuantMode;
+    int64_t commType;
+    char *commAlg;
 
     // dtype
     aclDataType expandXDtype;
@@ -72,21 +103,59 @@ struct MoeDistributeCombineSetupAclnnTestParam {
 };
 
 // 用例列表集
-static MoeDistributeCombineSetupAclnnTestParam test_cases[] = {
+static MoeDistributeCombineSetupAclnnTestParam g_casesParams[] = {
     // 正常用例
-    {"test_aclnn_moe_distribute_combine_setup_1",
+    {"test_aclnn_moe_distribute_combine_setup_normal_1",
      {96, 4096}, {8, 6}, {12288}, {96, 6144}, {1568},
-     "MoeDistributeCombineSetup_test_groupEp",
+     "MoeDistributeCombineSetup_test_groupEp", 2, 0, 32, 0, 0, 0, 0, 0, 2, "",
      ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
      ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
      ACLNN_SUCCESS},
+    {"test_aclnn_moe_distribute_combine_setup_normal_2",
+     {4096, 7168}, {256, 8}, {524288}, {4096, 10752}, {65568},
+     "MoeDistributeCombineSetup_test_groupEp", 2, 0, 32, 0, 0, 0, 512, 0, 2, "",
+     ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
+     ACLNN_SUCCESS},
+    {"test_aclnn_moe_distribute_combine_setup_normal_3",
+     {512, 7168}, {16, 8}, {65536}, {512, 10752}, {8320},
+     "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     ACL_BF16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
+     ACLNN_SUCCESS},
+    {"test_aclnn_moe_distribute_combine_setup_normal_4",
+     {512, 4096}, {16, 6}, {65536}, {512, 6144}, {8320},
+     "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 128, 0, 2, "",
+     ACL_BF16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
+     ACLNN_SUCCESS},
+    // 异常用例
+    {"test_aclnn_moe_distribute_combine_setup_invalid_expand_x_dtype",
+     {192, 4096}, {16, 6}, {24576}, {192, 6144}, {3104},
+     "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     ACL_INT32, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
+     ACLNN_ERR_PARAM_INVALID},
+    {"test_aclnn_moe_distribute_combine_setup_invalid_expand_x_format",
+     {192, 4096}, {16, 6}, {24576}, {192, 6144}, {3104},
+     "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
+     ACL_FORMAT_NC, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
+     ACLNN_ERR_PARAM_INVALID},
+    {"test_aclnn_moe_distribute_combine_setup_nullptr_expand_x",
+     {}, {16, 6}, {24576}, {192, 6144}, {3104},
+     "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, 
+     ACLNN_ERR_PARAM_NULLPTR},
+    
 };
 
 static void TestOneParamCase(const MoeDistributeCombineSetupAclnnTestParam &param)
 {
     std::cout << "run case " << param.caseName << std::endl;
     if (param.groupEp == nullptr) {
-        std::cerr << "[ERROR]: group is null" << std::endl;
+        std::cerr << "[ERROR]: groupEp is null" << std::endl;
         return;
     }
     std::vector<int64_t> expandXShape = param.expandXShape;
@@ -95,6 +164,16 @@ static void TestOneParamCase(const MoeDistributeCombineSetupAclnnTestParam &para
     std::vector<int64_t> quantExpandXOutShape = param.quantExpandXOutShape;
     std::vector<int64_t> commCmdInfoOutShape = param.commCmdInfoOutShape;
     char *groupEp = param.groupEp;
+    int64_t epWorldSize = param.epWorldSize;
+    int64_t epRankId = param.epRankId;
+    int64_t moeExpertNum = param.moeExpertNum;
+    int64_t expertShardType = param.expertShardType;
+    int64_t sharedExpertNum = param.sharedExpertNum;
+    int64_t sharedExpertRankNum = param.sharedExpertRankNum;
+    int64_t globalBs = param.globalBs;
+    int64_t commQuantMode = param.commQuantMode;
+    int64_t commType = param.commType;
+    char *commAlg = param.commAlg;
     aclDataType expandXDtype = param.expandXDtype;
     aclDataType expertIdsDtype = param.expertIdsDtype;
     aclDataType assistInfoForCombineDtype = param.assistInfoForCombineDtype;
@@ -106,18 +185,24 @@ static void TestOneParamCase(const MoeDistributeCombineSetupAclnnTestParam &para
     aclFormat quantExpandXOutFormat = param.quantExpandXOutFormat;
     aclFormat commCmdInfoOutFormat = param.commCmdInfoOutFormat;
     aclnnStatus retStatus = param.aclnnStatusUt;
+
     // 封装
-    TensorDesc expandX = TensorDesc(expandXShape, expandXDtype, expandXFormat);
-    TensorDesc expertIds = TensorDesc(expertIdsShape, expertIdsDtype, expertIdsFormat);
-    TensorDesc assistInfoForCombine = TensorDesc(assistInfoForCombineShape, assistInfoForCombineDtype, assistInfoForCombineFormat);
-    TensorDesc quantExpandXOut = TensorDesc(quantExpandXOutShape, quantExpandXOutDtype, quantExpandXOutFormat);
-    TensorDesc commCmdInfoOut = TensorDesc(commCmdInfoOutShape, commCmdInfoOutDtype, commCmdInfoOutFormat);
+    aclTensor *expandX = CreateAclTensorOrNull(expandXShape, expandXDtype, expandXFormat);
+    aclTensor *expertIds = CreateAclTensorOrNull(expertIdsShape, expertIdsDtype, expertIdsFormat);
+    aclTensor *assistInfoForCombine =
+        CreateAclTensorOrNull(assistInfoForCombineShape, assistInfoForCombineDtype, assistInfoForCombineFormat);
+    aclTensor *quantExpandXOut =
+        CreateAclTensorOrNull(quantExpandXOutShape, quantExpandXOutDtype, quantExpandXOutFormat);
+    aclTensor *commCmdInfoOut = CreateAclTensorOrNull(commCmdInfoOutShape, commCmdInfoOutDtype, commCmdInfoOutFormat);
+
     auto ut = OP_API_UT(aclnnMoeDistributeCombineSetup,
-                        INPUT(expandX, expertIds, assistInfoForCombine, groupEp, 2, 0, 32, 0, 0, 0, 0, 0, 2, ""),
+                        INPUT(expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum,
+                              expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType,
+                              commAlg),
                         OUTPUT(quantExpandXOut, commCmdInfoOut));
-    uint64_t workspace_size = 0;
+    uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     if (retStatus == ACLNN_SUCCESS) {
         EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
     } else {
@@ -125,12 +210,12 @@ static void TestOneParamCase(const MoeDistributeCombineSetupAclnnTestParam &para
     }
 }
 
-TEST_F(TestAclnnMoeDistributeCombineSetup, test_cases)
+TEST_F(TestAclnnMoeDistributeCombineSetup, CasesParamsTest)
 {
-    if (std::size(test_cases) != 0) {
-        uint64_t numCases = sizeof(test_cases) / sizeof(test_cases[0]);
+    if (std::size(g_casesParams) != 0) {
+        uint64_t numCases = sizeof(g_casesParams) / sizeof(g_casesParams[0]);
         for (size_t idx = 0; idx < numCases; idx += 1) {
-            TestOneParamCase(test_cases[idx]);
+            TestOneParamCase(g_casesParams[idx]);
         }
     }
 }

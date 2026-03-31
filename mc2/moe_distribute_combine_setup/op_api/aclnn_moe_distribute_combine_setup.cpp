@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
+#include "opdev/format_utils.h"
 
 namespace {
 
@@ -60,6 +61,17 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+// 根据API定义，列出CombineSetup支持的dtype
+const std::initializer_list<op::DataType> EXPANDX_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+
+const std::initializer_list<op::DataType> EXPERT_IDS_LIST = {op::DataType::DT_INT32};
+
+const std::initializer_list<op::DataType> ASSIST_INFO_LIST = {op::DataType::DT_INT32};
+
+const std::initializer_list<op::DataType> QUANT_EXPANDX_OUT_LIST = {op::DataType::DT_INT8};
+
+const std::initializer_list<op::DataType> COMM_CMD_INFO_OUT_LIST = {op::DataType::DT_INT32};
+
 static inline int64_t AlignUp(int64_t x, int64_t base)
 {
     if (base == 0) {
@@ -87,6 +99,59 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
     return true;
 }
 
+static bool CheckInputDataType(const aclTensor *expandX, const aclTensor *expertIds,
+                               const aclTensor *assistInfoForCombine, aclTensor *quantExpandXOut,
+                               aclTensor *commCmdInfoOut)
+{
+    if (CheckType(expandX->GetDataType(), EXPANDX_LIST) && CheckType(expertIds->GetDataType(), EXPERT_IDS_LIST) &&
+        CheckType(assistInfoForCombine->GetDataType(), ASSIST_INFO_LIST) &&
+        CheckType(quantExpandXOut->GetDataType(), QUANT_EXPANDX_OUT_LIST) &&
+        CheckType(commCmdInfoOut->GetDataType(), COMM_CMD_INFO_OUT_LIST)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// 校验数据格式
+static bool CheckInputDataFormat(const aclTensor *expandX, const aclTensor *expertIds,
+                                 const aclTensor *assistInfoForCombine, aclTensor *quantExpandXOut,
+                                 aclTensor *commCmdInfoOut)
+{
+    if (expandX->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In aclnnMoeDistributeCombineSetup, expandX format only support ND, but got %s.",
+                op::ToString(expandX->GetStorageFormat()).GetString());
+        return false;
+    }
+    if (expertIds->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In aclnnMoeDistributeCombineSetup, expertIds format only support ND, but got %s.",
+                op::ToString(expertIds->GetStorageFormat()).GetString());
+        return false;
+    }
+    if (assistInfoForCombine->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In aclnnMoeDistributeCombineSetup, assistInfoForCombine format only support ND, but got %s.",
+                op::ToString(assistInfoForCombine->GetStorageFormat()).GetString());
+        return false;
+    }
+    if (quantExpandXOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In aclnnMoeDistributeCombineSetup, quantExpandXOut format only support ND, but got %s.",
+                op::ToString(quantExpandXOut->GetStorageFormat()).GetString());
+        return false;
+    }
+    if (commCmdInfoOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In aclnnMoeDistributeCombineSetup, commCmdInfoOut format only support ND, but got %s.",
+                op::ToString(commCmdInfoOut->GetStorageFormat()).GetString());
+        return false;
+    }
+
+    return true;
+}
+
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expertIds,
                                const aclTensor *assistInfoForCombine, const char *groupEp, int64_t epWorldSize,
@@ -107,6 +172,10 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckParams start");
     CHECK_RET(CheckNotNull(expandX, expertIds, assistInfoForCombine, groupEp, quantExpandXOut, commCmdInfoOut),
               ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckInputDataType(expandX, expertIds, assistInfoForCombine, quantExpandXOut, commCmdInfoOut),
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckInputDataFormat(expandX, expertIds, assistInfoForCombine, quantExpandXOut, commCmdInfoOut),
+              ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_EMPTY_TENSOR(expertIds, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_EMPTY_TENSOR(assistInfoForCombine, return ACLNN_ERR_PARAM_INVALID);
@@ -155,6 +224,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
         expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
         sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, quantExpandXOut,
         commCmdInfoOut, workspaceSize, executor);
+    OP_LOGD("aclnnMoeDistributeCombineSetupGetWorkspaceSize success.");
     return retStatus;
 }
 
