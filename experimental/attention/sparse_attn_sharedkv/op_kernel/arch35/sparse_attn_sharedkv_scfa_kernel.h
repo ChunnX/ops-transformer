@@ -93,7 +93,7 @@ private:
     bool hasOriTopkLength = false;
     bool hasCmpTopkLength = false;
     /* workspace 空间 */
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> v0ResGmBuffers;
+    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -210,13 +210,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
-    if ASCEND_IS_AIC {
-        l1PBuffers.Get().SetCrossCore();
-        l1PBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-    }
+
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     if ASCEND_IS_AIV {
@@ -238,11 +232,6 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         }
         gmBufferManager.Init(workspace + totalOffset);
         v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
-        if ASCEND_IS_AIC {
-            v0ResGmBuffers.Get().SetCrossCore();
-            v0ResGmBuffers.Get().SetCrossCore();
-            v0ResGmBuffers.Get().SetCrossCore();
-        }
     }
 }
 

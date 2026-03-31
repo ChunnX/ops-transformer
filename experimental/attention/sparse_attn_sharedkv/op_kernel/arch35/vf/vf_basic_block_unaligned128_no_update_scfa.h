@@ -27,10 +27,11 @@ template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize
 __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
     __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, 
     __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride, 
-    const uint16_t m, const T scale, const T minValue, uint32_t pltOriTailN, uint32_t pltTailN)
+    const uint16_t m, const T scale, const T minValue, uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_min;
     AscendC::MicroAPI::RegTensor<float> vreg_input_x;
+    AscendC::MicroAPI::RegTensor<float> vreg_input_x_new;
     AscendC::MicroAPI::RegTensor<float> vreg_input_x_unroll;
     AscendC::MicroAPI::RegTensor<float> vreg_input_x_unroll_new;
     AscendC::MicroAPI::RegTensor<float> vreg_max_tmp;
@@ -52,22 +53,24 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
     AscendC::MicroAPI::MaskReg preg_all_b16 = AscendC::MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
     AscendC::MicroAPI::MaskReg preg_all_b8 = AscendC::MicroAPI::CreateMask<T2, AscendC::MicroAPI::MaskPattern::ALL>();
     AscendC::MicroAPI::MaskReg preg_tail_n = AscendC::MicroAPI::UpdateMask<float>(pltTailN);
-    AscendC::MicroAPI::MaskReg preg_ori_tail_n = AscendC::MicroAPI::UpdateMask<float>(pltOriTailN);
+    AscendC::MicroAPI::MaskReg preg_ori_tail_n1 = AscendC::MicroAPI::UpdateMask<T>(pltOriTailN1);
+    AscendC::MicroAPI::MaskReg preg_ori_tail_n2 = AscendC::MicroAPI::UpdateMask<T>(pltOriTailN2);
     AscendC::MicroAPI::MaskReg preg_reduce_n = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::VL8>();
 
     AscendC::MicroAPI::Duplicate(vreg_min, minValue);
     for (uint16_t i = 0; i < m; ++i) {
         AscendC::MicroAPI::LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         AscendC::MicroAPI::LoadAlign(vreg_input_x_unroll, srcUb + floatRepSize + i * s2BaseSize);
-        AscendC::MicroAPI::Muls(vreg_input_x, vreg_input_x, scale, preg_all);  // Muls(scale)
-        AscendC::MicroAPI::Muls(vreg_input_x_unroll, vreg_input_x_unroll, scale, preg_ori_tail_n);
-        AscendC::MicroAPI::Select(vreg_input_x_unroll_new, vreg_input_x_unroll, vreg_min, preg_ori_tail_n);
+        AscendC::MicroAPI::Muls(vreg_input_x, vreg_input_x, scale, preg_ori_tail_n1);  // Muls(scale)
+        AscendC::MicroAPI::Muls(vreg_input_x_unroll, vreg_input_x_unroll, scale, preg_ori_tail_n2);
+        AscendC::MicroAPI::Select(vreg_input_x_new, vreg_input_x, vreg_min, preg_ori_tail_n1);
+        AscendC::MicroAPI::Select(vreg_input_x_unroll_new, vreg_input_x_unroll, vreg_min, preg_ori_tail_n2);
         AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_all);
+            (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x_new, preg_all);
         AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_input_x_unroll_new, preg_tail_n);
+            (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_input_x_unroll_new, preg_all);
 
-        AscendC::MicroAPI::Max(vreg_max_tmp, vreg_input_x, vreg_input_x_unroll_new, preg_all);
+        AscendC::MicroAPI::Max(vreg_max_tmp, vreg_input_x_new, vreg_input_x_unroll_new, preg_all);
         AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
             vreg_input_max, vreg_max_tmp, preg_all);
         AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -121,13 +124,15 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
     __ubuf__ T * maxUbStart = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
 
-    const uint32_t oriTailN = originN - floatRepSize;
+    const uint32_t oriTailN1 = originN > floatRepSize ? floatRepSize : originN;
+    const uint32_t oriTailN2 = originN > floatRepSize ? originN - floatRepSize : 0;
     const uint32_t tailN = s2BaseSize - floatRepSize;
-    uint32_t pltOriTailN = oriTailN;
+    uint32_t pltOriTailN1 = oriTailN1;
+    uint32_t pltOriTailN2 = oriTailN2;
     uint32_t pltTailN = tailN;
 
     ProcessVec1NoUpdateGeneralImpl128VF<T, T2, s1BaseSize, s2BaseSize>(
-        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride, m, scale, minValue, pltOriTailN, pltTailN);
+        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride, m, scale, minValue, pltOriTailN1, pltOriTailN2, pltTailN);
 }
 } // namespace
 

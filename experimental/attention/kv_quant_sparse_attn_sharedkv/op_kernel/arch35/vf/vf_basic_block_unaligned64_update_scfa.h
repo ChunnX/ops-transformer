@@ -29,7 +29,9 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
     __ubuf__ T * tmpExpSumUb, __ubuf__ T * tmpMaxUb, __ubuf__ T * tmpMaxUb2, const uint32_t blockStride, const uint32_t repeatStride, 
     const uint16_t m, const T scale, const T minValue, uint32_t pltOriginalN, uint32_t pltSrcN)
 {
+    AscendC::MicroAPI::RegTensor<float> vreg_min;
     AscendC::MicroAPI::RegTensor<float> vreg_input_x;
+    AscendC::MicroAPI::RegTensor<float> vreg_input_x_new;
     AscendC::MicroAPI::RegTensor<float> vreg_max_tmp;
     AscendC::MicroAPI::RegTensor<float> vreg_in_max;
     AscendC::MicroAPI::RegTensor<float> vreg_max_new;
@@ -52,14 +54,16 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
     AscendC::MicroAPI::MaskReg preg_src_n = AscendC::MicroAPI::UpdateMask<T>(pltSrcN);
     AscendC::MicroAPI::MaskReg preg_src_n_b16 = AscendC::MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::H>();
 
+    AscendC::MicroAPI::Duplicate(vreg_min, minValue);
     // x_max = max(src, axis=-1, keepdims=True)
     for (uint16_t i = 0; i < m; ++i) {
         AscendC::MicroAPI::LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         AscendC::MicroAPI::Muls(vreg_input_x, vreg_input_x, scale, preg_ori_src_n);
+        AscendC::MicroAPI::Select(vreg_input_x_new, vreg_input_x, vreg_min, preg_ori_src_n);
         AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_src_n);
+            (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x_new, preg_all);
         AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-            vreg_cur_max, vreg_input_x, preg_ori_src_n);
+            vreg_cur_max, vreg_input_x_new, preg_all);
         AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)tmpMaxUb), vreg_cur_max, ureg_max, 1);
     }
@@ -78,11 +82,11 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
         AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
             vreg_max_brc, tmpMaxUb2 + i);
         AscendC::MicroAPI::LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
-        AscendC::MicroAPI::ExpSub(vreg_exp, vreg_input_x, vreg_max_brc, preg_ori_src_n);
+        AscendC::MicroAPI::ExpSub(vreg_exp, vreg_input_x, vreg_max_brc, preg_all);
 
         // x_sum = sum(x_exp, axis=-1, keepdims=True)
         AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-            vreg_exp_sum, vreg_exp, preg_ori_src_n);
+            vreg_exp_sum, vreg_exp, preg_all);
         AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum, ureg_exp_sum, 1);
       
