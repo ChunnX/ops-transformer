@@ -1432,8 +1432,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         // VF
         __ubuf__ T* bf16InputAddr = (__ubuf__ T*)bf16InputBuf.GetPhyAddr();
         __ubuf__ P* xRsFp32Addr = (__ubuf__ P*)xRsFp32Buf.GetPhyAddr();
-        fp32InQueue_.FreeTensor(bf16InputBuf); 
-        bf16InQueue_.FreeTensor(gammaUb);
         LocalTensor<P> gammaOutUb = bf16OutQueue_.AllocTensor<P>();
         __ubuf__ P* gammaOutAddr = (__ubuf__ P*)gammaOutUb.GetPhyAddr();
         if (withGamma_) {
@@ -1448,7 +1446,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         } else {
              VFDoV2XCastAndMulGamma<false, false>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, nullptr, nullptr, currentChunkSize, copySizeND);
         }
-
+        fp32InQueue_.FreeTensor(bf16InputBuf);
         bf16OutQueue_.EnQue(gammaOutUb);
         gammaOutUb = bf16OutQueue_.DeQue<P>();
 
