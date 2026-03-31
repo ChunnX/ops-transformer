@@ -126,6 +126,47 @@ install_gawk() {
     fi
 }
 
+# 1. 统一的依赖包列表
+COMMON_PKGS=(
+    "numpy>=1.21.6"
+    "sympy>=1.10.1"
+    "psutil>=5.9"
+    "scipy>=1.7.3"
+    "cloudpickle"
+    "ml-dtypes"
+    "tornado"
+    "absl-py"
+    "decorator>=5.1.0"
+    "attrs"
+    "jinja2"
+    "mpmath"
+)
+
+# 2. 统一的 pip 公共参数
+PIP_COMMON_ARGS=(
+    "--no-deps"
+    "--timeout=60"
+)
+
+# 3. 镜像源配置
+MIRROR_TSINGHUA=("https://pypi.tuna.tsinghua.edu.cn/simple" "pypi.tuna.tsinghua.edu.cn")
+MIRROR_HUAWEI=("https://repo.huaweicloud.com/repository/pypi/simple" "repo.huaweicloud.com")
+
+# ==================== 逻辑区（勿动） ====================
+# 封装安装函数：接收 镜像URL 和 信任Host 作为参数
+install_with_mirror() {
+    local mirror_url=$1
+    local trusted_host=$2
+    local mirror_name=$3
+
+    echo "尝试使用 ${mirror_name} 安装..."
+    pip3 install "${COMMON_PKGS[@]}" \
+        -i "${mirror_url}" \
+        --trusted-host "${trusted_host}" \
+        "${PIP_COMMON_ARGS[@]}"
+    return $?
+}
+
 install_python_deps() {
     echo -e "\n==== Installing CANN 8.5 required Python packages ===="
 
@@ -140,32 +181,23 @@ install_python_deps() {
     fi
 
     # Let pip handle redundancy — it's safe and idempotent
-    if ! pip3 install \
-            "numpy>=1.21.6" \
-            "sympy>=1.10.1" \
-            "psutil>=5.9" \
-            "scipy>=1.7.3" \
-            cloudpickle \
-            ml-dtypes \
-            tornado \
-            absl-py \
-            "decorator>=5.1.0" \
-            attrs \
-            jinja2 \
-            mpmath \
-            -i https://pypi.tuna.tsinghua.edu.cn/simple \
-            --trusted-host pypi.tuna.tsinghua.edu.cn \
-            --no-deps \
-            --timeout=60; then
-
-        # 安装失败：红色高亮错误提示 + 华为云镜像配置指导
-        echo -e "\033[31m[Error] Python 依赖安装失败！清华镜像源不可用\033[0m"
-        echo ""
-        echo "解决方案：请先执行以下命令配置华为云镜像源，再重新运行本脚本"
-        echo "pip config set global.index-url https://repo.huaweicloud.com/repository/pypi/simple"
-        exit 1
+    # 1. 尝试清华镜像
+    if install_with_mirror "${MIRROR_TSINGHUA[@]}" "清华镜像源"; then
+        echo -e "\n✅ CANN Python 依赖安装完成（清华镜像）"
+        return 0
     fi
-    echo "CANN Python dependencies installed."
+
+    echo -e "\033[33m[警告] 清华镜像安装失败，自动切换华为云镜像...\033[0m"
+
+    # 2. 尝试华为云镜像
+    if install_with_mirror "${MIRROR_HUAWEI[@]}" "华为云镜像源"; then
+        echo -e "\n✅ CANN Python 依赖安装完成（华为云镜像）"
+        return 0
+    fi
+
+    # 3. 全部失败
+    echo -e "\033[31m[错误] 所有镜像源均安装失败！请检查网络或手动安装\033[0m"
+    return 1."
 }
 
 install_python() {
