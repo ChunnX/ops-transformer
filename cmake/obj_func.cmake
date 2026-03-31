@@ -811,33 +811,126 @@ function(add_aicpu_kernel_modules)
   endif()
 endfunction()
 
-# useage: add_aicpu_cust_kernel_modules(target_name)
-# 添加aicpu cust kernel object target
-function(add_aicpu_cust_kernel_modules target_name)
-  message(STATUS "add_aicpu_cust_kernel_modules for ${target_name}")
-  if(NOT TARGET ${target_name})
-    add_library(${target_name} OBJECT)
-    target_include_directories(${target_name} PRIVATE ${AICPU_INCLUDE})
-    target_compile_definitions(
-            ${target_name} PRIVATE
-            _FORTIFY_SOURCE=2 _GLIBCXX_USE_CXX11_ABI=1
-            google=ascend_private
-            $<$<BOOL:${ENABLE_TEST}>:ASCEND_AICPU_UT>
-    )
-    target_compile_options(
-            ${target_name} PRIVATE
-            $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
-            -fvisibility=hidden ${AICPU_DEFINITIONS}
-    )
-    target_link_libraries(
-            ${target_name}
-            PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
-            $<BUILD_INTERFACE:dlog_headers>
-            -Wl,--no-whole-archive
-            Eigen3::EigenTransformer
-    )
-    if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
-      set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
+# usage: add_modules_sources_aicpu(OPTYPE ACLNNTYPE DEPENDENCIES COMPUTE_UNIT TILING_DIR DISABLE_IN_OPP)
+# ACLNNTYPE 支持类型aclnn/aclnn_inner/aclnn_exclude
+# OPTYPE 和 ACLNNTYPE 需一一对应
+# DEPENDENCIES 指定依赖的算子名称列表，如果开启 experimental，则会优先加载 experimental 下的算子
+# COMPUTE_UNIT 设置支持芯片版本号，必须与TILING_DIR一一对应，示例：ascend910b ascend910_95
+# TILING_DIR 设置所支持芯片类型对应的tiling文件目录，必须与COMPUTE_UNIT一一对应，示例：arch32 arch35
+# DISABLE_IN_OPP 设置是否在opp包中编译tiling文件，布尔类型：TRUE，FALSE
+macro(add_modules_sources_aicpu)
+  set(oneValueArgs DISABLE_IN_OPP)
+  set(multiValueArgs OPTYPE ACLNNTYPE DEPENDENCIES COMPUTE_UNIT TILING_DIR)
+
+  cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+  set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  get_filename_component(OP_NAME ${SOURCE_DIR} NAME)
+
+  # add_dependent_ops("${MODULE_DEPENDENCIES}")
+
+  # opapi l0 默认全部编译
+  file(GLOB OPAPI_L0_SRCS ${SOURCE_DIR}/op_host/op_api/*.cpp)
+  list(FILTER OPAPI_L0_SRCS EXCLUDE REGEX "aclnn_")
+  if(OPAPI_L0_SRCS)
+    add_opapi_modules()
+    target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${OPAPI_L0_SRCS})
+  endif()
+
+  file(GLOB OPAPI_HEADERS ${SOURCE_DIR}/op_host/op_api/aclnn_*.h)
+  if(OPAPI_HEADERS)
+    target_sources(${OPHOST_NAME}_aclnn_exclude_headers INTERFACE ${OPAPI_HEADERS})
+  endif()
+
+  file(GLOB OPAPI_L2_SRCS ${SOURCE_DIR}/op_host/op_api/aclnn_*.cpp)
+  if(OPAPI_L2_SRCS)
+    add_opapi_modules()
+    target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${OPAPI_L2_SRCS})
+  endif()
+
+  file(GLOB OPINFER_SRCS ${SOURCE_DIR}/op_graph/*_infershape*.cpp)
+  if(OPINFER_SRCS)
+    add_infer_modules()
+    target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
+  endif()
+
+  file(GLOB OPTILING_SRCS ${SOURCE_DIR}/*_tiling*.cpp)
+  if(OPTILING_SRCS)
+    add_tiling_modules()
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS})
+  else()
+    if (NOT TARGET ${OPHOST_NAME}_tiling_obj)
+      add_tiling_modules()
+      add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/optiling_stub.cpp
+          COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/optiling_stub.cpp
+      )
+      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+          ${CMAKE_CURRENT_BINARY_DIR}/optiling_stub.cpp
+      )
     endif()
   endif()
-endfunction()
+
+
+  file(GLOB AICPU_SRCS ${SOURCE_DIR}/op_kernel_aicpu/*_aicpu*.cpp)
+
+  if(AICPU_SRCS)
+    if(NOT BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
+      add_aicpu_kernel_modules()
+      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+    else()
+      file(GLOB AICPU_JSON_FILE ${SOURCE_DIR}/op_kernel_aicpu/*.json)
+      add_aicpu_cust_kernel_modules(${OP_NAME} ${AICPU_SRCS} ${AICPU_JSON_FILE})
+    endif()
+  endif()
+
+  if(MODULE_OPTYPE)
+    list(LENGTH MODULE_OPTYPE OpTypeLen)
+    list(LENGTH MODULE_ACLNNTYPE AclnnTypeLen)
+    if(NOT ${OpTypeLen} EQUAL ${AclnnTypeLen})
+      message(FATAL_ERROR "OPTYPE AND ACLNNTYPE Should be One-to-One")
+    endif()
+    math(EXPR index "${OpTypeLen} - 1")
+    foreach(i RANGE ${index})
+      list(GET MODULE_OPTYPE ${i} OpType)
+      list(GET MODULE_ACLNNTYPE ${i} AclnnType)
+      if(${AclnnType} STREQUAL "aclnn"
+         OR ${AclnnType} STREQUAL "aclnn_inner"
+         OR ${AclnnType} STREQUAL "aclnn_exclude"
+        )
+        file(GLOB OPDEF_SRCS ${SOURCE_DIR}/op_host/${OpType}_def*.cpp)
+        if(OPDEF_SRCS)
+          target_sources(${OPHOST_NAME}_opdef_${AclnnType}_obj INTERFACE ${OPDEF_SRCS})
+        endif()
+      else()
+        message(FATAL_ERROR "ACLNN TYPE UNSPPORTED, ONLY SUPPORT aclnn/aclnn_inner/aclnn_exclude")
+      endif()
+    endforeach()
+  else()
+    file(GLOB OPDEF_SRCS ${SOURCE_DIR}/op_host/*_def*.cpp)
+    if(OPDEF_SRCS)
+      message(
+        FATAL_ERROR
+          "Should Manually specify aclnn/aclnn_inner/aclnn_exclude\n"
+          "usage: add_modules_sources_aicpu(OPTYPE optypes ACLNNTYPE aclnntypes)\n"
+          "example: add_modules_sources_aicpu(OPTYPE add ACLNNTYPE aclnn_exclude)"
+        )
+    endif()
+  endif()
+
+  file(GLOB OP_GRAPH_PROTO_HEADERS ${SOURCE_DIR}/op_graph/*_proto*.h)
+  if(OP_GRAPH_PROTO_HEADERS)
+    target_sources(${GRAPH_PLUGIN_NAME}_proto_headers INTERFACE ${OP_GRAPH_PROTO_HEADERS})
+  endif()
+
+  message("OPAPI_L0_SRCS", ${OPAPI_L0_SRCS})
+  message("OPAPI_HEADERS", ${OPAPI_HEADERS})
+  message("OPAPI_L2_SRCS", ${OPAPI_L2_SRCS})
+
+  message("OPINFER_SRCS", ${OPINFER_SRCS})
+  message("OPTILING_SRCS", ${OPTILING_SRCS})
+  message("AICPU_SRCS", ${AICPU_SRCS})
+
+  message("OP_GRAPH_PROTO_HEADERS", ${OP_GRAPH_PROTO_HEADERS})
+
+  set(ENABLE_AICPU ON CACHE BOOL "enable aicpu kernel" FORCE)
+
+endmacro()

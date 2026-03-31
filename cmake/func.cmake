@@ -990,3 +990,100 @@ function(add_version_info_targets)
         add_custom_target(version_${pkg_name}_info ALL DEPENDS ${CMAKE_BINARY_DIR}/version.${pkg_name}.info)
     endforeach()
 endfunction()
+
+function(add_aicpu_cust_kernel_modules op_name aicpu_sources aicpu_jsons)
+  set(target_name ${op_name}_obj)
+  if(NOT TARGET ${target_name})
+    add_library(${target_name} OBJECT)
+    target_include_directories(${target_name} PRIVATE ${AICPU_INCLUDE})
+    target_compile_definitions(
+      ${target_name} PRIVATE
+                    _FORTIFY_SOURCE=2 _GLIBCXX_USE_CXX11_ABI=1
+                    google=ascend_private
+                    $<$<BOOL:${ENABLE_TEST}>:ASCEND_AICPU_UT>
+      )
+    target_compile_options(
+      ${target_name} PRIVATE
+                    $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
+                    -fvisibility=hidden ${AICPU_DEFINITIONS}
+      )
+    target_link_libraries(
+      ${target_name}
+      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+              $<BUILD_INTERFACE:dlog_headers>
+              -Wl,--no-whole-archive
+      )
+    if (NOT (UT_TEST_ALL OR OP_KERNEL_AICPU_UT))
+      set_property(TARGET ${target_name} PROPERTY 
+        CXX_COMPILER_LAUNCHER ${ASCEND_DIR}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++)
+    endif()    
+    target_sources(${target_name} PRIVATE ${aicpu_sources})
+    set_property(GLOBAL APPEND PROPERTY AICPU_JSON_FILES ${aicpu_jsons})
+    if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
+      set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
+    endif()
+  endif()
+endfunction()
+
+# 添加待编译算子
+function(add_need_compile_ops op_name)
+  if(NOT ASCEND_OP_NAME)
+    # 为空则不需要更新
+    return()
+  endif()
+
+  set(NEW_OP_NAMES ${ASCEND_OP_NAME} ${op_name})
+  list(REMOVE_DUPLICATES NEW_OP_NAMES)
+  set(ASCEND_OP_NAME
+      ${NEW_OP_NAMES}
+      CACHE STRING "Ascend op names to compile" FORCE
+    )
+endfunction()
+
+function(add_dependent_ops dependent_ops)
+  foreach(dep_op ${dependent_ops})
+    # 查询依赖算子所在目录
+    set(dep_op_path_list "")
+    if(ENABLE_EXPERIMENTAL)
+      foreach(ops_category ${OPS_CATEGORY_LIST})
+        file(GLOB dep_op_path "${PROJECT_SOURCE_DIR}/experimental/${ops_category}/${dep_op}")
+        list(APPEND dep_op_path_list ${dep_op_path})
+      endforeach()
+    endif()
+    set(outside_experimental FALSE)
+    # 如果非 experimental，或 experimental 下没找到，则去常规目录查找
+    if(NOT dep_op_path_list)
+      foreach(ops_category ${OPS_CATEGORY_LIST})
+        file(GLOB dep_op_path "${PROJECT_SOURCE_DIR}/${ops_category}/${dep_op}")
+        list(APPEND dep_op_path_list ${dep_op_path})
+      endforeach()
+      set(outside_experimental ${ENABLE_EXPERIMENTAL})
+    endif()
+    # 检查依赖存在
+    if(NOT dep_op_path_list)
+      message(FATAL_ERROR "dependent operator(${dep_op}) not exists")
+    endif()
+    list(LENGTH ${dep_op_path_list} find_dep_ops_count)
+    if(find_dep_ops_count GREATER 1)
+      message(FATAL_ERROR "dependent operator(${dep_op}) is not unique, the found operators:${dep_op_path_list}")
+    endif()
+
+    # ASCEND_OP_NAME 为空表示全部编译，则不需要特意添加目录；但指定experimental时未扫描常规算子，如果依赖常规算子，需要添加目录
+    # 已在待编译列表，则不需要加入
+    # 已在编译列表，则不需要重复加入
+
+    if((ASCEND_OP_NAME OR outside_experimental)
+        AND (NOT (dep_op IN_LIST ASCEND_OP_NAME))
+        AND (NOT (dep_op IN_LIST COMPILED_OPS))
+    )
+      # 加入依赖并去重
+      add_need_compile_ops("${dep_op}")
+      # 添加目录
+      get_filename_component(dep_op_path "${dep_op_path_list}" ABSOLUTE)
+      get_filename_component(dep_op_parent "${dep_op_path}" DIRECTORY)
+      get_filename_component(parent_path "${dep_op_parent}" NAME)
+      message(STATUS "add dependent operator: ${parent_path}/${dep_op}, path: ${dep_op_path}")
+      add_subdirectory("${dep_op_path}" "${CMAKE_BINARY_DIR}/dependent-ops/${parent_path}/${dep_op}")
+    endif()
+  endforeach()
+endfunction()
