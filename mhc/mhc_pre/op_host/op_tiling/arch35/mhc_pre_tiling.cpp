@@ -322,9 +322,9 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 
 ge::graphStatus MhcPreBaseTiling::CheckDataRange()
 {
-    OP_CHECK_IF(totalLength_ < TOTAL_LENGTH_MIN || totalLength_ > TOTAL_LENGTH_MAX,
-                OP_LOGE(context_->GetNodeName(), "TotalLength must be in [%lu, %lu], got %lu", 
-                        TOTAL_LENGTH_MIN, TOTAL_LENGTH_MAX, totalLength_),
+    OP_CHECK_IF(totalLength_ < TOTAL_LENGTH_MIN,
+                OP_LOGE(context_->GetNodeName(), "TotalLength must be greater than %lu, got %lu", 
+                        TOTAL_LENGTH_MIN, totalLength_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(D_ < D_MIN || D_ > D_MAX, 
