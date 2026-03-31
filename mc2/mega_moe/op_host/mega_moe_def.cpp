@@ -74,7 +74,7 @@ public:
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
         .FormatList({ge::FORMAT_ND});
-        
+    
     this->Attr("ep_world_size").AttrType(REQUIRED).Int();
     this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
     this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
