@@ -826,3 +826,73 @@ int main() {
   return 0;
 }
 ```
+
+## 实现说明（不对外，代码上库评审需要，md上gitee前删除）
+
+### 计算图一
+
+```mermaid
+graph LR
+    A[(gradHin)] --> TC([l0op::Contiguous])
+    B[(gradHPost)] --> TC
+    C[(gradHRes)] --> TC
+    D[(x)] --> TC
+    E[(phi)] --> TC
+    F[(alpha)] --> TC
+    G[(bias)] --> TC
+    H[(hPre)] --> TC
+    I[(hcBeforeNorm)] --> TC
+    J[(invRms)] --> TC
+    K[(sumOut)] --> TC
+    L[(normOut)] --> TC
+    M[(hcEps)] --> TC
+
+    TC --> Z([l0op::MhcPreSinkhornGrad])
+
+    Z --> YA[(gradX)]
+    Z --> YB[(gradPhi)]
+    Z --> YC[(gradAlpha)]
+    Z --> YD[(gradBias)]
+```
+
+## 附录（不对外，代码上库评审需要，md上gitee前删除）
+
+<font color="#FF0000">**（暂时只对内，md文件上传gitee前需删除！！）**</font>
+
+### 1. 归属领域
+
+transformer/mhc
+
+### 2. Pytorch AtenIR
+
+```
+func: npu_mhc_pre_sinkhorn_grad(Tensor grad_hin, Tensor grad_h_post, Tensor grad_h_res, Tensor x, Tensor phi, Tensor alpha, Tensor bias, Tensor h_pre, Tensor hc_before_norm, Tensor inv_rms, Tensor sum_out, Tensor norm_out, float hc_eps = 1e-6) -> (Tensor, Tensor, Tensor, Tensor)
+```
+
+### 3. AtenIR参数描述
+
+非pytorch标准AtenIR，自定义AtenIR
+
+### 4. HostAPI接口约束
+
+无
+
+### 5. HostAPI异常处理
+
+以下场景会出现异常校验：
+
+1.输入的gradHin、gradHPost、gradHRes、x、phi、alpha、bias、hPre、hcBeforeNorm、invRms、sumOut、normOut等输入变量是空指针时。
+
+2.输入的gradHin、gradHPost、gradHRes、x、phi、alpha、bias、hPre、hcBeforeNorm、invRms、sumOut、normOut等输入变量的数据类型和数据格式不在支持的范围内。
+
+3.输入的gradHin、gradHPost、gradHRes、x、phi、alpha、bias、hPre、hcBeforeNorm、invRms、sumOut、normOut等输入变量的shape的维度大小和支持值范围不在支持的范围内。
+
+### 6. 兼容性说明
+
+1. 功能兼容性：兼容 Pytorch框架定义；
+2. 平台兼容性：新增David平台；
+3. 接口兼容性：新增；
+4. 行为兼容性：新增；
+5. 性能兼容性：新增；
+6. 资源兼容性：新增；
+7. 错误处理兼容性：新增；
