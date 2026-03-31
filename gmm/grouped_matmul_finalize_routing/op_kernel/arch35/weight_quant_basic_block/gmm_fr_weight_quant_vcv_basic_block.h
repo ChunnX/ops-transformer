@@ -255,12 +255,12 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
         WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
 
-        vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam, rlLoopIdx_ - 1);
-        vecCompute_.SetFrToMTE2(rlLoopIdx_ - 1);
-        vecCompute_.WaitMte2ToS(rlLoopIdx_ - 1);
+        vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam, rlLoopIdx_);
+        vecCompute_.SetFrToMTE2(rlLoopIdx_);
+        vecCompute_.WaitMte2ToS(rlLoopIdx_);
         vecCompute_.RoutingYToGm(lastBasicBlockMSize,ubOutputF32Buffer_,
                                 lastOffsetParam);
-        vecCompute_.SetSToMTE2(rlLoopIdx_ - 1);
+        vecCompute_.SetSToMTE2(rlLoopIdx_);
     }
     // todo 先不搞preload mte2, 收益有限
     VecComputeNzNkWithStartLimit(kMte2Offset, curOffsetParam.kSize, curOffsetParam);

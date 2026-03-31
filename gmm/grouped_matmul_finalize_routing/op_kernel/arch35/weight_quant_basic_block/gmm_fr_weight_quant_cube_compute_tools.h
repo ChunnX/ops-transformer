@@ -164,7 +164,7 @@ __aicore__ inline void MmadCompute(
     const LocalTensor<SrcBType>& bL0Tensor, const L0CopyAndCalcParams& l0CopyAndCalcParams)
 {
     AscendC::MmadParams mmadParams;
-    mmadParams.m = l0CopyAndCalcParams.mL0Size;
+    mmadParams.m = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL0Size, 2UL);
     mmadParams.n = l0CopyAndCalcParams.nL0Size;
     mmadParams.k = Ops::Base::CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGNMENT64);
     mmadParams.cmatrixInitVal = l0CopyAndCalcParams.isFirstKLoop;
@@ -189,7 +189,7 @@ __aicore__ inline void MmadCompute(
     const LocalTensor<SrcBType>& bL0Tensor, const LocalTensor<BiasType> &biasTable, const L0CopyAndCalcParams& l0CopyAndCalcParams)
 {
     AscendC::MmadParams mmadParams;
-    mmadParams.m = l0CopyAndCalcParams.mL0Size;
+    mmadParams.m = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL0Size, 2UL);
     mmadParams.n = l0CopyAndCalcParams.nL0Size;
     mmadParams.k = Ops::Base::CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGNMENT64);
     mmadParams.disableGemv = true;
