@@ -1110,15 +1110,45 @@ private:
 
         tilingData.SaveToBuffer(
             tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
+        std::cout << "*******************START*******************" << std::endl;
+        std::cout << "inputsTensorUbSize = " << tilingData.get_inputsTensorUbSize() << std::endl;
+        // 在设置之前打印原始数据
+        std::cout << "tensorDataCountList = [";
+        for (size_t i = 0; i < MAX_TENSOR_CONT; ++i) {
+            std::cout << tensorDataCountList[i];
+            if (i < MAX_TENSOR_CONT - 1) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
+        // 在设置之前打印原始数据
+        std::cout << "tensorStartList = [";
+        for (size_t i = 0; i < MAX_CORE_CONT; ++i) {
+            std::cout << tensorStartList[i];
+            if (i < MAX_CORE_CONT - 1) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
+        // 在设置之前打印原始数据
+        std::cout << "tensorEndList = [";
+        for (size_t i = 0; i < MAX_CORE_CONT; ++i) {
+            std::cout << tensorEndList[i];
+            if (i < MAX_CORE_CONT - 1) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
+        // 在设置之前打印原始数据
+        std::cout << "tensorStartOffsetList = [";
+        for (size_t i = 0; i < MAX_CORE_CONT; ++i) {
+            std::cout << tensorStartOffsetList[i];
+            if (i < MAX_CORE_CONT - 1) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
+        // 在设置之前打印原始数据
+        std::cout << "tensorEndOffsetList (original) = [";
+        for (size_t i = 0; i < MAX_CORE_CONT; ++i) {
+            std::cout << tensorEndOffsetList[i];
+            if (i < MAX_CORE_CONT - 1) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
 
-    std::cout << "*******************START*******************" << std::endl;
-    std::cout << "inputsTensorUbSize = " << tilingData.get_inputsTensorUbSize() << std::endl;
-    std::cout << "tensorDataCountList = " << tilingData.get_tensorDataCountList() << std::endl;
-    std::cout << "tensorStartList = " << tilingData.get_tensorStartList() << std::endl;
-    std::cout << "tensorEndList = " << tilingData.get_tensorEndList() << std::endl;
-    std::cout << "tensorStartOffsetList = " << tilingData.get_tensorStartOffsetList() << std::endl;
-    std::cout << "tensorEndOffsetList = " << tilingData.get_tensorEndOffsetList() << std::endl;
-    std::cout << "*******************END*******************" << std::endl;
+        std::cout << "*******************END*******************" << std::endl;
 
         tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     }
