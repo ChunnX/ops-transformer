@@ -1,0 +1,19 @@
+类型	名称	shape	含义	数据类型	是否需要前向保存
+input,grad_y,"[bs, seq_len, c]",,bfloat16,
+,grad_post,"[bs, seq_len, n]",,float32,
+,grad_comb_frag,"[bs, seq_len, n * n]",,float32,
+,x,"[bs, seq_len, n, c]",,bfloat16,Y
+,hc_fn,"[n * n + 2 * n, n * c]",,float32,Y
+,hc_scale,[3],,float32,Y
+,hc_base,[n * n + 2 * n],,float32,Y
+,pre,"[bs, seq_len, n]",,float32,Y
+,hc_before_norm,"[bs, seq_len, n*n + 2 *n]",,float32,Y
+,rsqrt,"[bs, seq_len, 1]",1 / r,float32,Y
+,sum_out,"[sk_iter_count*2, bs, seq_len, n]",,float32,Y
+,norm_out,"[sk_iter_count*2, bs, seq_len, n, n]",,float32,Y
+,hc_eps,参数,,double,Y
+output,grad_x,"[bs, seq_len, n, c]",,bfloat16,
+,grad_hc_fn,"[n * n + 2 * n, n * c]",,float32,
+,grad_hc_scale,[3],,float32,
+,grad_hc_base,[n * n + 2 * n],,float32,
+
