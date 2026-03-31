@@ -488,6 +488,9 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::MulLog
     const LocalTensor<float> &ubOutputF32Buffer, uint64_t mRealSize, const BasicBlockOffsetParam &offsetParam,
     uint64_t rlLoopIdx)
 {
+    if (mRealSize == 0) {
+        return;
+    }
     FrMulLogitsVf(static_cast<uint16_t>(mRealSize), CeilDivide(offsetParam.nL1Size, VEC_MAX_ELEM_B32),
                   (__ubuf__ float *)logits_.GetPhyAddr((rlLoopIdx & 1) * UB_BUFFER_INFO.logitsSingleBufferSize),
                   (__ubuf__ float *)ubOutputF32Buffer.GetPhyAddr());
@@ -508,6 +511,8 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Routin
     }
 
     AscendC::SetAtomicNone();
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID_BIAS_FR_MTE3_TO_V);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID_BIAS_FR_MTE3_TO_V);
 }
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -526,6 +531,9 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyRowIndexLogitsGmToUb(uint64_t mGmOffset, uint64_t mRealSize, uint64_t rlLoopIdx)
 {
+    if (mRealSize == 0) {
+        return;
+    }
     DataCopyPad2D(rowIndex_[(rlLoopIdx & 1) *
                                                   UB_BUFFER_INFO.rowIndexSingleBufferSize],
                   rowIndexGlobal_[mGmOffset], 1, mRealSize, mRealSize,
