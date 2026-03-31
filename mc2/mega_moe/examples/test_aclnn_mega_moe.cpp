@@ -23,7 +23,7 @@
 #include <iostream>
 #include <vector>
 #include "hccl/hccl.h"
-#include "/home/c00588804/0326/mega_moe/vendors/MEGA_transformer/op_api/include/aclnnop/aclnn_mega_moe.h"
+#include "mega_moe/vendors/MEGA_transformer/op_api/include/aclnnop/aclnn_mega_moe.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
