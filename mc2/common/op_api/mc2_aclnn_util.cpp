@@ -38,7 +38,14 @@ bool IsNeedScaleTrans(const aclTensor *mxScaleTensor)
 
 bool IsTensorContiguous(const aclTensor *tensor)
 {
+    OP_CHECK_NULL(tensor, return false);
+
     int dimNum = tensor->GetViewShape().GetDimNum();
+    if (dimNum <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Got a %d dimension tensor before contiguous check.", dimNum);
+        return false;
+    }
+    
     auto strides = tensor->GetViewStrides();
     auto shape = tensor->GetViewShape();
     int64_t expectedStride = 1;
