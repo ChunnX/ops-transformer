@@ -12,6 +12,7 @@ import torch_npu
 from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from typing import Optional
 
 
 class FlashAttnMetadataOpBuilder(OpBuilder):
@@ -26,7 +27,7 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return "npu_flash_attn_metadata(Tensor? actual_seq_lengths_q, Tensor? actual_seq_lengths_kv, " \
             "int num_heads_q, int num_heads_kv, int head_dim, int sparse_mode, " \
-            "*, int batch_size=0, int max_seqlen_q=0, int max_seqlen_kv=0) -> Tensor"
+            "*, int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None) -> Tensor"
 
     def register_meta(self):
         """
@@ -36,7 +37,9 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_flash_attn_metadata_meta(actual_seq_lengths_q, actual_seq_lengths_kv, 
                                          num_heads_q, num_heads_kv, head_dim, sparse_mode, 
-                                         batch_size=0, max_seqlen_q=0, max_seqlen_kv=0):
+                                         batch_size: Optional[int] = None, 
+                                         max_seqlen_q: Optional[int] = None, 
+                                         max_seqlen_kv: Optional[int] = None):
             return torch.empty((4096,), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
@@ -47,11 +50,17 @@ op_module = flash_attn_metadata_op_builder.load()
 @impl(AS_LIBRARY, flash_attn_metadata_op_builder.name, "PrivateUse1")
 def npu_flash_attn_metadata(actual_seq_lengths_q, actual_seq_lengths_kv, 
                             num_heads_q, num_heads_kv, head_dim, sparse_mode, *, 
-                            batch_size=0, max_seqlen_q=0, max_seqlen_kv=0):
+                            batch_size: Optional[int] = None, 
+                            max_seqlen_q: Optional[int] = None, 
+                            max_seqlen_kv: Optional[int] = None):
     """
     Dispatcher implementation for NPU.
     'PrivateUse1' is the dispatch key for custom NPU backends.
     """
+    batch_size_val = 0 if batch_size is None else batch_size
+    max_seqlen_q_val = 0 if max_seqlen_q is None else max_seqlen_q
+    max_seqlen_kv_val = 0 if max_seqlen_kv is None else max_seqlen_kv
+    
     return op_module.npu_flash_attn_metadata(actual_seq_lengths_q, actual_seq_lengths_kv, 
                                               num_heads_q, num_heads_kv, head_dim, sparse_mode, 
-                                              batch_size, max_seqlen_q, max_seqlen_kv)
+                                              batch_size_val, max_seqlen_q_val, max_seqlen_kv_val)
