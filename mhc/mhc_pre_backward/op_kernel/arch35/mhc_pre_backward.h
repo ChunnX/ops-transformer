@@ -44,6 +44,18 @@ __aicore__ inline T Min(T lhs, T rhs)
     return lhs < rhs ? lhs : rhs;
 }
 
+/**
+ * Get the size of vector registers in bytes
+ */
+__aicore__ inline constexpr uint16_t GetVRegSize()
+{
+#if __CCE_AICORE__ == 310
+    return AscendC::VECTOR_REG_WIDTH;
+#else
+    return 256U;
+#endif
+}
+
 using namespace matmul;
 using namespace AscendC;
 
@@ -340,6 +352,7 @@ private:
     uint32_t hFusionOffset_;
     uint32_t globalUbOffset_;
     uint32_t vecDealChunk_;
+    uint16_t eleNumPerVf_;
     DataCopyParams dataCopyParams_;
     DataCopyPadParams dataCopyPadParams_;
     bool alphaBufInitialized_;
@@ -390,6 +403,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = 1.0f / nD_;
+    eleNumPerVf_ = GetVRegSize() / sizeof(P);
 
     // 初始化WorkspaceBuffer接口（需要在coreNum_初始化之后）
     workspaceBuf_.Init(totalLength_, fusionSize_, vecCoreNum_);
