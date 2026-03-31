@@ -26,7 +26,7 @@ extern "C" __global__ __aicore__ void mega_moe(
 
   GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
   MegaMoe op;
-  op.Init(mc2Context, x, expertIdx, scales, xActiveMask, weight1, expertScales, weightScales1, weight2,
-    weightScales2, y, workspaceGM, &tilingData);
+
+  op.Init(mc2Context, x, expertIdx, weight1, weightScales1, weight2, weightScales2, expertScales, y, workspaceGM, &tilingData);
   op.Process();
 }

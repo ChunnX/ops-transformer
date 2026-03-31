@@ -19,7 +19,7 @@
 
 using namespace Ops::Transformer;
 using namespace op;
-
+using namespace Mc2MoeDistributeContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,8 +37,9 @@ extern aclnnStatus aclnnInnerMegaMoeGetWorkspaceSize(
                 const aclTensor* context, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
                 const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional, const aclTensor* weight1,
                 const aclTensor* weightscales1, const aclTensor* weight2,  const aclTensor* weightscales2,
-                int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
-                int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t combineQuantMode, const char* commAlg,
+                const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
+                int64_t maxRecvTokenNum, int64_t shareExpertNum, int64_t shareExpertRankNum, int64_t dispatchQuantMode,
+                int64_t dispatchQuantOutType ,int64_t combineQuantMode, const char* commAlg,
                 int64_t globalBs, aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 
@@ -48,27 +49,36 @@ extern aclnnStatus aclnnInnerMegaMoe(void* workspace, uint64_t workspaceSize,
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
-                const aclTensor* context, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
+                const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
                 const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional, const aclTensor* weight1,
                 const aclTensor* weightscales1, const aclTensor* weight2,  const aclTensor* weightscales2,
                 const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
-                int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t combineQuantMode, const char* commAlg,
+                int64_t maxRecvTokenNum, int64_t shareExpertNum, int64_t shareExpertRankNum, int64_t dispatchQuantMode,
+                int64_t dispatchQuantOutType, int64_t combineQuantMode, const char* commAlg,
                 int64_t globalBs, aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
-    if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
+
     aclnnStatus ret;
     aclTensor* mc2Context = nullptr;
     uint64_t hcclBuffSize = 0;
     const char* opName = "mega_moe";
-    auto ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+    ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+
+    OP_LOGD("GetMc2ContextTensor success.");
+
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
-                                        context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-                                        weight1, weightscales1, weight2, weightscales2, epWorldSize, epRankId,
-                                        moeExpertNum, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, combineQuantMode,
+                                        mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
+                                        weight1, weightscales1, weight2, weightscales2, groupEp, epWorldSize, epRankId,
+                                        moeExpertNum, cclBufferSize, maxRecvTokenNum, shareExpertNum, shareExpertRankNum,
+                                        dispatchQuantMode, dispatchQuantOutType, combineQuantMode,
                                         commAlg, globalBs, y, workspaceSize, executor);
+
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
+
+    OP_LOGD("aclnnInnerMegaMoeGetWorkspaceSize get workspaceSize");
 
     return getWorkspaceSizesRes;
 }
@@ -76,6 +86,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
 aclnnStatus aclnnMegaMoe(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_mega_moe start");
+
     return aclnnInnerMegaMoe(workspace, workspaceSize, executor, stream);
 }
 

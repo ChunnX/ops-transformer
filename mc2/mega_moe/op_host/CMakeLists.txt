@@ -35,6 +35,15 @@ if (BUILD_OPEN_PROJECT)  # custom
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend950")  # 考虑多版本兼容dump功能
         add_definitions(-DMC2_EXCEPTION_HANDLER)
+        add_ops_compile_options(
+            OP_NAME MegaMoe
+            OPTIONS --cce-auto-sync=off
+            OPTIONS -DCATLASS_ARCH_A5_ENABLED
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../catlass0120/include
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../moe_init_routing_v3/op_kernel/arch35
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../moe_finalize_routing_v2/op_kernel/arch35
+        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE mega_moe ACLNNTYPE aclnn_inner)
