@@ -54,4 +54,4 @@ const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *
         
     return std::tuple(outXGrad, outHcWeightGrad, outAlphaGrad, outBiasPostGrad, outGammaGrad);
 }
-} 
+}

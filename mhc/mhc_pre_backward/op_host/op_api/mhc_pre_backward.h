@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_GRAD_H
-#define OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_GRAD_H
+#ifndef OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_BACKWARD_H
+#define OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_BACKWARD_H
 
 #include "opdev/op_executor.h"
 #include "opdev/make_op_executor.h"
@@ -23,4 +23,4 @@ const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *
     aclOpExecutor *executor);
 }
 
-#endif // OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_GRAD_H
+#endif // OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_BACKWARD_H

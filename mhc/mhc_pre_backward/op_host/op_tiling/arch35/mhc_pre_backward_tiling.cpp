@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mainifold_constrained_hyper_connection_tiling.cpp
+ * \file mhc_pre_backward_tiling.cpp
  * \brief
  */
 
@@ -209,8 +209,11 @@ uint64_t MhcPreBackwardBaseTiling::CalculateWorkspaceSize(
                              totalLength;                          // inv_rms_grad
 
 
-    uint32_t v2Elements = 1024 * 128 * 24 * 2 +                 // x_rs_grad_mm
-                            1024 * 128 * 24 * 2 +               // x_rs
+    // uint32_t v2Elements = 1024 * 128 * 24 * 2 +                 // x_rs_grad_mm
+    //                         1024 * 128 * 24 * 2 +               // x_rs
+    //                         2 * 1024 * 1024;
+    uint32_t v2Elements = 1024 * 128 * coreNum * 2 +                 // x_rs_grad_mm
+                            1024 * 128 * coreNum * 2 +               // x_rs
                             2 * 1024 * 1024;
     uint64_t totalElements = ((v1Elements + 32 - 1) / 32 * 32) + v2Elements;
     return totalElements * elementSize;

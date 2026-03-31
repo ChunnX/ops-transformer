@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file chunk_gated_delta_rule_inverse_tiling.h
+ * \file mhc_pre_backward_tiling.h
  * \brief
  */
 #ifndef __OP_HOST_MHC_PRE_GRAD_H__

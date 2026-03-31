@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file chunk_gated_delta_rule_inverse.cc
+ * \file mhc_pre_backward_infershape.cpp
  * \brief
  */
 #include <map>
