@@ -46,4 +46,4 @@ y = kernel_gen_ops.transpose_v2(x, perm)
 
 - `perm` 仅支持 `[0,2,1]`、`[1,0,2]`（3D）与 `[0,2,1,3]`（4D）；其它排列 tiling 会失败。
 - FP16/BF16 与 FP32 走不同 tiling key；半精度可参考 `prepare_inputs.custom_check_precision` 放宽阈值。
-- `perm` 若需在 Host 侧解引用，须 **CPU contiguous**，与 `tips.md` 中 Host 读参约定一致。
+- `perm` 若需在 Host 侧解引用，须 **CPU contiguous**，与 `.codex/references/precision-debug.md`（§3 Host 读 NPU）约定一致。
