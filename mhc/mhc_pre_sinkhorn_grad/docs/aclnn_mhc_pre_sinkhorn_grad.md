@@ -2,67 +2,57 @@
 
 ## 产品支持情况
 
+
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 910B</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
+|<term>Ascend 950PR/Ascend 950DT</term> |      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
+
 ## 功能说明
 
-- 接口功能：MhcPreSinkhornGrad是MhcPreSinkhorn的反向算子。mHC（Manifold-Constrained Hyper-Connections）架构中的MhcPreSinkhorn算子对输入矩阵做sinkhorn变换得到双随机矩阵$H^{res}$，反向算子根据输出梯度和前向保存的中间结果计算输入和参数的梯度。
+- 接口功能：MhcPreSinkhornGrad是MhcPreSinkhorn的反向算子。计算对应的梯度反向传播。
 
 ## 计算公式
 
+### 第一部分计算H_res_grad
+设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{grad}_{\text{output}}$，共进行 $\mathbf{num\_iters}$ 次迭代。
+
+#### 前 $\mathbf{num\_iters} - 1$ 次迭代
+
+对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行：
+
+$$
+\begin{aligned}
+    \mathbf{dot\_prod}_{2i+1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{2i+1} \right) \\
+    \\
+    \mathbf{grad}_{\text{curr}} &\gets \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{2i+1}} { \mathbf{sum\_out}_{2i+1} }, \\
+    \\
+    \mathbf{dot\_prod}_{2i} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{num\_out}_{2i} \right), \\
+    \\
+    \mathbf{grad}_{\text{curr}}  &\gets  \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{2i}} { \mathbf{sum\_out}_{2i} }, \\
+\end{aligned}
+$$
+
+#### 最后一次迭代
+
+$$
+\begin{aligned}
+    \mathbf{dot\_prod}_{1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{1} \right), \\
+    \\
+    \mathbf{grad}_{\text{curr}} &\gets \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{1}} { \mathbf{sum\_out}_{1} }, \\
+    \\
+    \mathbf{dot\_prod}_{0} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{num\_out}_{0} \right), \\
+    \\
+    \mathbf{{H\_res\_grad}}  &\gets  \left( \mathbf{grad}_{\text{curr}} -  \mathbf{dot\_prod}_{0} \right) \cdot { \mathbf{norm\_out}_{0} }, \\
+\end{aligned}
+$$
 ### 输入
 
-- 算子输入
-
-  $x ∈ R[B,S,N,D]$
-
-  $phi ∈ R[ND,2N+N*N]$
-
-  $alpha ∈ R[3]$
-
-  $H\_in\_grad ∈ R[B,S,D]$ （输出梯度）
-
-  $H\_post\_grad ∈ R[B,S,N]$ （输出梯度）
-
-  $H\_res\_grad ∈ R[B,S,N,N]$ （输出梯度）
-
-  $gamma ∈ R[N, D]$
-
-  $hc\_eps$
-- 前向缓存张量
-
-  $inv\_rms ∈ R[B,S,1]$ （或 $R[B,S]$ ，需unsqueeze转 $R[B,S,1]$ ）
-
-  $H\_mix ∈ R[B,S,2N+N^2]$
-
-  $H\_pre∈ R[B,S,N]$
-
-  $H\_post∈ R[B,S,N]$
-- 重计算张量
-
-  $[H\_pre\_1,H\_post\_1,H\_res\_2] =  H\_mix * inv\_rms  ∈ R[B,S,N^2+2N]$
-- 张量切分
-
-  $[alpha\_{pre}, alpha\_{post},alpha\_{res}] = alpha ∈ R[3]$
-
-### 输出
-
-- 梯度输出：
-
-  $x\_{grad} ∈ R[B,S,N,D]$
-
-  $phi\_{grad} ∈ R[ND,2N+N^2]$
-
-  $alpha\_{scales\_grad} ∈ R[3]$ （ $alpha\_pre\_grad, alpha\_post\_grad, alpha\_res\_grad$ 拼接）
-
-  $bias\_{grad} ∈ R[2N+N^2]$ （ $bias\_pre\_grad, bias\_post\_grad, bias\_res\_grad$ 拼接）
 
   $gamma\_grad ∈ [N, D]$
 
@@ -132,7 +122,7 @@ $$
 
 $$
 \begin{aligned}
-H\_res\_2\_grad &= H\_res\_grad \\
+H\_res\_2\_grad &= H\_res\_grad \cdot \alpha_{res} \quad ([B,S,N,N]) \\
 \alpha\_res\_grad &= \sum_{b,s,i,j}^{B,S,N,N} \left(H\_res\_grad \cdot H\_res\_2\right) \\
 bias\_res\_grad &= \sum_{b,s}^{B,S} H\_res\_grad \quad ([N,N]) \\
 H\_res\_1\_grad &= \text{Reshape}(H\_res\_2\_grad) \quad ([B,S,N^2])
@@ -193,7 +183,8 @@ $$
 
 $$
 \begin{aligned}
-x\_grad\_mm &= x\_rs\_grad * gamma \\ngamma\_grad &= \sum_{b=1}^{B}\sum_{s=1}^{S} (x * x\_rs\_grad)\quad ([N,D])
+x\_grad\_mm &= x\_rs\_grad * gamma \\
+gamma\_grad &= \sum_{b=1}^{B}\sum_{s=1}^{S} (x * x\_rs\_grad)\quad ([N,D])
 \end{aligned}
 $$
 
@@ -215,50 +206,18 @@ x\_grad &= x\_grad\_vec3 + x\_grad\_vec1
 \end{aligned}
 $$
 
-### Sinkhorn变换反向计算
-
-设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{grad}_{\text{output}}$，共进行 $\mathbf{num\_iters}$ 次迭代。
-
-#### 前 $\mathbf{num\_iters} - 1$ 次迭代
-
-对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行：
-
-$$
-\begin{aligned}
-    \mathbf{dot\_prod}_{2i+1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{2i+1} \right) \\
-    \\
-    \mathbf{grad}_{\text{curr}} &\gets \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{2i+1}} { \mathbf{sum\_out}_{2i+1} }, \\
-    \\
-    \mathbf{dot\_prod}_{2i} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{2i} \right), \\
-    \\
-    \mathbf{grad}_{\text{curr}}  &\gets  \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{2i}} { \mathbf{sum\_out}_{2i} }, \\
-\end{aligned}
-$$
-
-#### 最后一次迭代
-
-$$
-\begin{aligned}
-    \mathbf{dot\_prod}_{1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{1} \right), \\
-    \\
-    \mathbf{grad}_{\text{curr}} &\gets \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{1}} { \mathbf{sum\_out}_{1} }, \\
-    \\
-    \mathbf{dot\_prod}_{0} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{0} \right), \\
-    \\
-    \mathbf{grad}_{\text{input}}  &\gets  \left( \mathbf{grad}_{\text{curr}} -  \mathbf{dot\_prod}_{0} \right) \cdot { \mathbf{norm\_out}_{0} }, \\
-\end{aligned}
-$$
-
-#### 符号说明
+### 符号说明
 
 | 符号 | 含义 |
 |------|------|
 | $\mathbf{grad}_{\text{curr}}$ | 当前梯度（迭代中间变量） |
 | $\mathbf{grad}_{\text{input}}$ | 最终输入梯度（输出） |
-| $\mathbf{norm\_out}_k$ | 第 $k$ 个归一化方向向量（对应 `norm_out[k]`） |
+| $\mathbf{num\_out}_k$ | 第 $k$ 个归一化方向向量（对应 `norm_out[k]`） |
 | $\mathbf{sum\_out}_k$ | 对应的缩放系数（对应 `sum_out[k]`） |
 | $\cdot$ | 点积（内积） |
 | $\sum_{\dim=d,\text{keepdim}=\text{True}}$ | 在指定维度上求和并保持维度 |
+
+
 
 ## 函数原型
 
@@ -266,23 +225,23 @@ $$
 
 ```c++
 aclnnStatus aclnnMhcPreSinkhornGradGetWorkspaceSize(
-    const aclTensor *gradY,
-    const aclTensor *gradPost,
-    const aclTensor *gradCombFrag,
+    const aclTensor *gradHin,
+    const aclTensor *gradHPost,
+    const aclTensor *gradHRes,
     const aclTensor *x,
-    const aclTensor *hcFn,
-    const aclTensor *hcScale,
-    const aclTensor *hcBase,
-    const aclTensor *pre,
+    const aclTensor *phi,
+    const aclTensor *alpha,
+    const aclTensor *bias,
+    const aclTensor *hPre,
     const aclTensor *hcBeforeNorm,
-    const aclTensor *rsqrt,
+    const aclTensor *invRms,
     const aclTensor *sumOut,
     const aclTensor *normOut,
     double hcEps,
     aclTensor *gradX,
-    aclTensor *gradHcFn,
-    aclTensor *gradHcScale,
-    aclTensor *gradHcBase,
+    aclTensor *gradPhi,
+    aclTensor *gradAlpha,
+    aclTensor *gradBias,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 ```
@@ -323,19 +282,19 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
         </tr></thead>
         <tbody>
         <tr>
-            <td>gradY</td>
+            <td>gradHin</td>
             <td>输入</td>
-            <td>输出y的梯度</td>
+            <td>输出h_in的梯度</td>
             <td>不支持空Tensor。</td>
             <td>BFLOAT16 </td>
             <td>ND</td>
-            <td>(B,S,C)</td>
+            <td>(B,S,D)</td>
             <td>√</td>
         </tr>
         <tr>
-            <td>gradPost</td>
+            <td>gradHPost</td>
             <td>输入</td>
-            <td>输出post的梯度</td>
+            <td>输出h_post的梯度</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
@@ -343,13 +302,13 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>gradCombFrag</td>
+            <td>gradHRes</td>
             <td>输入</td>
-            <td>输出comb_frag的梯度</td>
+            <td>输出h_res的梯度</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
-            <td>(B,S,N*N)</td>
+            <td>(B,S,N,N)</td>
             <td>√</td>
         </tr>
         <tr>
@@ -363,19 +322,19 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>hcFn</td>
+            <td>phi</td>
             <td>输入</td>
-            <td>前向参数hc_fn</td>
+            <td>前向参数phi</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
-            <td>(N*N+2*N, N*C)</td>
+            <td>(ND, 2N+N*N)</td>
             <td>√</td>
         </tr>
         <tr>
-            <td>hcScale</td>
+            <td>alpha</td>
             <td>输入</td>
-            <td>前向参数hc_scale</td>
+            <td>前向参数alpha</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
@@ -383,19 +342,19 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>hcBase</td>
+            <td>bias</td>
             <td>输入</td>
-            <td>前向参数hc_base</td>
+            <td>前向参数bias</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
-            <td>(N*N+2*N)</td>
+            <td>(2N+N^2)</td>
             <td>√</td>
         </tr>
         <tr>
-            <td>pre</td>
+            <td>hPre</td>
             <td>输入</td>
-            <td>前向保存的中间结果pre</td>
+            <td>前向保存的中间结果h_pre</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
@@ -413,9 +372,9 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>rsqrt</td>
+            <td>invRms</td>
             <td>输入</td>
-            <td>前向保存的中间结果rsqrt(1/r)</td>
+            <td>前向保存的中间结果inv_rms</td>
             <td>不支持空Tensor。</td>
             <td>FLOAT32 </td>
             <td>ND</td>
@@ -463,19 +422,19 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>gradHcFn</td>
+            <td>gradPhi</td>
             <td>输出</td>
-            <td>参数hc_fn的梯度</td>
+            <td>参数phi的梯度</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
-            <td>(N*N+2*N, N*C)</td>
+            <td>(2N+N^2, ND)</td>
             <td>-</td>
         </tr>
         <tr>
-            <td>gradHcScale</td>
+            <td>gradAlpha</td>
             <td>输出</td>
-            <td>参数hc_scale的梯度</td>
+            <td>参数alpha的梯度</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -483,13 +442,13 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>gradHcBase</td>
+            <td>gradBias</td>
             <td>输出</td>
-            <td>参数hc_base的梯度</td>
+            <td>参数bias的梯度</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
-            <td>(N*N+2*N)</td>
+            <td>(2N+N^2)</td>
             <td>-</td>
         </tr>
         </tbody>
@@ -579,21 +538,16 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
 
 - aclnnMhcPreSinkhornGrad默认确定性实现。
 
-### 公共约束
-
-- 入参为空的场景处理：gradY、x、hcFn等输入参数不能为空Tensor，否则返回失败。
-
 ### 规格约束
 
 | 规格项 | 规格 | 规格说明 |
 |:--- |:--- |:--- |
-| sk_iter_count | 1~100 | Sinkhorn迭代次数超出该范围会返回参数无效错误。 |
-| N | 4、6、8 | 输入Tensor中N维度的大小仅支持这三个值。 |
-| 维度数 | 3/4 | 输入gradY支持3维(B,S,C)，输入x支持4维(B,S,N,C)。 |
+| sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
+| N | 4 | 输入Tensor中N维度的大小仅支持4。 |
 
 ## 调用示例
 
-PTA调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>
