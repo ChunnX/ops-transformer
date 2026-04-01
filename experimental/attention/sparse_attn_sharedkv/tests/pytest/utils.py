@@ -41,6 +41,32 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         df = pd.read_excel(excel_file_path, sheet_name=sheetname)
         df = df.replace({np.nan: None, pd.NA: None})
 
+        # 处理可能为空的列
+        default_None_columns = ["K1", "cu_seqlens_ori_kv","cu_seqlens_cmp_kv"]
+        for key in default_None_columns:
+            if key not in df.columns:
+                df[key] = None
+        
+        if "actlen_mode" not in df.columns:
+            df["actlen_mode"] = 'full'
+
+        if "testcase_name" not in df.columns:
+            # 生成用例名称
+            cols_to_combine = [
+                "template_mode",
+                "B",
+                "S1",
+                "S2",
+                "N1",
+                "N2",
+                "K1",
+                "K",
+                "layout_q",
+                "layout_kv",
+            ]
+            
+            df["testcase_name"] = df[cols_to_combine].astype(str).agg("_".join, axis=1)
+
         # 定义必需的列名
         required_columns = [
             "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K1", "K",
@@ -56,6 +82,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         test_cases = []
         for _, row in df.iterrows():
             test_cases.append(row.to_dict())
+        
+        print(test_cases)
 
         return test_cases
 
