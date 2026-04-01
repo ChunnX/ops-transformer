@@ -28,33 +28,35 @@ using namespace SASKernel;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t * actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *actualSeqKvlenAddr)
 {
     int32_t actualS1Size = 0;
     int32_t actualS2Size = 0;
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
-    int32_t sIdx = runParam.boIdx;
+    int32_t bIdx = runParam.boIdx;
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
         // actual seq length first
-        actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[sIdx + 1] - cuSeqlensQAddr[sIdx]) :
-            actualSeqQlenAddr[sIdx];
+        actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[bIdx + 1] - cuSeqlensQAddr[bIdx]) :
+            actualSeqQlenAddr[bIdx];
     } else {
         actualS1Size = (actualSeqQlenAddr == nullptr) ? constInfo.s1Size :
-            actualSeqQlenAddr[sIdx];
+            actualSeqQlenAddr[bIdx];
     }
 
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = constInfo.s2Size;
     } else {
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-            actualS2Size = actualSeqKvlenAddr[sIdx];
-            if ((sIdx > 0) && (!IS_PA)) {
-                actualS2Size -= actualSeqKvlenAddr[sIdx - 1];
+        if constexpr (IS_PA) {
+            if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+                actualS2Size = actualSeqKvlenAddr[bIdx];
+            } else {
+                actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
+                    actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx];
             }
         } else {
-            actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
-                actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
+            actualS2Size = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
         }
     }
 
@@ -79,9 +81,11 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *actualSeqKvlenAddr)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, actualSeqQlenAddr, actualSeqKvlenAddr);
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, cuSeqlensOriKvAddr, actualSeqQlenAddr,
+        actualSeqKvlenAddr);
 }
 
 TEMPLATE_INTF

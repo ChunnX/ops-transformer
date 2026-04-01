@@ -33,6 +33,7 @@ result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx')
 for params in ENABLED_PARAMS:
     # 确保所有参数都存在，缺失的用默认值填充
     param_values = {
+        "testcase_name": params.get("testcase_name", [None]),
         "layout_q": params.get("layout_q"),
         "layout_kv": params.get("layout_kv"),
         "q_type": params.get("q_type"),
@@ -54,6 +55,8 @@ for params in ENABLED_PARAMS:
         "block_size2": params.get("block_size2", [None]),
         "seqused_q": params.get("seqused_q", [None]),
         "cu_seqlens_q": params.get("cu_seqlens_q", [None]),
+        "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", [None]),
+        "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv", [None]),
         "seqused_kv": params.get("seqused_kv", [None]),
         "softmax_scale": params.get("softmax_scale"),
         "cmp_ratio": params.get("cmp_ratio", [None]),
@@ -77,6 +80,7 @@ for params in ENABLED_PARAMS:
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
+    testcase_name = param_combinations['testcase_name'] if param_combinations['testcase_name'] is not None else "case_" + str(int(time.time() * 1000000))
     layout_q = param_combinations['layout_q']
     layout_kv = param_combinations['layout_kv']
     q_type = param_combinations['q_type']
@@ -97,6 +101,8 @@ def test_example(param_combinations):
     block_size1 = param_combinations['block_size1']
     block_size2 = param_combinations['block_size2']
     cu_seqlens_q = param_combinations['cu_seqlens_q']
+    cu_seqlens_ori_kv = param_combinations['cu_seqlens_ori_kv']
+    cu_seqlens_cmp_kv = param_combinations['cu_seqlens_cmp_kv']
     seqused_q = param_combinations['seqused_q']
     seqused_kv = param_combinations['seqused_kv']
     softmax_scale = param_combinations['softmax_scale']
@@ -110,14 +116,13 @@ def test_example(param_combinations):
     cmp_kv_datarange = [-10, 10]
     ori_kv_topk_mode = param_combinations['ori_kv_topk_mode']
     cmp_kv_topk_mode = param_combinations['cmp_kv_topk_mode']
-    testcase_name = "case_" + str(int(time.time() * 1000000))
 
     torch_npu.npu.set_device(0)
     # 增加参数请在最后增加，保证结果统计
-    test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1, \
-                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
-                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode
+    test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1,   \
+                block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, \
+                softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2,\
+                q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_attn_sharedkv_golden.gen_data(test_data)
