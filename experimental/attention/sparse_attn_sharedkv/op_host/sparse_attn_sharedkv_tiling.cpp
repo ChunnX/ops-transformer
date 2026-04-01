@@ -1460,8 +1460,10 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
 
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950) {
-        if (tilingInfo->gSize > 64 || tilingInfo->perfMode == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
-            tilingInfo->perfMode == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        if (tilingInfo->gSize > 64 || 
+            tilingInfo->perfMode == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
+            tilingInfo->perfMode == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || 
+            tilingInfo->perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE) {
             constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
             constexpr uint32_t S2_BASE_SIZE = 128;
             constexpr uint32_t D_SIZE = 512;
@@ -1490,6 +1492,7 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
             workspaceSize += 4 * 128 * 4 * (2 * aicNum); // 4:缓存有效mte2 size长度 128:份数 4:512B对齐长度 2:aiv数量
         }
     }
+    // workspaceSize = 180 * 1024 * 1024;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

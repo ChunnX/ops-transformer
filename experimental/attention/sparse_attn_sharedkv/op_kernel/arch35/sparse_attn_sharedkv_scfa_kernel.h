@@ -222,7 +222,8 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         bmm1Buffers.Get().SetCrossCore();
     }
     if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
-        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
         int64_t totalOffset;
         if constexpr (IS_SPLIT_G) {
@@ -413,7 +414,9 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
-                    TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+                    TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE ||
+                    TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE 
+                    ) {
                     if (notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
@@ -452,49 +455,50 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                             this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                         }
                     }
-                } else if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-                    if (notLastTwoLoop) {
-                        RunInfo &runInfo0 = runInfo[taskId % 3];
-                        this->SetRunInfo(runInfo0, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                    }
-                    if (taskId > 0 && notLast) {
-                        RunInfo &runInfo1 = runInfo[(taskId + 2) % 3];
-                        if ASCEND_IS_AIC {
-                            this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1RightBuffers.Get((taskId + 2) % 3),
-                                v0ResGmBuffers.Get(), runInfo1, this->constInfo);
-                        } else {
-                            this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo1,
-                                this->constInfo);
-                        }
-                    }
-                    if (notLastTwoLoop) {
-                        RunInfo &runInfo0 = runInfo[taskId % 3];
-                        if ASCEND_IS_AIC {
-                            this->cubeBlock.MergeKv(this->l1RightBuffers.Get(taskId % 3), runInfo0, this->constInfo, 0);
-                        } else {
-                            this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(taskId % 3), v0ResGmBuffers.Get(),
-                                runInfo0, this->constInfo, 32);
-                        }
-                    }
-                    if (taskId > 1) {
-                        RunInfo &runInfo2 = runInfo[(taskId + 1) % 3];
-                        if ASCEND_IS_AIC {
-                            this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
-                                this->l1RightBuffers.Get((taskId + 1) % 3), runInfo2, this->constInfo);
-                        } else {
-                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo2, this->constInfo);
-                        }
-                    }
-                    if (notLastTwoLoop) {
-                        RunInfo &runInfo0 = runInfo[taskId % 3];
-                        if ASCEND_IS_AIC {
-                            this->cubeBlock.MergeKv(this->l1RightBuffers.Get(taskId % 3), runInfo0, this->constInfo, 16);
-                        } else {
-                            this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(taskId % 3), v0ResGmBuffers.GetReused(),
-                                runInfo0, this->constInfo, 80);
-                        }
-                    }
-                }
+                } 
+                // else if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+                //     if (notLastTwoLoop) {
+                //         RunInfo &runInfo0 = runInfo[taskId % 3];
+                //         this->SetRunInfo(runInfo0, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                //         if ASCEND_IS_AIC {
+                //             this->cubeBlock.MergeKv(this->l1RightBuffers.Get(), runInfo0, this->constInfo, 0);
+                //         } else {
+                //             this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
+                //                 runInfo0, this->constInfo, 32);
+                //         }
+                //     }
+                //     if (taskId > 0 && notLast) {
+                //         RunInfo &runInfo1 = runInfo[(taskId + 2) % 3];
+                //         if ASCEND_IS_AIC {
+                //             // this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1RightBuffers.Get((taskId + 2) % 3),
+                //             //     v0ResGmBuffers.Get(), runInfo1, this->constInfo);
+                //             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
+                //                                         this->l1RightBuffers.GetReused(),
+                //                                         v0ResGmBuffers.Get(), runInfo1, this->constInfo);
+                //         } else {
+                //             this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo1,
+                //                 this->constInfo);
+                //         }
+                //     }
+                //     if (taskId > 1) {
+                //         RunInfo &runInfo2 = runInfo[(taskId + 1) % 3];
+                //         if ASCEND_IS_AIC {
+                //             this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
+                //                 this->l1RightBuffers.Get((taskId + 1) % 3), runInfo2, this->constInfo);
+                //         } else {
+                //             this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo2, this->constInfo);
+                //         }
+                //     }
+                //     // if (notLastTwoLoop) {
+                //     //     RunInfo &runInfo0 = runInfo[taskId % 3];
+                //     //     if ASCEND_IS_AIC {
+                //     //         this->cubeBlock.MergeKv(this->l1RightBuffers.Get(taskId % 3), runInfo0, this->constInfo, 16);
+                //     //     } else {
+                //     //         this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(taskId % 3), v0ResGmBuffers.GetReused(),
+                //     //             runInfo0, this->constInfo, 80);
+                //     //     }
+                //     // }
+                // }
                 ++taskId;
             }
             ++multiCoreInnerIdx;
