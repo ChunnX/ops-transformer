@@ -144,7 +144,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, headNum, seqQuery+seqEncoderQuery, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>gradKeyOutput</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, headNum, seqKey+seqEncoderKey, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>gradValueOutput</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, headNum, seqValue+seqEncoderValue, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>query</td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, seqQuery, headNum, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>key</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, seqKey, headNum,headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>encoderQuery</td>
@@ -194,7 +194,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, seqEncoderQuery, headNum, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>encoderKey</td>
@@ -204,7 +204,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[batch, seqEncoderKey, headNum, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normQueryWeight</td>
@@ -214,7 +214,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normQueryMean</td>
@@ -224,7 +224,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqQuery, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normQueryRstd</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqQuery, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normKeyWeight</td>
@@ -244,7 +244,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normKeyMean</td>
@@ -254,7 +254,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqKey, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normKeyRstd</td>
@@ -264,7 +264,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqKey, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normAddQueryWeight</td>
@@ -274,7 +274,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normAddQueryMean</td>
@@ -284,7 +284,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqEncoderQuery, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normAddQueryRstd</td>
@@ -294,7 +294,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqEncoderQuery, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normAddKeyWeight</td>
@@ -304,7 +304,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normAddKeyMean</td>
@@ -314,7 +314,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqEncoderKey, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normAddKeyRstd</td>
@@ -324,7 +324,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32</td>
           <td>ND</td>
           <td>[batch, seqEncoderKey, headNum, 1]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>ropeSin</td>
@@ -334,7 +334,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[seqRope, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>ropeCos</td>
@@ -344,7 +344,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>FLOAT32、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>[seqRope, headDim]</td>
-          <td>x</td>
+          <td>√</td>
       </tr>
       <tr>
           <td>normType</td>
