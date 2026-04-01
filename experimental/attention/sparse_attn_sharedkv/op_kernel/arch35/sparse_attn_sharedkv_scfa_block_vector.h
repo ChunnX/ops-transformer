@@ -51,13 +51,20 @@ public:
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseAttnSharedkvTilingData *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, 
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedKv)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             tilingData = tiling;
             if (cuSeqlensQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+            }
+            if (cuSeqlensOriKv != nullptr) {
+                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+            }
+            if (cuSeqlensCmpKv != nullptr) {
+                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
             }
             if (sequsedKv != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
@@ -123,6 +130,7 @@ private:
     GlobalTensor<KV_T> oriKVGm;
     GlobalTensor<KV_T> cmpKVGm;
     GlobalTensor<KV_T> keyGm;
+    GlobalTensor<int32_t> cuSeqlensKvGm;
     GlobalTensor<int32_t> oriSparseIndicesGm;
     GlobalTensor<int32_t> cmpSparseIndicesGm;
     GlobalTensor<int32_t> sparseIndicesGm;
@@ -131,6 +139,8 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<T> sinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
+    GlobalTensor<int32_t> cuSeqlensOriKvGm;
+    GlobalTensor<int32_t> cuSeqlensCmpKvGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
 
     TBuf<> commonTBuf; // common的复用空间
@@ -211,11 +221,15 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Id
             static_cast<int64_t>(blockSize) * constInfo.dSizeVInput +
             blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else {
-        if (runInfo.isCmp) {
-            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
-                runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
-        } else {
-            realkeyOffset = runInfo.boIdx * constInfo.n2S2Dv + runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSize; // BSN(1)D
+        if (LAYOUT_T == SAS_LAYOUT::BSND) {
+            if (runInfo.isCmp) {
+                realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
+                    runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
+            } else {
+                realkeyOffset = runInfo.boIdx * constInfo.n2S2Dv + runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSize; // BSN(1)D
+            }
+        } else if (LAYOUT_T == SAS_LAYOUT::TND) {
+            realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) * constInfo.n2Size + runInfo.n2oIdx + s2Idx) * constInfo.dSize; // TN(1)D
         }
     }
     return realkeyOffset;
@@ -353,9 +367,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (runInfo.isCmp) {
             keyGm = cmpKVGm;
+            cuSeqlensKvGm = cuSeqlensCmpKvGm;
             sparseIndicesGm = cmpSparseIndicesGm;
         } else {
             keyGm = oriKVGm;
+            cuSeqlensKvGm = cuSeqlensOriKvGm;
             sparseIndicesGm = oriSparseIndicesGm;
         }
         if constexpr (IS_PA) {
@@ -792,6 +808,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
         int64_t s2Size;
         if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BNBD) {
             s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+        } else if (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+            s2Size = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
         } else {
             s2Size = sharedParams.s2Size;
         }
@@ -837,7 +855,8 @@ public:
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseAttnSharedkvTilingData *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
 };
 }

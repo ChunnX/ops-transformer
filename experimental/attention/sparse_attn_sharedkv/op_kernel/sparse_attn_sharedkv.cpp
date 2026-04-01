@@ -39,8 +39,8 @@ using namespace SASKernel;
             SASKernel::SCFABlockVecDummy<__VA_ARGS__>, SASKernel::SCFABlockVec<__VA_ARGS__>>::type;    \
         templateClass<CubeBlockType, VecBlockType> op;                                                 \
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, \
-                cuSeqlensQ, seqUsedQ, seqUsedKV, oriTopkLength, cmpTopkLength, sinks, metadata,        \
-                attentionOut, user, nullptr, &tPipe);                                                  \
+                cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedKV, oriTopkLength,        \
+                cmpTopkLength, sinks, metadata, attentionOut, user, nullptr, &tPipe);                  \
         op.Process();                                                                                  \
     } while (0)
 #else
@@ -54,8 +54,8 @@ using namespace SASKernel;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                            \
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                                  \
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, \
-                cuSeqlensQ, seqUsedQ, seqUsedKV, oriTopkLength, cmpTopkLength, sinks, metadata,        \
-                attentionOut, user, tilingData, &tPipe);                                               \
+                cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedKV, oriTopkLength,        \
+                cmpTopkLength, sinks, metadata, attentionOut, user, tilingData, &tPipe);               \
         op.Process();                                                                                  \
     } while (0)
 #endif
