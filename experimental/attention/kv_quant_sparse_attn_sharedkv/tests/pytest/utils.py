@@ -58,7 +58,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
+            "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K1", "K2",
             "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
             "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim", "template_run_mode",
             "actlen_mode", "S1EQS2"
@@ -160,10 +160,10 @@ def combin_params(ENABLED_PARAMS, pytest_paramset=True):
                 input_params["param_template_run_mode"] = input_params["param_template_run_mode"][0].split(',')
 
         param_names = [
-            "Testcase_Prefix", "Testcase_Number", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
+            "Testcase_Prefix", "Testcase_Number", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K1", "K2",
             "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "seqused_kv", "softmax_scale", "cmp_ratio",
             "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
-            "ori_kv_topk_mode", "cmp_kv_topk_mode", "topk_value_mode", "sparse_indices_mode", "template_run_mode", "actlen_mode","S1EQS2"
+            "ori_kv_topk_mode", "cmp_kv_topk_mode", "topk_value_mode", "ori_sparse_indices_mode", "cmp_sparse_indices_mode", "template_run_mode", "actlen_mode","S1EQS2"
         ]
 
         param_values = [
@@ -202,7 +202,8 @@ def combin_params(ENABLED_PARAMS, pytest_paramset=True):
             input_params.get("param_ori_kv_topk_mode", ["no"]),
             input_params.get("param_cmp_kv_topk_mode", ["no"]),
             input_params.get("param_topk_value_mode", [2]),
-            input_params.get("param_sparse_indices_mode", [None]),
+            input_params.get("param_ori_sparse_indices_mode", [None]),
+            input_params.get("param_cmp_sparse_indices_mode", [None]),
             input_params["param_template_run_mode"],
             input_params["param_actlen_mode"],
             input_params["param_S1EQS2"],
@@ -252,7 +253,8 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     ori_kv_topk_mode = param_combination['ori_kv_topk_mode']
     cmp_kv_topk_mode = param_combination['cmp_kv_topk_mode']
     topk_value_mode = param_combination.get('topk_value_mode') or 1
-    sparse_indices_mode = param_combination['sparse_indices_mode']
+    ori_sparse_indices_mode = param_combination['ori_sparse_indices_mode']
+    cmp_sparse_indices_mode = param_combination['cmp_sparse_indices_mode']
     template_run_mode = param_combination['template_run_mode']
     actlen_mode = param_combination['actlen_mode']
     S1EQS2 = param_combination['S1EQS2']
@@ -262,7 +264,7 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     if q_type == torch.float16:
         q_type_str = "FP16"
 
-    Testcase_Name = f"{Testcase_Prefix}_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{Testcase_Number:06d}"
+    Testcase_Name = f"{Testcase_Prefix}_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{rope_head_dim}_{Testcase_Number:06d}"
 
     # 生成actLen
     QS = [0]
@@ -319,7 +321,8 @@ def sas(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
 
     params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, T3, N1, N2, D, K1, K2, block_num1, \
                 block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
-                cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_kv_topk_mode, cmp_kv_topk_mode, sparse_indices_mode, topk_value_mode, template_run_mode
+                cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, ori_kv_topk_mode, cmp_kv_topk_mode, \
+                ori_sparse_indices_mode, cmp_sparse_indices_mode, topk_value_mode, template_run_mode
 
     # 输入参数的合法性校验
     try:
