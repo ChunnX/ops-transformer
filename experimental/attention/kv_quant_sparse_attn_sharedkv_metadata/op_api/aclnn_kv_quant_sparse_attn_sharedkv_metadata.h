@@ -30,14 +30,6 @@ aclnnStatus aclnnKvQuantSparseAttnSharedkvMetadataGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-int64_t GetQueryBatchSize(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                          char* layoutQOptional, int64_t batchSizeOptional);
-
-__attribute__((visibility("default"))) 
-int64_t GetKvBatchSize(const aclTensor* sequsedKvOptional, const aclTensor* cuSeqLensOriKvOptional, 
-                       char* layoutKvOptional, int64_t batchSizeOptional);
-
-__attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamN64(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                 int64_t numHeadsKv, int64_t oriMaskMode_, int64_t winLeft_, char* layoutQOptional, 
                                 char* layoutKvOptional);
