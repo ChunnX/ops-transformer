@@ -48,15 +48,15 @@ private:
     __aicore__ inline void CalcSoftmaxBackward(__local_mem__ float *gradYAddr, __local_mem__ float *normAddr,
                                                __local_mem__ float *sumAddr, __local_mem__ float *gradInputAddr,
                                                __local_mem__ uint32_t *maskAddr, __local_mem__ float *maxAddr,
-                                               uint32_t dataLen, uint32_t n, float eps);
+                                               uint32_t dataLen, uint32_t n);
     __aicore__ inline void CalcColBackward(__local_mem__ float *gradYAddr, __local_mem__ float *normAddr,
                                            __local_mem__ float *sumAddr, __local_mem__ float *gradInputAddr,
                                            __local_mem__ uint32_t *maskAddr, __local_mem__ float *maxAddr,
-                                           uint32_t dataLen, uint32_t n, float eps);
+                                           uint32_t dataLen, uint32_t n);
     __aicore__ inline void CalcRowBackward(__local_mem__ float *gradYAddr, __local_mem__ float *normAddr,
                                            __local_mem__ float *sumAddr, __local_mem__ float *gradInputAddr,
                                            __local_mem__ uint32_t *maskAddr, __local_mem__ float *maxAddr,
-                                           uint32_t dataLen, uint32_t n, float eps);
+                                           uint32_t dataLen, uint32_t n);
 
     GlobalTensor<float> gradY_;
     GlobalTensor<float> norm_;
@@ -99,6 +99,180 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Init(GM_ADDR gradY, GM_ADDR norm
         loop_ = tilingData_.tailCoreLoops;
         loopTSize_ = tilingData_.tailCorePerLoopTSize;
         tailloopTSize_ = tilingData_.tailCoreLastLoopTSize;
+    }
+}
+
+__aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(__local_mem__ float *gradYAddr,
+                                                                 __local_mem__ float *normAddr,
+                                                                 __local_mem__ float *sumAddr,
+                                                                 __local_mem__ float *gradInputAddr,
+                                                                 __local_mem__ uint32_t *maskAddr,
+                                                                 __local_mem__ float *maxAddr,
+                                                                 uint32_t dataLen, uint32_t n)
+{
+    __VEC_SCOPE__
+    {
+        MicroAPI::MaskReg maskReg = MicroAPI::CreateMask<uint32_t>();
+        MicroAPI::LoadAlign(maskReg, maskAddr);
+
+        MicroAPI::RegTensor<float> gradYReg;
+        MicroAPI::RegTensor<float> normReg;
+        MicroAPI::RegTensor<float> sumReg;
+        MicroAPI::RegTensor<float> gradInputReg;
+        MicroAPI::RegTensor<float> sumGradYReg;
+        MicroAPI::RegTensor<int32_t> indexReg;
+        MicroAPI::RegTensor<int32_t> orderReg;
+        MicroAPI::RegTensor<int32_t> duplicateReg1;
+        MicroAPI::RegTensor<int32_t> duplicateReg2;
+        MicroAPI::RegTensor<int32_t> tmpReg1;
+        MicroAPI::RegTensor<int32_t> tmpReg2;
+        MicroAPI::RegTensor<int32_t> tmpReg3;
+        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(dataLen);
+
+        // 生成索引 indexReg
+        MicroAPI::Duplicate(duplicateReg1, INDEX_BLOCK_LEN); // 填充 8
+        MicroAPI::Duplicate(duplicateReg2, static_cast<int32_t>(n * n)); // 填充：n*n
+        MicroAPI::Arange(orderReg, static_cast<int32_t>(0)); // 生成索引 以0为起始值
+        MicroAPI::Div(tmpReg1, orderReg, duplicateReg1, maskReg); // orderReg ÷ 8 -> temp1
+        MicroAPI::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg); // temp1 * 8 -> temp2
+        MicroAPI::Sub(tmpReg2, orderReg, tmpReg2, maskReg); // orderReg - temp2 -> temp2
+        MicroAPI::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg); // temp1 * n*n -> temp3
+        MicroAPI::Add(indexReg, tmpReg2, tmpReg3, maskReg); // temp2 + temp3 -> indexReg
+
+        MicroAPI::DataCopyGather(gradYReg, gradYAddr, (MicroAPI::RegTensor<uint32_t> &)(indexReg), maskReg); // 根据索引位置将输入gradYAddr对应元素搬入gradYReg
+        // norm 和 sum 直接搬运？搬运多少数据量？
+        MicroAPI::LoadAlign(normReg, normAddr + );
+        MicroAPI::LoadAlign(sumReg, sumAddr + );
+        
+        MicroAPI::Mul(gradInputReg, gradYReg, normReg, maskReg);
+        MicroAPI::ReduceSumWithDataBlock(sumGradYReg, gradInputReg, maskReg);
+
+        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(maxAddr, sumGradYReg, dataCopyMaskReg);
+        MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(sumGradYReg, maxAddr);
+
+        MicroAPI::Sub(gradInputReg, gradYReg, sumGradYReg, maskReg);
+        MicroAPI::Div(gradInputReg, gradInputReg, sumReg, maskReg);
+
+        MicroAPI::DataCopyScatter(gradInputAddr, gradInputReg, (MicroAPI::RegTensor<uint32_t> &)(indexReg), maskReg);
+    }
+}
+
+
+__aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(__local_mem__ float *gradYAddr,
+                                                                 __local_mem__ float *normAddr,
+                                                                 __local_mem__ float *sumAddr,
+                                                                 __local_mem__ float *gradInputAddr,
+                                                                 __local_mem__ uint32_t *maskAddr,
+                                                                 __local_mem__ float *maxAddr,
+                                                                 uint32_t dataLen, uint32_t n)
+{
+    __VEC_SCOPE__
+    {
+        MicroAPI::MaskReg maskReg = MicroAPI::CreateMask<uint32_t>();
+        MicroAPI::LoadAlign(maskReg, maskAddr);
+
+        MicroAPI::RegTensor<float> gradYReg;
+        MicroAPI::RegTensor<float> normReg;
+        MicroAPI::RegTensor<float> sumReg;
+        MicroAPI::RegTensor<float> gradInputReg;
+        MicroAPI::RegTensor<float> sumGradYReg;
+        MicroAPI::RegTensor<int32_t> indexReg;
+        MicroAPI::RegTensor<int32_t> orderReg;
+        MicroAPI::RegTensor<int32_t> duplicateReg1;
+        MicroAPI::RegTensor<int32_t> duplicateReg2;
+        MicroAPI::RegTensor<int32_t> tmpReg1;
+        MicroAPI::RegTensor<int32_t> tmpReg2;
+        MicroAPI::RegTensor<int32_t> tmpReg3;
+        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(dataLen);
+
+        // 生成索引 indexReg
+        MicroAPI::Duplicate(duplicateReg1, INDEX_BLOCK_LEN); // 填充 8
+        MicroAPI::Duplicate(duplicateReg2, static_cast<int32_t>(n * n)); // 填充：n*n
+        MicroAPI::Arange(orderReg, static_cast<int32_t>(0)); // 生成索引 以0为起始值
+        MicroAPI::Div(tmpReg1, orderReg, duplicateReg1, maskReg); // orderReg ÷ 8 -> temp1
+        MicroAPI::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg); // temp1 * 8 -> temp2
+        MicroAPI::Sub(tmpReg2, orderReg, tmpReg2, maskReg); // orderReg - temp2 -> temp2
+        MicroAPI::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg); // temp1 * n*n -> temp3
+        MicroAPI::Add(indexReg, tmpReg2, tmpReg3, maskReg); // temp2 + temp3 -> indexReg
+
+        MicroAPI::DataCopyGather(gradYReg, gradYAddr, (MicroAPI::RegTensor<uint32_t> &)(indexReg), maskReg); // 根据索引位置将输入gradYAddr对应元素搬入gradYReg
+        // norm 和 sum 直接搬运？搬运多少数据量？
+        MicroAPI::LoadAlign(normReg, normAddr + );
+        MicroAPI::LoadAlign(sumReg, sumAddr + );
+        
+        MicroAPI::Mul(gradInputReg, gradYReg, normReg, maskReg);
+        MicroAPI::ReduceSumWithDataBlock(sumGradYReg, gradInputReg, maskReg);
+
+        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(maxAddr, sumGradYReg, dataCopyMaskReg);
+        MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(sumGradYReg, maxAddr);
+
+        MicroAPI::Sub(gradInputReg, gradYReg, sumGradYReg, maskReg);
+        MicroAPI::Div(gradInputReg, gradInputReg, sumReg, maskReg);
+
+        MicroAPI::DataCopyScatter(gradInputAddr, gradInputReg, (MicroAPI::RegTensor<uint32_t> &)(indexReg), maskReg);
+    }
+}
+
+__aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(__local_mem__ float *gradYAddr, 
+                                                                    __local_mem__ float *normAddr,
+                                                                    __local_mem__ float *sumAddr,
+                                                                    __local_mem__ float *gradInputAddr,
+                                                                    __local_mem__ uint32_t *maskAddr, 
+                                                                    __local_mem__ float *maxAddr,
+                                                                    uint32_t dataLen, uint32_t n)
+{
+    __VEC_SCOPE__
+    {
+        MicroAPI::MaskReg maskReg = MicroAPI::CreateMask<uint32_t>();
+        MicroAPI::LoadAlign(maskReg, maskAddr);
+
+        MicroAPI::RegTensor<float> gradYReg; 
+        MicroAPI::RegTensor<float> normReg;   
+        MicroAPI::RegTensor<float> mulResultReg;    
+        MicroAPI::RegTensor<float> dotProdReg;
+        MicroAPI::RegTensor<float> subResultReg;
+        MicroAPI::RegTensor<float> gradInputReg;
+
+        MicroAPI::RegTensor<int32_t> indexReg;
+        MicroAPI::RegTensor<int32_t> orderReg; 
+
+        MicroAPI::RegTensor<int32_t> duplicateReg1;
+        MicroAPI::RegTensor<int32_t> duplicateReg2;
+
+        MicroAPI::RegTensor<int32_t> tmpReg1;
+        MicroAPI::RegTensor<int32_t> tmpReg2;
+        MicroAPI::RegTensor<int32_t> tmpReg3;
+        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(dataLen);
+
+        // indexReg：使用DataCopyGather生成制定索引
+        MicroAPI::Duplicate(duplicateReg1, static_cast<int32_t>(INDEX_BLOCK_LEN));  // 填充8,以8个float数为一个block
+        MicroAPI::Duplicate(duplicateReg2, static_cast<int32_t>(n * n));    // 填充n*n
+        MicroAPI::Arange(orderReg, static_cast<int32_t>(0));    // orderReg：生成顺序索引:0,1,2,3,...
+        MicroAPI::Div(tmpReg1, orderReg, duplicateReg1, maskReg);   // tmpReg1:标识每一个数属于哪一个block
+        MicroAPI::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg);    // tmpReg2:过渡
+        MicroAPI::Sub(tmpReg2, orderReg, tmpReg2, maskReg); // tmpReg2:标识每一个数在block块内的相对索引
+        MicroAPI::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg);   //tmpReg3:标识每一个数所在块的起始索引
+        MicroAPI::Add(indexReg, tmpReg2, tmpReg3, maskReg); // indexReg:标识每一个数gather时的索引
+
+        MicroAPI::DataCopyGather(gradYReg, gradYAddr, (MicroAPI::RegTensor<uint32_t> &)(indexReg), maskReg); // 按照indeReg中存储索引的顺序将数据搬到gradYReg,此时gradYReg [n, t, align_n]
+
+        // 搬运norm， norm的shape应该是[n,t,aligin]
+        MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(normReg, normAddr);
+
+        MicroAPI::Mul(mulResultReg, gradYReg, normReg, maskReg);
+        MicroAPI::ReduceSumWithDataBlock(dotProdReg, mulmulResultReg, maskReg);
+
+        // 将dotProdReg [1,t,align_n] 广播到 [n,t,align_n]
+        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(maxAddr, dotProdReg, dataCopyMaskReg);
+        MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(dotProdReg, maxAddr);
+
+        MicroAPI::Sub(subResultReg, gradYReg, dotProdReg, maskReg);
+        MicroAPI::Mul(gradInputReg, subResultReg, normReg, maskReg);
+
+        MicroAPI::DataCopyScatter(gradInputAddr, gradInputReg, (MicroAPI::RegTensor<uint32_t> &)(indexReg), maskReg);
     }
 }
 
@@ -171,8 +345,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                     auto curGradInputAddr = gradInputAddr + i * repeatSize + j;
 
                     CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                                   static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize),
-                                   tilingData_.eps);
+                                   static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
                 }
                 __VEC_SCOPE__
                 {
@@ -188,8 +361,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                     auto curGradInputAddr = gradInputAddr + i * repeatSize + j * tilingData_.nSize;
 
                     CalcRowBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                                   static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize),
-                                   tilingData_.eps);
+                                   static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
                 }
             }
             __VEC_SCOPE__
@@ -206,8 +378,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                 auto curSumAddr = sumAddr + i * repeatSize + j;
                 auto curGradInputAddr = gradInputAddr + i * repeatSize + j;
                 CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                               static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize),
-                               tilingData_.eps);
+                               static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
             }
         }
         __VEC_SCOPE__
@@ -223,8 +394,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                 auto curSumAddr = sumAddr + i * repeatSize + j * tilingData_.nSize;
                 auto curGradInputAddr = gradInputAddr + i * repeatSize + j * tilingData_.nSize;
                 CalcSoftmaxBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                                    static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize),
-                                    tilingData_.eps);
+                                    static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
             }
         }
         inputGradYQue_.FreeTensor<float>(gradYLocal);

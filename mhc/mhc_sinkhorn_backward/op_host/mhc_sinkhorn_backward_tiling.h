@@ -102,15 +102,17 @@ private:
     int64_t ubSize_ = 0;
     
     // SplitCore Info
-    int64_t needCoreNum_ = 0;
-    int64_t coreTSize_ = 0;
-    int64_t normCoreTLoops_ = 0;
-    int64_t normCorePerLoopTSize_ = 0;
-    int64_t normCoreLastLoopTSize_ = 0;
-    int64_t tailCoreTSize_ = 0;
-    int64_t tailCoreLoops_ = 0;
-    int64_t tailCorePerLoopTSize_ = 0;
-    int64_t tailCoreLastLoopTSize_ = 0;
+    int64_t needCoreNum_ = 0;   // 使用到的核数
+    int64_t coreTSize_ = 0; // 每个核处理的数量
+
+    int64_t normCoreTLoops_ = 0;    // 普通核循环次数
+    int64_t normCorePerLoopTSize_ = 0;  // 普通核每次循环处理的数据量
+    int64_t normCoreLastLoopTSize_ = 0; // 普通核最后一次循环处理的数据量
+
+    int64_t tailCoreTSize_ = 0; // 尾核处理的数据量
+    int64_t tailCoreLoops_ = 0; // 尾核循环次数
+    int64_t tailCorePerLoopTSize_ = 0;  // 尾核每次循环处理的数据量
+    int64_t tailCoreLastLoopTSize_ = 0; // 尾核最后一次循环处理的数据量
     
     const char* opName_ = "MhcSinkhornBackward";
     MhcSinkhornBackwardTilingData tilingData_;
