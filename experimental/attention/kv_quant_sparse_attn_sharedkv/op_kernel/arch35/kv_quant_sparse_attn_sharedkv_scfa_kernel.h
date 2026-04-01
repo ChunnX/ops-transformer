@@ -72,7 +72,8 @@ private:
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 2;
     /* 核间通道 */
-    BufferManager<BufferType::GM> gmBufferManager;
+    BufferManager<BufferType::GM> v0ResGmBufferManager;
+    BufferManager<BufferType::GM> s2LenGmBufferManager;
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
@@ -96,6 +97,7 @@ private:
     bool hasCmpTopkLength = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
+    BuffersPolicy3buff<BufferType::GM> s2LenGmBuffers;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -226,11 +228,24 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
+    uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
+    int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
     if constexpr (IS_SPLIT_G) {
-        uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-        int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
-        gmBufferManager.Init(workspace + totalOffset);
-        v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
+        v0ResGmBufferManager.Init(workspace + totalOffset);
+        v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
+    }
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE ||
+        TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        int64_t aicNum = GetBlockNum();
+        int64_t v0ResTotalSize = 0;
+        if constexpr (IS_SPLIT_G) {
+            v0ResTotalSize = v0ResSize * 3 * (aicNum >> 1U);
+        }
+        int64_t s2LenBufferSize = 64 * sizeof(int32_t) * 4; // Cube要看到相邻核4个vector的结果;
+        int64_t s2LenTotalOffset = s2LenBufferSize * 3 * (aicIdx >> 1);
+        s2LenGmBufferManager.Init(workspace + v0ResTotalSize + s2LenTotalOffset);
+        s2LenGmBuffers.Init(s2LenGmBufferManager, s2LenBufferSize);
     }
 }
 
@@ -416,7 +431,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
                             runInfo1, this->constInfo);
                     } else {
-                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(), runInfo1, this->constInfo);
+                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(), s2LenGmBuffers.Get(), runInfo1, this->constInfo);
                     }
                 } else {
                     if ASCEND_IS_AIV {
@@ -432,7 +447,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                 if (taskId > 0 && notLast) {
                     auto &runInfo2 = runInfo[(taskId + 2) % 3];
                     if ASCEND_IS_AIV {
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
+                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), s2LenGmBuffers.GetReused(), runInfo2,
                             this->constInfo);
                     } else {
                         RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];

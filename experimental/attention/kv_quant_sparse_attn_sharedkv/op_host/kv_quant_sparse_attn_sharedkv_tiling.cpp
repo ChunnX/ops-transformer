@@ -626,6 +626,12 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
+    if (perfMode_ == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
+        perfMode_ == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || 
+        perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        constexpr uint32_t S2_REAL_BUF_LEN = 64;
+        workspaceSize += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * aivNum;
+    }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
