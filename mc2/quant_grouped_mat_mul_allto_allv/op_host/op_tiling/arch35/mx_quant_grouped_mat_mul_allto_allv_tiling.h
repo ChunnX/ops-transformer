@@ -21,6 +21,9 @@
 
 namespace optiling {
 namespace Mc2GroupedMatmul {
+//=================新增 MXFP4 相关常量=============//
+constexpr uint64_t MX_SCALE_GROUP = 64;
+constexpr uint64_t EVEN_ALIGN = 2;
 
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
@@ -54,6 +57,9 @@ private:
     ge::graphStatus CheckMxQuantGmmScaleShapes();
     ge::graphStatus CheckMxQuantMmScaleShapes();
     ge::graphStatus CheckMxQuantDtypeConstraints();
+
+    //==============新增方法============//
+    ge::graphStatus CheckMxfp4SpecificConstraints(); //MXFP4 约束校验
 };
 
 } // namespace Mc2GroupedMatmul

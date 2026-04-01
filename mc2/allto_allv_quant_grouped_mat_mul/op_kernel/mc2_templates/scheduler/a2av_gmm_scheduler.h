@@ -36,7 +36,7 @@ __aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
 }
 
 template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
-          typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM>
+          typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM, bool isMxfp4Mode = false>
 class A2avGmmScheduler {
 public:
     __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
