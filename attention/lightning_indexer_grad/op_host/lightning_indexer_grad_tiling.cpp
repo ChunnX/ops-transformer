@@ -113,7 +113,7 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
     // check headDim, groupNum, headNumK
     OP_CHECK_IF((headDim != MAX_HEADIM) || (groupNum != MAX_GROUPNUM) || (headNumK != LIMIT_HEADNUMK),
             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), 
-            "only support headDim is %lu, groupNum is %lu, headNumK is %lu, but current headDim is %lu, groupNum is %lu, headNumK is %lu",
+            "only support headDim is %u, groupNum is %u, headNumK is %u, but current headDim is %u, groupNum is %u, headNumK is %u",
                 MAX_HEADIM, MAX_GROUPNUM, LIMIT_HEADNUMK, headDim, groupNum, headNumK),
             return ge::GRAPH_FAILED);
 
