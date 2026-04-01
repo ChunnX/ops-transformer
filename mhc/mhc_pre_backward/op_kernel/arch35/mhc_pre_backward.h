@@ -284,6 +284,9 @@ public:
                                             uint32_t j, uint32_t runBSStart);
     __aicore__ inline void VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr, __ubuf__ P *hInGradAddr,
                                           uint32_t totalElem);
+    __aicore__ inline void VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubuf__ T *hInGradInBufAddr,
+                                            __ubuf__ P *hPreUbAddr, uint32_t currentChunkSize, uint32_t copySizeND,
+                                            uint32_t currentN, uint32_t bsGlobalOffset);
 
     template <bool hasGamma, bool isFirstChunk>
     __aicore__ inline void VFDoV2XCastAndMulGamma(__ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr,
@@ -1643,6 +1646,42 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2FuseXGradTail(__ubuf__ 
 }
 
 template <class T, class P>
+__aicore__ inline void
+MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubuf__ T *hInGradInBufAddr,
+                                             __ubuf__ P *hPreUbAddr, uint32_t currentChunkSize, uint32_t copySizeND,
+                                             uint32_t currentN, uint32_t bsGlobalOffset)
+{
+    uint16_t vfLoopCnt = CeilDiv(copySizeND, static_cast<uint32_t>(eleNumPerVf_));
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> hInReg;
+        MicroAPI::RegTensor<P> hInFP32Reg, hPreReg, hPreFullReg;
+        MicroAPI::RegTensor<uint32_t> hPreIndexReg; 
+        MicroAPI::MaskReg mask, maskAll;
+        maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
+        uint32_t hPreOffset = bsGlobalOffset * N_ + currentN;
+        for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
+            uint32_t lenND = copySizeND;
+            uint32_t hInOffset = tIdx * copySizeND;
+
+            // Load hPre [1] -> [copySizeND]
+            MicroAPI::Duplicate(hPreIndexReg, hPreOffset, maskAll);
+            MicroAPI::Gather(hPreFullReg, hPreUbAddr, hPreIndexReg, maskAll);
+            for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
+                mask = MicroAPI::UpdateMask<P>(lenND);
+                // hIn B16 -> B32
+                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(hInReg, hInGradInBufAddr + hInOffset);
+                MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(hInFP32Reg, hInReg, mask);
+                MicroAPI::Mul(hInFP32Reg, hInFP32Reg, hPreFullReg, mask);
+                MicroAPI::StoreAlign(xGradVec3BufAddr + hInOffset, hInFP32Reg, mask);
+                hInOffset += eleNumPerVf_;
+            }
+            hPreOffset += N_;
+        }
+    }
+}
+
+template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                              uint32_t bsEnd, LocalTensor<P> &sumBuf, uint32_t buffId)
 {
@@ -1773,28 +1812,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         DataCopyPad(hInGradInBuf, hInGradGm_[bsChunkStart * D_ + (offsetND % D_)], blockCopyParams, copyPadParams);
         bf16InQueue_.EnQue(hInGradInBuf);
         bf16InQueue_.DeQue<T>(hInGradInBuf);
-        Cast(hInGradFp32Buf, hInGradInBuf, RoundMode::CAST_NONE, copySizeND * currentChunkSize);
-        PipeBarrier<PIPE_V>();
-        bf16InQueue_.FreeTensor(hInGradInBuf);
 
         // ==========================================================
         // 向量化处理整个chunk
         // ==========================================================
         // 20.计算外积 x_grad_vec3 = h_in_grad_fp32 * h_pre (广播h_pre到每个ND维度)
-        // hPreValBuf需要广播到每个ND维度: [chunkSize] -> [chunkSize, copySizeND]
-        auto hPreBroadCast = xRsGradMmUb;
-        const uint32_t hPreDst[2] = {currentChunkSize, copySizeND};
-        const uint32_t hPreSrc[2] = {currentChunkSize, 1};
+        __ubuf__ T* hInGradInBufAddr = (__ubuf__ T*)hInGradInBuf.GetPhyAddr();
+        __ubuf__ P* hPreUbAddr = (__ubuf__ P*)hPreUb.GetPhyAddr();
+        __ubuf__ P* xGradVec3BufAddr = (__ubuf__ P*)xGradVec3Buf.GetPhyAddr();
+        VFDoV2HInMulHPre(xGradVec3BufAddr, hInGradInBufAddr, hPreUbAddr, currentChunkSize, copySizeND, currentN, (bsChunkStart - bsStart));
+        bf16InQueue_.FreeTensor(hInGradInBuf);
 
-        Gather(hPreUb, hPreUb, hPreGatherOffsetBuf_, uint32_t(((bsChunkStart - bsStart) * N_ + currentN) * sizeof(P)),
-               currentChunkSize);
-        PipeBarrier<PIPE_V>();
-
-        BroadCast<P, 2, 1>(hPreBroadCast, hPreUb, hPreDst, hPreSrc, sharedTmpBuf);
-        PipeBarrier<PIPE_V>();
-
-        Mul(xGradVec3Buf, hInGradFp32Buf, hPreBroadCast, copySizeND * currentChunkSize);
-        PipeBarrier<PIPE_V>();
         DataCopyExtParams xCopyParams;
         DataCopyPadExtParams<T> xCopyPadParams;
 
