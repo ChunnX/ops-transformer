@@ -42,6 +42,10 @@ extern "C" {
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
+__attribute__((deprecated("aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize is scheduled to be deprecated in a post-December 2026 version update. "
+                        "Please migrate to aclnnMatmulAllReduceGetWorkspaceSize and aclnnAddRmsNormGetWorkspaceSize"
+                        "in place of aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize."
+                        "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.")))
 ACLNN_API aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
     double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode,
@@ -56,6 +60,10 @@ ACLNN_API aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
+__attribute__((deprecated("aclnnInplaceMatmulAllReduceAddRmsNorm is scheduled to be deprecated in a post-December 2026 version update. "
+                        "Please migrate to aclnnMatmulAllReduce and aclnnAddRmsNorm"
+                        "in place of aclnnInplaceMatmulAllReduceAddRmsNorm."
+                        "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.")))
 ACLNN_API aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 

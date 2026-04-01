@@ -64,6 +64,10 @@ ACLNN_API aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
+ __attribute__((deprecated("aclnnWeightQuantMatmulAllReduceAddRmsNorm is scheduled to be deprecated in a post-December 2026 version update. "
+                        "Please migrate to aclnnWeightQuantMatmulAllReduce and aclnnAddRmsNorm"
+                        "in place of aclnnWeightQuantMatmulAllReduceAddRmsNorm."
+                        "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.")))
 ACLNN_API aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
