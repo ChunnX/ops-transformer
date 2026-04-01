@@ -1,0 +1,17 @@
+case_id;input_shape;scale_mode;has_offset;sqrt_mode;round_mode;x_dtype
+0;[8, 32];per_channel;false;false;round;float16
+1;[16, 64];per_channel;true;false;floor;float16
+2;[4, 128];per_tensor;false;true;round;float16
+3;[2, 8, 64];per_channel;false;false;trunc;float16
+4;[4, 8, 128];per_channel;true;true;ceil;float16
+5;[32, 128];per_channel;false;false;round;float32
+6;[64, 256];per_tensor;true;false;floor;float32
+7;[8, 48];per_channel;true;true;round;float32
+8;[16, 64];per_channel;false;false;ceil;bfloat16
+9;[8, 96];per_tensor;false;false;trunc;bfloat16
+10;[4, 32];per_channel;true;true;round;bfloat16
+11;[12, 128];per_channel;false;false;round;float16
+12;[24, 64];per_tensor;false;true;floor;float32
+13;[2, 16, 32];per_channel;false;false;round;float32
+14;[64, 512];per_channel;true;false;trunc;float16
+15;[8, 256];per_channel;false;true;round;float32
