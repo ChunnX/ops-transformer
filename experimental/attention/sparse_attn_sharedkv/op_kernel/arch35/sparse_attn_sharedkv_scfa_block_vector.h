@@ -720,7 +720,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
         InitSinksBuffer(constInfo);
     }
 
-    // 这里为什么要注释掉？？？？
+    // 不再使用TQue，会导致UB越界
     // if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
     //     tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 24 * sizeof(KV_T)); // V0阶段每次处理24个seq, 开2 buffer
     //     tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (24 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
