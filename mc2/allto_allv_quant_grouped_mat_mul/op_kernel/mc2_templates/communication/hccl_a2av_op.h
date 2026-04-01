@@ -33,7 +33,7 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-template <typename hcclDataType, bool commBeforeComputeFlag>
+template <typename hcclDataType, bool commBeforeComputeFlag, bool isMxfp4Mode = false>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
@@ -70,6 +70,8 @@ public:
             hcclDataType_ = HCCL_DATA_TYPE_FP8E5M2;
         } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
+        } else if constexpr (isMxfp4Mode) {
+            hcclDataType_ = HCCL_DATA_TYPE_INT8;
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_FP16;
         }
@@ -230,7 +232,8 @@ private:
     {
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
-        uint64_t axis = N1_;
+        // MXFP4：N1维度输出也需要除以2
+        uint64_t axis = isMxfp4Mode ? (N1_ / MXFP4_PACK_FACTOR) : N1_;
         for (uint64_t i = 0UL; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
             alltoAllvRecvCnt[i] = 0UL;
@@ -245,21 +248,21 @@ private:
                 expertOffset += static_cast<uint64_t>(sendCnt[i + j * e_]);
             }
         }
-        alltoAllvSendOffset[0] = expertOffset * N1_;
+        alltoAllvSendOffset[0] = expertOffset * axis;
         for (uint64_t i = 1UL; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1];
             for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[expertIdx + (i - 1) * e_]) * N1_;
+                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[expertIdx + (i - 1) * e_]) * axis;
             }
         }
         alltoAllvRecvOffset[0] = 0UL;
         for (uint64_t i = 0UL; i < startExpertIdx; i++) {
-            alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[i]) * N1_;
+            alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[i]) * axis;
         }
         for (uint64_t i = 1UL; i < rankDim_; i++) {
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
             for (uint64_t j = 0UL; j < e_; j++) {
-                alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCnt[startExpertIdx + (i - 1) * e_ + j]) * N1_;
+                alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCnt[startExpertIdx + (i - 1) * e_ + j]) * axis;
             }
         }
         alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(

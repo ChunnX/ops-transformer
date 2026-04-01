@@ -27,6 +27,8 @@ static constexpr uint32_t MAX_EP_RANK_SIZE = 8U;
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
 static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
+// MXFP4:2个4Bit元素打包成1个字节
+static constexpr uint32_t MXFP4_PACK_FACTOR = 2U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;

@@ -23,7 +23,8 @@
 using namespace AscendC;
 
 namespace MC2KernelTemplate {
-template <typename CommOpType, typename ComputationOpType, typename SharedComputationOpType, bool IsNeedMM>
+template <typename CommOpType, typename ComputationOpType, typename SharedComputationOpType, bool IsNeedMM,
+          bool isMxfp4Mode = false>
 class GmmA2avScheduler {
 public:
     __aicore__ inline GmmA2avScheduler(const CommOpType& hcclOp, const ComputationOpType& computeOp,
@@ -62,5 +63,5 @@ private:
     SharedComputationOpType shareComputeOp_;
     const TaskTilingInfo *taskTilingInfo_;
 };
-}
+} // namespace MC2KernelTemplate
 #endif
