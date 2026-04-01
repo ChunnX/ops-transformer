@@ -1000,7 +1000,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                     this->SetRunInfo(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, blockInnerIdx, nextValidBlockInnerIdx);
                     // IterateMm1Mm2
                     if ASCEND_IS_AIC {
-                        if (needSyncDkMM) {
+                        if (needSyncDkMM && !this->constInfo.deterConstInfo.noNeedDeter) {
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_DETER_FIX_FLAG);
                         }
@@ -1152,7 +1152,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                         this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
                                                     false, maxValidBBLen - remainLoopNum, remainLoopNum, &deterPpFlag);
                         if ASCEND_IS_AIV {
-                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
+                            if (!this->constInfo.deterConstInfo.noNeedDeter) {
+                                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
+                            }
                         }
                         remainLoopNum--;
                     }

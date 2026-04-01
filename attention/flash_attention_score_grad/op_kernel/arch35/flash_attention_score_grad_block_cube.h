@@ -122,7 +122,8 @@ public:
     constexpr static uint32_t CUBE_BASEN = (uint32_t)s2TemplateType;
     constexpr static uint32_t HEAD_DIM_ALIGN = (uint32_t)dTemplateType;
     constexpr static uint32_t C0_SIZE = 16;
-    constexpr static uint32_t l1BaseD = IS_DETER_OLD(DETER_SPARSE_TYPE) ? (HEAD_DIM_ALIGN > 512 ? 256 : 512) : 512;
+    constexpr static uint32_t l1BaseD = (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) ? 
+                                        (HEAD_DIM_ALIGN > 512 ? 256 : 512) : 512;
     constexpr static uint32_t L0_SINGLE_BUFFER_SIZE = 32 * 1024;
     constexpr static bool IS_L1_REUSE =
         GET_IS_L1_REUSE<INPUT_TYPE>(HEAD_DIM_ALIGN, IS_DETER_OLD(DETER_SPARSE_TYPE), FP8_OPEN_TSCM);
