@@ -76,7 +76,7 @@ public:
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
@@ -87,7 +87,7 @@ public:
 
 private:
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
     __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
@@ -100,7 +100,7 @@ private:
     __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         LocalTensor<Q_T> kvNzOutUb, int64_t dealRow, int64_t s2StartIdx,
         const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset, ConstInfo &constInfo);
@@ -302,7 +302,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(Buffer<Buffer
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, LocalTensor<Q_T> kvOutUb,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> kvOutUb,
     int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
@@ -346,13 +346,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunIn
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
         TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
-        outputL1.WaitCrossCore();
-        v0ResGm.WaitCrossCore();
         if (runInfo.isCmp) {
             keyGm = cmpKVGm;
             sparseIndicesGm = cmpSparseIndicesGm;
@@ -405,7 +403,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
@@ -574,7 +572,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
 
-    outputBuf.WaitCrossCore();
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
     if (likely(runInfo.halfMRealSize != 0)) {
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - runInfo.halfMRealSize)],

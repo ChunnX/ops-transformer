@@ -90,7 +90,7 @@ public:
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
+        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
@@ -100,9 +100,9 @@ public:
 
 private:
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
+        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
+        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetkeyOffset(int64_t s2Idx, int64_t& realKeyOffset, int64_t& realScaleOffset,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -116,7 +116,7 @@ private:
     __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
         const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset, int64_t scaleOffset);
@@ -583,7 +583,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
     int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
@@ -598,7 +598,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t s2ProcessBaseSize = 32;
     int64_t s2ProcessSize = s2ProcessBaseSize;
@@ -765,13 +765,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunIn
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    outputL1.WaitCrossCore(); // 核间同步
-    if constexpr (IS_SPLIT_G) {
-        v0ResGm.WaitCrossCore();
-    }
     if (runInfo.isCmp) {
         keyGm = cmpKVGm;
         cuSeqlensKvGm = cuSeqlensCmpKvGm;
@@ -813,7 +809,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (sparseCalSize == 0) {
         return;
