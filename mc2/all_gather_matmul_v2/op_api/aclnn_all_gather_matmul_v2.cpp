@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_all_gather_matmul_v2.h"
+#include "aclnnInner_all_gather_matmul_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -49,18 +50,6 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAllGatherMatmulV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                               const aclTensor *bias, const aclTensor *x1Scale,
-                                                               const aclTensor *x2Scale, const aclTensor *quantScale,
-                                                               const char *group, bool transposeX1, bool transposeX2,
-                                                               int64_t gatherIndex, int64_t commTurn, int64_t rankSize,
-                                                               int64_t blockSize, int64_t groupSize,
-                                                               bool isGatherOut, bool isAMaxOut, int64_t yDtype, const char *commMode,
-                                                               aclTensor *output, aclTensor *gatherOut,
-                                                               aclTensor *amaxOut, uint64_t *workspaceSize,
-                                                               aclOpExecutor **executor);
-extern aclnnStatus aclnnInnerAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                             aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
@@ -470,10 +459,10 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const 
   if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
     transX2Scale = TransX2Tensor(x2Scale);
   }
-  aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, transX2, bias, x1Scale, transX2Scale, quantScale, group,
+  aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char*>(group),
                                                                 transposeX1, transposeX2, gatherIndex, commTurn,
                                                                 rankSize, blockSize, groupSize, isGatherOut, isAMaxOut,
-                                                                outDtype, commMode, output, gatherOut, amaxOut, workspaceSize,
+                                                                outDtype, const_cast<char*>(commMode), output, gatherOut, amaxOut, workspaceSize,
                                                                 executor);
   OP_LOGD("AllGatherMatmulV2, aclnnInnerGetWorkspaceSize ret = %d.", ret);
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};
@@ -507,10 +496,10 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor* x1, const 
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     auto retParam = CheckParamsAndShapeForAIVMode(x1, x2, bias, output, gatherOut, transposeX1, viewTransposeX2, streamMode);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, group,
+    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char*>(group),
                                                                 transposeX1, transposeX2, gatherIndex, commTurn,
                                                                 rankSize, blockSize, groupSize, isGatherOut, isAmaxOut,
-                                                                yDtype, commMode, output, gatherOut, amaxOut, workspaceSize,
+                                                                yDtype, const_cast<char*>(commMode), output, gatherOut, amaxOut, workspaceSize,
                                                                 executor);
     OP_LOGD("allGatherMatmulV2AIVMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
