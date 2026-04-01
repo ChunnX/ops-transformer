@@ -38,8 +38,8 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=off
-            OPTIONS -DCATLASS_ARCH_A5_ENABLED
-            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../catlass0120/include
+            OPTIONS -DCATLASS_ARCH=3510
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../catlass/include
             OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel
             OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../moe_init_routing_v3/op_kernel/arch35
             OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../moe_finalize_routing_v2/op_kernel/arch35
