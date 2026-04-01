@@ -36,7 +36,7 @@ __aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
 }
 
 template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
-          typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM>
+          typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM, bool isMxfp4Mode = false>
 class A2avGmmScheduler {
 public:
     __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
@@ -58,8 +58,9 @@ public:
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_);
 
         if (isMxSceneFlag_) {
-            uint64_t commOutLen =
-                Align((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), TENSOR_LIST_SIZE);
+            uint64_t h1Actual =
+                isMxfp4Mode ? (tilingData_->taskTilingInfo.H1 / MXFP4_PACK_FACTOR) : tilingData_->taskTilingInfo.H1;
+            uint64_t commOutLen = Align((tilingData_->taskTilingInfo.A) * h1Actual, TENSOR_LIST_SIZE);
             gmmxScaleCommOutGm_ = tilingData_->isPermuteOut ? workspaceGM : workspaceGM + commOutLen;
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_);
         }
