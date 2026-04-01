@@ -56,6 +56,7 @@ constexpr uint32_t MATMUL_BASE_N = 128;
 
 constexpr uint32_t STAGE_ONE_TWO = 2;
 constexpr uint32_t STAGE_ONE_THREE = 3;
+constexpr uint32_t STAGE_ONE_PARA_NUM = 2;
 constexpr uint32_t MASK_NUM = 4;
 constexpr int64_t P_NUM = 2;
 
@@ -114,7 +115,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t p = P_NUM; // 一个 chunk 组中，单核最大处理 chunk 数
     tilingData_.chunkSize = c;
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;
-    tilingData_.stageOneParaNum = STAGE_ONE_TWO; // stage1 并行数
+    tilingData_.stageOneParaNum = STAGE_ONE_PARA_NUM; // stage1 并行数
 
     tilingData_.interWorkspaceSz = 0;
     int64_t sizeHigh = ge::GetSizeByDataType(ge::DT_FLOAT);
