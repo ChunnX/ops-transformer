@@ -91,7 +91,7 @@ __aicore__ inline void MegaMoe::Init(
     // 定义scheduler类型
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 1>;
 
-    using ArchTag = Arch::Atlas950;
+    using ArchTag = Arch::Ascend950;
     constexpr bool enableUnitFlag = true;
     using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
     using L1TileShape = tla::Shape<Int<256>, Int<256>, Int<448>>;
