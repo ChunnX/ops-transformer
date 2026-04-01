@@ -9,9 +9,10 @@
  */
 
 #include "aclnn_weight_quant_matmul_all_reduce.h"
-
 #include "opdev/tensor_view_utils.h"
+
 #include "matmul_all_reduce_util.h"
+#include "aclnnInner_matmul_all_reduce.h"
 
 using namespace op;
 
@@ -21,18 +22,9 @@ extern "C" {
 
 static constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 
-extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
-    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
-    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
-    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
-extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
+extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 根据API定义，需要列出所能支持的所有dtype
@@ -43,7 +35,7 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_310P = {Data
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT = {DataType::DT_INT8, DataType::DT_INT4};
 
 // 检查入参是否为nullptr
-static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* scale, const aclTensor* output)
+static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *scale, const aclTensor *output)
 {
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
@@ -52,25 +44,20 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
     return true;
 }
 
-static bool CheckDtypeValid(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
-    const aclTensor* x3, const aclTensor* output)
+static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *scale,
+                            const aclTensor *offset, const aclTensor *x3, const aclTensor *output)
 {
     const auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
-    const auto dtypeSupportList =
-        (npuArch == NpuArch::DAV_2002) ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
+    const auto dtypeSupportList = (npuArch == NpuArch::DAV_2002) ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
 
     const std::initializer_list<op::DataType> dtypeSupportListQuantA5 = {
         DataType::DT_INT8, DataType::DT_INT4, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
 
-    const std::initializer_list<op::DataType> dtypeSupportListBiasA5 = {
-        DataType::DT_FLOAT16, DataType::DT_BF16};
+    const std::initializer_list<op::DataType> dtypeSupportListBiasA5 = {DataType::DT_FLOAT16, DataType::DT_BF16};
 
-    const auto x2DtypeSupportList =
-        (npuArch == NpuArch::DAV_3510) ? dtypeSupportListQuantA5 : DTYPE_SUPPORT_LIST_QUANT;
+    const auto x2DtypeSupportList = (npuArch == NpuArch::DAV_3510) ? dtypeSupportListQuantA5 : DTYPE_SUPPORT_LIST_QUANT;
 
-    const auto biasDtypeSupportList =
-        (npuArch == NpuArch::DAV_3510) ? dtypeSupportListBiasA5 : dtypeSupportList;
+    const auto biasDtypeSupportList = (npuArch == NpuArch::DAV_3510) ? dtypeSupportListBiasA5 : dtypeSupportList;
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, dtypeSupportList, return false);
     // 对于量化来说，x2只为INT8/INT4
@@ -87,7 +74,7 @@ static bool CheckDtypeValid(
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasDtypeSupportList, return false);
         const auto x1Dtype = x1->GetDataType();
         const auto biasDtype = bias->GetDataType();
-            // 检查x1和bias的数据类型是否相同
+        // 检查x1和bias的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
     }
     if (offset != nullptr) {
@@ -105,7 +92,7 @@ static bool CheckDtypeValid(
 }
 
 // 检查传入的reduction数值是否在可选范围内
-static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquantGroupSize, const aclTensor* x1)
+static bool CheckAttr(const char *reduceOp, int64_t streamMode, int64_t antiquantGroupSize, const aclTensor *x1)
 {
     if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
@@ -131,9 +118,9 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquan
     if (antiquantGroupSize % ANTIQUANT_GROUP_SIZE_MIN_VALUE != 0 ||
         antiquantGroupSize < ANTIQUANT_GROUP_SIZE_MIN_VALUE ||
         antiquantGroupSize > std::min(static_cast<int32_t>(kLen - 1), INT32_MAX)) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID, "antiquantGroupSize should be in range [%ld, min(%ld, INT_MAX)], Actual is %ld.",
-            ANTIQUANT_GROUP_SIZE_MIN_VALUE, (kLen - 1), antiquantGroupSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "antiquantGroupSize should be in range [%ld, min(%ld, INT_MAX)], Actual is %ld.",
+                ANTIQUANT_GROUP_SIZE_MIN_VALUE, (kLen - 1), antiquantGroupSize);
         return false;
     }
     return true;
@@ -148,8 +135,8 @@ static size_t CeilDiv(size_t x, size_t y)
     }
 }
 
-static bool IsAntiquantScaleShapeValid(
-    const aclTensor* scale, const aclTensor* x1, const aclTensor* output, int64_t antiquantGroupSize)
+static bool IsAntiquantScaleShapeValid(const aclTensor *scale, const aclTensor *x1, const aclTensor *output,
+                                       int64_t antiquantGroupSize)
 {
     const size_t scaleLen = scale->GetViewShape().GetDimNum();
     const size_t x1Len = x1->GetViewShape().GetDimNum();
@@ -175,9 +162,9 @@ static bool IsAntiquantScaleShapeValid(
     return false;
 }
 
-static bool CheckShape(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
-    const aclTensor* x3, const aclTensor* output, int64_t antiquantGroupSize)
+static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *scale,
+                       const aclTensor *offset, const aclTensor *x3, const aclTensor *output,
+                       int64_t antiquantGroupSize)
 {
     bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
     OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
@@ -190,18 +177,19 @@ static bool CheckShape(
     OP_LOGD("MatmulAllReduce, CheckShape weightDim is %lu", weightDim);
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
     OP_CHECK_WRONG_DIMENSION(x2, weightDim, return false);
-    uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
-    uint64_t x2Dim1 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
+    uint64_t x2Dim0 =
+        QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
+    uint64_t x2Dim1 =
+        QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ShapeStr = op::ToString(x2->GetViewShape());
     QuantMatmulAllReduceProcessTransposedX2(x2, x2Dim0, x2Dim1, x2ShapeStr);
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
     if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
-            op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
+                op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
         return false;
     }
 
@@ -213,7 +201,7 @@ static bool CheckShape(
     // 判断output是否为空tensor
     if (output->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output is empty tensor, output shape is: %s",
-            op::ToString(output->GetViewShape()).GetString());
+                op::ToString(output->GetViewShape()).GetString());
         return false;
     }
 
@@ -240,13 +228,12 @@ static bool CheckShape(
     OP_CHECK_MAX_DIM(scale, TWO_DIMS, return false);
     if (!IsAntiquantScaleShapeValid(scale, x1, output, antiquantGroupSize)) {
         if (antiquantGroupSize == 0) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected shape of antiquantScale to be [1] or [n] or [1,n] for per-tensor/per-channel."
-                " in this case, n is %ld, last dim of scale should be %ld or 1, "
-                "but got scale shape: %s.",
-                output->GetViewShape().GetDim(x1Len - 1), output->GetViewShape().GetDim(x1Len - 1),
-                op::ToString(scale->GetViewShape()).GetString());
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "Expected shape of antiquantScale to be [1] or [n] or [1,n] for per-tensor/per-channel."
+                    " in this case, n is %ld, last dim of scale should be %ld or 1, "
+                    "but got scale shape: %s.",
+                    output->GetViewShape().GetDim(x1Len - 1), output->GetViewShape().GetDim(x1Len - 1),
+                    op::ToString(scale->GetViewShape()).GetString());
         }
         if (antiquantGroupSize != 0) {
             size_t kValueGroup = CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize);
@@ -300,10 +287,10 @@ static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const a
 }
 } // namespace ContiguousCheckImpl
 
-static aclnnStatus CheckParams(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
-    const aclTensor* antiquantOffset, const aclTensor* x3, const char* reduceOp, int64_t streamMode,
-    const aclTensor* output, int64_t antiquantGroupSize)
+static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
+                               const aclTensor *antiquantScale, const aclTensor *antiquantOffset, const aclTensor *x3,
+                               const char *reduceOp, int64_t streamMode, const aclTensor *output,
+                               int64_t antiquantGroupSize)
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, antiquantScale, output), ACLNN_ERR_PARAM_NULLPTR);
@@ -333,7 +320,7 @@ static aclnnStatus CheckParams(
     return ACLNN_SUCCESS;
 }
 
-static const aclTensor* CopyTensor(const aclTensor* x2)
+static const aclTensor *CopyTensor(const aclTensor *x2)
 {
     uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
     std::vector<int64_t> storageDims(storageDimsNum);
@@ -356,21 +343,22 @@ static const aclTensor* CopyTensor(const aclTensor* x2)
     } else if (stgFormat == Format::FORMAT_FRACTAL_NZ) {
         format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
     }
-    return aclCreateTensor(
-        storageDims.data(), storageDimsNum, dataType, stride.data(), offset, format, storageDims.data(), storageDimsNum,
-        x2->GetTensor()->GetAddr());
+    return aclCreateTensor(storageDims.data(), storageDimsNum, dataType, stride.data(), offset, format,
+                           storageDims.data(), storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
-    const aclTensor* antiquantOffset, const aclTensor* x3, const char* group, const char* reduceOp, int64_t commTurn,
-    int64_t streamMode, int64_t antiquantGroupSize, const aclTensor* output, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                            const aclTensor *bias, const aclTensor *antiquantScale,
+                                                            const aclTensor *antiquantOffset, const aclTensor *x3,
+                                                            const char *group, const char *reduceOp, int64_t commTurn,
+                                                            int64_t streamMode, int64_t antiquantGroupSize,
+                                                            const aclTensor *output, uint64_t *workspaceSize,
+                                                            aclOpExecutor **executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
-    auto retParam = CheckParams(
-        x1, x2, bias, antiquantScale, antiquantOffset, x3, reduceOp, streamMode, output, antiquantGroupSize);
+    auto retParam = CheckParams(x1, x2, bias, antiquantScale, antiquantOffset, x3, reduceOp, streamMode, output,
+                                antiquantGroupSize);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     const size_t x1DimNum = x1->GetOriginalShape().GetDimNum();
     if (x1DimNum < 1 || x1DimNum > THREE_DIMS) {
@@ -380,11 +368,11 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-    aclTensor* pertokenScale = nullptr;
-    aclTensor* commQuantScale1 = nullptr;
-    aclTensor* commQuantScale2 = nullptr;
-    aclTensor* dequantScale = nullptr;
-    if(x2->GetTensor() == nullptr){
+    aclTensor *pertokenScale = nullptr;
+    aclTensor *commQuantScale1 = nullptr;
+    aclTensor *commQuantScale2 = nullptr;
+    aclTensor *dequantScale = nullptr;
+    if (x2->GetTensor() == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
@@ -393,8 +381,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, bias, x3, antiquantScale, antiquantOffset, dequantScale, pertokenScale, commQuantScale1,
-        commQuantScale2, group, reduceOp, transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output,
-        workspaceSize, executor);
+        commQuantScale2, const_cast<char *>(group), const_cast<char *>(reduceOp), transposeX1, transposeX2, commTurn,
+        antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
     OP_LOGD("WeightQuantMatmulAllReduce, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 #ifdef MC2_UT
     ret = 0;
@@ -413,8 +401,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnWeightQuantMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+aclnnStatus aclnnWeightQuantMatmulAllReduce(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                            const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {

@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
+#include "aclnnInner_moe_distribute_combine_teardown.h"
 
 namespace {
 
@@ -76,15 +77,6 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *quantE
 
 } // namespace
 
-extern "C" aclnnStatus aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
-    const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds, const aclTensor *expandIdx,
-    const aclTensor *expertScales, const aclTensor *commCmdInfo, const aclTensor *xActiveMaskOptional,
-    const aclTensor *sharedExpertXOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg, aclTensor *xOut,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnInnerMoeDistributeCombineTeardown(void *workspace, uint64_t workspaceSize,
-                                                              aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
@@ -109,8 +101,9 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
         expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
-        sharedExpertXOptional, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, xOut, workspaceSize, executor);
+        sharedExpertXOptional, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, expertShardType,
+        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, const_cast<char *>(commAlg), xOut,
+        workspaceSize, executor);
     OP_LOGD("aclnn_moe_distribute_combine_teardown get_workspace_size success");
     return ret;
 }

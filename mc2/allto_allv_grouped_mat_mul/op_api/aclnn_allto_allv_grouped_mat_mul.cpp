@@ -14,6 +14,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_allto_allv_grouped_mat_mul.h"
 
 using namespace op;
 
@@ -28,23 +29,15 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                                    const aclTensor* sendCountsTensorOptional,
-                                                                    const aclTensor* recvCountsTensorOptional,
-                                                                    const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-                                                                    const char* group, int64_t epWorldSize,
-                                                                    const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
-                                                                    bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-                                                                    aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    aclrtStream stream);
+
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
-                            const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                            const char* group, bool permuteOutFlag, aclTensor* gmmY, const aclTensor* mmYOptional, const aclTensor* permuteOutOptional)
+static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
+                            const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                            const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                            bool permuteOutFlag, aclTensor *gmmY, const aclTensor *mmYOptional,
+                            const aclTensor *permuteOutOptional)
 {
     // 检查必选入参出参为非空
     OP_CHECK_NULL(gmmX, return false);
@@ -58,29 +51,34 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, c
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
         return false;
     }
-    if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) && (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))){
+    if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) &&
+        (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, left: %u, right: %u, mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is nullptr: %u",
-        (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))), (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))), mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
+                "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, left: %u, right: "
+                "%u, mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is nullptr: %u",
+                (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))),
+                (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))),
+                mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
         return false;
     }
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "Optional output flag does not match optional output ptr!");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Optional output flag does not match optional output ptr!");
         return false;
     }
     return true;
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
-                               const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                               const char* group, int64_t epWorldSize, bool permuteOutFlag, aclTensor* gmmY, aclTensor* mmYOptional, 
-                               aclTensor* permuteOutOptional)
+static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
+                               const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                               const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                               int64_t epWorldSize, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional,
+                               aclTensor *permuteOutOptional)
 {
-    (void)epWorldSize;      // Unused
-    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, group,
-              permuteOutFlag, gmmY, mmYOptional, permuteOutOptional), ACLNN_ERR_PARAM_NULLPTR);
+    (void)epWorldSize; // Unused
+    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+                              mmWeightOptional, group, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional),
+              ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required group name exceeds %zu.", HCCL_GROUP_NAME_MAX);
@@ -90,7 +88,7 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntArray* recvCounts)
+static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntArray *recvCounts)
 {
     if (sendCounts == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be null.");
@@ -100,8 +98,8 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be null.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    uint64_t recvSize = 0U;  // recvCounts的大小
-    uint64_t sendSize = 0U;  // recvCounts的大小
+    uint64_t recvSize = 0U; // recvCounts的大小
+    uint64_t sendSize = 0U; // recvCounts的大小
     aclGetIntArraySize(recvCounts, &recvSize);
     aclGetIntArraySize(sendCounts, &sendSize);
     if (recvSize == 0U) {
@@ -115,25 +113,24 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                        const aclTensor* sendCountsTensorOptional, 
-                                                        const aclTensor* recvCountsTensorOptional, 
-                                                        const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                                                        const char* group, int64_t epWorldSize, 
-                                                        const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
-                                                        bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, 
-                                                        aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                        uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(
+    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
+    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional,
+    aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param = CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, 
-        mmXOptional, mmWeightOptional, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
+    auto ret_param =
+        CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+                    group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, 
-        mmXOptional, mmWeightOptional, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY,
-        mmYOptional, permuteOutOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(
+        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag,
+        gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
     return ret;
 }
 
