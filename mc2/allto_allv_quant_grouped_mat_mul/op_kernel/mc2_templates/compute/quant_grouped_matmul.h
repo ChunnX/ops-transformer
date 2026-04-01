@@ -30,7 +30,7 @@ namespace MC2KernelTemplate {
 constexpr uint64_t GROUP_LIST_INDEX = 0;
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm, bool isMxfp4Mode = false>
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
@@ -58,7 +58,8 @@ public:
         bs_ = tilingData_->taskTilingInfo.BS;
         a_ = tilingData_->taskTilingInfo.A;
 
-        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * h1_);
+        constexpr uint64_t packFactor = isMxfp4Mode ? 2U : 1U;
+        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * h1_ / packFactor);
         // 将 permuteOutSize 对齐到 512 字节
         permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
         uint64_t permuteXScaleSize =
@@ -127,8 +128,10 @@ public:
 protected:
     __aicore__ inline void UpdateAddr(uint32_t expertIdx)
     {
-        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_);
-        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
+        // MXFP4:2个4-bit元素打包成1字节，偏移量需要除以2
+        constexpr uint64_t packFactor = isMxfp4Mode ? 2U : 1U;
+        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_ / packFactor);
+        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_ / packFactor);
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
 
         // MX 模式：更新 scale 偏移
