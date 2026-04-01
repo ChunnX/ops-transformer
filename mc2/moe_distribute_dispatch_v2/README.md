@@ -101,7 +101,6 @@ $$
 
 其中，$emax$表示该类型最大正规数对应的指数部分的值。
 
-
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
 
@@ -109,8 +108,8 @@ $$
 ・
 相较于`MoeDistributeDispatch`算子，该算子变更如下：
 
--   输出了更详细的token信息辅助`CombineV2`系列算子高效地进行全卡同步，因此原算子中shape为(`Bs` * `K`,)的`expandIdx`出参替换为shape为(`A` * 128,)的`assistInfoForCombineOut`参数；
--   新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
+- 输出了更详细的token信息辅助`CombineV2`系列算子高效地进行全卡同步，因此原算子中shape为(`Bs` * `K`,)的`expandIdx`出参替换为shape为(`A` * 128,)的`assistInfoForCombineOut`参数；
+- 新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
 
 详细说明请参考以下参数说明。
 
@@ -360,10 +359,11 @@ $$
     * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    * 不支持`expandScalesOut`。
+    * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
 * <term>Ascend 950PR/Ascend 950DT</term>：
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`expandScalesOut`。
+    
 ## 约束说明
 
 - `MoeDistributeDispatchV2`与`CombineV2`系列算子必须配套使用，具体参考调用示例。
@@ -390,7 +390,6 @@ $$
 - 通信域使用约束：
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
-
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数约束：
@@ -424,10 +423,11 @@ $$
         - `moeExpertNum`：取值范围(0, 1024]。
         - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。
         - `sharedExpertNum`：取值支持[0, 4]。
-        - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。
+        - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"，"hierarchy"三种输入方式。
             - ""：默认值，使能fullmesh_v1模板。
             - "fullmesh_v1"：使能fullmesh_v1模板。
             - "fullmesh_v2"：使能fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`Bs`不一致、输入xActiveMask和特殊专家场景下使能。
+            - "hierarchy": 使能通信域跨超模板。
         - `epRecvCountsOut`：要求shape为 (`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
     - 参数说明里shape格式说明：
@@ -453,6 +453,7 @@ $$
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `Bs`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
+
 ## 调用说明
 
 | 调用方式  | 样例代码                                  | 说明                                                     |

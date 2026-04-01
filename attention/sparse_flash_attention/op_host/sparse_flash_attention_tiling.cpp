@@ -363,7 +363,6 @@ void SFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockCount(sfaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_attentionMode(sfaInfo_->attentionMode);
     tilingData_.baseParams.set_returnSoftmaxLse(sfaInfo_->returnSoftmaxLse);
-    tilingData_.baseParams.set_dSizeVInput(sfaInfo_->dSizeVInput);
 }
 
 // for flash decode
@@ -1048,9 +1047,9 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
                 return ge::GRAPH_FAILED;
         }
     } else {
-        OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0,
-                OP_LOGE(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor."),
-                return ge::GRAPH_FAILED);
+        if (opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0) {
+            OP_LOGW(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor.");
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1065,9 +1064,9 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
                 OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0,
-                OP_LOGE(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor."),
-                return ge::GRAPH_FAILED);
+        if(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0){
+            OP_LOGW(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor.");
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1280,6 +1279,8 @@ ge::graphStatus SFATilingCheck::CheckMultiParaConsistency()
         ge::GRAPH_SUCCESS != CheckQRope() ||
         ge::GRAPH_SUCCESS != CheckTopK() ||
         ge::GRAPH_SUCCESS != CheckAttenOut() ||
+        ge::GRAPH_SUCCESS != CheckSoftmaxMax() ||
+        ge::GRAPH_SUCCESS != CheckSoftmaxSum() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
@@ -1587,7 +1588,7 @@ ge::graphStatus SFAInfoParser::GetNpuInfo()
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910B && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
@@ -1834,12 +1835,6 @@ ge::graphStatus SFAInfoParser::GetS2Size()
     return GetS2SizeForPageAttention();
 }
 
-ge::graphStatus SFAInfoParser::GetDSizeKV()
-{
-    dSizeKV_ = GetAxisNum(keyShape_, SFAAxis::D, kvLayout_);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus SFAInfoParser::GetValueHeadDim()
 {
     // 获取vHeadDim基准值
@@ -1959,7 +1954,6 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.kvTSize = kvTSize_;
     sfaInfo.sparseBlockSize = *opParamInfo_.sparseBlockSize;
     sfaInfo.sparseBlockCount = sparseBlockCount_;
-    sfaInfo.dSizeVInput = dSizeKV_;
 
     sfaInfo.inputQType = inputQType_;
     sfaInfo.inputKvType = inputKvType_;

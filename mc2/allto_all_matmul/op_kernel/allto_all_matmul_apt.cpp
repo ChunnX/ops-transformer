@@ -80,7 +80,7 @@ using namespace AlltoAllMatmulImpl;
 #define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, MMDataTypeX1)                                                 \
     do {                                                                                                               \
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
-            AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1, CommunicationType);                          \
+            AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1, CommunicationType);                            \
         CommunicationType commImplName(&tilingData);                                                                   \
         DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(DTYPE_X1, MMDataTypeX1, TransAndDynamicQuantType);                       \
         TransAndDynamicQuantType dynamicQuantImplName(&pipe);                                                          \
@@ -93,7 +93,7 @@ using namespace AlltoAllMatmulImpl;
             MC2KernelPipelineCommTransQuantComputeTemplate<CommunicationType, TransAndDynamicQuantType,                \
                                                            ComputationType, SchedulerContextType>;                     \
         SchedulerType SchedulerImpl(&commImplName, &dynamicQuantImplName, &matmulImplName);                            \
-        AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData> op(          \
+        AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData> op(            \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, x2_offset, workspaceGM, &tilingData, &pipe);         \
         op.Process();                                                                                                  \
@@ -101,12 +101,12 @@ using namespace AlltoAllMatmulImpl;
 #endif
 
 #ifndef ALLTO_ALL_MX_QUANT_MATMUL_IMPL
-#define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe)                                                               \
+#define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, commDataTypeX1, isMxFp4)                                      \
     do {                                                                                                               \
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
             AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1, CommunicationType);                            \
         CommunicationType commImplName(&tilingData);                                                                   \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_X1, TransposeType);                                            \
+        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(commDataTypeX1, TransposeType);                                      \
         TransposeType transposeImplName(&pipe);                                                                        \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(AscendC::fp8_e8m0_t, ScaleTransposeType);                            \
         ScaleTransposeType scaleTransposeImplName(&pipe);                                                              \
@@ -119,7 +119,7 @@ using namespace AlltoAllMatmulImpl;
             AlltoAllMxQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,                        \
                                                       ComputationType, SchedulerContextType>;                          \
         SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &scaleTransposeImplName, &matmulImplName);      \
-        AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData> op(            \
+        AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData, isMxFp4> op(   \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
         op.Process();                                                                                                  \
@@ -165,7 +165,9 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
     #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
         ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-        ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe);
+        ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, DTYPE_X1, false); 
+    #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
+        ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, uint8_t, true);
     #else
         if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
             ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e5m2_t);

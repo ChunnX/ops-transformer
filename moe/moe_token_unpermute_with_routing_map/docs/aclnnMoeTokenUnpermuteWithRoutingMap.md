@@ -2,7 +2,6 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute_with_routing_map)
 
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -74,7 +73,6 @@
   $$
   unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
-
 
   （3）probs为None，paddedMode为true时：
 
@@ -153,7 +151,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
       <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>paddedMode为false：（tokens_num * topK_num,  hidden_size）<br>paddedMode为true：（experts_num* capacity,  hidden_size）</td>
+      <td>paddedMode为false：(tokens_num * topK_num, hidden_size)<br>paddedMode为true：(experts_num* capacity, hidden_size)</td>
       <td>√</td>
     </tr>
     <tr>
@@ -303,13 +301,11 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>topK_num > 512。</td>
     </tr>
     <tr>
-      <td>probsOptional的shape不在支持的范围。</td>
+      <td>probsOptional的shape不在支持的范围内。</td>
     </tr>
   </tbody></table>
 
-
 ## aclnnMoeTokenUnpermuteWithRoutingMap
-
 
 - **参数说明**
   <table style="undefined;table-layout: fixed; width: 1244px"><colgroup>
@@ -346,7 +342,6 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     </tr>
     </tbody>
   </table>
-
 
 - **返回值**
   

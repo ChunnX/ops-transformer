@@ -54,9 +54,9 @@ public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t s1BaseSize = 64;  //lz : 先设置64，但目前方案中应该是32
-    static constexpr uint32_t s2BaseSize = 128; 
-    static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1; 
+    static constexpr uint32_t s1BaseSize = 64;
+    static constexpr uint32_t s2BaseSize = 128;
+    static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 576;  // 512
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr uint32_t dVTemplateTypeInput = 576;  // 512
@@ -66,7 +66,8 @@ public:
     // ==================== Functions ======================
     __aicore__ inline QSFAVectorService() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseFlashAttentionTilingDataMla *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
+                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, 
+                                        __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
@@ -86,8 +87,9 @@ public:
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
-        __gm__ uint8_t *blockTable);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *queryRope,
+                                            __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
+                                            __gm__ uint8_t *blockTable);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &v0ResGm, 

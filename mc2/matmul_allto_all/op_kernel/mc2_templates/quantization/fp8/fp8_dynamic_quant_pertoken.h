@@ -227,8 +227,16 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
 template <typename quantInputDataType, typename quantOutputDataType>
 __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::ProcessOneTokenRegBase()
 {
-    uint32_t inputSize = Ceil(static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantInputDataType)), UB_DATABLOCK) * UB_DATABLOCK * context_.blockNum;
-    uint32_t outputSize = inputSize / sizeof(quantInputDataType) * sizeof(quantOutputDataType);
+    uint32_t perBlockDataLength = static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantInputDataType));
+    uint32_t inputSizePerBlock = Ceil(perBlockDataLength, UB_DATABLOCK) * UB_DATABLOCK;
+    uint32_t inputSize = inputSizePerBlock * context_.blockNum;
+    constexpr uint8_t tempRShiftAmountIn = sizeof(quantInputDataType) / 2;
+    uint64_t perBlockDataOffsetInUB = inputSizePerBlock >> tempRShiftAmountIn;
+    uint32_t outputSizePerBlock = 
+        Ceil(static_cast<uint32_t>(perBlockDataOffsetInUB * sizeof(quantOutputDataType)), UB_DATABLOCK) * UB_DATABLOCK;
+    uint32_t outputSize = perBlockDataOffsetInUB * context_.blockNum;
+    constexpr uint8_t tempRShiftAmountOut = sizeof(quantOutputDataType) / 2;
+    uint64_t perBlockQuantDataOffsetInUB = outputSizePerBlock >> tempRShiftAmountOut;
 
     tPipe_->InitBuffer(scaleWorkBuf_, UB_DATABLOCK);
     tPipe_->InitBuffer(maxValueBuf_, UB_DATABLOCK);
@@ -244,8 +252,6 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     transOutQue_.EnQue(rawInputTensor);
     quantOutputQue_.EnQue(quantOut);
 
-    uint32_t perBlockDataLength = static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantInputDataType));
-    uint64_t perBlockDataOffsetInUB = Ceil(perBlockDataLength, UB_DATABLOCK) * UB_DATABLOCK / sizeof(quantInputDataType);
     // 2.逐token处理
     float scale;
     float maxValue;
@@ -313,7 +319,10 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         // 量化
         quantOutputQue_.DeQue();
         __local_mem__ quantOutputDataType* yAddr = (__local_mem__ quantOutputDataType*)quantOut.GetPhyAddr();
-        DoQuantRegBase(xAddr, yAddr, perBlockDataOffsetInUB * context_.blockNum, scale);
+        for (uint32_t k = 0; k < context_.blockNum; ++k) {
+            DoQuantRegBase(xAddr + k * perBlockDataOffsetInUB, yAddr + k * perBlockQuantDataOffsetInUB,
+                perBlockDataOffsetInUB, scale);
+        }
         SyncFunc<AscendC::HardEvent::V_S>();
 
         // // 搬出量化结果

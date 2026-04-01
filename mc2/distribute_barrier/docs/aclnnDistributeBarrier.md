@@ -60,7 +60,7 @@ aclnnStatus aclnnDistributeBarrier(
     <td>xRef</td>
     <td>输入</td>
     <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
-    <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
+    <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4</td>
     <td>ND</td>
     </tr>
     <tr>
@@ -93,7 +93,6 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
-    
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -120,10 +119,9 @@ aclnnStatus aclnnDistributeBarrier(
     <tr>
     <td>ACLNN_ERR_INNER_TILING_ERROR</td>
     <td>561002</td>
-    <td>参数的取值不在支持的范围。</td>
+    <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody></table>
-
 
 ## aclnnDistributeBarrier
 
@@ -163,6 +161,7 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
     
 - **返回值**
 
@@ -185,6 +184,7 @@ aclnnStatus aclnnDistributeBarrier(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -264,8 +264,6 @@ aclnnStatus aclnnDistributeBarrier(
         ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed, ret %d\n", ret); return -1);
     
         int64_t Bs = 8;
         int64_t H = 7168;

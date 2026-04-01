@@ -511,6 +511,16 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
                                             fagShape.t1, fagShape.t2, sumSeqQLen, sumSeqKvLen);
                 return ACLNN_ERR_PARAM_INVALID;
             }
+            // 校验EOD场景尾部是否补0
+            if (fagShape.t1 > sumSeqQLen && fagShape.t2 > sumSeqKvLen) {
+                int64_t actSeqQLenEnd = static_cast<int64_t>((*actualSeqQLenOptional)[actualSeqQLenOptional->Size() - 1]);
+                int64_t actSeqKvLenEnd = static_cast<int64_t>((*actualSeqKvLenOptional)[actualSeqKvLenOptional->Size() - 1]);
+                if (actSeqQLenEnd != 0 || actSeqKvLenEnd !=0) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
+                                            actSeqQLenEnd, actSeqKvLenEnd);
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
         }
     } else {
         fagShape.needPadDimD = false;
@@ -2509,6 +2519,19 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
         return ret;
     }
 
+    if (softmaxInLayout != nullptr) {
+        if (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxInLayout, "same_as_input") != 0 &&
+            strcmp(softmaxInLayout, "") != 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "softmaxInLayout %s is not same_as_input or Empty string, invalid softmaxInLayout, please check",
+                    softmaxInLayout);
+            return ACLNN_ERR_PARAM_INVALID;
+        } else if (strcmp(inputLayout, "TND") != 0 && strcmp(softmaxInLayout, "") != 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxInLayout only support inputLayout TND, please check");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+
     // 输入连续性转换
     const aclTensor *queryCngs = nullptr;
     const aclTensor *keyCngs = nullptr;
@@ -2562,8 +2585,8 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
         attenMaskOptionalCngs, softmaxMaxOptionalCngs, softmaxSumOptionalCngs, softmaxInOptionalCngs,
         attentionInOptionalCngs, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,
         kvStartIdxOptional, dScaleQOptionalCngs, dScaleKOptionalCngs, dScaleVOptionalCngs, dScaleDyOptionalCngs,
-        dScaleOOptionalCngs, nullptr, nullptr, queryRopeOptionalCngs, keyRopeOptionalCngs, dsink, scaleValue, keepProb, preTokens, nextTokens,
-        headNum, inputLayoutUnderTrans, innerPrecise, sparseMode, pseType, seed, offset, outDtypeOptional, defaultSoftmaxInLayout, executor);
+        dScaleOOptionalCngs, nullptr, nullptr, queryRopeOptionalCngs, keyRopeOptionalCngs, sinkInOptionalCngs, scaleValue, keepProb, preTokens, nextTokens,
+        headNum, inputLayoutUnderTrans, innerPrecise, sparseMode, pseType, seed, offset, outDtypeOptional, softmaxInLayout, executor);
     CHECK_RET(fagRes[0] != nullptr && fagRes[1] != nullptr && fagRes[2] != nullptr,  // 0: dqOut 1: dkOut 2:dvOut
               ACLNN_ERR_PARAM_NULLPTR);
 

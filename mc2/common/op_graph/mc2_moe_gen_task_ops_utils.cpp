@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "mc2_gen_task_ops_utils.h"
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 #include "op_mc2.h"
 #include "platform/platform_info.h"
 
@@ -339,7 +339,8 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(const gert::ExeResGene
                      (opTypeStr != MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE) && (opTypeStr != DISTRIBUTE_BARRIER_OP_TYPE) &&
                      (opTypeStr != MOE_DISTRIBUTE_DISPATCH_OP_TYPE) && (opTypeStr != MOE_DISTRIBUTE_COMBINE_OP_TYPE) &&
                      (opTypeStr != ATTENTION_TO_FFN_OP_TYPE) && (opTypeStr != FFN_TO_ATTENTION_OP_TYPE) &&
-                     (opTypeStr != QUANT_ALL_REDUCE_OP_TYPE) && (opTypeStr != QUANT_REDUCE_SCATTER_OP_TYPE));
+                     (opTypeStr != QUANT_ALL_REDUCE_OP_TYPE) && (opTypeStr != QUANT_REDUCE_SCATTER_OP_TYPE) &&
+                     (opTypeStr != MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_OP_TYPE));
     return useAiCpu ? Mc2MoeInsertTask(context, tasks, groupCnt) : ge::GRAPH_SUCCESS;
 }
 } // namespace ops

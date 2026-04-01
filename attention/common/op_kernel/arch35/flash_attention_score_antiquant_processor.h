@@ -453,6 +453,11 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
                                                            const AntiquantTaskParamBaseAPI& taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize)
 {
     LocalTensor<KV_T> tmpUb = kvInputQue.template AllocTensor<KV_T>();
+
+    event_t eventVMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    SetFlag<HardEvent::V_MTE2>(eventVMTE2);
+    WaitFlag<HardEvent::V_MTE2>(eventVMTE2);
+
     if constexpr (!PAGE_ATTENTION) {
         uint64_t kvOffset = taskParam.kvGmOffset + copyLoopIdx * taskParam.copySplitS * taskParam.kvStep;
         CopyKV(tmpUb, kvGm, kvOffset, dealRowCount, taskParam.headDim, taskParam.kvHeadNum,
@@ -461,6 +466,11 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         uint64_t curSeqence = taskParam.s2BatchOffset + copyLoopIdx * taskParam.copySplitS;
         CopyKVPageAttention(tmpUb, kvGm, blockTableGm, taskParam, curSeqence, dealRowCount);
     }
+
+    event_t eventMTE2V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventMTE2V);
+    WaitFlag<HardEvent::MTE2_V>(eventMTE2V);
+
     kvInputQue.template EnQue(tmpUb);
     kvInputQue.DeQue<KV_T>();
 

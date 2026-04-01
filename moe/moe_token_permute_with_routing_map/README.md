@@ -29,7 +29,7 @@
   $$
   
   $$
-  sortedIndicesOut=argSort(sortedIndicesFirst)
+  sortedIndicesOut=argsort(sortedIndicesFirst)
   $$
     
   $$
@@ -41,7 +41,7 @@
   $$
 
   $$
-  permuteTokens[sortedIndicesOut[i]]=tokens[i//topK]
+  permutedTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
   $$
   
   $$
@@ -53,7 +53,6 @@
   $$
   capacity = numOutTokens // expert\_num
   $$
-
 
   $$
   outToken = capacity * expert\_num
@@ -67,7 +66,7 @@
   permutedTokensOut = tokens.index_select(0, sortedIndicesOut)
   $$
   
-- 如果probs不是`none`时：
+- 如果probsOptional不是`none`时：
   
   $$
   probs\_T\_1D = probsOptional.T.view(-1)
@@ -160,8 +159,6 @@
   </tr>
  </tbody></table>
 
-
-
 ## 约束说明
 
  - tokens_num和expert_num要求小于`16777215`。
@@ -172,4 +169,3 @@
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 | aclnn接口 | [test_aclnn_moe_token_permute_with_routing_map](examples/test_aclnn_moe_token_permute_with_routing_map.cpp) | 通过[aclnnMoeTokenPermuteWithRoutingMap](docs/aclnnMoeTokenPermuteWithRoutingMap.md)接口方式调用MoeTokenPermuteWithRoutingMap算子。 |
-

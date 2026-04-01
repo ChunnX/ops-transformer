@@ -20,6 +20,7 @@
     $$  
 
   其中，weight 是 Q、K、V 三个矩阵权重的拼接。
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
@@ -98,7 +99,8 @@
 </table>
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持FLOAT16。
+- <term>Kirin X90/Kirin 9030 处理器系列产品</term>：数据类型不支持BFLOAT16、INT8。
 
 ## 约束说明
-- 当前不支持用户直接调用
 
+- 当前不支持用户直接调用
