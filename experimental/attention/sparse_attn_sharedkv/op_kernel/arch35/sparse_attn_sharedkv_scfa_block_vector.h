@@ -378,25 +378,24 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         outputL1.SetCrossCore();
         v0ResGm.SetCrossCore();
     }
+
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && !IS_SPLIT_G) {
-        if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // ori kv阶段无核间操作
+        if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) {
             return;
         }
-        if (startPos == 32) {
-            outputL1.WaitCrossCore(); // 核间同步
+        outputL1.WaitCrossCore();
+        v0ResGm.WaitCrossCore();
+        keyGm = cmpKVGm;
+        sparseIndicesGm = cmpSparseIndicesGm;
+        if constexpr (IS_PA) {
+            blockTableGm = cmpBlockTableGm;
+            blockSize = constInfo.cmpBlockSize;
+            maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
         }
-        if (runInfo.s2RealSize > startPos) {
-            keyGm = cmpKVGm;
-            if constexpr (IS_PA) {
-                blockTableGm = cmpBlockTableGm;
-                blockSize = constInfo.cmpBlockSize;
-                maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
-            }
-            ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
-        }
-        if (startPos == 80) {
-            outputL1.SetCrossCore(); // 核间同步
-        }
+        CalSparseCalSize(runInfo, constInfo);
+        ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
+        outputL1.SetCrossCore();
+        v0ResGm.SetCrossCore();
     }
 }
 
@@ -406,7 +405,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
+        (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && !IS_SPLIT_G)) {
         if (sparseCalSize == 0) {
             return;
         }
@@ -447,48 +447,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             s2Start += dealRow;
             pingPong ^= 1;
         }
-    }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && !IS_SPLIT_G) {
-        int64_t s2PerVecLoop = 2LL;
-        int64_t vecNum = 2LL;
-        int64_t calNum = (runInfo.s2RealSize - startPos > 48) ? 48 : (runInfo.s2RealSize - startPos);
-        int64_t s2Loops = CeilDiv(CeilDiv(calNum, vecNum), s2PerVecLoop);
-
-        int64_t s2Start = (GetSubBlockIdx() == 0 ? 0 : s2Loops * s2PerVecLoop) + startPos;
-        int64_t s2End = (GetSubBlockIdx() == 0 ? s2Loops * s2PerVecLoop : calNum) + startPos;
-        int64_t s2 = s2Start;
-        int64_t token0Idx, token1Idx; // 拷贝进入的两个token的index
-        // 处理一个s2的base块
-        int64_t dealRow = 0;
-        // 1、copy kv in, gm ->ub
-        LocalTensor<KV_T> kvInUb = stage0InQue.AllocTensor<KV_T>();
-        while (dealRow < (s2End - s2Start + 1)) {
-            GetRealCmpS2Idx(token0Idx, token1Idx, s2, runInfo, constInfo);
-            s2 += 2; // 每次搬运2行
-            if (token0Idx== -1 && token1Idx == -1) {
-                break;
-            }
-            dealRow += CopyInKvSparse(kvInUb, dealRow, token0Idx, token1Idx, runInfo, constInfo);
-            if (token1Idx == -1) {
-                break;
-            }
-        }
-        if (dealRow  == 0) {
-            stage0InQue.FreeTensor(kvInUb);
-            return;
-        }
-        stage0InQue.EnQue(kvInUb);
-        kvInUb = stage0InQue.DeQue<KV_T>();
-        // 2、copy to out ub
-        LocalTensor<Q_T> kvOutUb = stage0OutQue.AllocTensor<Q_T>();
-        CopyToOutUb(kvOutUb, kvInUb, dealRow, constInfo);
-        stage0InQue.FreeTensor(kvInUb);
-        stage0OutQue.EnQue(kvOutUb);
-        kvOutUb = stage0OutQue.DeQue<Q_T>();
-
-        // 3、copy kv out, ub -> l1
-        CopyOutKvUb2L1(outputL1, kvOutUb, dealRow, s2Start, runInfo, constInfo);
-        stage0OutQue.FreeTensor(kvOutUb);
+        GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
     }
 }
 
@@ -761,11 +720,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
         InitSinksBuffer(constInfo);
     }
 
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 24 * sizeof(KV_T)); // V0阶段每次处理24个seq, 开2 buffer
-        tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (24 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
-    }
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+    // 不再使用TQue，会导致UB越界
+    // if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+    //     tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 24 * sizeof(KV_T)); // V0阶段每次处理24个seq, 开2 buffer
+    //     tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (24 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
+    // }
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         // tPipe->InitBuffer(stage0InQue, 2, dVTemplateType * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
         // tPipe->InitBuffer(stage0OutQue, 1, dVTemplateType * (16 + 1) * sizeof(Q_T)); // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
         tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T));

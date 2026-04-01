@@ -684,7 +684,7 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, N2, D, K, bl
         cmp_sparse_indices = None
     return cmp_k_in_pa_shape, cmp_sparse_indices, cmp_block_table, cmp_k_bnsd
 
-def gen_data(params):
+def gen_data(params, template_mode=None):
     layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1, block_num2, \
     block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, \
     ori_win_left, ori_win_right, case_name, S2, q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q, \
@@ -749,32 +749,57 @@ def gen_data(params):
 
     # 路由到三个算子的逻辑：
     template_idx = 0
-    if K is None or K == ['None']:
-        if K1 != None:
-            template_idx = 3
-            template_run_mode = 'ORI_SCFA'
-            K1 = int(K1)
-            cmp_ratio = 1
-        elif cmp_ratio is None:
-            template_idx = 0  # SWA
-            template_run_mode = 'SWA'
-        else:
-            template_idx = 1  # CFA
-            template_run_mode = 'CFA'
+
+    mapping = {"SWA": 0, "CFA": 1, "SCFA": 2, "ORI_SCFA": 3, "ALL_SCFA": 4}
+    if template_mode is not None:
+        template_run_mode = template_mode
+        template_idx = mapping[template_mode]
+        if template_mode == "SWA":
+            cmp_ratio = None
+            K = None
+            K1 = None
+        elif template_mode == "CFA":
             cmp_ratio = int(cmp_ratio)
-    else:
-        if cmp_ratio == None:
-            cmp_ratio = 1
-        else:
+            K = None
+            K1 = None
+        elif template_mode == "SCFA":
             cmp_ratio = int(cmp_ratio)
-        if K1 == None:
-            template_idx = 2  # SCFA
-            template_run_mode = 'SCFA'
             K = int(K)
+        elif template_mode == "ORI_SCFA":
+            cmp_ratio = 1
+            K = int(K)
+            K1 = int(K1)
+        elif template_mode == "ALL_SCFA":
+            cmp_ratio = int(cmp_ratio)
+            K = int(K)
+            K1 = int(K1)
+    else:
+        if K is None or K == ['None']:
+            if K1 != None:
+                template_idx = 3
+                template_run_mode = 'ORI_SCFA'
+                K1 = int(K1)
+                cmp_ratio = 1
+            elif cmp_ratio is None:
+                template_idx = 0  # SWA
+                template_run_mode = 'SWA'
+            else:
+                template_idx = 1  # CFA
+                template_run_mode = 'CFA'
+                cmp_ratio = int(cmp_ratio)
         else:
-            template_idx = 4  # ALL_SCFA
-            template_run_mode = 'ALL_SCFA'
-            K, K1 = int(K), int(K1)
+            if cmp_ratio == None:
+                cmp_ratio = 1
+            else:
+                cmp_ratio = int(cmp_ratio)
+            if K1 == None:
+                template_idx = 2  # SCFA
+                template_run_mode = 'SCFA'
+                K = int(K)
+            else:
+                template_idx = 4  # ALL_SCFA
+                template_run_mode = 'ALL_SCFA'
+                K, K1 = int(K), int(K1)
 
     if layout_kv == "PA_BNBD":
         block_size1, block_num1 = int(block_size1), int(block_num1)
