@@ -21,21 +21,12 @@
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
 
-namespace {
-
-using namespace std;
-using namespace gert;
-using namespace ge;
+namespace MoeDistributeCombineSetupUT {
 
 static const std::string OP_NAME = "MoeDistributeCombineSetup";
 
 struct MoeDistributeCombineSetupTestParam {
     std::string caseName;
-    std::string socVersion;
-
-    // 输入Tensor
-    uint64_t inputTotalNum;
-
     // expand_x
     std::initializer_list<int64_t> expandXShape;
     ge::DataType expandXDtype;
@@ -50,9 +41,6 @@ struct MoeDistributeCombineSetupTestParam {
     std::initializer_list<int64_t> assistInfoShape;
     ge::DataType assistInfoDtype;
     ge::Format assistInfoFormat;
-
-    // 输出Tensor
-    uint64_t outputTotalNum;
 
     // quant_expand_x
     std::initializer_list<int64_t> quantExpandXShape;
@@ -77,6 +65,8 @@ struct MoeDistributeCombineSetupTestParam {
     int64_t commType;
     std::string commAlgAttr;
 
+    // soc version
+    std::string socVersion;
     // expert result
     ge::graphStatus status;
     uint64_t expectTilingKey;
@@ -91,92 +81,62 @@ inline std::ostream &operator<<(std::ostream &os, const MoeDistributeCombineSetu
 }
 
 // 用例列表集
-static MoeDistributeCombineSetupTestParam test_cases[] = {
-    // ===============================================交付shape===============================================
-    {"moe_distribute_combine_setup_critical_case_1", "Ascend910_95",
-     3,
-     {1536, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // expand_x
-     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,        // expert_ids
-     {196608}, ge::DT_INT32, ge::FORMAT_ND,       // assist_info_for_combine
-     2,
-     {1536, 6144}, ge::DT_INT8, ge::FORMAT_ND,    // quant_expand_x
-     {24832}, ge::DT_INT32, ge::FORMAT_ND,        // comm_cmd_info
-     "group_ep", 16, 0, 256, 0, 0, 0, 0, 0, 2, "", ge::GRAPH_SUCCESS, 1000UL,
-     "16 0 1099511627776 16 68719476736 17592186044422 171798693376 262144 0 ", {16777216}, MC2_TILING_DATA_RESERVED_LEN},
-    {"moe_distribute_combine_setup_critical_case_2", "Ascend910_95",
-     3,
-     {1536, 4096}, ge::DT_BF16, ge::FORMAT_ND, // expand_x
-     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,        // expert_ids
-     {196608}, ge::DT_INT32, ge::FORMAT_ND,       // assist_info_for_combine
-     2,
-     {1536, 6144}, ge::DT_INT8, ge::FORMAT_ND,    // quant_expand_x
-     {24832}, ge::DT_INT32, ge::FORMAT_ND,        // comm_cmd_info
-     "group_ep", 16, 0, 256, 0, 0, 0, 0, 0, 2, "", ge::GRAPH_SUCCESS, 1000UL,
-     "16 0 1099511627776 16 68719476736 17592186044422 171798693376 262144 0 ", {16777216}, MC2_TILING_DATA_RESERVED_LEN},
-    // ===============================================异常shape===============================================
-    {"moe_distribute_combine_setup_abuse_dim_case_1", "Ascend910_95",
-     3,
-     {1536, 4096, 1}, ge::DT_FLOAT16, ge::FORMAT_ND, // expand_x
-     {16, 6, 1}, ge::DT_INT32, ge::FORMAT_ND,        // expert_ids
-     {196608, 1}, ge::DT_INT32, ge::FORMAT_ND,       // assist_info_for_combine
-     2,
-     {1536, 6144, 1}, ge::DT_INT8, ge::FORMAT_ND,    // quant_expand_x
-     {24832, 1}, ge::DT_INT32, ge::FORMAT_ND,        // comm_cmd_info
-     "group_ep", 16, 0, 256, 0, 0, 0, 0, 0, 2, "",
-     ge::GRAPH_FAILED, 0UL, "", {}, 0},
-    {"moe_distribute_combine_setup_abuse_dtype_case_1", "Ascend910_95",
-     3,
-     {1536, 4096}, ge::DT_INT32, ge::FORMAT_ND, // expand_x
-     {16, 6}, ge::DT_FLOAT16, ge::FORMAT_ND,        // expert_ids
-     {196608}, ge::DT_FLOAT16, ge::FORMAT_ND,       // assist_info_for_combine
-     2,
-     {1536, 6144}, ge::DT_FLOAT16, ge::FORMAT_ND,    // quant_expand_x
-     {24832}, ge::DT_FLOAT16, ge::FORMAT_ND,        // comm_cmd_info
-     "group_ep", 16, 0, 256, 0, 0, 0, 0, 0, 2, "",
-     ge::GRAPH_FAILED, 0UL, "", {}, 0},
-    {"moe_distribute_combine_setup_abuse_format_case_1", "Ascend910_95",
-     3,
-     {1536, 4096}, ge::DT_FLOAT16, ge::FORMAT_NCHW, // expand_x
-     {16, 6}, ge::DT_INT32, ge::FORMAT_NCHW,        // expert_ids
-     {196608}, ge::DT_INT32, ge::FORMAT_NCHW,       // assist_info_for_combine
-     2,
-     {1536, 6144}, ge::DT_INT8, ge::FORMAT_NCHW,    // quant_expand_x
-     {24832}, ge::DT_INT32, ge::FORMAT_NCHW,        // comm_cmd_info
-     "group_ep", 16, 0, 256, 0, 0, 0, 0, 0, 2, "",
-     ge::GRAPH_FAILED, 0UL, "", {}, 0},
-    {"moe_distribute_combine_setup_abuse_shape_case_1", "Ascend910_95",
-     3,
-     {1536, 1023}, ge::DT_FLOAT16, ge::FORMAT_ND, // expand_x
-     {0, 6}, ge::DT_INT32, ge::FORMAT_ND,        // expert_ids
-     {196608}, ge::DT_INT32, ge::FORMAT_ND,       // assist_info_for_combine
-     2,
-     {1536, 6144}, ge::DT_INT8, ge::FORMAT_ND,    // quant_expand_x
-     {24832}, ge::DT_INT32, ge::FORMAT_ND,        // comm_cmd_info
-     "", 0, 0, 256, 1, 0, 0, 0, 1, 2, "",
-     ge::GRAPH_FAILED, 0UL, "", {}, 0},
-    {"moe_distribute_combine_setup_abuse_shape_case_2", "Ascend910_95",
-     3,
-     {1536, 8197}, ge::DT_FLOAT16, ge::FORMAT_ND, // expand_x
-     {513, 6}, ge::DT_INT32, ge::FORMAT_ND,        // expert_ids
-     {196608}, ge::DT_INT32, ge::FORMAT_ND,       // assist_info_for_combine
-     2,
-     {1536, 6144}, ge::DT_INT8, ge::FORMAT_ND,    // quant_expand_x
-     {24832}, ge::DT_INT32, ge::FORMAT_ND,        // comm_cmd_info
-     "group_ep", 385, 0, 256, 0, 5, 0, 0, 3, 2, "",
-     ge::GRAPH_FAILED, 0UL, "", {}, 0},
+static MoeDistributeCombineSetupTestParam g_testCases[] = {
+    // 正常用例
+    {"test_aclnn_moe_distribute_combine_setup_normal_1",
+     {192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,
+     {24576}, ge::DT_INT32, ge::FORMAT_ND,
+     {192, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {3104}, ge::DT_INT32, ge::FORMAT_ND,
+     "group_ep", 2, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_2",
+     {512, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,
+     {65536}, ge::DT_INT32, ge::FORMAT_ND,
+     {512, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {8320}, ge::DT_INT32, ge::FORMAT_ND,
+     "group_ep", 8, 0, 32, 0, 0, 0, 128, 0, 2, "",
+     "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_3",
+     {192, 4096}, ge::DT_BF16, ge::FORMAT_ND,
+     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,
+     {24576}, ge::DT_INT32, ge::FORMAT_ND,
+     {192, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {3104}, ge::DT_INT32, ge::FORMAT_ND,
+     "group_ep", 2, 0, 32, 0, 0, 0, 32, 0, 2, "",
+     "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_4",
+     {512, 4096}, ge::DT_BF16, ge::FORMAT_ND,
+     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,
+     {65536}, ge::DT_INT32, ge::FORMAT_ND,
+     {512, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {8320}, ge::DT_INT32, ge::FORMAT_ND,
+     "group_ep", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    // 异常用例
+    {"test_aclnn_moe_distribute_combine_setup_invalid_expand_x_dtype",
+     {512, 4096}, ge::DT_INT32, ge::FORMAT_ND,
+     {16, 6}, ge::DT_INT32, ge::FORMAT_ND,
+     {65536}, ge::DT_INT32, ge::FORMAT_ND,
+     {512, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {8320}, ge::DT_INT32, ge::FORMAT_ND,
+     "group_ep", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+     "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
 };
 
 // setup & teardown
-class TestMoeDistributeCombineSetupTiling : public testing::TestWithParam<MoeDistributeCombineSetupTestParam> {
+class MoeDistributeCombineSetupArch35TilingTest : public testing::TestWithParam<MoeDistributeCombineSetupTestParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "TestMoeDistributeCombineSetupTiling SetUp." << std::endl;
+        std::cout << "MoeDistributeCombineSetupArch35TilingTest SetUp." << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "TestMoeDistributeCombineSetupTiling TearDown." << std::endl;
+        std::cout << "MoeDistributeCombineSetupArch35TilingTest TearDown." << std::endl;
     }
 };
 
@@ -188,8 +148,7 @@ gert::StorageShape make_shape(const std::initializer_list<int64_t> &input_shape)
     return gert::StorageShape{input_shape, input_shape};
 }
 
-struct MoeDistributeCombineSetupCompileInfo {
-} compileInfo;
+static struct MoeDistributeCombineSetupCompileInfo {} compileInfo;
 
 static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombineSetupTestParam &param)
 {
@@ -245,7 +204,7 @@ static void TestExecMultiThread(const MoeDistributeCombineSetupTestParam *testCa
     }
 }
 
-TEST_P(TestMoeDistributeCombineSetupTiling, general_cases)
+TEST_P(MoeDistributeCombineSetupArch35TilingTest, GeneralCases)
 {
     auto param = GetParam();
     auto tilingContextPara = BuildTilingContextPara(param);
@@ -254,12 +213,12 @@ TEST_P(TestMoeDistributeCombineSetupTiling, general_cases)
                        param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
 }
 
-TEST_F(TestMoeDistributeCombineSetupTiling, general_cases_multi_thread)
+TEST_F(MoeDistributeCombineSetupArch35TilingTest, GeneralCasesMultiThread)
 {
-    TestExecMultiThread(test_cases, sizeof(test_cases) / sizeof(MoeDistributeCombineSetupTestParam), 3);
+    TestExecMultiThread(g_testCases, sizeof(g_testCases) / sizeof(MoeDistributeCombineSetupTestParam), 3);
 }
 
-INSTANTIATE_TEST_CASE_P(MoeDistributeCombineSetupTilingUT, TestMoeDistributeCombineSetupTiling,
-                        testing::ValuesIn(test_cases));
+INSTANTIATE_TEST_CASE_P(MoeDistributeCombineSetupTilingUT, MoeDistributeCombineSetupArch35TilingTest,
+                        testing::ValuesIn(g_testCases));
 
-} // namespace
+} // namespace MoeDistributeCombineSetupUT
