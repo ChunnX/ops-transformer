@@ -104,6 +104,25 @@ int64_t GetKvBatchSizeQSas(const aclTensor* sequsedKvOptional, const aclTensor* 
     return batchSizeOptional;
 }
 
+aclnnStatus ParamsCheckQSasN128(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
+                                const aclTensor* cuSeqLensOriKvOptional, const aclTensor* sequsedKvOptional, 
+                                const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
+                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional, char* layoutQOptional, 
+                                char* layoutKvOptional)
+{
+    if (CheckSingleParamQSasN128(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, layoutQOptional, 
+                             layoutKvOptional) == ACLNN_SUCCESS && 
+        CheckExistenceQSasN128(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
+        CheckConsistencyQSasN128(cmpTopkLengthOptional, sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
+                             sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, 
+                             batchSizeOptional) == ACLNN_SUCCESS &&
+        CheckFeatureQSasN128() == ACLNN_SUCCESS) {
+        return ACLNN_SUCCESS;
+    } else {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+}
+
 aclnnStatus CheckSingleParamQSasN128(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                      int64_t numHeadsKv, char* layoutQOptional, char* layoutKvOptional)
 {
@@ -202,19 +221,18 @@ aclnnStatus CheckFeatureQSasN128()
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ParamsCheckQSasN128(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
-                                const aclTensor* cuSeqLensOriKvOptional, const aclTensor* sequsedKvOptional, 
-                                const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
-                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional, char* layoutQOptional, 
-                                char* layoutKvOptional)
+aclnnStatus ParamsCheckQSasN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
+                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, int64_t numHeadsQ, 
+                               int64_t numHeadsKv, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
+                               int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, char* layoutQOptional, 
+                               char* layoutKvOptional) 
 {
-    if (CheckSingleParamQSasN128(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, layoutQOptional, 
-                             layoutKvOptional) == ACLNN_SUCCESS && 
-        CheckExistenceQSasN128(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
-        CheckConsistencyQSasN128(cmpTopkLengthOptional, sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
-                             sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, 
-                             batchSizeOptional) == ACLNN_SUCCESS &&
-        CheckFeatureQSasN128() == ACLNN_SUCCESS) {
+    if (CheckSingleParamQSasN64(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, oriMaskModeOptional, 
+                            oriWinLeftOptional, layoutQOptional, layoutKvOptional) == ACLNN_SUCCESS && 
+        CheckExistenceQSasN64(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
+        CheckConsistencyQSasN64(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, sequsedKvOptional, 
+                            cuSeqLensOriKvOptional, layoutKvOptional, batchSizeOptional) == ACLNN_SUCCESS && 
+        CheckFeatureQSasN64() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
@@ -315,24 +333,6 @@ aclnnStatus CheckConsistencyQSasN64(const aclTensor* sequsedQOptional, const acl
 aclnnStatus CheckFeatureQSasN64() 
 {
     return ACLNN_SUCCESS;
-}
-
-aclnnStatus ParamsCheckQSasN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, int64_t numHeadsQ, 
-                               int64_t numHeadsKv, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-                               int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, char* layoutQOptional, 
-                               char* layoutKvOptional) 
-{
-    if (CheckSingleParamQSasN64(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, oriMaskModeOptional, 
-                            oriWinLeftOptional, layoutQOptional, layoutKvOptional) == ACLNN_SUCCESS && 
-        CheckExistenceQSasN64(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
-        CheckConsistencyQSasN64(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, sequsedKvOptional, 
-                            cuSeqLensOriKvOptional, layoutKvOptional, batchSizeOptional) == ACLNN_SUCCESS && 
-        CheckFeatureQSasN64() == ACLNN_SUCCESS) {
-        return ACLNN_SUCCESS;
-    } else {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
 }
 
 aclnnStatus aclnnKvQuantSparseAttnSharedkvMetadataGetWorkspaceSize(
