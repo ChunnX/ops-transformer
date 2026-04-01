@@ -15,12 +15,22 @@
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
+    #include "kernel_utils.h"
+    #include "kernel_tiling/kernel_tiling.h"
+#if ASC_DEVKIT_MAJOR >= 9
+    #include "kernel_basic_intf.h"
+#else
+    #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "arch35/grouped_matmul_finalize_routing_tiling_key.h"
-#if ORIG_DTYPE_PERTOKEN_SCALE == DT_FLOAT8_E8M0
-#include "arch35/grouped_matmul_finalize_routing.h"
+#if ORIG_DTYPE_X != DT_FLOAT8_E4M3FN && ORIG_DTYPE_X != DT_FLOAT8_E5M2 && ORIG_DTYPE_X != DT_FLOAT4_E1M2 && ORIG_DTYPE_X != DT_FLOAT4_E2M1
+    #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
+#elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
+    #include "arch35/grouped_matmul_finalize_routing.h"
 #else
-#include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
+    #include "arch35/grouped_matmul_finalize_routing.h"
+    #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #endif
 
 static constexpr uint64_t BF16TYPE = 2;
@@ -34,50 +44,115 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
 {
     TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    #if ORIG_DTYPE_PERTOKEN_SCALE == DT_FLOAT8_E8M0
-    if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) { // transX = false, transW = false
-        grouped_matmul_finalize_routing_mx<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) { // transX = false, transW = true
-        grouped_matmul_finalize_routing_mx<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    }
+    #if ORIG_DTYPE_X != DT_FLOAT8_E4M3FN && ORIG_DTYPE_X != DT_FLOAT8_E5M2 && ORIG_DTYPE_X != DT_FLOAT4_E1M2 && ORIG_DTYPE_X != DT_FLOAT4_E2M1
+        AscendC::printf("jayshu 000000!!!");
+        if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) { // transX = false, transW = false
+            AscendC::printf("jayshu 3333333!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 1 && ROWINDEXTYPE == 0) { // transX = false, transW = true
+            AscendC::printf("jayshu 4444444!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 0) { // transX = false, transW = false
+            AscendC::printf("jayshu 5555555!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, BF16TYPE, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 0) { // transX = false, transW = true
+            AscendC::printf("jayshu 6666666!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, BF16TYPE, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 1) { // transX = false, transW = false
+            AscendC::printf("jayshu 77777777!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 1 && ROWINDEXTYPE == 1) { // transX = false, transW = true
+            AscendC::printf("jayshu 88888888!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 1) { // transX = false, transW = false
+            AscendC::printf("jayshu 9999999!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, BF16TYPE, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 1) { // transX = false, transW = true
+            AscendC::printf("jayshu 1010101010!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, BF16TYPE, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        }
+    #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
+        AscendC::printf("jayshu 11110000!!!");
+        if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) { // transX = false, transW = false
+            AscendC::printf("jayshu 11112222!!!");
+            grouped_matmul_finalize_routing_mx<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) { // transX = false, transW = true
+            AscendC::printf("jayshu 22223333!!!");
+            grouped_matmul_finalize_routing_mx<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        }
     #else
-    if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) { // transX = false, transW = false
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 0>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 1 && ROWINDEXTYPE == 0) { // transX = false, transW = true
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1, 0>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 0) { // transX = false, transW = false
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, BF16TYPE, 0>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 0) { // transX = false, transW = true
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, BF16TYPE, 0>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 1) { // transX = false, transW = false
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 1>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 1 && ROWINDEXTYPE == 1) { // transX = false, transW = true
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1, 1>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 1) { // transX = false, transW = false
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, BF16TYPE, 1>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 1) { // transX = false, transW = true
-        grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, BF16TYPE, 1>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    }
+        AscendC::printf("jayshu 00001111!!!");
+        if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) { // transX = false, transW = false
+            AscendC::printf("jayshu 1111111!!!");
+            grouped_matmul_finalize_routing_mx<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) { // transX = false, transW = true
+            AscendC::printf("jayshu 2222222!!!");
+            grouped_matmul_finalize_routing_mx<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) { // transX = false, transW = false
+            AscendC::printf("jayshu 3333333!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 1 && ROWINDEXTYPE == 0) { // transX = false, transW = true
+            AscendC::printf("jayshu 4444444!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 0) { // transX = false, transW = false
+            AscendC::printf("jayshu 5555555!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, BF16TYPE, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 0) { // transX = false, transW = true
+            AscendC::printf("jayshu 6666666!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, BF16TYPE, 0>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 1) { // transX = false, transW = false
+            AscendC::printf("jayshu 77777777!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 1 && ROWINDEXTYPE == 1) { // transX = false, transW = true
+            AscendC::printf("jayshu 88888888!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 1) { // transX = false, transW = false
+            AscendC::printf("jayshu 9999999!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, BF16TYPE, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == BF16TYPE && ROWINDEXTYPE == 1) { // transX = false, transW = true
+            AscendC::printf("jayshu 1010101010!!!");
+            grouped_matmul_finalize_routing_pertoken_dequant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, BF16TYPE, 1>(
+                x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+                tilingGM);
+        }
     #endif
 }
 #endif
