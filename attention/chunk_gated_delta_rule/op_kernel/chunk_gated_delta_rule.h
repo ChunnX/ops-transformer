@@ -170,23 +170,23 @@ public:
         gCumExp_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength;
 
-        kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
+        kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
-        qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
+        qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
         attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
-        kg_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
+        kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
+        qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
         highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
@@ -304,12 +304,12 @@ private:
     GlobalTensor<int32_t> actualSeqLens_;
 
     GlobalTensor<highType> gCumExp_;      // (Nv, maxGroupLength)
-    GlobalTensor<highType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
-    GlobalTensor<highType> vInner_;       // (Nv, maxGroupLength, Dv)
-    GlobalTensor<highType> qPrime_;        // (Nv, maxGroupLength, Dk)
+    GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
+    GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv)
+    GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
     GlobalTensor<highType> attnInter_;    // (Nv, maxGroupLength, Dv)
-    GlobalTensor<highType> kg_;           // (Nv, maxGroupLength, Dk)
-    GlobalTensor<highType> qkt_;          // (Nv, maxGroupLength, C)
+    GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
+    GlobalTensor<lowType> qkt_;          // (Nv, maxGroupLength, C)
     GlobalTensor<highType> highState_;
     // mask矩阵
     GlobalTensor<highType> stageOneMask_;          // (Nv, maxGroupLength, C)
