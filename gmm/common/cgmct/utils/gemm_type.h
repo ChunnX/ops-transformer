@@ -16,7 +16,7 @@
 #ifndef CGMCT_INCLUDE_UTILS_GEMM_TYPE_H
 #define CGMCT_INCLUDE_UTILS_GEMM_TYPE_H
 
-#include "kernel_event.h"
+#include "kernel_operator.h"
 
 namespace Cgmct::Gemm {
 template <class Element_, class Layout_, AscendC::TPosition POSITION_ = AscendC::TPosition::GM>

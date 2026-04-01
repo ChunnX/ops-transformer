@@ -47,7 +47,7 @@ public:
                                 __gm__ uint8_t* blocktable, __gm__ uint8_t* queryPaddingSize,
                                 __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
                                 __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-                                const optiling::PromptFlashAttentionTilingData* __restrict tiling, TPipe* tPipe);
+                                const optiling::PromptFlashAttentionTilingDataV2* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void InitQuant(__gm__ uint8_t* deq_scale1, __gm__ uint8_t* scale1, __gm__ uint8_t* deq_scale2,
                                      __gm__ uint8_t* scale2, __gm__ uint8_t* offset2);
     __aicore__ inline void Process();
@@ -100,7 +100,7 @@ protected:
 
 protected:
     TPipe* pipe;
-    const optiling::PromptFlashAttentionTilingData* __restrict tilingData;
+    const optiling::PromptFlashAttentionTilingDataV2* __restrict tilingData;
 
     // GM
     __gm__ uint8_t* currentKey;    // pageattention需要   // PFATODO mm1直接从GlobalTensor.GetPhyAddr
@@ -175,7 +175,7 @@ __aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::Init(__gm__ 
     __gm__ uint8_t* value, __gm__ uint8_t* pseShift, __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengths,
     __gm__ uint8_t* actualSeqLengthsKV, __gm__ uint8_t* blocktable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
     __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
-    __gm__ uint8_t* workspace, const optiling::PromptFlashAttentionTilingData* __restrict tiling, TPipe* tPipe)
+    __gm__ uint8_t* workspace, const optiling::PromptFlashAttentionTilingDataV2* __restrict tiling, TPipe* tPipe)
 {
     pipe = tPipe;
 

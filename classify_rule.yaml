@@ -111,13 +111,13 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_s1s2_bns1_mla.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_s1s2_bns1_x910_base.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_tail.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/kernel_data_copy_transpose.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/kernel_data_copy_transpose.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/mla_custom_matmul_policy_d192.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_split_n_s_no_tail.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_var_len_score_sab.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/mla_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_tailWBNSD.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/kernel_operator_softmax_compute_nz.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/kernel_operator_softmax_compute_nz.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_s1s2_bns1_mla_baseapi.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/mla_custom_matmul_policy_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_no_tailWBNSD.h
@@ -127,7 +127,7 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_var_len_score_sab_baseapi.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_no_tail.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/pfa_service_matmul_kv_nd.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_tilingkey.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_tilingkey.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/
                 - ops/ops-transformer/attention/prompt_flash_attention/tests/
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
@@ -225,8 +225,20 @@ ifa@ops-transformer:
     src:  
         release:
             huawei_style: null ##
-            opensource_style:  
-                - ops/ops-transformer/attention/incre_flash_attention/op_host  
+            opensource_style:
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/op_api
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/fallback_incre_flash_attention.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_def.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_infershape.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_base.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_context.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_mla.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_register.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch20  
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch32/paged_attention_antiquantkv.h  
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/incre_flash_attention_tilingkey.h  
@@ -240,8 +252,6 @@ ifa@ops-transformer:
             kernel_style: null  
         unrelease:
             test_code:  
-                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
-                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_arch38.cpp
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch35
                 - ops/ops-transformer/attention/incre_flash_attention/examples/test_aclnn_incre_flash_attention.cpp 
                 - asl/ops/cann/ops/built-in/fusion_pass/graph_fusion/ai_core/incre_flash_attention_fusion_pass_utils.cc
@@ -261,8 +271,8 @@ pfa@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_host  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_obp.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_310p.h  
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_attention_prefill.h  
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/unpad_flash_attention_common.h  
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_attention_prefill.h  
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/unpad_flash_attention_common.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_api.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_common.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention.cpp  
@@ -615,6 +625,11 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/op_kernel/
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/CMakeLists.txt
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/README.md
+                - ops/ops-transformer/moe/moe_gating_top_k/op_host/
+                - ops/ops-transformer/moe/moe_gating_top_k/op_graph/
+                - ops/ops-transformer/moe/moe_gating_top_k/op_kernel/
+                - ops/ops-transformer/moe/moe_gating_top_k/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_gating_top_k/README.md
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/op_host/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/op_graph/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/op_kernel/
@@ -650,6 +665,26 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/op_kernel/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/CMakeLists.txt
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/README.md
+                - ops/ops-transformer/moe/moe_init_routing_v3/op_host/
+                - ops/ops-transformer/moe/moe_init_routing_v3/op_graph/
+                - ops/ops-transformer/moe/moe_init_routing_v3/op_kernel/
+                - ops/ops-transformer/moe/moe_init_routing_v3/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_init_routing_v3/README.md
+                - ops/ops-transformer/moe/moe_init_re_routing/op_host/
+                - ops/ops-transformer/moe/moe_init_re_routing/op_graph/
+                - ops/ops-transformer/moe/moe_init_re_routing/op_kernel/
+                - ops/ops-transformer/moe/moe_init_re_routing/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_init_re_routing/README.md
+                - ops/ops-transformer/moe/moe_token_permute/op_host/
+                - ops/ops-transformer/moe/moe_token_permute/op_graph/
+                - ops/ops-transformer/moe/moe_token_permute/op_kernel/
+                - ops/ops-transformer/moe/moe_token_permute/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_token_permute/README.md
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_host/
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_graph/
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_kernel/
+                - ops/ops-transformer/moe/moe_token_permute_grad/CMakeLists.txt
+                - ops/ops-transformer/moe/moe_token_permute_grad/README.md
                 - ops/ops-transformer/moe/moe_token_unpermute/op_host/
                 - ops/ops-transformer/moe/moe_token_unpermute/op_graph/
                 - ops/ops-transformer/moe/moe_token_unpermute/op_kernel/
@@ -767,7 +802,7 @@ GMMSwigluQuant@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul.h
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h
-                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_api/aclnn_grouped_matmul.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_api/aclnn_grouped_matmul.cpp
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_spilit_fusion.h
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_a8w4_msd_mid.h
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_a8w4_msd_post.h

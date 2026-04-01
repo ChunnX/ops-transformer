@@ -76,38 +76,38 @@ struct MatmulAllReduceTilingUtParam: public MatmulAllReduceHostUtParamBase {
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format",
-                x1));
+                this->x1));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format",
-                x2));
+                this->x2));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format",
-                bias));
+                this->bias));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x3_shape", "x3_dtype", "x3_format",
-                x3));
+                this->x3));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format",
-                antiquant_scale));
+                this->antiquant_scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format",
-                antiquant_offset));
+                this->antiquant_offset));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "dequant_scale_shape", "dequant_scale_dtype", "dequant_scale_format",
-                dequant_scale));
+                this->dequant_scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "pertoken_scale_shape", "pertoken_scale_dtype", "pertoken_scale_format",
-                pertoken_scale));
+                this->pertoken_scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "comm_quant_scale_1_shape", "comm_quant_scale_1_dtype", "comm_quant_scale_1_format",
-                comm_quant_scale_1));
+                this->comm_quant_scale_1));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "comm_quant_scale_2_shape", "comm_quant_scale_2_dtype", "comm_quant_scale_2_format",
-                comm_quant_scale_2));
+                this->comm_quant_scale_2));
 
         this->outputInstance.emplace_back(
             GetTensorGE(csvMap, "output_y_shape", "output_y_dtype", "output_y_format",
-                y));
+                this->y));
 
         this->soc = ReadMap(csvMap, "soc");
         this->coreNum = stoull(ReadMap(csvMap, "core_num"));
@@ -141,40 +141,42 @@ struct MatmulAllReduceInferShapeUtParam: public MatmulAllReduceHostUtParamBase {
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format",
-                x1));
+                this->x1));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format",
-                x2));
+                this->x2));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format",
-                bias));
+                this->bias));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x3_shape", "x3_dtype", "x3_format",
-                x3));
+                this->x3));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format",
-                antiquant_scale));
+                this->antiquant_scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format",
-                antiquant_offset));
+                this->antiquant_offset));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "dequant_scale_shape", "dequant_scale_dtype", "dequant_scale_format",
-                dequant_scale));
+                this->dequant_scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "pertoken_scale_shape", "pertoken_scale_dtype", "pertoken_scale_format",
-                pertoken_scale));
+                this->pertoken_scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "comm_quant_scale_1_shape", "comm_quant_scale_1_dtype", "comm_quant_scale_1_format",
-                comm_quant_scale_1));
+                this->comm_quant_scale_1));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "comm_quant_scale_2_shape", "comm_quant_scale_2_dtype", "comm_quant_scale_2_format",
-                comm_quant_scale_2));
+                this->comm_quant_scale_2));
 
-        this->outputInstance.emplace_back(1);
+        this->outputInstance.emplace_back(
+            GetTensorGE(csvMap, "out_y_shape", "out_y_dtype", "out_y_format",
+                this->y));
 
         this->ranksize = stoull(ReadMap(csvMap, "ranksize"));
         if(this->expectResult == ge::GRAPH_SUCCESS) {
-            this->expectOutputShape = {GetShapeArr(ReadMap(csvMap, "expectOutputShape"))};
+            this->expectOutputShape = {GetShapeArr(ReadMap(csvMap, "out_y_shape"))};
         }
     }
 };
@@ -195,16 +197,16 @@ struct MatmulAllReduceInferDataTypeUtParam: public MatmulAllReduceHostUtParamBas
     MatmulAllReduceInferDataTypeUtParam(const csv_map& csvMap):
         MatmulAllReduceHostUtParamBase(csvMap)
     {
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", x1));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", x2));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "bias_dtype", bias));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x3_dtype", x3));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "antiquant_scale_dtype", antiquant_scale));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "antiquant_offset_dtype", antiquant_offset));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "dequant_scale_dtype", dequant_scale));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "pertoken_scale_dtype", pertoken_scale));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "comm_quant_scale_1_dtype", comm_quant_scale_1));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "comm_quant_scale_2_dtype", comm_quant_scale_2));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", this->x1));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", this->x2));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "bias_dtype", this->bias));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x3_dtype", this->x3));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "antiquant_scale_dtype", this->antiquant_scale));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "antiquant_offset_dtype", this->antiquant_offset));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "dequant_scale_dtype", this->dequant_scale));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "pertoken_scale_dtype", this->pertoken_scale));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "comm_quant_scale_1_dtype", this->comm_quant_scale_1));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "comm_quant_scale_2_dtype", this->comm_quant_scale_2));
 
         this->outputInstance.emplace_back(1);
 

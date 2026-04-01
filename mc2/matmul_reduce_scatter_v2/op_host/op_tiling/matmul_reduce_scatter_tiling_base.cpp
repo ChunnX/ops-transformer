@@ -25,6 +25,7 @@
 #include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "reduce_scatter_formulaic_tiling.h"
+#include "arch35/reduce_scatter_fit_balance_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
@@ -68,12 +69,22 @@ uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingAr
     return args.mValue > tileLen ? tileLen : args.mValue;
 }
 
+CutResult MatmulReduceScatterTilingBase::GetTilingResult()
+{
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+        MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL);
+        return scatterTiling.GetTiling();
+    } else {
+        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        scatterTiling.GetTiling();
+        return scatterTiling.tilingM_.cutRes;
+    }
+}
+
 void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcsCfg)
 {
-    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-    MMPlusReduceScatter scatterTilingHccl(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
-    scatterTilingHccl.GetTiling();
-    CutResult mCutScatter = scatterTilingHccl.tilingM_.cutRes;
+    CutResult mCutScatter = GetTilingResult();
     rcsCfg.tailCnt = 0;
     if (mCutScatter.shortTileAtBack || (mCutScatter.numShortTile == 0)) {
         rcsCfg.tileCnt = mCutScatter.numLongTile;
@@ -354,15 +365,15 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         VECTOR_INNER_ERR_REPORT_TILING(
             opName_, "world_size should be 2 or 4 or 8 or 16 or 32 or 64, but the actual value is %ld.", rankSize_),
         return false);
-    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int>(COMMTURN_INDEX);
+    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMMTURN_INDEX);
     OP_TILING_CHECK(
         commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %d.", commTurn),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %ld.", commTurn),
         return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int>(BLOCKSIZE_INDEX);
+    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
     OP_TILING_CHECK(
         blockSize != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %d.", blockSize),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %ld.", blockSize),
         return false);
     return CheckInputScale();
 }
@@ -488,7 +499,7 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsBasicInfo()
 {
     auto isTransA = context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
-    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int>(COMM_TURN);
+    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMM_TURN);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     auto coreNum = ascendcPlatform.GetCoreNumAic();
 

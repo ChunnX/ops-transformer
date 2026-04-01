@@ -98,7 +98,9 @@
     ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六。
+
 ## 参数说明
+
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
@@ -189,7 +191,9 @@
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<br>
 key/value数据类型仅支持：FLOAT16、BFLOAT16、INT8；<br>cacheMode当传空指针或"Norm"时，仅支持ND内存排布格式，当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布格式；<br>scatterMode当传空指针或"None"时，表示更新的key和value是非压缩状态且连续，当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态，当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态，当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态，当传"Nct"时，表示更新的key和value是非压缩状态但非连续；<br>strides和offsets仅当scatterMode为"Nct"时生效，分别表示strideK和strideV、offsetK和offsetV。<br>
+
 ## 约束说明
+
   * 输入shape限制：
       * 除了key和value，输入参数不支持非连续。
       * 当key和value都是3维，则key和value的前两维shape必须相同。
@@ -197,7 +201,7 @@ key/value数据类型仅支持：FLOAT16、BFLOAT16、INT8；<br>cacheMode当传
       * 当key和value是4维时，compressLensOptional、seqLensOptional为必选参数；当key和value是3维时，compressLensOptional、compressSeqOffsetOptional、seqLensOptional为可选参数。
       * 当cacheMode为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX(对应场景一)。
   * 输入值域限制：
-      * slotMapping的值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性。
+      * slotMapping的取值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性。
       * 当key和value都是4维时，slotMapping是二维，且slotMapping的第一维值等于key的第一维为batch，slotMapping的第二维值等于key的第三维为num_head(对应场景三)。
       * 当key和value都是4维时，seqLensOptional是一维，且seqLensOptional的值等于key的第一维为batch(对应场景三)。
       * 当key和value是3维且存在seqLensOptional时，seqLensOptional中所有值的和等于key的第一维为num_blocks(对应场景四、五)。

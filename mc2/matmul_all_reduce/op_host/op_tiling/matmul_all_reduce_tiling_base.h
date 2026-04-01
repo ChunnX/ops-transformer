@@ -186,6 +186,7 @@ protected:
     void DoRCSTiling();
     void SetMCutSocVersion(SocVersion& inputSocVersion);
     void DoSplitMTiling();
+    CutResult GetTilingResult();
     ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling& mm1, AscendC::tiling::TCubeTiling& cubeTiling);
     void DoL2CacheTiling(Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
     void setUseBufferType();

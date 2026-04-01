@@ -236,7 +236,7 @@ struct RunInfo {
     float softmaxScale; \
     uint32_t cmpRatio : 9; \
     uint32_t dSizeRope : 11; \
-    uint32_t oriMaskMode : 6;\
+    uint32_t oriMaskMode : 6; \
     uint32_t cmpMaskMode : 6; \
     int32_t oriWinLeft; \
     int32_t oriWinRight; \

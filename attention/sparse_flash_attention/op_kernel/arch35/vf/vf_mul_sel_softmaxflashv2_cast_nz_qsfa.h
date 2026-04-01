@@ -38,27 +38,29 @@ enum class OriginNRange {
     GT_64_AND_LTE_128_QSFA,  // 64 < originN <= 128, support for non-alignment (s2BaseSize=128)
     N_INVALID_QSFA
 };
-template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
+template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128,
+            OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
 __aicore__ inline void ProcessVec1NoUpdate(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
     if constexpr (oriNRange == OriginNRange::EQ_128_QSFA) {
         ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_QSFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_QSFA) {
         ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_QSFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_QSFA) {
         ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
     }
 }
 
-template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
+template <typename T, typename T2,
+uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
 __aicore__ inline void ProcessVec1Update(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
@@ -68,15 +70,16 @@ __aicore__ inline void ProcessVec1Update(
     } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_QSFA) {
         ProcessVec1UpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_QSFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_QSFA) {
         ProcessVec1UpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
     }
 }
 
-template <typename T, typename T2, bool isUpdate = false, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
+template <typename T, typename T2,bool isUpdate = false, uint32_t s1BaseSize = 64,
+    uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
 __aicore__ inline void ProcessVec1Vf(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {

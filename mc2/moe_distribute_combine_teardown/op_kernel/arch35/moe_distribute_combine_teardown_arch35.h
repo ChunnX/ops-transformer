@@ -43,8 +43,6 @@ class MoeDistributeCombineTeardown {
     constexpr static uint64_t STATE_OFFSET = 512U;       // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;            // UB按32字节对齐
-    constexpr static uint64_t WIN_STATE_OFFSET = 350UL * 1024;
-    constexpr static uint64_t STATE_WIN_OFFSET = 950UL * 1024;
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
     constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值

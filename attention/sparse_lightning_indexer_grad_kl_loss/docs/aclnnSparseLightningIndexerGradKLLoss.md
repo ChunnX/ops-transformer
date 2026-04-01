@@ -15,7 +15,6 @@
 
 - 接口功能：SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，存放在SparseIndices中，从而减少长序列场景下Attention的计算量，加速长序列的网络的推理和训练的性能。
 
-
 - 计算公式：
    用于取Top-k的value的计算公式可以表示为：
 
@@ -59,7 +58,6 @@
 
    其中，S为QK矩阵softmax的结果。
 
-
 <!-- - **说明**：
    <blockquote>query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
    </blockquote> -->
@@ -90,7 +88,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     bool                 deterministic,
     const aclTensor     *dQueryIndex,
     const aclTensor     *dKeyKndex,
-    const aclTensor     *dWeights
+    const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
@@ -278,6 +276,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>-</td>
             <td>x</td>
+        </tr>
         <tr>
             <td>layout</td>
             <td>输入</td>
@@ -438,12 +437,13 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
   - aclnnSparseLightningIndexerKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
+    - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
+    - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
         - 公共约束里入参为空的场景和FAG保持一致。
