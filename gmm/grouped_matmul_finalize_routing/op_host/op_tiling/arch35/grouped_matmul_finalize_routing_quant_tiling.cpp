@@ -151,7 +151,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     } else if (context_->GetOptionalInputDesc(ROW_INDEX_INDEX) != nullptr) {
         auto rowIndexDtype = context_->GetOptionalInputDesc(ROW_INDEX_INDEX)->GetDataType();
         if (rowIndexDtype == ge::DT_INT32) {
-            rowindexType_ = 1;
+            rowIndexType_ = 1;
         }
         OP_CHECK_IF(!(rowIndexDtype == ge::DT_INT64 || rowIndexDtype == ge::DT_INT32),
                     OP_LOGE(context_->GetNodeName(),
@@ -457,7 +457,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
 uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(inputParams_.transB),
-        static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowindexType_));
+        static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowIndexType_));
 }
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
