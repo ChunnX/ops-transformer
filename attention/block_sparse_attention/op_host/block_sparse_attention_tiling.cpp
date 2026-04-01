@@ -145,7 +145,7 @@ ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
     
     // 校验qseqlen之和是否等于Q的T
     if (sumQSeqlen != totalTokensT_) {
-        OP_LOGE(bsaContext->GetNodeName(), 
+        OP_LOGE(bsaContext->GetNodeName(),
                 "TND format validation failed: sum of qseqlen across all batches (%ld) != Q T (%ld)", 
                 sumQSeqlen, totalTokensT_);
         return ge::GRAPH_FAILED;
@@ -153,7 +153,7 @@ ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
     
     // 校验kvseqlen之和是否等于KV的T
     if (sumKvSeqlen != totalTokensKv_) {
-        OP_LOGE(bsaContext->GetNodeName(), 
+        OP_LOGE(bsaContext->GetNodeName(),
                 "TND format validation failed: sum of kvseqlen across all batches (%ld) != KV T (%ld)", 
                 sumKvSeqlen, totalTokensKv_);
         return ge::GRAPH_FAILED;
@@ -407,12 +407,12 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
     if (bsmBatch != batch_) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent batch with context,"
             "but got BlockSparseMask batch(dim0): %u, context batch: %u.", bsmBatch, batch_);
-        return ge::GRAPH_FAILED;        
+        return ge::GRAPH_FAILED;
     }
     if (bsmNumHead != numHeads_) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent numHeads with context,"
             "but got BlockSparseMask numHeads(dim1): %u, context numHeads: %u.", bsmNumHead, numHeads_);
-        return ge::GRAPH_FAILED; 
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -747,7 +747,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
 }
 
 ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
-                                         BlockSparseAttentionTilingData &tilingData)
+    BlockSparseAttentionTilingData &tilingData)
 {
     tilingData_ = &tilingData;
     ge::graphStatus ret = GetNpuInfo(bsaContext);
@@ -760,6 +760,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
         ParseRequiredTensors(bsaContext) != ge::GRAPH_SUCCESS ||
         ParseOptionalTensors(bsaContext) != ge::GRAPH_SUCCESS) {
         ret = ge::GRAPH_FAILED;
+        return ret;
     }
     // 校验TND格式下qseqlen和kvseqlen之和是否分别等于Q和KV的T
     ret = ValidateTNDSeqlenSum(bsaContext);
