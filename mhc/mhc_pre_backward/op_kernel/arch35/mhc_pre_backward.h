@@ -72,6 +72,9 @@ constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 64;            // ProcessV2函数使�
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
+constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
+constexpr uint32_t ALPHA_GRAD_SHAPE_2_OFFSET = 8;
+constexpr uint32_t ALPHA_GRAD_SHAPE_3_OFFSET = 16;
 
 struct InitParams {
     GM_ADDR x;
@@ -240,7 +243,20 @@ public:
                                                   uint32_t stepLen);
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
                                      uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
+    template <bool isFirstBS>
+    __aicore__ inline void VFDoV1ProcessInvRmsGrad(
+        __ubuf__ P *h1GradIn, __ubuf__ P *hMixIn, __ubuf__ P *invRmsGradDst, uint32_t dealBSSize);
     __aicore__ inline void VFDoV1ProcessInvRmsGrad(__ubuf__ P *h1GradIn, __ubuf__ P *hMixIn, uint16_t dealBSSize);
+    __aicore__ inline void VFDoV1ProcessBiasGrad(__ubuf__ P *outBufDst, __ubuf__ P *gatherFusion, uint32_t curBSSize);
+    __aicore__ inline void VFDoV1ProcessBiasGradForN8(
+        __ubuf__ P *outBufDst, __ubuf__ P *gatherFusion, uint32_t curBSSize);
+    __aicore__ inline void VFDoV1ProcessAlphaGrad(
+        __ubuf__ P *h1GradOut, __ubuf__ P *invRmsIn, __ubuf__ P *gatherFusionIn,
+        __ubuf__ P *hMixIn, uint32_t dealBSSize);
+    __aicore__ inline void VFDoV1ProcessAlphaGradForN8(
+        __ubuf__ P *h1GradOut, __ubuf__ P *invRmsIn, __ubuf__ P *gatherFusionIn,
+        __ubuf__ P *hMixIn, uint32_t dealBSSize);
+    __aicore__ inline void VFDoV1ProcessAlphaGradLastSplit(__ubuf__ P *alphaGradOut, __ubuf__ P *sumIn);
     __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &h1GradBuf, uint64_t currentDealBsNum, float alphaPre, float alphaPost, float alphaComb);
     __aicore__ inline void AIV021Process(LocalTensor<P> &fp32OutBuf, LocalTensor<P> &h1GradBuf, uint32_t dealBsSize, uint32_t runBSStart, uint32_t bsOffset);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb, LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
@@ -259,6 +275,9 @@ public:
     __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart, uint32_t bsEnd,
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV3();
+    __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn1, __ubuf__ P *alphaGradIn2, __ubuf__ P *alphaGradIn3);
+    __aicore__ inline void VFDoV3ProcessBiasGrad(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
+    __aicore__ inline void VFDoV3ProcessBiasGradForN8(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
 
     __aicore__ inline void VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
                                             __ubuf__ T *hInGradB16InAddr, uint16_t curLenN, uint32_t lenD, uint32_t i,
@@ -708,6 +727,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
 
     ReduceSum<float, Pattern::Reduce::AR, true>(alphaOutBuf[16], sumBuf, srcShape3, true);
     PipeBarrier<PIPE_V>();
+    // VFDoV1ProcessAlphaGradLastSplit((__ubuf__ P *)alphaOutBuf.GetPhyAddr(), (__ubuf__ P *)sumBuf.GetPhyAddr());
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -725,6 +745,39 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     DataCopyPad(workSpaceGm_[offset], alphaOutBuf, bsCopyParams);
 
     bf16OutQueue_.FreeTensor(alphaOutBuf);
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessAlphaGradLastSplit(
+    __ubuf__ P *alphaGradOut, __ubuf__ P *sumIn)
+{
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<P> alphaInReg1, alphaInReg2, alphaInReg3;
+        MicroAPI::RegTensor<P> sumReg1, sumReg2, sumReg3;
+        MicroAPI::Duplicate(sumReg1, 0);
+        MicroAPI::Duplicate(sumReg2, 0);
+        MicroAPI::Duplicate(sumReg3, 0);
+        uint32_t splitShape1 = N_;
+        uint32_t splitShape2 = N_;
+        uint32_t splitShape3 = N_ * N_;
+        MicroAPI::MaskReg mask1 = MicroAPI::UpdateMask<P>(splitShape1);
+        MicroAPI::MaskReg mask2 = MicroAPI::UpdateMask<P>(splitShape2);
+        MicroAPI::MaskReg mask3 = MicroAPI::UpdateMask<P>(splitShape3);
+
+        MicroAPI::Load(alphaInReg1, sumIn);
+        MicroAPI::Load(alphaInReg2, sumIn + N_);
+        MicroAPI::Load(alphaInReg3, sumIn + 2 * N_);
+        
+        MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(sumReg1, alphaInReg1, mask1);
+        MicroAPI::Store(alphaGradOut + ALPHA_GRAD_SHAPE_1_OFFSET, sumReg1, 1);
+
+        MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(sumReg2, alphaInReg2, mask2);
+        MicroAPI::Store(alphaGradOut + ALPHA_GRAD_SHAPE_2_OFFSET, sumReg2, 1);
+
+        MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(sumReg3, alphaInReg3, mask3);
+        MicroAPI::Store(alphaGradOut + ALPHA_GRAD_SHAPE_3_OFFSET, sumReg3, 1);
+    }
 }
 
 template <class T, class P>
@@ -863,7 +916,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     gradInQueue_.FreeTensor(hPostGrad);
 
     fp32InputBuf = fp32InQueue_.AllocTensor<P>();
-    PipeBarrier<PIPE_MTE2>();
+    // PipeBarrier<PIPE_MTE2>();
     dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P);
     DataCopyPad(fp32InputBuf, hCombBeforeGradGm_[runBSStart * N_ * N_], dataCopyParams_, dataCopyPadParams_);
     fp32InQueue_.EnQue(fp32InputBuf);
@@ -1041,13 +1094,21 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
                                                              V0V1Buffers<P> &buffers, uint32_t vecRuntimesId,
                                                              LocalTensor<P> &sumBuf)
 {
+    uint32_t curBSSize = runBSEnd - runBSStart;
     uint32_t shapeBiasGrad[] = {runBSEnd - runBSStart, fusionSize_};
     constexpr bool isReuse = false;
 
     LocalTensor<P> hMixBuf;
     AscendC::LocalTensor<P> fp32OutBuf = bf16OutQueue_.AllocTensor<P>();
-    ReduceSum<float, AscendC::Pattern::Reduce::RA, isReuse>(fp32OutBuf, buffers.gatherFusionBuf, buffers.brcbTmpBuf,
-                                                            shapeBiasGrad, true);
+    if (N_ == 8) {
+        VFDoV1ProcessBiasGradForN8(
+            (__ubuf__ P *)fp32OutBuf.GetPhyAddr(), (__ubuf__ P *)buffers.gatherFusionBuf.GetPhyAddr(), curBSSize);
+    } else {
+        VFDoV1ProcessBiasGrad(
+            (__ubuf__ P *)fp32OutBuf.GetPhyAddr(), (__ubuf__ P *)buffers.gatherFusionBuf.GetPhyAddr(), curBSSize);
+    }
+    // ReduceSum<float, AscendC::Pattern::Reduce::RA, isReuse>(fp32OutBuf, buffers.gatherFusionBuf, buffers.brcbTmpBuf,
+    //                                                         shapeBiasGrad, true);
     bf16OutQueue_.EnQue(fp32OutBuf);
     LocalTensor<P> BiasOutBuf = bf16OutQueue_.DeQue<P>();
 
@@ -1064,62 +1125,72 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     bf16OutQueue_.FreeTensor(BiasOutBuf);
 
     auto h1GradBuf = buffers.calcTmpBuf;
-    int64_t remainDealBsSize = (runBSEnd - runBSStart);
-    uint32_t bsOffset = 0;
-    while (remainDealBsSize > 0) {
-        fp32OutBuf = bf16OutQueue_.AllocTensor<P>();
-        uint32_t dealBSSize = (remainDealBsSize > onceDealMixBSNum_) ? onceDealMixBSNum_ : remainDealBsSize;
-        dataCopyParams_.blockLen = dealBSSize * sizeof(P);
-        AscendC::LocalTensor<P> fp32InputBuf = fp32InQueue_.AllocTensor<P>();
-        DataCopyPad(fp32InputBuf, invRmsGm_[(runBSStart + bsOffset)], dataCopyParams_, dataCopyPadParams_);
-        fp32InQueue_.EnQue(fp32InputBuf);
-        LocalTensor<P> invRmsBufLocal = fp32InQueue_.DeQue<P>();
+    // int64_t remainDealBsSize = (runBSEnd - runBSStart);
+    // uint32_t bsOffset = 0;
+    // while (remainDealBsSize > 0) {
+    fp32OutBuf = bf16OutQueue_.AllocTensor<P>();
+    // uint32_t dealBSSize = (remainDealBsSize > onceDealMixBSNum_) ? onceDealMixBSNum_ : remainDealBsSize;
+    dataCopyParams_.blockLen = curBSSize * sizeof(P);
+    AscendC::LocalTensor<P> fp32InputBuf = fp32InQueue_.AllocTensor<P>();
+    // DataCopyPad(fp32InputBuf, invRmsGm_[(runBSStart + bsOffset)], dataCopyParams_, dataCopyPadParams_);
+    DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams_, dataCopyPadParams_);
+    fp32InQueue_.EnQue(fp32InputBuf);
+    LocalTensor<P> invRmsBufLocal = fp32InQueue_.DeQue<P>();
 
-        // AIV021Process(fp32OutBuf, h1GradBuf, dealBSSize, runBSStart, bsOffset);
-        const uint32_t xRowSumBroadCastDst[2] = {dealBSSize, fusionSize_};
-        const uint32_t xRowSumBroadCastSrc[2] = {dealBSSize, 1};
-        BroadCast<float, 2, 1>(buffers.invRmsBuf, invRmsBufLocal, xRowSumBroadCastDst, xRowSumBroadCastSrc,
-                               buffers.brcbTmpBuf);
-        PipeBarrier<PIPE_V>();
-        fp32InQueue_.FreeTensor(invRmsBufLocal);
+    // AIV021Process(fp32OutBuf, h1GradBuf, dealBSSize, runBSStart, bsOffset);
+    const uint32_t xRowSumBroadCastDst[2] = {curBSSize, fusionSize_};
+    const uint32_t xRowSumBroadCastSrc[2] = {curBSSize, 1};
+    BroadCast<float, 2, 1>(buffers.invRmsBuf, invRmsBufLocal, xRowSumBroadCastDst, xRowSumBroadCastSrc,
+                            buffers.brcbTmpBuf);
+    PipeBarrier<PIPE_V>();
+    fp32InQueue_.FreeTensor(invRmsBufLocal);
 
-        PipeBarrier<PIPE_MTE3>();
-        Mul(fp32OutBuf, buffers.invRmsBuf, h1GradBuf[bsOffset * fusionSize_], dealBSSize * fusionSize_);
-        PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_MTE3>();
+    // Mul(fp32OutBuf, buffers.invRmsBuf, h1GradBuf[bsOffset * fusionSize_], curBSSize * fusionSize_);
+    Mul(fp32OutBuf, buffers.invRmsBuf, h1GradBuf, curBSSize * fusionSize_);
+    PipeBarrier<PIPE_V>();
 
-        bf16OutQueue_.EnQue(fp32OutBuf);
-        LocalTensor<P> hMixGradOutBuf = bf16OutQueue_.DeQue<P>();
+    bf16OutQueue_.EnQue(fp32OutBuf);
+    LocalTensor<P> hMixGradOutBuf = bf16OutQueue_.DeQue<P>();
 
-        dataCopyParams_.blockLen = dealBSSize * fusionSize_ * sizeof(P);
-        DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart + bsOffset)], hMixGradOutBuf,
-                    dataCopyParams_);
-        PipeBarrier<PIPE_V>();
+    dataCopyParams_.blockLen = curBSSize * fusionSize_ * sizeof(P);
+    // DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart + bsOffset)], hMixGradOutBuf,
+    //             dataCopyParams_);
+    DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart)], hMixGradOutBuf, dataCopyParams_);
+    PipeBarrier<PIPE_V>();
 
-        bf16InQueue_.AllocTensor<P>(hMixBuf);
-        DataCopyPad(hMixBuf, mmResGm_[(runBSStart + bsOffset) * fusionSize_], dataCopyParams_, dataCopyPadParams_);
-        bf16InQueue_.EnQue(hMixBuf);
-        bf16InQueue_.DeQue<P>(hMixBuf);
+    bf16InQueue_.AllocTensor<P>(hMixBuf);
+    // DataCopyPad(hMixBuf, mmResGm_[(runBSStart + bsOffset) * fusionSize_], dataCopyParams_, dataCopyPadParams_);
+    DataCopyPad(hMixBuf, mmResGm_[runBSStart * fusionSize_], dataCopyParams_, dataCopyPadParams_);
+    bf16InQueue_.EnQue(hMixBuf);
+    bf16InQueue_.DeQue<P>(hMixBuf);
 
-        // hmix * h_1_grad, prepare for inv rms grad
-        // Mul(h1GradBuf[bsOffset * fusionSize_], h1GradBuf[bsOffset * fusionSize_], hMixBuf, dealBSSize * fusionSize_);
-        VFDoV1ProcessInvRmsGrad((__ubuf__ P *)h1GradBuf[bsOffset * fusionSize_].GetPhyAddr(),
-                                (__ubuf__ P *)hMixBuf.GetPhyAddr(), dealBSSize);
-        PipeBarrier<PIPE_V>();
+    // hmix * h_1_grad, prepare for inv rms grad
+    // Mul(h1GradBuf[bsOffset * fusionSize_], h1GradBuf[bsOffset * fusionSize_], hMixBuf, dealBSSize * fusionSize_);
+    VFDoV1ProcessInvRmsGrad((__ubuf__ P *)h1GradBuf.GetPhyAddr(),
+                            (__ubuf__ P *)hMixBuf.GetPhyAddr(), curBSSize);
+    // VFDoV1ProcessInvRmsGrad<true>(
+    //     (__ubuf__ P *)h1GradBuf.GetPhyAddr(), (__ubuf__ P *)hMixBuf.GetPhyAddr(),
+    //     (__ubuf__ P *)invRmsGradUb.GetPhyAddr(), curBSSize);
 
-        // TODO
-        Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], hMixBuf, buffers.invRmsBuf, dealBSSize * fusionSize_);
-        PipeBarrier<PIPE_V>();
-        bf16InQueue_.FreeTensor(hMixBuf);
+    // PipeBarrier<PIPE_V>();
 
-        // alpha grad pre
-        Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], buffers.hFusionBuf1[bsOffset * fusionSize_],
-            buffers.gatherFusionBuf[bsOffset * fusionSize_], dealBSSize * fusionSize_);
-        PipeBarrier<PIPE_V>();
+    // TODO
+    // Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], hMixBuf, buffers.invRmsBuf, curBSSize * fusionSize_);
+    // Mul(buffers.hFusionBuf1, hMixBuf, buffers.invRmsBuf, curBSSize * fusionSize_);
+    
 
-        remainDealBsSize -= dealBSSize;
-        bsOffset += dealBSSize;
-        bf16OutQueue_.FreeTensor(hMixGradOutBuf);
-    }
+    // alpha grad pre
+    // Mul(buffers.hFusionBuf1[bsOffset * fusionSize_], buffers.hFusionBuf1[bsOffset * fusionSize_],
+    //     buffers.gatherFusionBuf[bsOffset * fusionSize_], curBSSize * fusionSize_);
+    // Mul(buffers.hFusionBuf1, buffers.hFusionBuf1,
+    //     buffers.gatherFusionBuf, curBSSize * fusionSize_);
+    // PipeBarrier<PIPE_V>();
+
+    // remainDealBsSize -= curBSSize;
+    // bsOffset += curBSSize;
+    bf16OutQueue_.FreeTensor(hMixGradOutBuf);
+    // }
     fp32OutBuf = bf16OutQueue_.AllocTensor<P>();
 
     uint32_t shape[] = {(runBSEnd - runBSStart), fusionSize_};
@@ -1136,9 +1207,22 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     bf16OutQueue_.FreeTensor(invRmsOutBuf);
 
     // alpha grad (inv rms 梯度计算完成，复用h1GradBuf)
-    ReduceSum<float, AscendC::Pattern::Reduce::RA, isReuse>(h1GradBuf, buffers.hFusionBuf1, buffers.brcbTmpBuf, shape,
-                                                            true);
+    // ReduceSum<float, AscendC::Pattern::Reduce::RA, isReuse>(h1GradBuf, buffers.hFusionBuf1, buffers.brcbTmpBuf, shape,
+    //                                                         true);
     PipeBarrier<PIPE_V>();
+    if (N_ == 8) {
+        VFDoV1ProcessAlphaGradForN8(
+            (__ubuf__ P *)h1GradBuf.GetPhyAddr(), (__ubuf__ P *)buffers.invRmsBuf.GetPhyAddr(),
+            (__ubuf__ P *)buffers.gatherFusionBuf.GetPhyAddr(),
+            (__ubuf__ P *)hMixBuf.GetPhyAddr(), curBSSize);
+    } else {
+        VFDoV1ProcessAlphaGrad(
+            (__ubuf__ P *)h1GradBuf.GetPhyAddr(), (__ubuf__ P *)buffers.invRmsBuf.GetPhyAddr(),
+            (__ubuf__ P *)buffers.gatherFusionBuf.GetPhyAddr(),
+            (__ubuf__ P *)hMixBuf.GetPhyAddr(), curBSSize);
+    }
+    PipeBarrier<PIPE_V>();
+    bf16InQueue_.FreeTensor(hMixBuf);
 
     if (vecRuntimesId == 0) {
         Adds(sumBuf, h1GradBuf, 0.0f, fusionSize_);
@@ -1183,6 +1267,170 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV021Process(LocalTensor<P> 
     }
 }
 
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessAlphaGradForN8(
+    __ubuf__ P *h1GradOut, __ubuf__ P *invRmsIn, __ubuf__ P *gatherFusionIn, __ubuf__ P *hMixIn, uint32_t dealBSSize)
+{
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<P> sumReg1, sumReg2;
+        MicroAPI::Duplicate(sumReg1, 0);
+        MicroAPI::Duplicate(sumReg2, 0);
+        uint32_t dealMask1 = eleNumPerVf_;
+        uint32_t dealMask2 = fusionSize_ - eleNumPerVf_;
+        MicroAPI::MaskReg mask1 = MicroAPI::UpdateMask<P>(dealMask1);
+        MicroAPI::MaskReg mask2 = MicroAPI::UpdateMask<P>(dealMask2);
+        for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(dealBSSize); ++bsIdx) {
+            uint32_t elemOffset1 = bsIdx * fusionSize_;
+            uint32_t elemOffset2 = bsIdx * fusionSize_ + eleNumPerVf_;
+            MicroAPI::RegTensor<P> hMixReg1, invRmsReg1, gatherReg1;
+            MicroAPI::RegTensor<P> hMixReg2, invRmsReg2, gatherReg2;
+            MicroAPI::RegTensor<P> mul1Reg1, mul2Reg1;
+            MicroAPI::RegTensor<P> mul1Reg2, mul2Reg2;
+
+            // UB -> Reg
+            MicroAPI::LoadAlign(hMixReg1, hMixIn + elemOffset1);
+            MicroAPI::LoadAlign(invRmsReg1, invRmsIn + elemOffset1);
+            MicroAPI::LoadAlign(gatherReg1, gatherFusionIn + elemOffset1);
+
+            MicroAPI::LoadAlign(hMixReg2, hMixIn + elemOffset2);
+            MicroAPI::LoadAlign(invRmsReg2, invRmsIn + elemOffset2);
+            MicroAPI::LoadAlign(gatherReg2, gatherFusionIn + elemOffset2);
+
+            // compute
+            MicroAPI::Mul(mul1Reg1, hMixReg1, invRmsReg1, mask1);
+            MicroAPI::Mul(mul2Reg1, mul1Reg1, gatherReg1, mask1);
+
+            MicroAPI::Mul(mul1Reg2, hMixReg2, invRmsReg2, mask2);
+            MicroAPI::Mul(mul2Reg2, mul1Reg2, gatherReg2, mask2);
+            
+            MicroAPI::Add(sumReg1, sumReg1, mul2Reg1, mask1);
+            MicroAPI::Add(sumReg2, sumReg2, mul2Reg2, mask2);
+        }
+        // Reg -> UB
+        MicroAPI::StoreAlign(h1GradOut, sumReg1, mask1);
+        MicroAPI::StoreAlign(h1GradOut + eleNumPerVf_, sumReg2, mask2);
+    }
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessAlphaGrad(
+    __ubuf__ P *h1GradOut, __ubuf__ P *invRmsIn, __ubuf__ P *gatherFusionIn, __ubuf__ P *hMixIn, uint32_t dealBSSize)
+{
+    uint16_t fSLoopCnt = Ceil(fusionSize_, eleNumPerVf_);
+    uint32_t curElemCnt = fusionSize_;
+    __VEC_SCOPE__
+    {
+        for (uint16_t vfBlockIdx = 0; vfBlockIdx < fSLoopCnt; ++vfBlockIdx) {
+            MicroAPI::RegTensor<P> sumReg;
+            MicroAPI::Duplicate(sumReg, 0);
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
+            for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(dealBSSize); ++bsIdx) {
+                uint32_t elemOffset = bsIdx * fusionSize_ + vfBlockIdx * eleNumPerVf_;
+                MicroAPI::RegTensor<P> hMixReg, invRmsReg, gatherReg;
+                MicroAPI::RegTensor<P> mul1Reg, mul2Reg;
+
+                MicroAPI::LoadAlign(hMixReg, hMixIn + elemOffset);
+                MicroAPI::LoadAlign(invRmsReg, invRmsIn + elemOffset);
+                MicroAPI::LoadAlign(gatherReg, gatherFusionIn + elemOffset);
+
+                MicroAPI::Mul(mul1Reg, hMixReg, invRmsReg, mask);
+                MicroAPI::Mul(mul2Reg, mul1Reg, gatherReg, mask);
+                
+                MicroAPI::Add(sumReg, sumReg, mul2Reg, mask);
+            }
+            MicroAPI::StoreAlign(h1GradOut + vfBlockIdx * eleNumPerVf_, sumReg, mask);
+        }
+    }
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessBiasGradForN8(
+    __ubuf__ P *outBufDst, __ubuf__ P *gatherFusion, uint32_t curBSSize)
+{
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<P> sumReg1, sumReg2;
+        MicroAPI::Duplicate(sumReg1, 0);
+        MicroAPI::Duplicate(sumReg2, 0);
+        uint32_t dealMask1 = eleNumPerVf_;
+        uint32_t dealMask2 = fusionSize_ - eleNumPerVf_;
+        MicroAPI::MaskReg mask1 = MicroAPI::UpdateMask<P>(dealMask1);
+        MicroAPI::MaskReg mask2 = MicroAPI::UpdateMask<P>(dealMask2);
+        for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(curBSSize); ++bsIdx) {
+            uint32_t elemOffset1 = bsIdx * fusionSize_;
+            uint32_t elemOffset2 = bsIdx * fusionSize_ + eleNumPerVf_;
+            MicroAPI::RegTensor<P> gatherReg1, gatherReg2;
+
+            MicroAPI::LoadAlign(gatherReg1, gatherFusion + elemOffset1);
+            MicroAPI::LoadAlign(gatherReg2, gatherFusion + elemOffset2);
+            
+            MicroAPI::Add(sumReg1, sumReg1, gatherReg1, mask1);
+            MicroAPI::Add(sumReg2, sumReg2, gatherReg2, mask2);
+        }
+        MicroAPI::StoreAlign(outBufDst, sumReg1, mask1);
+        MicroAPI::StoreAlign(outBufDst + eleNumPerVf_, sumReg2, mask2);
+    }
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessBiasGrad(
+    __ubuf__ P *outBufDst, __ubuf__ P *gatherFusion, uint32_t curBSSize)
+{
+    uint16_t fSLoopCnt = Ceil(fusionSize_, eleNumPerVf_);
+    uint32_t curElemCnt = fusionSize_;
+    __VEC_SCOPE__
+    {
+        for (uint16_t vfBlockIdx = 0; vfBlockIdx < fSLoopCnt; ++vfBlockIdx) {
+            MicroAPI::RegTensor<P> sumReg;
+            MicroAPI::Duplicate(sumReg, 0);
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
+            for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(curBSSize); ++bsIdx) {
+                uint32_t elemOffset = bsIdx * fusionSize_ + vfBlockIdx * eleNumPerVf_;
+                MicroAPI::RegTensor<P> gatherReg;
+
+                MicroAPI::LoadAlign(gatherReg, gatherFusion + elemOffset);
+
+                MicroAPI::Add(sumReg, sumReg, gatherReg, mask);
+            }
+            MicroAPI::StoreAlign(outBufDst + vfBlockIdx * eleNumPerVf_, sumReg, mask);
+        }
+    }
+}
+
+template <class T, class P>
+template <bool isFirstBS>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessInvRmsGrad(
+    __ubuf__ P *h1GradIn, __ubuf__ P *hMixIn, __ubuf__ P *invRmsGradDst, uint32_t dealBSSize)
+{
+    uint16_t nLoopCnt = Ceil(fusionSize_, eleNumPerVf_);
+    __VEC_SCOPE__
+    {
+        for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(dealBSSize); ++bsIdx) {
+            MicroAPI::RegTensor<P> sumReg;
+            if constexpr (isFirstBS) {
+                MicroAPI::Duplicate(sumReg, 0);
+            } else {
+                MicroAPI::Load(sumReg, invRmsGradDst + bsIdx);
+            }
+            uint32_t curElemCnt = fusionSize_;
+            for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; ++vfBlockIdx) {
+                uint32_t elemOffset = bsIdx * fusionSize_ + vfBlockIdx * eleNumPerVf_;
+                MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
+                MicroAPI::RegTensor<P> hMixReg, h1GradBuf;
+                MicroAPI::RegTensor<P> hMulReg, tmpSumReg;
+
+                MicroAPI::LoadAlign(h1GradBuf, h1GradIn + elemOffset);
+                MicroAPI::LoadAlign(hMixReg, hMixIn + elemOffset);
+
+                MicroAPI::Mul(hMulReg, h1GradBuf, hMixReg, mask);
+                MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(tmpSumReg, hMulReg, mask);
+                MicroAPI::Add(sumReg, sumReg, tmpSumReg, mask);
+            }
+            MicroAPI::Store(invRmsGradDst + bsIdx, sumReg, 1);
+        }
+    }
+}
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1ProcessInvRmsGrad(__ubuf__ P *h1GradIn, __ubuf__ P *hMixIn,
