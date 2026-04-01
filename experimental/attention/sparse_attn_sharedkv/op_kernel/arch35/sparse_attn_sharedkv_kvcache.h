@@ -240,10 +240,10 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
             if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
                 uint64_t actualSeqQPrefixSum = cuSeqlensQAddr[bnIndex];
                 int64_t topkBS1Idx = actualSeqQPrefixSum + gS1Index;
-                runParam.oriSparseBlockCount = oriTopkLengthGm.GetValue(topkBS1Idx);
+                runParam.oriSparseBlockCount = Min(runParam.oriSparseBlockCount, oriTopkLengthGm.GetValue(topkBS1Idx));
             } else {
                 int64_t topkBS1Idx = bnIndex * constInfo.s1Size + gS1Index;
-                runParam.oriSparseBlockCount = oriTopkLengthGm.GetValue(topkBS1Idx);
+                runParam.oriSparseBlockCount = Min(runParam.oriSparseBlockCount, oriTopkLengthGm.GetValue(topkBS1Idx));
             }
         }
     }
@@ -254,9 +254,11 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
                 uint64_t actualSeqQPrefixSum = cuSeqlensQAddr[bnIndex];
                 int64_t topkBS1Idx = actualSeqQPrefixSum + gS1Index;
                 runParam.cmpSparseBlockCount = cmpTopkLengthGm.GetValue(topkBS1Idx);
+                runParam.cmpSparseBlockCount = Min(runParam.cmpSparseBlockCount, cmpTopkLengthGm.GetValue(topkBS1Idx));
             } else {
                 int64_t topkBS1Idx = bnIndex * constInfo.s1Size + gS1Index;
                 runParam.cmpSparseBlockCount = cmpTopkLengthGm.GetValue(topkBS1Idx);
+                runParam.cmpSparseBlockCount = Min(runParam.cmpSparseBlockCount, cmpTopkLengthGm.GetValue(topkBS1Idx));
             }
         }
     }

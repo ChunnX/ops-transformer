@@ -59,6 +59,8 @@ struct BufferInfo{
             return HardEvent::MTE1_M;
         } else if constexpr (Type == BufferType::L0C) {
             return HardEvent::M_FIX;
+        } else if constexpr (Type == BufferType::GM) {
+            return HardEvent::MTE2_S;
         }
     }
 
@@ -71,6 +73,8 @@ struct BufferInfo{
             return HardEvent::M_MTE1;
         } else if constexpr (Type == BufferType::L0C) {
             return HardEvent::FIX_M;
+        } else if constexpr (Type == BufferType::GM) {
+            return HardEvent::S_MTE2;
         }
     }
 

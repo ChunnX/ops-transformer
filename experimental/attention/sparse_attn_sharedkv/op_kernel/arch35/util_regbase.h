@@ -86,6 +86,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int32_t halfMRealSize; \
     int32_t firstHalfMRealSize; \
     int32_t s2RealSize; /* s2方向基本块的真实长度 */ \
+    int32_t s2RealSizeUpdate; \
     int64_t s2AlignedSize; /* s2方向基本块对齐到16之后的长度 */ \
     int32_t vec2MBaseSize; \
     int32_t vec2MRealSize; \

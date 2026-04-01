@@ -88,6 +88,7 @@ private:
     CVSharedParams sharedParams;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
+    BuffersPolicy3buff<BufferType::GM> s2LenGmBuffers;
     __gm__ int32_t *cuSeqlensQAddr = nullptr;
     __gm__ int32_t *cuSeqlensOriKvAddr = nullptr;
     __gm__ int32_t *cuSeqlensCmpKvAddr = nullptr;
@@ -393,7 +394,7 @@ __aicore__ inline void SparseAttnSharedkvSwa<CubeBlockType, VecBlockType>::Proce
                 if (taskId > 0 && notLast) {
                     auto &runInfo2 = runInfo[(taskId + 2) % 3];
                     if ASCEND_IS_AIV {
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
+                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), s2LenGmBuffers.Get(), runInfo2,
                             this->constInfo);
                     } else {
                         RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];

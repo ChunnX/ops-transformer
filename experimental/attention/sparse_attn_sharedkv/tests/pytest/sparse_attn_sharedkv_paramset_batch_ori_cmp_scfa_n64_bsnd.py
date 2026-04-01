@@ -34,8 +34,10 @@ TEST_PARAMS = {
         "cmp_mask_mode": [0],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "ori_kv_topk_mode": ["no","full","random"],
-        "cmp_kv_topk_mode": ["no","full","random"]
+        "ori_kv_topk_mode": ["no","full","fullK","random"],
+        "cmp_kv_topk_mode": ["no","full","fullK","random"],
+        "ori_sparse_indices_mode": ["full","random"],
+        "cmp_sparse_indices_mode": ["full","random"]
     },
 }
 

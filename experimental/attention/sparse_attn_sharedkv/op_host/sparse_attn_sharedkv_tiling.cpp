@@ -1518,6 +1518,8 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
                 gmSize *= aicNum;
             }
             workspaceSize += gmSize;
+            constexpr uint32_t S2_REAL_BUF_LEN = 128;
+            workspaceSize += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * aivNum;
         }
     } else {
         constexpr uint32_t MM1_RES_ELEM_SIZE = 4;         // 4: fp32

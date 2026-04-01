@@ -34,7 +34,8 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "ori_kv_topk_mode": ["no","full","random"]
+        "ori_kv_topk_mode": ["no","full","fullK","random"],
+        "ori_sparse_indices_mode": ["no","full","random"]
     },
     "all_scfa_g128_test_prefill_TND_batch_large":{
         "layout_q": ["TND"],
@@ -56,7 +57,8 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "ori_kv_topk_mode": ["random"]
+        "ori_kv_topk_mode": ["random"],
+        "ori_sparse_indices_mode": ["full","random"]
     },
 }
 
