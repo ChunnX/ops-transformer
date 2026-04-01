@@ -19,17 +19,17 @@ class MhcPreSinkhornGrad : public OpDef {
 public:
     explicit MhcPreSinkhornGrad(const char* name) : OpDef(name)
     {
-        this->Input("grad_y")
+        this->Input("grad_hin")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("grad_post")
+        this->Input("grad_h_post")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("grad_comb_frag")
+        this->Input("grad_h_res")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
@@ -39,22 +39,22 @@ public:
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("hc_fn")
+        this->Input("phi")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("hc_scale")
+        this->Input("alpha")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("hc_base")
+        this->Input("bias")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("pre")
+        this->Input("h_pre")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
@@ -64,27 +64,17 @@ public:
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("rsqrt")
+        this->Input("inv_rms")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("sk_colSum")
+        this->Input("sum_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("sk_colNorm")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("sk_rowSum")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("sk_rowNorm")
+        this->Input("norm_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
@@ -94,23 +84,22 @@ public:
             .DataType({ge::DT_DOUBLE})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-
         this->Output("grad_x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("grad_hc_fn")
+        this->Output("grad_phi")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("grad_hc_scale")
+        this->Output("grad_alpha")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("grad_hc_base")
+        this->Output("grad_bias")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})

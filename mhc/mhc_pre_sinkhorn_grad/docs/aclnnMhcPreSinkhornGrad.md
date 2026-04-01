@@ -13,45 +13,13 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-- **接口功能**：MhcPreSinkhornGrad是MhcPreSinkhorn的反向算子。mHC（Manifold-Constrained Hyper-Connections）架构中的MhcPreSinkhorn算子对输入矩阵做sinkhorn变换得到双随机矩阵$H^{res}$，反向算子根据输出梯度和前向保存的中间结果计算输入和参数的梯度。
+- **接口功能**：MhcPreSinkhornGrad是MhcPreSinkhorn的反向算子,实现对应的梯度方向传播。
 
 - **计算公式**：
 
   MhcPreSinkhornGrad算子是MhcPreSinkhorn前向算子的反向传播，根据输出梯度和前向保存的中间结果计算输入张量和参数的梯度。
 
-  - 输入梯度计算：
 
-    $$
-    \mathbf{grad}_{H^{mix}} = \text{SinkhornBackward}(\mathbf{grad}_{H^{res}}, \mathbf{sum\_out}, \mathbf{norm\_out})
-    $$
-
-  - RMS归一化反向：
-
-    $$
-    \begin{aligned}
-    \mathbf{grad}_{H^{mix}} &= \mathbf{grad}_{H^{mix}_{norm}} \times \mathbf{rsqrt} \\
-    \mathbf{grad}_{rsqrt} &= \sum_{last\_dim}(\mathbf{grad}_{H^{mix}_{norm}} \odot H^{mix})
-    \end{aligned}
-    $$
-
-  - 线性投影反向：
-
-    $$
-    \begin{aligned}
-    \mathbf{grad}_{x} &= \mathbf{grad}_{H^{mix}_{before\_norm}} \times \mathbf{hc\_fn} \\
-    \mathbf{grad}_{hc\_fn} &= x^T \times \mathbf{grad}_{H^{mix}_{before\_norm}} \\
-    \mathbf{grad}_{hc\_base} &= \sum_{batch}(\mathbf{grad}_{H^{mix}_{before\_norm}})
-    \end{aligned}
-    $$
-
-  - 缩放参数反向：
-
-    $$
-    \begin{aligned}
-    \mathbf{grad}_{hc\_scale} &= \sum(\mathbf{grad}_{H^{mix}} \odot H^{mix}_{before\_norm}) \\
-    \mathbf{grad}_{H^{mix}_{before\_norm}} &= \mathbf{grad}_{H^{mix}} \times \mathbf{hc\_scale}
-    \end{aligned}
-    $$
 
 ## 函数原型
 
