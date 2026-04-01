@@ -415,7 +415,7 @@ private:
         }
         std::cout << "]" << std::endl;
         // 在设置之前打印原始数据
-        std::cout << "tensorEndOffsetList (original) = [";
+        std::cout << "tensorEndOffsetList = [";
         for (size_t i = 0; i < MAX_CORE_CONT; ++i) {
             std::cout << tensorEndOffsetList[i];
             if (i < MAX_CORE_CONT - 1) std::cout << ", ";
