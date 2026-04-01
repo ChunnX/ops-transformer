@@ -1340,7 +1340,6 @@ mc2:
         - mc2/moe_distribute_combine_setup
       test:
         examples: False
-        ut: False
       options:
         - moe_distribute_combine_setup
 
