@@ -105,6 +105,9 @@ constexpr uint32_t SBNGD = 2;
 constexpr uint32_t BNGSD = 3;
 constexpr uint32_t TND = 4;
 
+constexpr uint32_t MAX_SUM_BNS8 = 0;
+constexpr uint32_t MAX_SUM_TND = 1;
+
 constexpr uint32_t PREFIX_LENGTH = 64;
 constexpr uint32_t SEQ_ARR_LENGTH = 256;
 constexpr uint32_t ADDR_ALIGN_SIZE = 512;
@@ -256,8 +259,14 @@ struct FagConstInfo {
     int64_t leftSingleColTotalRound = 0;
     int64_t leftTotalRound = 0;
     int64_t batchTotalRound = 0;
+    // sink相关
+    uint32_t isSink = 0;
+    uint64_t s1SinkOuter = 0;
+    uint64_t s2SinkOuter = 0;
     // 核数
     uint32_t aicCoreNum = 0;
+    // tnd max sum layout
+    uint32_t tndMaxSumLayout = 0;
 };
 
 // fp8反量化因子
@@ -350,6 +359,10 @@ struct FagRunInfo {
     bool isFirstProcessBlock = false;
     
     int64_t maxsumOffset;
+
+    // sink场景使用
+    int64_t dsinkWorkSpaceOffset = 0;
+    int64_t sinkN1Idx = 0;
 };
 
 constexpr SyncAllConfig syncAllConfigMte2ToMte2 = {PIPE_MTE2, PIPE_MTE2};

@@ -24,8 +24,8 @@ using namespace regbaseutil;
 namespace QSFaVectorApi {
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
-    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, 
-    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride, 
+    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
+    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride,
     const uint16_t m, const T scale, const T minValue, uint32_t pltOriginalN, uint32_t pltSrcN)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_min;
@@ -44,9 +44,11 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
     AscendC::MicroAPI::UnalignRegForStore ureg_exp_sum;
 
     AscendC::MicroAPI::MaskReg preg_all = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg_all_b16 = AscendC::MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+    AscendC::MicroAPI::MaskReg preg_all_b16 = AscendC::MicroAPI::CreateMask<
+                        uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
     AscendC::MicroAPI::MaskReg preg_src_n = AscendC::MicroAPI::UpdateMask<float>(pltSrcN);
-    AscendC::MicroAPI::MaskReg preg_src_n_b16 = AscendC::MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::H>();
+    AscendC::MicroAPI::MaskReg preg_src_n_b16 = AscendC::MicroAPI::CreateMask<
+                        uint16_t, AscendC::MicroAPI::MaskPattern::H>();
     AscendC::MicroAPI::MaskReg preg_ori_src_n = AscendC::MicroAPI::UpdateMask<T>(pltOriginalN);
 
     // x_max = max(src, axis=-1, keepdims=True)
@@ -91,7 +93,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
 // no update, originN <= 64
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __aicore__ inline void ProcessVec1NoUpdateImpl64(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
@@ -109,7 +111,8 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
     uint32_t pltSrcN = s2BaseSize;
 
     ProcessVec1NoUpdateImpl64VF<T, T2, s1BaseSize, s2BaseSize>(
-        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride, m, scale, minValue, pltOriginalN, pltSrcN);
+        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride,
+        m, scale, minValue, pltOriginalN, pltSrcN);
 }
 } // namespace
 

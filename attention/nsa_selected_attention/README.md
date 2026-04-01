@@ -8,8 +8,6 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
-
-
 ## 功能说明
 
 - 算子功能：训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。
@@ -68,4 +66,3 @@
 | 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_nsa_selected_attention](./examples/test_aclnn_nsa_selected_attention.cpp) | 非TND场景，通过[aclnnNsaSelectedAttention](./docs/aclnnNsaSelectedAttention.md)接口方式调用NsaSelectedAttention算子。             |
-

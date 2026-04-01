@@ -4,14 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾 950 AI处理器</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
-
 
 ## 功能说明
 
@@ -34,7 +32,6 @@
   当前支持的布局：
   - qInputLayout: "TND" "BNSD"
   - kvInputLayout: "TND" "BNSD"
-
 
 ## 函数原型
 
@@ -61,8 +58,8 @@ aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
   int64_t            preTokens,
   int64_t            nextTokens,
   int64_t            softmaxLseFlag,
-  const aclTensor   *attentionOut,
-  const aclTensor   *softmaxLseOptional,
+  aclTensor         *attentionOut,
+  aclTensor         *softmaxLseOptional,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -72,7 +69,7 @@ aclnnStatus aclnnBlockSparseAttention(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  const aclrtStream stream)
+  aclrtStream stream)
 ```
 
 ## aclnnBlockSparseAttentionGetWorkspaceSize
@@ -106,7 +103,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
         <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
@@ -119,7 +116,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>支持的shape为：
         <ul>
           <li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li>
@@ -134,7 +131,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>value</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>
         支持的shape为：
         <ul>
@@ -150,7 +147,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockSparseMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，表示实际的稀疏pattern。</td>
+      <td>表示实际的稀疏pattern。</td>
       <td>
         可选输入（当前版本为必选）
         <ul>
@@ -167,8 +164,8 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
-      <td>atten_mask会与稀疏pattern叠加产生作用。当前不支持，应传入nullptr。</td>
+      <td>公式中的atten_mask。</td>
+      <td>atten_mask会与稀疏pattern叠加产生作用。当前不支持，必须传入nullptr。</td>
       <td>INT8</td>
       <td>ND</td>
       <td>2</td>
@@ -178,14 +175,14 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockShapeOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，稀疏块形状数组。</td>
+      <td>稀疏块形状数组。</td>
       <td>
         与blockSparseMaskOptional配合使用：
         <ul>
           <li>当配置了blockSparseMaskOptional时：如配置此输入，算子会从中获取稀疏块尺寸；如不配置此输入，算子将默认稀疏块尺寸为[128,128]。</li>
           <li>当未配置blockSparseMaskOptional时：无论此项如何配置，算子均将忽略。</li>
         </ul>
-        当配置此输入时：必须包含至少两个元素[blockShapeX, blockShapeY]
+        当配置此输入时：必须包含两个元素[blockShapeX, blockShapeY]
         <ul>
           <li>blockShapeX: Q方向块大小，值必须大于0。</li>
           <li>blockShapeY: KV方向块大小，值必须大于0且为128的倍数。</li>
@@ -198,12 +195,12 @@ aclnnStatus aclnnBlockSparseAttention(
     </tr>
       <td>actualSeqLengthsOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的query序列长度。</td>
+      <td>描述每个Batch对应的query序列长度。</td>
       <td>
         可选输入，用于变长序列场景：
         <ul>
           <li>当qInputLayout为"TND"时：该项输入必须配置。</li>
-          <li>当qInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入(传入nullptr)，算子内会按照query的shape中的S进行处理。</li>
+          <li>当qInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照query的shape中的S进行处理。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -214,12 +211,12 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>actualSeqLengthsKvOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的key/value序列长度。</td>
+      <td>描述每个Batch对应的key/value序列长度。</td>
       <td>
         可选输入，用于变长序列场景：
         <ul>
           <li>当kvInputLayout为"TND"时：该项输入必须配置。</li>
-          <li>当kvInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入(传入nullptr)，算子内会按照key/value的shape中的S进行处理。</li>
+          <li>当kvInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照key/value的shape中的S进行处理。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -230,8 +227,8 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockTableOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，Block表用于PagedAttention。</td>
-      <td>当前不支持，传入nullptr。</td>
+      <td>Block表用于PagedAttention。</td>
+      <td>当前不支持，必须传入nullptr。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>2</td>
@@ -250,7 +247,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>kvInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入key、value的数据排布格式。</td>
+      <td>代表输入key、value的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
@@ -270,7 +267,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>maskType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，表示attention计算中的掩码类型。</td>
+      <td>表示attention计算中的掩码类型。</td>
       <td>
         当前只支持传0
         <ul>
@@ -295,12 +292,12 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>innerPrecise</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Softmax计算采取的精度级别。</td>
+      <td>Softmax计算采取的精度级别。</td>
       <td>
-        当前只支持传0或1
+        控制online softmax阶段以及rescale阶段运算使用的数据类型。当前只支持传0或1
         <ul>
-          <li>0：表示高精度softmax计算，中间值采取fp32数据类型，适合追求计算精度的场景使用。</li>
-          <li>1：表示低精度softmax计算，中间值采取fp16数据类型，性能更好，适合追求极致性能的场景使用。</li>
+          <li>0：表示online softmax和rescale全部采取fp32数据类型，适合追求计算精度的场景使用。</li>
+          <li>1：仅支持输入的query、key、value均为fp16数据类型时配置，表示online softmax和rescale全部采取fp16数据类型，性能更好，但精度较低，且可能发生计算时的数值溢出，使用者需根据值域范围自行判断是否使用。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -311,8 +308,8 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，PagedAttention的block大小。</td>
-      <td>用于PagedAttention场景，当前不支持PagedAttention功能。</td>
+      <td>PagedAttention的block大小。</td>
+      <td>用于PagedAttention场景，当前不支持PagedAttention功能，因此只支持传0。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -321,8 +318,8 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>preTokens</td>
       <td>输入</td>
-      <td>Host侧的int64_t，滑窗attention场景下，滑窗需要向前包含多少个token。</td>
-      <td>用于滑窗attention场景，当前不支持滑窗attention。</td>
+      <td>滑窗attention场景下，滑窗需要向前包含多少个token。</td>
+      <td>用于滑窗attention场景，当前不支持滑窗attention，只支持传入2147483647。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -331,8 +328,8 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>nextTokens</td>
       <td>输入</td>
-      <td>Host侧的int64_t，滑窗attention场景下，滑窗需要向后包含多少个token。</td>
-      <td>用于滑窗attention场景，当前不支持滑窗attention。</td>
+      <td>滑窗attention场景下，滑窗需要向后包含多少个token。</td>
+      <td>用于滑窗attention场景，当前不支持滑窗attention，只支持传入2147483647。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -341,7 +338,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>softmaxLseFlag</td>
       <td>输入</td>
-      <td>Host侧的int64_t，是否使能softmaxLse输出的标志位。</td>
+      <td>是否使能softmaxLse输出的标志位。</td>
       <td>
         当前只支持传0或1
         <ul>
@@ -357,7 +354,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>attentionOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，公式中的attentionOut。</td>
+      <td>公式中的attentionOut。</td>
       <td>数据类型和shape与query保持一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -367,7 +364,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>softmaxLseOptional</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，Softmax计算的log-sum-exp中间结果。</td>
+      <td>Softmax计算的log-sum-exp中间结果。</td>
       <td>
         支持的shape随着query的shape改变：
         <ul>
@@ -403,7 +400,6 @@ aclnnStatus aclnnBlockSparseAttention(
   </tbody>
   </table>
 
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -426,7 +422,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>输入query，key，value，blockSparseMask传入的是空指针。</td>
+      <td>输入query，key，value传入的是空指针。</td>
     </tr>
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
@@ -444,7 +440,6 @@ aclnnStatus aclnnBlockSparseAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnBlockSparseAttention
 
@@ -496,17 +491,21 @@ aclnnStatus aclnnBlockSparseAttention(
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - qInputLayout当前仅支持"TND"和"BNSD"。
 - kvInputLayout当前仅支持"TND"和"BNSD"。
+- 当前query、key、value的InputLayout必须保持一致。
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
+- query、key、value的D轴当前仅支持配置为64或128
 - blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY必须为128的倍数。
 - blockSparseMaskOptional当前必须传入，且shape必须为[batch, headNum, ceilDiv(maxQS, blockShapeX), ceilDiv(maxKVS, blockShapeY)]。
 - attentionMaskOptional当前只支持传入nullptr。
 - actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
+- actualSeqLengthsOptional与actualSeqLengthsKvOptional当前必须同时配置或同时不配置，仅配置其中之一的行为将被算子拦截。
 - blockTableOptional当前只支持传入nullptr，表示不开启PagedAttention特性。
 - innerPrecise必须为0（float32 softmax）或1（fp16 softmax），query输入为BFLOAT16时，只能配置为0。
 - qSeqlen和kvSeqlen不需要被blockShape整除，支持非对齐场景，实际分块数通过向上取整计算。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0。
 - maskType当前只支持输入0，表示不加mask。
-
+- blockSize当前只支持输入0，表示不支持paged cache。
+- preTokens和nextTokens当前只支持输入2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
 
 ## 调用示例
 

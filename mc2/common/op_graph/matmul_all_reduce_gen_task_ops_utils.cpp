@@ -14,7 +14,7 @@
  */
 #include "matmul_all_reduce_gen_task_ops_utils.h"
 
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 #include "platform/platform_info.h"
 #include "mc2_gen_task_ops_utils.h"
 

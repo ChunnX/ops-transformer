@@ -21,12 +21,12 @@
 constexpr uint16_t MAX_TENSOR_CONT = 256;
 constexpr uint16_t MAX_CORE_CONT = 64;
 
-inline void InitAllGatherMatmulTilingData(uint8_t* tiling, AllGatherMatmulTilingData* constData)
+inline void InitAllGatherMatmulTilingData(uint8_t* tiling, Mc2Tiling::AllGatherMatmulTilingData* constData)
 {
-    memcpy(constData, tiling, sizeof(AllGatherMatmulTilingData));
+    memcpy(constData, tiling, sizeof(Mc2Tiling::AllGatherMatmulTilingData));
 }
 
 #define GET_TILING_DATA(tilingData, tilingArg)                                                        \
-    AllGatherMatmulTilingData tilingData;                                                 \
+    Mc2Tiling::AllGatherMatmulTilingData tilingData;                                                 \
     InitAllGatherMatmulTilingData(tilingArg, &tilingData)
 #endif  // FOREACH_MINIMUM_SCALAR_TILING_DEF_H

@@ -25,8 +25,8 @@ namespace QSFaVectorApi {
 
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
-    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, 
-    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride, 
+    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
+    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride,
     const uint16_t m, const T scale, const T minValue, uint32_t pltOriTailN, uint32_t pltTailN)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_min;
@@ -98,7 +98,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
                 (RegTensor<uint16_t>&)vreg_exp_odd_bf16, preg_all_b16);
             AscendC::MicroAPI::StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp_bf16, blockStride, repeatStride, preg_all_b16);
-        } 
+        }
     }
     AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
@@ -107,7 +107,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
 // no update, 64 < originN <= 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
@@ -127,7 +127,8 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
     uint32_t pltTailN = tailN;
 
     ProcessVec1NoUpdateGeneralImpl128VF<T, T2, s1BaseSize, s2BaseSize>(
-        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride, m, scale, minValue, pltOriTailN, pltTailN);
+        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride,
+        repeatStride, m, scale, minValue, pltOriTailN, pltTailN);
 }
 } // namespace
 

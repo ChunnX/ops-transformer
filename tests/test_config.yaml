@@ -990,6 +990,24 @@ mc2:
         examples: False
       options:
         - allto_allv_grouped_mat_mul
+  
+    allto_allv_quant_grouped_mat_mul:
+      module: True
+      src:
+        - mc2/allto_allv_quant_grouped_mat_mul
+        - mc2/common
+        - mc2/3rd/grouped_matmul
+      exclude:
+        - mc2/allto_allv_quant_grouped_mat_mul/docs
+        - mc2/allto_allv_quant_grouped_mat_mul/README.md
+      ut_cov_exclude:
+        - mc2/allto_allv_quant_grouped_mat_mul/op_api
+        - mc2/allto_allv_quant_grouped_mat_mul/op_graph
+        - mc2/allto_allv_quant_grouped_mat_mul/op_kernel
+      test:
+        examples: False
+      options:
+        - allto_allv_quant_grouped_mat_mul
 
     allto_all_matmul:
       module: True
@@ -1001,7 +1019,9 @@ mc2:
         - mc2/allto_all_matmul/docs
         - mc2/allto_all_matmul/README.md
       ut_cov_exclude:
-        - mc2/allto_all_matmul
+        - mc2/allto_all_matmul/op_host
+        - mc2/allto_all_matmul/op_graph
+        - mc2/allto_all_matmul/op_kernel
       test:
         examples: False
       options:
@@ -1279,7 +1299,9 @@ mc2:
         - mc2/moe_distribute_combine/docs
         - mc2/moe_distribute_combine/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine
+        - mc2/moe_distribute_combine/op_api
+        - mc2/moe_distribute_combine/op_graph
+        - mc2/moe_distribute_combine/op_kernel
       test:
         examples: False
       options:
@@ -1331,12 +1353,36 @@ mc2:
         - mc2/moe_distribute_combine_v2/docs
         - mc2/moe_distribute_combine_v2/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_v2
+        - mc2/moe_distribute_combine_v2/op_api
+        - mc2/moe_distribute_combine_v2/op_graph
+        - mc2/moe_distribute_combine_v2/op_kernel
       test:
         examples: False
       options:
         - moe_distribute_combine_v2
         - moe_distribute_dispatch_v2
+
+    moe_distribute_combine_v3:
+      module: True
+      src:
+        - mc2/moe_distribute_combine_v2
+        - mc2/moe_distribute_combine_v3
+        - mc2/common
+      exclude:
+        - mc2/moe_distribute_combine_v2/docs
+        - mc2/moe_distribute_combine_v2/README.md
+        - mc2/moe_distribute_combine_v3/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_combine_v2/op_api
+        - mc2/moe_distribute_combine_v2/op_graph
+        - mc2/moe_distribute_combine_v2/op_kernel
+        - mc2/moe_distribute_combine_v3/op_api
+        - mc2/moe_distribute_combine_v3/op_graph
+        - mc2/moe_distribute_combine_v3/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_combine_v3
 
     moe_distribute_dispatch:
       module: True
@@ -1365,12 +1411,36 @@ mc2:
         - mc2/moe_distribute_dispatch_v2/docs
         - mc2/moe_distribute_dispatch_v2/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_dispatch_v2
+        - mc2/moe_distribute_dispatch_v2/op_api
+        - mc2/moe_distribute_dispatch_v2/op_graph
+        - mc2/moe_distribute_dispatch_v2/op_kernel
       test:
         examples: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_combine_v2
+
+    moe_distribute_dispatch_v3:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_v2
+        - mc2/moe_distribute_dispatch_v3
+        - mc2/common
+      exclude:
+        - mc2/moe_distribute_dispatch_v2/docs
+        - mc2/moe_distribute_dispatch_v2/README.md
+        - mc2/moe_distribute_dispatch_v3/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_v2/op_api
+        - mc2/moe_distribute_dispatch_v2/op_graph
+        - mc2/moe_distribute_dispatch_v2/op_kernel
+        - mc2/moe_distribute_dispatch_v3/op_api
+        - mc2/moe_distribute_dispatch_v3/op_graph
+        - mc2/moe_distribute_dispatch_v3/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_v3
 
     moe_update_expert:
       module: True
@@ -1425,6 +1495,19 @@ mhc:
     ut_cov_exclude:
       - mhc/mhc_post/examples
       - mhc/mhc_post/tests
+    test:
+      examples: False
+      ut: True
+  mhc_pre:
+    module: True
+    src:
+      - mhc/mhc_pre
+    exclude:
+      - mhc/mhc_pre/docs
+      - mhc/mhc_pre/README.md
+    ut_cov_exclude:
+      - mhc/mhc_pre/examples
+      - mhc/mhc_pre/tests
     test:
       examples: False
       ut: True

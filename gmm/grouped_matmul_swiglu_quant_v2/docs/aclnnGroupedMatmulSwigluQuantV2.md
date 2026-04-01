@@ -244,8 +244,10 @@
             | FLOAT8_E4M3FN |  8   |
             |  FLOAT8_E5M2  |  15  |
             |  FLOAT4_E2M1  |  2   |
+
           - $blocksize$：指每次量化的元素个数，仅支持32。
     </details>
+
     <details>
     <summary>Pertoken量化场景：</summary>
 
@@ -282,6 +284,7 @@
  	 
  	           $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
     </details>
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuantV2”接口执行计算。
@@ -306,6 +309,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     uint64_t            *workspaceSize, 
     aclOpExecutor       **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     void          *workspace, 
@@ -396,7 +400,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <tr>
         <td>xScale</td>
         <td rowspan="1">输入</td>
-        <td>表示左矩阵的的量化因子，公式中的xScale。</td>
+        <td>表示左矩阵的量化因子，公式中的xScale。</td>
         <td>-</td>
         <td>FLOAT8_E8M0、FLOAT</td>
         <td>ND</td>
@@ -466,7 +470,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td><ul>
           <li>0表示per-token。</li>
           <li>1表示per-group。</li>
-          <li>2表示MX量化。</li>
+          <li>2表示MX量化。</li></ul>
         </td>
         <td>INT64</td>
         <td>-</td>
@@ -477,7 +481,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>groupListType</td>
         <td rowspan="1">输入</td>
         <td>表示分组的解释方式，用于确定groupList的语义。</td>
-        <td><ul><li>0表示cumsum模式，groupList中的每个元素代表当前分组的累计长度。</li><li>1表示count模式，groupList中的每个元素代表该分组包含多少元素。</li></td>
+        <td><ul><li>0表示cumsum模式，groupList中的每个元素代表当前分组的累计长度。</li><li>1表示count模式，groupList中的每个元素代表该分组包含多少元素。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -487,8 +491,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
         <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
-        <td>预留输入，暂不支持，需要传空指针。</td>
-        <td>-</td>
+        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时使能，其他输入请传入空指针。</td>
+        <td>INT64</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -537,10 +541,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     </table>
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-      - weight仅支持非转置，INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
-      - 支持dequantMode参数：A8W4场景支持取值0和1，A8W8和A4W4场景仅支持取值0。
+      - weight在A4W4下支持NZ输入转置，其他场景仅支持非转置。INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
+      - 支持dequantMode参数：A8W4和A4W4场景支持取值0和1，A8W8场景仅支持取值0。
       - 不支持dequantDtype和quantMode参数。
       - x和weight不支持空Tensor。
+      - weight NZ转置输入时，仅支持单Tensor模式
       - weight、weightScale和weightAssistMatrix支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - weight支持转置，仅支持ND格式。
@@ -551,7 +556,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
       - weight和weightScale目前仅支持tensorlist长度为1。
-
 
 - **返回值**
   
@@ -736,10 +740,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <td><ul>
               <li>ND格式shape形如{(E, K, N)}</li>
               <li>NZ格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></td>
+              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></ul></td>
               <td><ul>
               <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li></td>
+              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul></td>
               <td>{(E, N)}</td>
               <td>(M,)</td>
               <td>nullptr</td>
@@ -756,10 +760,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <li>NZ非转置格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li>
               <li>NZ转置格式且INT4时原始shape形如{(E, K / 64, N / 16, 16, 64)}，并调用transpose(-1,-2)后传入</li>
               <li>NZ转置格式且INT32时原始shape形如{(E, K / 64, N / 16, 16, 8)}，并调用transpose(-1,-2)后传入</li>
+              <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li></ul>
               </td>
               <td><ul>
               <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li>
+              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul>
               </td>
               <td>nullptr</td>
               <td>(M,)</td>
@@ -847,10 +852,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, K, N)}</li>
-              <li>转置shape形如{(E, N, K)}</li></td>
+              <li>转置shape形如{(E, N, K)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
-              <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></td>
+              <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
               <td>(M, ceil((N / 2) / 64), 2)</td>
@@ -933,10 +938,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, K, N)}</li>
-              <li>转置shape形如{(E, N, K)}</li></td>
-              <td><ul>
-              <li>shape形如{(E, N)}</li>
-              </td>
+              <li>转置shape形如{(E, N, K)}</li></ul></td>
+              <td>shape形如{(E, N)}</td>
               <td>(M, )</td>
               <td>(M, N / 2)</td>
               <td>(M, )</td>
@@ -945,8 +948,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
     ```cpp
     #include <iostream>
     #include <vector>
@@ -1173,6 +1179,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     ```
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
+
     ```cpp
     #include <iostream>
     #include <memory>
@@ -1428,3 +1435,4 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         return 0;
     }
     ```
+    

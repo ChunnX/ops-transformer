@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file sparse_attn_sharedkv_kvcache.h
@@ -101,7 +101,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     runParam.qSNumInOneBlock = 1; // 不切G轴, 计算每个基本快可以拷贝多少行s
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if (runParam.nextTokensPerBatch < 0) {
-        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock
+                                    * runParam.qSNumInOneBlock;
         if (gs1LoopStartIdx > gS1StartIdx) {
             runParam.gs1LoopStartIdx = gs1LoopStartIdx;
         }
@@ -194,7 +195,8 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
     uint32_t sOuterLoopIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
     if (runParam.nextTokensPerBatch < 0) {
-        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) \
+            / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
             return true;
         }
     }
@@ -206,7 +208,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr) 
+__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr)
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true

@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：完成Matmul计算、Permute(保证通信后地址连续)和AlltoAll通信的融合，**先计算后通信**。
+- 接口功能：完成Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**。
 - 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
 
   $$
@@ -35,7 +35,7 @@ aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(
   const char*        group,
   bool               transposeX1,
   bool               transposeX2,
-  aclTensor*         output,
+  const aclTensor*   output,
   uint64_t*          workspaceSize,
   aclOpExecutor**    executor)
 ```
@@ -107,7 +107,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <tr>
     <td>alltoAllAxesOptional</td>
     <td>输入</td>
-    <td>可选输入，AlltoAll和Pemute数据交换的方向。</td>
+    <td>可选输入，AlltoAll和Permute数据交换的方向。</td>
     <td>支持配置空或者[-1, -2]，传入空时默认按[-1, -2]处理，表示将输入由(BS, H2)转为(BS * rankSize, H2 / rankSize)。</td>
     <td>aclIntArray*(元素类型INT64)</td>
     <td>-</td>
@@ -146,7 +146,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>数据类型与输入x1保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
@@ -175,7 +175,6 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>-</td>
     </tr>
     </tbody></table>
-
 
 - **返回值**
 
@@ -275,7 +274,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 * 默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
-  - <term>Atlas A3 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8、16卡。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16卡。
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
 * 参数说明中shape使用的变量H2必须整除NPU卡数。
 * H1范围仅支持[1, 65535]。
@@ -312,6 +311,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     #include <vector>
     #include <acl/acl.h>
     #include <hccl/hccl.h>
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_allto_all.h"
 
     int ndev = 2;
@@ -397,10 +397,10 @@ aclnnStatus aclnnMatmulAlltoAll(
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
         long long outShapeSize = GetShapeSize(outShape);
-        std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-        std::vector<int16_t> biasHostData(biasShapeSize, 1);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建 tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -507,6 +507,7 @@ aclnnStatus aclnnMatmulAlltoAll(
         return 0;
     }
     ```
+
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp

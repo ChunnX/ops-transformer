@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file vf_basic_block_aligned128_no_update_qsfa.h
@@ -25,8 +25,8 @@ namespace QSFaVectorApi {
 // no update, originN == 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
-    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, 
-    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride, 
+    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
+    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride,
     const uint16_t m, const T scale, const T minValue)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_input_x;
@@ -76,7 +76,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
         // maxUb is [S1, 1], BRC_B32 is reading one fp32 element and broadcast it to all 64 vreg element
         AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
             vreg_max_brc, maxUbStart + i);
-        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_input_x, vreg_input_x_unroll, srcUb + i * s2BaseSize);
+        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_input_x,
+            vreg_input_x_unroll, srcUb + i * s2BaseSize);
 
         AscendC::MicroAPI::ExpSub(vreg_exp_even, vreg_input_x, vreg_max_brc, preg_all);
         AscendC::MicroAPI::ExpSub(vreg_exp_odd, vreg_input_x_unroll, vreg_max_brc, preg_all);
@@ -88,12 +89,13 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
         AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum, 1);
 
-       if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
             AscendC::MicroAPI::Cast<T2, T, castTraitZero>(vreg_exp_even_bf16, vreg_exp_even, preg_all);
             AscendC::MicroAPI::Cast<T2, T, castTraitOne>(vreg_exp_odd_bf16, vreg_exp_odd, preg_all);
             AscendC::MicroAPI::Or((RegTensor<uint16_t>&)vreg_exp_bf16, (RegTensor<uint16_t>&)vreg_exp_even_bf16,
                 (RegTensor<uint16_t>&)vreg_exp_odd_bf16, preg_all_b16);
-            AscendC::MicroAPI::StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            AscendC::MicroAPI::StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp_bf16, blockStride, repeatStride, preg_all_b16);
         }
     }
@@ -104,7 +106,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
 // no update, originN == 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __aicore__ inline void ProcessVec1NoUpdateImpl128(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
