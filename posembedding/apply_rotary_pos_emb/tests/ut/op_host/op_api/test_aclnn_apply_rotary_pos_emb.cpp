@@ -42,6 +42,7 @@ TEST_F(l2_apply_rotary_pos_emb_test, Ascend910B2_apply_rotary_pos_emb_fp32)
     auto sin = TensorDesc({24, 1, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
     int64_t layout = 1;
     string rotary_mode = "half";
+    
     auto ut = OP_API_UT(aclnnApplyRotaryPosEmb, INPUT(query, key, cos, sin, layout), OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
