@@ -7,8 +7,8 @@
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     ×    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     ×    |
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
 |  <term>Atlas 推理系列产品</term>    |     ×    |
 |  <term>Atlas 训练系列产品</term>    |     ×    |
@@ -52,11 +52,11 @@ aclnnStatus aclnnMhcPost(
 
   <table style="undefined;table-layout: fixed; width: 1400px"><colgroup>
   <col style="width: 145px">
-  <col style="width: 90px">
+  <col style="width: 120px">
   <col style="width: 441px">
   <col style="width: 158px">
   <col style="width: 186px">
-  <col style="width: 80px">
+  <col style="width: 120px">
   <col style="width: 155px">
   <col style="width: 145px">
   </colgroup>
@@ -184,7 +184,7 @@ aclnnStatus aclnnMhcPost(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
     <col style="width: 700px">
