@@ -294,7 +294,7 @@ public:
 
     template <bool hasGamma>
     __aicore__ inline void VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, __ubuf__ P *xRsGradMmAddr,
-                                                   __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize,
+                                                   __ubuf__ P *gammaInAddr, uint32_t currentChunkSize,
                                                    uint32_t copySizeND);
 
 private:
@@ -1577,7 +1577,7 @@ template <class T, class P>
 template <bool hasGamma>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, __ubuf__ P *xRsGradMmAddr,
-                                                    __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize,
+                                                    __ubuf__ P *gammaInAddr, uint32_t currentChunkSize,
                                                     uint32_t copySizeND)
 {
     uint32_t eleNumPerVf = 64;
@@ -1593,7 +1593,7 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, _
                 MicroAPI::LoadAlign(xRsGradMmReg, xRsGradMmAddr + offset);
 
                 if constexpr (hasGamma) {
-                    MicroAPI::LoadAlign(gammaReg, gammaBroadAddr + vfBlockIdx * eleNumPerVf);
+                    MicroAPI::LoadAlign(gammaReg, gammaInAddr + vfBlockIdx * eleNumPerVf);
 
                     MicroAPI::Mul(resultReg, gammaReg, xRsGradMmReg, mask); // 逐元素乘：gamma * xRsGradMm
                     MicroAPI::StoreAlign(xRsGradUbAddr + offset, resultReg, mask);
