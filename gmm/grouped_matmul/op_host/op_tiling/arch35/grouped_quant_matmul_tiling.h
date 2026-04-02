@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_quant_matmul_tiling.h
@@ -116,9 +116,42 @@ struct GQmmBasicTiling {
     uint32_t scaleFactorB = 1;
 };
 
+// Lightweight shape container — no ge/gert dependency.
+// Interface mirrors gert::Shape for minimal migration effort.
+struct TensorShape {
+    static constexpr size_t MAX_DIMS = 8;
+    int64_t dims[MAX_DIMS] = {};
+    size_t dimNum = 0;
+
+    int64_t operator[](size_t i) const { return dims[i]; }
+    int64_t GetDim(size_t i) const { return dims[i]; }
+    size_t GetDimNum() const { return dimNum; }
+    int64_t GetShapeSize() const
+    {
+        if (dimNum == 0) {
+            return 0;
+        }
+        int64_t s = 1;
+        for (size_t i = 0; i < dimNum; ++i) {
+            s *= dims[i];
+        }
+        return s;
+    }
+};
+
 struct GQmmInputInfo {
 public:
     void Reset(); // 新增数据成员要修改Reset函数
+
+    // Shape data extracted from TilingContext (no gert types)
+    TensorShape xShape;
+    TensorShape wShape;
+    TensorShape wNzShape;
+    TensorShape wScaleShape;
+    TensorShape xScaleShape;
+    TensorShape biasShape;
+    TensorShape groupListShape;
+
     uint64_t mSize = 0UL;
     uint64_t kSize = 0UL;
     uint64_t nSize = 0UL;
@@ -144,9 +177,15 @@ public:
     ge::Format aFormat = ge::FORMAT_ND;
     ge::Format bFormat = ge::FORMAT_ND;
     ge::Format cFormat = ge::FORMAT_ND;
+
+    // Attribute metadata
+    bool hasAttrs = false;
+    size_t attrNum = 0;
+
     bool transA = false;
     bool transB = false;
     bool hasBias = false;
+    bool hasPerTokenScale = false;
     bool isSingleX = false;
     bool isSingleW = false;
     bool isSingleY = false;
@@ -184,16 +223,23 @@ protected:
     void CalBasicBlock();
     ge::graphStatus CalL1Tiling();
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
-    bool SetGroupNum(uint32_t groupListIndex);
-    bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
     void SetKernelType();
-    virtual bool AnalyzeAttrs();
-    virtual bool AnalyzeDtype();
-    virtual bool AnalyzeInputs();
     virtual void PrintQuantParams();
     bool IsMicroScaling() const;
-    bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
-    bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
+
+    // Parse phase: extract data from TilingContext, null-pointer checks only
+    bool ParseDtype();
+    bool ParseAttrs();
+    bool ParseInputs();
+
+    // Check phase: validate extracted data using OP_CHECK_IF
+    bool CheckDtype() const;
+    bool CheckAttrs() const;
+    bool CheckInputs();
+
+    bool CheckQuantParamsForMXTypeM() const;
+    bool CheckShapeForWeightNz() const;
+
     GQmmBasicTiling basicTiling_;
     GQmmInputInfo &inputParams_;
 
@@ -203,23 +249,22 @@ private:
     void CalScaleFactors();
     uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     uint64_t GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
-    bool SetQuantMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape,
-                      const gert::Shape &wShape);
-    void SetPerGroupQuantMode(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
-                              const gert::Shape &wShape);
-    bool CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
+    bool SetQuantMode();
+    void SetPerGroupQuantMode();
+    bool CheckQuantParamsForMXTypeK() const;
     bool CheckFp4Shape() const;
     bool CheckBiasDtype() const;
-    bool CheckBiasShape(const gert::StorageShape *biasStorageShape) const;
-    bool CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape,
-                                        const gert::Shape &wScaleShape) const;
-    bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape) const;
-    bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape) const;
+    bool CheckBiasShape() const;
+    bool CheckQuantParamsForMxQuantMode() const;
+    bool CheckQuantParams() const;
+    bool CheckQuantParamsForNonKGroupQuantMode() const;
+    bool SetGroupNum();
+    bool SetMKN();
     bool SetMKNList();
     bool IsBiasInL1() const;
-    bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
-    bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
- 	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape);
+    bool CheckDtypeForWeightNz() const;
+    bool CheckActiveModeDtype() const;
+    bool CheckActiveMode();
     virtual bool CheckCoreNum() const;
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
