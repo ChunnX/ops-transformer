@@ -448,12 +448,7 @@ __aicore__ inline void LIGKernel<LIGT>::ProcessVec3(uint64_t taskId)
     if (likely(!constInfo.deterministic)) {
         vectorService.ScatterAdd(sparseIndicesGm, scatterAddGm, dkWorkSpaceGm, constInfo, runInfoStore[taskId]);
     } else {
-        SyncAll();
-        vectorService.InitOutputDkcoreGm(dkCoreWorkspaceGM, constInfo, runInfoStore[taskId]);
-        SyncAll();
         vectorService.ScatterAdd(sparseIndicesGm, scatterAddGm, dkCoreWorkspaceGM, constInfo, runInfoStore[taskId]);
-        SyncAll();
-        vectorService.DeterministicMerge(dkCoreWorkspaceGM, dkWorkSpaceGm, constInfo, runInfoStore[taskId]);
     }
 }
 
@@ -504,6 +499,13 @@ __aicore__ inline void LIGKernel<LIGT>::Process()
         taskId = 0;
         CoreSplitInfo split = SplitCore(bIndex, aiCoreIdx, usedCubeCoreNum);
         CoreSplitInfo determineSplit = CalculateDetermineLoopTimes(bIndex, GetBlockIdx(), usedCubeCoreNum * 2);
+
+        if ASCEND_IS_AIV {
+            if (unlikely(constInfo.deterministic)) {
+                vectorService.InitOutputDkcoreGm(dkCoreWorkspaceGM, constInfo, runInfoStore[(runInfo.loopTimes - 1) % 4]);
+                SyncAll();
+            }
+        }
 
         InitRunInfo(bIndex, split, determineSplit);
         for (uint32_t i = 0; runInfo.loopTimes > 0 && i < runInfo.loopTimes + 3; i++) {
@@ -596,20 +598,18 @@ __aicore__ inline void LIGKernel<LIGT>::Process()
                 UpdateRunInfo(bIndex, runInfo, taskId++);
             }
         }
+
         if ASCEND_IS_AIV {
-            if (unlikely(constInfo.deterministic && !runInfo.isRemainderCore)) {
+            if (unlikely(constInfo.deterministic)) {
                 SyncAll();
-                vectorService.InitOutputDkcoreGm(dkCoreWorkspaceGM, constInfo, runInfoStore[(runInfo.loopTimes - 1) % 4]);
-                SyncAll();
-                SyncAll(); // 轮空AIV核保持与非轮空核同步等待，等待scatterAdd结果放入dkCoreWorkspaceGM后累加
                 vectorService.DeterministicMerge(dkCoreWorkspaceGM, dkWorkSpaceGm, constInfo, runInfoStore[(runInfo.loopTimes - 1) % 4]);
             }
         }
+    }
 
-        if ASCEND_IS_AIV {
-            vectorService.ReleaseEvents();
-            SyncAll();
-        }
+    if ASCEND_IS_AIV {
+        vectorService.ReleaseEvents();
+        SyncAll();
     }
     return;
 }
