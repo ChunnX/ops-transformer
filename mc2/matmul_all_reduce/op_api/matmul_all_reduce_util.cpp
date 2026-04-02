@@ -62,7 +62,8 @@ bool MatmulAllReduceCheckFormat(const aclTensor* x2)
     return true;
 }
 
-bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2) {
+bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2)
+{
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
@@ -118,7 +119,8 @@ aclnnStatus MatmulAllReduceCheckParams(
     CHECK_RET(MatmulAllReduceCheckShape(x1, x2, x3, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     // 6.【A2】检查x2矩阵非连续合法性
-    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B && !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
+    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
+        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
         CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
     }
 
@@ -248,7 +250,8 @@ aclnnStatus QuantMatmulAllReduceCheckParams(
         QuantMatmulAllReduceCheckShape(x1, x2, bias, dequantScale, pertokenScale, x3, output), ACLNN_ERR_PARAM_INVALID);
 
     // 5.【A2】检查x2矩阵非连续合法性
-    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B && !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
+    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
+        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
         CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
     }
 
