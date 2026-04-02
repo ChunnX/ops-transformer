@@ -801,7 +801,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
             attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         } else if constexpr (isGqaNoQuant) {
-            if (constInfo.isGqa) {
+            if (constInfo.isPfaGS1Merge) {
                 MaskInfo maskInfo;
                 maskInfo.gs1StartIdx = (constInfo.subBlockIdx == 0) ? 0 : runInfo.firstHalfS1RealSize;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
