@@ -1124,7 +1124,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <li>query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。</li>
                 <li>P_S1需大于等于query的S长度，P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
                 <li>P_S2建议padding到32对齐，提升性能</li>
-                <li>当query的S长度为1时不支持该场景</li>
+                <li>伪量化场景下，当query的S长度为1时不支持该场景</li>
                 </ul>
                 </td>
             </tr>
