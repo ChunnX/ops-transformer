@@ -596,33 +596,28 @@ bool MoeDistributeCombineSetupTilingBase::CheckTensorDataFormat()
     auto commCmdInfoOutDesc = context_->GetOutputDesc(COMM_CMD_INFO_OUT_INDEX);
 
     ge::Format expandXFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
-    OP_TILING_CHECK((expandXFormat != ge::FORMAT_ND),
-                    OP_LOGE(nodeName_, "expandX format is invalid, format should be ND, but got %s",
-                            Ops::Base::ToString(expandXFormat).c_str()),
+    OP_TILING_CHECK((expandXFormat == ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName_, "expandX format is invalid"),
                     return false);
+
     ge::Format expertIdsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat()));
-    OP_TILING_CHECK((expertIdsFormat != ge::FORMAT_ND),
-                    OP_LOGE(nodeName_, "expertIds format is invalid, format should be ND, but got %s",
-                            Ops::Base::ToString(expertIdsFormat).c_str()),
+    OP_TILING_CHECK((expertIdsFormat == ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName_, "expertIds format is invalid"),
                     return false);
+
     ge::Format assistInfoFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoForCombineDesc->GetStorageFormat()));
-    OP_TILING_CHECK((assistInfoFormat != ge::FORMAT_ND),
-                    OP_LOGE(nodeName_, "assistInfoForCombine format is invalid, format should be ND, but got %s",
-                            Ops::Base::ToString(assistInfoFormat).c_str()),
-                    return false);
+    OP_TILING_CHECK((assistInfoFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE(nodeName_, "assistInfoForCombine format is invalid"), return false);
+
     ge::Format quantExpandXFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(quantExpandXOutDesc->GetStorageFormat()));
-    OP_TILING_CHECK((quantExpandXFormat != ge::FORMAT_ND),
-                    OP_LOGE(nodeName_, "quantExpandXOut format is invalid, format should be ND, but got %s",
-                            Ops::Base::ToString(quantExpandXFormat).c_str()),
-                    return false);
+    OP_TILING_CHECK((quantExpandXFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE(nodeName_, "quantExpandXOut format is invalid"), return false);
+
     ge::Format commCmdInfoFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(commCmdInfoOutDesc->GetStorageFormat()));
-    OP_TILING_CHECK((commCmdInfoFormat != ge::FORMAT_ND),
-                    OP_LOGE(nodeName_, "commCmdInfoOut format is invalid, format should be ND, but got %s",
-                            Ops::Base::ToString(commCmdInfoFormat).c_str()),
-                    return false);
+    OP_TILING_CHECK((commCmdInfoFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE(nodeName_, "commCmdInfoOut format is invalid"), return false);
+
     return true;
 }
 
