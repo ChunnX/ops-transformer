@@ -187,6 +187,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Mul Qr 入参
     const GlobalTensor<T>& inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
     uint32_t cvRatio) {
+    if (row == 0 || col == 0) { return; }
     // 常量
     constexpr uint32_t MUL_QR = EVENT_ID1; // 用于控制Mul_Qr的同步
     constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0; //dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
