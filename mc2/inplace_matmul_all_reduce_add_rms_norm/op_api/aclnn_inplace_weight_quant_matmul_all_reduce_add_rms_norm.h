@@ -48,7 +48,7 @@ extern "C" {
 __attribute__((deprecated("aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize is scheduled to be deprecated in a post-December 2026 version update. "
                         "Please migrate to aclnnWeightQuantMatmulAllReduceGetWorkspaceSize and aclnnAddRmsNormGetWorkspaceSize"
                         "in place of aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize."
-                        "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.")))
+                        "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.")))
 ACLNN_API aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
     const aclTensor* antiquantOffset, const aclTensor* residual, const aclTensor* gamma, double epsilon,
@@ -67,7 +67,7 @@ ACLNN_API aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspa
 __attribute__((deprecated("aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm is scheduled to be deprecated in a post-December 2026 version update. "
                         "Please migrate to aclnnWeightQuantMatmulAllReduce and aclnnAddRmsNorm"
                         "in place of aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm."
-                        "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.")))
+                        "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.")))
 ACLNN_API aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
