@@ -66,7 +66,7 @@ ACLNN_API aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((deprecated("aclnnQuantMatmulAllReduceAddRmsNorm is scheduled to be deprecated in a post-December 2026 version update. "
-                        "Please migrate to aclnnQuantMatmulAllReduce and aclnnAddRmsNorm"
+                        "Please migrate to aclnnQuantMatmulAllReduce and aclnnAddRmsNorm "
                         "in place of aclnnQuantMatmulAllReduceAddRmsNorm."
                         "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.")))
 ACLNN_API aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
