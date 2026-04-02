@@ -514,7 +514,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       int64_t bsdp = 1;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffest = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -622,7 +622,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
 
       // 调用aclnnGroupedMatmulFinalizeRouting第一段接口
       workspaceSize = 0;
-      ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(x, w, scale, bias, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffest, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(x, w, scale, bias, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
@@ -646,7 +646,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                 return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+          LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
