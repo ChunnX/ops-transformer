@@ -217,58 +217,6 @@ void SetupPlatformForCase(const string &socVersion)
     op::SetPlatformSocVersion(it == socMap.end() ? op::SocVersion::ASCEND910B : it->second);
 }
 
-TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFormat format,
-                          const vector<int64_t> &storageShape, const vector<int64_t> &stride,
-                          bool allowNdCustomStorage = false)
-{
-    if (format == ACL_FORMAT_ND && !allowNdCustomStorage) {
-        return TensorDesc(shape, dtype, format).ValueRange(-10, 10);
-    }
-    if (!storageShape.empty() || !stride.empty()) {
-        return TensorDesc(shape, dtype, format, stride, 0, storageShape).ValueRange(-10, 10);
-    }
-    return TensorDesc(shape, dtype, format).ValueRange(-10, 10);
-}
-
-TensorDesc MakeTensorDescWithRange(const vector<int64_t> &shape, aclDataType dtype, aclFormat format,
-                                   const vector<int64_t> &storageShape, const vector<int64_t> &stride,
-                                   int64_t low, int64_t high, bool allowNdCustomStorage = false)
-{
-    TensorDesc desc = MakeTensorDesc(shape, dtype, format, storageShape, stride, allowNdCustomStorage);
-    return desc.ValueRange(low, high);
-}
-
-TensorListDesc MakeTensorListDesc(const vector<vector<int64_t>> &shapes, aclDataType dtype, aclFormat format,
-                                  const vector<vector<int64_t>> &storageShapes, const vector<vector<int64_t>> &strides,
-                                  bool allowNdCustomStorage = false)
-{
-    vector<TensorDesc> descs;
-    descs.reserve(shapes.size());
-    for (size_t i = 0; i < shapes.size(); ++i) {
-        static const vector<int64_t> empty;
-        const auto &storage = i < storageShapes.size() ? storageShapes[i] : empty;
-        const auto &stride = i < strides.size() ? strides[i] : empty;
-        descs.emplace_back(MakeTensorDesc(shapes[i], dtype, format, storage, stride, allowNdCustomStorage));
-    }
-    return TensorListDesc(descs);
-}
-
-TensorListDesc MakeTensorListDescWithRange(const vector<vector<int64_t>> &shapes, aclDataType dtype, aclFormat format,
-                                           const vector<vector<int64_t>> &storageShapes,
-                                           const vector<vector<int64_t>> &strides, int64_t low, int64_t high,
-                                           bool allowNdCustomStorage = false)
-{
-    vector<TensorDesc> descs;
-    descs.reserve(shapes.size());
-    for (size_t i = 0; i < shapes.size(); ++i) {
-        static const vector<int64_t> empty;
-        const auto &storage = i < storageShapes.size() ? storageShapes[i] : empty;
-        const auto &stride = i < strides.size() ? strides[i] : empty;
-        descs.emplace_back(MakeTensorDescWithRange(shapes[i], dtype, format, storage, stride, low, high, allowNdCustomStorage));
-    }
-    return TensorListDesc(descs);
-}
-
 void FallbackSingleNzWeightToNdStorage(const string &api, aclFormat &weightFormat,
                                        vector<vector<int64_t>> &weightShapesVec,
                                        vector<vector<int64_t>> &weightStorageShapesVec)
@@ -343,25 +291,33 @@ struct SwigluOpApiCase {
     void Run() const
     {
         SetupPlatformForCase(socVersion);
-        // Convergent UT style: only rely on view_shape/dtype/format.
-        // Ignore storage/stride to reduce the chance of building invalid tensor descriptors.
-        auto x = MakeTensorDescWithRange(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat), {}, {}, -10, 10);
+        // Same tensor style as l2_GroupedMatmulSwigluQuantV2_test hand-written UT:
+        // TensorDesc(...).ValueRange(-10, 10) and TensorListDesc(vector<TensorDesc>).
         auto weightShapesVec = ParseDimsList(weightShapes);
         auto weightStorageShapesVec = ParseDimsList(weightStorageShapes);
         auto weightFormatVal = ParseFormat(weightFormat);
         auto weightScaleShapesVec = ParseDimsList(weightScaleShapes);
         FallbackSingleNzWeightToNdStorage(api, weightFormatVal, weightShapesVec, weightStorageShapesVec);
-        // Ignore weight storage/stride in UT descriptor building.
-        auto weight = MakeTensorListDescWithRange(weightShapesVec, ParseDtype(weightDtype), weightFormatVal,
-                                                  {}, {}, -10, 10, false);
-        auto xScale = MakeTensorDescWithRange(ParseDims(xScaleShape), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat), {}, {},
-                                              -10, 10);
-        auto groupList = MakeTensorDescWithRange(ParseDims(groupListShape), ParseDtype(groupListDtype),
-                                                 ParseFormat(groupListFormat), {}, {}, -10, 10);
-        auto out1 = MakeTensorDescWithRange(ParseDims(out1Shape), ParseDtype(out1Dtype), ParseFormat(out1Format), {}, {},
-                                            -10, 10);
-        auto out2 = MakeTensorDescWithRange(ParseDims(out2Shape), ParseDtype(out2Dtype), ParseFormat(out2Format), {}, {},
-                                            -10, 10);
+
+        TensorDesc x_desc =
+            TensorDesc(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat)).ValueRange(-10, 10);
+        vector<TensorDesc> weight_tensor_vec;
+        weight_tensor_vec.reserve(weightShapesVec.size());
+        for (const auto &dims : weightShapesVec) {
+            weight_tensor_vec.emplace_back(
+                TensorDesc(dims, ParseDtype(weightDtype), weightFormatVal).ValueRange(-10, 10));
+        }
+        TensorListDesc weight_desc(weight_tensor_vec);
+
+        TensorDesc xScale_desc =
+            TensorDesc(ParseDims(xScaleShape), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat)).ValueRange(-10, 10);
+        TensorDesc groupList_desc =
+            TensorDesc(ParseDims(groupListShape), ParseDtype(groupListDtype), ParseFormat(groupListFormat))
+                .ValueRange(-10, 10);
+        TensorDesc out1_desc =
+            TensorDesc(ParseDims(out1Shape), ParseDtype(out1Dtype), ParseFormat(out1Format)).ValueRange(-10, 10);
+        TensorDesc out2_desc =
+            TensorDesc(ParseDims(out2Shape), ParseDtype(out2Dtype), ParseFormat(out2Format)).ValueRange(-10, 10);
 
         const auto weightAssistShapesVec = ParseDimsList(weightAssistShapes);
         const auto smoothScaleDims = ParseDims(smoothScaleShape);
@@ -377,146 +333,161 @@ struct SwigluOpApiCase {
 
         // Optional inputs must use nullptr; do not build empty TensorListDesc.
         if (!hasWeightScale) {
-            auto weightScale = nullptr;
             if (hasWeightAssist && hasSmoothScale) {
-                auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), {}, {});
-                auto smoothScale =
-                    MakeTensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat), {}, {});
+                vector<TensorDesc> weight_assist_tensor_vec;
+                weight_assist_tensor_vec.reserve(weightAssistShapesVec.size());
+                for (const auto &dims : weightAssistShapesVec) {
+                    weight_assist_tensor_vec.emplace_back(
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                }
+                TensorListDesc weight_assist_desc(weight_assist_tensor_vec);
+                TensorDesc smoothScale_desc =
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasWeightAssist) {
-                auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), {}, {});
-                auto smoothScale = nullptr;
+                vector<TensorDesc> weight_assist_tensor_vec_b;
+                weight_assist_tensor_vec_b.reserve(weightAssistShapesVec.size());
+                for (const auto &dims : weightAssistShapesVec) {
+                    weight_assist_tensor_vec_b.emplace_back(
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                }
+                TensorListDesc weight_assist_desc(weight_assist_tensor_vec_b);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasSmoothScale) {
-                auto weightAssist = nullptr;
-                auto smoothScale =
-                    MakeTensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat), {}, {});
+                TensorDesc smoothScale_desc =
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else {
-                auto weightAssist = nullptr;
-                auto smoothScale = nullptr;
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             }
         } else {
-            auto weightScale = MakeTensorListDescWithRange(weightScaleShapesVec, ParseDtype(weightScaleDtype),
-                                                           ParseFormat(weightScaleFormat),
-                                                           {}, {}, -10, 10);
+            vector<TensorDesc> weight_scale_tensor_vec;
+            weight_scale_tensor_vec.reserve(weightScaleShapesVec.size());
+            for (const auto &dims : weightScaleShapesVec) {
+                weight_scale_tensor_vec.emplace_back(
+                    TensorDesc(dims, ParseDtype(weightScaleDtype), ParseFormat(weightScaleFormat)).ValueRange(-10, 10));
+            }
+            TensorListDesc weight_scale_desc(weight_scale_tensor_vec);
             if (hasWeightAssist && hasSmoothScale) {
-                auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), {}, {});
-                auto smoothScale =
-                    MakeTensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat), {}, {});
+                vector<TensorDesc> weight_assist_tensor_vec_c;
+                weight_assist_tensor_vec_c.reserve(weightAssistShapesVec.size());
+                for (const auto &dims : weightAssistShapesVec) {
+                    weight_assist_tensor_vec_c.emplace_back(
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                }
+                TensorListDesc weight_assist_desc(weight_assist_tensor_vec_c);
+                TensorDesc smoothScale_desc =
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasWeightAssist) {
-                auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), {}, {});
-                auto smoothScale = nullptr;
+                vector<TensorDesc> weight_assist_tensor_vec_d;
+                weight_assist_tensor_vec_d.reserve(weightAssistShapesVec.size());
+                for (const auto &dims : weightAssistShapesVec) {
+                    weight_assist_tensor_vec_d.emplace_back(
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                }
+                TensorListDesc weight_assist_desc(weight_assist_tensor_vec_d);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasSmoothScale) {
-                auto weightAssist = nullptr;
-                auto smoothScale =
-                    MakeTensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat), {}, {});
+                TensorDesc smoothScale_desc =
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else {
-                auto weightAssist = nullptr;
-                auto smoothScale = nullptr;
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x, weight, weightScale, weightAssist, nullptr, xScale, smoothScale, groupList,
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
                                               dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1, out2));
+                                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             }
