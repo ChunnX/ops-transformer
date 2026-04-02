@@ -22,6 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
+#include "../common/op_kernel/mc2_moe_context.h"
 
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
@@ -46,12 +47,13 @@ constexpr uint64_t CYCLES_PER_US = 50UL;
 #define TemplateDistributeBarrierTypeFunc XType
 
 using namespace AscendC;
+using namespace Mc2Aclnn;
 template <TemplateDistributeBarrierTypeClass>
 class DistributeBarrier {
  public:
   __aicore__ inline DistributeBarrier(){};
-  __aicore__ inline void Init(GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM, TPipe *pipe,
-                              const DistributeBarrierTilingData *tilingData);
+  __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM,
+                              TPipe *pipe, const DistributeBarrierTilingData *tilingData);
   __aicore__ inline void TimeOutTest();
   __aicore__ inline void BarrierProcess();
   __aicore__ inline void Process();
@@ -82,7 +84,10 @@ class DistributeBarrier {
   bool isInputTimeout_{false};
   bool isInputElasticInfo_{false};
   bool isElasticTrueFlag_{false};
+  bool isMc2Context_ = {false};
+
   __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
+  __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
   LocalTensor<float> statusFp32Tensor_;
   LocalTensor<int32_t> elasticInfoTensor_;
@@ -97,6 +102,7 @@ class DistributeBarrier {
 
   GM_ADDR statusSpaceGm_;
   GM_ADDR finishGm_;
+  GM_ADDR statusDataSpaceGm_;
 };
 
 template <TemplateDistributeBarrierTypeClass>
@@ -144,7 +150,11 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Tim
 template <TemplateDistributeBarrierTypeClass>
 __aicore__ inline GM_ADDR DistributeBarrier<TemplateDistributeBarrierTypeFunc>::GeWindowAddr(uint32_t toRankId, uint32_t curRankID)
 {
-  return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, toRankId, curRankID) + dataState_ * WIN_STATE_OFFSET;
+  if (isMc2Context_) {
+    return (GM_ADDR)mc2Context_->epHcclBuffer_[toRankId] + dataState_ * WIN_STATE_OFFSET;
+  } else {
+    return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, toRankId, curRankID) + dataState_ * WIN_STATE_OFFSET;
+  }
 }
 
 template <TemplateDistributeBarrierTypeClass>
@@ -167,10 +177,9 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
 template <TemplateDistributeBarrierTypeClass>
 __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::InitStatus() {
   GlobalTensor<int32_t> selfDataStatusTensor;
-  GM_ADDR statusDataSpaceGm = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
   // 获取flag标记，flag标记写在win状态区的STATE_WIN_OFFSET偏移的位置
   selfDataStatusTensor.SetGlobalBuffer(
-      (__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET));
+      (__gm__ int32_t *)(statusDataSpaceGm_ + STATE_WIN_OFFSET));
   DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE,
                            DcciDst::CACHELINE_OUT>(selfDataStatusTensor[aivId_ * UB_ALIGN]);
   dataState_ = selfDataStatusTensor(aivId_ * UB_ALIGN);
@@ -204,13 +213,25 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Spl
 
 template <TemplateDistributeBarrierTypeClass>
 __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Init(
-    GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM, TPipe *pipe,
+    GM_ADDR mc2Context, GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM, TPipe *pipe,
     const DistributeBarrierTilingData *tilingData) {
   tpipe_ = pipe;
   aivId_ = GetBlockIdx();
-  winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-  rankIdOriginal_ = Mc2Kernel::GetRankId(winContext_);
-  rankId_ = Mc2Kernel::GetRankId(winContext_);
+  if (tilingData->distributeBarrierInfo.isMc2Context) {
+    isMc2Context_ = true;
+  }
+
+  if (isMc2Context_) {
+    mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
+    rankIdOriginal_ = mc2Context_->epRankId;
+    rankId_ = mc2Context_->epRankId;
+    statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId_]);
+  } else {
+    winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    rankIdOriginal_ = Mc2Kernel::GetRankId(winContext_);
+    rankId_ = Mc2Kernel::GetRankId(winContext_);
+    statusDataSpaceGm_ = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
+  }
   aivNum_ = tilingData->distributeBarrierInfo.aivNum;
   worldSizeOriginal_ = tilingData->distributeBarrierInfo.worldSize;
   worldSize_ = tilingData->distributeBarrierInfo.worldSize;
@@ -221,9 +242,11 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
     timeOutGMTensor.SetGlobalBuffer((__gm__ int32_t*)(timeOut));
     timeOut_ = timeOutGMTensor.GetValue(0);
   }
+
   if (isInputElasticInfo_) {
     InitElasticInfo(elasticInfo);
   }
+
   sendAivNum_ = aivNum_ - 1;
   stateOffset_ = STATE_OFFSET;
   InitStatus();
