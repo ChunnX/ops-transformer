@@ -155,9 +155,6 @@ public:
         kUbFloatCon_ = tmpBuff_.GetWithOffset<float>( static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
         buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
 
-        colBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
-        buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
-
         gatherOffsetFp32_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(chunkSize_), buffOffset);
         buffOffset += chunkSize_ * sizeof(uint32_t);
 
@@ -171,6 +168,9 @@ public:
                                                         INVERSE_COUNT), buffOffset);
         buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
         
+        inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
+        buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
+        
         inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
     }
 
@@ -183,7 +183,7 @@ public:
             gatherOffsetBf16_.SetValue(i, i * BLOCK_SIZE);
         }
         for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
-            colBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
+            inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
         }
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -548,7 +548,7 @@ private:
         for (int i = 1; i < inverseVecLen; ++i) {
             uint32_t curI = i - 1;
             uint32_t validRows = inverseVecLen - i;
-            Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI], colBuffer_, (uint32_t)0, validRows);
+            Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI], inverseGatherBuffer_, (uint32_t)0, validRows);
             PipeBarrier<PIPE_V>();
             uint32_t dstShape[2] = {validRows, inverseVecLen};
             uint32_t colSrcShape[2] = {validRows, 1};
@@ -896,7 +896,7 @@ private:
     LocalTensor<float> gTransBroadUbFloat_;
     LocalTensor<float> gEndBroadUbFloat_;
     LocalTensor<float> gammaUbFloat_;
-    LocalTensor<uint32_t> colBuffer_;
+    LocalTensor<uint32_t> inverseGatherBuffer_;
     LocalTensor<float> qUbFloatCon_;
     LocalTensor<float> kUbFloatCon_;
     LocalTensor<uint32_t> gatherOffsetFp32_;
