@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_allto_allv_grouped_mat_mul.h"
+#include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -28,17 +29,7 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                                    const aclTensor* sendCountsTensorOptional,
-                                                                    const aclTensor* recvCountsTensorOptional,
-                                                                    const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-                                                                    const char* group, int64_t epWorldSize,
-                                                                    const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
-                                                                    bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-                                                                    aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    aclrtStream stream);
+
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -132,7 +123,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, 
-        mmXOptional, mmWeightOptional, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY,
+        mmXOptional, mmWeightOptional, const_cast<char*>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY,
         mmYOptional, permuteOutOptional, workspaceSize, executor);
     return ret;
 }
