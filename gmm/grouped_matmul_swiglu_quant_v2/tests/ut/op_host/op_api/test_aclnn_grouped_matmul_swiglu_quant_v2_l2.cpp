@@ -343,17 +343,17 @@ struct SwigluOpApiCase {
     void Run() const
     {
         SetupPlatformForCase(socVersion);
-        auto x = MakeTensorDescWithRange(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat), ParseDims(xStorageShape),
-                                         ParseDims(xStride), -1, 1);
+        // Convergent UT style: only rely on view_shape/dtype/format.
+        // Ignore storage/stride to reduce the chance of building invalid tensor descriptors.
+        auto x = MakeTensorDescWithRange(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat), {}, {}, -1, 1);
         auto weightShapesVec = ParseDimsList(weightShapes);
         auto weightStorageShapesVec = ParseDimsList(weightStorageShapes);
         auto weightFormatVal = ParseFormat(weightFormat);
         auto weightScaleShapesVec = ParseDimsList(weightScaleShapes);
         FallbackSingleNzWeightToNdStorage(api, weightFormatVal, weightShapesVec, weightStorageShapesVec);
-        const bool forceWeightStorage = (api == "WeightNzV2");
+        // Ignore weight storage/stride in UT descriptor building.
         auto weight = MakeTensorListDescWithRange(weightShapesVec, ParseDtype(weightDtype), weightFormatVal,
-                                                  weightStorageShapesVec, ParseDimsList(weightStrides),
-                                                  -1, 1, forceWeightStorage);
+                                                  {}, {}, -1, 1, false);
         auto xScale = MakeTensorDescWithRange(ParseDims(xScaleShape), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat), {}, {},
                                               0, 3);
         auto groupList = MakeTensorDescWithRange(ParseDims(groupListShape), ParseDtype(groupListDtype),
@@ -380,8 +380,7 @@ struct SwigluOpApiCase {
             auto weightScale = nullptr;
             if (hasWeightAssist && hasSmoothScale) {
                 auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), ParseDimsList(weightAssistStorageShapes),
-                                                       ParseDimsList(weightAssistStrides));
+                                                       ParseFormat(weightAssistFormat), {}, {});
                 auto smoothScale =
                     MakeTensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat), {}, {});
                 if (api == "WeightNzV2") {
@@ -399,8 +398,7 @@ struct SwigluOpApiCase {
                 }
             } else if (hasWeightAssist) {
                 auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), ParseDimsList(weightAssistStorageShapes),
-                                                       ParseDimsList(weightAssistStrides));
+                                                       ParseFormat(weightAssistFormat), {}, {});
                 auto smoothScale = nullptr;
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
@@ -452,12 +450,10 @@ struct SwigluOpApiCase {
         } else {
             auto weightScale = MakeTensorListDescWithRange(weightScaleShapesVec, ParseDtype(weightScaleDtype),
                                                            ParseFormat(weightScaleFormat),
-                                                           ParseDimsList(weightScaleStorageShapes),
-                                                           ParseDimsList(weightScaleStrides), 0, 3);
+                                                           {}, {}, 0, 3);
             if (hasWeightAssist && hasSmoothScale) {
                 auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), ParseDimsList(weightAssistStorageShapes),
-                                                       ParseDimsList(weightAssistStrides));
+                                                       ParseFormat(weightAssistFormat), {}, {});
                 auto smoothScale =
                     MakeTensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat), {}, {});
                 if (api == "WeightNzV2") {
@@ -475,8 +471,7 @@ struct SwigluOpApiCase {
                 }
             } else if (hasWeightAssist) {
                 auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
-                                                       ParseFormat(weightAssistFormat), ParseDimsList(weightAssistStorageShapes),
-                                                       ParseDimsList(weightAssistStrides));
+                                                       ParseFormat(weightAssistFormat), {}, {});
                 auto smoothScale = nullptr;
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
