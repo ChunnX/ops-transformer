@@ -232,8 +232,9 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationGmm()
                             QUANT_MX, localParams_.gmmXQuantMode),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmWeightQuantMode != QUANT_MX,
-        OP_LOGE(opName_, "The gmmWeightQuantMode should be MX mode, but actul mode is  %ld !", localParams_.gmmWeightQuantMode),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "The gmmWeightQuantMode should be MX mode (value=%ld), but actual mode is %ld !",
+                            QUANT_MX, localParams_.gmmWeightQuantMode),
+                    return ge::GRAPH_FAILED);
     ge::graphStatus status = MxCheckShapeDimensions(gmmXScaleStorageShape, DIM_THREE, "gmmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
     status = MxCheckShapeDimensions(gmmWeightScaleStorageShape, DIM_FOUR, "gmmWeightScaleShape");
@@ -298,9 +299,9 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
                             localParams_.mmXQuantMode),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.mmWeightQuantMode != QUANT_MX,	 
+    OP_TILING_CHECK(localParams_.mmWeightQuantMode != QUANT_MX,
                     OP_LOGE(opName_, "mmWeightQuantMode only supports MX mode (value=%ld), but got %ld !", QUANT_MX,
-                            localParams_.mmWeightQuantMode),	 
+                            localParams_.mmWeightQuantMode),
                     return ge::GRAPH_FAILED);
     ge::graphStatus status = MxCheckShapeDimensions(mmXScaleStorageShape, DIM_THREE, "mmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
