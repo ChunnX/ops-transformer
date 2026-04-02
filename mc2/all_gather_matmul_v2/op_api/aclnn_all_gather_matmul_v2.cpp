@@ -10,6 +10,7 @@
 
 #include "aclnn_all_gather_matmul_v2.h"
 #include "aclnnInner_all_gather_matmul_v2.h"
+#include "aclnnInner_all_gather_matmul_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -515,11 +516,11 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
 {
     aclnnStatus ret = ACLNN_SUCCESS;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
-                                                       streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
+        ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, const_cast<char*>(group), gatherIndex, commTurn,
+                                                       streamMode, groupSize, const_cast<char*>(commMode), output, gatherOut, amaxOut, workspaceSize, executor);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
-                                                       streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
+        ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, const_cast<char*>(group), gatherIndex, commTurn,
+                                                       streamMode, groupSize, const_cast<char*>(commMode), output, gatherOut, amaxOut, workspaceSize, executor);
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;

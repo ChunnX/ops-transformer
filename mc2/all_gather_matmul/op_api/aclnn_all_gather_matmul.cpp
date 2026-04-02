@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_all_gather_matmul.h"
+#include "aclnnInner_all_gather_matmul.h"
 #include "all_gather_matmul_v2/op_api/aclnn_all_gather_matmul_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
@@ -194,7 +195,7 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   bool isGatherOut = IsGatherOut(gatherOut);
   if (IsAscend910A5()) {
     const char *commMode = "ccu";
-    return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, gatherIndex,
+    return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, const_cast<char*>(group), gatherIndex,
                                                   commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
                                                   const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);
   }

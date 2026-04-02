@@ -115,32 +115,41 @@ aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
 
 ### 所有算子改动总结
 
-#### 已完成修改的算子列表（共22个算子，38个cpp文件）
+#### 已完成修改并编译验证的算子（2个）
 
-| 算子名称 | 修改文件数 | 对应头文件 |
-|---------|-----------|-----------|
-| matmul_all_reduce | 8 | aclnnInner_matmul_all_reduce.h |
-| matmul_all_reduce_add_rms_norm | 3 | aclnnInner_matmul_all_reduce_add_rms_norm.h |
-| moe_distribute_combine | 1 | aclnnInner_moe_distribute_combine.h |
-| moe_distribute_combine_v2 | 4 | aclnnInner_moe_distribute_combine_v2.h |
-| moe_distribute_combine_v3 | 1 | aclnnInner_moe_distribute_combine_v3.h |
-| moe_distribute_combine_add_rms_norm | 1 | aclnnInner_moe_distribute_combine_add_rms_norm.h |
-| moe_distribute_dispatch | 1 | aclnnInner_moe_distribute_dispatch.h |
-| moe_distribute_dispatch_v2 | 4 | aclnnInner_moe_distribute_dispatch_v2.h |
-| moe_distribute_dispatch_v3 | 1 | aclnnInner_moe_distribute_dispatch_v3.h |
-| moe_distribute_dispatch_setup | 1 | aclnnInner_moe_distribute_dispatch_setup.h |
-| moe_distribute_dispatch_teardown | 1 | aclnnInner_moe_distribute_dispatch_teardown.h |
-| moe_update_expert | 1 | aclnnInner_moe_update_expert.h |
-| matmul_reduce_scatter | 1 | aclnnInner_matmul_reduce_scatter.h |
-| matmul_reduce_scatter_v2 | 1 | aclnnInner_matmul_reduce_scatter_v2.h |
-| distribute_barrier | 1 | aclnnInner_distribute_barrier.h |
-| ffn_to_attention | 1 | aclnnInner_ffn_to_attention.h |
-| attention_to_ffn | 1 | aclnnInner_attention_to_ffn.h |
-| allto_all_all_gather_batch_mat_mul | 1 | aclnnInner_allto_all_all_gather_batch_mat_mul.h |
-| allto_allv_grouped_mat_mul | 1 | aclnnInner_allto_allv_grouped_mat_mul.h |
-| grouped_mat_mul_allto_allv | 1 | aclnnInner_grouped_mat_mul_allto_allv.h |
-| batch_mat_mul_reduce_scatter_allto_all | 1 | aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h |
-| grouped_mat_mul_all_reduce | 1 | aclnnInner_grouped_mat_mul_all_reduce.h |
+| 算子名称 | 修改文件数 | 对应头文件 | 编译状态 |
+|---------|-----------|-----------|---------|
+| all_gather_matmul | 1 | aclnnInner_all_gather_matmul.h | ✅ 编译成功 |
+| all_gather_matmul_v2 | 1 | aclnnInner_all_gather_matmul_v2.h | ✅ 编译成功 |
+
+#### 待修改的算子列表（共22个算子，38个cpp文件）
+
+**注意**：以下算子的内联声明已移除，头文件已添加，但const_cast需要手动处理。每个算子的char*参数名称不同（group、groupEp、groupTp、commMode、commAlg、reduceOp等），需要根据对应的头文件签名手动添加const_cast。
+
+| 算子名称 | 修改文件数 | 对应头文件 | 需要const_cast的参数 |
+|---------|-----------|-----------|-------------------|
+| matmul_all_reduce | 8 | aclnnInner_matmul_all_reduce.h | group, reduceOp |
+| matmul_all_reduce_add_rms_norm | 3 | aclnnInner_matmul_all_reduce_add_rms_norm.h | group, reduceOp |
+| moe_distribute_combine | 1 | aclnnInner_moe_distribute_combine.h | groupEp, groupTp |
+| moe_distribute_combine_v2 | 4 | aclnnInner_moe_distribute_combine_v2.h | groupEp, groupTp |
+| moe_distribute_combine_v3 | 1 | aclnnInner_moe_distribute_combine_v3.h | groupEp, groupTp |
+| moe_distribute_combine_add_rms_norm | 1 | aclnnInner_moe_distribute_combine_add_rms_norm.h | groupEp, groupTp |
+| moe_distribute_dispatch | 1 | aclnnInner_moe_distribute_dispatch.h | groupEp, groupTp |
+| moe_distribute_dispatch_v2 | 4 | aclnnInner_moe_distribute_dispatch_v2.h | groupEp, groupTp, commAlg |
+| moe_distribute_dispatch_v3 | 1 | aclnnInner_moe_distribute_dispatch_v3.h | groupEp, groupTp |
+| moe_distribute_dispatch_setup | 1 | aclnnInner_moe_distribute_dispatch_setup.h | groupEp, groupTp |
+| moe_distribute_dispatch_teardown | 1 | aclnnInner_moe_distribute_dispatch_teardown.h | groupEp, groupTp |
+| moe_update_expert | 1 | aclnnInner_moe_update_expert.h | groupEp, groupTp |
+| matmul_reduce_scatter | 1 | aclnnInner_matmul_reduce_scatter.h | group, reduceOp |
+| matmul_reduce_scatter_v2 | 1 | aclnnInner_matmul_reduce_scatter_v2.h | group, reduceOp |
+| distribute_barrier | 1 | aclnnInner_distribute_barrier.h | group |
+| ffn_to_attention | 1 | aclnnInner_ffn_to_attention.h | group |
+| attention_to_ffn | 1 | aclnnInner_attention_to_ffn.h | group |
+| allto_all_all_gather_batch_mat_mul | 1 | aclnnInner_allto_all_all_gather_batch_mat_mul.h | groupEp, groupTp |
+| allto_allv_grouped_mat_mul | 1 | aclnnInner_allto_allv_grouped_mat_mul.h | group |
+| grouped_mat_mul_allto_allv | 1 | aclnnInner_grouped_mat_mul_allto_allv.h | group |
+| batch_mat_mul_reduce_scatter_allto_all | 1 | aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h | groupEp, groupTp |
+| grouped_mat_mul_all_reduce | 1 | aclnnInner_grouped_mat_mul_all_reduce.h | group, reduceOp |
 
 #### 修改模式
 
@@ -148,7 +157,33 @@ aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
 
 1. **添加头文件包含**：在cpp文件的include区域添加`#include "aclnnInner_{算子名}.h"`
 2. **移除内联声明**：删除`extern aclnnStatus aclnnInner...`声明（可能跨越多行）
-3. **适配参数类型**：将`group`和`commMode`参数从`const char*`转换为`char*`，使用`const_cast<char*>()`
+3. **适配参数类型**：根据头文件签名，将char*参数从`const char*`转换为`char*`，使用`const_cast<char*>()`
+
+#### 手动处理const_cast的方法
+
+由于每个算子的char*参数名称不同，需要手动处理const_cast：
+
+1. **查看头文件签名**：
+   ```bash
+   grep "char \*" build/autogen/inner/aclnnInner_{算子名}.h
+   ```
+
+2. **在函数调用中应用const_cast**：
+   ```cpp
+   // 原调用：
+   aclnnStatus ret = aclnnInnerXxxGetWorkspaceSize(..., group, ...);
+   
+   // 新调用（group是char*参数）：
+   aclnnStatus ret = aclnnInnerXxxGetWorkspaceSize(..., const_cast<char*>(group), ...);
+   ```
+
+3. **常见char*参数名称**：
+   - `group`：通用分组参数
+   - `groupEp`：EP分组参数
+   - `groupTp`：TP分组参数
+   - `commMode`：通信模式参数
+   - `commAlg`：通信算法参数
+   - `reduceOp`：归约操作参数
 
 #### 批量修改脚本
 
