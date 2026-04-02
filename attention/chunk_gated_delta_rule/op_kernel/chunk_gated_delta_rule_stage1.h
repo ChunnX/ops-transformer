@@ -52,7 +52,7 @@ struct GDRStageOneInitParams {
     GlobalTensor<bfloat16_t> beta;      // (T, Nv)
     GlobalTensor<float> g;              // (T, Nv)
     // ouput
-    GlobalTensor<bfloat16_t> gCumExp;        // (Nv, cg_len)
+    GlobalTensor<float> gCumExp;        // (Nv, cg_len)
     GlobalTensor<bfloat16_t> kCumdecay;      // (Nv, cg_len, Dk)
     GlobalTensor<bfloat16_t> vInner;         // (Nv, cg_len, Dv)
     GlobalTensor<bfloat16_t> qPrime;         // (Nv, cg_len, Dk)
@@ -428,7 +428,7 @@ private:
         fp32OutQueue_.FreeTensor(tmpTensor);
     }
 
-    __aicore__ inline void GCumExpCompute(const GlobalTensor<float> src, const GlobalTensor<bfloat16_t> dst,
+    __aicore__ inline void GCumExpCompute(const GlobalTensor<float> src, const GlobalTensor<float> dst,
                                           LocalTensor<float> gCumExpUbFloat, uint32_t validLen)
     {
         // Copy g
@@ -443,13 +443,12 @@ private:
         Exp<float, 0, true>(gCumExpUbFloat, gCumUbFloat_, chunkSize_);
         PipeBarrier<PIPE_V>();
         if (subBlockIdx_ == 0) {
-            auto tmpOut = gOutQueue_.AllocTensor<bfloat16_t>();
-            Cast(tmpOut, gCumExpUbFloat, RoundMode::CAST_RINT, chunkSize_);
-            PipeBarrier<PIPE_V>();
+            auto tmpOut = gOutQueue_.AllocTensor<float>();
+            DataCopy(tmpOut, gCumExpUbFloat, chunkSize_);
             gOutQueue_.EnQue(tmpOut);
-            tmpOut = gOutQueue_.DeQue<bfloat16_t>();
+            tmpOut = gOutQueue_.DeQue<float>();
             DataCopyExtParams params{static_cast<uint16_t>(1),
-                                    static_cast<uint32_t>(validLen * sizeof(bfloat16_t)), 0, 0, 0};
+                                    static_cast<uint32_t>(validLen * sizeof(float)), 0, 0, 0};
             DataCopyPad(dst, tmpOut, params);
             gOutQueue_.FreeTensor(tmpOut);
         }
@@ -856,7 +855,7 @@ private:
     GlobalTensor<bfloat16_t> valueGm_;
     GlobalTensor<bfloat16_t> betaGm_;
     GlobalTensor<float> gGm_;
-    GlobalTensor<bfloat16_t> outGCumExpGm_;
+    GlobalTensor<float> outGCumExpGm_;
     GlobalTensor<bfloat16_t> outKCumdecayGm_;
     GlobalTensor<bfloat16_t> outVInnerGm_;
     GlobalTensor<bfloat16_t> outQPrimeGm_;
