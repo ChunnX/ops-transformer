@@ -44,6 +44,8 @@ namespace {
     constexpr uint32_t BLOCK_NUM = 20;
     constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
     constexpr uint64_t MB_SIZE = 1024 * 1024UL;
+
+    constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 }
 
 namespace optiling {
@@ -166,6 +168,14 @@ void SetTilingData(CoCTiling &cocTilingData, DispatchFFNCombineBF16Info &info)
     cocTilingData.lenPerLoop = cocTilingData.m0 * cocTilingData.n0 / 2;
 }
 
+static std::string DispatchFFNCombineA2GetAlgConfig(int32_t epWorldSize, bool isLayered)
+{
+    if (epWorldSize <= RANK_NUM_PER_NODE_A2) {
+        return "BatchWrite=level0:fullmesh";
+    }
+    return isLayered ? "BatchWrite=level1:hierarchy" : "BatchWrite=level1:fullmesh";
+}
+
 static ge::graphStatus DispatchFFNCombineBF16TilingFuncImpl(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
@@ -264,7 +274,7 @@ static ge::graphStatus DispatchFFNCombineBF16TilingFuncImpl(gert::TilingContext 
     std::string algConfig;
     if (info.isA2) {
         opType = 18u;
-        algConfig = "MultiPut=level0:fullmesh";
+        algConfig = DispatchFFNCombineA2GetAlgConfig(info.worldSize, true);
     } else {
         opType = 8U;
         algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";

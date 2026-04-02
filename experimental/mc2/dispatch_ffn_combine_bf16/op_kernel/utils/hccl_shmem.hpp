@@ -165,12 +165,12 @@ public:
             }
             if constexpr(IS_A2) {
                 if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsIn[rankId]) + offset;
+                    return (GM_ADDR)(WinContext_->windowsIn[rankId] + offset);
                 } else {
                     if (rankId == WinContext_->rankId) {
-                        return (GM_ADDR)(WinContext_->data[rankId].localInput.addr) + offset;
+                        return (GM_ADDR)(WinContext_->data[rankId].localInput.addr + offset);
                     } else {
-                        return (GM_ADDR)(WinContext_->data[rankId].remoteInput.addr) + offset;
+                        return (GM_ADDR)(WinContext_->data[rankId].remoteInput.addr + offset);
                     }
                 }
             } else {
