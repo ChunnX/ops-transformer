@@ -2225,6 +2225,12 @@ static aclnnStatus CheckQuantGMMWeightNz(DataType x1Dtype, DataType weightDtype,
     } else if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
                x1Dtype == DataType::DT_FLOAT8_E4M3FN && weightDtype == DataType::DT_FLOAT8_E4M3FN) {
         return ACLNN_SUCCESS;
+    } else if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+               x1Dtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
+        return ACLNN_SUCCESS;
+    } else if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+               x1Dtype == DataType::DT_FLOAT4_E1M2 && weightDtype == DataType::DT_FLOAT4_E1M2) {
+        return ACLNN_SUCCESS;
     }
     return ACLNN_ERR_PARAM_INVALID;
 }

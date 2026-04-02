@@ -24,7 +24,7 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h"
 #endif
-#if defined(V310_MXFP8_LOW_API)
+#if defined(V310_LOW_API)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
 #endif
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
@@ -236,7 +236,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #if defined(V310_GMM_QUANT) // Quant: A8W8, A4W4
 REGISTER_TILING_DEFAULT(GMMQuantTilingData);
 #if defined(V310_GMM_QUANT_MX) // mx
-#if defined(V310_MXFP8_LOW_API) // mxfp8
+#if defined(V310_LOW_API) // mxfp8
 if constexpr (wFormat == CubeFormat::ND) {
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,

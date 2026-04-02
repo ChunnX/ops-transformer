@@ -77,6 +77,7 @@ public:
     using BiasType = typename BlockMmad::BiasType;
     using LayoutB = typename BlockMmad::LayoutB;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
+    static constexpr int32_t c0Size = (AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value) ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
 
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -180,7 +181,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
         if constexpr (transB) {
             bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
         } else {
-            bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+            bs.SetTailAlign(1, c0Size);
         }
     }
     for (uint32_t loopIdx = 0; loopIdx < groupNum_; ++loopIdx) {
@@ -293,11 +294,11 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset
         if constexpr (formatB == CubeFormat::ND) {
             Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
         } else {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+            int64_t nAlign = (n + c0Size - 1) & (~(c0Size - 1));
             int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
             if constexpr (transB) {
                 nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                kAlign = (k + c0Size - 1) & (~(c0Size - 1));
             }
             Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
         }
@@ -314,11 +315,11 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset
         if constexpr (formatB == CubeFormat::ND) {
             Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
         } else {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+            int64_t nAlign = (n + c0Size - 1) & (~(c0Size - 1));
             int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
             if constexpr (transB) {
                 nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                kAlign = (k + c0Size - 1) & (~(c0Size - 1));
             }
             Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
         }
@@ -329,10 +330,10 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset
         } else {
             if constexpr (transB) {
                 int64_t nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                int64_t kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                int64_t kAlign = (k + c0Size - 1) & (~(c0Size - 1));
                 Get<IDX_B_OFFSET>(baseOffset_) += nAlign * kAlign;
             } else {
-                int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                int64_t nAlign = (n + c0Size - 1) & (~(c0Size - 1));
                 int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
                 Get<IDX_B_OFFSET>(baseOffset_) += nAlign * kAlign;
             }
@@ -372,7 +373,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::ProcessSingl
         }
         blockOffset_ = coord.template GetQuantOffset<QuantMode::MX_PERGROUP_MODE>(
             Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
-            Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
+            Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
         Iterate(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
     }
 }
