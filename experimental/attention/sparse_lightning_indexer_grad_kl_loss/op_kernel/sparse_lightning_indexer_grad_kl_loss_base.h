@@ -430,18 +430,19 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
         if (lastB) {
             extraLoopTimes = 2;// 最后一个Batch需要额外循环两次，因为preload方式会产生尾巴
         }
-        if (constInfo.cmpRatio == 4 && s1StartIdxThisBatch < constInfo.cmpRatio - 1) {
-            int64_t s1Offset = 0;
-            if constexpr (LAYOUT_T == SLILayout::TND) {
-                s1Offset = accumS1Len;
-            } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-                s1Offset = bIdx * constInfo.s1Size;
-            }
-            int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
-            int64_t s1Len = min(constInfo.cmpRatio - 1, s1EndIdxThisBatch) - s1StartIdxThisBatch;
-            AscendC::InitOutput(dQueryIndexGm[s1Offset * qBaseOffset], qBaseOffset * s1Len, static_cast<T>(0));
-            AscendC::InitOutput(dWeightGm[s1Offset * constInfo.gSizeQuery], constInfo.gSizeQuery * s1Len, static_cast<T>(0));
-        }
+        // todo 
+        // if (constInfo.cmpRatio == 4 && s1StartIdxThisBatch < constInfo.cmpRatio - 1) {
+        //     int64_t s1Offset = 0;
+        //     if constexpr (LAYOUT_T == SLILayout::TND) {
+        //         s1Offset = accumS1Len;
+        //     } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+        //         s1Offset = bIdx * constInfo.s1Size;
+        //     }
+        //     int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
+        //     int64_t s1Len = min(constInfo.cmpRatio - 1, s1EndIdxThisBatch) - s1StartIdxThisBatch;
+        //     AscendC::InitOutput(dQueryIndexGm[s1Offset * qBaseOffset], qBaseOffset * s1Len, static_cast<T>(0));
+        //     AscendC::InitOutput(dWeightGm[s1Offset * constInfo.gSizeQuery], constInfo.gSizeQuery * s1Len, static_cast<T>(0));
+        // }
 
         s1StartIdxThisBatch = max(constInfo.cmpRatio - 1, s1StartIdxThisBatch);
         for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch + extraLoopTimes; s1Idx++) {
