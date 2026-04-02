@@ -32,17 +32,17 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../op_kernel/moe_distribute_combine_tiling.h"
 #include "arch35/moe_distribute_combine_tiling_arch35.h"
 #include "../../op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h"
+#include "cann_version.h"
 
-#ifdef MC2_EXCEPTION_HANDLER
+#if CANN_VERSION_NUM >= 90000000
 #include "mc2_exception_dump.h"
-#endif
-#ifdef MC2_EXCEPTION_HANDLER
 using namespace Mc2Exception;
 #endif
 
@@ -143,7 +143,9 @@ namespace {
     enum class CommQuantMode : int32_t {
         NON_QUANT = 0,
         INT12_QUANT = 1,
-        INT8_QUANT = 2
+        INT8_QUANT = 2,
+        MXFP8_E5M2_QUANT = 3,
+        MXFP8_E4M3_QUANT = 4
     };
     using CommQuantModeType = std::underlying_type_t<CommQuantMode>;
 }
@@ -328,9 +330,20 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
             OP_LOGE(nodeName, "commAlgPtr %s doesn't support comm with context.", commAlgPtr),
             return ge::GRAPH_FAILED);
     }
-    OP_TILING_CHECK((*commQuantModePtr != 0) && (*commQuantModePtr != INT8_COMM_QUANT),
-        OP_LOGE(nodeName, "commQuantMode only support 0(default) or 2(int8 comm quant), but got commQuantMode=%ld.",
-        *commQuantModePtr), return ge::GRAPH_FAILED);
+
+    if (mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510) {
+        OP_TILING_CHECK((*commQuantModePtr != 0) && (*commQuantModePtr != INT8_COMM_QUANT),
+            OP_LOGE(nodeName, "commQuantMode only support 0(default) or 2(int8 comm quant), but got commQuantMode=%ld.",
+            *commQuantModePtr), return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK((*commQuantModePtr != 0) &&
+            (*commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT)) &&
+            (*commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) &&
+            (*commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT)),
+            OP_LOGE(nodeName, "commQuantMode only support 0(default) or 2(int8 comm quant)"
+                "or 3(mxFp8_e5m2) or 4(mxFp8_e4m3), but got commQuantMode=%ld.",
+            *commQuantModePtr), return ge::GRAPH_FAILED);
+    }
 
     commQuantMode = static_cast<uint32_t>(*commQuantModePtr);
     OP_TILING_CHECK(GetExpertsAttrAndSetTilingData(context, tilingData, nodeName, config, isLayered) == ge::GRAPH_FAILED,
@@ -1151,6 +1164,31 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
     return true;
 }
 
+static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char *nodeName,
+    const CombineV2Config &config)
+{
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
+    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(nodeName, "contextShape is null."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "contextShape dims must be 1, but current dim num is %lu.",
+        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
+    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
+
+    auto contextDesc = context->GetInputDesc(config.contextIndex);
+    OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE(nodeName, "contextDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(nodeName, "context dataType is invalid, dataType should be int32, but is %s.",
+        Ops::Base::ToString(contextDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName, "context format is invalid."), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 static bool CheckSharedAttrs(const char *nodeName, const MoeDistributeCombineV2TilingData &tilingData)
 {
     uint32_t sharedExpertNum = tilingData.moeDistributeCombineV2Info.sharedExpertNum;
@@ -1302,6 +1340,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
+
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
         return ge::GRAPH_FAILED);
@@ -1318,8 +1357,8 @@ static uint64_t CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode,
     if (tpWorldSize == MAX_TP_WORLD_SIZE) {
         tp = true;
     }
-    if (commQuantMode == INT8_COMM_QUANT) {
-        quantMode = TILINGKEY_INT8_QUANT;
+    if (commQuantMode >= INT8_COMM_QUANT) {
+        quantMode = commQuantMode;
     }
     if (isLayered) {
         hierarchy = TILINGKEY_TPL_HIERARCHY;
@@ -1396,6 +1435,11 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
     if (*commQuantModePtr == INT8_COMM_QUANT) {
         uint32_t scaleNum = (hExpandXAlign32Size / sizeof(expandXDesc->GetDataType())) / static_cast<uint32_t>(UB_ALIGN / sizeof(float));
         totalBufferSize += (scaleNum * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    } else if ((*commQuantModePtr == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
+        (*commQuantModePtr == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT))) {
+        uint32_t scaleNum = (hExpandXAlign32Size / sizeof(expandXDesc->GetDataType()) + UB_ALIGN - 1) / UB_ALIGN;
+        totalBufferSize += (scaleNum * sizeof(expandXDesc->GetDataType()) + ALIGNED_LEN - 1) / ALIGNED_LEN *
+            ALIGNED_LEN * BUFFER_NUM;
     }
     if (isInputTokenMaskFlag) {
         uint32_t axisBsAlignSize = (axisBS * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
@@ -1413,7 +1457,7 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
 }
 
 static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
-    const char *nodeName, const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered)
+    const char *nodeName, const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered, const CombineV2Config& config)
 {
     CheckWinSizeData winSizeData;
     winSizeData.localMoeExpertNum = localMoeExpertNum;
@@ -1428,6 +1472,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, Mo
     winSizeData.tpWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
     winSizeData.isSetFullMeshV2 = false;
     winSizeData.isLayered = isLayered;
+    winSizeData.isMc2Context = config.isMc2Context;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
@@ -1495,6 +1540,13 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext*
     isPerformance = (performanceInfoStorageShape != nullptr);
     tilingData->moeDistributeCombineV2Info.isPerformance = isPerformance;
 
+    // 检查context输入
+    if (config.isMc2Context) {
+        OP_TILING_CHECK(
+            CheckMc2Context(context, nodeName, config) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
+    }
+
     // 检查输入输出的dim、format、dataType
     uint32_t tpWorldSize = tilingData->moeDistributeCombineV2Info.tpWorldSize;
     OP_TILING_CHECK(TilingCheckMoeDistributeCombine(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize,
@@ -1518,16 +1570,8 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext*
         OP_LOGE(nodeName, "CheckCombineOrARN failed."), return ge::GRAPH_FAILED);
     
     // 校验win区大小
-    if (!config.isMc2Context) {
-        OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
-    } else {
-        auto attrs = context->GetAttrs();
-        auto cclBuffSizePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCclBufferSizeIndex));
-        OP_TILING_CHECK(cclBuffSizePtr == nullptr || *cclBuffSizePtr < 0,
-            OP_LOGE(K_INNER_DEBUG, "cclBuffSizePtr is invalid."), return GRAPH_FAILED);
-        tilingData->moeDistributeCombineV2Info.totalWinSizeEp = *cclBuffSizePtr;
-    }
+    OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered,
+        config) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
@@ -1960,9 +2004,8 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
         // 每个token发往k个专家时额外需带上专家索引、topk权重、量化系数、到达标志位共4个信息，这些信息对齐到32字节
         const uint64_t extraTokenInfoSize = 4 * ((info.k + 7) / 8 * 8) * sizeof(uint32_t);
         const uint64_t perTokenSize = info.h * sizeofDtypeX + extraTokenInfoSize;
-        uint64_t maxRecvTokenNum = maxBs * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM);
-        maxRecvTokenNum = (maxRecvTokenNum + BUFFER_ALIGN - 1) / BUFFER_ALIGN * BUFFER_ALIGN;
-        minHcclBuffSize = maxRecvTokenNum * perTokenSize + flagBuffSize;
+        uint64_t maxRecvTokenSize = (maxBs * perTokenSize + BUFFER_ALIGN - 1) / BUFFER_ALIGN * BUFFER_ALIGN;
+        minHcclBuffSize = maxRecvTokenSize * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM) + flagBuffSize;
         if (minHcclBuffSize > hcclBuffSize) {
             OP_LOGE(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE ((moeExpertNum + epWorldSize / 4) * Align512(maxBs "
@@ -2203,10 +2246,14 @@ IMPL_OP_OPTILING(MoeDistributeCombineV2)
     .Tiling(MoeDistributeCombineV2TilingFunc)
     .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
-#ifdef MC2_EXCEPTION_HANDLER
+#if CANN_VERSION_NUM >= 90000000
 // Register exception func
 inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
     Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
 }
 

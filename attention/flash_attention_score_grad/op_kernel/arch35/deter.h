@@ -75,6 +75,60 @@ struct CoordinateInfo {
     int64_t q = 0;
 };
 
+template <uint8_t mode = 0>
+__aicore__ inline void TransDeterRound(int64_t &r, bool &useEvenCol, int64_t rMax)
+{
+    if constexpr(mode == 0) {
+        return;
+    } else if constexpr(mode == 1) {
+        useEvenCol = r % 2 == 1;
+        r = (r + 1) / 2;
+        return;
+    } else {
+        if (r > rMax) {
+            r = r - rMax;
+            useEvenCol = true;
+        }
+        return;
+    }
+}
+
+template <uint8_t mode = 0>
+__aicore__ inline void TransTilingSplitMode(int64_t &m, int64_t &n, int64_t &r, bool &useEvenCol, int64_t rMax)
+{
+    if constexpr(mode == 0) {
+        return;
+    } else if constexpr(mode == 1) {
+        m = Ceil<int64_t>(m, 2);
+        TransDeterRound<mode>(r, useEvenCol, rMax);
+        return;
+    } else {
+        n = Ceil<int64_t>(n, 2);
+        TransDeterRound<mode>(r, useEvenCol, rMax);
+        return;
+    }
+}
+
+template <uint8_t mode = 0, const bool IS_TND = false>
+__aicore__ inline void TransTilingSplitModeBack(CoordinateInfo &coordinateInfo, bool useEvenCol)
+{
+    if constexpr (mode == 0) {
+        return;
+    } else if constexpr (mode == 1) {
+        coordinateInfo.s1Idx = useEvenCol ? coordinateInfo.s1Idx * 2 - 1 : coordinateInfo.s1Idx * 2;
+        if constexpr (IS_TND) {
+            coordinateInfo.s1Outer = Ceil<int64_t>(coordinateInfo.actualS1Len, 64);
+        }
+        return;
+    } else {
+        coordinateInfo.s2Idx = useEvenCol ? 2 * coordinateInfo.s2Idx : 2 * coordinateInfo.s2Idx - 1;
+        if constexpr (IS_TND) {
+            coordinateInfo.s2Outer = Ceil<int64_t>(coordinateInfo.actualS2Len, 128);
+        }
+        return;
+    }
+}
+
 __aicore__ inline void InitCoordinateInfo(int64_t s1Outer, int64_t s2Outer, int64_t mOffset, int64_t nOffset,
                                           CoordinateInfo &coordinateInfo)
 {
@@ -1389,6 +1443,8 @@ CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *
             if constexpr (DETER_SPARSE_TYPE == DETER_CAUSAL) {
                 CalVirtualIndex(flag, m, n);
             } else if constexpr (DETER_SPARSE_TYPE == DETER_BAND) {
+                coordinateInfo.actualS1Len = actualS1Len;
+                coordinateInfo.actualS2Len = actualS2Len;
                 UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, true, IS_N_EQUAL>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
                 p = coordinateInfo.p;
                 q = coordinateInfo.q;
@@ -2185,8 +2241,9 @@ __aicore__ inline void CalGQABandIndex(const BandInfo &bandInfo, int64_t j, int6
                     if (x > m) {
                         x = x - m;
                     }
+                } else {
+                    x = L3 + y + x - n;
                 }
-                x = L3 + y + x - n;
             }
             coordinate.batchId = b1*k * N1 + (b_id-1) * N1 + N1_id;
             coordinate.s1Idx = x;

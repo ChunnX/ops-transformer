@@ -40,6 +40,7 @@ aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```c++
 aclnnStatus aclnnGroupedMatmulAdd(
     void            *workspace,
@@ -185,7 +186,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
         <th>返回值</th>
         <th>错误码</th>
         <th>描述</th>
-      </tr><thead>
+      </tr></thead>
     <tbody>
       <tr>
         <td>ACLNN_ERR_PARAM_NULLPTR</td>
@@ -208,7 +209,6 @@ aclnnStatus aclnnGroupedMatmulAdd(
     </tbody>
     </table>
 
-
 ## aclnnGroupedMatmulAdd
 
 - **参数说明：**
@@ -217,6 +217,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     <col style="width: 150px">
     <col style="width: 100px">
     <col style="width: 900px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -246,7 +247,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

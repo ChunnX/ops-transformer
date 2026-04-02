@@ -282,8 +282,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
-      <td>不支持空tensor。</ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>INT32</td>
       <td>-</td>
       <td>
@@ -332,7 +331,6 @@ aclnnStatus aclnnLightningIndexer(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
-
 
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">

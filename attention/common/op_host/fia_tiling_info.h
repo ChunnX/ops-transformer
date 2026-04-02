@@ -70,6 +70,7 @@ constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
 constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
 constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
+constexpr int32_t SPARSE_MODE_TREE = 9;
 
 enum class FiaLayout : uint32_t {
     // stardard
@@ -96,6 +97,7 @@ enum class FiaLayout : uint32_t {
     B1S1S2 = 19,
     IS1S2 = 20,
     I1S1S2 = 21,
+    S1S1 = 22,
 };
 
 enum class FiaAxis : uint32_t {
@@ -251,6 +253,7 @@ public:
 
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -268,6 +271,8 @@ public:
     uint64_t l2CacheSize = 0;
     std::vector<gert::StorageShape *> kCache = {};
     std::vector<gert::StorageShape *> vCache = {};
+    std::vector<int32_t> qSize = {};
+    std::vector<int32_t> kvSize = {};
 
     // empty Tensor
     bool emptyTensorFlag = false;
@@ -310,7 +315,7 @@ public:
 
     // PSE
     bool pseShiftFlag = false;
-    bool pseShiftByBatch = false;
+    uint32_t pseShiftByBatch = 0U;
     uint32_t pseShiftS1 = 0U;
     uint32_t pseShiftS2 = 0U;
     bool enableAlibiPse = false;

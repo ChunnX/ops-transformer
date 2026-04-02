@@ -30,7 +30,7 @@ using namespace matmul;
 
 template<typename PFAT>
 __aicore__ inline void InitConstParam(ConstParam &constParam, 
-    const optiling::PromptFlashAttentionTilingData* tilingData)
+    const optiling::PromptFlashAttentionTilingDataV2* tilingData)
 {
     constParam.tmpBlockIdx = GetBlockIdx();
     constParam.subBlockIdx = constParam.tmpBlockIdx % 2; // 2: One numBlocks has 2 vectorCore
@@ -126,7 +126,7 @@ __aicore__ inline void InitConstParam(ConstParam &constParam,
 
 template<typename PFAT>
 __aicore__ inline void ComputeParamCore(RunParam& runParam, ConstParam& constParam,
-    const optiling::PromptFlashAttentionTilingData* tilingData, uint32_t coreIdx)
+    const optiling::PromptFlashAttentionTilingDataV2* tilingData, uint32_t coreIdx)
 {
     constParam.sNum = tilingData->promptAttentionBaseParams.dimNumOfseq;
     uint32_t splitCoreIdx = coreIdx;

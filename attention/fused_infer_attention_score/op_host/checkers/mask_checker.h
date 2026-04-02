@@ -30,8 +30,8 @@ public:
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
     ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckFeature(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckMultiPara(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
 
 private:
     // 公共校验函数
@@ -47,11 +47,12 @@ private:
     ge::graphStatus CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo);
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
-
+    ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo);
 private:
     bool enableIFAMLA = false;
     bool isIFAFlag = false;

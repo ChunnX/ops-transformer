@@ -18,6 +18,7 @@
 GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为AI处理器亲和数据排布格式(NZ)。
 
 本接口相较于aclnnGroupedMatmulFinalizeRoutingWeightNz，此接口新增：
+
 - 新增入参offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、tuningConfigOptional，其中前三个参数当前为预留参数，暂不生效，传入空指针即可。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增对INT4类型weight矩阵的支持，支持tuningConfigOptional调优参数，数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。请根据实际情况选择合适的接口。
 - <term>Ascend 950PR/Ascend 950DT</term>：新增Pertoken-perchannel和静态pertensor-perchannel量化场景，相关信息参考[量化介绍](../../../docs/zh/context/量化介绍.md)。
@@ -268,7 +269,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     <tr>
       <td>tuningConfigOptional</td>
       <td>输入</td>
-      <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。数组中的第二个元素设置为1，则算子tiling时会根据实际输入尝试使用更适合的算法，当k<=2048的时候，性能可能更优。从第三个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入(即为nullptr)即可。</td>
+      <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。数组中的第二个元素设置为1，则算子tiling时会根据实际输入尝试使用更适合的算法，当k<=2048的时候，性能可能更优。从第三个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入（即为nullptr）即可。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -426,7 +427,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     | FLOAT8_E4M3FN |  FLOAT8_E4M3FN | FLOAT/BFLOAT16   | BFLOAT16/null | null | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   null             |
     | HIFLOAT8 |  HIFLOAT8 | FLOAT/BFLOAT16   | BFLOAT16/null | null | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   null             |
     
-
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
@@ -743,7 +743,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         return 0;
     }
     ```
+
 - <term>Ascend 950PR/Ascend 950DT</term>：
+
   ```Cpp
   #include <iostream>
   #include <memory>

@@ -14,6 +14,7 @@
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如Bus Error等。
+
 ## 功能说明
 
 - **算子功能**：完成mm + all_reduce + add + rms_norm计算。
@@ -58,6 +59,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     void             *workspace,
@@ -287,6 +289,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     <col style="width: 158px">
     <col style="width: 120px">
     <col style="width: 750px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -346,6 +349,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
 #include <vector>
 #include <thread>
 #include "hccl/hccl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_quant_matmul_all_reduce_add_rms_norm.h"
 
 int ndev = 8;
@@ -453,10 +457,10 @@ int launchOneThreadQuantMatmulAllReduceAddRmsNorm(Args &args) {
     std::vector<int8_t> x2HostData(x2ShapeSize, 1);
     std::vector<int32_t> biasHostData(biasShapeSize, 1);
     std::vector<uint64_t> dequantScaleHostData(dequantScaleShapeSize, 1);
-    std::vector<int16_t> residualHostData(residualShapeSize, 1);
-    std::vector<int16_t> gammaHostData(gammaShapeSize, 1);
-    std::vector<int16_t> yHostData(yShapeSize, 0);
-    std::vector<int16_t> normOutHostData(normOutShapeSize, 0);
+    std::vector<op::fp16_t> residualHostData(residualShapeSize, 1);
+    std::vector<op::fp16_t> gammaHostData(gammaShapeSize, 1);
+    std::vector<op::fp16_t> yHostData(yShapeSize, 0);
+    std::vector<op::fp16_t> normOutHostData(normOutShapeSize, 0);
     // 创建 tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

@@ -27,28 +27,28 @@
 #include "block_epilogue_dequant.hpp"
 #include "tile_broadcast_add.hpp"
 
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/arch/arch.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_copy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
 
 #include "matmul.hpp"
 
 using namespace AscendC;
 using namespace Catlass;
 
-namespace AlltoAllMatmulImpl {
+namespace Mc2Kernel {
 
 // A2AMM : AlltoAllMatmul
 #define TemplateA2AMMClass typename AType, typename BType, typename BiasType, typename PerTokenScaleType, typename ScaleType, typename CType, typename AllToAllResultType, bool hasBias, bool transB, int32_t QuantType
@@ -814,5 +814,5 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Process()
     SyncAll<false>();
 }
 
-} // AlltoAllMatmulImpl
+} // Mc2Kernel
 #endif // ALL_TO_ALL_MATMUL_H

@@ -87,6 +87,7 @@ public:
 
 protected:
     bool Init(const gert::TilingContext* context);
+    bool CheckNoQuantGroupListType(const gert::TilingContext *context) const;
     bool CalBaseMMTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
     void FormulateBasicBlock(const GMMCompileInfo* compileInfoPtr, uint32_t remainCoreNum);
     void CalAswtL1Tiling(const GMMCompileInfo* compileInfoPtr);
@@ -105,8 +106,10 @@ protected:
     bool SeparatedXSeparatedWeight(const gert::TilingContext* context);
     bool SeparatedXSingleWeight(const gert::TilingContext* context, const gert::Shape wShape);
     bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
+    bool SplitKSingleXSeparatedWeight(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
     void PrintTilingResult(const gert::TilingContext *context);
     void SetDisableL2Cache(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
+    bool CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk);
 
 private:
 
