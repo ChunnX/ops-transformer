@@ -203,7 +203,7 @@ static bool CheckTndIsNeedPad(const FagInShapeInfo &fagShape, const aclIntArray 
     int64_t sKvLenMax = 0;
     int64_t sQLenSum = 0;
     int64_t deterministicValue = 0;
-    rtError_t retRts = rtCtxGetSysParamOpt(SYS_OPT_DETERMINISTIC, &deterministicValue);
+    rtError_t retRts = aclrtGetSysParamOpt(SYS_OPT_DETERMINISTIC, &deterministicValue);
     if (retRts != RT_ERROR_NONE) {
         OP_LOGW("Fag aclnn unable to get system param determinstic.");
         // 如果determinstic参数获取失败，则不主动去除pad
@@ -434,7 +434,7 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
     int64_t deterministicValue = 0;
 
     if (StrideLimited()) {
-        rtError_t retRts = rtCtxGetSysParamOpt(SYS_OPT_DETERMINISTIC, &deterministicValue);
+        rtError_t retRts = aclrtGetSysParamOpt(SYS_OPT_DETERMINISTIC, &deterministicValue);
         if (retRts != RT_ERROR_NONE) {
             OP_LOGW("Fag aclnn unable to get system param determinstic.");
             // 如果determinstic参数获取失败，则不主动去除pad
