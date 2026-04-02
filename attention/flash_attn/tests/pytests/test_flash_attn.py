@@ -60,7 +60,6 @@ def call_flash_attn(test_name, **kwargs):
     d_v = kwargs.get("DV", d)
     d_rope = kwargs.get("DRope", 0)
     input_layout = kwargs.get("input_layout")
-    scale = kwargs.get("scale", 1 / (d ** 0.5))
     pse_type = int(kwargs.get("pse_type") if (kwargs.get("pse_type") != '') else 0)
     pse_layout = kwargs.get("pse_layout", "none").lower()
     q_start_idx = kwargs.get("q_start_idx", 0)
@@ -140,6 +139,7 @@ if __name__ =="__main__":
     case_name = args.case_id
     device_id = args.device_id
     case_file = args.case_file
+    case_level = args.case_level
     version = args.version
     sheet = args.sheet
 
@@ -211,7 +211,7 @@ if __name__ =="__main__":
         case['pse_type'] = '' if table.cell(row=i, column=Pse_type_col).value is None else table.cell(row=i, column=Pse_type_col).value
         case['pre_tokens'] = int(table.cell(row=i, column=pre_tokens_col).value) if table.cell(row=i, column=pre_tokens_col).value is not None else 65536
         case['next_tokens'] = int(table.cell(row=i, column=next_tokens_col).value) if table.cell(row=i, column=next_tokens_col).value is not None else 65536
-        case['keep_prob'] = int(table.cell(row=i, column=keep_prob_col).value) if table.cell(row=i, column=keep_prob_col).value is not None else 1
+        case['keep_prob'] = float(table.cell(row=i, column=keep_prob_col).value) if table.cell(row=i, column=keep_prob_col).value is not None else 1
         case['q_start_idx'] = int(table.cell(row=i, column=q_start_idx_col).value) if table.cell(row=i, column=q_start_idx_col).value is not None else 0
         case['kv_start_idx'] = int(table.cell(row=i, column=kv_start_idx_col).value) if table.cell(row=i, column=kv_start_idx_col).value is not None else 0
         case['seed'] = int(table.cell(row=i, column=seed_col).value) if table.cell(row=i, column=seed_col).value is not None else 0
