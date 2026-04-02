@@ -15,7 +15,7 @@
 
 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 
-- 情形1：如果quaneMode=0（非量化场景）：
+- 情形1：如果quantMode=0（非量化场景）：
 
 $$
 allToAllXOut = AllToAllV(X)\\
@@ -26,11 +26,11 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形2：如果quaneMode=1（静态量化场景）：
+- 情形2：如果quantMode=1（静态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
-quantOut = Cast(xFp32，dstType) \\
+quantOut = Cast(xFp32, dstType) \\
 allToAllXOut = AllToAllV(quantOut)\\
 expandXOut =
 \begin{cases}
@@ -39,7 +39,7 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形3：如果quaneMode=2（pertoken动态量化场景）：
+- 情形3：如果quantMode=2（pertoken动态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
@@ -59,7 +59,7 @@ allToAllDynamicScalesOut, & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形4：如果quaneMode=3（pertile动态量化场景）：
+- 情形4：如果quantMode=3（pertile动态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
@@ -79,7 +79,7 @@ allToAllDynamicScalesOut, & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形5：如果quaneMode=4（mxfp8量化场景）：
+- 情形5：如果quantMode=4（mxfp8量化场景）：
 
 $$
 sharedExp = Floor(log_2(max(x))) - emax \\
@@ -254,7 +254,7 @@ $$
   <tr>
    <td>quantMode</td>
    <td>可选属性</td>
-   <td><li>表示量化模式，支持0：非量化，2：动态量化。</li><li>默认值为0。</li></td>
+   <td><li>表示量化模式，支持0：非量化，1：静态量化，2：动态量化，3：pertile动态量化，4：mxfp8量化。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -403,6 +403,7 @@ $$
         - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
     - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：不推荐使用该环境变量控制通信算法，原`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0场景，下文均通过`commAlg` = "hierarchy"替代，默认场景使用`commAlg` = "fullmesh"替代。
     - `commAlg`配置"hierarchy"时，不支持`scalesOptional`、`xActiveMaskOptional`、`oriXOptional`、`zeroExpertNum`、`copyExpertNum`。
+    - `quantMode`支持0（非量化）、2（pertoken动态量化）。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小。
             - `commAlg` = "fullmesh"：取值范围(0, 7168]，且保证是32的整数倍。
