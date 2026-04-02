@@ -90,23 +90,23 @@ public:
         uint64_t workSpaceOffset = 0;
         uint64_t curWS = coreIdx_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
         gBKWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
-
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
+
         queryConGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
-
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
+
         keyConGm_.SetGlobalBuffer( reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
-
-        // ccOffset_
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
+        
+        // ccOffset_
         curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
         kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
-
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+        
         attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
+        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
 
         // cvOffset_
-        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
         curWS = coreIdx_ * paraNum_ * cvOffset_ * sizeof(bfloat16_t);
         vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
     }
@@ -152,13 +152,8 @@ public:
         qUbFloatCon_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
         buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
 
-        kUbFloatCon_ = tmpBuff_.GetWithOffset<float>(
-            static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
+        kUbFloatCon_ = tmpBuff_.GetWithOffset<float>( static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
         buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
-
-        inverseUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * halfChunkSize_ *
-                                                        INVERSE_COUNT), buffOffset);
-        buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
 
         colBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
         buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
@@ -172,7 +167,11 @@ public:
         gCumExpUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * paraNum_), buffOffset);
         buffOffset += chunkSize_ * sizeof(float) * paraNum_;
 
-        inverseLocal_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
+        inverseBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * halfChunkSize_ *
+                                                        INVERSE_COUNT), buffOffset);
+        buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
+        
+        inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
     }
 
     __aicore__ inline void InitGatherBuffer()
@@ -516,12 +515,12 @@ private:
         }
         PipeBarrier<PIPE_V>();
 
-        Muls(inverseLocal_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
+        Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
         PipeBarrier<PIPE_V>();
 
         InverseAIV(subOffset_, INVERSE_SHAPE);
         auto tmp = fp32OutQueue_.AllocTensor<float>();
-        Cast(tmp, inverseLocal_, AscendC::RoundMode::CAST_NONE, curVecLen);
+        Cast(tmp, inverseRes_, AscendC::RoundMode::CAST_NONE, curVecLen);
         fp32OutQueue_.EnQue(ymp);
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
@@ -530,17 +529,17 @@ private:
     {
         PipeBarrier<PIPE_V>();
         uint64_t inverseBufferOffset = 0;
-        auto row = inverseUbFloat_[inverseBufferOffset];
+        auto row = inverseBuffer_[inverseBufferOffset];
         inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto col = inverseUbFloat_[inverseBufferOffset];
+        auto col = inverseBuffer_[inverseBufferOffset];
         inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
-        auto yLocal = inverseUbFloat_[inverseBufferOffset];
+        auto yLocal = inverseBuffer_[inverseBufferOffset];
         inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto ei = inverseUbFloat_[inverseBufferOffset];
+        auto ei = inverseBuffer_[inverseBufferOffset];
 
         Duplicate(ei, static_cast<float>(0.0), inverseVecLen);
         Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen); // yLocal清零
-        inverseLocal_.SetValue(offset, static_cast<float>(1.0));
+        inverseRes_.SetValue(offset, static_cast<float>(1.0));
         
         uint32_t srcShape[2] = {1, inverseVecLen};
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
@@ -554,7 +553,7 @@ private:
             uint32_t dstShape[2] = {validRows, inverseVecLen};
             uint32_t colSrcShape[2] = {validRows, 1};
             Broadcast<float, BROADCAST_AXIS, 1>(col[inverseVecLen], col, dstShape, colSrcShape);
-            Broadcast<float, BROADCAST_AXIS, 0>(row, inverseLocal_[offset + curI * chunkSize_], dstShape, srcShape);
+            Broadcast<float, BROADCAST_AXIS, 0>(row, inverseRes_[offset + curI * chunkSize_], dstShape, srcShape);
             PipeBarrier<PIPE_V>();
             MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
             PipeBarrier<PIPE_V>();
@@ -564,7 +563,7 @@ private:
             SetFlag<HardEvent::S_V>(eventID);
             WaitFlag<HardEvent::S_V>(eventID);
             // xi = (I - SUM) / Lii = I - SUM
-            Sub(inverseLocal_[offset + i * chunkSize_], ei, yLocal[i * inverseVecLen], inverseVecLen);
+            Sub(inverseRes_[offset + i * chunkSize_], ei, yLocal[i * inverseVecLen], inverseVecLen);
             PipeBarrier<PIPE_V>();
         }
     }
@@ -886,8 +885,8 @@ private:
     LocalTensor<float> betaUbFloat_;
     LocalTensor<float> valueUbFloat_;
     LocalTensor<float> attnUbFloat_;
-    LocalTensor<float> inverseUbFloat_;
-    LocalTensor<float> inverseLocal_;
+    LocalTensor<float> inverseBuffer_;
+    LocalTensor<float> inverseRes_;
     LocalTensor<float> gCumUbFloat_;
     LocalTensor<float> gCumExpUbFloat_;
     LocalTensor<float> gCumExpBroadUbFloat_;
