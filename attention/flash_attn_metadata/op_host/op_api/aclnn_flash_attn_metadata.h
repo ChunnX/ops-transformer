@@ -17,26 +17,14 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnFlashAttnMetadataGetWorkspaceSize(
-    const aclTensor* actualSeqLengthsQOptional,
-    const aclTensor* actualSeqLengthsKvOptional,
-    int64_t numHeadsQ,
-    int64_t numHeadsKv,
-    int64_t headDim,
-    int64_t sparseMode,
-    int64_t batchSizeOptional,
-    int64_t maxSeqlenQOptional,
-    int64_t maxSeqlenKvOptional,
-    const aclTensor* metaData,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+__attribute__((visibility("default"))) aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+    int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
+    const char *layoutKv, const char *layoutOut, const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnFlashAttnMetadata(void* workspace,
-                                       uint64_t workspaceSize,
-                                       aclOpExecutor* executor,
-                                       aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnFlashAttnMetadata(void *workspace, uint64_t workspaceSize,
+                                                                          aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
