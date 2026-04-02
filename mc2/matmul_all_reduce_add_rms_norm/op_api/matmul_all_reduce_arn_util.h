@@ -35,7 +35,7 @@ bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* re
                             (oldApiName), (deprecatedDate), (newApiName1), (newApiName2));   \
                 isFirstWarn = false;                                                         \
             }                                                                                \
-        } while(0)
+        } while (0)
 
 aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
