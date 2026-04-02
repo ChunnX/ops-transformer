@@ -418,8 +418,8 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
             expertCountElements = expertNum_ * KEY_VALUE_MODE_DIM0_NUM;
         } else {
             expertCountElements = expertEnd_ - expertStart_;
-            moeInitRoutingV3TilingData.set_expertCountElements(expertCountElements);
         }
+        moeInitRoutingV3TilingData.set_expertCountElements(expertCountElements);
     }
 
     if (activeNum_ == 0 || activeNum_ == ACTIVE_NUM_MIN_VALUE) {

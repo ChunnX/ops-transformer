@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做出如下功能变更，请根据实际情况选择合适的接口：<br>
-  <ol><li>增加动态与静态量化功能，支持输出expendX的 int8量化模式输出。</li><li>删除输出expertTokensBeforeCapacityOut，新增输出expertTokensCountOrCumsumOut。</li><li>兼容V2原有输出模式，并新增key_value输出格式支持：重新定义原有属性expertTokensBeforeCapacityFlag(bool)和expertTokensCountOrCumsumFlag(int)，分别为expertsTokensNumFlag(bool)和expertTokensNumType(int)。具体输出格式对应关系如下表：</li>
+  <ol><li>增加动态与静态量化功能，支持输出expandX的 int8量化模式输出。</li><li>删除输出expertTokensBeforeCapacityOut，新增输出expertTokensCountOrCumsumOut。</li><li>兼容V2原有输出模式，并新增key_value输出格式支持：重新定义原有属性expertTokensBeforeCapacityFlag(bool)和expertTokensCountOrCumsumFlag(int)，分别为expertsTokensNumFlag(bool)和expertTokensNumType(int)。具体输出格式对应关系如下表：</li>
   <table align="center">
     <tr>
       <th>DropPadMode</th>
