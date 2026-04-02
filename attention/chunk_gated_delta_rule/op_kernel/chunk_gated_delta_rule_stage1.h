@@ -137,8 +137,8 @@ public:
         betaUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * paraNum_), buffOffset);
         buffOffset += halfChunkSize_ * sizeof(float) * paraNum_;
 
-        gBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(
-            static_cast<uint32_t>(chunkSize_ * maxLen_ * paraNum_), buffOffset);
+        gBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * maxLen_ * paraNum_),
+                                                       buffOffset);
         gammaUbFloat_ = gBroadUbFloat_;
         valueUbFloat_ = gBroadUbFloat_;
         qUbFloat_ = gBroadUbFloat_;
