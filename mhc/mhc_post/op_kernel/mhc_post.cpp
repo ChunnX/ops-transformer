@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file mhc_post_apt.cpp
+ * \file mhc_post.cpp
  * \brief MhcPost kernel entry point
  * Formula: x_{l+1} = (H_{l}^{res})^{T} * x_l + h_{l}^{out} * H_{t}^{post}
  */
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "arch35/mhc_post.h"
+#include "mhc_post.h"
 
 using namespace AscendC;
 using namespace MhcPost;
