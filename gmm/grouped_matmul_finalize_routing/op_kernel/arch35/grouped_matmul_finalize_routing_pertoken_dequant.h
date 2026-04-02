@@ -50,6 +50,30 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>; // matmul output dtype
     using xscaleType = float;
     using rowIndexType = DTYPE_ROW_INDEX;
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::GlobalTensor<rowIndexType> rowIndexDbg;
+        rowIndexDbg.SetGlobalBuffer(reinterpret_cast<__gm__ rowIndexType *>(row_index));
+        const uint32_t rowIndexSample =
+            (gmmFinalizeRoutingQuantParams_.batch < 8U) ? gmmFinalizeRoutingQuantParams_.batch : 8U;
+        for (uint32_t i = 0; i < rowIndexSample; ++i) {
+            auto idxVal = static_cast<long long>(rowIndexDbg.GetValue(i));
+            AscendC::printf("zzzlog [GMMFR][arch35 row_index] i=%u val=%lld batch=%u\n", i, idxVal,
+                            gmmFinalizeRoutingQuantParams_.batch);
+            if (idxVal < 0 || static_cast<uint64_t>(idxVal) >= gmmFinalizeRoutingQuantParams_.batch) {
+                AscendC::printf("zzzlog [GMMFR][arch35 potential_oob] row_index[%u]=%lld out of [0,%u)\n", i, idxVal,
+                                gmmFinalizeRoutingQuantParams_.batch);
+            }
+        }
+
+        AscendC::GlobalTensor<int64_t> groupListDbg;
+        groupListDbg.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(group_list));
+        const uint32_t groupSample =
+            (gmmFinalizeRoutingQuantParams_.groupNum < 8U) ? gmmFinalizeRoutingQuantParams_.groupNum : 8U;
+        for (uint32_t i = 0; i < groupSample; ++i) {
+            auto gVal = static_cast<long long>(groupListDbg.GetValue(i));
+            AscendC::printf("zzzlog [GMMFR][arch35 group_list] i=%u val=%lld\n", i, gVal);
+        }
+    }
 
     using ProblemShape = Cgmct::Gemm::MatmulShape;
     using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitScheduler;
