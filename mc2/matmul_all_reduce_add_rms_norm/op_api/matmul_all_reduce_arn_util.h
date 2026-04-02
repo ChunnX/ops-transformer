@@ -30,16 +30,12 @@ bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* re
             if (isFirstWarn) {                                                               \
                 OP_LOGW("%s is scheduled to be deprecated in a post-%s version update, "     \
                             "Please migrate to %s and %s. "                                   \
-                            "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.", \
+                            "We apologize for any inconvenience caused and appreciate "      \
+                            "your timely migration to the other interface.",                  \
                             (oldApiName), (deprecatedDate), (newApiName1), (newApiName2));   \
                 isFirstWarn = false;                                                         \
             }                                                                                \
         } while(0)
-
-__attribute__((deprecated("aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize is scheduled to be deprecated in a post-December 2026 version update. "
-                    "Please migrate to aclnnWeightQuantMatmulAllReduceGetWorkspaceSize and aclnnAddRmsNormGetWorkspaceSize"
-                    "in place of aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize."
-                    "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.")))
 
 aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
