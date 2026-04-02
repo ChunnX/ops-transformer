@@ -18,7 +18,7 @@
 
 #include "../communication/comm_stage.h"
 #include "../computation/compute_stage.h"
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510 // A3未使用量化模板，在此处隔离
 #include "../quantization/quantize_stage.h"
 #endif
 
