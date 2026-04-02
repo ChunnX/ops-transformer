@@ -141,7 +141,7 @@ int ExecuteLightningIndexer(TensorResources& resources, aclrtStream stream,
     int64_t sparseMode = 3;
     int64_t preTokens = 9223372036854775807;
     int64_t nextTokens = 9223372036854775807;
-    bool returnValue = false;
+    bool returnValue = true;
     constexpr const char layerOutStr[] = "BSND";
     constexpr size_t layerOutLen = sizeof(layerOutStr);
     char layoutQuery[layerOutLen];
@@ -209,7 +209,7 @@ int PrintIndicesOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
         return ret;
   }
   for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+    LOG_PRINT("mean result[%ld] is: %d\n", i, resultData[i]);
   }
   return ACL_SUCCESS;
 }
