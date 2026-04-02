@@ -45,7 +45,7 @@ extern "C" {
 __attribute__((deprecated("aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize is scheduled to be deprecated in a post-December 2026 version update. "
                         "Please migrate to aclnnMatmulAllReduceGetWorkspaceSize and aclnnAddRmsNormGetWorkspaceSize"
                         "in place of aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize."
-                        "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.")))
+                        "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.")))
 ACLNN_API aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
     double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode,
