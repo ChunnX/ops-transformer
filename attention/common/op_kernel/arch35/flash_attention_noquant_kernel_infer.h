@@ -508,8 +508,8 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
     // GS1合轴时，g轴信息包含在gS1中；GS1不合轴时，g轴信息包含在bn2g中；
     if (this->constInfo.isGqa) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
-                    layout == LayOutTypeEnum::LAYOUT_BSH ||
-                    layout == LayOutTypeEnum::LAYOUT_SBH) {
+                      layout == LayOutTypeEnum::LAYOUT_BSH ||
+                      layout == LayOutTypeEnum::LAYOUT_SBH) {
             runParam.goIdx = gS1Index % this->constInfo.gSize;
             runParam.s1oIdx = gS1Index / this->constInfo.gSize;
         } else {
