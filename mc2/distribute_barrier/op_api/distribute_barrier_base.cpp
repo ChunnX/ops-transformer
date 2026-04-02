@@ -21,6 +21,9 @@
 #include "opdev/op_log.h"
 #include "distribute_barrier_base.h"
 #include "aclnnInner_distribute_barrier.h"
+#include "common/op_api/mc2_context.h"
+using namespace Mc2Aclnn;
+
 using namespace op;
 #ifdef __cplusplus
 extern "C" {
@@ -52,26 +55,64 @@ aclnnStatus BarrierCheckParams(const aclTensor* xRef, const char* group)
     return ACLNN_SUCCESS;
 }
 
+extern aclnnStatus aclnnInnerDistributeBarrierExtend(void* workspace, uint64_t workspaceSize,
+                                                     aclOpExecutor* executor, aclrtStream stream);
+
+extern aclnnStatus aclnnInnerDistributeBarrierExtendGetWorkspaceSize(const aclTensor* context, const aclTensor* xRef,
+                                                                     const aclTensor* timeOut,
+                                                                     const aclTensor* elasticInfo, const char* group,
+                                                                     int64_t worldSize, uint64_t* workspaceSize,
+                                                                     aclOpExecutor** executor);
+
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, const aclTensor* timeOut,
                                                        const aclTensor* elasticInfo, const char* group,
                                                        int64_t worldSize, uint64_t* workspaceSize,
                                                        aclOpExecutor** executor)
 {
+    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    return aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef), timeOut, elasticInfo,
-                                                       const_cast<char*>(group), worldSize, workspaceSize, executor);
+    aclTensor *mc2Context = nullptr;
+    aclnnStatus getWorkspaceSizesRes;
+    aclnnStatus ret;
+
+    if (!is950) {
+        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
+                                            timeOut, elasticInfo, const_cast<char*>(group), worldSize,
+                                            workspaceSize, executor);
+    } else {
+        uint64_t hcclBuffSize = 0;
+        string libPath;
+        auto ret = GetBuiltinLibPath(libPath);
+        OP_CHECK(
+        ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
+        const char* opName = "distribute_barrier_extend";
+        ret = LoadBuiltinOpApi(libPath);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        ret = GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        getWorkspaceSizesRes = aclnnInnerDistributeBarrierExtendGetWorkspaceSize(mc2Context,
+                        const_cast<aclTensor*>(xRef), timeOut, elasticInfo, const_cast<char*>(group),
+                        worldSize, workspaceSize, executor);
+    }
+    return getWorkspaceSizesRes;
 }
 
 aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,
                                        aclOpExecutor* executor,
                                        aclrtStream stream)
 {
+    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
-    return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
-                                       stream);
+    if (is950) {
+        OP_LOGD("aclnn_disrtibute_barrer_extend inner start");
+        return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
+    } else {
+        return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
+                                           stream);
+    }
 }
 #ifdef __cplusplus
 }
