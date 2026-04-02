@@ -824,7 +824,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 maskInfo.batchIdx = runInfo.boIdx;
                 maskInfo.attenMaskBatchStride = runInfo.boIdx * attenMaskInfoPtr->attenMaskS1Size * attenMaskInfoPtr->attenMaskS2Size;
                 maskInfo.attenMaskS1Stride = attenMaskInfoPtr->attenMaskS2Size;
-                maskInfo.attenMaskDstStride = s2BaseSize > Align(maskInfo.s2dealNum, 32U) ? (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32 : 0;
+                maskInfo.attenMaskDstStride = s2BaseSize > Align(maskInfo.s2dealNum, 32U) ?
+                    (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32 : 0;
                 maskInfo.attenMaskType = MaskDataType::MASK_BOOL;
                 uint8_t sparseMode = (attenMaskInfoPtr->compressMode == 0) ?            // sparseMode与compressMode定义不同
                     attenMaskInfoPtr->compressMode : attenMaskInfoPtr->compressMode + 1;

@@ -86,7 +86,8 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskS1Stride; // min(delta, s2inner)
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta :
+            attenMaskSizeAlign) * info.attenMaskS1Stride; // min(delta, s2inner)
     }
     return offset;
 }
@@ -100,7 +101,8 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uin
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskS1Stride; // min(delta, s2inner)
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta :
+            attenMaskSizeAlign) * info.attenMaskS1Stride; // min(delta, s2inner)
     }
     return offset;
 }
@@ -306,7 +308,8 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
 }
 
 template <typename T>
-__aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info, bool isPre = false)
+__aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                            MaskInfo &info, bool isPre = false)
 {
     if (info.layout == LAYOUT_Q::GS) {
         AttentionmaskCopyInForGsLayout(attenMaskUb, srcGmAddr, info, isPre);
