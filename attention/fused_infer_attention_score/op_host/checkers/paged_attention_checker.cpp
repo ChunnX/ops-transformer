@@ -378,41 +378,59 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShape(const FiaTilingInfo 
 ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) { // 非量化
-        if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
-            OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE(fiaInfo.opName,
-                    "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of "
-                    "%u, and should be in range of [%u, %u].",
-                    fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                return ge::GRAPH_FAILED);
-        } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
-            OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
-                fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE(fiaInfo.opName,
-                    "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                    "of %u, and should be in range of [%u, %u].",
-                    fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
-                    BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                return ge::GRAPH_FAILED);
+        if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
+            if (fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
+                OP_LOGE(fiaInfo.opName, "In no quant scenario, blockSize(%d) should aligned to 16.",
+                    fiaInfo.blockSize);
+                return ge::GRAPH_FAILED;
+            }
+            if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT) {
+                OP_LOGE(fiaInfo.opName, "In no quant scenario, blockSize(%d) should less equal than 1024.",
+                    fiaInfo.blockSize);
+                return ge::GRAPH_FAILED;
+            }
+            if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.blockSize == 0) {
+                OP_LOGE(fiaInfo.opName, "In no quant scenario, when page attention enable, blockSize(%d) should not be 0.",
+                    fiaInfo.blockSize);
+                return ge::GRAPH_FAILED;
+            }
         } else {
-            // GQA D != 64/128, QS > 1 [128, 512]且128对齐
-            OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
-                fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
-                OP_LOGE(fiaInfo.opName,
-                    "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                    "of %u, and should be in range of [%u, %u].",
-                    fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX),
-                return ge::GRAPH_FAILED);
-            // GQA D != 64/128, QS = 1 [16, 512]且16对齐
-            OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
-                fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
-                OP_LOGE(fiaInfo.opName,
-                    "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                    "of %u, and should be in range of [%u, %u].",
-                    fiaInfo.s1Size, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
-                    BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
+                OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
+                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+                    OP_LOGE(fiaInfo.opName,
+                        "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of "
+                        "%u, and should be in range of [%u, %u].",
+                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+                    return ge::GRAPH_FAILED);
+            } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
+                OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
+                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+                    OP_LOGE(fiaInfo.opName,
+                        "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
+                        "of %u, and should be in range of [%u, %u].",
+                        fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
+                        BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+                    return ge::GRAPH_FAILED);
+            } else {
+                // GQA D != 64/128, QS > 1 [128, 512]且128对齐
+                OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
+                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
+                    OP_LOGE(fiaInfo.opName,
+                        "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
+                        "of %u, and should be in range of [%u, %u].",
+                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX),
+                    return ge::GRAPH_FAILED);
+                // GQA D != 64/128, QS = 1 [16, 512]且16对齐
+                OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
+                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
+                    OP_LOGE(fiaInfo.opName,
+                        "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
+                        "of %u, and should be in range of [%u, %u].",
+                        fiaInfo.s1Size, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
+                        BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
+                    return ge::GRAPH_FAILED);
+            }
         }
     } else if (enableAntiQuant_) {
         std::unordered_map<ge::DataType, float> typeSizeMap = {{ge::DT_FLOAT16, static_cast<float>(FLOAT16SIZE)},

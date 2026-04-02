@@ -578,6 +578,10 @@ bool FusedInferAttentionScoreTilingImpl::CheckS1OutSplit(const FiaTilingInfo &fi
         return false;
     }
 
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        return false;
+    }
+
     // 仅支持非量化，占用2B
     const int64_t dataTypeSize = 2U;
     int64_t bnSize = std::min(fiaInfo.bSize * fiaInfo.n2Size, platformInfo_.aicNum);
