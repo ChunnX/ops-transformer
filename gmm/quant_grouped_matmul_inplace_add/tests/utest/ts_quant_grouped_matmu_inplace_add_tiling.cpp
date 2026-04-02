@@ -17,17 +17,45 @@
 
 using qgmmiaTestParam::Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591;
 namespace {
-const auto Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case = ::testing::Values(QuantGroupedMatmulInplaceAddCase(
-    "QuantGroupedQuantInplaceAddMM_mxfp8_Case0", true, "", /* CaseName, Enable, DebugInfo */
-    OpInfo(ControlInfo(true, false),
-           ExpectInfo(true, 4, 32)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
-    Param({GenTensorList("x1", {{512, 96}}, ge::DataType::DT_FLOAT8_E5M2),
-           GenTensorList("x2", {{512, 128}}, ge::DataType::DT_FLOAT8_E5M2),
-           GenTensorList("scale2", {{12, 128, 2}}, ge::DataType::DT_FLOAT8_E8M0),
-           GenTensorList("y", {{4, 96, 128}}, ge::DataType::DT_FLOAT)},
-          GenTensor("scale1", {12, 96, 2}, ge::DataType::DT_FLOAT8_E8M0),
-          GenTensor("group_list", {4}, ge::DataType::DT_INT64), {1, 1, 1, 1}, 0, 0),
-    0));
+const auto Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case = ::testing::Values(
+    QuantGroupedMatmulInplaceAddCase(
+        "QuantGroupedQuantInplaceAddMM_mxfp8_Case0", true, "", /* CaseName, Enable, DebugInfo */
+        OpInfo(ControlInfo(true, false),
+               ExpectInfo(true, 4, 32)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
+        Param({GenTensorList("x1", {{512, 96}}, ge::DataType::DT_FLOAT8_E5M2),
+               GenTensorList("x2", {{512, 128}}, ge::DataType::DT_FLOAT8_E5M2),
+               GenTensorList("scale2", {{12, 128, 2}}, ge::DataType::DT_FLOAT8_E8M0),
+               GenTensorList("y", {{4, 96, 128}}, ge::DataType::DT_FLOAT)},
+              GenTensor("scale1", {12, 96, 2}, ge::DataType::DT_FLOAT8_E8M0),
+              GenTensor("group_list", {4}, ge::DataType::DT_INT64), {1, 1, 1, 1}, 0, 0),
+        0),
+    // pertensor-pertensor 量化模式：scale1 和 scale2 均为 (g,) 的 float32 标量
+    // x1: hifloat8 (k=512, m=96), x2: hifloat8 (k=512, n=128)
+    // scale1: float32 (g=4,), scale2: float32 (g=4,)
+    // y: float32 (4, 96, 128), group_list 按 count 模式: [128, 128, 128, 128]
+    QuantGroupedMatmulInplaceAddCase(
+        "QuantGroupedQuantInplaceAddMM_pertensor_pertensor_Case0", true, "", /* CaseName, Enable, DebugInfo */
+        OpInfo(ControlInfo(true, false),
+               ExpectInfo(true, ExpectInfo::kInvalidTilingKey, 32)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
+        Param({GenTensorList("x1", {{512, 96}}, ge::DataType::DT_HIFLOAT8),
+               GenTensorList("x2", {{512, 128}}, ge::DataType::DT_HIFLOAT8),
+               GenTensorList("scale2", {{4}}, ge::DataType::DT_FLOAT),
+               GenTensorList("y", {{4, 96, 128}}, ge::DataType::DT_FLOAT)},
+              GenTensor("scale1", {4}, ge::DataType::DT_FLOAT),
+              GenTensor("group_list", {4}, ge::DataType::DT_INT64), {128, 256, 384, 512}, 0, 0),
+        0),
+    // pertensor-pertensor 量化模式：scale1 和 scale2 均为 (g, 1) 的 float32
+    QuantGroupedMatmulInplaceAddCase(
+        "QuantGroupedQuantInplaceAddMM_pertensor_pertensor_Case1", true, "", /* CaseName, Enable, DebugInfo */
+        OpInfo(ControlInfo(true, false),
+               ExpectInfo(true, ExpectInfo::kInvalidTilingKey, 32)),
+        Param({GenTensorList("x1", {{512, 96}}, ge::DataType::DT_HIFLOAT8),
+               GenTensorList("x2", {{512, 128}}, ge::DataType::DT_HIFLOAT8),
+               GenTensorList("scale2", {{4, 1}}, ge::DataType::DT_FLOAT),
+               GenTensorList("y", {{4, 96, 128}}, ge::DataType::DT_FLOAT)},
+              GenTensor("scale1", {4, 1}, ge::DataType::DT_FLOAT),
+              GenTensor("group_list", {4}, ge::DataType::DT_INT64), {128, 256, 384, 512}, 0, 0),
+        0));
 
 INSTANTIATE_TEST_SUITE_P(QuantGroupedMatmulInplaceAdd_David, Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591,
                          Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case);

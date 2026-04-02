@@ -23,7 +23,7 @@ public:
         : gmmParams_(gmmParams){};
     ~AclnnQuantGroupedMatmulInplaceAddDAV3510Checker(){};
     aclnnStatus CheckQuantGroupedMatmulInplaceAddDAV3510() const;
-    aclnnStatus IsGmmInplaceAddTCQuantMode() const;
+    aclnnStatus CheckHif8QuantParamsShape() const;
     void SetInputName(const std::string &xName, const std::string &weightName, const std::string &perTokenScaleName,
                       const std::string &scaleName, const std::string &groupTensorName);
 
