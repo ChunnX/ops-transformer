@@ -19,7 +19,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTYPE distribute_barrier distribute_barrier ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(distribute_barrier_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(distribute_barrier_depends mc2/common mc2/3rd mc2/distribute_barrier_extend_depends PARENT_SCOPE)
     
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
