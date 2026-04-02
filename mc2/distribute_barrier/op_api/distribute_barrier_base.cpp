@@ -15,7 +15,7 @@
 #include <algorithm>
 
 #include "aclnn_distribute_barrier_v2.h"
-#include "aclnnInner_distribute_barrier_v2.h"
+#include "aclnnInner_distribute_barrier.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
@@ -60,7 +60,7 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
 {
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    return aclnnInnerDistributeBarrierGetWorkspaceSize(xRef, timeOut, elasticInfo,
+    return aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef), timeOut, elasticInfo,
                                                        const_cast<char*>(group), worldSize, workspaceSize, executor);
 }
 
