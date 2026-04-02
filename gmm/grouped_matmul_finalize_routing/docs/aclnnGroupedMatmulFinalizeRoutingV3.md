@@ -471,7 +471,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     | MXFP4      | FLOAT4_E2M1  | FLOAT4_E2M1 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16 / null     | FLOAT32       | INT64            | FLOAT32 |
 
   - 在MXFP4/MXFP8场景中，offsetOptional、antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
-  - 在MXFP4场景中，必须满足k必须为偶数的约束。在x2非转置的情况下，n必须为偶数。
+  - 在MXFP4场景中，必须满足k为偶数的约束。在x2非转置的情况下，n必须为偶数。
   - 在MXFP4/MXFP8场景中，支持x2转置或者非转置。x2与scale的转置属性必须保持一致。
   - e 必须小于等于1024。
   - 在MXFP4场景中，k不能为2。
@@ -606,7 +606,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         int64_t bsdp = 1;
         int64_t dtype = 0;
         float shareInputWeight = 1.0;
-        int64_t shareInputOffest = 0;
+        int64_t sharedInputOffset = 0;
         bool transposeX = false;
         bool transposeW = false;
         int64_t groupListType = 1;
@@ -726,7 +726,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
         // 调用aclnnGroupedMatmulFinalizeRoutingV3第一段接口
         workspaceSize = 0;
-        ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, offset, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffest, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
+        ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, offset, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize failed. ERROR: %d\n", ret);
                   return ret);
         // 根据第一段接口计算出的workspaceSize申请device内存
@@ -918,7 +918,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       int64_t bsdp = 1;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffest = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -1045,7 +1045,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       void *workspaceAddr = nullptr;
 
       // 调用aclnnGroupedMatmulFinalizeRoutingV3第一段接口
-      ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffest, transposeX, transposeW, groupListType, nullptr, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, nullptr, out, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存

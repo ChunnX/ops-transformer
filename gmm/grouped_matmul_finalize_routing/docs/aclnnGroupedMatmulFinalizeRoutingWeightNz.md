@@ -94,7 +94,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>-</td>
       <td>INT8</td>
       <td>NZ</td>
-      <td>shape支持5维。维度为(e, n1, k1, k0, n0)，其中k0 = 16，n0 = 32， x shape中的k和w shape中的k1需要满足以下关系：ceilDiv（k,16） = k1。可使用aclnnCalculateMatmulWeightSizeV2接口以及aclnnTransMatmulWeight接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。e取值范围[1,256]。</td>
+      <td>shape支持5维。维度为(e, n1, k1, k0, n0)，其中k0 = 16，n0 = 32， x1 shape中的k和x2 shape中的k1需要满足以下关系：ceilDiv（k,16） = k1。可使用aclnnCalculateMatmulWeightSizeV2接口以及aclnnTransMatmulWeight接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。e取值范围[1,256]。</td>
       <td>-</td>
     </tr>
     <tr>
@@ -286,13 +286,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
     <tr>
       <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="8">161002</td>
-      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、logitOptional、rowIndex、sharedInputWeight、sharedInputOffset、transposeX1、transposeX2或out的数据类型和数据格式不在支持的范围内。</td>
+      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex、sharedInputWeight、sharedInputOffset、transposeX1、transposeX2或out的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>x1、x2、scaleOptional、bias、pertokenScaleOptional、groupList、sharedInput、logitOptional、rowIndex或out的shape不满足校验条件。</td>
+      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x1、x2、scaleOptional、bias、pertokenScaleOptional、groupList、sharedInput、 logitOptional、rowIndex或out是空tensor。</td>
+      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、 logit、rowIndex或out是空tensor。</td>
     </tr>
     <tr>
       <td>dtype、sharedInputOffset、transposeX1、transposeX2、groupListType的取值范围不满足条件。</td>
@@ -620,13 +620,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
       auto size = GetShapeSize(outShape);
       std::vector<uint16_t> resultData(
-          size, 0);  // C语言中无法直接打印fp16的数据，需要用uint16读出来，自行通过二进制转成fp16
+          size, 0);  // C语言中无法直接打印fp16的数据，需要用uint16_t读出来，自行通过二进制转成fp16
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                         size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                 return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %hu\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
