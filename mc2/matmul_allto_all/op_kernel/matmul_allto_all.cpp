@@ -41,11 +41,12 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,           \
                                           MatmulAlltoAllTilingDataA3, MC2AlltoAllPrimitives, 1, 0, CommunicationType); \
         CommunicationType commImplName(&tilingData);                                                                   \
-        using SchedulerContextType = PipelineContext<ComputationContextType>;                                          \
+        using SchedulerContextType = MatmulAlltoAllPipelineContext<ComputationContextType>;                            \
         using SchedulerType =                                                                                          \
-            MC2KernelPipelineTemplate<ComputationType, TransposeType, CommunicationType, SchedulerContextType>;        \
+            MatmulAlltoAllPipeLine<ComputationType, TransposeType, CommunicationType, SchedulerContextType>;           \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
-        MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataA3> op(&SchedulerImpl);      \
+        Mc2Kernel::MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataA3> op(           \
+            &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, workspaceGM, &tilingData, &pipe);                                                     \
         op.Process();                                                                                                  \
     } while (0)
