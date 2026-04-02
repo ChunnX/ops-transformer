@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_matmul_allto_all.h"
+#include "aclnnInner_matmul_allto_all.h"
 #include "matmul_allto_all_util.h"
 #include "securec.h"
 #include "common/utils/op_mc2.h"
@@ -236,18 +237,6 @@ static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **
 }
 } // namespace
 
-// L0层两段式接口Inner，根据算子原型op_graph/matmul_allto_all_proto.h，由模板自动生成。非量化L2层接口和量化L2层接口共用一套L0层接口。
-// worldSize为硬件方参数，在aclnn侧不感知。yDtype在aclnn侧不感知。这两个参数需要在Inner接口处声明，在aclnn侧通过默认值传参。
-extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
-                                                                const aclTensor* x1ScaleOptional, const aclTensor* x2ScaleOptional,
-                                                                const aclTensor* commScaleOptional,
-                                                                const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
-                                                                char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
-                                                                int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
-                                                                int64_t commQuantMode, int64_t commQuantDtype,
-                                                                bool transposeX1, bool transposeX2, int64_t groupSize,
-                                                                const aclTensor* out, uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerMatmulAlltoAllGetWorkspaceSize完成默认值传参和调用L0层接口

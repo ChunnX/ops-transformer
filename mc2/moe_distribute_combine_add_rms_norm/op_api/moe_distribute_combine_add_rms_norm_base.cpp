@@ -20,6 +20,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_combine_add_rms_norm_v2.h"
+#include "aclnnInner_moe_distribute_combine_add_rms_norm.h"
 #include "moe_distribute_combine_add_rms_norm_base.h"
 #include "common/op_host/op_api/matmul_util.h"
 
@@ -120,9 +121,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSizeBase(const aclTen
             expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, residualX, gamma,
             tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional,
             groupListOptional, expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional,
-            constExpertAlpha1Optional, constExpertAlpha2Optional, constExpertVOptional, groupEp, epWorldSize,
-            epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps,
+            constExpertAlpha1Optional, constExpertAlpha2Optional, constExpertVOptional, const_cast<char*>(groupEp), epWorldSize,
+            epRankId, moeExpertNum, const_cast<char*>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), normEps,
             zeroExpertNum, copyExpertNum, constExpertNum, yOut, rstdOut, xOut, workspaceSize, executor);
     }
     return ret;

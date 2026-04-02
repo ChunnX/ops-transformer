@@ -13,6 +13,7 @@
  * \brief
  */
 #include "aclnn_quant_reduce_scatter.h"
+#include "aclnnInner_quant_reduce_scatter.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -137,12 +138,6 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* scales, cons
 }
 }
 
-extern "C" aclnnStatus aclnnInnerQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                                    const char* group, const char* reduceOp,
-                                                                    uint64_t yDtype, int64_t worldSize, aclTensor* output,
-                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern "C" aclnnStatus aclnnInnerQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                    const aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales, const char* group,
@@ -153,7 +148,7 @@ extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* 
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     int64_t worldSize = -1;
-    aclnnStatus ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, group, reduceOp, yDtype, worldSize,
+    aclnnStatus ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, const_cast<char*>(group), const_cast<char*>(reduceOp), yDtype, worldSize,
                                                                    output, workspaceSize, executor);
     OP_LOGD("QuantReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
     return ret;

@@ -13,6 +13,7 @@
  * \brief
  */
 #include "aclnn_moe_distribute_combine_setup.h"
+#include "aclnnInner_moe_distribute_combine_setup.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/matmul_util.h"
@@ -122,15 +123,6 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
 
 } // namespace
 
-extern "C" aclnnStatus aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
-    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
-    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
-    aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor);
-
-extern "C" aclnnStatus aclnnInnerMoeDistributeCombineSetup(void *workspace, uint64_t workspaceSize,
-                                                           aclOpExecutor *executor, aclrtStream stream);
-
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
@@ -152,8 +144,8 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclnnStatus retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
-        expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
-        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, quantExpandXOut,
+        expandX, expertIds, assistInfoForCombine, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, expertShardType,
+        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, const_cast<char*>(commAlg), quantExpandXOut,
         commCmdInfoOut, workspaceSize, executor);
     return retStatus;
 }
