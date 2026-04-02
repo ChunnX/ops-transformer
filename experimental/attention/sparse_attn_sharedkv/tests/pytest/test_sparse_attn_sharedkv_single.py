@@ -66,6 +66,8 @@ for params in ENABLED_PARAMS:
         "ori_win_right": params.get("ori_win_right"),
         "ori_kv_topk_mode": params.get("ori_kv_topk_mode", [None]),
         "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", [None]),
+        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", [None]),
+        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", [None]),
     }
 
     # 生成参数名和值列表
@@ -116,13 +118,16 @@ def test_example(param_combinations):
     cmp_kv_datarange = [-10, 10]
     ori_kv_topk_mode = param_combinations['ori_kv_topk_mode']
     cmp_kv_topk_mode = param_combinations['cmp_kv_topk_mode']
+    ori_sparse_indices_mode = param_combinations['ori_sparse_indices_mode']
+    cmp_sparse_indices_mode = param_combinations['cmp_sparse_indices_mode']
 
     torch_npu.npu.set_device(0)
     # 增加参数请在最后增加，保证结果统计
     test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1,   \
                 block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, \
                 softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2,\
-                q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode
+                q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode, \
+                ori_sparse_indices_mode, cmp_sparse_indices_mode
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_attn_sharedkv_golden.gen_data(test_data)

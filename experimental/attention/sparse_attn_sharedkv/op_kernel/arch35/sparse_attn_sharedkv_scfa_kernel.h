@@ -75,7 +75,8 @@ private:
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 2;
     /* 核间通道 */
-    BufferManager<BufferType::GM> gmBufferManager;
+    BufferManager<BufferType::GM> v0ResGmBufferManager;
+    BufferManager<BufferType::GM> s2LenGmBufferManager;
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
@@ -98,6 +99,7 @@ private:
     bool hasCmpTopkLength = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
+    BuffersPolicy3buff<BufferType::GM> s2LenGmBuffers;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -243,14 +245,27 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
         TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-        int64_t totalOffset;
+        int64_t v0ResTotalOffset;
         if constexpr (IS_SPLIT_G) {
-            totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
+            v0ResTotalOffset = v0ResSize * 3 * (aicIdx >> 1U);
         } else {
-            totalOffset = v0ResSize * 3 * aicIdx;
+            v0ResTotalOffset = v0ResSize * 3 * aicIdx;
         }
-        gmBufferManager.Init(workspace + totalOffset);
-        v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
+        v0ResGmBufferManager.Init(workspace + v0ResTotalOffset);
+        v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
+
+        // v0聚合的s2实际长度
+        int64_t v0ResTotalSize = v0ResSize * 3;
+        int64_t aicNum = GetBlockNum();
+        if constexpr (IS_SPLIT_G) {
+            v0ResTotalSize *= (aicNum >> 1U);
+        } else {
+            v0ResTotalSize *= aicNum;
+        }
+        int64_t s2LenBufferSize = 128 * sizeof(int32_t) * 4; // Cube要看到相邻核4个vector的结果;
+        int64_t s2LenTotalOffset = s2LenBufferSize * 3 * (aicIdx >> 1);
+        s2LenGmBufferManager.Init(workspace + v0ResTotalSize + s2LenTotalOffset);
+        s2LenGmBuffers.Init(s2LenGmBufferManager, s2LenBufferSize);
     }
 }
 
@@ -443,7 +458,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                                 runInfo1, this->constInfo);
                         } else {
                             this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
-                                runInfo1, this->constInfo, 0);
+                                s2LenGmBuffers.Get(), runInfo1, this->constInfo, 0);
                         }
                     } else {
                         if ASCEND_IS_AIV {
@@ -459,7 +474,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                     if (taskId > 0 && notLast) {
                         auto &runInfo2 = runInfo[(taskId + 2) % 3];
                         if ASCEND_IS_AIV {
-                            this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
+                            this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), s2LenGmBuffers.GetReused(), runInfo2,
                                 this->constInfo);
                         } else {
                             RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];

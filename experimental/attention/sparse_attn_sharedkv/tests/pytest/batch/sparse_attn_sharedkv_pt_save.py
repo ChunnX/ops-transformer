@@ -66,6 +66,8 @@ for params in ENABLED_PARAMS_FROM_FILE:
         "cmp_kv_datarange": params.get("cmp_kv_datarange", None),
         "ori_kv_topk_mode": params.get("ori_kv_topk_mode", None),
         "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", None),
+        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", None),
+        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", None),
         "testcase_name": params.get("testcase_name"),
         "actlen_mode": params.get("actlen_mode", None),
         "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", None),
@@ -114,6 +116,8 @@ def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
     cmp_kv_datarange = ast.literal_eval(param_combinations['cmp_kv_datarange']) if param_combinations['cmp_kv_datarange'] is not None else [-10,10]
     ori_kv_topk_mode = param_combinations['ori_kv_topk_mode']
     cmp_kv_topk_mode = param_combinations['cmp_kv_topk_mode']
+    ori_sparse_indices_mode = param_combinations['ori_sparse_indices_mode']
+    cmp_sparse_indices_mode = param_combinations['cmp_sparse_indices_mode']
     actlen_mode = param_combinations['actlen_mode']
     cu_seqlens_ori_kv = None if param_combinations['cu_seqlens_ori_kv'] is None else ast.literal_eval(param_combinations['cu_seqlens_ori_kv'])
     cu_seqlens_cmp_kv = None if param_combinations['cu_seqlens_cmp_kv'] is None else ast.literal_eval(param_combinations['cu_seqlens_cmp_kv'])
@@ -169,14 +173,13 @@ def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
     block_num1 = ori_block_num_sum
     block_num2 = cmp_block_num_sum
     
-    print("*"*20)
-    print(ori_kv_type)
-    print(cmp_kv_type)
+
     
     test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1, \
                 block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
                 ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode
+                ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode, \
+                ori_sparse_indices_mode, cmp_sparse_indices_mode
 
     print("data parsed.", test_data)
     print("strat to generate data")
