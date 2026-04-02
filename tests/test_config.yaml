@@ -1350,6 +1350,7 @@ mc2:
         examples: False
       options:
         - distribute_barrier
+        - distribute_barrier_extend
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
         - moe_distribute_combine_v2
