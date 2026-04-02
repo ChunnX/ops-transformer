@@ -583,7 +583,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>qRopeOut</td>
       <td>输出</td>
-      <td>表示Query经过旋转编程后的输出。</td>
+      <td>表示Query经过旋转编码后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
@@ -601,7 +601,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ
+        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -620,7 +620,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     </tr>
     <tr>
       <td>workspaceSize</td>
-      <td>出参</td>
+      <td>输出参数</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
@@ -630,7 +630,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     </tr>
     <tr>
       <td>executor</td>
-      <td>出参</td>
+      <td>输出参数</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
       <td>-</td>
@@ -1099,7 +1099,7 @@ int main() {
   //wdqkv转为NZ
   ret = CreateAclTensorNZ(wdqkvShape, &wdqkvDeviceAddr, &wdqkvHostAddr, aclDataType::ACL_INT8, &wdqkv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  //fp16输入，则这里转int64
+  //fp16输入，则这里转为int64
   ret = CreateAclTensorND(deScale0Shape, &deScale0DeviceAddr, &deScale0HostAddr, aclDataType::ACL_INT64, &deScale0);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(bias0Shape, &bias0DeviceAddr, &bias0HostAddr, aclDataType::ACL_INT32, &bias0);
@@ -1115,7 +1115,7 @@ int main() {
   //wuq转为NZ
   ret = CreateAclTensorNZ(wuqShape, &wuqDeviceAddr, &wuqHostAddr, aclDataType::ACL_INT8, &wuq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  //fp16输入，则这里转int64
+  //fp16输入，则这里转为int64
   ret = CreateAclTensorND(deScale1Shape, &deScale1DeviceAddr, &deScale1HostAddr, aclDataType::ACL_INT64, &deScale1);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(bias1Shape, &bias1DeviceAddr, &bias1HostAddr, aclDataType::ACL_INT32, &bias1);
