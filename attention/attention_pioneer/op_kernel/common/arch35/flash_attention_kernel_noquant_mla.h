@@ -436,7 +436,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
     uint32_t bnEndIdx = 1;
     int64_t s2LoopStart = 0;
     int64_t s2LoopLimit = 0;
-
+    int64_t nextGs1Idx = this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1];
     if constexpr (!isFd) {
         bnStartIdx = this->tilingData->multiCoreParamsRegbase.bnStartIdx[aicIdx];
         gS1StartIdx = this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx];
@@ -448,6 +448,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             }
         } else {
             bnEndIdx = this->tilingData->inputParamsRegbase.bSize * constInfo.n2Size;
+            nextGs1Idx = 0;
         }
     }
     int64_t taskId = 0;
@@ -474,7 +475,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
         ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo, this->attenMaskInfo,
             keyGm, actualSeqQlenAddr, actualSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo, lastBN,
-            this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1]);
+            nextGs1Idx);
         if constexpr (isFd) {
             if (constInfo.sInnerLoopSize * (aicIdx % constInfo.splitKVNum) > runParam.actualSeqLengthKVPerBatch) {
                 runParam.actualSInnerLoopSize = 0;

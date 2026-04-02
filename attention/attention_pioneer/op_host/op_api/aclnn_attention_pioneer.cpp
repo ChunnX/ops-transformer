@@ -432,6 +432,116 @@ aclnnStatus aclnnAttentionPioneerGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
+__attribute__((visibility("default"))) aclnnStatus aclnnAttentionPioneerGetMaxWorkspaceSize(
+    const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *pseShiftOptional,
+    const aclTensor *attenMaskOptional,
+    const aclIntArray *actualSeqLengthsOptional,
+    const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *deqScale1Optional,
+    const aclTensor *quantScale1Optional,
+    const aclTensor *deqScale2Optional,
+    const aclTensor *quantScale2Optional,
+    const aclTensor *quantOffset2Optional,
+    const aclTensor *antiquantScaleOptional,
+    const aclTensor *antiquantOffsetOptional,
+    const aclTensor *blockTableOptional,
+    const aclTensor *queryPaddingSizeOptional,
+    const aclTensor *kvPaddingSizeOptional,
+    const aclTensor *keyAntiquantScaleOptional,
+    const aclTensor *keyAntiquantOffsetOptional,
+    const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *valueAntiquantOffsetOptional,
+    const aclTensor *keySharedPrefixOptional,
+    const aclTensor *valueSharedPrefixOptional,
+    const aclIntArray *actualSharedPrefixLenOptional,
+    const aclTensor *queryRopeOptional,
+    const aclTensor *keyRopeOptional,
+    const aclTensor *keyRopeAntiquantScaleOptional,
+    const aclTensor *dequantScaleQueryOptional,
+    const aclTensor *learnableSinkOptional,
+    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *kvStartIdxOptional,
+    const aclTensor *keySink, 
+    const aclTensor *keyRopeSink, 
+    const aclTensor *valueSink,
+    int64_t numHeads, double scaleValue, int64_t preTokens,
+    int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    int64_t sparseMode, int64_t innerPrecise, int64_t blockSize,
+    int64_t antiquantMode, bool softmaxLseFlag,
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
+    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+aclnnStatus aclnnAttentionPioneerGetMaxWorkspaceSize(
+    const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *pseShiftOptional,
+    const aclTensor *attenMaskOptional,
+    const aclIntArray *actualSeqLengthsOptional,
+    const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *deqScale1Optional,
+    const aclTensor *quantScale1Optional,
+    const aclTensor *deqScale2Optional,
+    const aclTensor *quantScale2Optional,
+    const aclTensor *quantOffset2Optional,
+    const aclTensor *antiquantScaleOptional,
+    const aclTensor *antiquantOffsetOptional,
+    const aclTensor *blockTableOptional,
+    const aclTensor *queryPaddingSizeOptional,
+    const aclTensor *kvPaddingSizeOptional,
+    const aclTensor *keyAntiquantScaleOptional,
+    const aclTensor *keyAntiquantOffsetOptional,
+    const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *valueAntiquantOffsetOptional,
+    const aclTensor *keySharedPrefixOptional,
+    const aclTensor *valueSharedPrefixOptional,
+    const aclIntArray *actualSharedPrefixLenOptional,
+    const aclTensor *queryRopeOptional,
+    const aclTensor *keyRopeOptional,
+    const aclTensor *keyRopeAntiquantScaleOptional,
+    const aclTensor *dequantScaleQueryOptional,
+    const aclTensor *learnableSinkOptional,
+    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *kvStartIdxOptional,
+    const aclTensor *keySink, 
+    const aclTensor *keyRopeSink, 
+    const aclTensor *valueSink,
+    int64_t numHeads, double scaleValue, int64_t preTokens,
+    int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    int64_t sparseMode, int64_t innerPrecise, int64_t blockSize,
+    int64_t antiquantMode, bool softmaxLseFlag,
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
+    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    const aclTensorList *tensorListKey = key;
+    const aclTensorList *tensorListValue = value;
+    TensorPreProcessPionner(tensorListKey, tensorListValue);
+
+    const aclTensor *tensorKeySharedPrefixOptional = keySharedPrefixOptional;
+    const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
+    PrefixTensorPreProcessPionner(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
+
+    const aclTensor *placeHolder = nullptr;
+    const aclTensor *tempTensor = nullptr;
+    AttentionPioneerProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+
+    auto ret = aclnnAttentionPioneerGetWorkspaceSize(
+        query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+            deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional, quantOffset2Optional, antiquantScaleOptional,
+            antiquantOffsetOptional, blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional,
+            keyAntiquantOffsetOptional, valueAntiquantScaleOptional, valueAntiquantOffsetOptional, keySharedPrefixOptional, valueSharedPrefixOptional,
+            actualSharedPrefixLenOptional, queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional,
+            qStartIdxOptional, kvStartIdxOptional, keySink, keyRopeSink, valueSink,
+            numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
+            sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
+            queryQuantMode, pseType, attentionOut, placeHolder, workspaceSize, executor
+    );
+    if (softmaxLseFlag == false) {
+        aclDestroyTensor(tempTensor);
+    }
+
+    return ret;
+}
+
 aclnnStatus aclnnAttentionPioneer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                             const aclrtStream stream)
 {
