@@ -49,6 +49,13 @@ aux_source_directory(${CMAKE_SOURCE_DIR}/src/transformer/gmm/quant_grouped_matmu
 set(_QGMMIA_KernelPrivateCompileDefinitionsExt
         KernelCtrlParam quant_grouped_matmul_inplace_add quant_int8 DTYPE_X1=int8_t DTYPE_X2=int8_t DTYPE_SCALE2=uint64_t DTYPE_Y=int8_t ORIG_DTYPE_X=DT_INT8 ORIG_DTYPE_X2=DT_INT8 ORIG_DTYPE_Y=DT_INT8)
 
+file(GLOB _QGMMIA_UT_SUBDIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(_QGMMIA_UT_SUB ${_QGMMIA_UT_SUBDIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_QGMMIA_UT_SUB}/CMakeLists.txt")
+        add_subdirectory(${_QGMMIA_UT_SUB})
+    endif()
+endforeach()
+
 if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
         message(STATUS "The UTest of quant_grouped_matmul_inplace_add don't supported clang compiler yet.")
 else ()

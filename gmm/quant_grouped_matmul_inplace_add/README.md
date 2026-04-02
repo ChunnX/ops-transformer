@@ -71,5 +71,5 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_quant_grouped_matmul_inplace_add] | 通过接口方式调用QuantGroupedMatmulInplaceAdd算子。 |
+| aclnn调用 | [examples/test_aclnn_quant_grouped_matmul_inplace_add.cpp](examples/test_aclnn_quant_grouped_matmul_inplace_add.cpp)、UT：`tests/ut/op_host/op_api/test_aclnn_quant_grouped_matmul_inplace_add_l2.cpp` + CSV | 通过接口方式调用QuantGroupedMatmulInplaceAdd算子。 |
 | 图模式调用 | [test_geir_quant_grouped_matmul_inplace_add]   | 通过构图方式调用QuantGroupedMatmulInplaceAdd算子。 |
