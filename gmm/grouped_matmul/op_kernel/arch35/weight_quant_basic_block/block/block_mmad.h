@@ -7,7 +7,7 @@
 namespace Block {
 
 template <class DispatchPolicy, class L1TileShape, class L0TileShape, class AType, class LayoutA, class BType,
-          class LayoutB, class CType, class LayoutC, typename = void>
+          class LayoutB, class CType, class LayoutC, class BiasType, typename = void>
 class BlockMmad {
     static_assert(AscendC::Std::always_false_v<DispatchPolicy>, "BlockMmad is not implemented for this DispatchPolicy");
 };

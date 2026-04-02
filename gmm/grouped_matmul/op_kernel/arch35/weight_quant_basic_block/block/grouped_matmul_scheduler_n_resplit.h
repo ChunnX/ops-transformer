@@ -16,7 +16,7 @@ public:
         uint64_t secondTailBlockSize;
         uint64_t coreNum;
         uint64_t cubeNumBlocksN;
-        uint64_t baseM;
+        int32_t baseM;
         uint64_t nSize;
     };
 

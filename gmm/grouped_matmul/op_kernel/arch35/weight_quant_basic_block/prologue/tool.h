@@ -33,22 +33,14 @@ using AscendC::VECTOR_REG_WIDTH;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 // buffer相关定义
-static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
 static constexpr int32_t DOUBLE_BUFFER_NUM = 2;
-static constexpr int32_t SINGLE_BUFFER_NUM = 1;
 static constexpr int64_t L1_SIZE = 512;
 static constexpr int64_t L1_SIZE_BYTE = L1_SIZE * 1024;
 static constexpr int64_t BIAS_L1_SIZE = 4;
 static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
 static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
 
-// 控制参数定义
-static constexpr uint64_t SCALE_COPY_GROUP_SIZE = 2;
-static constexpr int32_t SCALE_COPY_DEFAULT_STRIDE = 0;
-static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
-
 // 参数约束定义
-static constexpr uint64_t MX_GROUPSIZE = 32;
 static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
 static constexpr uint32_t FP32_BLOCK_SIZE = 8;
 static constexpr uint32_t FP16_BLOCK_SIZE = 16;

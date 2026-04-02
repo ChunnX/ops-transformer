@@ -31,44 +31,40 @@ __aicore__ inline void LaunchMxA8W4VectorAntiQuantResplit(
     GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
     
-    using XType = DTYPE_X;
-    using WeightType = DTYPE_WEIGHT;
-    using AntiQuantScaleType = DTYPE_ANTIQUANT_SCALE;
-    using ScaleType = DTYPE_SCALE;
-    using PerTokenScaleType = DTYPE_PER_TOKEN_SCALE;
+    using AType = DTYPE_X;
+    using BType = DTYPE_WEIGHT;
+    using ScaleBType = DTYPE_ANTIQUANT_SCALE;
+    using ScaleAType = DTYPE_PER_TOKEN_SCALE;
     using BiasType = DTYPE_BIAS;
-    using YType = DTYPE_Y;
+    using CType = DTYPE_Y;
 
     using DispatchPolicy = GROUPED_MATMUL::KernelMixDynamicKL1NTailResplit;
     using L1TileShape = decltype(AscendC::Te::MakeShape(0UL, 0UL, 0UL, 0UL));
     using L0TileShape = decltype(AscendC::Te::MakeShape(0UL, 0UL, 0UL));
-    using LayoutA = typename AscendC::Te::NDLayoutFormat<XType>;
     // (n, k) (k1,n1,n0,k0)
     constexpr static auto _1 = AscendC::Std::Int<1>{};
     constexpr static auto _16 = AscendC::Std::Int<32>{};
     constexpr static auto _32 = AscendC::Std::Int<32>{};
     constexpr static auto _512 = AscendC::Std::Int<512>{};
+    using LayoutA = typename AscendC::Te::NDLayoutFormat<AType>;
     using LayoutB = decltype(AscendC::Te::MakeLayout(AscendC::Te::MakeShape(AscendC::Te::MakeShape(1UL, _32), AscendC::Te::MakeShape(1UL, _16))), AscendC::Te::MakeStride(AscendC::Te::MakeStride(_1, 16UL), AscendC::Te::MakeStride(_32, _512)));
-    using LayoutC = typename AscendC::Te::NDLayoutFormat<XType>;
-    using ProblemShape = decltype(AscendC::Te::MakeShape(0UL, 0UL, 0UL));
+    using LayoutC = typename AscendC::Te::NDLayoutFormat<AType>;
+    using LayoutScaleA = typename AscendC::Te::ScaleANDLayoutFormat<fp8_e8m0_t>;
+    using LayoutScaleB = typename AscendC::Te::ScaleBDNLayoutFormat<fp8_e8m0_t>;
+    using ProblemShape = decltype(AscendC::Te::MakeShape(0UL, 0UL, 0UL, 0UL));
     using BlockScheduler = Block::GroupedMatmulSchedulerNResplit;
-    using BlockMmad = Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, XType, LayoutA, WeightType, LayoutB,
-                                       YType, LayoutC>;
+    using BlockMmad = Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AscendC::Std::tuple<AType, ScaleAType>, AscendC::Std::tuple<LayoutA, LayoutScaleA>, AscendC::Std::tuple<BType, ScaleBType>, AscendC::Std::tuple<LayoutB, LayoutScaleB>, CType, LayoutC, BiasType>;
     using BlockEpilogue = void;
-    using BlockPrologue = Block::BlockPrologue<DispatchPolicy, XType, WeightType, BiasType>;
+    using BlockPrologue = Prologue::BlockPrologue<DispatchPolicy, AType, BType, BiasType>;
     using KernelImpl =
         Kernel::GroupedMatmul<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler, BlockPrologue>;
 
+    typename BlockMmad::Params mmadParams{reinterpret_cast<__gm__ AType *>(x), reinterpret_cast<__gm__ float8_e8m0_t *>(perTokenScale), reinterpret_cast<__gm__ float8_e8m0_t *>(antiquantScale), reinterpret_cast<__gm__ CType *>(y), gmmBaseParams_.kSize, gmmBaseParams_.hasBias};
+    typename BlockScheduler::Params schedulerParams{gmmBaseParams_.mainBlockCount, gmmBaseParams_.mainBlockSize, gmmBaseParams_.firstTailBlockCount, gmmBaseParams_.firstTailBlockSize, gmmBaseParams_.secondTailBlockCount, gmmBaseParams_.secondTailBlockSize, gmmBaseParams_.coreNum, gmmBaseParams_.cubeNumBlocksN, mmTilingData_.baseM, gmmBaseParams_.nSize};
+    typename BlockPrologue::Params prologueParams{reinterpret_cast<__gm__ BType *>(weight), reinterpret_cast<__gm__ BiasType *>(bias), gmmBaseParams_.hasBias};
     typename KernelImpl::Params params = {
-        x,
-        weight,
-        antiquantScale,
-        bias,
-        groupList,
-        perTokenScale,
-        y,
-        &gmmBaseParams_,
-        &mmTilingData_};
+        {0UL, gmmBaseParams_.kSize, gmmBaseParams_.nSize, gmmBaseParams_.groupNum},
+        mmadParams, schedulerParams, prologueParams, gmmBaseParams_.groupNum, gmmBaseParams_.groupType, gmmBaseParams_.groupListType, groupList};
     KernelImpl kernelImpl;
     kernelImpl(params);
 }

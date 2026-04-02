@@ -46,7 +46,6 @@ using AscendC::MicroAPI::RegTensor;
 using AscendC::MicroAPI::TypeGet;
 
 using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
-using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::C0_SIZE_B8;
 using WeightQuantBatchMatmulV2::Arch35::AntiQuantMxA8W4NzNkVf;
 using WeightQuantBatchMatmulV2::Arch35::CeilAlign;
@@ -56,7 +55,9 @@ using WeightQuantBatchMatmulV2::Arch35::MxA8W4NzParams;
 using WeightQuantBatchMatmulV2::Arch35::MX_BIAS_SINGLE_VECTOR_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::VEC_MAX_ELEM_B16;
 
-namespace Block {
+namespace Prologue {
+
+static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
 
 struct PrologueMxCastWOffsetParam {
     uint64_t kSize;
@@ -67,10 +68,10 @@ struct PrologueMxCastWOffsetParam {
 };
 
 #define WQBMM_PROLOGUE_TEMPLATE_PARAM                                                                                   \
-    template <class XType, class WeightType, class BiasType>
+    template <class AType_, class BType_, class BiasType_>
 
 #define WQBMM_PROLOGUE_CLASS                                                                                            \
-    BlockPrologue<GROUPED_MATMUL::KernelMixDynamicKL1NTailResplit, XType, WeightType, BiasType>
+    BlockPrologue<GROUPED_MATMUL::KernelMixDynamicKL1NTailResplit, AType_, BType_, BiasType_>
 
 struct UbConsumeConfig {
     uint64_t l1RequireVfComputeRealK;
@@ -115,13 +116,10 @@ WQBMM_PROLOGUE_TEMPLATE_PARAM
 class WQBMM_PROLOGUE_CLASS {
 public:
     using DispatchPolicy = GROUPED_MATMUL::KernelMixDynamicKL1NTailResplit;
-    using xType = XType;
-    using wType = WeightType;
-    using biasType = BiasType;
+    using AType = AType_;
+    using BType = BType_;
+    using BiasType = BiasType_;
 
-    using XDataType = xType;
-    using WeightDataType = wType;
-    using BiasDataType = biasType;
     static constexpr bool kATrans = false;
     static constexpr bool kBTrans = true;
     static constexpr CubeFormat kWeightFormat = CubeFormat::NZ;
@@ -131,13 +129,18 @@ public:
     static_assert(kBTrans, "KernelMixDynamicKL1NTailResplit requires transposed weight B");
     static_assert(kWeightFormat == CubeFormat::NZ, "KernelMixDynamicKL1NTailResplit requires NZ weight format");
 
+    struct Params {
+        __gm__ BType *ptrB;
+        __gm__ BiasType *ptrBias;
+        uint8_t hasBias;
+    };
+
     __aicore__ inline BlockPrologue() = delete;
-    __aicore__ inline BlockPrologue(bool hasBias, uint64_t aPrefetchSize, const TCubeTiling *__restrict matmulTiling);
-    __aicore__ inline void operator()(__gm__ wType *weight, __gm__ biasType *bias, const bool weightL2Cacheable,
+    __aicore__ inline BlockPrologue(const Params& params);
+    __aicore__ inline void operator()(__gm__ BType *weight, __gm__ BiasType *bias, const bool weightL2Cacheable,
                                       uint64_t mL1Size, uint64_t kSize, uint64_t nL1Size, uint64_t nOffset,
                                       uint64_t nAlign);
-    __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
-    __aicore__ inline void End();
+    __aicore__ inline ~BlockPrologue();
 
 protected:
     __aicore__ inline uint64_t CalcDynamicKBlock(uint64_t mL1Size, uint64_t nL1Size) const;
@@ -148,7 +151,7 @@ protected:
                                                    L1ConsumeConfig &l1ConsumeConfig, UbConsumeConfig &ubConsumeConfig,
                                                    const uint64_t kMte2Offset, const uint64_t mte2RealK);
     __aicore__ inline void InitVectorCompute();
-    __aicore__ inline void SetVectorGlobalBuffer(__gm__ wType *weight, __gm__ biasType *bias,
+    __aicore__ inline void SetVectorGlobalBuffer(__gm__ BType *weight, __gm__ BiasType *bias,
                                                  const bool weightL2Cacheable);
     __aicore__ inline void WaitVectorToMTE2();
     __aicore__ inline void SetVectorToMTE2();
@@ -156,34 +159,34 @@ protected:
                                             uint64_t ubMte2KOffset, const PrologueMxCastWOffsetParam &offsetParam);
     __aicore__ inline void CopyMxBiasGmToUb(uint64_t ubMte2MxBiasNSize, uint64_t ubMte2MxBiasNOffset);
     __aicore__ inline void WeightAntiQuantComputeNzNk(const UbConsumeConfig &ubConsumeConfig,
-                                                      const LocalTensor<xType> &weightHighBitL1,
+                                                      const LocalTensor<AType> &weightHighBitL1,
                                                       const L1ConsumeConfig &l1ConsumeConfig,
-                                                      const LocalTensor<biasType> &biasL1);
+                                                      const LocalTensor<BiasType> &biasL1);
     __aicore__ inline uint64_t ComputeWeightHighBitL1Offset(uint64_t antiQuantNOffset, uint64_t antiQuantKOffset,
                                                             uint64_t nRealLen, uint64_t kRealLen,
                                                             const L1ConsumeConfig &l1ConsumeConfig);
     __aicore__ inline void AntiQuantProcessNzMxA8W4(const UbConsumeConfig &ubConsumeConfig);
     __aicore__ inline void CopyWeightHighBitForAligned(uint64_t weightHighBitL1Offset, uint64_t antiQuantRealN,
                                                        uint64_t antiQuantRealK,
-                                                       const LocalTensor<xType> &weightHighBitL1);
+                                                       const LocalTensor<AType> &weightHighBitL1);
     __aicore__ inline void FinalizeVectorCompute();
 
     uint64_t cvLoopIdx_ = 0;
 
-    LocalTensor<xType> weightL1_;
-    LocalTensor<biasType> biasL1_;
+    LocalTensor<AType> weightL1_;
+    LocalTensor<BiasType> biasL1_;
     uint64_t weightL1DbOffset_;
     uint64_t biasL1DbOffset_;
     bool hasBias_;
 
     uint64_t ubMte2LoopIdx_ = 0;
     uint64_t ubComputeLoopIdx_ = 0;
-    GlobalTensor<wType> wGlobal_;
-    GlobalTensor<biasType> biasGlobal_;
+    GlobalTensor<BType> wGlobal_;
+    GlobalTensor<BiasType> biasGlobal_;
     LocalTensor<int8_t> ubWeightInputLowBitTotalBuffer_;
-    LocalTensor<xType> ubHighBitTotalBuffer_;
-    LocalTensor<biasType> ubBiasTotalBuffer_;
-    LocalTensor<biasType> ubBiasOutTotalBuffer_;
+    LocalTensor<AType> ubHighBitTotalBuffer_;
+    LocalTensor<BiasType> ubBiasTotalBuffer_;
+    LocalTensor<BiasType> ubBiasOutTotalBuffer_;
 
     constexpr static TEventID vecEventIdVToMte2_[QUADRUPLE_BUFFER_NUM] = {0, 1, 2, 3};
     constexpr static TEventID vecEventIdMte3ToV_[QUADRUPLE_BUFFER_NUM] = {0, 1, 2, 3};
@@ -199,25 +202,22 @@ protected:
 };
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
-__aicore__ inline WQBMM_PROLOGUE_CLASS::BlockPrologue(
-    bool hasBias, uint64_t aPrefetchSize, const TCubeTiling *__restrict matmulTiling)
+__aicore__ inline WQBMM_PROLOGUE_CLASS::BlockPrologue(const Params& params)
 {
-    (void)aPrefetchSize;
-    (void)matmulTiling;
-    hasBias_ = hasBias;
+    hasBias_ = params.hasBias;
     mxA8W4L1KDynamicConfigMThreshold_ = hasBias_ ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 :
-                                                    MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+                                                   MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
     biasL1DbOffset_ = 0;
-    weightL1_ = LocalTensor<xType>(TPosition::TSCM, 0, L1_SIZE_BYTE / sizeof(xType));
+    weightL1_ = LocalTensor<AType>(TPosition::TSCM, 0, L1_SIZE_BYTE / sizeof(AType));
 
     static constexpr uint64_t MXA8W4_WEIGHT_SIZE = 256 * 256;
-    static constexpr uint64_t MX_BIAS_L1_SIZE = BIAS_L1_SIZE * GetKBUnit<biasType>() * sizeof(biasType);
-    weightL1DbOffset_ = L1_SIZE * GetKBUnit<xType>() - MXA8W4_WEIGHT_SIZE;
+    static constexpr uint64_t MX_BIAS_L1_SIZE = BIAS_L1_SIZE * GetKBUnit<BiasType>() * sizeof(BiasType);
+    weightL1DbOffset_ = L1_SIZE * GetKBUnit<AType>() - MXA8W4_WEIGHT_SIZE;
     uint64_t l1RemainSize = L1_SIZE_BYTE - MXA8W4_WEIGHT_SIZE * DOUBLE_BUFFER_NUM;
     uint64_t l1StartSize = MXA8W4_WEIGHT_SIZE;
-    biasL1_ = LocalTensor<biasType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(biasType));
+    biasL1_ = LocalTensor<BiasType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(BiasType));
     if (hasBias_) {
-        biasL1DbOffset_ = (l1RemainSize - MX_BIAS_L1_SIZE) / sizeof(biasType);
+        biasL1DbOffset_ = (l1RemainSize - MX_BIAS_L1_SIZE) / sizeof(BiasType);
     }
 
     if ASCEND_IS_AIV {
@@ -302,7 +302,7 @@ __aicore__ inline void WQBMM_PROLOGUE_CLASS::ComputeBasicBlockAivNdKnNzNk(
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_PROLOGUE_CLASS::operator()(
-    __gm__ wType *weight, __gm__ biasType *bias, const bool weightL2Cacheable, uint64_t mL1Size, uint64_t kSize,
+    __gm__ BType *weight, __gm__ BiasType *bias, const bool weightL2Cacheable, uint64_t mL1Size, uint64_t kSize,
     uint64_t nL1Size, uint64_t nOffset, uint64_t nAlign)
 {
     SetVectorGlobalBuffer(weight, bias, weightL2Cacheable);
@@ -316,15 +316,7 @@ __aicore__ inline void WQBMM_PROLOGUE_CLASS::operator()(
 }
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_PROLOGUE_CLASS::PrefetchA(
-    uint64_t aPrefetchSize, uint64_t xSizeLimit)
-{
-    (void)aPrefetchSize;
-    (void)xSizeLimit;
-}
-
-WQBMM_PROLOGUE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_PROLOGUE_CLASS::End()
+__aicore__ inline WQBMM_PROLOGUE_CLASS::~BlockPrologue()
 {
     if (cvLoopIdx_ > 0) {
         WaitAicToAiv();
@@ -353,18 +345,18 @@ __aicore__ inline void WQBMM_PROLOGUE_CLASS::InitVectorCompute()
     ubWeightInputLowBitTotalBuffer_ =
         LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);
     ubHighBitTotalBuffer_ =
-        LocalTensor<xType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);
+        LocalTensor<AType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);
     if (hasBias_) {
         ubBiasTotalBuffer_ =
-            LocalTensor<biasType>(TPosition::LCM, 192 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);
+            LocalTensor<BiasType>(TPosition::LCM, 192 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);
         ubBiasOutTotalBuffer_ =
-            LocalTensor<biasType>(TPosition::LCM, 194 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize);
+            LocalTensor<BiasType>(TPosition::LCM, 194 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize);
     }
 }
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_PROLOGUE_CLASS::SetVectorGlobalBuffer(
-    __gm__ wType *weight, __gm__ biasType *bias, const bool weightL2Cacheable)
+    __gm__ BType *weight, __gm__ BiasType *bias, const bool weightL2Cacheable)
 {
     wGlobal_.SetGlobalBuffer(weight);
     if (!weightL2Cacheable) {
@@ -409,7 +401,7 @@ __aicore__ inline void WQBMM_PROLOGUE_CLASS::CopyWeightGmToUb(
 
     DataCopyPad2D(ubWeightInputLowBitTotalBuffer_[(ubMte2LoopIdx_ % kUbMte2BufferNum) *
                                                   UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
-                      .template ReinterpretCast<wType>(),
+                      .template ReinterpretCast<BType>(),
                   wGlobal_[ubMte2KOffset * offsetParam.nAlign + ubMte2NOffset * static_cast<uint64_t>(C0_SIZE)],
                   CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
                   CeilAlign(ubMte2NSize, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
@@ -435,8 +427,8 @@ __aicore__ inline void WQBMM_PROLOGUE_CLASS::CopyMxBiasGmToUb(
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_PROLOGUE_CLASS::WeightAntiQuantComputeNzNk(
-    const UbConsumeConfig &ubConsumeConfig, const LocalTensor<xType> &weightHighBitL1,
-    const L1ConsumeConfig &l1ConsumeConfig, const LocalTensor<biasType> &biasL1)
+    const UbConsumeConfig &ubConsumeConfig, const LocalTensor<AType> &weightHighBitL1,
+    const L1ConsumeConfig &l1ConsumeConfig, const LocalTensor<BiasType> &biasL1)
 {
     if (likely(ubComputeLoopIdx_ > UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) {
         WaitFlag<HardEvent::MTE3_V>(
@@ -480,16 +472,16 @@ WQBMM_PROLOGUE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_PROLOGUE_CLASS::AntiQuantProcessNzMxA8W4(
     const UbConsumeConfig &ubConsumeConfig)
 {
-    MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams;
+    MxA8W4NzParams<AType, BType, BiasType> mxA8W4NzParams;
     uint64_t ubMte2BufferIdx = (ubMte2LoopIdx_ - 1) & (kUbMte2BufferNum - 1);
     mxA8W4NzParams.nRealSizeAlign =
         CeilAlign(ubConsumeConfig.l1RequireVfComputeRealN, static_cast<uint64_t>(BLOCK_CUBE));
     mxA8W4NzParams.weightLowBitPhyAddr =
-        (__ubuf__ wType *)
+        (__ubuf__ BType *)
             ubWeightInputLowBitTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
                 .GetPhyAddr();
     mxA8W4NzParams.weightHighBitPhyAddr =
-        (__ubuf__ xType *)
+        (__ubuf__ AType *)
             ubHighBitTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) *
                                   VECTOR_REG_WIDTH]
                 .GetPhyAddr();
@@ -501,26 +493,26 @@ __aicore__ inline void WQBMM_PROLOGUE_CLASS::AntiQuantProcessNzMxA8W4(
     mxA8W4NzParams.loopKDstStride = mxA8W4NzParams.innerLoopNum * mxA8W4NzParams.innerDstStride;
     if (ubConsumeConfig.calcMxBias) {
         mxA8W4NzParams.biasInUbAddr =
-            (__ubuf__ biasType *)ubBiasTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasUbSingleBufferSize]
+            (__ubuf__ BiasType *)ubBiasTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasUbSingleBufferSize]
                 .GetPhyAddr();
         mxA8W4NzParams.biasOutUbAddr =
-            (__ubuf__ biasType *)ubBiasOutTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasReducedSingleBufferSize]
+            (__ubuf__ BiasType *)ubBiasOutTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasReducedSingleBufferSize]
                 .GetPhyAddr();
         if (ubConsumeConfig.isBiasSingleVector) {
             mxA8W4NzParams.biasLoopNum = CeilDivide(ubConsumeConfig.ubMxBiasNsize, VEC_MAX_ELEM_B16);
-            AntiQuantMxA8W4NzNkVf<xType, wType, biasType, true, true>(mxA8W4NzParams);
+            AntiQuantMxA8W4NzNkVf<AType, BType, BiasType, true, true>(mxA8W4NzParams);
         } else {
-            AntiQuantMxA8W4NzNkVf<xType, wType, biasType, true, false>(mxA8W4NzParams);
+            AntiQuantMxA8W4NzNkVf<AType, BType, BiasType, true, false>(mxA8W4NzParams);
         }
     } else {
-        AntiQuantMxA8W4NzNkVf<xType, wType, biasType, false, false>(mxA8W4NzParams);
+        AntiQuantMxA8W4NzNkVf<AType, BType, BiasType, false, false>(mxA8W4NzParams);
     }
 }
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_PROLOGUE_CLASS::CopyWeightHighBitForAligned(
     uint64_t weightHighBitL1Offset, uint64_t antiQuantRealN, uint64_t antiQuantRealK,
-    const LocalTensor<xType> &weightHighBitL1)
+    const LocalTensor<AType> &weightHighBitL1)
 {
     DataCopyParams params;
     params.blockCount = CeilAlign(antiQuantRealK, static_cast<uint64_t>(C0_SIZE)) *

@@ -4,14 +4,14 @@
 #include "../policy/dispatch_policy.h"
 #include "../utils/integral_constant.h"
 
-namespace Block {
+namespace Prologue {
 
 template <class DispatchPolicy, class... Args>
 class BlockPrologue {
     static_assert(AscendC::Std::always_false_v<DispatchPolicy>, "BlockPrologue is not implemented for this DispatchPolicy");
 };
 
-} // namespace Block
+} // namespace Prologue
 
 #include "grouped_matmul_mxfp8fp4_prologue_mx_cast_w.h"
 
