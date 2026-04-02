@@ -16,6 +16,8 @@
 #ifndef __GROUPED_MATMUL_FINALIZE_ROUTING_KERNEL_H_
 #define __GROUPED_MATMUL_FINALIZE_ROUTING_KERNEL_H_
 
+#include <cstdint>
+
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "grouped_matmul_finalize_routing_utils.h"
@@ -34,6 +36,13 @@ using MT = matmul::MatmulImpl<aT, bT, cT, BiasT, CFG_MDL>;
 
 constexpr uint32_t BROADCAST_DIM = 2;
 constexpr uint32_t BUFFER_NUM = 2;
+
+#define GMMFR_KERNEL_DEBUG_PRINT(fmt, ...)                                                                       \
+    do {                                                                                                         \
+        if (GetBlockIdx() == 0) {                                                                               \
+            AscendC::printf("zzzlog [GMMFR][blk=%u sub=%u] " fmt "\n", GetBlockIdx(), GetSubBlockIdx(), ##__VA_ARGS__); \
+        }                                                                                                        \
+    } while (0)
 
 template <bool combine_, class ROW_INDEX_DTYPE_, class TILING_TYPE_, class SCALE_TYPE_, bool groupListType_ = false,
           bool sharedInputIsNone_ = false, bool transpose_ = false>
@@ -173,6 +182,17 @@ __aicore__ inline void QuantGroupMatmul<P>::Init(const MMInitParams& initParams,
     }
     pipe = tPipeIn;
     InitUbBuffer();
+    GMMFR_KERNEL_DEBUG_PRINT(
+        "Init: coreNum=%u groupNum=%u batch=%u m=%u n=%u k=%u baseM=%u baseN=%u ubCal=%u det=%u"
+        " x=0x%llx w=0x%llx scale=0x%llx rowIndex=0x%llx y=0x%llx workspace=0x%llx",
+        tiling->coreNum, tiling->groupNum, tiling->batch, tiling->totalInGroup, tiling->n, tiling->k,
+        tiling->matmulTiling.baseM, tiling->matmulTiling.baseN, tiling->ubCalSize, tiling->deterministicFlag,
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(initParams.x)),
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(initParams.weight)),
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(initParams.scale)),
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(initParams.token_ranks)),
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(initParams.y)),
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(initParams.workspace)));
 }
 
 template <class P>
@@ -317,6 +337,12 @@ __aicore__ inline void QuantGroupMatmul<P>::Process()
         uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
         uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
         uint32_t thresholdMDimN = thresholdBlockNum * mnConfig.blockDimN;
+        if (unlikely(coreIdx == 0 && groupIdx < 4)) {
+            GMMFR_KERNEL_DEBUG_PRINT(
+                "Process groupIdx=%u m=%u offsetM=%u blockDimM=%u blockDimN=%u preCount=%u curCount=%u coreIdx=%u",
+                groupIdx, mnConfig.m, mnConfig.offsetM, mnConfig.blockDimM, mnConfig.blockDimN, preCount,
+                curCount, coreIdx);
+        }
 
         while (curBlock < curCount) {
             MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdMDimN, tiling->deterministicFlag);
@@ -351,6 +377,13 @@ __aicore__ inline void QuantGroupMatmul<P>::MMCompute(uint32_t groupIdx, MNConfi
     uint64_t weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN * tiling->k;  // for no transpose nz weight
     mnConfig.workSpaceOffset =
         mnConfig.singleN * mnConfig.singleM * (coreIdx + (cubeCount % tiling->parallNum) * tiling->coreNum);
+    if (unlikely(coreIdx == 0 && cubeCount < 8)) {
+        GMMFR_KERNEL_DEBUG_PRINT(
+            "MMCompute cubeCount=%u group=%u mIdx=%u nIdx=%u curM=%u curN=%u xOffset=%llu wOffset=%llu wsOffset=%llu",
+            cubeCount, groupIdx, mnConfig.mIdx, mnConfig.nIdx, curSingleM, curSingleN,
+            static_cast<unsigned long long>(xOffset), static_cast<unsigned long long>(weightOffset),
+            static_cast<unsigned long long>(mnConfig.workSpaceOffset));
+    }
     if ASCEND_IS_AIC {
         if (cubeCount >= tiling->parallNum) {
             CrossCoreWaitFlag(SYNC_AIV_TO_AIC);
@@ -390,6 +423,19 @@ __aicore__ inline void QuantGroupMatmul<P>::VectorAtomicProcess(const VectorAtom
         for (uint32_t i = 0; i < vecAParams.curVecBaseM; i++) {
                 auto outRow = static_cast<uint64_t>(
                     tokenRanksGm.GetValue(vecAParams.mGlobalOffset + vecAParams.offsetM + i));
+                if (unlikely(outRow >= tiling->batch)) {
+                    GMMFR_KERNEL_DEBUG_PRINT(
+                        "Potential OOB write: outRow=%llu batch=%u tokenIdx=%llu offsetM=%u i=%u yOffset0=%llu",
+                        static_cast<unsigned long long>(outRow), tiling->batch,
+                        static_cast<unsigned long long>(vecAParams.mGlobalOffset + vecAParams.offsetM + i),
+                        vecAParams.offsetM, i, static_cast<unsigned long long>(vecAParams.yGmOffset0));
+                } else if (unlikely(coreIdx == 0 && vecAParams.offsetM == 0 && i < 2)) {
+                    GMMFR_KERNEL_DEBUG_PRINT(
+                        "WriteBack rowMap tokenIdx=%llu -> outRow=%llu, nStart=%llu curN=%u",
+                        static_cast<unsigned long long>(vecAParams.mGlobalOffset + vecAParams.offsetM + i),
+                        static_cast<unsigned long long>(outRow),
+                        static_cast<unsigned long long>(vecAParams.yGmOffset0), vecAParams.curVecBaseN);
+                }
                 DataCopyPad(yGm[outRow * tiling->n + vecAParams.yGmOffset0],
                             yLocal[i * vecAParams.alignBaseN], paramsOut);
         }
@@ -528,6 +574,11 @@ template <class P>
 __aicore__ inline void QuantGroupMatmul<P>::DataCopyMMOut(uint64_t mmOutOffset, uint32_t curVecBaseM,
                                                           uint32_t curVecBaseN, uint32_t offsetM)
 {
+    if (unlikely(coreIdx == 0 && cubeCount < 8 && offsetM == 0)) {
+        GMMFR_KERNEL_DEBUG_PRINT(
+            "DataCopyMMOut gmOffset=%llu curVecBaseM=%u curVecBaseN=%u",
+            static_cast<unsigned long long>(mmOutOffset), curVecBaseM, curVecBaseN);
+    }
     LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
     DataCopy2DDimParams dimParams{curVecBaseM, curVecBaseN, curVecBaseN};
     DataCopyPad2D(mmOutLocal, mmOutGm[mmOutOffset + offsetM * curVecBaseN], dimParams);
