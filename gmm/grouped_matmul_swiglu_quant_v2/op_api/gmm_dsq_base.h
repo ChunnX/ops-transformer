@@ -596,7 +596,7 @@ protected:
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                             "In weight Transpose scenario, only A4W4 is supported.");
                     return false;
-                } 
+                }
             }
             if (((*gmmDsqParams_.weightScale)[0])->GetDataType() == DataType::DT_INT64) {
                 size_t weightScaleLength = gmmDsqParams_.weightScale->Size();
