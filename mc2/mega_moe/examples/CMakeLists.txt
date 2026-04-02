@@ -5,8 +5,8 @@ project(ACLNN_EXAMPLE)
 set(CMAKE_BUILD_TYPE "Debug")
 
 # 设置C++编译标准
-add_compile_options(-std=c++11)
-add_compile_options(-std=c++11 -g -O0)
+add_compile_options(-std=c++17)
+add_compile_options(-std=c++17 -g -O0)
 
 # 设置编译输出目录为当前目录下的bin文件夹
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")
@@ -71,7 +71,7 @@ target_link_libraries(test_aclnn_mega_moe PRIVATE             # 替换实际算�
     ${ASCEND_PATH}/lib64/libascendcl.so
     ${ASCEND_PATH}/lib64/libnnopbase.so
     ${ASCEND_PATH}/lib64/libhccl.so
-    /home/c00588804/0326/mega_moe/vendors/MEGA_transformer/op_api/lib/libcust_opapi.so   # 仅自定义算子需要
+    ${CMAKE_CURRENT_SOURCE_DIR}mega_moe/vendors/MEGA_transformer/op_api/lib/libcust_opapi.so   # 仅自定义算子需要
     # ${ASCEND_PATH}/lib64/libopapi_transformer.so    # 仅内置算子需要
 )
 

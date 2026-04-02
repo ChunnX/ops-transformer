@@ -121,6 +121,35 @@ bool loadBinaryFile(const std::string& filename, std::vector<T>& data) {
     return true;
 }
 
+std::string GetCurrentPath()
+{
+    std::filesystem::path current_path = std::filesystem::current_path();
+    return current_path.string() + "/";
+}
+
+std::string GetOutPutDataPath(int32_t rankId)
+{
+    return GetCurrentPath() + "/data/" + std::to_string(rank) + "/";
+}
+
+template<typename OutputDtype>
+void WriteResultToBin(int32_t rank, std::string actualResultFile, void *buf, int64_t len)
+{
+    int size = sizeof(OutputDtype) * len;
+    std::string dataPath = GetOutPutDataPath(rank);
+    std::string path = dataPath + actualResultFile;
+    std::vector<char> actualResult(size, 0);
+    auto error = aclrtMemcpy(actualResult.data(), size, buf, size, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (error != 0) {
+        printf("[ERROR] aclrtMemcpy failed. ret: %d, file: %s\n", error, actualResultFile.c_str());
+        return;
+    }
+    std::ofstream outfile(path, std::ifstream::binary);
+    outfile.write(actualResult.data(), size);
+    outfile.close();
+    printf("[INFO] Write result to file successfully. file: %s\n", path.c_str());
+}
+
 int launchOneThread_MegaMoe(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
@@ -280,6 +309,10 @@ int launchOneThread_MegaMoe(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); return ret);
     LOG_PRINT("[INFO] device_%d aclnnMegaMoe execute successfully.\n", args.rankId);
+
+    WriteResultToBin<int16_t>(args.rankId, "workspace.bin", workspaceAddr, workspaceSize);
+    WriteResultToBin<int8_t>(args.rankId, "output.bin", yDeviceAddr, output2ShapeSize);
+    printf("Get workspace content done. \n");
 
     // 释放device资源，需要根据具体API的接口定义修改
     if (x != nullptr) {
