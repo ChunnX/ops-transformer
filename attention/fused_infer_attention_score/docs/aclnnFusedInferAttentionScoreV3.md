@@ -37,7 +37,6 @@
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV3GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV3”接口执行计算。
@@ -189,7 +188,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -579,7 +578,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>输入</td>
         <td>是否输出softmax_lse。</td>
           <td><ul><li>支持S轴外切（增加输出）。</li>
-              <li>用户不特意指定时建议传入false。</li></td>
+              <li>用户不特意指定时建议传入false。</li></ul></td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -630,7 +629,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD_TND时，shape必须为[T, N, 1]。</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>
@@ -727,7 +725,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     </tr>
   </tbody>
   </table>
-
 
 - **返回值**
 
@@ -827,7 +824,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         - sparse：支持sparse=0，sparse为3且传入mask，sparse为4且传入mask；
         - key&value支持ND输入。
         - inputLayout：BSH、BSND、BNSD、TND。
-        - 支持actualSeqLengths、actualSeqLengthsKv参数, 当配置Q_S大于1（即MTP）且key&value的normal部分复用同一份数据场景下，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持;
+        - 支持actualSeqLengths、actualSeqLengthsKv参数，当配置Q_S大于1（即MTP）且key&value的normal部分复用同一份数据场景下，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持;
         - 不支持pse。
       - 当query的d等于128时：
         - queryRope配置时要求queryRope的shape中b、n、s与query一致，d为64；
@@ -889,7 +886,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
               <td>
                 <ul style="margin: 0; padding-left: 20px;">
                   <li>需要传入优化后的attenmask矩阵（2048*2048）；</li>
-                  <li>要求preTokens > -actualSeqLengths，nextTokens > -actualSeqLengthsKv，preTokens + nextTokens >= 0，在prefix场景，actualSeqLengthsKv要叠加prefix长度。</li>
+                  <li>要求preTokens > -actualSeqLengths，nextTokens > -actualSeqLengthsKv，preTokens + nextTokens >= 0，在prefix场景，actualSeqLengthsKv要叠加prefix长度。</li></ul>
               </td>
           </tr>
           <tr>
@@ -1027,7 +1024,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。
   - softmaxLseFlag为True时，一般情况下,shape必须为[B,N,Q_S,1]，当inputLayout为TND/NTD_TND时，shape必须为[T,N,1]。
   - softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。
-
 
 - **当Q_S大于1时**：
 
@@ -1245,8 +1241,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - page attention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
     - page attention使能场景下，当输入kv cache排布格式为BnBsH，且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为BnNBsD解决。
     - page attention不支持tensorlist场景，不支持左padding场景。
-        -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
-        -  <term>Ascend 950PR/Ascend 950DT</term>：支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+        - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+        - <term>Ascend 950PR/Ascend 950DT</term>：支持Q为BF16/FP16、KV为INT4（INT32）的场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
     - page attention的使能场景下，以下场景输入S需要大于等于blockTable的第二维 * blockSize。
@@ -1503,4 +1499,3 @@ int main() {
   return 0;
 }
 ```
-

@@ -34,8 +34,6 @@
 
     其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个n\*d的矩阵。
 
-
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnPromptFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPromptFlashAttention”接口执行计算。
@@ -254,7 +252,6 @@ aclnnStatus aclnnPromptFlashAttention(
   </tbody></table>
   </div>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -295,13 +292,12 @@ aclnnStatus aclnnPromptFlashAttention(
 
 - **参数说明**
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    </colgroup>
-    <table><thead>
+  <table style="undefined;table-layout: fixed; width: 1143px"><colgroup>
+  <col style="width: 178px">
+  <col style="width: 134px">
+  <col style="width: 831px">
+  </colgroup>
+  <thead>
     <tr>
       <th>参数名</th>
       <th>输入/输出</th>
@@ -328,11 +324,10 @@ aclnnStatus aclnnPromptFlashAttention(
       <td>输入</td>
       <td>指定执行任务的Stream。</td>
     </tr>
-    </tbody>
-    </table>
-    </div>
+  </tbody>
+  </table>
     
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

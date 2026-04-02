@@ -50,8 +50,8 @@ protected:
     ge::graphStatus DoKcQuantMMTiling();
     ge::graphStatus SetHcclTiling();
     void SetUserWorkSpace();
-    ge::graphStatus SetKcDataTypeInfo(const gert::TilingContext *context, const char *opName,
-                                                        TilingContextInfo &contextInfo);
+    ge::graphStatus CheckKcTensorFormat(const gert::TilingContext *context, const char *opName);
+    ge::graphStatus SetKcDataTypeInfo(const gert::TilingContext *context, const char *opName, TilingContextInfo &contextInfo);
     
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
     void PrintAlltoAllKcQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);

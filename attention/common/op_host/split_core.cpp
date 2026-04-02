@@ -79,6 +79,8 @@ int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &ba
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         case SparseMode::BAND:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + baseInfo.nextToken;
+        case SparseMode::TREE:
+            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         default:
             return baseInfo.nextToken;
     }

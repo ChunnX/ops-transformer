@@ -176,7 +176,7 @@ int main()
     std::vector<float> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
     std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
     // 对groupList赋值
-    groupListHostData[0] = 64;
+    groupListHostData[0] = m;
 
     std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
     std::vector<int64_t> logitHostData(GetShapeSize(logitShape));

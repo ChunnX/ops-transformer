@@ -57,7 +57,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## aclnnMatmulReduceScatterGetWorkspaceSize
 
--   **参数说明**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
@@ -211,7 +211,7 @@ aclnnStatus aclnnMatmulReduceScatter(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -249,11 +249,12 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## aclnnMatmulReduceScatter
 
--   **参数说明**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1166px"> <colgroup>
     <col style="width: 173px">
     <col style="width: 133px">
     <col style="width: 860px">
+    </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
@@ -283,10 +284,9 @@ aclnnStatus aclnnMatmulReduceScatter(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
 
 ## 约束说明
 
@@ -324,6 +324,7 @@ aclnnStatus aclnnMatmulReduceScatter(
     #include <iostream>
     #include <vector>
     #include "hccl/hccl.h"
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_reduce_scatter.h"
 
     #define CHECK_RET(cond, return_expr) \
@@ -407,10 +408,10 @@ aclnnStatus aclnnMatmulReduceScatter(
         long long biasShapeSize = GetShapeSize(biasShape);
         long long outShapeSize = GetShapeSize(outShape);
 
-        std::vector<int16_t> x1HostData(x1ShapeSize, 0);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 0);
-        std::vector<int16_t> biasHostData(biasShapeSize, 0);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 0);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 0);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 0);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);

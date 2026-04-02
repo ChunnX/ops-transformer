@@ -62,6 +62,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetPlatformInfo()
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
+        l2CacheSize = compileInfoPtr->l2CacheSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -71,9 +72,11 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
     }
-    OP_LOGI(context_, "get platform from compileInfo. aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
-              aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
+    OP_LOGI(context_, "get platform from compileInfo. aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu)"
+            "l2CacheSize(%ld).",
+            aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize, l2CacheSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -207,11 +210,14 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
                        OPS_REPORT_VECTOR_INNER_ERR(opName, "outDtype value is out of range"), return false);
         outDtype = outDtype + 1; // 外部合法是0或1, 内部对应使用1和2,如果没有量化参数, 后面会刷成0, 1表示fp16, 2表示bf16
     }
-    idx++; // 跳过softmax_out_layout属性
+    if (attrs->GetAttrNum() > idx) {
+        softmaxOutLayout = attrs->GetAttrPointer<char>(idx++);
+        tndSoftmaxOut = (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxOutLayout, "same_as_input") == 0) ? 1 : tndSoftmaxOut;
+    }
     OP_LOGD(context_, "attrs: scale_value[%f] keep_prob[%f] pre_tockens[%ld] next_tockens[%ld] head_num[%ld] input_layout[%s]"
-                      "inner_precise[%d] sparse_mode[%ld] pseType[%ld] seed[%ld] offset[%ld] outDtype[%ld].",
+                      "inner_precise[%d] sparse_mode[%ld] pseType[%ld] seed[%ld] offset[%ld] outDtype[%ld] softmaxOutLayout[%s].",
               scaleValue, keepProb, preTokens, nextTokens, n1Size, inputLayout, static_cast<int>(implMode), sparseMode, pseType,
-              seed, offset, outDtype);
+              seed, offset, outDtype, softmaxOutLayout);
     return true;
 }
 
@@ -533,6 +539,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
     inputParamsRegbase_->set_keepProbUint8(keepProbUint8);
     inputParamsRegbase_->set_seed(seed);
     inputParamsRegbase_->set_offset(offset);
+    inputParamsRegbase_->set_tndSoftmaxOut(tndSoftmaxOut);
 
     OP_LOGD(context_, "input ParamsRegbase: bn2gs1s2d[%ld, %ld, %ld, %ld, %ld, %ld], keepProb[%f], scaleValue[%f],"
                         "pseType:%ld.", bSize, n2Size, gSize, s1Size, s2Size, dSize, keepProb, scaleValue, pseType);
@@ -860,13 +867,52 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     return true;
 }
 
+bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
+{
+    auto sinkShapePtr = context_->GetOptionalInputShape(SINK_INPUT_INDEX);
+    auto sinkInputPtr = context_->GetOptionalInputDesc(SINK_INPUT_INDEX);
+    if (sinkShapePtr != nullptr && sinkInputPtr != nullptr && sinkShapePtr->GetStorageShape().GetDimNum() != 0) {
+        hasSink = true;
+        auto shape = sinkShapePtr->GetStorageShape();
+        int64_t dimNum = shape.GetDimNum();
+        auto sinkDtype = sinkInputPtr->GetDataType();
+        OP_CHECK_IF(sinkDtype != ge::DT_FLOAT,
+            OP_LOGE(opName, "invalid sink dtype[%s], only support float.",
+                ge::TypeUtils::DataTypeToSerialString(sinkDtype).c_str()),
+            return false);
+
+        std::string sinkShape = "";
+        for (int i = 0; i < dimNum; ++i) {
+            sinkShape += std::to_string(shape.GetDim(i));
+            if (i < dimNum - 1) {
+                sinkShape += ", ";
+            }
+        }
+        OP_CHECK_IF(dimNum != 1, OP_LOGE(opName, "invalid sink shape [%s], sink only support [n,].",
+            sinkShape.c_str()),
+            return false);
+
+        int64_t expectedSinkSize = n1Size;
+        auto actualSinkShapeSize = shape.GetShapeSize();
+        OP_CHECK_IF(actualSinkShapeSize != expectedSinkSize, OP_LOGE(context_,
+            "invalid sink shapeSize, expect [%ld], but got [%ld].",
+            expectedSinkSize, actualSinkShapeSize),
+            return false);
+
+        OP_CHECK_IF(!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16),
+            OP_LOGE(opName, "invalid input dtype, other tensor`s dtype only support float16 and bf16."),
+            return false);
+    }
+    return true;
+}
+
 bool FlashAttentionScoreTilingRegbase::AnalyzeOptionalInput()
 {
     OP_CHECK_IF(!AnalyzePseOptionalInput() || !AnalyzeAttenOptionalInput() || !AnalyzeDropOptionalInput() ||
-               !AnalyzeFp8OptionalInput(),
+               !AnalyzeFp8OptionalInput() || !AnalyzeSinkOptionalInput(),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze Optional Input error."), return false);
-    OP_LOGD(context_, "hasPse: %d, hasAttenMask: %d, hasDropOut: %d, dropMaskouter %d.",
-              hasPse, hasAttenMask, hasDropOut, dropMaskOuter);
+    OP_LOGD(context_, "hasPse: %d, hasAttenMask: %d, hasDropOut: %d, dropMaskOuter %d, hasSink: %d.",
+            hasPse, hasAttenMask, hasDropOut, dropMaskOuter, hasSink);
     return true;
 }
 
@@ -877,8 +923,6 @@ void FlashAttentionScoreTilingRegbase::SetMultiCoreParamsRegbase(int64_t totalSi
     multiCoreParamsRegbase_->set_totalSize(totalSize);
     multiCoreParamsRegbase_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
     multiCoreParamsRegbase_->set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParamsRegbase_->get_splitFactorSize()));
-    multiCoreParamsRegbase_->set_splitCoreMode(static_cast<uint8_t>(splitCoreMode));
-    multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(firstFullLoadS1OuterIdx);
 }
 
 void FlashAttentionScoreTilingRegbase::SetSparseParamsRegbase(int64_t maxCoreNum)
@@ -930,8 +974,8 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     SetOutputDtype();
     multiCoreParamsRegbase_->set_s1OuterSize(CeilDivision(s1Size, s1BasicBlock));
     int64_t totalSize = CalcTotalSize();
-    SetSplitCoreModeParam();
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
+    SetSplitCoreModeParam();
     SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
     OP_CHECK_IF(!SetPseAlibiParamsRegbase(), OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to set pse alibi info."),
                return ge::GRAPH_FAILED);
@@ -939,22 +983,77 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void FlashAttentionScoreTilingRegbase::CalcThresholdForS2Size() {
-    int64_t l2CacheSizeForKandV = L2_CACHE_SIZE * NUM_1024 * NUM_1024;
-    if (bSize == 0 || n2Size == 0 || dBasicBlock == 0 || dVBasicBlock == 0) {
-        OP_LOGE(context_, "The product of bSize[%ld], nSize[%ld], dSize[%ld] and dVSzie[%ld] cannot be zero.",
-            bSize, n1Size, dBasicBlock, dVBasicBlock);
-        thresholdS2Size = std::numeric_limits<int64_t>::max();
+void FlashAttentionScoreTilingRegbase::CalcThresholdForS2Size()
+{
+    int64_t l2CacheSizeRemain = static_cast<int64_t>(l2CacheSize);
+
+    // 计算attentionMask占用的空间
+    int64_t attenMaskSize = 0;
+    int8_t attenMaskShapeType = inputParamsRegbase_->get_attenMaskShapeType();
+    if (hasAttenMask) {
+        if (sparseMode == static_cast<int64_t>(SparseMode::NO_MASK) ||
+            sparseMode == static_cast<int64_t>(SparseMode::ALL_MASK)) {
+            if (attenMaskShapeType == static_cast<uint8_t>(AttenMaskShapeType::ATTEN_B_N2_G_S1_S2)) {
+                attenMaskSize = bSize * n2Size * gSize * s1Size * s2Size;
+            } else if (attenMaskShapeType == static_cast<uint8_t>(AttenMaskShapeType::ATTEN_B_1_1_S1_S2)) {
+                attenMaskSize = bSize * s1Size * s2Size;
+            } else if (attenMaskShapeType == static_cast<uint8_t>(AttenMaskShapeType::ATTEN_1_1_1_S1_S2)) {
+                attenMaskSize = s1Size * s2Size;
+            }
+        } else if (sparseMode == static_cast<int64_t>(SparseMode::LEFT_UP_CAUSAL) ||
+            sparseMode == static_cast<int64_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
+            attenMaskSize = COMPRESS_ATTEN_MASK_SIZE;
+        }
+    }
+    OP_LOGD(context_, "AttentionMask may use %ld of L2 cache.", attenMaskSize);
+
+    l2CacheSizeRemain -= attenMaskSize;
+    if (l2CacheSizeRemain < 0) {
+        OP_LOGD(context_, "The attentionMask[%ld] size is larger than the remaining L2 cache[%ld].",
+                attenMaskSize, l2CacheSizeRemain);
+        l2CacheSizeRemain = 0;
+    }
+
+    // 计算外部传入dropout占用的空间
+    int64_t dropMaskSize = 0;
+    if (dropMaskOuter) {
+        dropMaskSize = bSize * n1Size * s1Size * s2Size;
+        dropMaskSize = AlignUp(dropMaskSize, BYTE_BIT_NUM) / BYTE_BIT_NUM;
+    }
+    OP_LOGD(context_, "DropMask may use %ld of L2 cache.", dropMaskSize);
+
+    l2CacheSizeRemain -= dropMaskSize;
+    if (l2CacheSizeRemain < 0) {
+        OP_LOGD(context_, "The dropOutMask[%ld] size is larger than the remaining L2 cache[%ld].",
+                dropMaskSize, l2CacheSizeRemain);
+        l2CacheSizeRemain = 0;
+    }
+
+    int64_t actualUsedCoreNum = static_cast<int64_t>(multiCoreParamsRegbase_->get_coreNum());   // 假设所有核计算的N都不同
+    // 判断是否能同时存下不同N的两轮计算的数据量
+    int64_t n1Num = std::min(2 * actualUsedCoreNum, bSize * n2Size * gSize);        // 部分场景在两轮计算中就可以完成
+    int64_t n2Num = std::min(2 * actualUsedCoreNum, bSize * n2Size);
+    int64_t dataTypeSize = ge::GetSizeByDataType(inputDtype);
+    if (n2Num == 0 || dataTypeSize == 0) {
+        OP_LOGE(context_, "The n2Num[%ld] and dataTypeSize[%ld] cann not be zero.", n2Num, dataTypeSize);
         return;
     }
 
-    int64_t typeSize = ge::GetSizeByDataType(inputDtype);
-    // 当bn1比较大时，部分s比较小的场景，性能受限并非在L2cache资源的复用；
-    int64_t bnSize = std::min(bSize * n2Size, static_cast<int64_t>(aicNum));
-    thresholdS2Size = l2CacheSizeForKandV / (bnSize * (dBasicBlock + dVBasicBlock) * typeSize);
+    int64_t qSize = n1Num * dSize * s1Size * dataTypeSize;
+    l2CacheSizeRemain -= qSize;
+    if (l2CacheSizeRemain < 0) {
+        thresholdS2Size = 0;
+    } else {
+        thresholdS2Size = l2CacheSizeRemain / (n2Num * (dSize + dSizeV) * dataTypeSize);
+    }
+
+    OP_LOGD(context_, "thresholdS2Size[%ld], l2CacheSizeRemain[%ld], n1Num[%ld], n2Num[%ld], dSize[%ld], dSizeV[%ld],"
+            "dataTypeSize[%ld]",
+            thresholdS2Size, l2CacheSizeRemain, n1Num, n2Num, dSize, dSizeV, dataTypeSize);
 }
 
-bool FlashAttentionScoreTilingRegbase::IsUseSpliteCoreMode(SparseMode inputSparseMode) {
+bool FlashAttentionScoreTilingRegbase::IsUseSplitCoreMode(SparseMode inputSparseMode)
+{
     if (inputSparseMode == SparseMode::LEFT_UP_CAUSAL) {
         return std::min(s1Size, s2Size) >= thresholdS2Size;
     }
@@ -963,6 +1062,10 @@ bool FlashAttentionScoreTilingRegbase::IsUseSpliteCoreMode(SparseMode inputSpars
         if (s1Size <= s2Size) {
             return s2Size >= thresholdS2Size;
         }
+    }
+
+    if (inputSparseMode == SparseMode::ALL_MASK) {
+        return s2Size >= thresholdS2Size;
     }
 
     return false;
@@ -974,25 +1077,50 @@ void FlashAttentionScoreTilingRegbase::SetSplitCoreModeParam()
 
     // 索引从0开始，需要将基本块个数减1
     if ((sparseMode == static_cast<int64_t>(SparseMode::LEFT_UP_CAUSAL)) &&
-        IsUseSpliteCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
+        IsUseSplitCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
         firstFullLoadS1OuterIdx = CeilDivision(std::min(s1Size, s2Size), s1BasicBlock) - 1;
         splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
     } else if ((sparseMode == static_cast<int64_t>(SparseMode::RIGHT_DOWN_CAUSAL)) &&
-        IsUseSpliteCoreMode(SparseMode::RIGHT_DOWN_CAUSAL)) {
+        IsUseSplitCoreMode(SparseMode::RIGHT_DOWN_CAUSAL)) {
         firstFullLoadS1OuterIdx = multiCoreParamsRegbase_->get_s1OuterSize() - 1;
         splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+    } else if (sparseMode == static_cast<int64_t>(SparseMode::ALL_MASK) &&
+        IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
+        firstFullLoadS1OuterIdx = -1;
+        splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
     } else if (sparseMode == static_cast<int64_t>(SparseMode::NO_MASK)) {
-        if (!hasAttenMask && s2Size >= thresholdS2Size) {
+        if ((!hasAttenMask || (preTokens >= s1Size && nextTokens >= s2Size)) &&
+            IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
             firstFullLoadS1OuterIdx = -1;
             splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
-        } else if (preTokens >= s1Size && nextTokens == 0 && IsUseSpliteCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
+        } else if (preTokens >= s1Size && nextTokens == 0 && IsUseSplitCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
             firstFullLoadS1OuterIdx = CeilDivision(std::min(s1Size, s2Size), s1BasicBlock) - 1;
             splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
         } else if (inputDtype == ge::DT_HIFLOAT8) {
             firstFullLoadS1OuterIdx = -1;
             splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
         }
+    } else if (sparseMode == static_cast<int64_t>(SparseMode::BAND)) {
+        if (preTokens >= s1Size && nextTokens >= s2Size && IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
+            firstFullLoadS1OuterIdx = -1;
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        } else if (preTokens >= s1Size && nextTokens == 0 && IsUseSplitCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
+            firstFullLoadS1OuterIdx = CeilDivision(std::min(s1Size, s2Size), s1BasicBlock) - 1;
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        } else if (s1Size <= s2Size && preTokens >= s1Size && nextTokens == s2Size - s1Size &&
+            IsUseSplitCoreMode(SparseMode::RIGHT_DOWN_CAUSAL)) {
+            firstFullLoadS1OuterIdx = multiCoreParamsRegbase_->get_s1OuterSize() - 1;
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        } else if (!(preTokens < s1Size - s2Size || nextTokens < 0) &&
+            IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
+            // 不包含无效行的band场景，按顺序分核
+            firstFullLoadS1OuterIdx = -1;
+            splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
+        }
     }
+
+    multiCoreParamsRegbase_->set_splitCoreMode(static_cast<uint8_t>(splitCoreMode));
+    multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(firstFullLoadS1OuterIdx);
 
     OP_LOGD(context_, "sparseMode: %ld, firstFullLoadS1OuterIdx: %ld, splitCoreMode: %d, s2SizeThreshold: %d.",
         sparseMode, firstFullLoadS1OuterIdx, splitCoreMode, thresholdS2Size);

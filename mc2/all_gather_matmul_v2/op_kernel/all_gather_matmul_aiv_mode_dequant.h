@@ -16,34 +16,34 @@
 #ifndef CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 #define CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/detail/callback.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/block/block_epilogue.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "all_gather_matmul_aiv_mode_block_epilogue_dequant.h"
 
 #define DEQUANT_ARGS_CALL() \
     rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), \
     tileM0, tileN0, pValue, swizzlDirect, swizzlCount, blockSt, blockSize, \
-    blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken
+    blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
 
 #define DEQUANT_ARGS_FUN() \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
     __gm__ int32_t *workspace, GM_ADDR output,                                                            \
     uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
     uint64_t blockSt, uint64_t blockSize, uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,        \
-    Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
+    Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
 
 template <typename OutputType> 
 class DequantRunner {
@@ -133,13 +133,13 @@ public:
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
                               perTokenScale + perTokenScaleOffset, layoutPerTokenScale, workspace + dataOffset, layoutC,
-                              gmD + dataOffset, layoutC, blockSizeCoord);
+                              gmD + dataOffset, layoutC, blockSizeCoord, isInt4Type);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, workspace + dataOffset,
-                              layoutC, gmD + dataOffset, layoutC, blockSizeCoord);
+                              layoutC, gmD + dataOffset, layoutC, blockSizeCoord, isInt4Type);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + perTokenScaleOffset, layoutPerTokenScale, gmD + dataOffset, layoutC,
-                              blockSizeCoord);
+                              blockSizeCoord, isInt4Type);
             }
         }
     }

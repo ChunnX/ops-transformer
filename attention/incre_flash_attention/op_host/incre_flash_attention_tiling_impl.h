@@ -85,6 +85,8 @@ private:
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus ProcessOptionalTensors();
     ge::graphStatus ProcessPseShift();
+    ge::graphStatus CheckTreeSparseMask();
+    ge::graphStatus CheckTreeSparseMaskShape();
     ge::graphStatus CheckTndMaskShapeWithSparseMode();
     ge::graphStatus CheckMaskShapeWithQSeq() const;
     ge::graphStatus CheckAttenMaskShape();
@@ -360,6 +362,7 @@ private:
     uint32_t sMax_ = 0;
     uint32_t tSeqSize_ = 1; // TND格式T轴长度
     uint32_t qSeqSize_ = 1; // 默认S1 = 1
+    uint64_t qSeqSquareSum_ = 0; // 给Sparse9 TND下mask大小用
     uint32_t blockTypeSize_ = 0; // 计算中间量大小
     uint32_t kvSplitPart_ = 1;
 

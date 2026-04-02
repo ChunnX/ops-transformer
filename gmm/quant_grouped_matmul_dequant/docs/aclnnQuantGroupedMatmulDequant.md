@@ -93,7 +93,6 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
   aclrtStream    stream)
 ```
 
-
 ## aclnnQuantGroupedMatmulDequantGetWorkspaceSize
 
 - **参数说明**
@@ -335,7 +334,6 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
     </tr>
   </tbody>
   </table>
-
 
 - **返回值**
 
