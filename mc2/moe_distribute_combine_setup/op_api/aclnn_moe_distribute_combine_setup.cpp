@@ -155,7 +155,6 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
         expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
         sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, quantExpandXOut,
         commCmdInfoOut, workspaceSize, executor);
-    OP_LOGD("aclnnMoeDistributeCombineSetupGetWorkspaceSize success.");
     return retStatus;
 }
 
