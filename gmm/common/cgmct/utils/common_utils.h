@@ -28,6 +28,7 @@ namespace Gemm {
 constexpr int64_t MATRIX_INNER_DIM_LIMIT_SIZE = 65536LL;
 constexpr int32_t MATMUL_MNK_ALIGN = 16;
 constexpr int32_t MATMUL_MNK_ALIGN_INT8 = 32;
+constexpr int32_t MATMUL_MNK_ALIGN_INT4 = 64;
 constexpr int64_t DOUBLE_BUFFER_COUNT = 2LL;
 constexpr int64_t UB_FLOAT_ALIGN_NUM = 8LL;
 constexpr int64_t L1_EVENT_ID_OFFSET = 2LL;
