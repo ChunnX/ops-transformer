@@ -155,22 +155,7 @@
 </tbody>
 </table>
 
-- Kirin X90/Kirin 9030 处理器系列产品:
-  - x 数据类型仅支持 FLOAT16
-  - weight1 数据类型仅支持 FLOAT16
-  - weight2 数据类型仅支持 FLOAT16
-  - expertTokens 数据类型仅支持 INT64
-  - bias1 数据类型仅支持 FLOAT16
-  - bias2 数据类型仅支持 FLOAT16
-  - scale 数据类型仅支持 FLOAT
-  - offset 数据类型仅支持 FLOAT
-  - deqScale1 数据类型仅支持 UINT64
-  - deqScale2 数据类型仅支持 UINT64
-  - antiquantScale1 数据类型仅支持 FLOAT16
-  - antiquantScale2 数据类型仅支持 FLOAT16
-  - antiquantOffset1 数据类型仅支持 FLOAT16
-  - antiquantOffset2 数据类型仅支持 FLOAT16
-  - y 数据类型仅支持 FLOAT16
+
 
   ## 约束说明
 

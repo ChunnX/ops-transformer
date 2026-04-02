@@ -236,17 +236,8 @@
   - 输入参数biasOptional不支持BFLOAT16。
   - 输入参数scaleOptional不支持INT64类型。
 
-- Kirin X90/Kirin 9030 处理器系列产品:
-  - x 数据类型仅支持 FLOAT16
-  - weight 数据类型仅支持 FLOAT16
-  - bias 数据类型仅支持 FLOAT16
-  - scale 数据类型仅支持 UINT64
-  - offset 数据类型仅支持 FLOAT
-  - antiquant_scale 数据类型仅支持 FLOAT16
-  - antiquant_offset 数据类型仅支持 FLOAT16
-  - group_list 数据类型仅支持 INT64
-  - per_token_scale 数据类型仅支持 FLOAT16
-  - y 数据类型仅支持 FLOAT16
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT8_E8M0、HIFLOAT8。
+
 
 ## 约束说明
 
