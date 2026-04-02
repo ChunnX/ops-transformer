@@ -128,16 +128,17 @@ private:
     int64_t hUBTail_ = 0;
     int64_t bUBTail_ = 0;
     int64_t sUBTail_ = 0;
+    int64_t allUb_ = 0;
 
-    // 新增：主核UB切块参数
+    // 新增：主核UB切块参数（有效输出大小，不包含重叠）
     int64_t ubMainFactorH_ = 0;
     int64_t ubTailFactorH_ = 0;
     int64_t ubMainFactorB_ = 0;
     int64_t ubTailFactorB_ = 0;
-    int64_t ubMainFactorS_ = 0;
-    int64_t ubTailFactorS_ = 0;
+    int64_t ubMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
+    int64_t ubTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
 
-    // 新增：尾核参数
+    // 新增：尾核参数（有效输出大小，不包含重叠）
     int64_t tailHLoopCnt_ = 0;
     int64_t tailBLoopCnt_ = 0;
     int64_t tailSLoopCnt_ = 0;
@@ -146,8 +147,8 @@ private:
     int64_t tailCoreUbTailFactorH_ = 0;
     int64_t tailCoreUbMainFactorB_ = 0;
     int64_t tailCoreUbTailFactorB_ = 0;
-    int64_t tailCoreUbMainFactorS_ = 0;
-    int64_t tailCoreUbTailFactorS_ = 0;
+    int64_t tailCoreUbMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
+    int64_t tailCoreUbTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
 
     // TilingData object
     MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35 tilingData_{};

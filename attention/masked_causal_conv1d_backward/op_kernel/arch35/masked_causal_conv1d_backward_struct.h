@@ -35,8 +35,8 @@ struct MaskedCausalConv1dBackwardTilingDataV35 {
     int64_t ubTailFactorH{0};          // 主核UB内h维度尾块大小
     int64_t ubMainFactorB{0};          // 主核UB内b维度主块大小
     int64_t ubTailFactorB{0};          // 主核UB内b维度尾块大小
-    int64_t ubMainFactorS{0};          // 主核UB内s维度主块大小
-    int64_t ubTailFactorS{0};          // 主核UB内s维度尾块大小
+    int64_t ubMainFactorS{0};          // 主核UB内s维度主块大小（有效输出行数，不包含重叠部分）
+    int64_t ubTailFactorS{0};          // 主核UB内s维度尾块大小（有效输出行数，不包含重叠部分）
 
     // 尾核循环参数
     int64_t tailHLoopCnt{0};           // 尾核UB内h维度循环次数
@@ -48,8 +48,8 @@ struct MaskedCausalConv1dBackwardTilingDataV35 {
     int64_t tailCoreUbTailFactorH{0};  // 尾核UB内h维度尾块大小
     int64_t tailCoreUbMainFactorB{0};  // 尾核UB内b维度主块大小
     int64_t tailCoreUbTailFactorB{0};  // 尾核UB内b维度尾块大小
-    int64_t tailCoreUbMainFactorS{0};  // 尾核UB内s维度主块大小
-    int64_t tailCoreUbTailFactorS{0};  // 尾核UB内s维度尾块大小
+    int64_t tailCoreUbMainFactorS{0};  // 尾核UB内s维度主块大小（有效输出行数，不包含重叠部分）
+    int64_t tailCoreUbTailFactorS{0};  // 尾核UB内s维度尾块大小（有效输出行数，不包含重叠部分）
 
     // 全局参数
     int64_t hasMask{0};                // 1，有mask；0，无mask

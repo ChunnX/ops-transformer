@@ -24,28 +24,34 @@ public:
         this->Input("grad_output")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("input")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("mask")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BOOL, ge::DT_BOOL})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
 
         this->Output("grad_input")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("grad_weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
 
         OpAICoreConfig config_950;
         config_950.DynamicCompileStaticFlag(true)

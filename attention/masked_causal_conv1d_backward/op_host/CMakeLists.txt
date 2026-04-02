@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnExc PRIVATE
+    target_sources(op_host_aclnn PRIVATE
     masked_causal_conv1d_backward_def.cpp
     )
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
@@ -33,5 +33,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE masked_causal_conv1d_backward ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE masked_causal_conv1d_backward ACLNNTYPE aclnn)
 endif()

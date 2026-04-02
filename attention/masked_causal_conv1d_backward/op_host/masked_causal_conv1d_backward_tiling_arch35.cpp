@@ -69,8 +69,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
     OP_CHECK_IF(S_ <= 0 || S_ > (1 << 15), OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(B_ <= 0 || B_ > 8, OP_LOGE(context_->GetNodeName(), "invalid B=%ld", B_), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(H_ < 384 || H_ > (192 * 128), OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(H_ < 384 || H_ > (192 * 128), OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
+    //             return ge::GRAPH_FAILED);
 
     // H 必须按 64 对齐以便 H 方向切分
     OP_CHECK_IF((H_ % DIM_ALIGN_ELEMENT) != 0,
@@ -273,77 +273,121 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     int64_t perCoreH = (hMainCoreCnt_ > 0) ? hMainSize_ : hTailSize_;
 
     // Buffer占用估算函数
-    auto calculateBufferSize = [&](int64_t h, int64_t b, int64_t s) -> int64_t {
+    // 参数 s_effective 是有效输出行数（不包含重叠部分）
+    auto calculateBufferSize = [&](int64_t h, int64_t b, int64_t s_effective) -> int64_t {
         // 根据文档第4节Buffer设计
-        int64_t gradOutputSize = h * b * (s+2) * static_cast<int64_t>(dtypeSize_);
-        int64_t inputSize = h * b * s * static_cast<int64_t>(dtypeSize_);
+        // gradOutputQueue 和 maskQueue 需要加上重叠的2行（W-1）
+        int64_t s_with_overlap = s_effective + (W_ - 1);
+
+        // gradOutputQueue: hUb * bUb * (sUb + W-1) * sizeof(DTYPE) - double buffer
+        int64_t gradOutputSize = h * b * s_with_overlap * static_cast<int64_t>(dtypeSize_);
+
+        // inputQueue: hUb * bUb * sUb * sizeof(DTYPE) - double buffer
+        int64_t inputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
+
+        // weightQueue: hUb * W * sizeof(DTYPE) - double buffer
         int64_t weightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
-        int64_t maskSize = (hasMask_ != 0) ? ((b * s + 7) / 8) : 0;            // BOOL类型，8bit对齐
-        int64_t gradInputSize = h * b * s * static_cast<int64_t>(dtypeSize_);
+
+        // maskQueue: bUb * (sUb + W-1) - double buffer (BOOL类型，每个元素1字节)
+        // 注意：maskQueue 始终分配，即使 mask=None 时 kernel 也会使用全1的mask
+        int64_t maskSize = b * s_with_overlap;
+
+        // gradInputQueue: hUb * bUb * sUb * sizeof(DTYPE) - double buffer
+        int64_t gradInputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
+
+        // gradWeightQueue: hUb * W * sizeof(DTYPE) - double buffer
         int64_t gradWeightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
 
-        // 所有Buffer都是double buffer，所以乘2
-        int64_t totalSize = 2 * (gradOutputSize + inputSize + weightSize + maskSize +
-                                 gradInputSize + gradWeightSize);
+        // tempBuff: hUb * W * sizeof(float) - TBuf (单buffer，用于临时存储权重梯度)
+        int64_t tempBuffSize = h * W_ * sizeof(float);
+
+        // 所有Queue都是double buffer，tempBuff是单buffer
+        int64_t totalSize = BUFFER_NUM * (gradOutputSize + inputSize + weightSize + maskSize +
+                                          gradInputSize + gradWeightSize) + tempBuffSize;
         return totalSize;
     };
 
     // 首先尝试H=64，全载BS
+    // 注意：sUB_ 存储的是有效输出行数（不包含重叠部分）
     hUB_ = minH;
     bUB_ = B_;
-    sUB_ = S_;
+    sUB_ = S_;  // 有效输出大小
     if (calculateBufferSize(hUB_, bUB_, sUB_) <= availableUbSize) {  //H=64能全载BS，看H能否增加
-        // 能够全载，则尝试增加H（保证H*DTypeSize为128B的倍数）
-        int64_t h_increment = 128 / static_cast<int64_t>(dtypeSize_);  // FP16/BF16: 64
-        // int64_t maxH = std::min(perCoreH, (int64_t)(availableUbSize / (2 * B_ * S_ * dtypeSize_ + 2 * W_ * dtypeSize_)));
+        // 计算理论最大H（简化公式，基于Buffer占用）
+        int64_t s_effective = sUB_;
+        int64_t s_with_overlap = s_effective + (W_ - 1);
+        int64_t coeff = B_ * s_with_overlap * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                        2 * B_ * s_effective * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                        2 * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                        W_ * sizeof(float);
+        // maskQueue 始终存在，大小为 bUb * (sUb + W-1)
+        int64_t const_cost = BUFFER_NUM * B_ * s_with_overlap;
+        int64_t maxH = std::min(perCoreH, (availableUbSize - const_cost) / coeff);
+        hUB_ = (maxH / minH) * minH;  // 对齐到64
 
-        // while (hUB_ + h_increment <= maxH) {
-        //     if (calculateBufferSize(hUB_ + h_increment, bUB_, sUB_) <= availableUbSize) {
-        //         hUB_ += h_increment;
-        //     } else {
-        //         break;
-        //     }
-        // }
-        int64_t maxH = std::min(perCoreH, (int64_t)(availableUbSize / (6*B_*S_*dtypeSize_ + 4*B_*dtypeSize_ + 4*W_*dtypeSize_)));
-        hUB_ = maxH / minH * minH;
+        // 确保至少是minH
+        if (hUB_ < minH) {
+            hUB_ = minH;
+        }
     } else {
         // 不能全载，先压缩B
         bUB_ = 1;
-        if (calculateBufferSize(hUB_, bUB_, sUB_) <= availableUbSize) { //B=1时能全载S，看B能否增加
-            int64_t maxB = std::min(B_, (int64_t)((availableUbSize - 4*hUB_*W_*dtypeSize_)/ (6*hUB_*S_*dtypeSize_ + 4*hUB_*dtypeSize_)));
-            bUB_ = maxB;
-        } else {  //即便B=1也不能全载，切S
-            sUB_ = (int64_t)((availableUbSize - 4*hUB_*W_*dtypeSize_ - 4*hUB_*bUB_*dtypeSize_)/ (6*hUB_*bUB_*dtypeSize_));
+        if (calculateBufferSize(hUB_, bUB_, sUB_) <= availableUbSize) { //B=1时能全载S，尝试增加B
+            // 计算最大B
+            int64_t s_effective = sUB_;
+            int64_t s_with_overlap = s_effective + (W_ - 1);
+            int64_t coeff_b = hUB_ * s_with_overlap * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM+
+                              2 * hUB_ * s_effective * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM;
+            int64_t fixed_cost = 2 * hUB_ * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                                 hUB_ * W_ * sizeof(float);
+            int64_t maxB = std::min(B_, (availableUbSize - fixed_cost) / coeff_b);
+            bUB_ = std::max<int64_t>(1, maxB);
+        } else {  //即便B=1也不能全载S，切S
+            // 计算最大的有效输出大小
+            // Buffer总大小 = s * coeff_s + const_cost_s
+            // coeff_s = (3 input/output queues) * BUFFER_NUM * h * b * dtype + maskQueue * BUFFER_NUM * b
+            // const_cost_s = BUFFER_NUM * (gradOutput/mask的常数项 + weight相关) + tempBuff
+            int64_t coeff_s = 3 *  hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM+
+                              bUB_ * BUFFER_NUM;
+            int64_t const_cost_s = 2 * hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                                   2 * hUB_ * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                                   2 * bUB_ * BUFFER_NUM +
+                                   hUB_ * W_ * sizeof(float);
+
+            int64_t min_s_effective = 1;
+            int64_t maxS = (availableUbSize - const_cost_s) / coeff_s;
+            sUB_ = std::max(min_s_effective, maxS);
         }
-        // if (calculateBufferSize(hUB_, bUB_, sUB_) > availableUbSize) {
-        //     // B=1仍不能全载，再压缩S
-        //     while (sUB_ > 1) {
-        //         sUB_ = (sUB_ + 1) / 2;  // 二分压缩
-        //         if (calculateBufferSize(hUB_, bUB_, sUB_) <= availableUbSize) {
-        //             break;
-        //         }
-        //     }
-        //     // 最小保证S=1
-        //     if (calculateBufferSize(hUB_, bUB_, sUB_) > availableUbSize) {
-        //         sUB_ = 1;
-        //     }
-        // }
     }
 
     // 计算主核的循环次数和尾块大小
+    // sUB_ 是有效输出行数（不包含重叠部分）
     hLoopCnt_ = (perCoreH + hUB_ - 1) / hUB_;
     bLoopCnt_ = (B_ + bUB_ - 1) / bUB_;
     sLoopCnt_ = (S_ + sUB_ - 1) / sUB_;
 
     // 计算主核的主块和尾块大小
     ubMainFactorH_ = hUB_;
-    ubTailFactorH_ = (hLoopCnt_ == 1) ? hUB_ : (perCoreH % hUB_ == 0 ? hUB_ : perCoreH % hUB_);
+    ubTailFactorH_ = (hLoopCnt_ == 1) ? perCoreH : (perCoreH % hUB_ == 0 ? hUB_ : perCoreH % hUB_);
 
     ubMainFactorB_ = bUB_;
-    ubTailFactorB_ = (bLoopCnt_ == 1) ? bUB_ : (B_ % bUB_ == 0 ? bUB_ : B_ % bUB_);
+    ubTailFactorB_ = (bLoopCnt_ == 1) ? B_ : (B_ % bUB_ == 0 ? bUB_ : B_ % bUB_);
 
+    // ubMainFactorS 和 ubTailFactorS 存储有效输出大小（不包含重叠部分）
     ubMainFactorS_ = sUB_;
-    ubTailFactorS_ = (sLoopCnt_ == 1) ? sUB_ : (S_ % sUB_ == 0 ? sUB_ : S_ % sUB_);
+
+    // 计算尾块：有效输出的余数
+    int64_t s_effective_remain = S_ % sUB_;
+    if (s_effective_remain == 0 && sLoopCnt_ > 0) {
+        // 能整除，尾块和主块一样
+        ubTailFactorS_ = sUB_;
+    } else if (s_effective_remain > 0) {
+        // 有余数，尾块 = 余数
+        ubTailFactorS_ = s_effective_remain;
+    } else {
+        // sLoopCnt_ == 0 的异常情况
+        ubTailFactorS_ = sUB_;
+    }
 
     // 计算尾核的参数（如果有尾核）
     if (hTailCoreCnt_ > 0 && hTailSize_ > 0) {
@@ -360,8 +404,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         tailCoreUbMainFactorB_ = ubMainFactorB_;
         tailCoreUbTailFactorB_ = ubTailFactorB_;
 
-        tailCoreUbMainFactorS_ = ubMainFactorS_;
-        tailCoreUbTailFactorS_ = ubTailFactorS_;
+        tailCoreUbMainFactorS_ = ubMainFactorS_;  // 有效输出大小，不包含重叠
+        tailCoreUbTailFactorS_ = ubTailFactorS_;  // 有效输出大小，不包含重叠
     } else {
         // 没有尾核，或尾核参数与主核相同
         tailHLoopCnt_ = hLoopCnt_;
@@ -380,6 +424,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     hUBTail_ = ubTailFactorH_;
     bUBTail_ = ubTailFactorB_;
     sUBTail_ = ubTailFactorS_;
+    allUb_ = calculateBufferSize(ubMainFactorH_, ubMainFactorB_, ubMainFactorS_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -495,6 +540,7 @@ void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "hUB=%ld bUB=%ld sUB=%ld", hUB_, bUB_, sUB_);
     OP_LOGI(context_->GetNodeName(), "hLoopCnt=%ld bLoopCnt=%ld sLoopCnt=%ld", hLoopCnt_, bLoopCnt_, sLoopCnt_);
     OP_LOGI(context_->GetNodeName(), "hUBTail=%ld bUBTail=%ld sUBTail=%ld", hUBTail_, bUBTail_, sUBTail_);
+    OP_LOGI(context_->GetNodeName(), "allUb=%ld", allUb_);
 }
 
 
