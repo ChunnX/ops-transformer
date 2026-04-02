@@ -148,8 +148,8 @@ static aclnnStatus GetHcclCommChannel(const HcclComm hcclHandle, const uint32_t 
         return ACLNN_ERR_INNER;
     }
     OP_LOGD("Get HCCL Rank Graph Layers Success, netLayerNum:%d", netLayerNum);
-    netLayers = netLayerNum - 1; // 组网拓扑层级，从0开始，则最大为num - 1
-
+    // netLayers = netLayerNum - 1; // 组网拓扑层级，从0开始，则最大为num - 1
+    netLayers = 0;
     hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Hccl Channel Init failed");
@@ -299,12 +299,12 @@ static aclnnStatus GetCommEngine(const HcclComm& hcclHandle, CommEngine& engine,
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Rank Graph Layers failed");
         return ACLNN_ERR_INNER;
     }
-    if (netLayerNum == HCCL_COMM_LAYERS_MTE_CCU) { // 目前CCU走原有方案,通过别的方式判断是否走CCU,目前只支持MTE
+    //if (netLayerNum == HCCL_COMM_LAYERS_MTE_CCU) { // 目前CCU走原有方案,通过别的方式判断是否走CCU,目前只支持MTE
         engine = CommEngine::COMM_ENGINE_AIV;
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         OP_LOGD("Get CommEngine Success engine is:%d, protocol is:%d", engine, protocol);
         return ACLNN_SUCCESS;
-    }
+    //}
     OP_LOGE(ACLNN_ERR_INNER, "Current version only supports MTE communication mode, other modes are not supported.");
     return ACLNN_ERR_INNER;
 }
