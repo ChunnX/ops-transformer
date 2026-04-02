@@ -106,6 +106,8 @@ namespace ge {
 * @li The value of epsilon must be within the value range (0,1).
 * @li The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support
 1, 2, 4, and 8 cards.
+* @attention Constraints:
+* Warning: THIS FUNCTION IS DEPRECATED. It will be removed in a future version.
 */
 REG_OP(InplaceMatmulAllReduceAddRmsNorm)
     .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))
