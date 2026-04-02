@@ -618,7 +618,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ProcessQuartetSort(LocalTensor<f
     if (quotient <= 0) {
         return;
     }
-    
+
     MrgSort4Info params;
     MrgSortSrcList<float> srcList;
     params.ifExhaustedSuspension = false;
@@ -646,7 +646,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ProcessRemainderSort(LocalTensor
     if (remainder <= 0) {
         return;
     }
-    
+
     int32_t baseOffset = quotient * nextBaseRow * perGroupExpertCountAlign_ * 2;
     int32_t mrgLen = CeilDiv(remainder, sortedBaseRow);
     int32_t tailRow = remainder - (mrgLen - 1) * sortedBaseRow;
@@ -718,7 +718,7 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -732,7 +732,7 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
             ops::StoreOneTensorForDtypeT<T>(outputAddr, vreg2, preg0, 0);
             MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
         }
-    } else {
+    } else if (tilingData_->normType == 1 || (tilingData_->normType == 0 && tilingData_->renorm == 1)) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -875,7 +875,7 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
     __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -899,7 +899,7 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
             ops::StoreOneTensorForDtypeT<T>(outputAddr, vreg2, preg0, 0);
             MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
         }
-    } else {
+    } else if (tilingData_->normType == 1 || (tilingData_->normType == 0 && tilingData_->renorm == 1)) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
