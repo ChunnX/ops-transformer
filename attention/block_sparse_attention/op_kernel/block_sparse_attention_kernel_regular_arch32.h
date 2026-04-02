@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -24,11 +24,9 @@ using namespace RfaKenelCommon;
 namespace BlockSparse {
     /**
      * @brief Block Sparse Attention Inference Kernel
-     * 
      * This kernel implements block sparse attention where attention is computed only on
      * selected KV blocks specified by selectIdx. This reduces computation for long sequences
      * by focusing on relevant tokens.
-     * 
      * @tparam BlockMmadQK Block-level QK matmul module
      * @tparam BlockMmadPV Block-level PV matmul module
      * @tparam EpilogueOnlineSoftmax Online softmax epilogue
@@ -90,9 +88,10 @@ namespace BlockSparse {
         __aicore__ inline
         BlockSparseAttentionKernel() {}
 
-        __aicore__ inline void Mask2IdxAndCount(const AscendC::GlobalTensor<uint8_t> maskGM, AscendC::GlobalTensor<int32_t> selectIdxGM,
-                                                 AscendC::GlobalTensor<int32_t> selectNumGM)
-        {           
+        __aicore__ inline void Mask2IdxAndCount(const AscendC::GlobalTensor<uint8_t> maskGM,
+                                                AscendC::GlobalTensor<int32_t> selectIdxGM,
+                                                AscendC::GlobalTensor<int32_t> selectNumGM)
+        {
             static constexpr uint32_t PRE_ROW_TILE = 128;
             static constexpr uint32_t PRE_COL_TILE = 64;
             static constexpr uint32_t PRE_ELEM_NUM_PER_LOOP = PRE_ROW_TILE * PRE_COL_TILE;
@@ -153,15 +152,17 @@ namespace BlockSparse {
                     uint64_t rsvdCountPerRowCurColLoop[PRE_ROW_TILE] = {0};
                     for (uint32_t j = 0; j < colLoop; j++) {
                         uint32_t curLoopColOffset = j * PRE_COL_TILE;
-                        uint32_t actDealtColCurLoop = (j == colLoop - 1) ? (maxKvBlockNum - curLoopColOffset) : PRE_COL_TILE;
+                        uint32_t actDealtColCurLoop =
+                            (j == colLoop - 1) ? (maxKvBlockNum - curLoopColOffset) : PRE_COL_TILE;
                         uint32_t actDealtColCurLoop32 = CeilDiv(actDealtColCurLoop, 32) * 32;
                         AscendC::CreateVecIndex(maskIdxUbLocal, static_cast<int32_t>(curLoopColOffset), PRE_COL_TILE);
                         AscendC::PipeBarrier<PIPE_V>();
                         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(idxPingPongFlag);
-                        int32_t maskOffset = curStartRowIdx * maxKvBlockNum + curLoopRowOffset * maxKvBlockNum + curLoopColOffset;
+                        int32_t maskOffset = curStartRowIdx * maxKvBlockNum +
+                            curLoopRowOffset * maxKvBlockNum + curLoopColOffset;
                         AscendC::DataCopyPad(
                             maskPatternUbLocal[idxPingPongFlag],
-                            maskGM[curStartRowIdx * maxKvBlockNum + curLoopRowOffset * maxKvBlockNum + curLoopColOffset],
+                            maskGM[maskOffset],
                             AscendC::DataCopyExtParams(
                                 actDealtRowCurLoop,
                                 actDealtColCurLoop * sizeof(int8_t),
@@ -181,9 +182,10 @@ namespace BlockSparse {
                             maskPatternFloatLocal, maskPatternHalfLocal,
                             AscendC::RoundMode::CAST_NONE, actDealtRowCurLoop * PRE_COL_TILE);
                         AscendC::PipeBarrier<PIPE_V>();
-                        for(uint32_t k = 0; k < actDealtRowCurLoop; k++) {
+                        for (uint32_t k = 0; k < actDealtRowCurLoop; k++) {
                             if (actDealtColCurLoop32 != PRE_COL_TILE) {
-                                AscendC::Duplicate(maskPatternFloatLocal[k * PRE_COL_TILE + actDealtColCurLoop32], (float)0, PRE_COL_TILE - actDealtColCurLoop32);
+                                AscendC::Duplicate(maskPatternFloatLocal[k * PRE_COL_TILE + actDealtColCurLoop32],
+                                    (float)0, PRE_COL_TILE - actDealtColCurLoop32);
                             }
                             AscendC::PipeBarrier<PIPE_V>();
                             AscendC::CompareScalar(
@@ -206,7 +208,8 @@ namespace BlockSparse {
                                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
                             }
                             AscendC::DataCopyPad(
-                                selectIdxGM[curStartRowIdx * maxKvBlockNum + curLoopRowOffset * maxKvBlockNum + k * maxKvBlockNum + rsvdCountPerRow[k]],
+                                selectIdxGM[curStartRowIdx * maxKvBlockNum +
+                                    curLoopRowOffset * maxKvBlockNum + k * maxKvBlockNum + rsvdCountPerRow[k]],
                                 sparseIdxUbLocal[idxPingPongFlag][k * PRE_COL_TILE],
                                 AscendC::DataCopyExtParams(
                                     1, rsvdCountPerRowCurColLoop[k] * sizeof(int32_t), 0, 0, 0));
@@ -232,7 +235,7 @@ namespace BlockSparse {
                         selectNumGM[curStartRowIdx + curLoopRowOffset],
                         selectNumIdxUbLocal[countPingPongFlag],
                         AscendC::DataCopyExtParams(1, actDealtRowCurLoop * sizeof(int32_t), 0, 0, 0));
-                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(countPingPongFlag); 
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(countPingPongFlag);
                     countPingPongFlag = 1 - countPingPongFlag;
                 }
             }
@@ -244,17 +247,15 @@ namespace BlockSparse {
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(1);
-
         }
 
         __aicore__ inline void operator()(BlockSparseAttentionKernelParams const &params)
-        {   
-            __gm__ BlockSparseAttentionTilingData *blockSparseAttentionTilingData = reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
+        {
+            __gm__ BlockSparseAttentionTilingData *blockSparseAttentionTilingData =
+                reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
             uint64_t mm1OutSize = blockSparseAttentionTilingData->mm1OutSize;
             uint64_t smOnlineOutSize = blockSparseAttentionTilingData->smOnlineOutSize;
             uint64_t mm2OutSize = blockSparseAttentionTilingData->mm2OutSize;
-            
-            //新增两个idx,numidx空间大小
             uint64_t updateSize = blockSparseAttentionTilingData->updateSize;
             uint64_t selectNumIdxSize = blockSparseAttentionTilingData->selectNumIdxSize;
             uint64_t selectIdxSize = blockSparseAttentionTilingData->selectIdxSize;
@@ -274,7 +275,7 @@ namespace BlockSparse {
             maxKvBlockNum = blockSparseAttentionTilingData->maxKvBlockNum;
             uint32_t maxKvBlockNumPad = CeilDiv(maxKvBlockNum, 32) * 32;
             maxQBlockNum = blockSparseAttentionTilingData->maxQBlockNum;
-            avgRowPerSubCore = blockSparseAttentionTilingData->avgRowPerSubCore;
+            avgRowPerSubCore = blockSparseAttentionTilingData->avgRowNumPerSubCore;
             preActivateSubCoreNum = blockSparseAttentionTilingData->preActivateSubCoreNum;
             
             uint32_t qBlockX = blockSparseAttentionTilingData->blockShapeX;
@@ -300,11 +301,12 @@ namespace BlockSparse {
             gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
             AscendC::GlobalTensor<int64_t> gActualKvseqlen;
             gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
-            //改了gSelectIdx，gSelectNumIdx传入的地址
             AscendC::GlobalTensor<int32_t> gSelectIdx;
-            gSelectIdx.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + mm1OutSize + smOnlineOutSize + mm2OutSize + updateSize + selectNumIdxSize));
+            gSelectIdx.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + mm1OutSize +
+                smOnlineOutSize + mm2OutSize + updateSize + selectNumIdxSize));
             AscendC::GlobalTensor<int32_t> gSelectNumIdx;
-            gSelectNumIdx.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + mm1OutSize + smOnlineOutSize + mm2OutSize + updateSize));
+            gSelectNumIdx.SetGlobalBuffer((__gm__ int32_t *)(params.workspace + mm1OutSize +
+                smOnlineOutSize + mm2OutSize + updateSize));
             AscendC::GlobalTensor<uint8_t> gBlockSparseMask;
             gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
             AscendC::GlobalTensor<ElementO> gO;
@@ -318,7 +320,8 @@ namespace BlockSparse {
             AscendC::GlobalTensor<ElementOTmp> gOTmp;
             gOTmp.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workspace + mm1OutSize + smOnlineOutSize));
             AscendC::GlobalTensor<ElementOTmp> gOUpdate;
-            gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workspace + mm1OutSize + smOnlineOutSize + mm2OutSize));
+            gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workspace + mm1OutSize +
+                smOnlineOutSize + mm2OutSize));
             
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
@@ -326,7 +329,7 @@ namespace BlockSparse {
             Mask2IdxAndCount(gBlockSparseMask, gSelectIdx, gSelectNumIdx);
 #endif
             resource.pipe.Reset();
-            AscendC::SyncAll<false>(); 
+            AscendC::SyncAll<false>();
 
 #ifdef __DAV_C220_CUBE__
             // Initialize hardware events for cube core
@@ -379,7 +382,6 @@ namespace BlockSparse {
             coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
             uint32_t bn = AscendC::GetSubBlockNum();
 #endif
-
             // Calculate strides based on layout (compile-time optimization)
             // For TND: [T, N, D], stride = N * D
             // For BNSD: [B, N, S, D], strideB = N * S * D, strideN = S * D, strideS = D
@@ -432,15 +434,15 @@ namespace BlockSparse {
             uint32_t qSeqlen = useUniformQSeqlen ? maxQSeqlen :
                               static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
             // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
+            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen :
                                static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
-            uint32_t qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile; // CeilDiv
+            uint32_t qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
             uint32_t curQNBlockNum = qNBlockNumPerGroup * kvHeads;
             uint32_t curQSBlockTile = GetQSBlockTile(kvSeqlen);
             uint32_t curQSBlockNum = GetQBlocks(qSeqlen, qBlockX);
             uint32_t curTotalTaskNum = firstBatchTaskNum;
-            uint32_t curQXBlockNum = (qSeqlen + qBlockX - 1) / qBlockX; // CeilDiv
+            uint32_t curQXBlockNum = (qSeqlen + qBlockX - 1) / qBlockX;
             uint32_t curTotalQBlockNum = firstQBlockNum;
 
             // Go through each task
@@ -476,12 +478,11 @@ namespace BlockSparse {
                     } else {
                         blockBOffset += maxNumBlocksPerBatch;
                     }
-                    
                     // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-                    qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
+                    qSeqlen = useUniformQSeqlen ? maxQSeqlen :
                              static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
                     // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
+                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen :
                               static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
                     curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
                     qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
@@ -508,24 +509,20 @@ namespace BlockSparse {
 
                 uint32_t curSelectIdx = curBatch * qHeads * maxQBlockNum + qHeadIdx * maxQBlockNum + qXIdx;
                 uint32_t curSelectNum = static_cast<uint32_t>(gSelectNumIdx.GetValue(curSelectIdx));
-                
                 if (curSelectNum == 0) {
                     continue;
                 }
-
                 uint32_t lastSelectIdx = static_cast<int32_t>(
                     gSelectIdx.GetValue(curSelectIdx * maxKvBlockNum + curSelectNum - 1));
                 uint32_t kvYBlockNum = (kvSeqlen + qBlockY - 1) / qBlockY; // CeilDiv
-                uint32_t curKvSeqLen = (lastSelectIdx == kvYBlockNum - 1 && kvSeqlen % qBlockY != 0) ? 
+                uint32_t curKvSeqLen = (lastSelectIdx == kvYBlockNum - 1 && kvSeqlen % qBlockY != 0) ?
                     qBlockY * (curSelectNum - 1) + kvSeqlen % qBlockY : qBlockY * curSelectNum;
-                
                 // Calculate offsets based on layout (compile-time optimization)
                 uint64_t gmOffsetQ = 0;
                 uint64_t gmOffsetK = 0;
                 uint64_t gmOffsetV = 0;
                 uint64_t gmOffsetO = 0;
                 uint64_t gmOffsetLse = 0;
-                
                 if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q: [B, N, S, D]
                     // offset = batch * strideB + head * strideN + seq * strideS
                     uint32_t qSeqOffset = qXIdx * qBlockX + qXInnerIdx * BASIC_BLOCK_SIZE;
@@ -553,8 +550,8 @@ namespace BlockSparse {
                     gmOffsetV = vBOffset + kvHeadIdx * embed;
                 }
 
-                uint32_t qSBlockSize = (qXIdx == xBlockNum) ? 
-                    (qXInnerIdx == xTailNum / curQSBlockTile ? 
+                uint32_t qSBlockSize = (qXIdx == xBlockNum) ?
+                    (qXInnerIdx == xTailNum / curQSBlockTile ?
                         xTailNum - qXInnerIdx * curQSBlockTile : curQSBlockTile) :
                     ((qXInnerIdx == qBlockInX - 1) ? qBlockX - qXInnerIdx * curQSBlockTile : curQSBlockTile);
 

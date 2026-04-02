@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,6 +18,36 @@
 #include "register/op_def_registry.h"
 
 namespace optiling {
+// mask 2 idx tile info
+BEGIN_TILING_DATA_DEF(BsaMask2IdxTiling)
+TILING_DATA_FIELD_DEF(uint32_t, xBlockNumAligned);
+TILING_DATA_FIELD_DEF(uint32_t, yBlockNumAligned);
+TILING_DATA_FIELD_DEF(uint32_t, avgRowPerSubCore);
+TILING_DATA_FIELD_DEF(uint32_t, preActiveSubCoreNum);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(BsaMask2IdxTilingOp, BsaMask2IdxTiling)
+// attention tile info
+BEGIN_TILING_DATA_DEF(BsaBaseTiling)
+TILING_DATA_FIELD_DEF(uint32_t, qBaseTile);
+TILING_DATA_FIELD_DEF(uint32_t, kvBaseTile);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(BsaBaseTilingOp, BsaBaseTiling)
+// matmul phase L1 tile info
+BEGIN_TILING_DATA_DEF(BsaMmPhaseL1Tiling)
+TILING_DATA_FIELD_DEF(uint32_t, mm1L1TileM);
+TILING_DATA_FIELD_DEF(uint32_t, mm1L1TileN);
+TILING_DATA_FIELD_DEF(uint32_t, mm1L1TileKLeft);
+TILING_DATA_FIELD_DEF(uint32_t, mm1L1TileKRight);
+TILING_DATA_FIELD_DEF(uint32_t, mm2L1TileM);
+TILING_DATA_FIELD_DEF(uint32_t, mm2L1TileN);
+TILING_DATA_FIELD_DEF(uint32_t, mm2L1TileKLeft);
+TILING_DATA_FIELD_DEF(uint32_t, mm2L1TileKRight);
+TILING_DATA_FIELD_DEF(uint32_t, qL1BufNum);
+TILING_DATA_FIELD_DEF(uint32_t, kL1BufNum);
+TILING_DATA_FIELD_DEF(uint32_t, vL1BufNum);
+TILING_DATA_FIELD_DEF(uint32_t, pL1BufNum);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(BsaMmPhaseL1TilingOp, BsaMmPhaseL1Tiling)
 // BlockSparseAttention Tiling数据定义
 BEGIN_TILING_DATA_DEF(BlockSparseAttentionTilingData)
 // 基础参数
@@ -41,8 +71,9 @@ TILING_DATA_FIELD_DEF(uint64_t, blockShapeY);  // block的y维度(KV方向)
 // selectIdx相关参数
 TILING_DATA_FIELD_DEF(uint32_t, maxKvBlockNum);      // 最大KV块数量（selectIdx的最后一维）
 TILING_DATA_FIELD_DEF(uint32_t, maxQBlockNum);      // 最大KV块数量（selectIdx的最后一维）
-TILING_DATA_FIELD_DEF(uint32_t, avgRowPerSubCore);
+TILING_DATA_FIELD_DEF(uint32_t, avgRowNumPerSubCore);
 TILING_DATA_FIELD_DEF(uint32_t, preActivateSubCoreNum);
+
 
 // query Layout: 0=TND, 1=BNSD
 TILING_DATA_FIELD_DEF(uint32_t, queryLayout);
@@ -68,6 +99,10 @@ TILING_DATA_FIELD_DEF(uint64_t, smOnlineOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, mm2OutSize);
 TILING_DATA_FIELD_DEF(uint64_t, updateSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
+
+TILING_DATA_FIELD_DEF_STRUCT(BsaMask2IdxTiling, BsaMask2IdxTileInfo);
+TILING_DATA_FIELD_DEF_STRUCT(BsaBaseTiling, BsaBaseTileInfo);
+TILING_DATA_FIELD_DEF_STRUCT(BsaMmPhaseL1Tiling, BsaMmPhaseL1TileInfo);
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(BlockSparseAttention, BlockSparseAttentionTilingData)
@@ -146,6 +181,12 @@ private:
     ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
     ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
+    // 950 exclusive
+    uint32_t GetCurQSTileNum950(int64_t curQSeqlen);
+    void CalcBaseTileTilingParams950();
+    void CalcSplitCoreTilingParams950();
+    void CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext);
+    void CalcMatmulPhaseL1TileInfo950();
     // 910 exclusive
     ge::graphStatus CalculateTaskSplit(gert::TilingContext *bsaContext);
     ge::graphStatus CalculateWorkSpace(gert::TilingContext *bsaContext);
@@ -173,7 +214,7 @@ private:
     uint32_t totalQBlocks_ = 0;
     uint32_t maxKvBlockNum_ = 0;
     uint32_t maxQBlockNum_ = 0;
-    uint32_t avgRowPerSubCore_ = 0;
+    uint32_t avgRowNumPerSubCore_ = 0;
     uint32_t preActivateSubCoreNum_ = 0;
     uint32_t firstQBlockNum_ = 0;
     uint32_t firstBatchTaskNum_ = 0;
@@ -207,6 +248,30 @@ private:
     uint32_t maxKvSeqlen_ = 0;  // BNSD格式KV的第三维（S维度）
     int64_t totalTokensT_ = 0;  // TND格式Q的第一维（T维度，总token数）
     int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数
+
+    // mask2idx tile info
+    uint32_t xBlockNumAligned_;
+    uint32_t yBlockNumAligned_;
+    uint32_t avgRowPerSubCore_;
+    uint32_t preActiveSubCoreNum_;
+    // base tile info
+    uint32_t qBaseTile_;
+    uint32_t kvBaseTile_;
+    // L1 tile info
+    // further splits the base tiles
+    uint32_t mm1L1TileM_;
+    uint32_t mm1L1TileN_;
+    uint32_t mm1L1TileKLeft_;
+    uint32_t mm1L1TileKRight_;
+    uint32_t mm2L1TileM_;
+    uint32_t mm2L1TileN_;
+    uint32_t mm2L1TileKLeft_;
+    uint32_t mm2L1TileKRight_;
+    uint32_t qL1BufNum_;
+    uint32_t kL1BufNum_;
+    uint32_t vL1BufNum_;
+    uint32_t pL1BufNum_;
+    
     ge::DataType dataType_ = ge::DT_FLOAT16;
 
     BlockSparseAttentionTilingData *tilingData_ = nullptr;
