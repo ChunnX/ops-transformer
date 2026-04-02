@@ -75,15 +75,15 @@
 **适用场景区别：**
 
 - **上板性能采集**：适用于在真实NPU硬件上运行算子，快速获取算子整体性能指标（如Kernel耗时、Block数、流水占比等），帮助判断算子是否存在性能问题。
-- **流水图仿真**：适用于需要深入分析算子内部指令级流水瓶颈，优化指令排布的场景，提供比上板更详细的指令级流水分析。
+- **流水图仿真**：适用于无NPU硬件开发者，或需要深入分析算子内部指令级流水瓶颈，优化指令排布的场景，提供比上板更详细的指令级流水分析。
 
-### 场景一 上板性能采集
+### 方式一 上板性能采集
 
-1. 前提条件
+   * **前提条件**
 
    完成算子开发和编译后，假设采用aclnn接口方式调用，生成的算子可执行文件（test_aclnn_add_example）所在目录为本项目`examples/add_example/examples/build/bin/`。
 
-2. 采集性能数据
+   * **采集性能数据**
 
    当需要采集算子上板运行各项流水指标时可以进入算子可执行文件所在目录，执行如下命令：
 
@@ -107,11 +107,9 @@
 
    其中Task Duration是当前算子Kernel耗时，Block Dim是当前算子执行核数。
 
-   算子各项流水详细指标可关注`OPPROF_*`下`ArithmeticUtilization`文件，包含了当前各项流水的占比，具体介绍参见[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)中”性能数据文件 > msprof op > ArithmeticUtilization（cube及vector类型指令耗时和占比）“章节。
+   算子各项流水详细指标可关注`OPPROF_*`下`ArithmeticUtilization`文件，包含了当前各项流水的占比，具体介绍参见[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)中“性能数据文件 > msprof op > ArithmeticUtilization（cube及vector类型指令耗时和占比）”章节。
 
-### 场景二 仿真流水图采集
-
-   下述两款仿真工具，针对无NPU卡的用户，可用于定位算子执行瓶颈，优化指令排布等，提供比上板更详细的指令级流水分析。
+### 方式二 仿真流水图采集
   
    * **前提条件：**
 
@@ -150,4 +148,4 @@
       ```
 
       采集结果在本项目`$PWD/pipeline_auto/OPPROF_**`目录中。
-      其中流水相关文件路径为`OPPROF**/simulator/visualize_data.bin`，可以借助[MindStudio Insight](https://www.hiascend.com/document/redirect/MindStudioInsight)工具查看。
+      其中流水相关文件路径为`OPPROF**/simulator/visualize_data.bin`，可以借助[MindStudio Insight](https://www.hiascend.com/document/redirect/MindStudioInsight)工具中“基础操作 > 导入数据”章节查看如何导入流水数据。
