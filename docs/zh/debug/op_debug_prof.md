@@ -81,33 +81,33 @@
 
    * **前提条件**
 
-   完成算子开发和编译后，假设采用aclnn接口方式调用，生成的算子可执行文件（test_aclnn_add_example）所在目录为本项目`examples/add_example/examples/build/bin/`。
+      完成算子开发和编译后，假设采用aclnn接口方式调用，生成的算子可执行文件（test_aclnn_add_example）所在目录为本项目`examples/add_example/examples/build/bin/`。
 
    * **采集性能数据**
 
-   当需要采集算子上板运行各项流水指标时可以进入算子可执行文件所在目录，执行如下命令：
+      当需要采集算子上板运行各项流水指标时可以进入算子可执行文件所在目录，执行如下命令：
 
-   ```bash
-   msprof op ./test_aclnn_add_example
-   ```
+      ```bash
+      msprof op ./test_aclnn_add_example
+      ```
 
-   采集结果在本项目`examples/add_example/examples/build/bin/OPPROF_*`目录，采集完成后打印如下信息：
-   
-    ``` text
-    Op Name: AddExample_a1532827238e1555db7b997c7bce2928_high_performance_1
-    Op Type: vector             
-    Task Duration(us): 97.861954 
-    Block Dim: 8
-    Mix Block Dim:
-    Device Id: 0
-    Pid: 2776181
-    Current Freq: 1800
-    Rated Freq: 1800
-    ```
+      采集结果在本项目`examples/add_example/examples/build/bin/OPPROF_*`目录，采集完成后打印如下信息：
+      
+      ``` text
+      Op Name: AddExample_a1532827238e1555db7b997c7bce2928_high_performance_1
+      Op Type: vector             
+      Task Duration(us): 97.861954 
+      Block Dim: 8
+      Mix Block Dim:
+      Device Id: 0
+      Pid: 2776181
+      Current Freq: 1800
+      Rated Freq: 1800
+      ```
 
-   其中Task Duration是当前算子Kernel耗时，Block Dim是当前算子执行核数。
+      其中Task Duration是当前算子Kernel耗时，Block Dim是当前算子执行核数。
 
-   算子各项流水详细指标可关注`OPPROF_*`下`ArithmeticUtilization`文件，包含了当前各项流水的占比，具体介绍参见[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)中“性能数据文件 > msprof op > ArithmeticUtilization（cube及vector类型指令耗时和占比）”章节。
+      算子各项流水详细指标可关注`OPPROF_*`下`ArithmeticUtilization`文件，包含了当前各项流水的占比，具体介绍参见[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)中“性能数据文件 > msprof op > ArithmeticUtilization（cube及vector类型指令耗时和占比）”章节。
 
 ### 方式二 仿真流水图采集
   
