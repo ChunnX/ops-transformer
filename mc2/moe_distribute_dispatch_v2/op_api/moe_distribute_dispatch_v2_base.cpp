@@ -21,6 +21,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
+#include "common/op_api/mc2_context.h"
 
 using namespace Ops::Transformer;
 using namespace op;
