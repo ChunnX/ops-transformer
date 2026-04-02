@@ -137,43 +137,83 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::IsGmmInplaceAddT
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.weight); ++i) {
         auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
         auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
-        // 2 is the dimension for scale in GmmInplaceAdd T-C case
-        CHECK_COND(scaleDimNumber == 2 && weightDimNumber == scaleDimNumber, ACLNN_ERR_PARAM_INVALID,
-                   "The %s dim should be 2 and dim equal to %s in hifloat8 case, but actual %s dim is [%zu], "
-                   "%s dim is [%zu]",
-                   scaleName_.c_str(), weightName_.c_str(), scaleName_.c_str(), scaleDimNumber, weightName_.c_str(),
-                   weightDimNumber);
         auto xDimNumber = GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDimNum();
         auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();
-        // 2 is the maxmum dimension for perTokenScaleOptional in GmmInplaceAdd T-C case
-        CHECK_COND(xDimNumber == 2 && perTokenDimNumber <= xDimNumber, ACLNN_ERR_PARAM_INVALID,
-                   "The %s dim should be 2 and %s dim should <= %s in hifloat8 case, but actual %s dim is [%zu], "
-                   "%s dim is [%zu]",
-                   xName_.c_str(), perTokenScaleName_.c_str(), xName_.c_str(), xName_.c_str(), xDimNumber,
-                   perTokenScaleName_.c_str(), perTokenDimNumber);
-        auto scaleNDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(scaleDimNumber - 1);
-        auto scaleGDim = GetInputTensor(gmmParams_.scaleOptional, i)
-                             ->GetViewShape()
-                             .GetDim(scaleDimNumber - gmm::LAST_TWO_DIM_INDEX);
-        auto weightNDim = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightDimNumber - 1);
-        auto perTokenMDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
-        CHECK_COND(scaleGDim == groupNum && scaleNDim == weightNDim, ACLNN_ERR_PARAM_INVALID,
-                   "The %s G dim must equal with groupnum dim and %s N dim must equal with %s N dim in "
-                   "hifloat8 case, but actual %s G dim is [%zu], %s N dim is [%zu], %s N dim is [%zu]",
-                   scaleName_.c_str(), scaleName_.c_str(), weightName_.c_str(), scaleName_.c_str(), scaleGDim,
-                   scaleName_.c_str(), scaleNDim, weightName_.c_str(), weightNDim);
-        if (perTokenDimNumber != 1) {
-            auto perTokenKDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
-            CHECK_COND(perTokenKDim == 1 && perTokenMDim == groupNum, ACLNN_ERR_PARAM_INVALID,
-                       "The %s K dim should be 1 and %s M dim must equal groupnum in hifloat8 case, but "
-                       "actual %s K dim is [%zu], %s M dim is [%zu], groupnum is [%zu]",
-                       perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenKDim,
-                       perTokenScaleName_.c_str(), perTokenMDim, groupNum);
+
+        // 判断是否为 pertensor-pertensor 模式：scale2 shape 为 (g,) 或 (g, 1)
+        bool isPertensorMode = false;
+        if (scaleDimNumber == 1) {
+            isPertensorMode = true;
+        } else if (scaleDimNumber == 2) {
+            auto scaleLastDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(1);
+            isPertensorMode = (scaleLastDim == 1);
+        }
+
+        if (isPertensorMode) {
+            // pertensor-pertensor 模式：scale2 shape (g,) 或 (g,1)，scale1 shape (g,) 或 (g,1)
+            CHECK_COND(xDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
+                       "The %s dim should be 2 in pertensor-pertensor mode, but actual dim is [%zu]",
+                       xName_.c_str(), xDimNumber);
+            auto scaleGDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(0);
+            CHECK_COND(scaleGDim == groupNum, ACLNN_ERR_PARAM_INVALID,
+                       "In pertensor-pertensor mode, the %s first dim must equal groupnum, but actual is [%zu], "
+                       "groupnum is [%zu]",
+                       scaleName_.c_str(), scaleGDim, groupNum);
+            // 校验 scale1 (perTokenScale)
+            CHECK_COND(perTokenDimNumber == 1 || perTokenDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
+                       "In pertensor-pertensor mode, the %s dim should be 1 or 2, but actual dim is [%zu]",
+                       perTokenScaleName_.c_str(), perTokenDimNumber);
+            auto perTokenFirstDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
+            CHECK_COND(perTokenFirstDim == groupNum, ACLNN_ERR_PARAM_INVALID,
+                       "In pertensor-pertensor mode, the %s first dim must equal groupnum, but actual is [%zu], "
+                       "groupnum is [%zu]",
+                       perTokenScaleName_.c_str(), perTokenFirstDim, groupNum);
+            if (perTokenDimNumber == 2) {
+                auto perTokenLastDim =
+                    GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
+                CHECK_COND(perTokenLastDim == 1, ACLNN_ERR_PARAM_INVALID,
+                           "In pertensor-pertensor mode, the %s last dim should be 1, but actual is [%zu]",
+                           perTokenScaleName_.c_str(), perTokenLastDim);
+            }
         } else {
-            CHECK_COND(perTokenMDim == groupNum, ACLNN_ERR_PARAM_INVALID,
-                       "The %s M dim must equal groupnum in hifloat8 case, but actual %s M dim is [%zu], "
-                       "groupnum dim is [%zu]",
-                       perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenMDim, groupNum);
+            // pertensor-perchannel 模式（原有 T-C 量化逻辑）
+            // 2 is the dimension for scale in GmmInplaceAdd T-C case
+            CHECK_COND(scaleDimNumber == 2 && weightDimNumber == scaleDimNumber, ACLNN_ERR_PARAM_INVALID,
+                       "The %s dim should be 2 and dim equal to %s in hifloat8 case, but actual %s dim is [%zu], "
+                       "%s dim is [%zu]",
+                       scaleName_.c_str(), weightName_.c_str(), scaleName_.c_str(), scaleDimNumber, weightName_.c_str(),
+                       weightDimNumber);
+            // 2 is the maxmum dimension for perTokenScaleOptional in GmmInplaceAdd T-C case
+            CHECK_COND(xDimNumber == 2 && perTokenDimNumber <= xDimNumber, ACLNN_ERR_PARAM_INVALID,
+                       "The %s dim should be 2 and %s dim should <= %s in hifloat8 case, but actual %s dim is [%zu], "
+                       "%s dim is [%zu]",
+                       xName_.c_str(), perTokenScaleName_.c_str(), xName_.c_str(), xName_.c_str(), xDimNumber,
+                       perTokenScaleName_.c_str(), perTokenDimNumber);
+            auto scaleNDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(scaleDimNumber - 1);
+            auto scaleGDim = GetInputTensor(gmmParams_.scaleOptional, i)
+                                 ->GetViewShape()
+                                 .GetDim(scaleDimNumber - gmm::LAST_TWO_DIM_INDEX);
+            auto weightNDim = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightDimNumber - 1);
+            auto perTokenMDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
+            CHECK_COND(scaleGDim == groupNum && scaleNDim == weightNDim, ACLNN_ERR_PARAM_INVALID,
+                       "The %s G dim must equal with groupnum dim and %s N dim must equal with %s N dim in "
+                       "hifloat8 case, but actual %s G dim is [%zu], %s N dim is [%zu], %s N dim is [%zu]",
+                       scaleName_.c_str(), scaleName_.c_str(), weightName_.c_str(), scaleName_.c_str(), scaleGDim,
+                       scaleName_.c_str(), scaleNDim, weightName_.c_str(), weightNDim);
+            if (perTokenDimNumber != 1) {
+                auto perTokenKDim =
+                    GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
+                CHECK_COND(perTokenKDim == 1 && perTokenMDim == groupNum, ACLNN_ERR_PARAM_INVALID,
+                           "The %s K dim should be 1 and %s M dim must equal groupnum in hifloat8 case, but "
+                           "actual %s K dim is [%zu], %s M dim is [%zu], groupnum is [%zu]",
+                           perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenScaleName_.c_str(),
+                           perTokenKDim, perTokenScaleName_.c_str(), perTokenMDim, groupNum);
+            } else {
+                CHECK_COND(perTokenMDim == groupNum, ACLNN_ERR_PARAM_INVALID,
+                           "The %s M dim must equal groupnum in hifloat8 case, but actual %s M dim is [%zu], "
+                           "groupnum dim is [%zu]",
+                           perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenMDim, groupNum);
+            }
         }
     }
     return ACLNN_SUCCESS;
