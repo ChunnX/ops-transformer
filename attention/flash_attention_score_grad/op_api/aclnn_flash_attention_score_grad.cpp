@@ -2109,7 +2109,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
     const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional, double scaleValue,
     double keepProb, int64_t preTokens, int64_t nextTokens, int64_t headNum,
     char *inputLayout, int64_t innerPrecise, int64_t sparseMode, const aclTensor *dqOut,
-    const aclTensor *dkOut, const aclTensor *dvOut, const aclTensor *dpseOut, char *softmaxInLayout ,
+    const aclTensor *dkOut, const aclTensor *dvOut, const aclTensor *dpseOut, char *softmaxInLayout,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnFlashAttentionUnpaddingScoreGradV4,
@@ -2504,7 +2504,8 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
     const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,
     double keepProb, int64_t preTokens, int64_t nextTokens, int64_t headNum,
     char *inputLayout, char *softmaxInLayout, int64_t innerPrecise, int64_t sparseMode, int64_t pseType,
-    int64_t seed, int64_t offset, int64_t outDtypeOptional, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
+    int64_t seed, int64_t offset, int64_t outDtype, const aclTensor *dqOut,
+    const aclTensor *dkOut, const aclTensor *dvOut,
     const aclTensor *dqRopeOut, const aclTensor *dkRopeOut,
     const aclTensor *dpseOut, const aclTensor *dsinkOut, aclOpExecutor *executor) {
     // 获取基本参数
@@ -2585,8 +2586,9 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
         attenMaskOptionalCngs, softmaxMaxOptionalCngs, softmaxSumOptionalCngs, softmaxInOptionalCngs,
         attentionInOptionalCngs, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,
         kvStartIdxOptional, dScaleQOptionalCngs, dScaleKOptionalCngs, dScaleVOptionalCngs, dScaleDyOptionalCngs,
-        dScaleOOptionalCngs, nullptr, nullptr, queryRopeOptionalCngs, keyRopeOptionalCngs, sinkInOptionalCngs, scaleValue, keepProb, preTokens, nextTokens,
-        headNum, inputLayoutUnderTrans, innerPrecise, sparseMode, pseType, seed, offset, outDtypeOptional, softmaxInLayout, executor);
+        dScaleOOptionalCngs, nullptr, nullptr, queryRopeOptionalCngs, keyRopeOptionalCngs, sinkInOptionalCngs,
+        scaleValue, keepProb, preTokens, nextTokens, headNum, inputLayoutUnderTrans, innerPrecise, sparseMode,
+        pseType, seed, offset, outDtype, softmaxInLayout, executor);
     CHECK_RET(fagRes[0] != nullptr && fagRes[1] != nullptr && fagRes[2] != nullptr,  // 0: dqOut 1: dkOut 2:dvOut
               ACLNN_ERR_PARAM_NULLPTR);
 
@@ -2601,17 +2603,18 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
     const aclTensor *query, const aclTensor *keyIn, const aclTensor *value, const aclTensor *dy,
     const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
     const aclTensor *attenMaskOptional, const aclTensor *softmaxMaxOptional, const aclTensor *softmaxSumOptional,
-    const aclTensor *softmaxInOptional, const aclTensor *attentionInOptional, const aclTensor *sinkInOptional, const aclTensor *queryRopeOptional,
+    const aclTensor *softmaxInOptional, const aclTensor *attentionInOptional,
+    const aclTensor *sinkInOptional, const aclTensor *queryRopeOptional,
     const aclTensor *keyRopeOptional, const aclTensor *dScaleQOptional,
     const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional, const aclTensor *dScaleDyOptional,
     const aclTensor *dScaleOOptional, const aclIntArray *prefixOptional,
     const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional,
-    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValueOptional,
-    double keepProbOptional, int64_t preTokensOptional, int64_t nextTokensOptional, int64_t headNum,
-    char *inputLayout, char *softmaxInLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
-    int64_t seed, int64_t offset, int64_t outDtypeOptional,
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,
+    double keepProb, int64_t preTokens, int64_t nextTokens, int64_t headNum,
+    char *inputLayout, char *softmaxInLayout, int64_t innerPrecise, int64_t sparseMode, int64_t pseType,
+    int64_t seed, int64_t offset, int64_t outDtype,
     const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
-    const aclTensor *dqRopeOut, const aclTensor *dkRopeOut, const aclTensor *dpseOut, const aclTensor *dsinkOut, 
+    const aclTensor *dqRopeOut, const aclTensor *dkRopeOut, const aclTensor *dpseOut, const aclTensor *dsinkOut,
     uint64_t *workspaceSize, aclOpExecutor **executor) 
 {
     L2_DFX_PHASE_1(aclnnFlashAttentionScoreGradV4,
@@ -2619,8 +2622,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
                softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, sinkInOptional, queryRopeOptional,
                keyRopeOptional, dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
                prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
-               scaleValueOptional, keepProbOptional, preTokensOptional, nextTokensOptional, headNum, inputLayout, 
-               softmaxInLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDtypeOptional),
+               scaleValue, keepProb, preTokens, nextTokens, headNum, inputLayout,
+               softmaxInLayout, innerPrecise, sparseMode, pseType, seed, offset, outDtype),
         DFX_OUT(dqOut, dkOut, dvOut, dqRopeOut, dkRopeOut, dpseOut, dsinkOut));
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -2672,8 +2675,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
         softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, sinkInOptional, queryRopeOptional,
         keyRopeOptional, dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
         prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
-        scaleValueOptional, keepProbOptional, preTokensOptional, nextTokensOptional, headNum, inputLayout, softmaxInLayout, 
-        innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDtypeOptional, dqOut, dkOut,
+        scaleValue, keepProb, preTokens, nextTokens, headNum, inputLayout, softmaxInLayout,
+        innerPrecise, sparseMode, pseType, seed, offset, outDtype, dqOut, dkOut,
         dvOut, dqRopeOut, dkRopeOut, dpseOut, dsinkOut, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
  
@@ -2684,7 +2687,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
 }
  
 aclnnStatus aclnnFlashAttentionScoreGradV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    const aclrtStream stream) {
+                                           aclrtStream stream)
+{
     L2_DFX_PHASE_2(aclnnFlashAttentionScoreGradV4);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
@@ -2695,7 +2699,7 @@ static aclnnStatus QuantFlashAttentionScoreGradGetWorkspace(
     const aclTensor *dScaleQOptional, const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional,
     const aclTensor *dScaleDyOptional, const aclTensor *dsScaleOptional, const aclTensor *pScaleOptional,
     double scaleValue, int64_t headNum,
-    char *inputLayout, int64_t outDtypeOptional, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
+    char *inputLayout, int64_t outDtype, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
     aclOpExecutor *executor) {
     // 获取基本参数
     FagInShapeInfo fagShape;
@@ -2780,7 +2784,7 @@ static aclnnStatus QuantFlashAttentionScoreGradGetWorkspace(
         nullptr, dScaleQOptionalCngs, dScaleKOptionalCngs, dScaleVOptionalCngs, dScaleDyOptionalCngs,
         dScaleOOptionalCngs, dsScaleOptionalCngs, pScaleOptionalCngs, nullptr, nullptr, nullptr, scaleValue, keepProb,
         preTokens, nextTokens, headNum, inputLayoutUnderTrans, innerPrecise, sparseMode, pseType,
-        seed, offset, outDtypeOptional, defaultSoftmaxInLayout, executor);
+        seed, offset, outDtype, defaultSoftmaxInLayout, executor);
     CHECK_RET(fagRes[0] != nullptr && fagRes[1] != nullptr && fagRes[2] != nullptr,  // 0: dqOut 1: dkOut 2:dvOut
               ACLNN_ERR_PARAM_NULLPTR);
 
@@ -2793,36 +2797,36 @@ static aclnnStatus QuantFlashAttentionScoreGradGetWorkspace(
 }
 
 aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
-  const aclTensor   *query,
-  const aclTensor   *keyIn,
-  const aclTensor   *value,
-  const aclTensor   *dy,
-  const aclTensor   *attenMaskOptional,
-  const aclTensor   *softmaxMax,
-  const aclTensor   *softmaxSum,
-  const aclTensor   *attentionIn,
-  const aclTensor   *dScaleQ,
-  const aclTensor   *dScaleK,
-  const aclTensor   *dScaleV,
-  const aclTensor   *dScaleDy,
-  const aclTensor   *dsScale,
-  const aclTensor   *pScale,
-  double             scaleValueOptional,
-  int64_t            preTokensOptional,
-  int64_t            nextTokensOptional,
-  int64_t            headNum,
-  char              *inputLayout,
-  int64_t            sparseModeOptional,
-  int64_t            outDtypeOptional,
-  aclTensor         *dqOut,
-  aclTensor         *dkOut,
-  aclTensor         *dvOut,
-  uint64_t          *workspaceSize,
-  aclOpExecutor    **executor)
+    const aclTensor   *query,
+    const aclTensor   *keyIn,
+    const aclTensor   *value,
+    const aclTensor   *dy,
+    const aclTensor   *attenMaskOptional,
+    const aclTensor   *softmaxMax,
+    const aclTensor   *softmaxSum,
+    const aclTensor   *attentionIn,
+    const aclTensor   *dScaleQ,
+    const aclTensor   *dScaleK,
+    const aclTensor   *dScaleV,
+    const aclTensor   *dScaleDy,
+    const aclTensor   *dsScale,
+    const aclTensor   *pScale,
+    double             scaleValue,
+    int64_t            preTokens,
+    int64_t            nextTokens,
+    int64_t            headNum,
+    char              *inputLayout,
+    int64_t            sparseMode,
+    int64_t            outDtype,
+    aclTensor         *dqOut,
+    aclTensor         *dkOut,
+    aclTensor         *dvOut,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantFlashAttentionScoreGrad,
         DFX_IN(query, keyIn, value, dy, softmaxMax, softmaxSum, attentionIn, dScaleQ, dScaleK, dScaleV, dScaleDy,
-        scaleValueOptional, headNum, inputLayout, outDtypeOptional, dsScale, pScale),
+        scaleValue, headNum, inputLayout, outDtype, dsScale, pScale),
         DFX_OUT(dqOut, dkOut, dvOut));
  
     // 固定写法，创建OpExecutor
@@ -2866,8 +2870,8 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
     // calculate fag
     auto ret = QuantFlashAttentionScoreGradGetWorkspace(
         query, keyIn, value, dy, softmaxMax, softmaxSum, attentionIn,
-        dScaleQ, dScaleK, dScaleV, dScaleDy, dsScale, pScale, scaleValueOptional, headNum, inputLayout, 
-        outDtypeOptional, dqOut, dkOut,
+        dScaleQ, dScaleK, dScaleV, dScaleDy, dsScale, pScale, scaleValue, headNum, inputLayout,
+        outDtype, dqOut, dkOut,
         dvOut, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
  
@@ -2878,7 +2882,8 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
 }
  
 aclnnStatus aclnnQuantFlashAttentionScoreGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    const aclrtStream stream) {
+                                              aclrtStream stream)
+{
     L2_DFX_PHASE_2(aclnnQuantFlashAttentionScoreGrad);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }

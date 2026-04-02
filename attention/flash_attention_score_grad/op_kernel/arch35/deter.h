@@ -32,6 +32,8 @@ constexpr uint32_t NUM_EIGHT = 8;
 
 constexpr int64_t DETER_PREFIX_NUM = 132;
 constexpr int64_t DETER_PREFIX_THRESHOLD = 128;
+constexpr int64_t M_BASE_64 = 64;
+constexpr int64_t N_BASE_128 = 128;
 
 __aicore__ inline int64_t Square(int64_t num) { return num * num; }
 
@@ -81,8 +83,8 @@ __aicore__ inline void TransDeterRound(int64_t &r, bool &useEvenCol, int64_t rMa
     if constexpr(mode == 0) {
         return;
     } else if constexpr(mode == 1) {
-        useEvenCol = r % 2 == 1;
-        r = (r + 1) / 2;
+        useEvenCol = r % NUM_TWO == 1;
+        r = (r + 1) / NUM_TWO;
         return;
     } else {
         if (r > rMax) {
@@ -99,11 +101,11 @@ __aicore__ inline void TransTilingSplitMode(int64_t &m, int64_t &n, int64_t &r, 
     if constexpr(mode == 0) {
         return;
     } else if constexpr(mode == 1) {
-        m = Ceil<int64_t>(m, 2);
+        m = Ceil<int64_t>(m, static_cast<int64_t>(NUM_TWO));
         TransDeterRound<mode>(r, useEvenCol, rMax);
         return;
     } else {
-        n = Ceil<int64_t>(n, 2);
+        n = Ceil<int64_t>(n, static_cast<int64_t>(NUM_TWO));
         TransDeterRound<mode>(r, useEvenCol, rMax);
         return;
     }
@@ -115,15 +117,15 @@ __aicore__ inline void TransTilingSplitModeBack(CoordinateInfo &coordinateInfo, 
     if constexpr (mode == 0) {
         return;
     } else if constexpr (mode == 1) {
-        coordinateInfo.s1Idx = useEvenCol ? coordinateInfo.s1Idx * 2 - 1 : coordinateInfo.s1Idx * 2;
+        coordinateInfo.s1Idx = useEvenCol ? coordinateInfo.s1Idx * NUM_TWO - 1 : coordinateInfo.s1Idx * NUM_TWO;
         if constexpr (IS_TND) {
-            coordinateInfo.s1Outer = Ceil<int64_t>(coordinateInfo.actualS1Len, 64);
+            coordinateInfo.s1Outer = Ceil<int64_t>(coordinateInfo.actualS1Len, M_BASE_64);
         }
         return;
     } else {
-        coordinateInfo.s2Idx = useEvenCol ? 2 * coordinateInfo.s2Idx : 2 * coordinateInfo.s2Idx - 1;
+        coordinateInfo.s2Idx = useEvenCol ? NUM_TWO * coordinateInfo.s2Idx : NUM_TWO * coordinateInfo.s2Idx - 1;
         if constexpr (IS_TND) {
-            coordinateInfo.s2Outer = Ceil<int64_t>(coordinateInfo.actualS2Len, 128);
+            coordinateInfo.s2Outer = Ceil<int64_t>(coordinateInfo.actualS2Len, N_BASE_128);
         }
         return;
     }
