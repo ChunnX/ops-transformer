@@ -580,11 +580,7 @@ private:
         Broadcast<float, BROADCAST_AXIS, 1>(gBKLocal_, gBUbFloat_, kShape, betaShape);
         PipeBarrier<PIPE_V>();
         // data copy in kUbFloatCon
-        uint32_t dstStride = 0;
-        if (dk_ % BLOCK_BF16_NUM != 0) {
-            dstStride = (dk_ % BLOCK_BF16_NUM) > BLOCK_FLOAT_NUM ? 0 : 1;
-        }
-        DataCopyInBf16WithStride(halfChunkSize_, dk_, keyContinousGm, dk_, dstStride);
+        DataCopyInBf16WithStride(halfChunkSize_, dk_, keyContinousGm, dk_);
         auto bf16Key = fp32InQueue_.DeQue<bfloat16_t>();
         Cast(kUbFloatCon, bf16Key, RoundMode::CAST_NONE, halfChunkSize_ * dkAligned_);
         PipeBarrier<PIPE_V>();
@@ -646,11 +642,7 @@ private:
     {
         qPrimeLocal_ = fp32OutQueue_.AllocTensor<float>();
         // data copy in qUbFloatCon
-        uint32_t dstStride = 0;
-        if (dk_ % BLOCK_BF16_NUM != 0) {
-            dstStride = (dk_ % BLOCK_BF16_NUM) > BLOCK_FLOAT_NUM ? 0 : 1;
-        }
-        DataCopyInBf16WithStride(halfChunkSize_, dk_, queryContinousGm, dk_, dstStride);
+        DataCopyInBf16WithStride(halfChunkSize_, dk_, queryContinousGm, dk_);
         auto bf16Query = fp32InQueue_.DeQue<bfloat16_t>();
         Cast(qUbFloatCon, bf16Query, RoundMode::CAST_NONE, halfChunkSize_ * dkAligned_);
         PipeBarrier<PIPE_V>();
@@ -747,16 +739,14 @@ private:
     __aicore__ inline void DataCopyInBf16WithStride(uint64_t rows,  // 要搬的行数
                                                     uint64_t cols,  // 每行的元素数
                                                     GlobalTensor<bfloat16_t> src,
-                                                    uint64_t srcRowStride, // GM上相邻行的间距(元素数)
-                                                    uint32_t dstRowStride = 0)
+                                                    uint64_t srcRowStride) // GM上相邻行的间距(元素数)
     {
         DataCopyPadExtParams<bfloat16_t> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0),
                                                       static_cast<float>(0)};
         uint32_t srcGap = (srcRowStride - cols) * sizeof(bfloat16_t);
         DataCopyExtParams params{static_cast<uint16_t>(rows),
                                  static_cast<uint32_t>(cols * sizeof(bfloat16_t)),
-                                 static_cast<uint32_t>(srcGap),
-                                 static_cast<uint32_t>(dstRowStride), 0};
+                                 static_cast<uint32_t>(srcGap), 0, 0};
         bf16InLocal_ = fp32InQueue_.AllocTensor<bfloat16_t>();
         DataCopyPad(bf16InLocal_, src, params, padParams);
         fp32InQueue_.EnQue<bfloat16_t>(bf16InLocal_);
