@@ -22,7 +22,7 @@
   - 如果isSeqLensCumsum为false，则seqLens中所有值的累加和即为keyRef/valueRef的第一个维度大小：keyRef[dim0] = sum(seqLens)
 
   关于**keyRef**、**valueRef**的一些限制条件如下：
-  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型， num_heads * head_size(keyRef/valueRef)取128*576。
+  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型，num_heads * head_size(keyRef/valueRef)取128*576。
 
 - 示例：
 
@@ -69,7 +69,6 @@ aclnnStatus aclnnGatherPaKvCache(
 
 - **参数说明**
 
-  </style>
   <table class="tg" style="undefined;table-layout: fixed; width: 1602px"><colgroup>
   <col style="width: 247px">
   <col style="width: 132px">
@@ -133,7 +132,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">keyRef(aclTensor*）</td>
+      <td class="tg-0pky">keyRef(aclTensor*)</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">表示key向量。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_k]。<br>当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_k]。</td>
@@ -193,7 +192,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0lax">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">executor(aclOpExecutor**）</td>
+      <td class="tg-0lax">executor(aclOpExecutor**)</td>
       <td class="tg-0lax">输出</td>
       <td class="tg-0lax">返回op执行器，包含了算子计算流程。</td>
       <td class="tg-0lax">-</td>
@@ -284,7 +283,6 @@ aclnnStatus aclnnGatherPaKvCache(
     </tr>
   </tbody>
   </table>
-
 
 - **返回值**
 

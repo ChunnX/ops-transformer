@@ -43,7 +43,7 @@
     $$
     y [rowIndex[i],:] = y[rowIndex[i],:] + sharedInputWeight \times sharedInput[j, :]
     $$
-  - 4.共享专家输出融合:最终输出结果是所有专家输出与共享专家输出，按照rowIndex所有进行合并的结果，计算过程如下：
+  - 4.共享专家输出融合：最终输出结果是所有专家输出与共享专家输出，按照rowIndex所有进行合并的结果，计算过程如下：
 
     $$
     y[rowIndex[i],:] = \sum_{i \in \mathcal{E}[j]} y_i [j - start_i] + sharedInputWeight \times sharedInput[j, :]
@@ -359,7 +359,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
   - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
   - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。所有参数均不支持空tensor。
-  - out的第一维bacth、sharedInputOffset必须大于等于0。
+  - out的第一维batch、sharedInputOffset必须大于等于0。
   - x1支持M为0的空Tensor。
   - x2支持N为0的空Tensor。
 - **返回值**
@@ -456,7 +456,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     | INT8 | INT4 | INT64         | FLOAT32      | FLOAT32        | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT32 |
     | INT8 | INT4 | INT64         | FLOAT32      | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT32 |
 
-
   - 在该场景中，scaleOptional代表per-channel和per-group离线融合的结果。
   - 在该场景中，biasOptional代表离线计算的辅助结果，值要求为$8 \times w \times scaleOptional$，并在第一维累加。
   - 该场景支持对称量化和非对称量化。在对称量化时，offsetOptional需要设置为空；在非对称量化时，offsetOptional代表离线计算的辅助结果，即为$antiquantOffsetOptional \times   scaleOptional$的结果。
@@ -465,6 +464,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 - <term>Ascend 950PR/Ascend 950DT</term>：仅支持MX全量化场景。
   
   - 输入和输出支持以下数据类型组合：
+  
     | MX量化场景 | x1                        | x2                         | scaleOptional | biasOptional  | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional | rowIndexOptional | out     |
     | ---------- | ------------------------- | -------------------------- | ------------- | ------------- | --------------------- | ----------------- | ------------------- | ------------- | ---------------- | ------- |
     | MXFP8      | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16  / null    | FLOAT32       | INT64            | FLOAT32 |
@@ -481,6 +481,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+
   ```Cpp
     #include <iostream>
     #include <memory>

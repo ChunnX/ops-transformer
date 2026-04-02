@@ -57,8 +57,6 @@
   dK=\frac{(\hat{(dS)}^T*\hat{Q})}{\sqrt{d}} * (dS_{ds} * dS_q)
   $$
   
-    
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantFlashAttentionScoreGradGetWorkspace”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScoreGrad”接口执行计算。
@@ -80,7 +78,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspace(
   const aclTensor   *dsScale, 
   const aclTensor   *pScale,
   double             scaleValueOptional, 
-  int64_t 			 preTokensOptional,
+  int64_t 			     preTokensOptional,
   int64_t            nextTokensOptional,
   int64_t            headNum, 
   char              *inputLayout,
@@ -392,7 +390,6 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
   </tbody>
   </table>
   
-  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -526,7 +523,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tbody>
     </table>
 
-- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 1\]。
 

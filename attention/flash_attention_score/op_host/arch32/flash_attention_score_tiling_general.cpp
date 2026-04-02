@@ -375,7 +375,7 @@ protected:
 
     void Reset();
 
-    void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen, int64_t &actualBatch) const;
+    void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const;
 
     virtual int64_t GetNRatio();
 
@@ -1147,7 +1147,7 @@ bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(std::array<int64_t, MAX_
 }
 
 void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res,
-                                                        int64_t &actualLen, int64_t &actualBatch) const
+                                                        int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const
 {
     auto actualSeqLenTensor = context_->GetOptionalInputTensor(inputIdx);
     if (actualSeqLenTensor == nullptr) {
@@ -1181,6 +1181,7 @@ void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::a
         }
         actualLen++;
     }
+    endLen = value[actualSeqLenShape.GetDim(0) - 1];
 }
 
 bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &queryShape, const gert::Shape *queryRopeShape,
@@ -1222,11 +1223,13 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             int64_t t2Size = keyShape.GetDim(0);
             int64_t actualQBatch = 0;
             int64_t actualKVBatch = 0;
+            int64_t endQLen = -1;
+            int64_t endKvLen = -1;
             realT1Size = t1Size;
             std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
             std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
-            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch);
-            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch);
+            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch, endQLen);
+            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch, endKvLen);
             OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
                        OP_LOGE(opName, "VarLen scene, q is not equal kv."), return false);
             bSize = actualSeqQLen;
@@ -1239,6 +1242,14 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                     "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
                     t1Size, t2Size, accumS1, accumS2),
                 return false);
+            // 校验EOD场景尾部是否补0
+            if (t1Size > accumS1 && t2Size > accumS2) {
+                if (endQLen != 0 || endKvLen != 0) {
+                    OP_LOGE(opName, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
+                                            endQLen, endKvLen);
+                    return false;
+                }
+            }
             uint32_t firstValidIndex = 0;
             uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1LL);
             for (int64_t i = 0; i < bSize; ++i) {

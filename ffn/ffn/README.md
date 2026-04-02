@@ -36,7 +36,7 @@
     y=activation(x * ((W1 + antiquantOffset1) * antiquantScale1) + b1) * ((W2 + antiquantOffset2) * antiquantScale2) + b2
 	$$
 
-## 参数说明：
+## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
 <col style="width: 150px">
@@ -155,7 +155,24 @@
 </tbody>
 </table>
 
-## 约束说明
+- Kirin X90/Kirin 9030 处理器系列产品:
+  - x 数据类型仅支持 FLOAT16
+  - weight1 数据类型仅支持 FLOAT16
+  - weight2 数据类型仅支持 FLOAT16
+  - expertTokens 数据类型仅支持 INT64
+  - bias1 数据类型仅支持 FLOAT16
+  - bias2 数据类型仅支持 FLOAT16
+  - scale 数据类型仅支持 FLOAT
+  - offset 数据类型仅支持 FLOAT
+  - deqScale1 数据类型仅支持 UINT64
+  - deqScale2 数据类型仅支持 UINT64
+  - antiquantScale1 数据类型仅支持 FLOAT16
+  - antiquantScale2 数据类型仅支持 FLOAT16
+  - antiquantOffset1 数据类型仅支持 FLOAT16
+  - antiquantOffset2 数据类型仅支持 FLOAT16
+  - y 数据类型仅支持 FLOAT16
+
+  ## 约束说明
 
 - 有专家时，专家数据的总数需要与x的M保持一致。
 - 激活层为geglu/swiglu/reglu时，仅支持无专家分组时的FLOAT16高性能场景（FLOAT16场景指类型为aclTensor的必选参数数据类型都为FLOAT16的场景），且N1=2\*K2。
