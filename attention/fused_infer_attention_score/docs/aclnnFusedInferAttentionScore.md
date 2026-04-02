@@ -12,7 +12,7 @@
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列加速卡产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
-
+test
 ## 功能说明
 
 - 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
