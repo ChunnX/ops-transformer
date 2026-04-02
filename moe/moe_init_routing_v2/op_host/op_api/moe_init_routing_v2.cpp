@@ -55,7 +55,7 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
         if (expert_tokens_count_or_cumsum_out == nullptr) {
             op::Shape zeroShape;
             zeroShape.AppendDim(0);
-            expert_tokens_count_or_cumsum_out = executor->AllocTensor(zeroShape, 
+            expert_tokens_count_or_cumsum = executor->AllocTensor(zeroShape, 
             ge::DT_INT32, op::Format::FORMAT_ND);
         }
     }
