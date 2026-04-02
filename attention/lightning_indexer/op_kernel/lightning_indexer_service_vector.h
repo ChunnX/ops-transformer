@@ -88,7 +88,7 @@ private:
     // ================================Local Buffer区====================================
     // queue
     TQue<QuePosition::VECOUT, 1> outQueue_;
- 
+
     // tmp buff for vector
     TBuf<TPosition::VECCALC> sortOutBuf_;
     TBuf<TPosition::VECCALC> tmpBuf_;
@@ -161,15 +161,15 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
     // step3. 初始化vec1ParamGm，是否进行LD的标志位设为-1(needFd=-1)
     // vec1ResIn32Gm = [aic, 2, s1BaseSize_, 16] int32
     // ws清零 [needFd, s2AcSeq, s2Start, s2End, isS2End, bn2idx, s1Idx, ......]
-    LocalTensor<float> tmpfBuff = outQueue_.AllocTensor<float>();
-    Duplicate(tmpfBuff.template ReinterpretCast<int32_t>(), -1, 2 * (s1BaseSize_ / 2) * paramNum_ * 2);
-    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+    LocalTensor<float> tmpBuff = outQueue_.AllocTensor<float>();
+    Duplicate(tmpBuff.template ReinterpretCast<int32_t>(), -1, 2 * (s1BaseSize_ / 2) * paramNum_ * 2);
+    outQueue_.EnQue<float>(tmpBuff);
+    tmpBuff = outQueue_.DeQue<float>();
     int64_t wsInfoOffset = (blockId_ / 2) * s1BaseSize_ * 2 * paramNum_ +      // 2个AIV共同地址偏移
                            (blockId_ % 2) * (s1BaseSize_ / 2) * 2 * paramNum_; // 每个AIV的地址偏移，S1方向
-    DataCopyPad(vec1ParamGm[wsInfoOffset], tmpfBuff.template ReinterpretCast<int64_t>(),
+    DataCopyPad(vec1ParamGm[wsInfoOffset], tmpBuff.template ReinterpretCast<int64_t>(),
                 {1, static_cast<uint16_t>((s1BaseSize_ / 2) * 2 * paramNum_ * sizeof(int64_t)), 0, 0});
-    SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-    outQueue_.FreeTensor(tmpfBuff);
+    outQueue_.FreeTensor(tmpBuff);
 }
 
 template <typename LIT>
@@ -242,7 +242,7 @@ __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset
     valueULocal = outQueue_.DeQue<float>();
     LIServiceVec::CopyOut(indiceOutGm[invalidS1offset], idxULocal1, constInfo_.sparseCount);
     outQueue_.FreeTensor(valueULocal);
-    
+
     if (constInfo_.returnValue) {
         uint16_t negInf = 0;
         if constexpr(std::is_same<K_T, float16_t>::value) {
@@ -268,7 +268,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
 
     // 计算基本块基地址偏移 偶数循环 -> 0 + aic_offset  奇数循环 -> 512*512 + aic_offset
-    int64_t mmGmOffset = (info.loop % 2) * ((s1BaseSize_ * gSize_) * s2BaseSize_);
+    int64_t mmGmOffset = (info.loop % 2) * (constInfo_.mBaseSizeAlign * s2BaseSize_);
     // (B,S1,N1,1);(T,N1,1) -> (B,S1,N2,G,1) 当前只切分到S1轴
     int64_t weightGmOffset = info.tensorWeightsOffset + cuBaseS1Idx * kHeadNum_ * gSize_;
 
@@ -323,7 +323,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             }
             for (int outerGidx = 0; outerGidx < outerG; outerGidx++) {
                 int32_t procGnum = outerGidx != outerG - 1 ? groupInner_ : gSize_ - outerGidx * groupInner_;
-                
+
                 int32_t pingpong = outerGidx % 2;
                 LocalTensor<float> dbTmpUb = tmpUb_[pingpong * (groupInner_ * s2BaseSize_ + s2BaseSize_)];
                 LocalTensor<float> weightsInUb = dbTmpUb[procGnum * s2BaseSize_];
@@ -332,17 +332,17 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 if constexpr (!IsSameType<W_T, float>::value) {
                     weightsInTUb = weightsInTUb[groupInner_];
                 }
-                LIServiceVec::CopyIn(dbTmpUb, weightsInTUb, mm1ResGm, weightsGm,
-                                    mmGmOffset + innerS1Idx * gSize_ * info.actualSingleProcessSInnerSizeAlign +
-                                        outerGidx * groupInner_ * info.actualSingleProcessSInnerSizeAlign,
-                                    weightGmOffset + innerS1Idx * gSize_ + outerGidx * groupInner_, procGnum,
-                                    info.actualSingleProcessSInnerSizeAlign, mmUbStride);
+                int64_t mmGmAllOffet = mmGmOffset + innerS1Idx * gSize_ * info.actualSingleProcessSInnerSizeAlign +
+                                       outerGidx * groupInner_ * info.actualSingleProcessSInnerSizeAlign;
+                int64_t weightGmAllOffset = weightGmOffset + innerS1Idx * gSize_ + outerGidx * groupInner_;
+
+                LIServiceVec::CopyIn(dbTmpUb, weightsInTUb, mm1ResGm, weightsGm, mmGmAllOffet, weightGmAllOffset,
+                                     procGnum, info.actualSingleProcessSInnerSizeAlign, mmUbStride);
 
                 SetFlag<HardEvent::MTE2_V>(pingpong);
                 WaitFlag<HardEvent::MTE2_V>(pingpong);
-                weightsInUb = dbTmpUb[procGnum * s2BaseSize_];
                 LIServiceVec::DoScale(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], dbTmpUb, weightsInUb, weightsInTUb,
-                                    brcBuf, procGnum, s2BaseSize_, outerGidx);
+                                      brcBuf, procGnum, s2BaseSize_, outerGidx);
                 // confused reduceOp in DoScale
                 // neednot use LIServiceVec::doReduce(mmInUb, reduceOutInner, procGnum, (s2BaseSize_+8));
                 SetFlag<HardEvent::V_MTE2>(pingpong);
@@ -355,7 +355,6 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 
             LocalTensor<float> sortScoreUb = reduceOutBuff;
             LocalTensor<float> sortIndiceUb = reduceOutBuff[cuS2LenVecAlign];
-            PipeBarrier<PIPE_V>();
             Duplicate(sortScoreUb.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, cuS2LenVecAlign);
             PipeBarrier<PIPE_V>();
             Adds(sortScoreUb, reduceOutInner, 0.0f, cuS2Len);
@@ -384,6 +383,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                     SortedBasicBlock_[innerS1Idx * BASE_TOPK * 2 + globalTopkUbCacheIdx * s2BaseSize_ * 2],
                     reduceOutBuff, sortIndiceUbInt.template ReinterpretCast<uint32_t>(), tmpSortBuf,
                     cuS2LenVecAlign / 32);
+                AscendC::PipeBarrier<PIPE_V>();
                 // 缓存4块512或者S2结束, 需要进行精排
                 if (globalTopkUbCacheIdx == 3 || isS2End || info.isAllLoopEnd) {
                     LocalTensor<float> tt = SortedBasicBlock_[innerS1Idx * BASE_TOPK * 2];
@@ -425,7 +425,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                     LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
                     LocalTensor<uint32_t> outIdxUb = outValueUb[offset].template ReinterpretCast<uint32_t>();
                     Extract(outValueUb, outIdxUb, globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset /32));
-                    
+
                     LocalTensor<K_T> valueULocal1 = outValueUb.template ReinterpretCast<K_T>();
                     if (constInfo_.returnValue) {
                         PipeBarrier<PIPE_V>();
@@ -435,7 +435,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                     LocalTensor<int32_t> idxULocal1 = outValueUb[offset].template ReinterpretCast<int32_t>();
                     outQueue_.EnQue<float>(outValueUb);
                     outValueUb = outQueue_.DeQue<float>();
-                    
+
                     LIServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
                                         idxULocal1, copyLen);
                     if (constInfo_.returnValue) {

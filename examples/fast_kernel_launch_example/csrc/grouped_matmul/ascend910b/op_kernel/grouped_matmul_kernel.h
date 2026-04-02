@@ -1,12 +1,11 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -24,66 +23,19 @@ using namespace AscendC;
 using namespace matmul;
 using namespace GROUPED_MATMUL;
 
-#ifndef FORMAT_FRACTAL_NZ
-    #define FORMAT_FRACTAL_NZ
-#endif
-
 namespace {
-#if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
-constexpr CubeFormat wFormat = CubeFormat::NZ;
-constexpr MatmulConfig matmulCFG = NZ_CFG_MDL;
-#else
 constexpr CubeFormat wFormat = CubeFormat::ND;
-constexpr MatmulConfig matmulCFG = CFG_MDL;
-#endif
 }
 
 template <bool trans = false>
 using xType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X, trans>;
 
 template <bool trans = false>
-using xTypeMSD = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_WEIGHT, trans>;
-
-template <bool trans = false>
 using weightType = MatmulType<AscendC::TPosition::GM, wFormat, DTYPE_X, trans>;
-
-template <bool trans = false>
-using weightTypeMSD = MatmulType<AscendC::TPosition::GM, wFormat, DTYPE_WEIGHT, trans>;
 
 using yType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, MM_DTYPE_Y>;
 
-using yTypeMSD = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, int32_t>;
-
 using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
-
-namespace {
-    __aicore__ inline static constexpr MatmulApiStaticTiling GetGmmMatmulApiTiling(bool isND2NZ, bool transB) {
-        MatmulConfig conf = GenGmmConf(isND2NZ);
-        MatmulApiStaticTiling staticTilingTmp;
-        if (transB) {
-            staticTilingTmp = GetMatmulApiTiling<xType<false>, weightType<true>, yType, biasType>(conf);
-        } else {
-            staticTilingTmp = GetMatmulApiTiling<xType<false>, weightType<false>, yType, biasType>(conf);
-        }
-        staticTilingTmp.depthA1 = STATIC_TILING_DEPTH_A1_B1;
-        staticTilingTmp.depthB1 = STATIC_TILING_DEPTH_A1_B1;
-        staticTilingTmp.stepM = 1;
-        staticTilingTmp.stepN = 1;
-        staticTilingTmp.stepKa = STATIC_TILING_STEP_KA_KB;
-        staticTilingTmp.stepKb = STATIC_TILING_STEP_KA_KB;
-        staticTilingTmp.dbL0A = DOUBLE_BUFFER_L0A_L0B;
-        staticTilingTmp.dbL0B = DOUBLE_BUFFER_L0A_L0B;
-        staticTilingTmp.dbL0C = 1;
-        return staticTilingTmp;
-    }
-#if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
-    constexpr bool isWeightNZ = true;
-#else
-    constexpr bool isWeightNZ = false;
-#endif
-    constexpr static auto staticCFG = GetGmmMatmulApiTiling(isWeightNZ, false);
-    constexpr static auto staticCFGtransB = GetGmmMatmulApiTiling(isWeightNZ, true);
-} // namespace
 
 
 #define GMM_CUBE_IMP(processClass, transA, transB, sync, cfg)                                                          \

@@ -41,6 +41,8 @@ public:
 protected:
     TPipe *pipe;
     GlobalTensor<float> dkWorkSpaceGm;
+    GlobalTensor<float> dkCoreWorkspaceGM;
+
     const LIGTilingData *__restrict tilingData;
 
     uint32_t cBlockIdx;
@@ -59,7 +61,10 @@ __aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *
     tilingData = orgTilingData;
 
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->dkWorkSpaceOffset / sizeof(float));
-    
+
+    // Init workspace to store per-core dKey partial results.
+    dkCoreWorkspaceGM.SetGlobalBuffer((__gm__ float *)workspace + tilingData->dkCoreWorkspaceOffset / sizeof(float));
+
     uint32_t coreNum = tilingData->usedCoreNum;
     kPreBlockFactor = (tilingData->dkSize + coreNum - 1) / coreNum;
     kPreBlockTotal = (tilingData->dkSize + kPreBlockFactor - 1) / kPreBlockFactor;

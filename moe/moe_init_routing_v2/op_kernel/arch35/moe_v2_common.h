@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #define THREAD_NUM 2048
 #endif
 namespace MoeInitRoutingV2 {

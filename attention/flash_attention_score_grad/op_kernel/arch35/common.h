@@ -105,6 +105,9 @@ constexpr uint32_t SBNGD = 2;
 constexpr uint32_t BNGSD = 3;
 constexpr uint32_t TND = 4;
 
+constexpr uint32_t MAX_SUM_BNS8 = 0;
+constexpr uint32_t MAX_SUM_TND = 1;
+
 constexpr uint32_t PREFIX_LENGTH = 64;
 constexpr uint32_t SEQ_ARR_LENGTH = 256;
 constexpr uint32_t ADDR_ALIGN_SIZE = 512;
@@ -143,6 +146,18 @@ constexpr uint8_t DETER_OLD = 1;
 constexpr uint8_t DETER_DENSE = 2;
 constexpr uint8_t DETER_CAUSAL = 3;
 constexpr uint8_t DETER_BAND = 4;
+
+constexpr uint16_t ALIGN_OFFSET_16 = 15;
+constexpr uint16_t ALIGN_OFFSET_32 = 31;
+constexpr uint16_t ALIGN_OFFSET_64 = 63;
+constexpr uint16_t ALIGN_OFFSET_128 = 127;
+constexpr uint16_t ALIGN_OFFSET_512 = 511;
+
+constexpr uint16_t OFFSET_BITS_4 = 4;
+constexpr uint16_t OFFSET_BITS_5 = 5;
+constexpr uint16_t OFFSET_BITS_6 = 6;
+constexpr uint16_t OFFSET_BITS_7 = 7;
+constexpr uint16_t OFFSET_BITS_9 = 9;
 
 // pse shape type same as tiling
 constexpr uint32_t PSE_SHAPE_TYPE_BNSS = 0;
@@ -244,8 +259,14 @@ struct FagConstInfo {
     int64_t leftSingleColTotalRound = 0;
     int64_t leftTotalRound = 0;
     int64_t batchTotalRound = 0;
+    // sink相关
+    uint32_t isSink = 0;
+    uint64_t s1SinkOuter = 0;
+    uint64_t s2SinkOuter = 0;
     // 核数
     uint32_t aicCoreNum = 0;
+    // tnd max sum layout
+    uint32_t tndMaxSumLayout = 0;
 };
 
 // fp8反量化因子
@@ -283,6 +304,8 @@ struct QuantRunInfo {
 
     int64_t qInnerOffset[4];
     int64_t kvInnerOffset[4];
+
+    bool kvNeedAtomic;
 };
 struct FagRunInfo {
     RunInfo<false> commonRunInfo{0};
@@ -331,9 +354,15 @@ struct FagRunInfo {
     bool isFirstBlock = true;
     bool isKeyReuse = false;
     bool isValueReuse = false;
-    bool isNextKeyReuse = true;
+    bool isNextKeyReuse = false;
+    bool isLastProcessBlock = false;
+    bool isFirstProcessBlock = false;
     
     int64_t maxsumOffset;
+
+    // sink场景使用
+    int64_t dsinkWorkSpaceOffset = 0;
+    int64_t sinkN1Idx = 0;
 };
 
 constexpr SyncAllConfig syncAllConfigMte2ToMte2 = {PIPE_MTE2, PIPE_MTE2};
@@ -364,15 +393,15 @@ __aicore__ inline uint32_t AlignTo(uint32_t num1, uint32_t num2)
     return (num1 + num2 - 1) / num2 * num2;
 }
 
-__aicore__ inline int64_t AlignTo16(int64_t num) { return (num + 16 - 1) >> 4 << 4; }
+__aicore__ inline int64_t AlignTo16(int64_t num) { return (num + ALIGN_OFFSET_16) >> OFFSET_BITS_4 << OFFSET_BITS_4; }
 
-__aicore__ inline int64_t AlignTo32(int64_t num) { return (num + 32 - 1) >> 5 << 5; }
+__aicore__ inline int64_t AlignTo32(int64_t num) { return (num + ALIGN_OFFSET_32) >> OFFSET_BITS_5 << OFFSET_BITS_5; }
 
-__aicore__ inline int64_t AlignTo64(int64_t num) { return (num + 64 - 1) >> 6 << 6; }
+__aicore__ inline int64_t AlignTo64(int64_t num) { return (num + ALIGN_OFFSET_64) >> OFFSET_BITS_6 << OFFSET_BITS_6; }
 
-__aicore__ inline int64_t AlignTo128(int64_t num) { return (num + 128 - 1) >> 7 << 7; }
+__aicore__ inline int64_t AlignTo128(int64_t num) { return (num + ALIGN_OFFSET_128) >> OFFSET_BITS_7 << OFFSET_BITS_7; }
 
-__aicore__ inline int64_t AlignTo512(int64_t num) { return (num + 512 - 1) >> 9 << 9; }
+__aicore__ inline int64_t AlignTo512(int64_t num) { return (num + ALIGN_OFFSET_512) >> OFFSET_BITS_9 << OFFSET_BITS_9; }
 
 __aicore__ constexpr bool IS_DETER_OLD(const uint8_t deterSparseType) 
 {

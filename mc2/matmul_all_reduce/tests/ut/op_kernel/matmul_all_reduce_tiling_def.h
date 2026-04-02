@@ -23,12 +23,12 @@
 #include "weight_quant_batch_matmul_v2_tiling.h"
 #include "quant_batch_matmul_v3_tiling_def.h"
 #include "../../../op_kernel/arch32/unquant_matmul_all_reduce_tiling_data.h"
-#if __has_include("../../../../common/inc/hccl_stub.h")
+#if __has_include("../../../../common/utils/hccl_stub.h")
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 #endif
 
 #ifdef __CCE_KT_TEST__
-#include "kernel_log.h"
+#include "kernel_operator.h"
 #endif
 
 inline void InitMatmulAllReduceTilingData(uint8_t* tiling, Mc2Tiling::MatmulAllReduceTilingData* const_data)

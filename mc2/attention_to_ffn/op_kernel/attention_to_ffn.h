@@ -25,12 +25,12 @@
 #include "adv_api/reduce/reduce.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "attention_to_ffn_tiling.h"
-#if __has_include("../common/inc/kernel/moe_distribute_base.h")
-#include "../common/inc/kernel/moe_distribute_base.h"
-#include "../common/inc/kernel/mc2_kernel_utils.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/mc2_kernel_utils.h"
 #else
-#include "../../common/inc/kernel/moe_distribute_base.h"
-#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 namespace AttentionToFFNImpl {

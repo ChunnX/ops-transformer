@@ -198,6 +198,7 @@ function(add_compile_cmd_target)
 
     if(ADD_OPS_COMPILE_OPTION_V2)
         set(OP_DEBUG_CONFIG_OPTION --opc-config-file ${ASCEND_CUSTOM_OPC_OPTIONS})
+        set(OP_TILING_KEY_OPTION --kernel_template_input ${KERNEL_TEMPLATE_INPUT})
     else()
         if(OP_DEBUG_CONFIG)
             set(OP_DEBUG_CONFIG_OPTION --op-debug-config ${OP_DEBUG_CONFIG})
@@ -217,18 +218,21 @@ function(add_compile_cmd_target)
             ${base_aclnn_binary_dir}/aic-${CMD_COMPUTE_UNIT}-ops-info.ini
             ${GEN_OUT_DIR}
             ${CMD_COMPUTE_UNIT}
+            ${BISHENG_FLAGS}
             ${OP_TILING_KEY_OPTION}
             ${OP_DEBUG_CONFIG_OPTION}
         COMMAND ${HI_PYTHON} ${ASCENDC_CMAKE_UTIL_DIR}/ascendc_bin_param_build.py
             ${base_aclnn_binary_dir}/inner/aic-${CMD_COMPUTE_UNIT}-ops-info.ini
             ${GEN_OUT_DIR}
             ${CMD_COMPUTE_UNIT}
+            ${BISHENG_FLAGS}
             ${OP_TILING_KEY_OPTION}
             ${OP_DEBUG_CONFIG_OPTION}
         COMMAND ${HI_PYTHON} ${ASCENDC_CMAKE_UTIL_DIR}/ascendc_bin_param_build.py
             ${base_aclnn_binary_dir}/exc/aic-${CMD_COMPUTE_UNIT}-ops-info.ini
             ${GEN_OUT_DIR}
             ${CMD_COMPUTE_UNIT}
+            ${BISHENG_FLAGS}
             ${OP_TILING_KEY_OPTION}
             ${OP_DEBUG_CONFIG_OPTION}
         COMMAND bash ${SED_SCRIPT} ${GEN_OUT_DIR}
@@ -392,9 +396,11 @@ function(add_ops_src_copy)
     set(MC2_OPS_LIST "matmul_reduce_scatter;"
         "matmul_reduce_scatter_v2;"
         "grouped_mat_mul_allto_allv;"
+        "quant_grouped_mat_mul_allto_allv;"
         "grouped_mat_mul_all_reduce;"
         "batch_mat_mul_reduce_scatter_allto_all;"
         "allto_allv_grouped_mat_mul;"
+        "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
         "moe_distribute_combine_add_rms_norm;"
@@ -402,6 +408,8 @@ function(add_ops_src_copy)
         "moe_distribute_combine;"
         "moe_distribute_dispatch_v2;"
         "moe_distribute_combine_v2;"
+        "moe_distribute_dispatch_v3;"
+        "moe_distribute_combine_v3;"
         "moe_update_expert;"
         "all_gather_matmul;"
         "all_gather_matmul_v2;"
@@ -899,4 +907,85 @@ function(concat_op_names)
             CACHE STRING "AclnnInner Extra Sources" FORCE
         )
     endif()
+endfunction()
+
+macro(replace_cur_major_minor_ver)
+    string(REPLACE CUR_MAJOR_MINOR_VER "${CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_VERSION_MAJOR_MINOR}" depend "${depend}")
+endmacro()
+ 	 
+# 设置包和版本号
+function(set_package name)
+    cmake_parse_arguments(VERSION "" "VERSION" "" ${ARGN})
+    set(VERSION "${VERSION_VERSION}")
+    if(NOT name)
+        message(FATAL_ERROR "The name parameter is not set in set_package.")
+    endif()
+    if(NOT VERSION)
+        message(FATAL_ERROR "The VERSION parameter is not set in set_package(${name}).")
+    endif()
+    string(REGEX MATCH "^([0-9]+\\.[0-9]+)" VERSION_MAJOR_MINOR "${VERSION}")
+    list(APPEND CANN_VERSION_PACKAGES "${name}")
+    set(CANN_VERSION_PACKAGES "${CANN_VERSION_PACKAGES}" PARENT_SCOPE)
+    set(CANN_VERSION_CURRENT_PACKAGE "${name}" PARENT_SCOPE)
+    set(CANN_VERSION_${name}_VERSION "${VERSION}" PARENT_SCOPE)
+    set(CANN_VERSION_${name}_VERSION_MAJOR_MINOR "${VERSION_MAJOR_MINOR}" PARENT_SCOPE)
+    set(CANN_VERSION_${name}_BUILD_DEPS PARENT_SCOPE)
+    set(CANN_VERSION_${name}_RUN_DEPS PARENT_SCOPE)
+endfunction()
+ 	 
+# 设置构建依赖
+function(set_build_dependencies pkg_name depend)
+    if(NOT CANN_VERSION_CURRENT_PACKAGE)
+        message(FATAL_ERROR "The set_package must be invoked first.")
+    endif()
+    if(NOT pkg_name)
+        message(FATAL_ERROR "The pkg_name parameter is not set in set_build_dependencies.")
+    endif()
+    if(NOT depend)
+        message(FATAL_ERROR "The depend parameter is not set in set_build_dependencies.")
+    endif()
+    replace_cur_major_minor_ver()
+    list(APPEND CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_BUILD_DEPS "${pkg_name}" "${depend}")
+    set(CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_BUILD_DEPS "${CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_BUILD_DEPS}" PARENT_SCOPE)
+endfunction()
+ 	 
+# 设置运行依赖
+function(set_run_dependencies pkg_name depend)
+    if(NOT CANN_VERSION_CURRENT_PACKAGE)
+        message(FATAL_ERROR "The set_package must be invoked first.")
+    endif()
+    if(NOT pkg_name)
+        message(FATAL_ERROR "The pkg_name parameter is not set in set_run_dependencies.")
+    endif()
+    if(NOT depend)
+        message(FATAL_ERROR "The depend parameter is not set in set_run_dependencies.")
+    endif()
+    replace_cur_major_minor_ver()
+    list(APPEND CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_RUN_DEPS "${pkg_name}" "${depend}")
+    set(CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_RUN_DEPS "${CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_RUN_DEPS}" PARENT_SCOPE)
+endfunction()
+ 	 
+# 检查构建依赖
+function(check_pkg_build_deps pkg_name)
+    execute_process(
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_build_dependencies.py "${ASCEND_CANN_PACKAGE_PATH}" ${CANN_VERSION_${pkg_name}_BUILD_DEPS}
+        RESULT_VARIABLE result
+    )
+    if(result)
+        message(FATAL_ERROR "Check ${pkg_name} build dependencies failed!")
+    endif()
+endfunction()
+ 	 
+# 添加生成version.info的目标
+# 目标名格式为：version_${包名}_info
+function(add_version_info_targets)
+    foreach(pkg_name ${CANN_VERSION_PACKAGES})
+        add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/version.${pkg_name}.info
+            COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_version_info.py --output ${CMAKE_BINARY_DIR}/version.${pkg_name}.info
+                    "${CANN_VERSION_${pkg_name}_VERSION}" ${CANN_VERSION_${pkg_name}_RUN_DEPS}
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/version.cmake ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_version_info.py
+            VERBATIM
+        )
+        add_custom_target(version_${pkg_name}_info ALL DEPENDS ${CMAKE_BINARY_DIR}/version.${pkg_name}.info)
+    endforeach()
 endfunction()

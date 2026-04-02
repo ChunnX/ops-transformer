@@ -98,7 +98,7 @@ public:
         outQueueZ_.FreeTensor(outLocal);
     }
 
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     // 如果add的两路精度不一致，需要升精度累加后cast回去
     static constexpr bool NEED_INCREASE_ACCURACY = !std::is_same<xDtype, yDtype>::value;
     static constexpr bool X_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY && (!std::is_same<xDtype, float>::value);

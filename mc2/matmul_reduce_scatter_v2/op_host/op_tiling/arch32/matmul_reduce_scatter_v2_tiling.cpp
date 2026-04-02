@@ -22,11 +22,11 @@
 
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
-#include "tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
-#include "tiling/new_mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "tiling_base/tiling_templates_registry.h"
 
 using namespace AscendC;
@@ -90,19 +90,31 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
+ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm() 
 {
-    const uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
+    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
+    const uint32_t opType = isA2APath_ 
+        ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
+        : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
+
+    const std::string rsConfig = isA2APath_ 
+        ? "AlltoAll=level0:fullmesh" 
+        : "ReduceScatter=level0:fullmesh";
+
     int index = 0;
     auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
-    const std::string rsConfig = "ReduceScatter=level0:fullmesh";
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, rsConfig, 0,
-                                                static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)), 
-                                                static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
+    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
+
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
+        group, opType, rsConfig, reduceType, dataType, dataType
+    );
+
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+        
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 

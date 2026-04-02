@@ -70,10 +70,9 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
     uint64_t workspaceSize_ =
-        libApiWorkSpaceSize_ + inferredInfo.mmResultLen + inferredInfo.permuteLen + inferredInfo.biasLen;
+        libApiWorkSpaceSize_ + inferredInfo.mmResultLen + inferredInfo.permuteLen;
     workspaces[0] = workspaceSize_;
-    OP_LOGD(opName_, "Workspaces[0] size=%ld, biasLen=%d, mmResultLen=%d", workspaces[0], inferredInfo.biasLen,
-            inferredInfo.mmResultLen);
+    OP_LOGD(opName_, "Workspaces[0] size=%ld, mmResultLen=%d", workspaces[0], inferredInfo.mmResultLen);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -85,8 +84,14 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
 ge::graphStatus MatmulAllToAllTilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
+    SocVersion nowSocVersion = SocVersion::SOC950;
+    std::string socVersionStr = mc2tiling::GetSocVersion(context_);
+    OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+    if (socVersionStr == "Ascend910_93") {
+        nowSocVersion = SocVersion::SOC910_93;
+    }
     AlltoAllMM tileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL,
-                             SocVersion::SOC950);
+                             nowSocVersion);
     tileFormulate.GetTiling();
     CutResult mCutMMAlltoAll = tileFormulate.tilingM_.cutRes;
     inferredInfo.tileCnt = mCutMMAlltoAll.numLongTile;
@@ -113,10 +118,6 @@ void MatmulAllToAllTilingBase::SetUserWorkSpace()
         contextInfo.args_.mValue * contextInfo.args_.nValue * contextInfo.args_.outputDtypeSize, alignAddrLen);
     // 重排空间等于mm计算结果空间
     inferredInfo.permuteLen = inferredInfo.mmResultLen;
-    if (contextInfo.args_.isBias) {
-        inferredInfo.biasLen =
-            mc2tiling::AlignUp(contextInfo.args_.nValue, mc2tiling::SHAPE_ALIGN_SIZE) * sizeof(float);
-    }
 }
 
 /**

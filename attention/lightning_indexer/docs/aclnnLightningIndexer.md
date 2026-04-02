@@ -28,48 +28,53 @@ $$
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexer”接口执行计算。
+
 ```Cpp
 aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
-    const aclTensor     *query,
-    const aclTensor     *key,
-    const aclTensor     *weights, 
-    const aclTensor     *actualSeqLengthsQuery,
-    const aclTensor     *actualSeqLengthsKey,
-    const aclTensor     *blockTable,
-    char                *layoutQuery,
-    char                *layoutKey,
-    int64_t             sparseCount,
-    int64_t             sparseMode,
-    bool                returnValue,
-    const aclTensor     *sparseIndices,
-    const aclTensor     *sparseValues,
-    uint64_t            *workspaceSize,
-    aclOpExecutor       **executor)
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *weights,
+    const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *actualSeqLengthsKeyOptional,
+    const aclTensor *blockTableOptional,
+    char            *layoutQueryOptional,
+    char            *layoutKeyOptional,
+    int64_t          sparseCount,
+    int64_t          sparseMode,
+    int64_t          preTokens,
+    int64_t          nextTokens,
+    bool             returnValues,
+    const aclTensor *sparseIndicesOut,
+    const aclTensor *sparseValuesOut,
+    uint64_t        *workspaceSize,
+    aclOpExecutor  **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnLightningIndexer(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
 ## aclnnLightningIndexerGetWorkspaceSize
 
 - **参数说明：**
+
 > [!NOTE]
 > - query、key、weights参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 > - S1表示query shape中的S，S2表示key shape中的S，T1表示query shape中的T，T2表示key shape中的T，N1表示query shape中的N，N2表示key shape中的N。
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 110px">
-  <col style="width: 301px">
-  <col style="width: 219px">
-  <col style="width: 328px">
-  <col style="width: 101px">
-  <col style="width: 143px">
-  <col style="width: 146px">
+  <table style="undefined;table-layout: fixed; width: 1601px"><colgroup>
+  <col style="width: 264px">
+  <col style="width: 132px">
+  <col style="width: 232px">
+  <col style="width: 330px">
+  <col style="width: 164px">
+  <col style="width: 119px">
+  <col style="width: 215px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -87,11 +92,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -127,11 +128,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>weights</td>
       <td>输入</td>
       <td>公式中的输入W。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16、FLOAT</td>
       <td>ND</td>
       <td>
@@ -143,7 +140,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsQuery</td>
+      <td>actualSeqLengthsQueryOptional</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数。</td>
       <td>
@@ -160,7 +157,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKey</td>
+      <td>actualSeqLengthsKeyOptional</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数。</td>
       <td>
@@ -177,7 +174,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>blockTable</td>
+      <td>blockTableOptional</td>
       <td>输入</td>
       <td>表示PageAttention中KV存储使用的block映射表。</td>
       <td>
@@ -192,7 +189,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>layoutQuery</td>
+      <td>layoutQueryOptional</td>
       <td>输入</td>
       <td>用于标识输入Query的数据排布格式。</td>
       <td>
@@ -207,7 +204,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKey</td>
+      <td>layoutKeyOptional</td>
       <td>输入</td>
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
@@ -225,11 +222,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseCount</td>
       <td>输入</td>
       <td>topK阶段需要保留的block数量。</td>
-      <td>
-          <ul>
-                <li>支持[1, 2048]，以及3072、4096、5120、6144、7168、8192</li>
-          </ul>
-      </td>
+      <td>支持[1, 2048]，以及3072、4096、5120、6144、7168、8192</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -254,11 +247,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>preTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-      <td>
-          <ul>
-                <li>仅支持默认值2^63-1。</li>
-          </ul>
-      </td>
+      <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -268,20 +257,16 @@ aclnnStatus aclnnLightningIndexer(
       <td>nextTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-      <td>
-          <ul>
-                <li>仅支持默认值2^63-1。</li>
-          </ul>
-      </td>
+      <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>returnValue</td>
+      <td>returnValues</td>
       <td>输入</td>
-      <td>表示是否输出sparseValues。</td>
+      <td>表示是否输出sparseValuesOut。</td>
       <td>
           <ul>
                 <li>True表示输出，但图模式下不支持，False表示不输出；默认值为False</li>
@@ -294,14 +279,10 @@ aclnnStatus aclnnLightningIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseIndices</td>
+      <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>INT32</td>
       <td>-</td>
       <td>
@@ -313,17 +294,13 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>sparseValues</td>
+      <td>sparseValuesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出对应的value值。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>shape与sparseIndices保持一致</td>
+      <td>shape与sparseIndicesOut保持一致</td>
       <td>x</td>
     </tr>
     <tr>
@@ -354,7 +331,6 @@ aclnnStatus aclnnLightningIndexer(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
-  
 
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
@@ -375,17 +351,19 @@ aclnnStatus aclnnLightningIndexer(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>query、key、weights、actualSeqLengthsQuery、actualSeqLengthsKey、layoutQuery、layoutKey、sparseCount、sparseMode、returnValue、sparseIndices、sparseValues的数据类型和数据格式不在支持的范围内。</td>
+                <td>query、key、weights、actualSeqLengthsQueryOptional、actualSeqLengthsKeyOptional、layoutQueryOptional、layoutKeyOptional、sparseCount、sparseMode、returnValues、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>
 
 ## aclnnLightningIndexer
 
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-  <col style="width: 173px">
-  <col style="width: 112px">
-  <col style="width: 668px">
+- **参数说明：**
+
+  <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
   </colgroup>
   <thead>
     <tr>
@@ -423,10 +401,11 @@ aclnnStatus aclnnLightningIndexer(
 
 ## 约束说明
 
-- 参数query中的N支持64，key、value的N支持1。
-- sparseCount支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
+- 参数query中的N支持小于等于64，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
+- 参数query、key的数据类型应保持一致。
+- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
 
 ## 调用示例
 
@@ -455,18 +434,18 @@ aclnnStatus aclnnLightningIndexer(
 #include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_lightning_indexer.h"
- 
+
 using namespace std;
 
 namespace {
- 
+
 #define CHECK_RET(cond) ((cond) ? true :(false))
- 
+
 #define LOG_PRINT(message, ...)     \
   do {                              \
     (void)printf(message, ##__VA_ARGS__); \
   } while (0)
- 
+
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
   for (auto i : shape) {
@@ -474,47 +453,47 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   }
   return shapeSize;
 }
- 
+
 int Init(int32_t deviceId, aclrtStream* stream) {
   auto ret = aclInit(nullptr);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtSetDevice(deviceId);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtCreateStream(stream);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
     return ret;
   }
   return 0;
 }
- 
+
 template <typename T>
 int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
                     aclDataType dataType, aclTensor** tensor) {
   auto size = GetShapeSize(shape) * sizeof(T);
   auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
     return ret;
   }
-  
+
   ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
     return ret;
   }
- 
+
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = shape.size() - 2; i >= 0; i--) {
     strides[i] = shape[i + 1] * strides[i + 1];
   }
- 
+
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
@@ -554,31 +533,31 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
     std::vector<float> sparseValuesHostData(sparseValuesShapeSize, 1);
 
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
+    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
                               aclDataType::ACL_FLOAT16, &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr, 
+    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
                           aclDataType::ACL_FLOAT16, &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr, 
+    ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr,
                           aclDataType::ACL_FLOAT16, &resources.weightsTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr, 
+    ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr,
                           aclDataType::ACL_INT32, &resources.sparseIndicesTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(sparseValuesHostData, sparseValuesShape, &resources.sparseValuesDeviceAddr, 
+    ret = CreateAclTensor(sparseValuesHostData, sparseValuesShape, &resources.sparseValuesDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.sparseValuesTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
@@ -586,7 +565,7 @@ int InitializeTensors(TensorResources& resources) {
     return ACL_SUCCESS;
 }
 
-int ExecuteLightningIndexer(TensorResources& resources, aclrtStream stream, 
+int ExecuteLightningIndexer(TensorResources& resources, aclrtStream stream,
                               void** workspaceAddr, uint64_t* workspaceSize) {
     int64_t sparseCount = 2048;
     int64_t sparseMode = 3;
@@ -610,9 +589,9 @@ int ExecuteLightningIndexer(TensorResources& resources, aclrtStream stream,
     aclOpExecutor* executor;
 
     int ret = aclnnLightningIndexerGetWorkspaceSize(resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr,
-                                                    layoutQuery, layoutKey, sparseCount, sparseMode, preTokens, nextTokens,returnValue, 
+                                                    layoutQuery, layoutKey, sparseCount, sparseMode, preTokens, nextTokens,returnValue,
                                                     resources.sparseIndicesTensor, resources.sparseValuesTensor, workspaceSize, &executor);
-        
+
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnLightningIndexerGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -650,7 +629,7 @@ int PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources& resources, void* workspaceAddr, 
+void CleanupResources(TensorResources& resources, void* workspaceAddr,
                      aclrtStream stream, int32_t deviceId) {
     if (resources.queryTensor) {
       aclDestroyTensor(resources.queryTensor);
@@ -695,7 +674,7 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
 }
 
 } // namespace
- 
+
 int main() {
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;

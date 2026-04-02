@@ -37,7 +37,6 @@
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScore”接口执行计算。
@@ -172,7 +171,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -262,7 +261,8 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td><ul><li>不支持空tensor。</li>
         <li>支持per-tensor，per-channel，per-token。 </li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+            <li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>1-4</td>
@@ -276,7 +276,8 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <li>支持per-tensor，per-channel，per-token。 </li>
             <li>使用时，shape必须与antiquantScale保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+            <li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>1-4</td>
@@ -418,7 +419,8 @@ aclnnStatus aclnnFusedInferAttentionScore(
           <td><ul><li>传入0时表示为per-channel（per-channel包含per-tensor）。</li>
               <li>传入1时表示per-token。</li>
               <li>不特意指定时建议传入0。</li>
-              <li>Q_S等于1时，传入0和1之外的其他值会执行异常。Q_S大于等于2时该参数无效。</li></ul></td>
+              <li>Q_S等于1时，传入0和1之外的其他值会执行异常。Q_S大于等于2时该参数无效。</li>
+              <li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -429,7 +431,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>输入</td>
         <td>是否输出softmax_lse。</td>
           <td><ul><li>支持S轴外切（增加输出）。</li>
-              <li>用户不特意指定时建议传入false。</li></td>
+              <li>用户不特意指定时建议传入false。</li></ul></td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -455,7 +457,6 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>4</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>
@@ -554,13 +555,11 @@ aclnnStatus aclnnFusedInferAttentionScore(
   </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-
 
 - 确定性计算：
   - aclnnPromptFlashAttention默认确定性实现。
@@ -602,6 +601,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
   - 非对称量化模式下， antiquantScale和antiquantOffset参数需同时存在。
   - 对称量化模式下，antiquantOffset可以为空（即nullptr）；当antiquantOffset参数为空时，执行对称量化，否则执行非对称量化。
   - Q_S大于等于2时只支持FLOAT16和FLOAT32（FLOAT32仅PageAttention场景下支持）
+  - 建议使用KV伪量化参数分离模式。
 
 - inputLayout：用于标识输入query、key、value的数据排布格式，当前支持BSH、BSND、BNSD、BNSD_BSND(输入为BNSD时，输出格式为BSND，仅支持Q_S大于1)。用户不特意指定时建议传入"BSH"。
 
@@ -1082,4 +1082,3 @@ int main()
     return 0;
 }
 ```
-

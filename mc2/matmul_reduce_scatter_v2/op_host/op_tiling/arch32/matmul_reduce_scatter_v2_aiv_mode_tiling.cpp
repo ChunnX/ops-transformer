@@ -19,7 +19,7 @@
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_tiling_key.h"
 
@@ -1206,7 +1206,6 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
                 "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
             return ge::GRAPH_FAILED);
     }
-
 
     OP_LOGI("Leave MatmulReduceScatterV2AivMode tiling func.");
     return ge::GRAPH_SUCCESS;

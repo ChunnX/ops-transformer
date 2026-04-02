@@ -15,6 +15,7 @@ project(cann_ops-transformer)
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
+
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
 option(ENABLE_CCACHE              "Enable ccache capability"        ON)
@@ -34,6 +35,7 @@ option(OP_KERNEL_UT               "Enable kernel ut"                OFF)
 option(OP_KERNEL_AICPU_UT         "Enable aicpu kernel ut"          OFF)
 option(UT_TEST_ALL                "Enable all ut"                   OFF)
 option(ENABLE_OOM                 "Enable kernel oom"               OFF)
+option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc that need to be compiled")
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
@@ -43,6 +45,29 @@ set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;k
 
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
 set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
+set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
+
+# 获取基础 CANN 路径
+if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
+    set(ASCEND_CANN_PACKAGE_PATH  ${CUSTOM_ASCEND_CANN_PACKAGE_PATH})
+elseif (DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_CANN_PACKAGE_PATH  $ENV{ASCEND_HOME_PATH})
+elseif (DEFINED ENV{ASCEND_OPP_PATH})
+    get_filename_component(ASCEND_CANN_PACKAGE_PATH "$ENV{ASCEND_OPP_PATH}/.." ABSOLUTE)
+else()
+    set(ASCEND_CANN_PACKAGE_PATH  "/usr/local/Ascend/latest")
+endif ()
+message(STATUS "ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}")
+
+get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}"           REALPATH)
+get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
+include(cmake/func.cmake)
+
+include(version.cmake)
+if (BUILD_OPEN_PROJECT)
+    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
+endif()
+add_version_info_targets()
 
 foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   list(FIND SOC_VERSION_LIST ${SOC_VERSION} INDEX)
@@ -98,8 +123,8 @@ set_directory_properties(PROPERTIES
     ADDITIONAL_MAKE_CLEAN_FILES "${CMAKE_BINARY_DIR}/_CPack_Packages"
 )
 
+include(cmake/third_party/opbase.cmake)
 include(cmake/config.cmake)
-include(cmake/func.cmake)
 include(cmake/third_party/json.cmake)
 if (ENABLE_TEST)
     include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
@@ -423,6 +448,7 @@ if (BUILD_OPS_RTY_KERNEL)
             $<BUILD_INTERFACE:intf_pub>
     )
     add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner)
+    add_dependencies(ops-transformer version_ops-transformer_info)
 
     set_source_files_properties(${generate_proto_srcs}
             PROPERTIES GENERATED TRUE

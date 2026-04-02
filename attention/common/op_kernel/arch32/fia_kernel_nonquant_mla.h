@@ -531,12 +531,10 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
     // 命名修改为isUpdateKV
     if (constInfo.batchContinuous) {
         info.isChangeBatch = false;
+    } else if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
+        info.isChangeBatch = true;
     } else {
-        if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-            info.isChangeBatch = true;
-        } else {
-            info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-        }
+        info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
     }
 
     int64_t safePreToken = constInfo.preToken;
@@ -571,15 +569,13 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
         // 所有任务属于同一个S1G
         info.tndIsS2SplitCore = true;
         info.tndCoreStartKVSplitPos = constInfo.coreStartKVSplitPos;
-    } else {
-        if (constInfo.headS2Split && (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1Start)) {
-            // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-            info.tndIsS2SplitCore = true;
-            info.tndCoreStartKVSplitPos = constInfo.coreStartKVSplitPos;
-        } else if (constInfo.tailS2Split && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1End)) {
-            // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-            info.tndIsS2SplitCore = true;
-        }
+    } else if (constInfo.headS2Split && (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1Start)) {
+        // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
+        info.tndIsS2SplitCore = true;
+        info.tndCoreStartKVSplitPos = constInfo.coreStartKVSplitPos;
+    } else if (constInfo.tailS2Split && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1End)) {
+        // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
+        info.tndIsS2SplitCore = true;
     }
 
     uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
@@ -890,7 +886,7 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
         preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
     }
 
-    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
     } else if (constInfo.sparseMode == fa_base_vector::BAND) {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;

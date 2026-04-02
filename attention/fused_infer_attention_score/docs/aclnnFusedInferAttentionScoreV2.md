@@ -15,7 +15,9 @@
 
 ## 功能说明
 
-- 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。相比于FusedInferAttentionScore，本接口新增keyAntiquantScaleOptional、keyAntiquantOffsetOptional、valueAntiquantScaleOptional、 valueAntiquantOffsetOptional、keySharedPrefixOptional、valueSharedPrefixOptional、actualSharedPrefixLenOptional、keyAntiquantMode和valueAntiquantMode参数。
+- 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
+
+  相比于FusedInferAttentionScore，本接口新增keyAntiquantScaleOptional、keyAntiquantOffsetOptional、valueAntiquantScaleOptional、 valueAntiquantOffsetOptional、keySharedPrefixOptional、valueSharedPrefixOptional、actualSharedPrefixLenOptional、keyAntiquantMode和valueAntiquantMode参数。
 
   **说明：** 
   decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
@@ -36,7 +38,6 @@
   $$
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
-
 
 ## 函数原型
 
@@ -99,16 +100,15 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
 - **参数说明**
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1497px"><colgroup> 
-     <col style="width: 150px"> 
-     <col style="width: 120px"> 
-     <col style="width: 300px"> 
-     <col style="width: 330px"> 
-     <col style="width: 212px"> 
-     <col style="width: 100px">  
-     <col style="width: 140px">  
-     <col style="width: 145px">  
+    <table style="undefined;table-layout: fixed; width: 1589px"><colgroup>
+    <col style="width: 269px">
+    <col style="width: 132px">
+    <col style="width: 252px">
+    <col style="width: 341px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 146px">
+    <col style="width: 145px">
      </colgroup>
     <thead>
       <tr>
@@ -181,7 +181,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -271,7 +271,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td><ul><li>不支持空Tensor。</li>
         <li>支持per-tensor，per-channel，per-token。 </li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+            <li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>1-4</td>
@@ -285,7 +286,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <li>支持per-tensor，per-channel，per-token。 </li>
             <li>使用时，shape必须与antiquantScaleOptional保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+            <li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>1-4</td>
@@ -517,7 +519,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
           <td><ul><li>传入0时表示为per-channel（per-channel包含per-tensor）。</li>
               <li>传入1时表示per-token。</li>
               <li>不特意指定时建议传入0。</li>
-              <li>Q_S等于1时，传入0和1之外的其他值会执行异常。Q_S大于等于2时该参数无效。</li></ul></td>
+              <li>Q_S等于1时，传入0和1之外的其他值会执行异常。Q_S大于等于2时该参数无效。</li>
+              <li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -528,7 +531,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>输入</td>
         <td>是否输出softmax_lse。</td>
           <td><ul><li>支持S轴外切（增加输出）。</li>
-              <li>用户不特意指定时建议传入false。</li></td>
+              <li>用户不特意指定时建议传入false。</li></ul></td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -579,7 +582,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>4</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>
@@ -601,7 +603,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>-</td>
       </tr>
     </tbody></table>
-    </div>
 
 - **返回值**
 
@@ -638,7 +639,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnFusedInferAttentionScoreV2
 
@@ -678,7 +678,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
     </tr>
   </tbody>
   </table>
-
 
 - **返回值**
 
@@ -1033,8 +1032,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   - page attention场景：
 
     - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-      -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16。
-      -  <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16。
+      - <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
     - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention 伪量化场景
@@ -1410,4 +1409,3 @@ int main()
   return 0;
 }
 ```
-

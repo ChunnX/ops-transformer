@@ -1550,6 +1550,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetWorkspaceSize()
                                            aicoreParams_.aicNum, aicoreParams_.numBlocks),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
+    context_->SetScheduleMode(1);
 
     // 系统预留
     int64_t sysLen = WORKSPACE_BASE_CAL;
@@ -1754,7 +1755,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
         tmpData_.t2 = keyShape.GetDim(DIM_0);
         uint64_t tailZeroCount = 0;
         for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-            if (tmpData_.actualSeqQlen[i] == 0 && tmpData_.actualSeqKvlen[i] == 0) {
+            if (tmpData_.actualSeqQlen[i] <= 0 && tmpData_.actualSeqKvlen[i] <= 0) {
                 ++tailZeroCount;
             } else {
                 break;

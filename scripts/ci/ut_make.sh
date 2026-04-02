@@ -40,6 +40,7 @@ OP_REPO_LIST+="gmm "
 OP_REPO_LIST+="ffn "
 OP_REPO_LIST+="posembedding "
 OP_REPO_LIST+="mc2 "
+OP_REPO_LIST+="mhc "
 
 # 读取算子option配置 ################################################################################################
 op_config_yaml="$CODE_PATH/tests/test_config.yaml"

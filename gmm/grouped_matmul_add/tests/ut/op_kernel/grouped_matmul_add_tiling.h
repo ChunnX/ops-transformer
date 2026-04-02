@@ -20,8 +20,6 @@
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
 
-#define __aicore__
-
 constexpr uint16_t GMM_MAX_TENSOR_LIST_SIZE = 128;
 
 struct GmmBaseParams {
@@ -30,15 +28,8 @@ struct GmmBaseParams {
     int64_t groupType; // 分组类型，仅支持2 --- K分组
 };
 
-struct GmmArray {
-    int64_t mList[GMM_MAX_TENSOR_LIST_SIZE];
-    int64_t kList[GMM_MAX_TENSOR_LIST_SIZE];
-    int64_t nList[GMM_MAX_TENSOR_LIST_SIZE];
-};
-
 struct GroupedMatmulAddTilingData {
     GmmBaseParams gmmBaseParams;
-    GmmArray gmmArray;
     TCubeTiling mmTilingData;
 };
 #ifdef __NPU_TILING__

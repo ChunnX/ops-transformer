@@ -16,9 +16,11 @@
 #define BUFFER_H
 #include<type_traits>
 #include"lib/matmul_intf.h"
-#include"kernel_event.h"
-#include"kernel_common.h"
-#include"kernel_tpipe.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
@@ -38,6 +40,7 @@ enum class BufferType {
     L0C = 3,
     UB = 4,
     GM = 5,
+    C2 = 6,
 };
 
 enum class SyncType {
@@ -62,6 +65,8 @@ struct BufferInfo{
             return HardEvent::MTE1_M;
         } else if constexpr (Type == BufferType::L0C) {
             return HardEvent::M_FIX;
+        } else if constexpr (Type == BufferType::C2) {
+            return HardEvent::MTE1_M;
         }
     }
 
@@ -74,6 +79,8 @@ struct BufferInfo{
             return HardEvent::M_MTE1;
         } else if constexpr (Type == BufferType::L0C) {
             return HardEvent::FIX_M;
+        } else if constexpr (Type == BufferType::C2) {
+            return HardEvent::M_MTE1;
         }
     }
 
@@ -90,6 +97,8 @@ struct BufferInfo{
             return TPosition::VECIN;
         } else if constexpr (Type == BufferType::GM) {
             return TPosition::GM;
+        } else if constexpr (Type == BufferType::C2) {
+            return TPosition::C2;
         }
     }
 

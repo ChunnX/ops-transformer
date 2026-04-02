@@ -28,10 +28,9 @@
     attention\_out = einsum(weights, value1) + einsum(weights, value2)
     $$
     
-
 ## 函数原型
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnFusedFloydAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedFloydAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttention”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnFusedFloydAttentionGetWorkspaceSize(
@@ -56,7 +55,6 @@ aclnnStatus aclnnFusedFloydAttention(
     aclOpExecutor    *executor, 
     const aclrtStream stream)
 ```
-
 
 ## aclnnFusedFloydAttentionGetWorkspaceSize
 
@@ -87,7 +85,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>query</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的query。</td>
+          <td>公式中的query。</td>
           <td>数据类型与key1/value1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -97,7 +95,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>key1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的key1。</td>
+          <td>公式中的key1。</td>
           <td>数据类型与query/value1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -107,7 +105,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>value1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的value1。</td>
+          <td>公式中的value1。</td>
           <td>数据类型与query/key1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -117,7 +115,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>key2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的key2。</td>
+          <td>公式中的key2。</td>
           <td>数据类型与query/key1/value1/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -127,7 +125,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>value2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的value2。</td>
+          <td>公式中的value2。</td>
           <td>数据类型与query/key1/value1/key2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -137,7 +135,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>attenMaskOptional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的attenMask。</td>
+          <td>公式中的attenMask。</td>
           <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
           <td>BOOL、UINT8</td>
           <td>ND</td>
@@ -157,7 +155,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>softmaxMax</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+          <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
           <td>FLOAT</td>
           <td>ND</td>
@@ -167,7 +165,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>softmaxSum</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+          <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
           <td>FLOAT</td>
           <td>ND</td>
@@ -177,7 +175,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>attentionOutOut</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，计算公式的最终输出。</td>
+          <td>计算公式的最终输出。</td>
           <td>数据类型与query的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -209,7 +207,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -284,7 +282,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明<a name="1"></a>
 
@@ -302,6 +300,7 @@ aclnnStatus aclnnFusedFloydAttention(
 - key2与value2 shape需相同。
 - softmaxMax与softmaxSum shape需相同。
 - D只支持32/64/128。
+- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降，此时建议使用小算子拼接替换实现。
 
 ## 调用示例
 

@@ -15,9 +15,9 @@
 #include "vector"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_hcom_topo_info.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include <map>
 #include "matmul_allto_all_tiling_910b.h"
 
@@ -285,8 +285,21 @@ namespace MC2Tiling {
 
 bool MatmulAlltoAllTiling910B::IsCapable()
 {
-    OP_LOGI(opName_, "Start with MatmulAllToAll tiling.");
-    return true;
+    fe::PlatFormInfos *platformInfoPtr = context_->GetPlatformInfo();
+    OP_TILING_CHECK(platformInfoPtr == nullptr,         \
+ 	    OP_LOGE(opName_, "fail to get platform info"),  \
+ 	    return false);
+ 	fe::PlatFormInfos &platformInfo = *platformInfoPtr;
+ 	std::string socVersionStr;
+ 	(void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersionStr);
+ 	OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+ 	QuantMode mode = MatmulAlltoAllTilingUtil::GetQuantMode(context_, opName_);
+ 	if (socVersionStr == "Ascend910B") {
+ 	    OP_LOGI(opName_, "Start with MatmulAllToAll tiling.");
+ 	    return true;
+ 	}
+ 	OP_LOGD(opName_, "Skip MatmulAlltoAllTiling910b tiling when the SocVersion is unsupported.");
+ 	return false;
 }
 
 /**
@@ -299,8 +312,8 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-    const int *x1_quant_mode = attrs->GetAttrPointer<int>(ATTR_X1_QUANTMODE_INDEX);
-    const int *x2_quant_mode = attrs->GetAttrPointer<int>(ATTR_X2_QUANTMODE_INDEX);
+    const int64_t *x1_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX);
+    const int64_t *x2_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE(opName_, "The input attr group is null pointer."),
                     return ge::GRAPH_FAILED);
@@ -319,7 +332,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
 
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(ATTR_X2_TRANSPOSE_INDEX);
     needTransX2 = (isTransX2 != nullptr) ? *isTransX2 : false;
-    quantType = (*x1_quant_mode) * X1_QUANT_SIGN + (*x2_quant_mode);
+    quantType = static_cast<uint32_t>((*x1_quant_mode) * X1_QUANT_SIGN + (*x2_quant_mode));
 
     return ge::GRAPH_SUCCESS;
 }

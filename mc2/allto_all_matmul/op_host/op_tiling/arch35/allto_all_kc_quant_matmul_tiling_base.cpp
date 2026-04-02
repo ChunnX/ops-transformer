@@ -12,7 +12,7 @@
  * \file allto_all_kc_quant_matmul_tiling_base.cpp
  * \brief
  */
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "allto_all_kc_quant_matmul_tiling_base.h"
 
@@ -30,16 +30,16 @@ gert::StorageShape alltoallKcQuantStorageShape = gert::StorageShape();
  */
 bool AllToAllKcQuantMatmulTilingBase::IsCapable()
 {
-    int x1QuantMode = 0;
-    int x2QuantMode = 0;
+    int64_t x1QuantModeValue = 0;
+    int64_t x2QuantModeValue = 0;
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    if (const int *ptr = attrs->GetAttrPointer<int>(ATTR_X1_QUANTMODE_INDEX)) {
-        x1QuantMode = *ptr;
+    if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX)) {
+        x1QuantModeValue = *ptr;
     }
-    if (const int *ptr = attrs->GetAttrPointer<int>(ATTR_X2_QUANTMODE_INDEX)) {
-        x2QuantMode = *ptr;
+    if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX)) {
+        x2QuantModeValue = *ptr;
     }
-    if (x1QuantMode == X1_QUANTMODE_VALUES && x2QuantMode == X2_QUANTMODE_VALUES) {
+    if (x1QuantModeValue == X1_QUANTMODE_VALUES && x2QuantModeValue == X2_QUANTMODE_VALUES) {
         OP_LOGI(opName_, "Start with AlltoAllKcQuantMatmul tiling.");
         return true;
     }
@@ -57,6 +57,8 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::CheckOpInputInfo()
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckKcTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(AllToAllMatmulTilingBase::CheckKcQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(AllToAllMatmulTilingBase::CheckKcQuantShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
@@ -69,12 +71,41 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::CheckOpInputInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+/**
+ * @brief 校验参数的format::是否为私有格式
+ * 
+ * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
+ * @param opName 算子名称 
+ * @return
+ */
+ge::graphStatus AllToAllKcQuantMatmulTilingBase::CheckKcTensorFormat(const gert::TilingContext *context, const char *opName)
+{
+    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
+    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
+                    OP_LOGE(opName, "x2scale tensors should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+    ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
+    OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
+                    OP_LOGE(opName, "X2Scale format should be ND, but actual value is %s.",
+                            Ops::Base::ToString(x2ScaleFormat).c_str()),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
+/**
+ * @brief 设置量化的数据类型信息
+ * 
+ * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
+ * @param opName 算子名称
+ * @param contextInfo 存储了tiling的过程信息
+ * @return
+ */
 ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::TilingContext *context,
                                                                    const char *opName, TilingContextInfo &contextInfo)
 {
     const gert::StorageShape *matrixBias = context->GetOptionalInputShape(INPUT_BIAS_INDEX);
-    int aDTypeNum = *context_->GetAttrs()->GetAttrPointer<uint64_t>(ALLTOALLMATMUL_ATTR_X1_QUANTDTYPE_INDEX);
+    int64_t aDTypeNum = *context_->GetAttrs()->GetAttrPointer<int64_t>(ALLTOALLMATMUL_ATTR_X1_QUANTDTYPE_INDEX);
     ge::DataType biasType;
     // 这是针对matmul的数据类型
     ge::DataType aType = static_cast<ge::DataType>(aDTypeNum);
@@ -90,7 +121,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::T
     }
 
     OP_TILING_CHECK(aDTypeNum != FP8_E5M2_VALUES && aDTypeNum != FP8_E4M3_VALUES,
-    OP_LOGE(opName, "aDTypeNum %d is invalid, only 35(fp8e5m2) or 36(fp8e4m3) is supported.", aDTypeNum),
+    OP_LOGE(opName, "aDTypeNum %ld is invalid, only 35(fp8e5m2) or 36(fp8e4m3) is supported.", aDTypeNum),
     return ge::GRAPH_FAILED);
     contextInfo.x1KcDynQuantDTypeVal = aDTypeNum;
 
@@ -248,7 +279,7 @@ ge::graphStatus AlltoAllKcQuantMatmulHelper::GetShapeAttrsInfo()
     inputParams_.libApiWorkSpaceSize = tilingProcesser_.libApiWorkSpaceSize_;
     inputParams_.aDtype = tilingArgs.geAType;
     inputParams_.bDtype = tilingArgs.geBType;
-    int yDType = *context_->GetAttrs()->GetAttrPointer<uint64_t>(ATTR_Y_DTYPE_INDEX);
+    int64_t yDType = *context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr),
                     VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the scale tensor is invalid"),
@@ -392,7 +423,6 @@ void AllToAllKcQuantMatmulTilingBase::PrintAlltoAllKcQuantMatmulTilingInfo(const
     OP_LOGD(opName, "TilingInfo.rankM: %u", tilingInfo.rankM);
     OP_LOGD(opName, "TilingInfo.rankN: %u", tilingInfo.rankN);
     OP_LOGD(opName, "TilingInfo.rankK: %u", tilingInfo.rankK);
-    OP_LOGD(opName, "TilingInfo.biasLen: %u", tilingInfo.biasLen);
     OP_LOGD(opName, "TilingInfo.commLen: %u", tilingInfo.commLen);
     OP_LOGD(opName, "TilingInfo.permuteLen: %u", tilingInfo.permuteLen);
     OP_LOGD(opName, "tilingInfo.x1ScaleOptionalLen: %u", tilingInfo.x1ScaleOptionalLen);
@@ -461,7 +491,6 @@ void AllToAllKcQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.rankN = contextInfo.args_.nValue;
     tilingInfo.rankM = contextInfo.args_.orgMValue;
     tilingInfo.rankK = contextInfo.args_.orgKValue;
-    tilingInfo.biasLen = inferredInfo.biasLen;
     tilingInfo.commLen = inferredInfo.commLen;
     tilingInfo.permuteLen = inferredInfo.permuteLen;
     tilingInfo.x1ScaleOptionalLen = inferredInfo.x1ScaleOptionalLen;
@@ -484,7 +513,7 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
-    uint32_t x1QuantDtype = static_cast<int>(contextInfo.args_.geAType);
+    uint32_t x1QuantDtype = static_cast<uint32_t>(contextInfo.args_.geAType);
     // 35代表float8_e5m2,36代表float8e4m3
     uint32_t QUANT_MODE = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(QUANT_MODE, x2TransposeFlag, biasDType);
@@ -499,13 +528,13 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
     uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo.commLen + inferredInfo.permuteLen +
-                             inferredInfo.biasLen + +inferredInfo.x1ScaleOptionalLen + inferredInfo.quantOutLen;
+                             + inferredInfo.x1ScaleOptionalLen + inferredInfo.quantOutLen;
     workspaces[0] = workspaceSize;
     OP_LOGD(
         opName_,
-        "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, biasLen=%zu, x1ScaleOptionalLen=%zu, quantOutLen=%zu",
-        workspaces[0], inferredInfo.commLen, inferredInfo.permuteLen, inferredInfo.biasLen,
-        inferredInfo.x1ScaleOptionalLen, inferredInfo.quantOutLen);
+        "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, x1ScaleOptionalLen=%zu, quantOutLen=%zu",
+        workspaces[0], inferredInfo.commLen, inferredInfo.permuteLen, inferredInfo.x1ScaleOptionalLen,
+        inferredInfo.quantOutLen);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -524,11 +553,6 @@ void AllToAllKcQuantMatmulTilingBase::SetUserWorkSpace()
     if (!contextInfo.allToAllOutFlag) {
         inferredInfo.permuteLen = inferredInfo.commLen;
     }
-    if (contextInfo.args_.isBias) {
-        inferredInfo.biasLen =
-            mc2tiling::AlignUp(contextInfo.args_.nValue, mc2tiling::SHAPE_ALIGN_SIZE) * sizeof(float);
-    }
-
     inferredInfo.x1ScaleOptionalLen = mc2tiling::AlignUp(contextInfo.args_.mValue * sizeof(float), alignAddrLen);
     // 量化后的结果为fp8
     inferredInfo.quantOutLen = mc2tiling::AlignUp(contextInfo.args_.mValue * contextInfo.args_.kValue, alignAddrLen);

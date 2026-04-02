@@ -18,7 +18,6 @@
 
 #include <limits>
 #include "kernel_operator.h"
-#include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 using namespace AscendC;

@@ -16,8 +16,8 @@
 #ifndef MOE_DISTRIBUTE_DISPATCH_SETUP_TILING_BASE_H_
 #define MOE_DISTRIBUTE_DISPATCH_SETUP_TILING_BASE_H_
 
-#include "tiling/mc2_tiling_utils.h"
-#include "tiling/moe_tiling_base.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/moe_tiling_base.h"
 #include "../../op_kernel/moe_distribute_dispatch_setup_tiling.h"
 
 namespace optiling {

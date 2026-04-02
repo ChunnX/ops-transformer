@@ -26,9 +26,9 @@
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
-class QuantGroupedInplaceAddTiling : public GroupedQbmmTiling {
+class QuantGroupedInplaceAddTiling : public GroupedQmmTiling {
 public:
-    explicit QuantGroupedInplaceAddTiling(gert::TilingContext *context) : GroupedQbmmTiling(context)
+    explicit QuantGroupedInplaceAddTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
     {
         Reset();
     }
@@ -36,11 +36,13 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQbmmTiling::Reset(context);
+        GroupedQmmTiling::Reset(context);
         Reset();
     }
 
 protected:
+    // 2、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData

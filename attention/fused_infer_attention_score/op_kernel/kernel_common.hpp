@@ -82,7 +82,8 @@ namespace KernelCommon {
             NO_MASK = 0,
             MASK_CAUSAL = 1,
             MASK_SPEC = 2,
-            MASK_SWA = 4
+            MASK_SWA = 4,
+            FULL_MASK = 5
         };
 
         enum class inputLayout : uint32_t {
@@ -96,6 +97,7 @@ namespace KernelCommon {
         GM_ADDR q;
         GM_ADDR k;
         GM_ADDR v;
+        GM_ADDR pseShift;
         GM_ADDR mask;
         GM_ADDR blockTables;
         GM_ADDR actualQseqlen;
@@ -109,9 +111,9 @@ namespace KernelCommon {
         // Methods
         __aicore__ inline FAIKernelParams() {}
 
-        __aicore__ inline FAIKernelParams(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR mask_, GM_ADDR blockTables_,
+        __aicore__ inline FAIKernelParams(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR pseShift_, GM_ADDR mask_, GM_ADDR blockTables_,
                 GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR o_, GM_ADDR lse_, GM_ADDR workSpace_, GM_ADDR tiling_, GM_ADDR sink_)
-            : q(q_), k(k_), v(v_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
+            : q(q_), k(k_), v(v_), pseShift(pseShift_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
                 actualKvseqlen(actualKvseqlen_), o(o_), lse(lse_), workSpace(workSpace_), tiling(tiling_), sink(sink_) {}
     };
 
@@ -124,9 +126,24 @@ namespace KernelCommon {
         return qNBlockTile;
     }
 
+    __aicore__ inline uint32_t GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead)
+    {
+        uint32_t rowNumCeilPerQSGKvNTile = Q_TILE_CEIL;
+        uint32_t kvNBlockTile = rowNumCeilPerQSGKvNTile / rowNumPerQSGTile;
+        kvNBlockTile = kvNBlockTile < kvHead ? kvNBlockTile : kvHead;
+        kvNBlockTile = kvNBlockTile < 1 ? 1 : kvNBlockTile;
+        return kvNBlockTile;
+    }
+
     __aicore__ inline uint32_t GetQSBlockTile(uint32_t kvSeqlen)
     {
         uint32_t qSBlockTile = Q_TILE_CEIL;
+        return qSBlockTile;
+    }
+
+    __aicore__ inline uint32_t GetQSBlockTileDecode(uint32_t qSeqlen)
+    {
+        uint32_t qSBlockTile = Q_TILE_CEIL < qSeqlen ? Q_TILE_CEIL : qSeqlen;
         return qSBlockTile;
     }
     __aicore__ inline uint32_t GetKSBlockTile(uint32_t kvSeqlen)

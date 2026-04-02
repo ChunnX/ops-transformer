@@ -386,7 +386,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR
                                                           GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
-#if (__NPU_ARCH__ == 3101)
+#if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 #endif
 

@@ -40,8 +40,8 @@ TEST_F(AllGatherMatmulArch32TilingTest, Float16Test1)
             {{}, ge::DT_STRING, ge::FORMAT_ND},
         },
         {
-            {{{512, 3904}, {512, 3904}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{512, 12288}, {512, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096, 3904}, {4096, 3904}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096, 12288}, {4096, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -69,8 +69,8 @@ TEST_F(AllGatherMatmulArch32TilingTest, Float16Test2)
             {{}, ge::DT_STRING, ge::FORMAT_ND},
         },
         {
-            {{{2048, 1536}, {2048, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{2048, 4096}, {2048, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16384, 1536}, {16384, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16384, 4096}, {16384, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -98,8 +98,8 @@ TEST_F(AllGatherMatmulArch32TilingTest, Float16Test3)
             {{}, ge::DT_STRING, ge::FORMAT_ND},
         },
         {
-            {{{327680, 10240}, {327680, 10240}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{327680, 15360}, {327680, 15360}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2621440, 10240}, {2621440, 10240}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2621440, 15360}, {2621440, 15360}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -128,8 +128,8 @@ TEST_F(AllGatherMatmulArch32TilingTest, Bfloat16)
             {{}, ge::DT_STRING, ge::FORMAT_ND},
         },
         {
-            {{{2048, 1536}, {2048, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{2048, 4096}, {2048, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16384, 1536}, {16384, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16384, 4096}, {16384, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -158,8 +158,8 @@ TEST_F(AllGatherMatmulArch32TilingTest, Float16TestL2cache)
             {{}, ge::DT_STRING, ge::FORMAT_ND},
         },
         {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8192, 5120}, {8192, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{65536, 12288}, {65536, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{65536, 5120}, {65536, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -187,8 +187,8 @@ TEST_F(AllGatherMatmulArch32TilingTest, N0)
             {{}, ge::DT_STRING, ge::FORMAT_ND},
         },
         {
-            {{{1024, 0}, {1024, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1024, 256}, {1024, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8192, 0}, {8192, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8192, 256}, {8192, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},

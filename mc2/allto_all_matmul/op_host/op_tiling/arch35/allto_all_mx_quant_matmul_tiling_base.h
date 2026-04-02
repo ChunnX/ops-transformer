@@ -18,7 +18,7 @@
 #pragma once
 #include "securec.h"
 #include "mc2_matmul_tiling_cfg.h"
-#include "tiling/new_mc2_tiling_utils.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
@@ -38,6 +38,10 @@ constexpr uint64_t MX_SCALE_ALIGN = 64;
 constexpr uint64_t MX_SCALE_BLOCK_M = 1;
 constexpr uint64_t MX_SCALE_BLOCK_K = 32;
 constexpr uint64_t MX_SCALE_BLOCK_N = 1;
+constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
+constexpr uint64_t GROUP_M_OFFSET = 32;
+constexpr uint64_t GROUP_N_OFFSET = 16;
+constexpr uint64_t BIT_NUMBER = 1;
 class AllToAllMxQuantMatmulTilingBase : public AllToAllMatmulTilingBase {
     friend class AlltoAllMxQuantMatmulHelper;
 public:
@@ -56,15 +60,17 @@ protected:
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMxQuantMMTiling();
     ge::graphStatus SetHcclTiling();
+    ge::graphStatus CheckGroupSize(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
     void SetUserWorkSpace();
-    ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
-                                                        TilingContextInfo &contextInfo);
+    ge::graphStatus CheckMxTensorFormat(const gert::TilingContext *context, const char *opName);
+    ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName, TilingContextInfo &contextInfo);
     
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
     void PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
     
 private:
     AlltoAllQuantMatmulTilingData localTilingData_;
+    bool isMxFp4_ = false;
     uint64_t mmMvalueLen_ = 0;
     void PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintMxQuantMMV3TilingData(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);

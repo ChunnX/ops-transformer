@@ -115,9 +115,12 @@ function(pack_built_in)
   set(CONF_FILES
       ${CMAKE_SOURCE_DIR}/scripts/package/common/cfg/path.cfg
   )
-  install(FILES ${CMAKE_SOURCE_DIR}/version.info
-      DESTINATION share/info/ops_transformer
-  )
+  foreach(components ${CANN_VERSION_PACKAGES})
+      install(FILES ${CMAKE_BINARY_DIR}/version.${components}.info
+          DESTINATION share/info/ops_transformer
+          RENAME version.info
+      )
+  endforeach()
   install(FILES ${CONF_FILES}
       DESTINATION ops_transformer/conf
   )

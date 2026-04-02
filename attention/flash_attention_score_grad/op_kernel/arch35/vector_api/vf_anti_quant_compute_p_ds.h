@@ -46,7 +46,6 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitB322B8Zero = {
 template <bool doubleLine>
 __aicore__ inline void ComputePDS_VF_unalign(uint64_t sp, uint64_t dpds, uint64_t perm_ub, uint64_t max, uint64_t sum, uint64_t d, uint16_t srcM, uint16_t srcN, float ss, float dps, float pscale, float dscale)
 {
-
         float dscale_neg = (float)(-1.0) * dscale;
         uint32_t tailN32 = static_cast<uint32_t>(srcN);
         uint32_t tailN8 = static_cast<uint32_t>(srcN * 4);
@@ -195,7 +194,6 @@ __aicore__ inline void ComputePDS_VF_unalign(uint64_t sp, uint64_t dpds, uint64_
                 DataCopyScatter((__ubuf__ uint8_t *)dpds + (i + 0)*512 + 128, (RegTensor<uint8_t> &)vreg_ds1, vreg_perm, preg_all8);
                 DataCopyScatter((__ubuf__ uint8_t *)dpds + (i + 1)*512 + 128, (RegTensor<uint8_t> &)vreg_ds2, vreg_perm, preg_all8);
             }
-
         }
     }
 

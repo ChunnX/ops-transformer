@@ -165,7 +165,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
 
-            // [TODO-ZD]:原512没传indexesUb
+            // 原512没传indexesUb
             LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
             Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
             StoreAlign(expUb1 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);
@@ -223,7 +223,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
 
-            // [TODO-ZD]:原512没传indexesUb
+            // 原512没传indexesUb
             LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
             Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
             StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);
@@ -276,7 +276,6 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl512GqaFullquant(
     ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF<T, T2, OUTPUT_T, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd>(
         expUb1, expUb2, srcUb1, srcUb2, maxUb, inMaxUb, tmpExpSumUb, tmpMaxUb, tmpMaxUb2, indexesUb,
         m, n, minValue, pScale);
-
 }
 } // namespace
 

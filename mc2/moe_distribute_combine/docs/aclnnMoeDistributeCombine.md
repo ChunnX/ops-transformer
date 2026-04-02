@@ -418,7 +418,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
         - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
         - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
-        - `commQuantMode`当前版本仅支持0，0表示通信不量化。
+        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
 
 - **返回值**
 
@@ -455,7 +455,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>参数的取值不在支持的范围。</td>
+        <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -551,13 +551,14 @@ aclnnStatus aclnnMoeDistributeCombine(
 9. 本文公式中的“/”表示整除。
 
 10. 通信域使用约束：
+
    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 11. 组网约束：
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
 ## 调用示例
 
@@ -597,7 +598,18 @@ aclnnStatus aclnnMoeDistributeCombine(
         ```Cpp
         const uint32_t MACHINE_NUM = 2;
         ```
+
         单机16卡场景则无需修改。
+
+    - 算子编译执行：
+        在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+        ```bash
+        bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
+        ```
+
+        在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
+        ```bash
+        bash build.sh --run_example --ops=moe_distribute_combine eager cust
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  
@@ -1013,8 +1025,12 @@ aclnnStatus aclnnMoeDistributeCombine(
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
 
+        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
+        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
+
         args.rankId = rankId;
-        args.epRankId = rankId;
+        args.epRankId = epRankId;
+        args.tpRankId = tpRankId;
         args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
@@ -1130,7 +1146,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         else if (rank_table_file && first_rank_id) {
             EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 0;
+            TP_WORLD_SIZE = 1;
             DEV_NUM = EP_WORLD_SIZE;
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;

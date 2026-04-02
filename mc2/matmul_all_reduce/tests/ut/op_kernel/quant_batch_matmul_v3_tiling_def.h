@@ -21,7 +21,6 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../op_kernel/arch32/quant_matmul_all_reduce_tiling_data.h"
-#define __aicore__
 
 constexpr uint16_t MAX_TENSOR_CONT = 256;
 constexpr uint16_t MAX_CORE_CONT = 64;

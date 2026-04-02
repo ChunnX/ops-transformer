@@ -20,7 +20,7 @@ macro(recursive_add_subdirectory)
     endforeach()
 endmacro()
 
-# usage: add_sources("--npu-arch=dav-3101")
+# usage: add_sources("--npu-arch=dav-3510")
 macro(add_sources ARGS)
     # clear CMAKE_CXX_FLAGS to avoid affecting bisheng compile
     unset(CMAKE_CXX_FLAGS)

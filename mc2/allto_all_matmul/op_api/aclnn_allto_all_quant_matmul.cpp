@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -11,9 +11,9 @@
 #include "aclnn_allto_all_quant_matmul.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
-#include "mc2/matmul_allto_all/op_api/checker.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
+#include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
@@ -21,7 +21,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
 
@@ -49,10 +49,10 @@ aclTensor* ConvertTensorToInt4(const aclTensor* input, aclOpExecutor* executor)
 // 对x1和x2进行int32到int4的转换预处理
 void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&alltoallout, aclOpExecutor *executor)
 {
-    if (x2->GetDataType() == DataType::DT_INT32) {
+    if (x2 != nullptr && x2->GetDataType() == DataType::DT_INT32) {
         x2 = ConvertTensorToInt4(x2, executor);
     }
-    if (x1->GetDataType() == DataType::DT_INT32) {
+    if (x1 != nullptr && x1->GetDataType() == DataType::DT_INT32) {
         x1 = ConvertTensorToInt4(x1, executor);
     }
     if (alltoallout != nullptr && alltoallout->GetDataType() == DataType::DT_INT32) {
@@ -72,7 +72,7 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x2 should not be null.");
         return false;
     }
-    if (static_cast<QuantModeType>(x1QuantMode) != QuantModeType::DYN_PERTOKEN_QUANT && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (x1ScaleOptional == nullptr) {
         	OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
             	"The current scenario is not pertoken dynamic quantization, input x1ScaleOptional should not be null.");
@@ -162,17 +162,19 @@ static bool Check3DScaleShape(const aclTensor* x2, const aclTensor* x1Scale,
 // 校验输入Scaleshape
 static bool CheckScaleShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
                             int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX2) {
-    bool ScaleShapeValid = false;
-    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
+    bool scaleShapeValid = true;
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         OP_API_CHECK(!transposeX2, {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the mx quantization scenario, x2 must be transposed.");
             return false;
         });
-        ScaleShapeValid = Check3DScaleShape(x2, x1Scale, x2Scale, transposeX2);
-    } else {
-        ScaleShapeValid = Check1DScaleShape(x2, x2Scale, transposeX2);
+        scaleShapeValid = Check3DScaleShape(x2, x1Scale, x2Scale, transposeX2);
+    } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT &&
+               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
+        scaleShapeValid = Check1DScaleShape(x2, x2Scale, transposeX2);
     }
-    return ScaleShapeValid;
+    return scaleShapeValid;
 }
 
 // 根据API定义，列出allto_all_quant_matmul量化输入X1所能支持的所有dtype(A2)
@@ -217,9 +219,12 @@ static const std::initializer_list<op::DataType> X_DTYPE_FP16_SUPPORT_LIST_A5 = 
 // 量化模式下Output支持的数据类型（KC动态量化、MXQuant量化）(A5)
 static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
-// 量化模式下X支持的FP8数据类型（PerChannel量化、MXQuant量化）(A5)
+// 量化模式下X支持的FP8数据类型（PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2};
+// 量化模式下X支持的FP4和FP8数据类型（MXQuant量化）(A5)
+static const std::initializer_list<op::DataType> X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5 = {
+    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
 // 量化模式下Scale支持的FP32数据类型（PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> SCALE_DTYPE_FP32_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT};
@@ -260,8 +265,15 @@ static bool CheckKCDynQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x
 static bool CheckMXQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
     								  const aclTensor* x1ScaleOptional, const aclTensor* x2Scale,
                                       const aclTensor* output, const aclTensor* alltoAllOutOptional) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
+    if (x1->GetDataType() != x2->GetDataType() &&
+        (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+            "In mxquant scenario, x1 and x2 must have same dtype when one is fp4_e2m1, but found x1: %s, x2: %s.",
+            op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
+        return false;
+    }
     OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, return false);
@@ -280,9 +292,11 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
                              const aclTensor *output, const aclTensor *alltoAllOutOptional) {
     bool isAllDtypesValid = false;
     // 根据量化场景进入不同分支判断
-    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT &&
+        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         isAllDtypesValid = CheckKCDynQuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantDtype, output, alltoAllOutOptional);
-    } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
+    } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         isAllDtypesValid = CheckMXQuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional);
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -400,24 +414,21 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTen
 
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclTensor* x1ScaleOptional, const aclTensor *x2Scale,
-                                        const aclTensor* commScaleOptional, const aclTensor* x1OffsetOptional,
-                                        const aclTensor* x2OffsetOptional,
                                         const aclIntArray* alltoAllAxesOptional, const char *group,
-                                        int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode,
-                                        int64_t commQuantDtype,int64_t x1QuantDtype,
-                                        int64_t groupSize, bool transposeX1, bool transposeX2,
+                                        int64_t x1QuantMode, int64_t x2QuantMode, int64_t x1QuantDtype,
+                                        bool transposeX1, bool transposeX2,
                                         const aclTensor *output, const aclTensor *alltoAllOutOptional)
 {
-    // 1. 检查参数是否为空指针
+    // 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, x1QuantMode), ACLNN_ERR_PARAM_NULLPTR);
-    // 2. 检查空tensor
+    // 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
-    // 3. 检查shape
-    CHECK_RET(CheckShapeAAMM(x1, x2, biasOptional, transposeX2, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
+    // 检查shape
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        CHECK_RET(CheckShapeAAMM(x1, x2, biasOptional, transposeX2, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckScaleShape(x1, x2, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode, transposeX2), ACLNN_ERR_PARAM_INVALID);
     }
-    // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据芯片型号和api定义校验
+    // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据芯片型号和api定义校验
     if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
         CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, x1QuantMode, x1ScaleOptional, x2Scale, output,
             alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
@@ -425,20 +436,16 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
         CHECK_RET(CheckDtypesValid(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode,
             x1QuantDtype, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
     }
-    // 5. 检查输入的数据格式是否为ND
+    // 检查输入的数据格式是否为ND
     CHECK_RET(CheckFormat(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
-    // 6. 兼容性处理非ND格式
+    // 兼容性处理非ND格式
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
-    // 7. 检查groupSize是否和当前场景匹配
-    CHECK_RET(CheckGroupSizeValid(groupSize, x1QuantMode, x2QuantMode), ACLNN_ERR_PARAM_INVALID);
-    // 8. 检查alltoallAxes是否为空或者[-2,-1]
+    // 检查alltoallAxes是否为空或者[-2,-1]
     CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, false), ACLNN_ERR_PARAM_INVALID);
-    // 9. 检查transposeX1是否合法, 目前不能为true
+    // 检查transposeX1是否合法, 目前不能为true
     CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
-    // 10. 检查group长度是否小于等于128
+    // 检查group长度是否小于等于128
     CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
-    // 11. 检查预留参数，不影响场景
-    CheckReservedParams(commScaleOptional, x1OffsetOptional, x2OffsetOptional, commQuantMode, commQuantDtype);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("aclnnAlltoAllQuantMatmul checkParams success");
     return ACLNN_SUCCESS;
@@ -493,9 +500,11 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
     bool transposeX1, bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_INVALID);	// 先检查x2是否合法，避免非法操作
+    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
     bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
     auto transX2 = x2;    // 复制一个x2
+    OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
     if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
@@ -508,17 +517,15 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
         OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After processing, transX2 dim0 is %ld, and dim1 is %ld.",
             x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
     }
-    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1ScaleOptional, x2Scale,
-        commScaleOptional, x1OffsetOptional, x2OffsetOptional, alltoAllAxesOptional, group,
-        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype, groupSize,
-        transposeX1, transposeX2, output, alltoAllOutOptional);
-    CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201 && executor != nullptr) {
         auto uniqueExecutor = CREATE_EXECUTOR();
         InputPreProcessInt4(x1, transX2, alltoAllOutOptional, uniqueExecutor.get());
         uniqueExecutor.ReleaseTo(executor);
     }
+    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1ScaleOptional, x2Scale, alltoAllAxesOptional,
+        group, x1QuantMode, x2QuantMode, x1QuantDtype, transposeX1, transposeX2, output, alltoAllOutOptional);
+    CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = InnerAlltoAllQuantMatmulGetWorkspaceSize(
         x1, transX2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group, alltoAllAxesOptional,
         x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype, groupSize,

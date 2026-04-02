@@ -32,6 +32,7 @@ from .filelist import FileItem, FileList, fill_is_common_path
 from .utils.pkg_utils import (
     ContainAsteriskError, FAIL, BLOCK_CONFIG_PATH,
     BlockConfigError, EnvNotSupported, IllegalVersionDir,
+    InstallScriptFormatError, InstallScriptNotInPackageInfo, VersionInfoNotExist, 
     MultiPkgSoftlinkError, PackageError,
     ParseOsArchError, config_feature_to_set,
     flatten, star_pipe, merge_dict, yield_if
@@ -1140,8 +1141,18 @@ def parse_blocks(root_ele: ET.Element,
     ]
 
 
-def read_version_info() -> Tuple[str, str]:
-    version_path = os.path.join(pkg_utils.TOP_DIR, "version.info")
+def read_version_info(delivery_dir: str, package_attr: PackageAttr) -> Tuple[str, str]:
+    if 'install_script' not in package_attr:
+        raise InstallScriptNotInPackageInfo()
+    install_script = package_attr['install_script']
+    install_script_paths = install_script.split('/')
+    if len(install_script_paths) < 2:
+        raise InstallScriptFormatError()
+
+    version_path = os.path.join(delivery_dir, *install_script_paths[:-2], "version.info")
+    if not os.path.isfile(version_path):
+        raise VersionInfoNotExist(version_path)
+
     with open(version_path, 'r') as file:
         line1 = file.readline().strip()
         line2 = file.readline().strip()
@@ -1154,28 +1165,48 @@ def read_version_info() -> Tuple[str, str]:
     return version, version_dir
 
 
+def get_version_version_dir(args: Namespace,
+                            delivery_dir: str,
+                            package_attr: PackageAttr) -> Tuple[str, Optional[str]]:
+    if args.version_dir:
+        version = args.version_dir
+        version_dir = args.version_dir
+    else:
+        version, version_dir = read_version_info(delivery_dir, package_attr)
+    if args.disable_multi_version:
+        version_dir = None
+    return version, version_dir
+
+
 def parse_xml_config(filepath: str,
                      delivery_dir: str,
                      parse_option: ParseOption,
-                     args: Namespace) -> XmlConfig:
+                     args: Namespace) -> Tuple[bool, XmlConfig]:
     """解析打包xml配置。"""
     try:
         tree = ET.parse(filepath)
         xml_root = tree.getroot()
     except ET.ParseError as ex:
         CommLog.cilog_error("xml parse %s failed: %s!", filepath, ex)
-        sys.exit(FAIL)
+        return False, None
 
     default_config = xml_root.attrib.copy()
 
     package_attr = parse_package_attr(xml_root, args)
-    if args.version_dir:
-        version = args.version_dir
-        version_dir = args.version_dir
-    else:
-        version, version_dir = read_version_info()
+    try:
+        version, version_dir = get_version_version_dir(args, delivery_dir, package_attr)
+    except InstallScriptNotInPackageInfo:
+        CommLog.cilog_error("The install_script is not configured in the package_info in %s!", filepath)
+        return False, None
+    except InstallScriptFormatError:
+        CommLog.cilog_error("The install_script format is illegel in %s! More directory levels are needed.", filepath)
+        return False, None
+    except VersionInfoNotExist as ex:
+        CommLog.cilog_error("The version.info file %s does not exist in %s!", str(ex), filepath)
+        return False, None
     if args.disable_multi_version:
         version_dir = None
+
     timestamp = get_timestamp(args)
     try:
         env_dict = parse_env_dict(
@@ -1186,7 +1217,7 @@ def parse_xml_config(filepath: str,
             "os_arch %s is not correctly configured: %s!",
             parse_option.os_arch, filepath
         )
-        sys.exit(FAIL)
+        return False, None
 
     parse_env = ParseEnv(
         env_dict, parse_option, delivery_dir, pkg_utils.TOP_SOURCE_DIR
@@ -1203,7 +1234,7 @@ def parse_xml_config(filepath: str,
     else:
         fill_is_common_path_func = iter
 
-    return XmlConfig(
+    return True, XmlConfig(
         default_config, package_attr, None, blocks, version, None,
         PackerConfig(fill_is_common_path_func)
     )

@@ -45,6 +45,8 @@ macro(add_modules_sources)
     set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
   endif()
 
+  add_opbase_modules()
+
   list(LENGTH MODULE_OPTYPE OpTypeLen)
   list(LENGTH MODULE_ACLNN_EXTRA_VERSION AclnnExtraVersionLen)
   if((AclnnExtraVersionLen GREATER 1) AND (OpTypeLen GREATER 1))
@@ -116,8 +118,8 @@ macro(add_modules_sources)
         ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
     )
     if(GENTASK_SRCS)
-      add_opmaster_ct_gentask_modules()
-      target_sources(${OPHOST_NAME}_opmaster_ct_gentask_obj PRIVATE ${GENTASK_SRCS})
+      add_gentask_modules()
+      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
     endif()
   endif()
 
@@ -304,7 +306,9 @@ function(add_opapi_modules)
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling>>
-      ${OPS_TRANSFORMER_DIR}/mc2/common/inc
+      ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+      ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
+      ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
       ${OPS_TRANSFORMER_DIR}/mc2/3rd
     )
     target_compile_definitions(${OPHOST_NAME}_opapi_obj PRIVATE
@@ -325,6 +329,7 @@ function(add_opapi_modules)
       -Wl,--no-whole-archive
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       nnopbase
+      -Wl,-Bsymbolic
       profapi
       ge_common_base
       ascend_dump
@@ -344,9 +349,80 @@ set(INFER_OBJ_INCLUDE
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base>>
-  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
+  ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+  ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
+  ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
   ${OPS_TRANSFORMER_DIR}/mc2/3rd
 )
+
+# 添加opbase object
+function(add_opbase_modules)
+  if(TARGET opbase_infer_objs OR TARGET opbase_tiling_objs OR TARGET opbase_util_objs)
+    return()
+  endif()
+  file(GLOB_RECURSE OPS_BASE_INFER_SRC
+    ${OPBASE_SOURCE_PATH}/src/op_common/op_host/infershape_broadcast_util.cpp
+    ${OPBASE_SOURCE_PATH}/src/op_common/op_host/infershape_elewise_util.cpp
+    ${OPBASE_SOURCE_PATH}/src/op_common/op_host/infershape_reduce_util.cpp
+  )
+
+  file(GLOB_RECURSE OPS_BASE_TILING_SRC
+    ${OPBASE_SOURCE_PATH}/src/op_common/atvoss/elewise/*.cpp
+    ${OPBASE_SOURCE_PATH}/src/op_common/atvoss/broadcast/*.cpp
+    ${OPBASE_SOURCE_PATH}/src/op_common/atvoss/reduce/*.cpp
+  )
+
+  file(GLOB_RECURSE OPS_BASE_UTIL_SRC
+    ${OPBASE_SOURCE_PATH}/src/op_common/op_host/util/*.cpp
+    ${OPBASE_SOURCE_PATH}/src/op_common/log/*.cpp
+  )
+
+  if(OPS_BASE_INFER_SRC)
+    add_library(opbase_infer_objs OBJECT ${OPS_BASE_INFER_SRC})
+    target_include_directories(opbase_infer_objs PRIVATE ${OP_PROTO_INCLUDE})
+    target_compile_options(opbase_infer_objs
+        PRIVATE
+        $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
+        -fvisibility=hidden
+    )
+    target_link_libraries(
+      opbase_infer_objs
+      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+              $<BUILD_INTERFACE:dlog_headers>
+      )
+  endif()
+
+  if(OPS_BASE_TILING_SRC)
+    add_library(opbase_tiling_objs OBJECT ${OPS_BASE_TILING_SRC})
+    target_include_directories(opbase_tiling_objs PRIVATE ${OP_TILING_INCLUDE})
+    target_compile_options(opbase_tiling_objs
+        PRIVATE
+        $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
+                                        -fvisibility=hidden -fno-strict-aliasing
+    )
+    target_link_libraries(
+      opbase_tiling_objs
+      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+              $<BUILD_INTERFACE:dlog_headers>
+              tiling_api
+      )
+  endif()
+
+  if(OPS_BASE_UTIL_SRC)
+    add_library(opbase_util_objs OBJECT ${OPS_BASE_UTIL_SRC})
+    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE})
+    target_compile_options(opbase_util_objs
+        PRIVATE
+        $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
+        -fvisibility=hidden
+    )
+    target_link_libraries(
+      opbase_util_objs
+      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+              $<BUILD_INTERFACE:dlog_headers>
+      )
+  endif()
+endfunction()
 
 # 添加infer object
 function(add_infer_modules)
@@ -402,11 +478,14 @@ function(add_tiling_modules)
       $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
       
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
-      ${OPS_TRANSFORMER_DIR}/mc2/common/inc
+      ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+      ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
+      ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
       ${OPS_TRANSFORMER_DIR}/mc2/3rd
     )
     target_compile_definitions(${OPHOST_NAME}_tiling_obj
@@ -465,43 +544,46 @@ function(add_graph_plugin_modules)
       ${GRAPH_PLUGIN_NAME}_obj
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
               $<BUILD_INTERFACE:dlog_headers>
-              $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
-              $<$<TARGET_EXISTS:ops_base_infer_objs>:$<TARGET_OBJECTS:ops_base_infer_objs>>
+              $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+              $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
       )
   endif()
 endfunction()
 
 # 添加gentask object
-function(add_opmaster_ct_gentask_modules)
-  message(STATUS "add_opmaster_ct_gentask_modules start")
-  if (NOT TARGET ${OPHOST_NAME}_opmaster_ct_gentask_obj)
-    add_library(${OPHOST_NAME}_opmaster_ct_gentask_obj OBJECT)
-    add_dependencies(${OPHOST_NAME}_opmaster_ct_gentask_obj json)
+function(add_gentask_modules)
+  message(STATUS "add_gentask_modules start")
+  if (NOT TARGET ${OPGRAPH_NAME}_gentask_obj)
+    add_library(${OPGRAPH_NAME}_gentask_obj OBJECT)
+    add_dependencies(${OPGRAPH_NAME}_gentask_obj json)
 
-    target_include_directories(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    target_include_directories(${OPGRAPH_NAME}_gentask_obj
       PRIVATE ${OP_TILING_INCLUDE}
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/experiment/metadef/common/util>>
     )
-    target_compile_definitions(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    target_compile_definitions(${OPGRAPH_NAME}_gentask_obj
       PRIVATE
       LOG_CPP
     )
-    target_compile_options(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    target_compile_options(${OPGRAPH_NAME}_gentask_obj
       PRIVATE
       $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
       -Dgoogle=ascend_private
       -fvisibility=hidden
       -fno-strict-aliasing
     )
-    message(STATUS "xxxx compile add_opmaster_ct_gentask_modules")
-    target_link_libraries(${OPHOST_NAME}_opmaster_ct_gentask_obj
+    message(STATUS "xxxx compile add_gentask_modules")
+    target_link_libraries(${OPGRAPH_NAME}_gentask_obj
       PRIVATE
       $<BUILD_INTERFACE:intf_pub_cxx17>
       $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
-      # $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:alog_headers>>
-      # $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:$<BUILD_INTERFACE:slog_headers>>
+      graph
+      graph_base
+      exe_graph
+      platform
+      runtime
     )
   endif()
 endfunction()
@@ -632,8 +714,8 @@ function(add_onnx_plugin_modules)
       ${ONNX_PLUGIN_NAME}_obj
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx14,intf_pub_cxx14>>
               $<BUILD_INTERFACE:dlog_headers>
-              $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
-              $<$<TARGET_EXISTS:ops_base_infer_objs>:$<TARGET_OBJECTS:ops_base_infer_objs>>
+              $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+              $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
               json
       )
   endif()

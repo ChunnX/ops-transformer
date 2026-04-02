@@ -118,11 +118,11 @@ private:
         needCoreNum_ = tl_->needCoreNum;
         batchCount_ = tl_->batchCount;
         blockTableWidth_ = tl_->blockTableWidth;
-        maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK;
-        maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV;
-        maxUbHiddenSize_ = tl_->maxUbHiddenSize;
-        hiddenSizeK_ = tl_->hiddenSizeK;
-        hiddenSizeV_ = tl_->hiddenSizeV;
+        maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK * sizeof(DTYPE_KEY);
+        maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV * sizeof(DTYPE_VALUE);
+        maxUbHiddenSize_ = tl_->maxUbHiddenSize * sizeof(DTYPE_KEY);
+        hiddenSizeK_ = tl_->hiddenSizeK * sizeof(DTYPE_KEY);
+        hiddenSizeV_ = tl_->hiddenSizeV * sizeof(DTYPE_VALUE);
         numTokens_ = tl_->numTokens;
         numBlocks_ = tl_->numBlocks;
         seqLenAccumSize_ = tl_->seqLenAccumSize;

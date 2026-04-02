@@ -1,9 +1,11 @@
 # 算子列表
 
 > 说明：
->
-> - **算子目录**：目录名为算子名小写下划线形式，每个目录承载该算子所有交付件，包括代码实现、examples、文档等，目录介绍参见[项目目录](./context/dir_structure.md)。
-> - **算子执行硬件单元**：大部分算子运行在AI Core，少部分算子运行在AI CPU。默认情况下，项目中提到的算子一般指AI Core算子。关于AI Core和AI CPU详细介绍参见[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)，其中版本号为8.5.0和8.5.0.alpha002中对应章节为“硬件实现”，其余版本中对应章节为“概念原理和术语 > 硬件架构与数据处理原理”。
+
+> - **算子目录**：目录名为算子名小写下划线形式，每个目录承载该算子所有交付件，包括代码实现、examples、文档等，目录介绍参见[项目目录](./install/dir_structure.md)。
+
+> - **算子执行硬件单元**：大部分算子运行在AI Core，少部分算子运行在AI CPU。默认情况下，项目中提到的算子一般指AI Core算子。关于AI Core和AI CPU详细介绍参见[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)，其中版本号大于等于8.5.0中对应章节为“硬件实现”，其余版本中对应章节为“概念原理和术语 > 硬件架构与数据处理原理”。
+
 > - **算子接口列表**：为方便调用算子，CANN提供一套C API执行算子，一般以aclnn为前缀，全量接口参见[aclnn列表](op_api_list.md)。
 
 项目提供的所有算子分类和算子列表如下：
@@ -44,6 +46,16 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>Attention和FFN分离部署场景下，Attention侧数据扫描算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下计算注意力的反向输出，即BlockSparseAttention的反向计算。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -164,6 +176,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_causal_conv1d/README.md">fused_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列尾部的数据（长度为卷积核宽减1）更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -487,26 +509,6 @@
   </tr>
   <tr>
     <td>mc2</td>
-    <td><a href="../../mc2/elastic_receivable_info_collect/README.md">elastic_receivable_info_collect</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>收集一个通信域内的所有卡发送的数据并整理输出，以检测通信链路是否正常。</td>
-  </tr>
-  <tr>
-    <td>mc2</td>
-    <td><a href="../../mc2/elastic_receivable_test/README.md">elastic_receivable_test</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>对一个通信域内的所有卡发送数据并写状态位，以检测通信链路是否正常。</td>
-  </tr>
-  <tr>
-    <td>mc2</td>
     <td><a href="../../mc2/grouped_mat_mul_all_reduce/README.md">grouped_mat_mul_all_reduce</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -627,13 +629,13 @@
   </tr>
   <tr>
     <td>mc2</td>
-    <td><a href="../../mc2/moe_distribute_buffer_reset/README.md">moe_distribute_buffer_reset</a></td>
+    <td><a href="../../mc2/moe_distribute_dispatch_v3/README.md">moe_distribute_dispatch_v3</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>故障检测流程中，对EP通信域做数据区与状态区的清理。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -904,6 +906,36 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>aclnnMoeTokenUnpermuteWithRoutingMap的反向传播。</td>
+  </tr>
+    <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_sinkhorn/README.md">mhc_sinkhorn</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于用Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_post/README.md">mhc_post</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre/README.md">mhc_pre</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。</td>
   </tr>
   <tr>
     <td>posembedding</td>

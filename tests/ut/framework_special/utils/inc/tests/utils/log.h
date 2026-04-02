@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <type_traits>
 #include <alog_pub.h>
+#include <dlog_pub.h>
 
 namespace ops::adv::tests::utils {
 
@@ -33,7 +34,7 @@ bool ChkLogErrCnt();
 
 #define LOG_DBG(fmt, args...)                                                                                          \
     do {                                                                                                               \
-        if (AlogCheckDebugLevel(OP, DLOG_DEBUG) == 1) {                                                                      \
+        if (CheckLogLevel(OP, DLOG_DEBUG) == 1) {                                                                      \
             fprintf(stdout, "%s:%d [DEBUG] " fmt "\n", __FILE__, __LINE__, ##args);                                    \
         }                                                                                                              \
     } while (0)

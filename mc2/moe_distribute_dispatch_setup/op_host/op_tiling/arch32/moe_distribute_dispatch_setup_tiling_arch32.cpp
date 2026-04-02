@@ -15,7 +15,7 @@
 
 #include "moe_distribute_dispatch_setup_tiling_arch32.h"
 #include "mc2_log.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace {
 constexpr uint32_t OP_TYPE_BATCH_WRITE = 18U;

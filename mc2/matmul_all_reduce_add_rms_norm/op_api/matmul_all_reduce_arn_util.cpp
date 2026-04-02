@@ -9,7 +9,7 @@
  */
  
 #include "matmul_all_reduce_arn_util.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"

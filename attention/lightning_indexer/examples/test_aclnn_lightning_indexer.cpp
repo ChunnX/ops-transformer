@@ -97,7 +97,6 @@ struct TensorResources {
     aclTensor* weightsTensor = nullptr;
     aclTensor* sparseIndicesTensor = nullptr;
     aclTensor* sparseValuesTensor = nullptr;
-
 };
 
 int32_t InitializeTensors(TensorResources& resources) {

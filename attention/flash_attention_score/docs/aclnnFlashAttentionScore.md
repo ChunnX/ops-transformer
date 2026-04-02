@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。
@@ -23,7 +22,6 @@
   $$
   attention\_out = Dropout(Softmax(Mask(scale*(pse+query*key^T), atten\_mask)), keep\_prob)*value
   $$
-
 
 ## 函数原型
 
@@ -54,6 +52,7 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionScore(
   void              *workspace, 
@@ -61,7 +60,6 @@ aclnnStatus aclnnFlashAttentionScore(
   aclOpExecutor     *executor, 
   const aclrtStream  stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGetWorkspaceSize
 
@@ -197,7 +195,7 @@ aclnnStatus aclnnFlashAttentionScore(
       <tr>
         <td>preTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算 ，表示slides window的左边界。</td>
+        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -207,7 +205,7 @@ aclnnStatus aclnnFlashAttentionScore(
       <tr>
         <td>nextTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算，表示slides window的右边界。</td>
+        <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -352,7 +350,6 @@ aclnnStatus aclnnFlashAttentionScore(
   </tbody>
   </table>
 
-
 ## aclnnFlashAttentionScore
 
 - **参数说明**
@@ -391,7 +388,7 @@ aclnnStatus aclnnFlashAttentionScore(
   </tbody>
   </table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -413,7 +410,7 @@ aclnnStatus aclnnFlashAttentionScore(
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。
-- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如不使用该参数可传入nullptr。
@@ -428,7 +425,7 @@ aclnnStatus aclnnFlashAttentionScore(
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算场景即sparseMode=5或6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 - band场景，preTokens和nextTokens之间必须要有交集。
-- realShiftOptional Sq大于1024时，如果配置BNHS、1NHS，需要Sq和Skv等长。
+- realShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
 
 ## 调用示例
 

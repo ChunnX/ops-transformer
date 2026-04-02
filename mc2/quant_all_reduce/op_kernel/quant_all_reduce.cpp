@@ -24,7 +24,7 @@
 
 using namespace AscendC;
 using namespace QuantAllReduceImpl;
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #endif
 
 template<uint32_t quantAllReduceCommMode>

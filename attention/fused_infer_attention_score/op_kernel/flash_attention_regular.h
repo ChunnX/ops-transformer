@@ -71,6 +71,7 @@ namespace SplitFuse {
             AscendC::GlobalTensor<ElementQ>& gQ;
             AscendC::GlobalTensor<ElementK>& gK;
             AscendC::GlobalTensor<ElementK>& gV;
+            AscendC::GlobalTensor<ElementQ>& gPseShift;
             AscendC::GlobalTensor<ElementMask>& gMask;
             AscendC::GlobalTensor<int32_t>& gBlockTable;
             AscendC::GlobalTensor<int64_t>& gActualQseqlen;
@@ -111,7 +112,8 @@ namespace SplitFuse {
             sparseMode = fATilingData->sparseMode;
             preToken = fATilingData->preToken;
             nextToken = fATilingData->nextToken;
-
+            pseQ = fATilingData->pseQ;
+            pseKv = fATilingData->pseKv;
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
             if constexpr (IS_FD) {
@@ -129,6 +131,8 @@ namespace SplitFuse {
             gK.SetGlobalBuffer((__gm__ ElementK *)currentKey);
             AscendC::GlobalTensor<ElementK> gV;
             gV.SetGlobalBuffer((__gm__ ElementK *)currentValue);
+            AscendC::GlobalTensor<ElementQ> gPseShift;
+            gPseShift.SetGlobalBuffer((__gm__ ElementQ *)params.pseShift);
             AscendC::GlobalTensor<ElementMask> gMask;
             gMask.SetGlobalBuffer((__gm__ ElementMask *)params.mask);
             AscendC::GlobalTensor<int32_t> gBlockTable;
@@ -160,7 +164,7 @@ namespace SplitFuse {
             gSink.SetGlobalBuffer((__gm__ ElementSink *)(params.sink));
 
             GlobalTensorBundle globalTensors{
-                gQ, gK, gV, gMask, gBlockTable,
+                gQ, gK, gV, gPseShift, gMask, gBlockTable,
                 gActualQseqlen, gActualKvseqlen,
                 gO, gLse, gLseFD, gOFD,
                 gS, gP, gOTmp, gOUpdate, gSink
@@ -289,7 +293,7 @@ namespace SplitFuse {
                                 coreIdx, BIdx, n1Idx, s1Idx,
                                 isSplitKV, stS2IdxNow, enS2IdxNow,
                                 gmOffsetLseFD, gmOffsetOFD,
-                                globalTensors
+                                globalTensors, pseQ, pseKv
                             );
 
                             if (isSplitKV) {
@@ -361,7 +365,7 @@ namespace SplitFuse {
                         coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
                         false, 0, 0,
                         0, 0,
-                        globalTensors
+                        globalTensors, pseQ, pseKv
                     );
                 }
             }
@@ -438,11 +442,14 @@ namespace SplitFuse {
             int32_t enS2IdxNow, 
             uint64_t gmOffsetLseFD,
             uint64_t gmOffsetOFD,
-            GlobalTensorBundle& globalTensors
+            GlobalTensorBundle& globalTensors,
+            int64_t pseQ,
+            int64_t pseKv
         ) {
             auto& gQ = globalTensors.gQ;
             auto& gK = globalTensors.gK;
             auto& gV = globalTensors.gV;
+            auto& gPseShift = globalTensors.gPseShift;
             auto& gMask = globalTensors.gMask;
             auto& gBlockTable = globalTensors.gBlockTable;
             auto& gActualQseqlen = globalTensors.gActualQseqlen;
@@ -525,7 +532,8 @@ namespace SplitFuse {
             bool notNextMask = true;
             int32_t delStartRow = 0;
             int32_t delEndRow = qSeqlen;
-
+            bool startsWithMaskTile = false;
+            bool startsWithMaskThenNomaskFlag = false;
             if constexpr (IS_FD) {
                 noSkipKvS = kvSeqlen;
                 if (maskType != 0U) {
@@ -536,7 +544,7 @@ namespace SplitFuse {
                 }
                 kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS), MAX_KV_STACK_LEN);
             } else {
-                if (maskType != 0U && sparseMode != 4U) {
+                if (maskType != 0U && sparseMode != 4U && maskType != 4U) {
                     int64_t diffS = kvSeqlen - qSeqlen;
                     diffS = (diffS < 0) ? 0 : diffS;
                     noSkipKvS = (qSBlockIdx + 1U) * curQSBlockTile + diffS;
@@ -610,8 +618,8 @@ namespace SplitFuse {
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, stackSeqTile);
                 LayoutV layoutVTemp(stackSeqTile, strideV);
-                blockMmadQK.resetBlockStart();
-                blockMmadPV.resetBlockStart();
+                blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
+                blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
 #endif
                 for (uint32_t kvSIdx = kvStart; kvSIdx < kvEnd + preKVNum; kvSIdx++) {
@@ -663,6 +671,7 @@ namespace SplitFuse {
 #ifdef __DAV_C220_VEC__
                         LayoutP layOutP(rowNum, stackSeqTile, stackSeqTilePad);
                         LayoutMask layOutMask(COMP_TRIU_MASK_DIM_LEN, COMP_TRIU_MASK_DIM_LEN);
+                        LayoutQ layOutFullMask(pseQ, pseKv);
                         uint64_t gmOffsetP = gmOffsetS;
                         uint32_t kvSStartIdx = kvSIdx * MAX_KV_STACK_LEN;
                         uint32_t kvSEndIdx = kvSStartIdx + stackSeqTile;
@@ -732,7 +741,9 @@ namespace SplitFuse {
                                         qNBlockSize, 
                                         curStackTileMod,
                                         isLastStackTile,
-                                        isSplitKV);
+                                        isSplitKV,
+                                        false,
+                                        startsWithMaskThenNomaskFlag);
                                 } else {
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP], 
@@ -747,7 +758,9 @@ namespace SplitFuse {
                                         qNBlockSize, 
                                         curStackTileMod,
                                         isLastStackTile, 
-                                        false);
+                                        false,
+                                        false,
+                                        startsWithMaskThenNomaskFlag);
                                 }
                             }
                         } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
@@ -762,6 +775,8 @@ namespace SplitFuse {
                                     (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
                                 bool doTriUMask = (doTriUPreMask || doTriUNextMask);
                                 if (doTriUMask) {
+                                    startsWithMaskTile = true;
+                                    startsWithMaskThenNomaskFlag = true;
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP],
                                         gS[gmOffsetS],
@@ -785,10 +800,12 @@ namespace SplitFuse {
                                         nextTokenEndLen,
                                         isLastStackTile);
                                 } else {
-                                    bool isLastNoMaskStackTile = (nextTokenStartLen > kvSeqlen) || (nextTokenStartLen < 0);
-                                    uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
-                                    alignedKvSeqlenLimit = NpuArch::Detail::Alignment::RoundDown(alignedKvSeqlenLimit, MAX_KV_STACK_LEN);
-                                    uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - startIdx * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
+                                    bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
+                                    uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
+                                    uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ?
+                                        NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
+                                        NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
+                                    uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
                                     Arch::CrossCoreWaitFlag(qkReady);
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP],
@@ -798,13 +815,43 @@ namespace SplitFuse {
                                         layOutS,
                                         actualBlockShapeQK,
                                         (stackSeqCount == 0),
-                                        (isLastNoMaskStackTile ? (stackSeqCount == noMaskStackSeqNum) : (stackSeqCount == noMaskStackSeqNum - 1)),
+                                        (stackSeqCount == noMaskStackSeqNum - 1),
                                         qSBlockSize,
                                         qNBlockSize,
                                         curStackTileMod,
                                         isLastStackTile,
-                                        false);
+                                        false,
+                                        startsWithMaskTile,
+                                        startsWithMaskThenNomaskFlag);
+                                        startsWithMaskTile = false;
                                 }
+                            }
+                        } else if constexpr (MASK_TYPE == FaiKernel::MaskType::FULL_MASK) {
+                            uint32_t rowOffer = qSBlockIdx * curQSBlockTile;
+                            if constexpr (!IS_FD) {
+                                 epilogueOnlineSoftmax(
+                                        gP[gmOffsetP],
+                                        gS[gmOffsetS],
+                                        gSink[gmOffsetSink],
+                                        gPseShift,
+                                        layOutP,
+                                        layOutS,
+                                        layOutFullMask, // pseShift
+                                        actualBlockShapeQK,
+                                        (stackSeqCount == 0),
+                                        qSBlockSize,
+                                        qNBlockSize,
+                                        curStackTileMod,
+                                        qkReady,
+                                        rowOffer,
+                                        kvSStartIdx,
+                                        kvSEndIdx,
+                                        qNStartIdx,
+                                        BIdx,
+                                        qHeads,
+                                        pseQ,
+                                        pseKv,
+                                        isLastStackTile);
                             }
                         } else {
                             Arch::CrossCoreWaitFlag(qkReady);
@@ -822,7 +869,8 @@ namespace SplitFuse {
                                     qNBlockSize, 
                                     curStackTileMod,
                                     isLastStackTile,
-                                    isSplitKV);
+                                    isSplitKV,
+                                    false);
                             } else {
                                 epilogueOnlineSoftmax(
                                     gP[gmOffsetP], 
@@ -837,7 +885,9 @@ namespace SplitFuse {
                                     qNBlockSize, 
                                     curStackTileMod,
                                     isLastStackTile,
-                                    false);
+                                    false,
+                                    false,
+                                    startsWithMaskThenNomaskFlag);
                             }
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
@@ -981,6 +1031,8 @@ namespace SplitFuse {
         uint32_t sparseMode;
         int64_t preToken;
         int64_t nextToken;
+        int64_t pseQ;
+        int64_t pseKv;
         uint32_t totalQTokens;
 
         uint64_t strideQ;

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file abs.cpp
+ * \file moe_distribute_combine_v2.cpp
  * \brief
  */
 
@@ -22,9 +22,7 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 
 /**
- * @brief ACLNN Warpper for aclnnAbs
- * @param x Input Tensor (on NPU)
- * @return Result Tensor
+ * @brief ACLNN Warpper for aclnnMoeDistributeCombineV2
  */
 at::Tensor npu_moe_distribute_combine_v2(const at::Tensor &expand_x, const at::Tensor &expert_ids,
                                          const at::Tensor &assist_info_for_combine,

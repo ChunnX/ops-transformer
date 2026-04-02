@@ -35,7 +35,7 @@ struct MoeDistributeDispatchA2Info {
     uint32_t aivNum;                     // aivNum
     bool isTokenMask;                    // input active mask 1dims or not
     bool isExpertMask;                   // input active mask 2dims or not
-    bool reserved1;                      // reserved
+    bool isMc2Context;                      // reserved
     bool reserved2;                      // reserved
     bool reserved3;                      // reserved
     uint64_t totalUbSize;                // totalUbSize

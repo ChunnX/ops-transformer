@@ -38,6 +38,7 @@ operator_group_5:
   - sparse_flash_attention_grad
   - gather_pa_kv_cache
   - rain_fusion_attention
+  - block_sparse_attention
   - recurrent_gated_delta_rule
   - ring_attention_update
 operator_group_6:
@@ -97,8 +98,10 @@ operator_group_9:
   - moe_token_unpermute_with_routing_map
   - moe_token_unpermute_with_routing_map_grad
 operator_group_10:
+  - matmul_allto_all
   - allto_allv_grouped_mat_mul
   - allto_all_all_gather_batch_mat_mul
+  - allto_all_matmul
   - all_gather_matmul
   - all_gather_matmul_v2
   - attention_to_ffn
@@ -112,6 +115,8 @@ operator_group_10:
   - moe_distribute_combine
   - moe_distribute_combine_add_rms_norm
   - moe_distribute_combine_v2
+  - moe_distribute_combine_v3
   - moe_distribute_dispatch
   - moe_distribute_dispatch_v2
+  - moe_distribute_dispatch_v3
   - attention_worker_combine

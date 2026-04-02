@@ -11,15 +11,14 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**该接口query、key、value参数支持多个长度相等或者多个长度不相等的sequence**
   - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV2.md)接口，功能差异如下：**：
-    -   针对计算输入query、key、value参数，其数据类型新增支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8
-    -   调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
+    - 针对计算输入query、key、value参数，其数据类型新增支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8
+    - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
   - **该接口相较于[FlashAttentionVarLenScoreV5](./aclnnFlashAttentionVarLenScoreV5.md)接口，功能差异如下**：
-    -   调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
+    - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
 
 - 计算公式：
 
@@ -32,7 +31,6 @@
      $$
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
-
 
 ## 函数原型
 
@@ -78,6 +76,7 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV4(
   void             *workspace, 
@@ -85,7 +84,6 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   aclOpExecutor    *executor, 
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionScoreV4GetWorkspaceSize
 
@@ -315,7 +313,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>preTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算 ，表示slides window的左边界。</td>
+        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -325,7 +323,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>nextTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算，表示slides window的右边界。</td>
+        <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -366,7 +364,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>sparseMode</td>
         <td>输入</td>
         <td>表示sparse的模式。</td>
-        <td>支持配置值为0、1、2、3、4、5、6、7、8。</td>
+        <td>支持配置值为0、1、2、3、4、5、6。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -545,7 +543,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     </tr>
   </tbody>
   </table>
--   **返回值：**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -561,21 +559,23 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 - 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同
 - 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同
 - 关于数据shape的约束，以inputLayout的TND、BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
-    -   T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
-    -   B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
-    -   N：取值范围为1\~256。
-    -   S：取值范围为1\~1M。
-    -   D：取值范围为1\~768。输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，D取值范围为1\~128。
+    - T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
+    - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
+    - N：取值范围为1\~256。
+    - S：取值范围为1\~1M。
+    - D：取值范围为1\~768。输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，D取值范围为1\~128。
 - 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时, 不支持queryRopeOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - innerPrecise: 当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - pseType 各个取值含义
+
     | pseType     | 含义                              |      备注   |
     | ----------- | --------------------------------- | ----------|
     | 0           | 外部传入pse 先mul再add              | - |
     | 1           | 外部传入pse 先add再mul              | 跟[FlashAttentionScore](./aclnnFlashAttentionScore.md)实现一致。 |
     | 2           | 内部生成pse 先mul再add              | - |
     | 3           | 内部生成pse 先mul再add再sqrt         | - |
+
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 - sparseMode约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
@@ -583,21 +583,19 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
-  - 配置为7时，不支持可选输入realShiftOptional。
-  - 配置为8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景，场景包括sequence长度相等的场景下sparseMode=5、sparseMode=6；sequence长度不相等的场景下sparseMode=6。这两种场景下，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]；当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
-- realShiftOptional Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
-[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
+- realShiftOptional：Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional。
 - attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - 支持actualSeqQLenOptional中某个Batch上的S长度为0；如果存在S为0的情况，不支持pse输入，
   假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
 - <term>Ascend 950PR/Ascend 950DT</term>：
-    -   seed和offset只在keepProb小于1.0时生效，否则不生效。
-    -   keepProb小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
+    - seed和offset只在keepProb小于1.0时生效，否则不生效。
+    - keepProb小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
+
 ## 调用示例
 
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。

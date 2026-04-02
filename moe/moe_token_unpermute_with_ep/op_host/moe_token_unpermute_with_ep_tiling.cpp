@@ -103,8 +103,8 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(
     auto dataTensor0 = context->GetInputTensor(0);
     auto dataTensor1 = context->GetInputTensor(1);
     auto nodeName = context->GetNodeName();
-    const int* tmpTopK = context->GetAttrs()->GetAttrPointer<int>(0);
-    int inputTopK = static_cast<int64_t>(*tmpTopK);
+    const int64_t* tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
+    int inputTopK = *tmpTopK;
 
     OP_CHECK_IF(
         inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."),
@@ -171,8 +171,8 @@ static inline void Init(
     param.input.isUnpermute = isUnpermute;
 
     auto attrPtr = context->GetAttrs();
-    const int* tmpTopK = attrPtr->GetAttrPointer<int>(UNPERMUTE_WITH_EP_ARRT_TOPK);
-    int inputTopK = static_cast<int64_t>(*tmpTopK);
+    const int64_t* tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    int inputTopK = *tmpTopK;
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
         OP_CHECK_IF(

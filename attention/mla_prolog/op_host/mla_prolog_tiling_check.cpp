@@ -18,7 +18,6 @@
 #include "log/log.h"
 
 using namespace ge;
-using namespace AscendC;
 
 namespace optiling {
 
@@ -26,6 +25,9 @@ const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE {
     {ge::DT_BF16, 2},
     {ge::DT_FLOAT16, 2},
     {ge::DT_INT8, 1},
+    {ge::DT_FLOAT8_E4M3FN, 1},
+    {ge::DT_FLOAT8_E8M0, 1},
+    {ge::DT_HIFLOAT8, 1},
     {ge::DT_INT32, 4},
     {ge::DT_FLOAT, 4}};
 
@@ -89,16 +91,27 @@ NpuArch MlaPrologTilingCheck::GetCurNpuArch() const
 bool MlaPrologTilingCheck::CheckAttrsRange() const
 {
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U};
-        OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
-            OP_LOGE(context_.opName, "WeightQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.weightQuantMode),
-                return false);
-                
+        if (GetCurNpuArch() == NpuArch::DAV_3510) {
+            const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U, 4U, 5U};
+            OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
+                OP_LOGE(context_.opName,
+                    "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.",
+                    *context_.weightQuantMode),
+                    return false);
+        } else {
+            const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U};
+            OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
+                OP_LOGE(context_.opName,
+                    "WeightQuantMode must be within {0, 1, 2}, actually is %d.",
+                    *context_.weightQuantMode),
+                    return false);
+        }
+
         const std::set<uint32_t> supportedKvQuantMode {0U, 1U, 2U, 3U};
         OP_CHECK_IF(supportedKvQuantMode.find(*context_.kvQuantMode) == supportedKvQuantMode.end(),
             OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.kvQuantMode),
                 return false);
-                    
+
         const std::set<uint32_t> supportedQueryQuantMode {0U, 1U};
         OP_CHECK_IF(supportedQueryQuantMode.find(*context_.queryQuantMode) == supportedQueryQuantMode.end(),
             OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %d.", *context_.queryQuantMode),
@@ -179,9 +192,19 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
             static_cast<uint32_t>(QUANT_MODE::NO_QUANT),
             static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT),
             static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL),
+            static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE),
+            static_cast<uint32_t>(QUANT_MODE::FULL_QUANT_KV_NO_QUANT),
+            static_cast<uint32_t>(QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR),
+            static_cast<uint32_t>(QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE),
             static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT),
             static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR),
-            static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE)
+            static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE),
+            static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT),
+            static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR),
+            static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT),
+            static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR),
+            static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE),
+            static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE)
         };
         OP_CHECK_IF(supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
             OP_LOGE(context_.opName, "QUANT_MODE allows only %s, got %u.",
@@ -192,17 +215,23 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
             MAX_B_SIZE, baseShapeInfo_.bSize),
         return ge::GRAPH_FAILED);
-    
     const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
     OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
         OP_LOGE(context_.opName, "He allows only %s, got %u.",
             ConvertContainerToString(supportedHeSize).c_str(), baseShapeInfo_.heSize),
         return ge::GRAPH_FAILED);
-    
-    OP_CHECK_IF(baseShapeInfo_.hcqSize != HCQ_SIZE,
-        OP_LOGE(context_.opName, "Hcq allows only %u, got %u.",
-            HCQ_SIZE, baseShapeInfo_.hcqSize),
-        return ge::GRAPH_FAILED);
+    if (GetCurNpuArch() != NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        const std::set<uint32_t> supportedHcqSize {1536U, 2048U};
+        OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
+            OP_LOGE(context_.opName, "Hcq allows %s, got %u.",
+                ConvertContainerToString(supportedHcqSize).c_str(), baseShapeInfo_.hcqSize),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(baseShapeInfo_.hcqSize != HCQ_SIZE,
+            OP_LOGE(context_.opName, "Hcq allows only %u, got %u.",
+                HCQ_SIZE, baseShapeInfo_.hcqSize),
+            return ge::GRAPH_FAILED);
+    }
     const std::set<uint32_t> supportedNSize {1, 2, 4, 8, 16, 32, 64, 128};
     OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
         OP_LOGE(context_.opName, "N allows only %s, but got %u.",
@@ -212,10 +241,18 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE(context_.opName, "Hckv allows only %u, got %u.",
             HCKV_SIZE, baseShapeInfo_.hckvSize),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.dSize != D_SIZE,
-        OP_LOGE(context_.opName, "D allows only %u, got %u.",
-            D_SIZE, baseShapeInfo_.dSize),
-        return ge::GRAPH_FAILED);
+    if (GetCurNpuArch() != NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        const std::set<uint32_t> supportedDSize {128U, 192U};
+        OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
+            OP_LOGE(context_.opName, "D allows %s, got %u.",
+                ConvertContainerToString(supportedDSize).c_str(), baseShapeInfo_.dSize),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(baseShapeInfo_.dSize != D_SIZE,
+            OP_LOGE(context_.opName, "D allows only %u, got %u.",
+                D_SIZE, baseShapeInfo_.dSize),
+            return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(baseShapeInfo_.drSize != DR_SIZE,
         OP_LOGE(context_.opName, "Dr allows only %u, got %u.",
             DR_SIZE, baseShapeInfo_.drSize),
@@ -238,10 +275,16 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         if (*(context_.quantScaleRepoMode) == static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) {
             supportedDtileSize += baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) * (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
-        OP_CHECK_IF(baseShapeInfo_.dtileSize != supportedDtileSize,
-            OP_LOGE(context_.opName, "DtileSize allows only %u, got %u.",
-                supportedDtileSize, baseShapeInfo_.dtileSize),
-            return ge::GRAPH_FAILED);
+        if (baseShapeInfo_.dtileSize != supportedDtileSize) {
+            if (*(context_.kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+                OP_LOGE(context_.opName, "When kvQuantMode is PER_TILE, dtileSize allows only %u, got %u.",
+                    supportedDtileSize, baseShapeInfo_.dtileSize);
+            } else {
+                OP_LOGE(context_.opName, "When kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only %u, got %u.",
+                    supportedDtileSize, baseShapeInfo_.dtileSize);
+            }
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -371,7 +414,9 @@ void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDimsV2()
 void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDimsV3()
 {
     if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
         expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.nSize, 1});
     } else {
         expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{0});
@@ -394,6 +439,14 @@ void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDimsV3()
             expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.hcqSize / MXFP8_BLOCK_SIZE});
             expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT8_E8M0;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, 1});
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, 1});
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
         } else {
             expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_INT8;
             expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, 1});
@@ -408,6 +461,12 @@ void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDimsV3()
         } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
             expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT8_E8M0;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
         } else {
             expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_INT8;
             expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
@@ -447,6 +506,24 @@ void MlaPrologTilingCheck::FillScenarioParamInfo()
             break;
         case QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE:
             FillMxfp8FullKVPertileParamInfo();
+            break;
+        case QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT:
+            FillFP8FullQuantParamInfo();
+            break;
+        case QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR:
+            FillFP8FullKVQuantParamInfo();
+            break;
+        case QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT:
+            FillHIF8FullQuantParamInfo();
+            break;
+        case QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR:
+            FillHIF8FullKVQuantParamInfo();
+            break;
+        case QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE:
+            FillFP8FullKVPertileQuantParamInfo();
+            break;
+        case QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE:
+            FillHIF8FullKVPertileQuantParamInfo();
             break;
         default:
             break;
@@ -525,6 +602,21 @@ void MlaPrologTilingCheck::FillFullQuantParamInfo()
     expectedParamInfo_[TOKEN_X_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[WEIGHT_DKV_KR_NAME].dtype = ge::DT_INT8;
+
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+            expectedParamInfo_[TOKEN_X_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[WEIGHT_UQ_QR_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[WEIGHT_DKV_KR_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+            expectedParamInfo_[TOKEN_X_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[WEIGHT_UQ_QR_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[WEIGHT_DKV_KR_NAME].dtype = ge::DT_HIFLOAT8;
+        }
+    }
+
     expectedParamInfo_[DEQUANT_SCALE_X_NAME].dtype = ge::DT_FLOAT;
     expectedParamInfo_[DEQUANT_SCALE_W_DQ_NAME].dtype = ge::DT_FLOAT;
     expectedParamInfo_[DEQUANT_SCALE_W_DKV_KR_NAME].dtype = ge::DT_FLOAT;
@@ -534,16 +626,27 @@ void MlaPrologTilingCheck::FillFullKVQuantParamInfo()
 {
     FillFullQuantParamInfo();
 
+    expectedParamInfo_[QUERY_NAME].dtype = ge::DT_INT8;
+    expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
+    expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_HIFLOAT8;
+        }
+    }
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         expectedParamInfo_.emplace(QUANT_SCALE_CKV_NAME, std::vector<uint32_t>{1});
     } else {
         expectedParamInfo_.emplace(QUANT_SCALE_CKV_NAME, std::vector<uint32_t>{1, baseShapeInfo_.hckvSize});
     }
 
-    expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
-    expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[QUANT_SCALE_CKV_NAME].dtype = ge::DT_FLOAT;
-    expectedParamInfo_[QUERY_NAME].dtype = ge::DT_INT8;
 }
 
 void MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo()
@@ -553,6 +656,15 @@ void MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo()
     expectedParamInfo_.emplace(K_NOPE_CLIP_ALPHA_NAME, std::vector<uint32_t>{1});
     expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+            expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+            expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_HIFLOAT8;
+            expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_HIFLOAT8;
+        }
+    }
     expectedParamInfo_[K_NOPE_CLIP_ALPHA_NAME].dtype = ge::DT_FLOAT;
 }
 
@@ -604,6 +716,40 @@ void MlaPrologTilingCheck::FillMxfp8FullKVPertileParamInfo()
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
 }
 
+void MlaPrologTilingCheck::FillFP8FullQuantParamInfo()
+{
+    FillFullQuantParamInfo();
+}
+
+void MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo()
+{
+    FillFullKVQuantParamInfo();
+}
+
+void MlaPrologTilingCheck::FillHIF8FullQuantParamInfo()
+{
+    FillFullQuantParamInfo();
+}
+
+void MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo()
+{
+    FillFullKVQuantParamInfo();
+}
+
+void MlaPrologTilingCheck::FillFP8FullKVPertileQuantParamInfo()
+{
+    FillFullKVPertileQuantParamInfo();
+    expectedParamInfo_.erase(K_NOPE_CLIP_ALPHA_NAME);
+    expectedParamInfo_[K_NOPE_CLIP_ALPHA_NAME].isValid = false;
+}
+
+void MlaPrologTilingCheck::FillHIF8FullKVPertileQuantParamInfo()
+{
+    FillFullKVPertileQuantParamInfo();
+    expectedParamInfo_.erase(K_NOPE_CLIP_ALPHA_NAME);
+    expectedParamInfo_[K_NOPE_CLIP_ALPHA_NAME].isValid = false;
+}
+
 void MlaPrologTilingCheck::GenActualParamInfo()
 {
     actualParamInfo_.emplace(TOKEN_X_NAME, context_.tokenX);
@@ -651,12 +797,12 @@ ge::graphStatus MlaPrologTilingCheck::CheckCkvkrRepoMode()
         // 校验所有维度的乘积是否为0
         if(context_.krCache.shape->GetStorageShape().GetShapeSize() != 0) {
             isCorrect = ge::GRAPH_FAILED;
-            OP_LOGE(context_.opName, "KrCache %s is not an empty tensor.",
+            OP_LOGE(context_.opName, "When ckvkrRepoMode is COMBINE, KrCache should be empty tensor, but got %s.",
                 GetShapeStr(context_.krCache.shape->GetStorageShape()).c_str());
         }
         if(context_.krCacheOut.shape->GetStorageShape().GetShapeSize() != 0) {
             isCorrect = ge::GRAPH_FAILED;
-            OP_LOGE(context_.opName, "KrCacheOut %s is not an empty tensor.",
+            OP_LOGE(context_.opName, "When ckvkrRepoMode is COMBINE, KrCacheOut should be empty tensor, but got %s.",
                 GetShapeStr(context_.krCacheOut.shape->GetStorageShape()).c_str());
         }    
     }
@@ -748,7 +894,9 @@ ge::graphStatus MlaPrologTilingCheck::CheckScenarParam()
     ge::graphStatus isCorrect {ge::GRAPH_SUCCESS};
     if (scenarioInfo_.quantMode_ == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE ||
         scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) {
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE) {
         if (*(context_.ckvkrRepoMode) != static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
             OP_LOGE(context_.opName, "The ckvkrRepoMode expected %d, but got %d.",
                 static_cast<int>(CKVKR_REPO_MODE::COMBINE), *(context_.ckvkrRepoMode));
@@ -773,7 +921,9 @@ ge::graphStatus MlaPrologTilingCheck::CheckScenarParam()
         }
     }
     if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
         if (*(context_.queryQuantMode) != static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD)) {
             OP_LOGE(context_.opName, "The queryQuantMode expected %d, but got %d.",
                 static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD), *(context_.queryQuantMode));
@@ -836,7 +986,9 @@ ge::graphStatus MlaPrologTilingCheck::CheckSingleRequiredParam() const
 bool MlaPrologTilingCheck::CheckTokenX() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.tokenX, TOKEN_X_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
+        return IsSingleParamValid(context_.tokenX, TOKEN_X_NAME,
+            {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
+            {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
     } else {
         return IsSingleParamValid(context_.tokenX, TOKEN_X_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
     }
@@ -845,22 +997,26 @@ bool MlaPrologTilingCheck::CheckTokenX() const
 bool MlaPrologTilingCheck::CheckWDq() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.weightDq, WEIGHT_DQ_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_FRACTAL_NZ},
-                                {2, 4});
+        return IsSingleParamValid(context_.weightDq, WEIGHT_DQ_NAME,
+            {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
+            {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     } else {
-        return IsSingleParamValid(context_.weightDq, WEIGHT_DQ_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_FRACTAL_NZ},
-                                {2, 4});
+        return IsSingleParamValid(context_.weightDq, WEIGHT_DQ_NAME,
+            {ge::DT_BF16, ge::DT_INT8},
+            {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     }
 }
 
 bool MlaPrologTilingCheck::CheckWUqQr() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_FRACTAL_NZ},
-                                {2, 4});
+        return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME,
+            {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
+            {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     } else {
-        return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_FRACTAL_NZ},
-                                {2, 4});
+        return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME,
+            {ge::DT_BF16, ge::DT_INT8},
+            {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     }
 }
 
@@ -876,18 +1032,20 @@ bool MlaPrologTilingCheck::CheckWUk() const
 bool MlaPrologTilingCheck::CheckWDkvKr() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.weightDkvKr, WEIGHT_DKV_KR_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN},
-                                {ge::FORMAT_FRACTAL_NZ}, {2, 4});
+        return IsSingleParamValid(context_.weightDkvKr, WEIGHT_DKV_KR_NAME,
+            {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
+            {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     } else {
-        return IsSingleParamValid(context_.weightDkvKr, WEIGHT_DKV_KR_NAME, {ge::DT_BF16, ge::DT_INT8},
-                                {ge::FORMAT_FRACTAL_NZ}, {2, 4});
+        return IsSingleParamValid(context_.weightDkvKr, WEIGHT_DKV_KR_NAME,
+            {ge::DT_BF16, ge::DT_INT8},
+            {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     }
 }
 
 bool MlaPrologTilingCheck::CheckRmsnormGammaCq() const
 {
-    return IsSingleParamValid(context_.rmsnormGammaCq, RMSNORM_GAMMA_CQ_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW},
-                              {1});
+    return IsSingleParamValid(context_.rmsnormGammaCq, RMSNORM_GAMMA_CQ_NAME,
+        {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1});
 }
 
 bool MlaPrologTilingCheck::CheckRmsnormGammaCkv() const
@@ -914,9 +1072,19 @@ bool MlaPrologTilingCheck::CheckCacheIndex() const
 bool MlaPrologTilingCheck::CheckKvCache() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) != 0){
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
+        } else {
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME,
+                {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
+                {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        }
     } else {
-        return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) != 0){
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
+        } else {
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        }
     }
 }
 
@@ -926,7 +1094,7 @@ bool MlaPrologTilingCheck::CheckKrCache() const
         return IsSingleParamValid(
             context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
     } else {
-    return (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
+        return (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
                 *(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) ||
             IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                 {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
@@ -940,7 +1108,7 @@ bool MlaPrologTilingCheck::CheckActSeqLen() const
     };
     ge::DataType dtype = context_.actualSeqLen.desc->GetDataType();
     OP_CHECK_IF((ge::DT_INT32 != dtype),
-        OP_LOGE(context_.opName, "ActSeqLen datatype only supports %s, but got %s.",
+        OP_LOGE(context_.opName, "actualSeqLen datatype only supports %s, but got %s.",
            TypeUtils::DataTypeToSerialString(ge::DT_INT32).c_str(),
             TypeUtils::DataTypeToSerialString(dtype).c_str()),
         return false);
@@ -987,7 +1155,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
         if (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BSND, CACHE_MODE_LEN) != 0 &&
             std::strncmp(context_.cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) != 0) {
             OP_LOGE(context_.opName,
-                "%s only support cacheMode {BSND, TND}, actually is %s.",
+                "%s only support cacheMode {PA_BSND, PA_NZ}, actually is %s.",
                 context_.opType,
                 context_.cacheMode);
             return ge::GRAPH_FAILED;

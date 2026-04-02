@@ -29,6 +29,7 @@ constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
 constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
+constexpr uint8_t SYNC_SINK_UB_REUSE_FLAG = 11;
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -56,6 +57,14 @@ constexpr uint8_t MULTIPLY_COEF = 8;
 
 // shift left by three bits
 constexpr uint8_t kShiftToMultiplyByEight = 3;
+
+// quant
+constexpr uint16_t QUANT_S2_BASE_COUNT = 8;
+constexpr uint16_t QUANT_S1_BASE_COUNT = 64;
+constexpr uint16_t QUANT_S1_BASE_COUNT_DB = 128;
+
+constexpr uint16_t QUANT_UB2L1_SRC_STRIDE = 15;
+constexpr uint16_t QUANT_UB2L1_SRC_OFFSET = 512;
  
 template <typename T, bool IS_WRITE_UB>
 struct DqkvResPos {

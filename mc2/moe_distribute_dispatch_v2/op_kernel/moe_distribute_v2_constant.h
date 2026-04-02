@@ -74,6 +74,11 @@ constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
 constexpr uint32_t PERGROUP_DYNAMIC_QUANT = 3;
 constexpr uint32_t MX_QUANT = 4;
 constexpr uint32_t CACHEWRITESIZE = 8U;
+constexpr uint32_t FP4_ELEMS_PER_BYTE = 2;
+
+constexpr uint8_t INT8_COMM_QUANT = 2;
+constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
+constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 
 // combinev2额外所需常量段
 constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1状态区偏移，为dispatch预留50k大小
@@ -95,6 +100,14 @@ constexpr uint64_t COMBINE_ARN_STATE_WIN_OFFSET = 818UL * 1024UL;
 constexpr uint32_t NUM_PER_REP_FP32 = 64U;  // ONE_REPEAT_BYTE_SIZE / sizeof(float)
 constexpr float ZERO = 0;
 constexpr float ONE = 1;
+
+// context额外所需常量段
+constexpr uint64_t WINDOWS_IN_OFFSET = 780U;
+constexpr uint64_t EP_WIN_SIZE_OFFSET = 1U;
+constexpr uint64_t TP_WIN_SIZE_OFFSET = 2U;
+constexpr uint64_t EP_STATUS_DATA_SPACE_OFFSET = 3U;
+constexpr uint64_t EP_RANK_ID_OFFSET = 4U;
+constexpr uint64_t EP_WORLD_SIZE_OFFSET = 5U;
 
 // 其他
 constexpr uint32_t JUMP_WRITE = sizeof(int64_t) / sizeof(int32_t);

@@ -8,7 +8,6 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
@@ -35,9 +34,6 @@
     $$
     K=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
-
-
-
 
 ## 参数说明
 

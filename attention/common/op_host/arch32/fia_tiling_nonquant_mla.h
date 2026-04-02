@@ -39,7 +39,7 @@ private:
     void GenTilingKey();
     bool DealSameSeqEachBatch() const;
 
-    void ZeroTensorProcess() const;
+    void EmptyTensorProcess() const;
     void InitParams();
 
     void CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitParam) const;

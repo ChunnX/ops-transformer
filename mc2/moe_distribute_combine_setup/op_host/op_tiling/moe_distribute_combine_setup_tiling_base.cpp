@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "tiling/moe_tiling_base.h"
+#include "op_host/op_tiling/moe_tiling_base.h"
 #include "moe_distribute_combine_setup_tiling_base.h"
 
 namespace {
@@ -71,7 +71,7 @@ constexpr uint32_t AICPUNUM = 4U;
 
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr int64_t COMM_CMD_INFO_SIZE = 16;
-constexpr int64_t MIN_AVAILABLE_BUFF_SIZE = 2;
+constexpr uint64_t MIN_AVAILABLE_BUFF_SIZE = 2;
 constexpr int64_t HCCL_BUFFER_SIZE = 44;
 } // namespace
 
@@ -213,8 +213,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckOptionalAttrValue()
                     OP_LOGE(nodeName_, "commQuantMode only support 0, get %ld.", *commQuantModePtr),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (*commTypePtr < SDMA_COMM) || (*commTypePtr > URMA_COMM),
-        OP_LOGE(nodeName_, "commType only support [%lu, %lu], get [%lu]", SDMA_COMM, URMA_COMM, *commTypePtr),
+        (*commTypePtr != URMA_COMM),
+        OP_LOGE(nodeName_, "commType only support %lu, get [%lu]", URMA_COMM, *commTypePtr),
         return ge::GRAPH_FAILED);
     if (commAlgPtr != nullptr) {
         const std::string commAlg = std::string(commAlgPtr);
@@ -587,7 +587,7 @@ void MoeDistributeCombineSetupTilingBase::SetTilingKey()
 
 ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckHcclBuffSize()
 {
-    const uint64_t hcclBuffSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    const uint64_t hcclBuffSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() / 2;
     OP_TILING_CHECK(
         hcclBuffSize < MIN_AVAILABLE_BUFF_SIZE,
         OP_LOGE(nodeName_, "HCCL_BUFFSIZE too short, [%ld] < [%ld].", hcclBuffSize, MIN_AVAILABLE_BUFF_SIZE),
@@ -616,13 +616,15 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckHcclBuffSize()
                     OP_LOGE(nodeName_, "HCCL_BUFFSIZE [%lu] < [%lu].", hcclBuffSize, hcclBuffSizeGolden),
                     return ge::GRAPH_FAILED);
 
+    tilingData_->moeDistributeCombineSetupInfo.totalWinSize = hcclBuffSize;
+
     return ge::GRAPH_SUCCESS;
 }
 
 void MoeDistributeCombineSetupTilingBase::SetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    uint32_t aivNum = USED_AIV_NUMS;
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t blockDim = 1U;
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);

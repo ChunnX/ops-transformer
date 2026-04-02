@@ -13,11 +13,10 @@
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
-
 ## 功能说明
 
--   **接口功能**：实现quant + reduceScatter融合计算。
--   **计算公式**：
+- **接口功能**：实现quant + reduceScatter融合计算。
+- **计算公式**：
 
     $$
     output=Reduce(AllToAllScales * AllToAllData)
@@ -33,7 +32,6 @@
 
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
     
-
 ## 函数原型
 
 该算子分为两段式接口，必须先调用“aclnnQuantReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantReduceScatter”接口执行计算。
@@ -59,7 +57,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 ## aclnnQuantReduceScatterGetWorkspaceSize
 
--   **参数说明**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1556px"><colgroup>
     <col style="width: 161px">
@@ -88,7 +86,7 @@ aclnnStatus aclnnQuantReduceScatter(
         <td>x</td>
         <td>输入</td>
         <td>公式中的输入x。</td>
-        <td><ul><li>不支持空Tensor。</li><li>支持的shape为：(BS, H)或者(B, S, H)。B为batch size，S为sequence length，H为hidden size。当前版本输入x的H支持1024~8192中任意128对齐泛化。</li></td>
+        <td><ul><li>不支持空Tensor。</li><li>支持的shape为：(BS, H)或者(B, S, H)。B为batch size，S为sequence length，H为hidden size。当前版本输入x的H支持1024~8192中任意128对齐泛化。</li></ul></td>
         <td>INT8, HIFLOAT8, FLOAT8_E4M3FN, FLOAT8_E5M2</td>
         <td>ND</td>
         <td>2-3</td>
@@ -98,7 +96,7 @@ aclnnStatus aclnnQuantReduceScatter(
         <td>scales</td>
         <td>输入</td>
         <td>公式中的输入scales。</td>
-        <td><ul><li>不支持空Tensor。</li><li>当scales的数据类型为FLOAT8_E8M0时，x的数据类型必须为FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(BS, H)或者(B, S, H)，scales的shape必须对应x的shape为(BS, H/64, 2)或者(B, S, H/64, 2)。</li><li>当scales的数据类型为FLOAT时，x的数据类型必须为INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(BS, H)或者(B, S, H)，scales的shape必须对应x的shape为(BS, H/128)或者(B, S, H/128)。</li></td>
+        <td><ul><li>不支持空Tensor。</li><li>当scales的数据类型为FLOAT8_E8M0时，x的数据类型必须为FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(BS, H)或者(B, S, H)，scales的shape必须对应x的shape为(BS, H/64, 2)或者(B, S, H/64, 2)。</li><li>当scales的数据类型为FLOAT时，x的数据类型必须为INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(BS, H)或者(B, S, H)，scales的shape必须对应x的shape为(BS, H/128)或者(B, S, H/128)。</li></ul></td>
         <td>FLOAT, FLOAT8_E8M0</td>
         <td>ND</td>
         <td>2-4</td>
@@ -108,7 +106,7 @@ aclnnStatus aclnnQuantReduceScatter(
         <td>group</td>
         <td>输入</td>
         <td>通信域标识。</td>
-        <td><ul><li>通信域标识</li></td>
+        <td>通信域标识</td>
         <td>String</td>
         <td>-</td>
         <td>-</td>
@@ -118,7 +116,7 @@ aclnnStatus aclnnQuantReduceScatter(
         <td>reduceOp</td>
         <td>输入</td>
         <td>公式中的reduce操作类型。</td>
-        <td><ul><li>当前仅支持"sum"</li></td>
+        <td>当前仅支持"sum"</td>
         <td>string</td>
         <td>-</td>
         <td>-</td>
@@ -128,7 +126,7 @@ aclnnStatus aclnnQuantReduceScatter(
         <td>output</td>
         <td>输出</td>
         <td>公式中的输出output。</td>
-        <td><ul><li>不支持空Tensor。</li><li>当x的shape是(BS,H)的时候，output的shape必须为(BS/rankNum,H); 当x的shape是(B,S,H)的时候，output的shape必须为(B*S/rankNum,H)。rankNum表示通信域大小。</li></td>
+        <td><ul><li>不支持空Tensor。</li><li>当x的shape是(BS,H)的时候，output的shape必须为(BS/rankNum,H); 当x的shape是(B,S,H)的时候，output的shape必须为(B*S/rankNum,H)。rankNum表示通信域大小。</li></ul></td>
         <td>FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
@@ -157,7 +155,7 @@ aclnnStatus aclnnQuantReduceScatter(
     </tbody>
     </table>
 
--   **返回值**
+- **返回值**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
 
@@ -196,12 +194,13 @@ aclnnStatus aclnnQuantReduceScatter(
 
 ## aclnnQuantReduceScatter
 
--   **参数说明**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -231,7 +230,7 @@ aclnnStatus aclnnQuantReduceScatter(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -242,8 +241,9 @@ aclnnStatus aclnnQuantReduceScatter(
 - 只在Ascend950系列平台使能。
 - 不支持空tensor输入。
 - 通信域大小支持2、4、8。
-- 通信域使用约束：同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子,且该通信域中不允许有其他通信算子。
+- 通信域使用约束：同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子，且该通信域中不允许有其他通信算子。
 - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = BS * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = BS * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = BS * H / 32 * 1 (Byte)`。
+- H范围仅支持[1024, 8192]，要求128对齐。
 
 ## 调用示例
 

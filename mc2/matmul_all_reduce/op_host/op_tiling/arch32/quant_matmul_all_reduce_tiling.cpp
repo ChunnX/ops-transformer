@@ -15,7 +15,7 @@
 #ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_CC_
 #define _QUANT_MATMUL_ALL_REDUCE_TILING_CC_
 #include "quant_matmul_all_reduce_tiling.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 
 using namespace Mc2Tiling;
 namespace optiling {

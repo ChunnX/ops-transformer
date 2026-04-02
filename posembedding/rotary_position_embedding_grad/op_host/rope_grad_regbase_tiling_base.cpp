@@ -606,7 +606,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::TilingReduce()
 
 ge::graphStatus RopeGradRegBaseTilingClass::SetTilingKeyBlockDim(uint32_t dxTilingKey)
 {
-    tilingKey_ = GET_TPL_TILING_KEY(key_.patternID, key_.loopARCount, key_.loopInnerARCount, dxTilingKey, dCosFlag_);
+    GEN_REDUCE_TILING_KEY(tilingKey_, key_, dxTilingKey, dCosFlag_);
     OP_LOGI(
         context_->GetNodeName(),
         "patternID:%u, loopARCount:%u, loopInnerARCount:%u, dxTilingKey is: %u, tilingKey is:%lu.", key_.patternID,

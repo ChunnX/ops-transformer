@@ -104,6 +104,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
     int64_t s1LoopTimes;
+    int64_t gS1Idx;
     // BN循环生产的数据
     int64_t s2InCurrentBatch;                 // Tensorlist场景，不同batch的S2长度，后续用计算KvStride
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
@@ -194,9 +195,11 @@ template <>
 struct RunInfo<true> {
     COMMON_RUN_INFO;
     // 推理新增
+    int64_t gS1Idx;
     uint64_t pseShiftOffset;              // vector1 pse 的 offset
     int64_t queryLeftPaddingSize;
     int64_t kvLeftPaddingSize;
+    int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
     // lse 输出offset
     int64_t softmaxLseOffset;
 
@@ -292,7 +295,8 @@ struct RunInfo<false> {
     float scaleValue; \
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
-    float pScale
+    float pScale;\
+    float sinkValue = 0.0f;
 
 
 #define ROPE_INFO \
@@ -390,7 +394,7 @@ struct RunInfo<false> {
     uint32_t sparseType : 8;  \
     uint32_t dSizeRope : 11; \
     uint32_t splitCoreMode : 1; \
-    uint32_t coreNum;
+    uint32_t coreNum
 
 #define FAG_CV_SHARED_PARAMS \
     /* base params */ \
@@ -477,6 +481,8 @@ struct CVSharedParams<true, false> {
     // prefix
     bool isActualSharedPrefixLenNull;
     int64_t kvPrefixSize;
+
+    int64_t totalSize;
 };
 
 template<>
@@ -515,6 +521,8 @@ struct CVSharedParams<true, true> {
     // prefix
     bool isActualSharedPrefixLenNull;
     int64_t kvPrefixSize;
+
+    int64_t totalSize;
 };
 }
 

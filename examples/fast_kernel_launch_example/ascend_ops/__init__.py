@@ -22,3 +22,4 @@ except ImportError as e:
     ) from e
 
 from . import ops
+from .moe_distribute import MoeDistributeBuffer

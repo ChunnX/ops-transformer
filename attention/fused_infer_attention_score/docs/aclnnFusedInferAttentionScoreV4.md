@@ -16,9 +16,12 @@
 
 ## 功能说明
 
-- 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。相比于FusedInferAttentionScoreV3，本接口新增dequantScaleQueryOptional、learnableSinkOptional、queryQuantMode参数。
+- 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
+
+    相比于FusedInferAttentionScoreV3，本接口新增dequantScaleQueryOptional、learnableSinkOptional、queryQuantMode参数，另外新增alibi的fullmask能力。
 
     **说明：** 
+
     decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
 
@@ -33,15 +36,14 @@
     本算子中Score函数采用Softmax函数，self-attention计算公式为：
 
     $$
-    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
+    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}} + FullMask)V
     $$
 
-    其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
+    其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，加上alibi的fullmask，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
     **说明**：
     <blockquote>query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
     <br>Q_S表示query shape中的S，KV_S表示key和value shape中的S，Q_N表示num_query_heads，KV_N表示num_key_value_heads。P表示Softmax(<span>(QK<sup class="superscript">T</sup>) / <span class="sqrt">d</span></span>)的计算结果。</blockquote>
-
 
 ## 函数原型
 
@@ -110,691 +112,699 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px">
-        <colgroup>
-            <col style="width: 220px">
-            <col style="width: 120px">
-            <col style="width: 300px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
-            <col style="width: 100px">
-            <col style="width: 190px">
-            <col style="width: 145px">
-            </colgroup>
-        <thead>
-        <tr>
-            <th>参数名</th>
-            <th>输入/输出</th>
-            <th>描述</th>
-            <th>使用说明</th>
-            <th>数据类型</th>
-            <th>数据格式</th>
-            <th>维度（shape）</th>
-            <th>非连续Tensor</th>
-        </tr></thead>
-        <tbody>
-        <tr>
-            <td>query</td>
-            <td>输入</td>
-            <td>attention结构的输入Q</td>
-            <td>-</td>
-            <td>FLOAT16、BFLOAT16、INT8</td>
-            <td>ND</td>
-            <td>见参数inputLayout</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>key</td>
-            <td>输入</td>
-            <td>attention结构的输入K</td>
-            <td>
-            <ul>
-                <li>参数key、value中对应tensor的shape需要完全一致。</li>
-                <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-                <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
-            </ul>
-            </td>
-            <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）</td>
-            <td>ND</td>
-            <td>见参数inputLayout</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>value</td>
-            <td>输入</td>
-            <td>attention结构的输入V</td>
-            <td>
-            <ul>
-                <li>参数key、value中对应tensor的shape需要完全一致。</li>
-                <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-                <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
-            </td>
-            <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）</td>
-            <td>ND</td>
-            <td>见参数inputLayout</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>pseShiftOptional</td>
-            <td>可选输入</td>
-            <td>在attention结构内部的位置编码参数</td>
-            <td><ul><li>不支持空Tensor。</li>
-                    <li>约束请见<a href="#pseShift">pseShift</a>。</li></ul></td>
-            <td>FLOAT16、BFLOAT16</td>
-            <td>ND</td>
-            <td>建议shape输入 (B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>attenMaskOptional</td>
-            <td>可选输入</td>
-            <td>对QK的结果进行mask，用于指示是否计算Token间的相关性</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>如果Q_S、KV_S非16或32对齐，可以向上取到对齐的S。</li>
-                <li>当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。</li>
-                <li>如不使用该功能时可传入nullptr。</li>
-                <li>其它约束请见<a href="#Mask">Mask</a>。</li>
-            </ul>
-            </td>
-            <td>BOOL、INT8、UINT8</td>
-            <td>ND</td>
-            <td>
-            <ul>
-                <li>sparseMode = 0、1时
-                    <ul>
-                        <li>支持shape传入(B,Q_S,KV_S)、(1,Q_S,KV_S)、(B,1,Q_S,KV_S)、(1,1,Q_S,KV_S)。</li>
-                        <li>另外输入Layout为BSH、BSND、BNSD、BNSD_BSND时，且query与key的D等于value的D，并且不传query_rope和key_rope时，Q_S=1可支持传入(B,KV_S)，Q_S>1时可支持传入(Q_S,KV_S)。</li>
-                    </ul>
-                </li>
-                <li>sparseMode = 2、3、4时，attenMaskOptional的shape输入支持(2048, 2048)或(1,2048,2048)或(1,1,2048,2048)</li>
-            </ul>
-            </td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>actualSeqLengthsOptional</td>
-            <td>可选输入</td>
-            <td>表示不同Batch中query的有效Sequence Length，TND场景下以该入参的数量作为Batch值</td>
-            <td>
-            <ul>
-                <li>传入时应为非负数。</li>
-                <li>该入参中每个batch的有效Sequence Length应该不大于query中对应batch的实际Sequence Length。</li>
-                <li>seqlen的传入长度为1时，每个Batch使用相同seqlen；传入长度大于等于Batch时取seqlen的前Batch个数。其他长度不支持。</li>
-                <li>不传入该参数时，表示每个Batch使用相同seqlen，且seqlen的值等于shape中S的值。</li>
-                <li>TND场景下该参数是累加模式。</li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>（1）或（B）或（>B）</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>actualSeqLengthsKvOptional</td>
-            <td>可选输入</td>
-            <td>表示不同Batch中key/value的有效Sequence Length，TND场景下以该入参的数量作为Batch值</td>
-            <td>
-            <ul>
-                <li>传入时应为非负数。</li>
-                <li>该入参中每个batch的有效Sequence Length应该不大于key/value中对应batch的Sequence Length。</li>
-                <li>seqlenKv的传入长度为1时，每个Batch使用相同seqlenKv；传入长度大于等于Batch时取seqlenKv的前Batch个数。其他长度不支持。</li>
-                <li>不传入该参数时，表示每个Batch使用相同seqlenKv，且seqlenKv的值等于shape中S的值。</li>
-                <li>PA场景下该参数是batch模式，非PA在TND场景下是累加模式。</li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>（1）或（B）或（>B）</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>deqScale1Optional</td>
-            <td>可选输入</td>
-            <td>表示对QK结果进行反量化的因子</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor。</li></ul></td>
-            <td>UINT64、FLOAT32</td>
-            <td>ND</td>
-            <td>见<a href="#INT8">int8量化场景</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>quantScale1Optional</td>
-            <td>可选输入</td>
-            <td>表示对P进行量化的因子</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor。</li></ul></td>
-            <td>FLOAT32</td>
-            <td>ND</td>
-            <td>见<a href="#INT8">int8量化场景</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>deqScale2Optional</td>
-            <td>可选输入</td>
-            <td>表示对PV结果进行反量化的因子</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor。</li></ul></td>
-            <td>UINT64、FLOAT32</td>
-            <td>ND</td>
-            <td>见<a href="#INT8">int8量化场景</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>quantScale2Optional</td>
-            <td>可选输入</td>
-            <td>表示对输出结果进行量化的因子</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor、per-channel。</li></ul></td>
-            <td>FLOAT32、BFLOAT16</td>
-            <td>ND</td>
-            <td>输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>quantOffset2Optional</td>
-            <td>可选输入</td>
-            <td>表示对输出结果进行量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor、per-channel类型与shape与quantScale2Optional保持一致。</li></ul></td>
-            <td>FLOAT32、BFLOAT16</td>
-            <td>ND</td>
-            <td>与quantScale2Optional保持一致</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>antiquantScaleOptional</td>
-            <td>可选输入</td>
-            <td>表示对key/value进行伪量化的因子</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor、per-channel、per-token。</li></ul></td>
-            <td>Q_S=1：FLOAT16、BFLOAT16、FLOAT32Q_S&gt;1：FLOAT16</td>
-            <td>ND</td>
-            <td>见<a href="#AntiQuant">伪量化参数</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>antiquantOffsetOptional</td>
-            <td>可选输入</td>
-            <td>表示对key/value进行伪量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>支持per-tensor、per-channel、per-tokenshape与antiquantScaleOptional保持一致。</li></ul></td>
-            <td>与antiquantScaleOptional保持一致</td>
-            <td>ND</td>
-            <td>与antiquantScaleOptional保持一致</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>blockTableOptional</td>
-            <td>可选输入</td>
-            <td>表示PagedAttention中KV存储使用的block映射表</td>
-            <td><ul><li>不支持空Tensor。</li>
-                    <li>约束请见<a href="#PagedAttention">PagedAttention</a>。</li></ul></td>
-            <td>INT32</td>
-            <td>ND</td>
-            <td>第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>queryPaddingSizeOptional</td>
-            <td>可选输入</td>
-            <td>表示query中每个batch的数据是否右对齐，且右对齐的个数是多少</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>query左padding场景query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。</li>
-                <li>query左padding场景queryPaddingSizeOptional小于0时将被置为0。</li>
-                <li>query左padding场景需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。</li>
-                <li>仅支持Q_S&gt;1的场景，其余场景该参数无效。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>ND</td>
-            <td>（1）</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>kvPaddingSizeOptional</td>
-            <td>可选输入</td>
-            <td>表示key/value中每个batch的数据是否右对齐，且右对齐的个数是多少</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。</li>
-                <li>kv左padding场景kvPaddingSize小于0时将被置为0。</li>
-                <li>kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。</li>
-                <li>不支持Q为BF16/FP16、KV为INT4（INT32）的场景。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>ND</td>
-            <td>（1）</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>keyAntiquantScaleOptional</td>
-            <td>可选输入</td>
-            <td>表示对key进行反量化的因子</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>keyAntiquantScaleOptional和valueAntiquantScaleOptional要么都为空，要么都不为空。</li>
-                <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>和见<a href="#MLA">MLA场景全量化参数约束</a>。</li>
-            </ul>
-            </td>
-            <td>FLOAT16、BFLOAT16、FLOAT32</td>
-            <td>ND</td>
-            <td>见<a href="#AntiQuant">伪量化参数</a>和见<a href="#MLA">MLA场景全量化参数</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>keyAntiquantOffsetOptional</td>
-            <td>可选输入</td>
-            <td>表示对key进行反量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>如果使用该功能其数据类型与shape必须与keyAntiquantScaleOptional保持一致。</li>
-                <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>。</li>
-            </ul>
-            </td>
-            <td>与keyAntiquantOffsetOptional保持一致</td>
-            <td>ND</td>
-            <td>见<a href="#AntiQuant">伪量化参数</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>valueAntiquantScaleOptional</td>
-            <td>可选输入</td>
-            <td>表示对value进行反量化的因子</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>keyAntiquantScaleOptional和valueAntiquantScaleOptional要么都为空，要么都不为空。</li>
-                <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>和见<a href="#MLA">MLA场景全量化参数约束</a>。</li>
-            </ul>
-            </td>
-            <td>FLOAT16、BFLOAT16、FLOAT32</td>
-            <td>ND</td>
-            <td>见<a href="#AntiQuant">伪量化参数</a>和见<a href="#MLA">MLA场景全量化参数</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>valueAntiquantOffsetOptional</td>
-            <td>可选输入</td>
-            <td>表示对value进行反量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>如果使用该功能其数据类型与shape必须与valueAntiquantScaleOptional保持一致。</li>
-                <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>。</li>
-            </ul>
-            </td>
-            <td>与valueAntiquantOffsetOptional保持一致</td>
-            <td>ND</td>
-            <td>见<a href="#AntiQuant">伪量化参数</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>keySharedPrefixOptional</td>
-            <td>可选输入</td>
-            <td>attention结构中Key的系统前缀部分的参数</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空。</li>
-                <li>keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix、valueSharedPrefix、key、value的维度相同、dtype保持一致。</li>
-                <li>keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等。</li>
-                <li>当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S。</li>
-                <li>公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制。</li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>FLOAT16、BFLOAT16、INT8</td>
-            <td>ND</td>
-            <td>
-            <ul>
-                <li>input_layout为BSH时，shape为（1，prefix_S，H=KV_N*KV_D）</li>
-                <li>input_layout为BSND时，shape为（1，prefix_S，KV_N，KV_D）</li>
-                <li>input_layout为BNSD、BNSD_BSND时，shape为（1，KV_N，prefix_S，KV_D）</li>
-            </ul>
-            </td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>valueSharedPrefixOptional</td>
-            <td>可选输入</td>
-            <td>attention结构中Value的系统前缀部分的输入</td>
-            <td><ul><li>不支持空Tensor。</li>
-            <li>与keySharedPrefixOptional保持一致。</li></ul></td>
-            <td>FLOAT16、BFLOAT16、INT8</td>
-            <td>ND</td>
-            <td>
-            <ul>
-                <li>input_layout为BSH时，shape为（1，prefix_S，H=KV_N*KV_D）</li>
-                <li>input_layout为BSND时，shape为（1，prefix_S，KV_N，KV_D）</li>
-                <li>input_layout为BNSD、BNSD_BSND时，shape为（1，KV_N，prefix_S，KV_D）</li>
-            </ul>
-            </td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>actualSharedPrefixLenOptional</td>
-            <td>可选输入</td>
-            <td>key/value系统前缀部分的参数，代表keySharedPrefix/valueSharedPrefix的有效Sequence Length</td>
-            <td>该入参中的有效Sequence Length应该不大于keySharedPrefix/valueSharedPrefix中的Sequence Length。</td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>（1）</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>queryRopeOptional</td>
-            <td>可选输入</td>
-            <td>表示MLA结构中的query的rope信息</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>queryRope的数据类型、数据格式与query一致。</li>
-                <li>queryRope和keyRope要求同时配置或同时不配置，不支持只配置其中一个。</li>
-            </ul>
-            </td>
-            <td>FLOAT16、BFLOAT16</td>
-            <td>ND</td>
-            <td>queryRope的shape中d为64，其余维度与query一致</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>keyRopeOptional</td>
-            <td>可选输入</td>
-            <td>表示MLA结构中的key的rope信息</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>keyRope的数据类型、数据格式与key一致。</li>
-                <li>queryRope和keyRope要求同时配置或同时不配置，不支持只配置其中一个。</li>
-            </ul>
-            </td>
-            <td>FLOAT16、BFLOAT16</td>
-            <td>ND</td>
-            <td>keyRope的shape中d为64，其余维度与key一致</td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>keyRopeAntiquantScaleOptional</td>
-            <td>可选输入</td>
-            <td>表示对MLA结构中的key的rope信息进行反量化的因子</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>预留参数，当前版本不生效。</li>
-            </ul>
-            </td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>dequantScaleQueryOptional</td>
-            <td>可选输入</td>
-            <td>对query进行反量化的因子</td>
-            <td>
-            <ul>
-                <li>不支持空Tensor。</li>
-                <li>全量化场景涉及。支持per-token叠加per-head。</li>
-            </ul>
-            </td>
-            <td>FLOAT32</td>
-            <td>ND</td>
-            <td>见<a href="#AntiQuant">伪量化参数</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>learnableSinkOptional</td>
-            <td>可选输入</td>
-            <td>表示通过可学习的"Sink Token"起到吸收Attention Score的作用。</td>
-            <td>
-            <ul>
-                <li>仅支持非量化场景。</li>
-                <li>仅支持V_D=128/64。</li>
-            </ul>
-            </td>
-            <td>BFLOAT16、FLOAT16</td>
-            <td>ND</td>
-            <td>(Q_N)</a></td>
-            <td>×</td>
-        </tr>
-        <tr>
-            <td>numHeads</td>
-            <td>输入</td>
-            <td>表示query的head个数</td>
-            <td>与query shape中的Q_N相等。</td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>scaleValue</td>
-            <td>可选输入</td>
-            <td>公式中根号d的倒数，表示缩放系数</td>
-            <td>数据类型与query的数据类型需满足数据类型推导规则。</td>
-            <td>DOUBLE</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>preTokens</td>
-            <td>可选输入</td>
-            <td>用于稀疏计算，表示attention需要和前几个Token计算关联</td>
-            <td>input_layout=BSH、BSND、BNSD并且Q_S=1、QK_D=V_D、query_rope和key_rope不传的场景，该参数无效。</td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>nextTokens</td>
-            <td>可选输入</td>
-            <td>用于稀疏计算，表示attention需要和后几个Token计算关联</td>
-            <td>input_layout=BSH、BSND、BNSD并且Q_S=1、QK_D=V_D、query_rope和key_rope不传的场景，该参数无效。</td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>inputLayout</td>
-            <td>可选输入</td>
-            <td>用于标识输入query、key、value的数据排布格式，当该字段包含“_”时，表示“输入layout_输出layout”</td>
-            <td>
-            <ul>
-                <li>支持配置的inputLayout包括BSH、BSND、TND、BNSD、NTD、BSH_BNSD、BSND_BNSD、BNSD_BSND、NTD_TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD</li>
-                <li>inputLayout=BSH_BNSD、BSND_BNSD仅支持Q_D=K_D=V_D都等于64或128，或Q_D=K_D等于192，V_D等于128<br></li>
-            </ul>
-            </td>
-            <td>CHAR</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>numKeyValueHeads</td>
-            <td>可选输入</td>
-            <td>表示key/value的head个数</td>
-            <td>
-            <ul>
-                <li>需要满足numHeads整除numKeyValueHeads。</li>
-                <li>在BSND、TND、BNSD、NTD、BSND_BNSD、BNSD_BSND、NTD_TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>sparseMode</td>
-            <td>可选输入</td>
-            <td>表示sparse的模式</td>
-            <td>
-            <ul>
-                <li>input_layout=BSH、BSND、BNSD并且Q_S=1、QK_D=V_D、query_rope和key_rope不传的场景，该参数无效。</li>
-                <li>参数描述见<a href="#Mask">Mask</a>。</li>
-                <li>inputLayout为TND、TND_NTD、NTD_TND时，综合约束请见 <a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>innerPrecise</td>
-            <td>输入</td>
-            <td>表示高精度、高性能以及是否进行行无效修正</td>
-            <td>
-            具体参数使用见<a href="#innerPrecise">innerPrecise</a>。</td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>blockSize</td>
-            <td>可选输入</td>
-            <td>PagedAttention中KV存储每个block中最大的token个数</td>
-            <td>约束请见<a href="#PagedAttention">PagedAttention</a>。</td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>antiquantMode</td>
-            <td>可选输入</td>
-            <td>key/value伪量化的模式</td>
-            <td>
-            <ul>
-                <li>quantMode见<a href="#AntiQuant">伪量化参数</a>。 </li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>softmaxLseFlag</td>
-            <td>可选输入</td>
-            <td>是否输出softmaxLse，支持S轴外切（增加输出）</td>
-            <td>-</td>
-            <td>bool</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>keyAntiquantMode</td>
-            <td>可选输入</td>
-            <td>key反量化的模式</td>
-            <td>
-            <ul>
-                <li>除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与valueAntiquantMode一致。</li>
-                <li>quantMode见<a href="#AntiQuant">伪量化参数</a>。</li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>valueAntiquantMode</td>
-            <td>可选输入</td>
-            <td>value反量化的模式</td>
-            <td>
-            <ul>
-                <li>除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与keyAntiquantMode一致。</li>
-                <li>quantMode见<a href="#AntiQuant">伪量化参数</a>。</li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>queryQuantMode</td>
-            <td>可选输入</td>
-            <td>query反量化的模式</td>
-            <td>
-            <ul>
-                <li>当前版本仅支持传入3，代表模式3：per-token叠加per-head模式。</li>
-                <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            </ul>
-            </td>
-            <td>INT64</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>attentionOut</td>
-            <td>输出</td>
-            <td>公式中attention的输出</td>
-            <td>-</td>
-            <td>FLOAT16、BFLOAT16、INT8</td>
-            <td>ND</td>
-            <td>该入参的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>softmaxLse</td>
-            <td>输出</td>
-            <td>
-            RingAttention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
-            <td>
-            <ul>    
-                <li>softmaxLseFlag为True时，数据为inf的代表无效数据。</li>
-                <li>softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。</li>
-            </ul>
-            </td>
-            <td>FLOAT32</td>
-            <td>ND</td>
-            <td>一般情况下,shape必须为[B,N,Q_S,1],当inputLayout为TND/NTD_TND时,shape必须为[T,N,1]。</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>workspaceSize</td>
-            <td>输出</td>
-            <td>返回用户需要在Device侧申请的workspace大小</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>executor</td>
-            <td>输出</td>
-            <td>返回op执行器，包含了算子计算流程</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        </tbody>
+    <table style="undefined;table-layout: fixed; width: 1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 132px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 272px">
+    <col style="width: 145px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度（shape）</th>
+        <th>非连续Tensor</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+        <td>query</td>
+        <td>输入</td>
+        <td>attention结构的输入Q</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td>见参数inputLayout</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>key</td>
+        <td>输入</td>
+        <td>attention结构的输入K</td>
+        <td>
+        <ul>
+            <li>参数key、value中对应tensor的shape需要完全一致。</li>
+            <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
+            <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
+        </ul>
+        </td>
+        <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）</td>
+        <td>ND</td>
+        <td>见参数inputLayout</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>value</td>
+        <td>输入</td>
+        <td>attention结构的输入V</td>
+        <td>
+        <ul>
+            <li>参数key、value中对应tensor的shape需要完全一致。</li>
+            <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
+            <li>由于tensorlist限制, 非连续场景下B不能大于256。</li></ul>
+        </td>
+        <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）</td>
+        <td>ND</td>
+        <td>见参数inputLayout</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>pseShiftOptional</td>
+        <td>可选输入</td>
+        <td>在attention结构内部的位置编码参数</td>
+        <td><ul><li>不支持空Tensor。</li>
+                <li>约束请见<a href="#pseShift">pseShift</a>。</li></ul></td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>建议shape输入 (B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>attenMaskOptional</td>
+        <td>可选输入</td>
+        <td>对QK的结果进行mask，用于指示是否计算Token间的相关性</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>如果Q_S、KV_S非16或32对齐，可以向上取到对齐的S。</li>
+            <li>当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。</li>
+            <li>如不使用该功能时可传入nullptr。</li>
+            <li>其它约束请见<a href="#Mask">Mask</a>。</li>
+        </ul>
+        </td>
+        <td>BOOL、INT8、UINT8</td>
+        <td>ND</td>
+        <td>
+        <ul>
+            <li>sparseMode = 0、1时
+                <ul>
+                    <li>支持shape传入(B,Q_S,KV_S)、(1,Q_S,KV_S)、(B,1,Q_S,KV_S)、(1,1,Q_S,KV_S)。</li>
+                    <li>另外输入Layout为BSH、BSND、BNSD、BNSD_BSND时，且query与key的D等于value的D，并且不传query_rope和key_rope时，Q_S=1可支持传入(B,KV_S)，Q_S>1时可支持传入(Q_S,KV_S)。</li>
+                </ul>
+            </li>
+            <li>sparseMode = 2、3、4时，attenMaskOptional的shape输入支持(2048, 2048)或(1,2048,2048)或(1,1,2048,2048)</li>
+            <li>sparseMode = 9时：
+                <ul>
+                    <li>inputLayout为BSH、BSND、BNSD时，attenMaskOptional的shape输入支持(B, Q_S, Q_S)</li>
+                    <li>inputLayout为TND时，attenMaskOptional的shape输入支持(∑Q_Si²,)，即每个batch的Q_Si×Q_Si mask拼接为1D tensor</li>
+                </ul>
+            </li>
+        </ul>
+        </td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>actualSeqLengthsOptional</td>
+        <td>可选输入</td>
+        <td>表示不同Batch中query的有效Sequence Length，TND场景下以该入参的数量作为Batch值</td>
+        <td>
+        <ul>
+            <li>传入时应为非负数。</li>
+            <li>该入参中每个batch的有效Sequence Length应该不大于query中对应batch的实际Sequence Length。</li>
+            <li>seqlen的传入长度为1时，每个Batch使用相同seqlen；传入长度大于等于Batch时取seqlen的前Batch个数。其他长度不支持。</li>
+            <li>不传入该参数时，表示每个Batch使用相同seqlen，且seqlen的值等于shape中S的值。</li>
+            <li>TND场景下该参数是累加模式。</li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>（1）或（B）或（>B）</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>actualSeqLengthsKvOptional</td>
+        <td>可选输入</td>
+        <td>表示不同Batch中key/value的有效Sequence Length，TND场景下以该入参的数量作为Batch值</td>
+        <td>
+        <ul>
+            <li>传入时应为非负数。</li>
+            <li>该入参中每个batch的有效Sequence Length应该不大于key/value中对应batch的Sequence Length。</li>
+            <li>seqlenKv的传入长度为1时，每个Batch使用相同seqlenKv；传入长度大于等于Batch时取seqlenKv的前Batch个数。其他长度不支持。</li>
+            <li>不传入该参数时，表示每个Batch使用相同seqlenKv，且seqlenKv的值等于shape中S的值。</li>
+            <li>PA场景下该参数是batch模式，非PA在TND场景下是累加模式。</li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>（1）或（B）或（>B）</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>deqScale1Optional</td>
+        <td>可选输入</td>
+        <td>表示对QK结果进行反量化的因子</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor。</li></ul></td>
+        <td>UINT64、FLOAT32</td>
+        <td>ND</td>
+        <td>见<a href="#INT8">int8量化场景</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>quantScale1Optional</td>
+        <td>可选输入</td>
+        <td>表示对P进行量化的因子</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor。</li></ul></td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>见<a href="#INT8">int8量化场景</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>deqScale2Optional</td>
+        <td>可选输入</td>
+        <td>表示对PV结果进行反量化的因子</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor。</li></ul></td>
+        <td>UINT64、FLOAT32</td>
+        <td>ND</td>
+        <td>见<a href="#INT8">int8量化场景</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>quantScale2Optional</td>
+        <td>可选输入</td>
+        <td>表示对输出结果进行量化的因子</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor、per-channel。</li></ul></td>
+        <td>FLOAT32、BFLOAT16</td>
+        <td>ND</td>
+        <td>见<a href="#INT8">int8量化场景</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>quantOffset2Optional</td>
+        <td>可选输入</td>
+        <td>表示对输出结果进行量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor、per-channel类型与shape与quantScale2Optional保持一致。</li></ul></td>
+        <td>FLOAT32、BFLOAT16</td>
+        <td>ND</td>
+        <td>与quantScale2Optional保持一致</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>antiquantScaleOptional</td>
+        <td>可选输入</td>
+        <td>表示对key/value进行伪量化的因子</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor、per-channel、per-token。</li>
+            <li>建议使用KV伪量化参数分离模式。</li>
+            </ul></td>
+        <td>Q_S=1：FLOAT16、BFLOAT16、FLOAT32Q_S&gt;1：FLOAT16</td>
+        <td>ND</td>
+        <td>见<a href="#AntiQuant">伪量化参数</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>antiquantOffsetOptional</td>
+        <td>可选输入</td>
+        <td>表示对key/value进行伪量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>支持per-tensor、per-channel、per-tokenshape与antiquantScaleOptional保持一致。</li><li>建议使用KV伪量化参数分离模式。</li></ul></td>
+        <td>与antiquantScaleOptional保持一致</td>
+        <td>ND</td>
+        <td>与antiquantScaleOptional保持一致</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>blockTableOptional</td>
+        <td>可选输入</td>
+        <td>表示PagedAttention中KV存储使用的block映射表</td>
+        <td><ul><li>不支持空Tensor。</li>
+                <li>约束请见<a href="#PagedAttention">PagedAttention</a>。</li></ul></td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>queryPaddingSizeOptional</td>
+        <td>可选输入</td>
+        <td>表示query中每个batch的数据是否右对齐，且右对齐的个数是多少</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>query左padding场景query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。</li>
+            <li>query左padding场景queryPaddingSizeOptional小于0时将被置为0。</li>
+            <li>query左padding场景需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。</li>
+            <li>仅支持Q_S&gt;1的场景，其余场景该参数无效。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>（1）</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>kvPaddingSizeOptional</td>
+        <td>可选输入</td>
+        <td>表示key/value中每个batch的数据是否右对齐，且右对齐的个数是多少</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。</li>
+            <li>kv左padding场景kvPaddingSize小于0时将被置为0。</li>
+            <li>kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。</li>
+            <li>不支持Q为BF16/FP16、KV为INT4（INT32）的场景。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>（1）</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>keyAntiquantScaleOptional</td>
+        <td>可选输入</td>
+        <td>表示对key进行反量化的因子</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>keyAntiquantScaleOptional和valueAntiquantScaleOptional要么都为空，要么都不为空。</li>
+            <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>和见<a href="#MLA">MLA场景全量化参数约束</a>。</li>
+        </ul>
+        </td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>见<a href="#AntiQuant">伪量化参数</a>和见<a href="#MLA">MLA场景全量化参数</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>keyAntiquantOffsetOptional</td>
+        <td>可选输入</td>
+        <td>表示对key进行反量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>如果使用该功能其数据类型与shape必须与keyAntiquantScaleOptional保持一致。</li>
+            <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>。</li>
+        </ul>
+        </td>
+        <td>与keyAntiquantOffsetOptional保持一致</td>
+        <td>ND</td>
+        <td>见<a href="#AntiQuant">伪量化参数</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantScaleOptional</td>
+        <td>可选输入</td>
+        <td>表示对value进行反量化的因子</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>keyAntiquantScaleOptional和valueAntiquantScaleOptional要么都为空，要么都不为空。</li>
+            <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>和见<a href="#MLA">MLA场景全量化参数约束</a>。</li>
+        </ul>
+        </td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>见<a href="#AntiQuant">伪量化参数</a>和见<a href="#MLA">MLA场景全量化参数</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantOffsetOptional</td>
+        <td>可选输入</td>
+        <td>表示对value进行反量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>如果使用该功能其数据类型与shape必须与valueAntiquantScaleOptional保持一致。</li>
+            <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>。</li>
+        </ul>
+        </td>
+        <td>与valueAntiquantOffsetOptional保持一致</td>
+        <td>ND</td>
+        <td>见<a href="#AntiQuant">伪量化参数</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>keySharedPrefixOptional</td>
+        <td>可选输入</td>
+        <td>attention结构中Key的系统前缀部分的参数</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空。</li>
+            <li>keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix、valueSharedPrefix、key、value的维度相同、dtype保持一致。</li>
+            <li>keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等。</li>
+            <li>当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S。</li>
+            <li>公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制。</li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td>
+        <ul>
+            <li>input_layout为BSH时，shape为（1，prefix_S，H=KV_N*KV_D）</li>
+            <li>input_layout为BSND时，shape为（1，prefix_S，KV_N，KV_D）</li>
+            <li>input_layout为BNSD、BNSD_BSND时，shape为（1，KV_N，prefix_S，KV_D）</li>
+        </ul>
+        </td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>valueSharedPrefixOptional</td>
+        <td>可选输入</td>
+        <td>attention结构中Value的系统前缀部分的输入</td>
+        <td><ul><li>不支持空Tensor。</li>
+        <li>与keySharedPrefixOptional保持一致。</li></ul></td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td>
+        <ul>
+            <li>input_layout为BSH时，shape为（1，prefix_S，H=KV_N*KV_D）</li>
+            <li>input_layout为BSND时，shape为（1，prefix_S，KV_N，KV_D）</li>
+            <li>input_layout为BNSD、BNSD_BSND时，shape为（1，KV_N，prefix_S，KV_D）</li>
+        </ul>
+        </td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>actualSharedPrefixLenOptional</td>
+        <td>可选输入</td>
+        <td>key/value系统前缀部分的参数，代表keySharedPrefix/valueSharedPrefix的有效Sequence Length</td>
+        <td>该入参中的有效Sequence Length应该不大于keySharedPrefix/valueSharedPrefix中的Sequence Length。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>（1）</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>queryRopeOptional</td>
+        <td>可选输入</td>
+        <td>表示MLA结构中的query的rope信息</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>queryRope的数据类型、数据格式与query一致。</li>
+            <li>queryRope和keyRope要求同时配置或同时不配置，不支持只配置其中一个。</li>
+        </ul>
+        </td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>queryRope的shape中d为64，其余维度与query一致</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>keyRopeOptional</td>
+        <td>可选输入</td>
+        <td>表示MLA结构中的key的rope信息</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>keyRope的数据类型、数据格式与key一致。</li>
+            <li>queryRope和keyRope要求同时配置或同时不配置，不支持只配置其中一个。</li>
+        </ul>
+        </td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>keyRope的shape中d为64，其余维度与key一致</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>keyRopeAntiquantScaleOptional</td>
+        <td>可选输入</td>
+        <td>表示对MLA结构中的key的rope信息进行反量化的因子</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>预留参数，当前版本不生效。</li>
+        </ul>
+        </td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>dequantScaleQueryOptional</td>
+        <td>可选输入</td>
+        <td>对query进行反量化的因子</td>
+        <td>
+        <ul>
+            <li>不支持空Tensor。</li>
+            <li>全量化场景涉及。支持per-token叠加per-head。</li>
+        </ul>
+        </td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>见<a href="#AntiQuant">伪量化参数</a></td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>learnableSinkOptional</td>
+        <td>可选输入</td>
+        <td>表示通过可学习的"Sink Token"起到吸收Attention Score的作用。</td>
+        <td>
+        <ul>
+            <li>仅支持非量化场景。</li>
+            <li>仅支持V_D=128/64。</li>
+            <li>不支持pse/左padding/公共前缀/后量化。</li>
+        </ul>
+        </td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>(Q_N)</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>numHeads</td>
+        <td>输入</td>
+        <td>表示query的head个数</td>
+        <td>与query shape中的Q_N相等。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>scaleValue</td>
+        <td>可选输入</td>
+        <td>公式中根号d的倒数，表示缩放系数</td>
+        <td>数据类型与query的数据类型需满足数据类型推导规则。</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>preTokens</td>
+        <td>可选输入</td>
+        <td>用于稀疏计算，表示attention需要和前几个Token计算关联</td>
+        <td>input_layout=BSH、BSND、BNSD并且Q_S=1、QK_D=V_D、query_rope和key_rope不传的场景，该参数无效。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>nextTokens</td>
+        <td>可选输入</td>
+        <td>用于稀疏计算，表示attention需要和后几个Token计算关联</td>
+        <td>input_layout=BSH、BSND、BNSD并且Q_S=1、QK_D=V_D、query_rope和key_rope不传的场景，该参数无效。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>inputLayout</td>
+        <td>可选输入</td>
+        <td>用于标识输入query、key、value的数据排布格式，当该字段包含“_”时，表示“输入layout_输出layout”</td>
+        <td>
+        <ul>
+            <li>支持配置的inputLayout包括BSH、BSND、TND、BNSD、NTD、BSH_BNSD、BSND_BNSD、BNSD_BSND、NTD_TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD</li>
+            <li>inputLayout=BSH_BNSD、BSND_BNSD仅支持Q_D=K_D=V_D都等于64或128，或Q_D=K_D等于192，V_D等于128<br></li>
+        </ul>
+        </td>
+        <td>CHAR</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>numKeyValueHeads</td>
+        <td>可选输入</td>
+        <td>表示key/value的head个数</td>
+        <td>
+        <ul>
+            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
+            <li>在BSND、TND、BNSD、NTD、BSND_BNSD、BNSD_BSND、NTD_TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>sparseMode</td>
+        <td>可选输入</td>
+        <td>表示sparse的模式</td>
+        <td>
+        <ul>
+            <li>input_layout=BSH、BSND、BNSD并且Q_S=1、QK_D=V_D、query_rope和key_rope不传的场景，该参数无效。</li>
+            <li>参数描述见<a href="#Mask">Mask</a>。</li>
+            <li>inputLayout为TND、TND_NTD、NTD_TND时，综合约束请见 <a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>innerPrecise</td>
+        <td>输入</td>
+        <td>表示高精度、高性能以及是否进行行无效修正</td>
+        <td>
+        具体参数使用见<a href="#innerPrecise">innerPrecise</a>。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>blockSize</td>
+        <td>可选输入</td>
+        <td>PagedAttention中KV存储每个block中最大的token个数</td>
+        <td>约束请见<a href="#PagedAttention">PagedAttention</a>。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>antiquantMode</td>
+        <td>可选输入</td>
+        <td>key/value伪量化的模式</td>
+        <td>
+        <ul>
+            <li>quantMode见<a href="#AntiQuant">伪量化参数</a>。 </li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>softmaxLseFlag</td>
+        <td>可选输入</td>
+        <td>是否输出softmaxLse，支持S轴外切（增加输出）</td>
+        <td>-</td>
+        <td>bool</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>keyAntiquantMode</td>
+        <td>可选输入</td>
+        <td>key反量化的模式</td>
+        <td>
+        <ul>
+            <li>除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与valueAntiquantMode一致。</li>
+            <li>quantMode见<a href="#AntiQuant">伪量化参数</a>。</li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantMode</td>
+        <td>可选输入</td>
+        <td>value反量化的模式</td>
+        <td>
+        <ul>
+            <li>除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与keyAntiquantMode一致。</li>
+            <li>quantMode见<a href="#AntiQuant">伪量化参数</a>。</li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>queryQuantMode</td>
+        <td>可选输入</td>
+        <td>query反量化的模式</td>
+        <td>
+        <ul>
+            <li>当前版本仅支持传入3，代表模式3：per-token叠加per-head模式。</li>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>attentionOut</td>
+        <td>输出</td>
+        <td>公式中attention的输出</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td>该入参的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>softmaxLse</td>
+        <td>输出</td>
+        <td>
+        RingAttention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
+        <td>
+        <ul>    
+            <li>softmaxLseFlag为True时，数据为inf的代表无效数据。</li>
+            <li>softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。</li>
+        </ul>
+        </td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>一般情况下,shape必须为[B,N,Q_S,1],当inputLayout为TND/NTD_TND时,shape必须为[T,N,1]。</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回用户需要在Device侧申请的workspace大小</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    </tbody>
     </table>
 
 - **返回值：**
@@ -875,7 +885,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -887,6 +896,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
         - attentionOut和lse都为空时，属于空Tensor。
         - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
+- alibi fullmask场景约束
+  - innerPrecise为0；
+  - pseShiftOptional不为空，shape为[B, N, maxQ, maxKV];
+  - attenMaskOptional为空；
+  - spareMode为0。
 
 <details>
 
@@ -946,6 +960,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>8</td>
             <td>block_local</td>
             <td>不支持</td>
+        </tr>
+        <tr>
+            <td>9</td>
+            <td>treeMask模式，用于推测解码场景的树形注意力掩码。需传入自定义的tree mask。</td>
+            <td>非量化支持GQA和MLA场景，全量化仅支持MLA场景。不支持左padding、pseShift、sharedPrefix。输出dtype不支持INT8。每个batch需满足Q_S≤KV_S。inputLayout为BSH/BSND/BNSD时mask shape为(B,Q_S,Q_S)；inputLayout为TND时mask shape为(∑Q_Si²,)。</td>
         </tr>
         </tbody>
     </table>
@@ -1156,9 +1175,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 <summary><a id="INT8"></a>int8量化场景：</summary>
 
-
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-
 
     <table style="undefined;table-layout: fixed;  width: 1150px">
         <colgroup>
@@ -1248,7 +1265,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>类型为FLOAT16。</td>
             </tr>
             <tr>
-                <td rowspan="9">输入FLOAT16或BFLOAT16，输出为INT8的场景</td>
+                <td rowspan="10">输入FLOAT16或BFLOAT16，输出为INT8的场景</td>
                 <td>query</td>
                 <td>类型为FLOAT16或BFLOAT16。</td>
             </tr>
@@ -1277,7 +1294,9 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型
                     <ul>
                     <li>当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32。</li>
-                    <li>per-channel 格式：当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。</li>
+                    <li>per-channel 格式：当layout为BSH、BSND、BNSD、BNSD_BSND时，要求 quantScale2
+                        所有维度的乘积等于N*D(H)；其他layout要求shape为[N,D]。</li>
+                    <li>per-tensor 格式：仅支持shape为[1]。</li>
                     </ul>
                 </td>
             </tr>
@@ -1289,6 +1308,21 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             <tr>
                 <td>attentionOut</td>
                 <td>类型为INT8。</td>
+            </tr>
+            <tr>
+                <td>sparseMode</td>
+                <td>
+                    <ul>
+                    <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
+                    <li>输出为int8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：</li>
+                        <ul>
+                        <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
+                        <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
+                        <li>sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件</li>
+                        <li>sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件</li>
+                        </ul>
+                    </ul>
+                </td>
             </tr>
         </tbody>
     </table>
@@ -1326,7 +1360,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <th>antiquantMode</th>
-                <th>antiquantSacle</th>
+                <th>antiquantScale</th>
                 <th>antiquantOffset</th>
                 <th>keyAntiquantMode 和 valueAntiquantMode</th>
                 <th colspan="2">keyAntiquantScaleOptional 和 valueAntiquantScaleOptional</th>
@@ -1439,7 +1473,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>代表per-token-group模式</td>
                 <td>-</td>
             </tr>
-        <tbody>
+        </tbody>
     </table>
 
 </details>
@@ -1482,7 +1516,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td>sparseMode</td>
-        <td>支持0, 3, 4</td>
+        <td>支持0, 3, 4, 9</td>
     </tr>
     <tr>
         <td rowspan="2">PagedAttention</td>
@@ -1531,6 +1565,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>sparse=0（attenMask为nullptr）</li>
                     <li>sparse=3（传优化后的attenMask）</li>
                     <li>sparse=4（传优化后的attenMask，需满足：Q_D=K_D=V_D≤256 或 Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
+                    <li>sparse=9（传入tree mask，inputLayout为BSH/BSND/BNSD时shape为(B,Q_S,Q_S)，inputLayout为TND时shape为(∑Q_Si²,)）</li>
                     </ul>
                 </li>
                 <li>innerPrecise：仅支持0（不带行无效的高精度模式）</li>
@@ -1597,7 +1632,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             <td>-</td>
         </tr>
         <tr>
-            <td rowspan="22">query d=512</td>
+            <td rowspan="24">query d=512</td>
             <td rowspan="6">通用场景</td>
             <td>query</td>
             <td>FLOAT16、BFLOAT16；Q_N=[1,2,4,8,16,32,64,128]</td>
@@ -1631,7 +1666,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         <tr>
             <td>MASK</td>
             <td>sparseMode</td>
-            <td>sparseMode支持0, 3, 4</td>
+            <td>sparseMode支持0, 3, 4, 9</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1682,8 +1717,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tr>
         <tr>
             <td>sparseMode</td>
-            <td>全量化场景sparseMode仅支持0,3</td>
-            <td>qs=1时，仅支持sparseMode=0，且attenMask为nullptr; qs>1时，仅支持sparseMode=3，且attenMask的shape为[2048,2048]</td>
+            <td>全量化场景sparseMode仅支持0,3,9</td>
+            <td>qs=1时，仅支持sparseMode=0，且attenMask为nullptr; qs>1时，支持sparseMode=3（attenMask的shape为[2048,2048]）或sparseMode=9（attenMask的shape见Mask章节）</td>
         </tr>
         <tr>
             <td>blockSize</td>
@@ -1786,7 +1821,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td>inputLayout</td>
-        <td>BSH、BSND、BNSD</td>
+        <td>BSH、BSND、BNSD、TND</td>
         <td>-</td>
     </tr>
     <tr>
@@ -1796,11 +1831,11 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td colspan="2">Mask</td>
-        <td colspan="3">当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3且传入优化后的attenMask矩阵，attenMask矩阵shape必须传入（2048*2048）；</td>
+        <td colspan="3">当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3（传入优化后的attenMask矩阵，shape为2048*2048）或sparseMode=9（传入tree mask，inputLayout为BSH/BSND时shape为(B,Q_S,Q_S)，inputLayout为TND时shape为(∑Q_Si²,)）；</td>
     </tr>
     <tr>
         <td rowspan="9">伪量化</td>
-        <td colspan="4">仅支持KV分离；仅支持高性能模式；仅支持q为BF16，kv为INT8的伪量化；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)</td>
+        <td colspan="4">仅支持KV分离；仅支持高性能模式；仅支持q为BF16，kv为INT8的伪量化；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)；inputLayout为TND时，仅支持per-channel量化模式</td>
     </tr>
     <tr>
         <td rowspan="4">per-channel</td>
@@ -1815,7 +1850,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td>keyAntiquantScale</td>
-        <td>inputLayout为BSH时：[H]<br>inputLayout为BNSD时：[N,1,D]<br>inputLayout为BSND时：[N,D]</td>
+        <td>inputLayout为BSH时：[H]<br>inputLayout为BNSD时：[N,1,D]<br>inputLayout为BSND或TND时：[N,D]</td>
         <td>-</td>
     </tr>
     <tr>
@@ -1911,37 +1946,20 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>actualSeqLengths</td>
-                <td>
-                <ul>
-                <li>当query的inputLayout为TND/NTD_TND时，约束请见<a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</li>
-                </ul>
-                </td>
+                <td>当query的inputLayout为TND/NTD_TND时，约束请见<a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</td>
             </tr>
             <tr>
                 <td>actualSeqLengthsKv</td>
-                <td>
-                <ul>
-                    <li>当key/value的inputLayout为TND/NTD_TND时，约束请见<a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</li>
-                    <ul>
-                </ul>
-                </td>
+                <td>当key/value的inputLayout为TND/NTD_TND时，约束请见<a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</td>
             </tr>
             <tr>
                 <td>innerPrecise</td>
-                <td>
-                <ul>
-                <li>sparse_mode为0或1，并传入用户自定义Mask的情况下，建议开启行无效。</li>
-                </ul>
-                </td>
+                <td>sparse_mode为0或1，并传入用户自定义Mask的情况下，建议开启行无效。</td>
             </tr>
             <tr>
                 <td rowspan="2">prefix</td>
                 <td>keySharedPrefix和valueSharedPrefix</td>
-                <td>
-                <ul>
-                <li>sparse为0或1时：如果传入attenMaskOptional，则KV_S需大于等于actualSharedPrefixLen与key的S长度之和</li>
-                </ul>
-                </td>
+                <td>sparse为0或1时：如果传入attenMaskOptional，则KV_S需大于等于actualSharedPrefixLen与key的S长度之和。</td>
             </tr>
             <tr>
                 <td colspan="2">
@@ -1954,19 +1972,16 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             <tr>
                 <td rowspan="2">Mask</td>
                 <td>attenMaskOptional</td>
-                <td>
-                <ul>
-                <li>建议shape输入(Q_S,KV_S); (B,Q_S,KV_S); (1,Q_S,KV_S); (B,1,Q_S,KV_S); (1,1,Q_S,KV_S)。</li>
-                </ul>
-                </td>
+                <td>建议shape输入(Q_S,KV_S); (B,Q_S,KV_S); (1,Q_S,KV_S); (B,1,Q_S,KV_S); (1,1,Q_S,KV_S)。</td>
             </tr>
             <tr>
                 <td>sparseMode</td>
                 <td>
                 <ul>
                 <li>sparseMode = 0时，attenMaskOptional如果为空指针，或者在左padding场景传入attenMaskOptional，则忽略入参preTokens、nextTokens。</li>
-                <li>sparseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048），且需要用户保证传入的attenMaskOptional为下三角，attenMaskOptional为nullptre或者传入的shape不正确报错。</li>
+                <li>sparseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048），且需要用户保证传入的attenMaskOptional为下三角，attenMaskOptional为nullptr或者传入的shape不正确报错。</li>
                 <li>sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。</li>
+                <li>sparseMode = 9时，非量化支持GQA和MLA场景，全量化仅支持MLA场景。attenMaskOptional不能为空。inputLayout为BSH/BSND/BNSD时shape为(B,Q_S,Q_S)；inputLayout为TND时shape为(∑Q_Si²,)。不支持左padding、pseShift、sharedPrefix。输出dtype不支持INT8。每个batch需满足Q_S≤KV_S。</li>
                 <li>sparseMode取其它值时会报错</li>
                 </ul>
                 </td>
@@ -1985,11 +2000,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>blockTable</td>
-                <td>
-                <ul>
-                <li>blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。</li>
-                </ul>
-                </td>
+                <td>blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。</td>
             </tr>
             <tr>
                 <td colspan="2">
@@ -2018,22 +2029,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、RingAttention或者D非32Byte对齐的场景。</li>
                     </ul>
                 </td>
-            <tr>
-            <tr>
-                <td>sparseMode</td>
-                <td>
-                    <ul>
-                    <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
-                    <li>输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：</li>
-                        <ul>
-                        <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
-                        <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
-                        <li>sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件</li>
-                        <li>sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件</li>
-                        </ul>
-                    </ul>
-                </td>
-            <tr>
+            </tr>
         </tbody>
     </table>
 
@@ -2145,8 +2141,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
         </tbody>
     </table>
+    
 </details>
-
 
 ## 调用示例
 

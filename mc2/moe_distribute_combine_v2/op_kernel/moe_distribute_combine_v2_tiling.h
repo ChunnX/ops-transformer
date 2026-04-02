@@ -43,7 +43,7 @@ struct MoeDistributeCombineV2Info {
     bool hasSharedExpertX;         // input shared expert x or not
     bool hasElasticInfo;           // has elasticinfo or not
     bool isPerformance;            // whether performance or not
-    bool reserved0;
+    bool isMc2Context;
     bool reserved1;
     bool reserved2;
     uint64_t totalUbSize;

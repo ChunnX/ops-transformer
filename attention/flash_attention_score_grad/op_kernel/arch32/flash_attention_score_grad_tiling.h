@@ -4579,6 +4579,8 @@ public:
     int64_t b = 0;
     int64_t t1 = 0;
     int64_t t2 = 0;
+    int64_t s1 = 0;
+    int64_t s2 = 0;
     int64_t n2 = 0;
     int64_t g = 0;
     int64_t d = 0;
@@ -4590,6 +4592,7 @@ public:
     int64_t nextTockens = 0;
     uint32_t dqPostAbsorb = 0;
     uint32_t sparseMode = 0;
+    uint32_t layout = 0;
     uint8_t dqWorkSpaceOffsetPH[4] = {};
     int64_t dqWorkSpaceOffset = 0;
     int64_t dkWorkSpaceOffset = 0;
@@ -4691,6 +4694,23 @@ public:
     {
         this->t2 = t2_val;
     }
+    uint64_t get_s1() const
+    {
+        return s1;
+    }
+    void set_s1(uint64_t s1_val)
+    {
+        this->s1 = s1_val;
+    }
+
+    uint64_t get_s2() const
+    {
+        return s2;
+    }
+    void set_s2(uint64_t s2_val)
+    {
+        this->s2 = s2_val;
+    }
 
     uint64_t get_n2() const
     {
@@ -4753,6 +4773,15 @@ public:
     void set_sparseMode(uint32_t sparseMode_val)
     {
         this->sparseMode = sparseMode_val;
+    }
+
+    uint32_t get_layout() const
+    {
+        return layout;
+    }
+    void set_layout(uint32_t layout_val)
+    {
+        this->layout = layout_val;
     }
 
     uint64_t get_dqWorkSpaceOffset() const

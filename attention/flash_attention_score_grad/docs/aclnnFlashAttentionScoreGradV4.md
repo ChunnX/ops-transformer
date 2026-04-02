@@ -11,13 +11,11 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
-
 ## 功能说明
 
 - 接口功能：训练场景下计算注意力的反向输出，即[FlashAttentionScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionScoreV4.md)的反向计算。**该接口query、key、value参数支持多个长度相等或者长度不相等的sequence**
   - **该接口合并了[FlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)接口和[FlashAttentionUnpaddingScoreGradV2](./aclnnFlashAttentionUnpaddingScoreGradV2.md)接口，并调整了Dropout功能**：
-    -   <term>Ascend 950PR/Ascend 950DT</term>：keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask
+    - <term>Ascend 950PR/Ascend 950DT</term>：keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask
 - 计算公式：
 
   - pseType=1时，与[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)计算公式相同
@@ -60,7 +58,6 @@
 
 ## 函数原型
 
-
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreGradV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGradV4”接口执行计算。
 
 ```c++
@@ -90,19 +87,19 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
   const aclIntArray *actualSeqKvLenOptional, 
   const aclIntArray *qStartIdxOptional, 
   const aclIntArray *kvStartIdxOptional, 
-  double             scaleValueOptional, 
-  double             keepProbOptional, 
-  int64_t            preTokensOptional, 
-  int64_t            nextTokensOptional, 
+  double             scaleValue, 
+  double             keepProb, 
+  int64_t            preTokens, 
+  int64_t            nextTokens, 
   int64_t            headNum, 
   char              *inputLayout, 
   char              *softmaxInLayout, 
-  int64_t            innerPreciseOptional, 
-  int64_t            sparseModeOptional, 
-  int64_t            pseTypeOptional,  
-  int64_t            seedOptional, 
-  int64_t            offsetOptional, 
-  int64_t            outDtypeOptional, 
+  int64_t            innerPrecise, 
+  int64_t            sparseMode, 
+  int64_t            pseType,  
+  int64_t            seed, 
+  int64_t            offset, 
+  int64_t            outDtype, 
   aclTensor         *dqOut, 
   aclTensor         *dkOut, 
   aclTensor         *dvOut, 
@@ -121,7 +118,6 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   aclOpExecutor    *executor, 
   aclrtStream       stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
@@ -155,7 +151,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的Q。</td>
       <td>数据类型与keyIn/value一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -165,7 +161,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的K。</td>
       <td>数据类型与query/value一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -185,7 +181,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的V。</td>
       <td>数据类型与query/keyIn一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -195,7 +191,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>输入</td>
       <td>公式中的dY。</td>
       <td>-</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -300,7 +296,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>可选输入</td>
       <td>注意力正向的最终输出。</td>
       <td>数据类型和shape与query一致。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、3、4</td>
       <td>√</td>
@@ -396,7 +392,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleValueOptional</td>
+      <td>scaleValue</td>
       <td>输入</td>
       <td>公式中的scale缩放系数。</td>
       <td>-</td>
@@ -406,7 +402,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>keepProbOptional</td>
+      <td>keepProb</td>
       <td>输入</td>
       <td>dropMask中1的比例。</td>
       <td>-</td>
@@ -416,7 +412,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>preTokensOptional</td>
+      <td>preTokens</td>
       <td>输入</td>
       <td>稀疏计算窗口左边界。</td>
       <td>-</td>
@@ -426,7 +422,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>nextTokensOptional</td>
+      <td>nextTokens</td>
       <td>输入</td>
       <td>稀疏计算窗口右边界。</td>
       <td>-</td>
@@ -466,7 +462,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>innerPreciseOptional</td>
+      <td>innerPrecise</td>
       <td>输入</td>
       <td>预留参数暂未使用。</td>
       <td>-</td>
@@ -476,7 +472,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseModeOptional</td>
+      <td>sparseMode</td>
       <td>输入</td>
       <td>稀疏模式。</td>
       <td>支持配置值0~8。</td>
@@ -486,7 +482,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>pseTypeOptional</td>
+      <td>pseType</td>
       <td>输入</td>
       <td>Host侧的整型。</td>
       <td>支持配置值0~3。</td>
@@ -496,7 +492,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>seedOptional</td>
+      <td>seed</td>
       <td>输入</td>
       <td>keepProbOptional小于1.0时，根据seedOptional和offsetOptional生成DropoutMask。</td>
       <td>-</td>
@@ -506,7 +502,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offset</td>
       <td>输入</td>
       <td>Host侧的整型。</td>
       <td>-</td>
@@ -516,7 +512,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>outDtypeOptional</td>
+      <td>outDtype</td>
       <td>输入</td>
       <td>值为0表示dqOut等输出是FLOAT16，为1表示是BFLOAT16。</td>
       <td>-</td>
@@ -618,7 +614,6 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   </tbody>
   </table>
 
-  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -690,8 +685,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   </tbody>
   </table>
 
-
--   **返回值：**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -706,22 +700,22 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    -   B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
-    -   N：取值范围为1\~256。
-    -   S：取值范围为1\~1M。
-    -   D：取值范围为1\~768。
-    -   KeepProb：取值范围为(0, 1]。
-- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+    - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+    - N：取值范围为1\~256。
+    - S：取值范围为1\~1M。
+    - D：取值范围为1\~768。
+    - KeepProb：取值范围为(0, 1]。
+- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseModeOptional=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
-- sparseModeOptional=7时，不支持可选输入realShiftOptional。
-- sparseModeOptional=8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
+- sparseMode=7时，不支持可选输入pseShiftOptional。
+- sparseMode=8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[N, T, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    -   seedOptional和offsetOptional只在keepProbOptional小于1.0时生效，否则不生效。
-    -   keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
+    - seedOptional和offsetOptional只在keepProbOptional小于1.0时生效，否则不生效。
+    - keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 
 ## 调用示例

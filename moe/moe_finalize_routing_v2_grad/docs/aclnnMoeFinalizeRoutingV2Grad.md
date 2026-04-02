@@ -35,7 +35,7 @@
   (2) scalesOptional不为空指针, biasOptional为空指针：
 
   $$
-  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i / R]
+  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i \% K]
   $$
 
   $$
@@ -45,7 +45,7 @@
   (3) scalesOptional不为空指针, biasOptional不为空指针：
   
   $$
-  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i / R]
+  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i \% K]
   $$
 
   $$
@@ -255,7 +255,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
       - scalesOptional数据类型要求与gradY一致。
   - <term>Ascend 950PR/Ascend 950DT</term>：
-      -  scalesOptional数据类型可以与gradY不一致。
+      - scalesOptional数据类型可以与gradY不一致。
 
 - **返回值**
 

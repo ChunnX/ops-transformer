@@ -80,12 +80,8 @@ ge::graphStatus FiaTilingNonQuantMla::GetPlatformInfo()
 
 bool FiaTilingNonQuantMla::IsCapable()
 {
-    if (fiaInfo_ == nullptr) {
-        return false;
-    }
-
-    // 不支持空Tensor
-    if (fiaInfo_->emptyTensorFlag) {
+    // 不支持解析为空或空Tensor
+    if ((fiaInfo_ == nullptr) || (fiaInfo_->emptyTensorFlag)) {
         return false;
     }
 
@@ -141,8 +137,9 @@ bool FiaTilingNonQuantMla::IsCapable()
     }
 
     // 支持的sparse_mode值
-    if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) &&
-        (fiaInfo_->sparseMode != SPARSE_MODE_BAND)) {
+
+    if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) && 
+        (fiaInfo_->sparseMode != SPARSE_MODE_BAND) && (fiaInfo_->sparseMode != SPARSE_MODE_TREE)) {
         return false;
     }
 
@@ -227,7 +224,7 @@ bool FiaTilingNonQuantMla::DealSameSeqEachBatch() const
     }
 }
 
-void FiaTilingNonQuantMla::ZeroTensorProcess() const
+void FiaTilingNonQuantMla::EmptyTensorProcess() const
 {
     if (fiaInfo_->s2Size == 0) {
         /*
@@ -246,7 +243,7 @@ void FiaTilingNonQuantMla::InitParams()
     numBlocks_ = aicNum_; // Tiling下沉首次Tiling也会校验numBlocks_是否为0，为避免拦截报错，将numBlocks_设置为aicNum_，实际不生效
 
     headDimAlign_ = Align(fiaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-    ZeroTensorProcess();
+    EmptyTensorProcess();
 }
 
 void FiaTilingNonQuantMla::CalcInnerSize(uint32_t seqSize)

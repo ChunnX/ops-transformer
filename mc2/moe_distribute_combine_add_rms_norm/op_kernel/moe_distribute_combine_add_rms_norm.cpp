@@ -44,7 +44,7 @@ __aicore__ inline void ExecMoeDistributeCombineAddRmsNorm(
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
     MoeDistributeCombineV2<CombineMC2TypeFunc> op;
     op.Init(
-        expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
+        nullptr, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
         sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr, YOut, dynamicScaleOut,
         XOut, workspaceGM, pipePtr, &tilingData);
     op.Process();

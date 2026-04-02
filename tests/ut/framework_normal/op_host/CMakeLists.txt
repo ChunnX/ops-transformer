@@ -25,6 +25,9 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_infer_obj>>
       $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>>
       $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
+      $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+      $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
+      $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
   )
   target_link_directories(${OPHOST_NAME}_ut PRIVATE
       ${ASCEND_DIR}/lib64
@@ -32,7 +35,6 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   target_link_libraries(${OPHOST_NAME}_ut PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       -Wl,--no-as-needed
-          $<$<TARGET_EXISTS:opsbase>:opsbase>
       -Wl,--as-needed
       -Wl,--whole-archive
           rt2_registry_static
@@ -57,9 +59,10 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       )
   target_link_libraries(${OP_HOST_UT_EXE} PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
-      $<$<TARGET_EXISTS:opsbase>:opsbase>
       -Wl,--no-as-needed
-        $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
+      $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
+      $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+      $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
       -Wl,--as-needed
       -Wl,--whole-archive
           ${OP_TILING_MODULE_NAME}_cases
@@ -73,6 +76,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       graph
       platform
       gtest
+      unified_dlog
   )
 
   ## exec ophost ut exe

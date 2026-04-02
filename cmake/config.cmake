@@ -19,18 +19,6 @@ if ((NOT Python3_FOUND) OR (${Python3_EXECUTABLE} STREQUAL ""))
 endif ()
 set(HI_PYTHON   "${Python3_EXECUTABLE}" CACHE   STRING   "python executor")
 
-# 获取基础 CANN 路径
-if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
-    set(ASCEND_CANN_PACKAGE_PATH  ${CUSTOM_ASCEND_CANN_PACKAGE_PATH})
-elseif (DEFINED ENV{ASCEND_HOME_PATH})
-    set(ASCEND_CANN_PACKAGE_PATH  $ENV{ASCEND_HOME_PATH})
-elseif (DEFINED ENV{ASCEND_OPP_PATH})
-    get_filename_component(ASCEND_CANN_PACKAGE_PATH "$ENV{ASCEND_OPP_PATH}/.." ABSOLUTE)
-else()
-    set(ASCEND_CANN_PACKAGE_PATH  "/usr/local/Ascend/latest")
-endif ()
-message(STATUS "ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}")
-
 ########################################################################################################################
 # 公共配置
 ########################################################################################################################

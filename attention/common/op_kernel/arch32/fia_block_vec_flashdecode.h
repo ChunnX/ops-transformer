@@ -463,11 +463,7 @@ template <typename FIAT>
 __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
                                                                       uint32_t dealRowCount, uint32_t columnCount)
 {
-    FaUbTensor<OUT_T> ubTensor {
-        .tensor = attenOutUb,
-        .rowCount = dealRowCount,
-        .colCount = columnCount,
-    };
+    FaUbTensor<OUT_T> ubTensor {.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = columnCount};
     GmCoord gmCoord{.bIdx = taskInfo.bIdx,
                     .n2Idx = taskInfo.n2Idx,
                     .gS1Idx = taskInfo.gS1Idx + startRow,
