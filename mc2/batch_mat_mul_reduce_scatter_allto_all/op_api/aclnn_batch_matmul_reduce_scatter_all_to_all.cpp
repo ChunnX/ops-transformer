@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_batch_matmul_reduce_scatter_all_to_all.h"
+#include "aclnnInner_batch_matmul_reduce_scatter_all_to_all.h"
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/utils/op_mc2_def.h"
@@ -20,20 +21,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTensor *x,
-                                                                              const aclTensor *weight,
-                                                                              const aclTensor *bias,
-                                                                              const char *group_ep,
-                                                                              const char *group_tp,
-                                                                              int64_t tp_world_size,
-                                                                              int64_t ep_world_size,
-                                                                              int64_t y_shard_type,
-                                                                              bool transpose_weight, aclTensor *y,
-                                                                              uint64_t *workspaceSize,
-                                                                              aclOpExecutor **executor);
-extern aclnnStatus aclnnInnerBatchMatMulReduceScatterAlltoAll(void *workspace, uint64_t workspaceSize,
-                                                              aclOpExecutor *executor, aclrtStream stream);
 
 // check nullptr
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
@@ -343,14 +330,14 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTenso
             return ACLNN_ERR_INNER_NULLPTR;
         }
         auto weightTrans = TransTensor(weight);
-        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weightTrans, biasOptional, groupEp,
-                                                                                 groupTp, epWorldSize, tpWorldSize,
+        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weightTrans, biasOptional, const_cast<char*>(groupEp),
+                                                                                 const_cast<char*>(groupTp), epWorldSize, tpWorldSize,
                                                                                  yShardType, transposeWeight, out,
                                                                                  workspaceSize, executor);
         return ret;
     } else {
-        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, biasOptional, groupEp,
-                                                                                 groupTp, epWorldSize, tpWorldSize,
+        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, biasOptional, const_cast<char*>(groupEp),
+                                                                                 const_cast<char*>(groupTp), epWorldSize, tpWorldSize,
                                                                                  yShardType, transposeWeight, out,
                                                                                  workspaceSize, executor);
         return ret;
