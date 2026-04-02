@@ -70,14 +70,20 @@
 
 算子运行过程中，如果出现执行精度下降、内存占用异常等问题，可通过[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)性能分析工具分析算子各运行阶段指标数据（如吞吐率、内存占用、耗时等），从而确定问题根源，并针对性地优化。
 
-本章以`AddExample`自定义算子为例，主要介绍算子调优中常用的算子上板性能采集和流水图仿真两种方式。通过采集算子上板运行时各项流水指标分析算子Bound场景，了解仿真流水图便于优化算子内部流水。
+本章以`AddExample`自定义算子为例，主要介绍算子调优中常用的算子上板性能采集和流水图仿真的方式。
 
-### 1、上板性能采集
-* **前提条件**
+**适用场景区别：**
+
+- **上板性能采集**：适用于在真实NPU硬件上运行算子，快速获取算子整体性能指标（如Kernel耗时、Block数、流水占比等），帮助判断算子是否存在性能问题。
+- **流水图仿真**：适用于需要深入分析算子内部指令级流水瓶颈，优化指令排布的场景，提供比上板更详细的指令级流水分析。
+
+### 场景一 上板性能采集
+
+1. 前提条件
 
    完成算子开发和编译后，假设采用aclnn接口方式调用，生成的算子可执行文件（test_aclnn_add_example）所在目录为本项目`examples/add_example/examples/build/bin/`。
 
-* **采集性能数据**
+2. 采集性能数据
 
    当需要采集算子上板运行各项流水指标时可以进入算子可执行文件所在目录，执行如下命令：
 
@@ -103,9 +109,17 @@
 
    算子各项流水详细指标可关注`OPPROF_*`下`ArithmeticUtilization`文件，包含了当前各项流水的占比，具体介绍参见[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)中”性能数据文件 > msprof op > ArithmeticUtilization（cube及vector类型指令耗时和占比）“章节。
 
-### 2、采集仿真流水图
+### 场景二 仿真流水图采集
 
-   通过[CANN Simulator](./cann_sim.md)仿真工具，执行仿真命令，生成仿真数据。CANN Simulator作为面向算子开发场景的仿真工具，针对无NPU卡的用户，可用于定位算子执行瓶颈，优化指令排布等，提供比上板更详细的指令级流水分析。
+   下述两款仿真工具，针对无NPU卡的用户，可用于定位算子执行瓶颈，优化指令排布等，提供比上板更详细的指令级流水分析。
+  
+   * **前提条件：**
+
+      完成算子开发和编译后，假设采用aclnn接口方式调用，生成的算子可执行文件（test_aclnn_add_example）所在目录为本项目`examples/add_example/examples/build/bin/`。
+
+   * **针对Ascend 950PR，可使用[CANN Simulator](./cann_sim.md)仿真工具，执行仿真命令，生成仿真数据。**
+
+      执行仿真命令，生成仿真数据
 
       ```
       cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
@@ -115,8 +129,25 @@
 
       ```
       trace_core0.json
+       ```
+
+      在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考CANN Simulator中[“仿真结果解析”](./cann_sim.md#仿真结果解析)章节。
+
+   * **针对Atlas A2/A3系列产品，可使用[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)工具，执行仿真命令，生成仿真数据。**
+
+      msProf工具进行算子仿真调优之前，需执行如下命令配置环境变量。
+
+      ```bash
+      export LD_LIBRARY_PATH=${INSTALL_DIR}/tools/simulator/Ascendxxxyy/lib:$LD_LIBRARY_PATH 
       ```
 
-   在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考CANN Simulator中[“仿真结果解析”](./cann_sim.md#仿真结果解析)章节。
+      请根据CANN软件包实际安装路径和AI处理器型号对以上环境变量进行修改。
+      
+      之后进入算子可执行文件所在目录，执行如下命令：
 
-   约束条件：当前CANN Simulator仿真工具仅支持Ascend 950PR。针对Atlas A2/A3系列产品，可以借助[msprof](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)工具查看，具体参考资料[msprof模型调优工具](https://www.hiascend.com/document/detail/zh/mindstudio/82RC1/T&ITools/Profiling/atlasprofiling_16_0110.html#ZH-CN_TOPIC_0000002504160251)。
+      ```bash
+      msprof op simulator --output=$PWD/pipeline_auto --kernel-name "AddExample" ./test_aclnn_add_example
+      ```
+
+      采集结果在本项目`$PWD/pipeline_auto/OPPROF_**`目录中。
+      其中流水相关文件路径为`OPPROF**/simulator/visualize_data.bin`，可以借助[MindStudio Insight](https://www.hiascend.com/document/redirect/MindStudioInsight)工具查看。
