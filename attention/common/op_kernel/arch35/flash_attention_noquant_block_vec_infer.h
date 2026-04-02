@@ -616,8 +616,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo)
 {
     auto &initParams = this->tilingData->initOutputParams;
-    uint32_t tailSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
-        (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) : 0;
+    uint32_t tailSize = initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
     if constexpr (POST_QUANT) {
         InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2], singleInitOutputSize / 2, 0.0);
@@ -647,7 +646,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
 {
     uint32_t gSplitSizeLse =
         bufferSizeByte32K / (FA_BYTE_BLOCK * constInfo.splitKVNum); // 32K / (splitKVNum * 32B)
-    uint32_t gSplitSizeAccumOut = bufferSizeByte32K / sizeof(float) / (uint32_t)dVTemplateType;
+    if (dVTemplateType != 0)
+        uint32_t gSplitSizeAccumOut = bufferSizeByte32K / sizeof(float) / (uint32_t)dVTemplateType;
     // 取两者较小的，用来切g，保证ub够用
     uint32_t gSplitSize = (gSplitSizeLse < gSplitSizeAccumOut) ? gSplitSizeLse : gSplitSizeAccumOut;
     if (constInfo.gSize > gSplitMax) {
