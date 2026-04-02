@@ -32,10 +32,10 @@ enum class NnopbaseHcclServerType : uint32_t {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                            const aclTensor* sendCountsTensorOptional, const aclTensor* recvCountsTensorOptional,
-                            const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, const char* group,
-                            bool transGmmWeight, bool transMmWeight, aclTensor* y, const aclTensor* mmYOptional)
+static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
+                            const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                            const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                            bool transGmmWeight, bool transMmWeight, aclTensor *y, const aclTensor *mmYOptional)
 {
     (void)transGmmWeight;
     (void)transMmWeight;
@@ -65,7 +65,7 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
     return true;
 }
 
-static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntArray* recvCounts)
+static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntArray *recvCounts)
 {
     if (sendCounts == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be null.");
@@ -75,8 +75,8 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be null.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    uint64_t recvSize = 0U;  // recvCounts的大小
-    uint64_t sendSize = 0U;  // recvCounts的大小
+    uint64_t recvSize = 0U; // recvCounts的大小
+    uint64_t sendSize = 0U; // recvCounts的大小
     aclGetIntArraySize(recvCounts, &recvSize);
     aclGetIntArraySize(sendCounts, &sendSize);
     if (recvSize == 0U) {
@@ -91,11 +91,11 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                               const aclTensor* sendCountsTensorOptional, const aclTensor* recvCountsTensorOptional,
-                               const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, const char* group,
-                               int64_t epWorldSize, const aclIntArray* sendCounts, const aclIntArray* recvCounts,
-                               bool transGmmWeight, bool transMmWeight, aclTensor* y, aclTensor* mmYOptional)
+static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
+                               const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                               const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                               int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+                               bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional)
 {
     (void)epWorldSize;
     (void)sendCounts;
@@ -113,11 +113,11 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
 }
 
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
-    const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
-    const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-    const char* group, int64_t epWorldSize, const aclIntArray* sendCounts, const aclIntArray* recvCounts,
-    bool transGmmWeight, bool transMmWeight, aclTensor* y, aclTensor* mmYOptional, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
+    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     auto ret_param =
         CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
@@ -127,12 +127,13 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
-        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char*>(group),
-        epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional, workspaceSize, executor);
+        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional,
+        workspaceSize, executor);
     return ret;
 }
 
-aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+aclnnStatus aclnnGroupedMatMulAlltoAllv(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                         aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {

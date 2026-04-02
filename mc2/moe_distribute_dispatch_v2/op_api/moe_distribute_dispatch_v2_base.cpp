@@ -30,10 +30,10 @@ extern "C" {
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-bool DispatchCheckNotNull(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
-                          [[maybe_unused]] const char* groupTp, aclTensor* expandX, [[maybe_unused]] aclTensor* dynamicScales,
-                          aclTensor* assistInfoForCombine, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                          aclTensor* tpRecvCounts)
+bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
+                          [[maybe_unused]] const char *groupTp, aclTensor *expandX,
+                          [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
+                          aclTensor *expertTokensNums, aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(expertIds, return false);
@@ -42,19 +42,21 @@ bool DispatchCheckNotNull(const aclTensor* x, const aclTensor* expertIds, const 
     OP_CHECK_NULL(expertTokensNums, return false);
     OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
-    if ((groupEp == nullptr)||(strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
+    if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group groupEp name is Empty");
         return false;
     }
     return true;
 }
 
-aclnnStatus DispatchCheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp, const char* groupTp,
-                                int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales, aclTensor* assistInfoForCombine,
-                                aclTensor* expertTokensNums, aclTensor* epRecvCounts, aclTensor* tpRecvCounts)
+aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
+                                const char *groupTp, int64_t quantMode, aclTensor *expandX, aclTensor *dynamicScales,
+                                aclTensor *assistInfoForCombine, aclTensor *expertTokensNums, aclTensor *epRecvCounts,
+                                aclTensor *tpRecvCounts)
 {
     CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
-        expertTokensNums, epRecvCounts, tpRecvCounts), ACLNN_ERR_PARAM_NULLPTR);
+                                   expertTokensNums, epRecvCounts, tpRecvCounts),
+              ACLNN_ERR_PARAM_NULLPTR);
 
     if (quantMode == DISPATCH_DYNAMIC_QUANT_MODE) {
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
@@ -72,25 +74,24 @@ aclnnStatus DispatchCheckParams(const aclTensor* x, const aclTensor* expertIds, 
 }
 
 aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
-    const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
-    const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional,
-    const aclTensor* elasticInfoOptional, const aclTensor* performanceInfoOptional, const char* groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
-    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char* commAlg,
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, aclTensor* expandXOut,
-    aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut, aclTensor* expertTokenNumsOut, aclTensor* epRecvCountsOut,
-    aclTensor* tpRecvCountsOut, aclTensor* expandScalesOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const aclTensor *elasticInfoOptional,
+    const aclTensor *performanceInfoOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
+    int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
+    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
+    int64_t expertTokenNumsType, const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum,
+    int64_t constExpertNum, aclTensor *expandXOut, aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut,
+    aclTensor *expertTokenNumsOut, aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = DispatchCheckParams(x, expertIds, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
-                                         assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
+                                        assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
-    const aclTensor* performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
-    const char* groupTpDispatchV2Temp = groupTp;
+    const aclTensor *performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
+    const char *groupTpDispatchV2Temp = groupTp;
     if (is910B) {
         groupTpDispatchV2Temp = "";
     } else if (is950) {
@@ -99,12 +100,12 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     int64_t ydtype = expandXOut->GetDataType();
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
-        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-        elasticInfoOptional, performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
-        const_cast<char*>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum,
-        constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-        epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+        performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        const_cast<char *>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char *>(commAlg), zeroExpertNum,
+        copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 
     if (NnopbaseSetHcclServerType) {
         if (is910B) {

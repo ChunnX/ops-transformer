@@ -29,11 +29,11 @@ using namespace op;
 extern "C" {
 #endif
 
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
-                         const aclTensor* epSendCounts, const aclTensor* expertScales,
-                         const char* groupEp, aclTensor* x)
+bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
+                         const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
+                         aclTensor *x)
 {
     OP_CHECK_NULL(epSendCounts, return false);
     OP_CHECK_NULL(expertScales, return false);
@@ -41,7 +41,7 @@ bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, c
     OP_CHECK_NULL(expandX, return false);
     OP_CHECK_NULL(expertIds, return false);
     OP_CHECK_NULL(assistInfoForCombine, return false);
-    
+
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "groupEp Name is Empty.");
         return false;
@@ -49,13 +49,12 @@ bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, c
     return true;
 }
 
-aclnnStatus CombineCheckParams(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* expandIdx,
-                               const aclTensor* epSendCounts, 
-                               const aclTensor* expertScales, const char* groupEp, const char* groupTp,
-                               aclTensor* x)
+aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
+                               const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
+                               const char *groupTp, aclTensor *x)
 {
-    CHECK_RET(CombineCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp,
-                           x), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CombineCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
+              ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
@@ -69,43 +68,38 @@ aclnnStatus CombineCheckParams(const aclTensor* expandX, const aclTensor* expert
 }
 
 aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
-    const aclTensor* expandX, const aclTensor* expertIds,
-    const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-    const aclTensor* expertScales, const aclTensor* tpSendCountsOptional,
-    const aclTensor* xActiveMaskOptional, const aclTensor* activationScaleOptional,
-    const aclTensor* weightScaleOptional, const aclTensor* groupListOptional,
-    const aclTensor* expandScalesOptional, const aclTensor* sharedExpertXOptional,
-    const aclTensor* elasticInfoOptional, const aclTensor* oriXOptional,
-    const aclTensor* constExpertAlpha1Optional, const aclTensor* constExpertAlpha2Optional, 
-    const aclTensor* constExpertVOptional,  const aclTensor* performanceInfoOptional,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
-    const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-    int64_t groupListType, const char* commAlg, 
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-    aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
+    const aclTensor *epSendCounts, const aclTensor *expertScales, const aclTensor *tpSendCountsOptional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *activationScaleOptional,
+    const aclTensor *weightScaleOptional, const aclTensor *groupListOptional, const aclTensor *expandScalesOptional,
+    const aclTensor *sharedExpertXOptional, const aclTensor *elasticInfoOptional, const aclTensor *oriXOptional,
+    const aclTensor *constExpertAlpha1Optional, const aclTensor *constExpertAlpha2Optional,
+    const aclTensor *constExpertVOptional, const aclTensor *performanceInfoOptional, const char *groupEp,
+    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize,
+    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs,
+    int64_t outDtype, int64_t commQuantMode, int64_t groupListType, const char *commAlg, int64_t zeroExpertNum,
+    int64_t copyExpertNum, int64_t constExpertNum, aclTensor *xOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
-        groupTp, xOut);
+                                       groupTp, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
-    const aclTensor* performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
-    const char* groupTpCombineV2Temp = groupTp;
+    const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
+    const char *groupTpCombineV2Temp = groupTp;
     if (is910B) {
         groupTpCombineV2Temp = "";
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
     }
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
-        expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
-        tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional,
-        expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
-        constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp, const_cast<char*>(groupEp),
-        epWorldSize, epRankId, moeExpertNum, const_cast<char*>(groupTpCombineV2Temp), tpWorldSize, tpRankId, expertShardType,
-        sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg),
+        expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
+        activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
+        elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional, constExpertVOptional,
+        performanceInfoOptionalCombineV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        const_cast<char *>(groupTpCombineV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, const_cast<char *>(commAlg),
         zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     if (NnopbaseSetHcclServerType) {
         if (is910B) {
