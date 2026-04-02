@@ -38,7 +38,6 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::GetPlatformInfo()
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSize = ubSizePlatForm;
-    ubSize = ubSize*2/3;
     OP_LOGD(context_, "ubSize is: %lu", ubSize);
     socVersion = ascendcPlatform.GetSocVersion();
     return ge::GRAPH_SUCCESS;
