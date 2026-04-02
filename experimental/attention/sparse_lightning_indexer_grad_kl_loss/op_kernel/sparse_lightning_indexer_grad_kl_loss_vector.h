@@ -802,7 +802,6 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIGrad
                 s1Idx = bS1Index - bIdx * constInfo.s1Size;
             }
         }
-        }
 
         GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo);
         
