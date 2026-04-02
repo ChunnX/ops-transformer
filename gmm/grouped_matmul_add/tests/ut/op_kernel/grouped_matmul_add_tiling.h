@@ -26,6 +26,7 @@ struct GmmBaseParams {
     int64_t groupNum;
     int64_t coreNum;
     int64_t groupType; // 分组类型，仅支持2 --- K分组
+    int64_t groupListType;
 };
 
 struct GroupedMatmulAddTilingData {

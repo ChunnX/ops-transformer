@@ -212,8 +212,9 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Process()
         }
     }
 
+    int64_t gListType = gmmBaseParams->groupListType;
     for (uint32_t groupIdx = 0, count = 0; groupIdx < groupNum; ++groupIdx) {
-        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, groupListGm);
+        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, gListType, groupListGm);
         SetMNConfig(splitValue, mnConfig);
         uint32_t dimM = Ceil(mnConfig.m, mnConfig.singleM);
         uint32_t dimN = Ceil(mnConfig.n, mnConfig.singleN);
