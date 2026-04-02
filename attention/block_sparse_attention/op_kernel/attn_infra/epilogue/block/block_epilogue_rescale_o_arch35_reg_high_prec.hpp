@@ -49,9 +49,6 @@ public:
     using CopyUbToGmO = typename TileCopy::CopyUbToGmO;
 
     static constexpr uint32_t UB_OTMP_BUF_STAGES = 2;
-    static constexpr uint32_t PEPEAT_SIZE_IN_BYTE = 256;
-    static constexpr uint32_t PEPEAT_SIZE_32BIT = 64;
-    static constexpr uint32_t PEPEAT_SIZE_16BIT = 128;
     static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 32768;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t RESCALE_ROW_MAX_ELEM_NUM = 64;

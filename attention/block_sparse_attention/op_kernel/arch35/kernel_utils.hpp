@@ -7,6 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#ifndef BSA_ARCH35_KERNEL_UTILS
+#define BSA_ARCH35_KERNEL_UTILS
 
 #include "../attn_infra/base_defs.hpp"
 #include "../attn_infra/arch/arch.hpp"
@@ -25,9 +27,6 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-
-#ifndef KERNEL_UTILS
-#define KERNEL_UTILS
 
 namespace BsaKernelArch35 {
 

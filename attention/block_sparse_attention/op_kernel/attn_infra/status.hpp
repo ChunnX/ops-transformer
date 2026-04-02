@@ -15,6 +15,6 @@ namespace NpuArch{
 
 enum class Status{ kSuccess, kInvalid };
 
-} // namespace Catlass
+} // namespace NpuArch
 
 #endif

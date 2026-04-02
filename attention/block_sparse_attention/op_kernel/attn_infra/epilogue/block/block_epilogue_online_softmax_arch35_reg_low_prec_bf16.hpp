@@ -272,10 +272,8 @@ private:
         MaskReg pregFloatTailN = UpdateMask<float>(tailN);
 
         Duplicate(minVreg, MIN_VALUE);
-        // Duplicate(minVreg, (float) 1.2f);
         Duplicate(scaleVreg, dScale);
         for (uint16_t i = 0; i < m; ++i) {
-            // Duplicate(maxSrcVreg, 0);
             Duplicate(maxSrcVreg, MIN_VALUE);
             for (uint16_t j = 0; j < nLoops; ++j) {
                 LoadAlign(srcVreg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);

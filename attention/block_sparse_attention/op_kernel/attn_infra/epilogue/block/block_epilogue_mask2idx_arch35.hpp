@@ -93,8 +93,6 @@ public:
                 uint32_t globalRowOffset = curSubCoreRowOffset + curLoopRowOffset;
                 uint32_t actDealtRowCurLoop = (i == rowLoop - 1) ? (actDealtRow - curLoopRowOffset) : PRE_ROW_TILE;
 
-                // cce::printf("actDealtRowCurLoop:%d\n", actDealtRowCurLoop);
-
                 uint64_t rsvdCountPerRow[PRE_ROW_TILE] = {0};
                 uint64_t rsvdCountPerRowCurColLoop[PRE_ROW_TILE] = {0};
                 for (uint32_t j = 0; j < colLoop; j++) {
@@ -171,7 +169,6 @@ public:
                 }
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(CountPingPongFlag);
                 for (uint32_t k = 0; k < actDealtRowCurLoop; k++) {
-                    // cce::printf("rsvdCountPerRow[k]:%d\n", static_cast<int32_t>(rsvdCountPerRow[k]));
                     sparseCountUb[CountPingPongFlag].SetValue(k, static_cast<int32_t>(rsvdCountPerRow[k]));
                 }
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(CountPingPongFlag + 2);
