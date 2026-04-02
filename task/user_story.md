@@ -160,5 +160,5 @@ aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
 ### 相关信息
 
 - 自动生成的头文件位置：`build/autogen/inner/`
-- 编译命令：`bash build.sh --pkg --soc=ascend910b --ops={算子名}`
+- 编译命令：`bash build.sh --pkg --soc=ascend910_93 --ops={算子名}`
 - 参考PR：https://gitcode.com/cann/ops-transformer/pull/3258
