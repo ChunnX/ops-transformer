@@ -31,6 +31,7 @@
 #endif
 
 using namespace MoeDistributeDispatchV2Impl;
+using namespace Mc2Kernel;
 using namespace MoeDistributeDispatchV2FullMeshImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;

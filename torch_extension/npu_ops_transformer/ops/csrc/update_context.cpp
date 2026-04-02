@@ -23,11 +23,13 @@ constexpr static uint8_t COMM_ENGINE_AIV = 4;
 constexpr uint32_t OP_TYPE_ALL_TO_ALLV = 8;
 constexpr uint32_t EP_OP_TYPE = OP_TYPE_ALL_TO_ALLV;
 const std::string EP_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
+constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 
 struct CommContext {
-    uint64_t epRankId = 0;
+    uint32_t epRankId = 0;
+    uint32_t rankSizePerServer;
     uint64_t kfcContextAddr = 0;
-    uint64_t epHcclBuffer_[1024];
+    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 
 static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBufferSize, CommContext &mc2Context)
