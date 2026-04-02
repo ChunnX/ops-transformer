@@ -67,7 +67,7 @@ struct GDRStageOneInitParams {
 
 class Stage1 {
 public:
-    __aicore__ inline Stage1(StageOneMT &mmFp32) : mmFp32(mmFp32) {}
+    __aicore__ inline Stage1(StageOneMT &mm) : mm(mm) {}
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams &initParams)
     {
         queryGm_ = initParams.query;
@@ -86,31 +86,29 @@ public:
         if (gOptional_) {
             gGm_ = initParams.g;
         }
-
+        // ckOffset_
         uint64_t workSpaceOffset = 0;
-        gBKWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset +
-                                                                  coreIdx_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t)));
+        uint64_t curWS = coreIdx_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
+        gBKWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
 
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
-        kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset +
-                                                                 coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t)));
-
-        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
-        vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset +
-                                                                    coreIdx_ * paraNum_ * cvOffset_ * sizeof(bfloat16_t)));
-
-        workSpaceOffset += coreNum_ * paraNum_ * cvOffset_ * sizeof(bfloat16_t);
-        attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset +
-                                                                   coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t)));
-
-        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
-        uint64_t queryContinousOffset = workSpaceOffset + coreIdx_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
-        queryContinousGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + queryContinousOffset));
+        queryConGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
 
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
-        uint64_t keyContinousOffset = workSpaceOffset + coreIdx_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
-        keyContinousGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + keyContinousOffset));
+        keyConGm_.SetGlobalBuffer( reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
+
+        // ccOffset_
+        workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
+        curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+        kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
+
+        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+        attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
+
+        // cvOffset_
+        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+        curWS = coreIdx_ * paraNum_ * cvOffset_ * sizeof(bfloat16_t);
+        vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
     }
 
     __aicore__ inline void InitLocalBuffers()
@@ -298,14 +296,14 @@ private:
         AscendC::CrossCoreWaitFlag(0x9); // 同步0
         // key @ key.transpose(-1,-2)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(keyContinousGm_[i * ckOffset_], keyContinousGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
+            AICProcess(keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
                        {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // 同步1
 
         // query @ key.transpose(-1,-2)   stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(queryContinousGm_[i * ckOffset_], keyContinousGm_[i * ckOffset_], 
+            AICProcess(queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], 
                        outQkGm_[chunkRowBase_[i] * chunkSize_],
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
                        true);
@@ -340,8 +338,8 @@ private:
             uint64_t qk_base = subRow * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
             outKgGm_ = outKgBaseGm_[chunkRowBase_[i] * dk_];
-            QKPreProcess(queryGm_[qk_base], queryContinousGm_[wsOffset_], outKgGm_, subValidLenBatch_[i]);
-            QKPreProcess(keyGm_[qk_base], keyContinousGm_[wsOffset_], outKgGm_, subValidLenBatch_[i], true);
+            QKPreProcess(queryGm_[qk_base], queryConGm_[wsOffset_], outKgGm_, subValidLenBatch_[i]);
+            QKPreProcess(keyGm_[qk_base], keyConGm_[wsOffset_], outKgGm_, subValidLenBatch_[i], true);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x9); // 同步0
         if (gOptional_) {
@@ -379,7 +377,7 @@ private:
             uint64_t kUbOffset = i * halfChunkSize_ * dkAligned_;
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
             GBKCompute(gBKWsGm_[i * ckOffset_], outKgGm_, betaUbFloat_[betaUbOffset],
-                       kUbFloatCon_[kUbOffset], gCumExpUbFloat_[i * chunkSize_], keyContinousGm_[wsOffset_]);
+                       kUbFloatCon_[kUbOffset], gCumExpUbFloat_[i * chunkSize_], keyConGm_[wsOffset_]);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3
 
@@ -398,7 +396,7 @@ private:
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
             uint64_t qUbOffset = i * halfChunkSize_ * dkAligned_;
             QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_], qUbFloatCon_[qUbOffset],
-                          gCumExpUbFloat_[i * chunkSize_], queryContinousGm_[wsOffset_]);
+                          gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
         }
     }
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<bfloat16_t>& dstGm,
@@ -624,7 +622,6 @@ private:
             uint64_t kgBeginOffset = subOffset_ * dk_;
             DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, outKgGm[kgBeginOffset]);  // stage1 out
         }
-        fp32InQueue_.FreeTensor(kUbFloatCon);
     }
 
     __aicore__ inline void VBetaCompute(const GlobalTensor<bfloat16_t> valueGm, const GlobalTensor<float> vBetaWsGm,
@@ -658,10 +655,6 @@ private:
     {
         qPrimeLocal_ = fp32OutQueue_.AllocTensor<float>();
         // data copy in qUbFloatCon
-        uint32_t dstStride = 0;
-        if (dk_ % BLOCK_BF16_NUM != 0) {
-            dstStride = (dk_ % BLOCK_BF16_NUM) > BLOCK_FLOAT_NUM ? 0 : 1;
-        }
         DataCopyInBf16WithStride(halfChunkSize_, dk_, queryContinousGm, dk_);
         auto bf16Query = fp32InQueue_.DeQue<bfloat16_t>();
         Cast(qUbFloatCon, bf16Query, RoundMode::CAST_NONE, halfChunkSize_ * dkAligned_);
@@ -809,27 +802,27 @@ private:
     __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
                                       GlobalTensor<bfloat16_t> z, const MatmulShapeParams &shape, bool transB = false)
     {
-        mmFp32.SetOrgShape(shape.m, shape.n, shape.k);
-        mmFp32.SetSingleShape(shape.sm, shape.sn, shape.sk);
-        mmFp32.SetTensorA(x);
-        mmFp32.SetTensorB(y, transB);
-        mmFp32.IterateAll(z);
-        mmFp32.End();
+        mm.SetOrgShape(shape.m, shape.n, shape.k);
+        mm.SetSingleShape(shape.sm, shape.sn, shape.sk);
+        mm.SetTensorA(x);
+        mm.SetTensorB(y, transB);
+        mm.IterateAll(z);
+        mm.End();
     }
 
     __aicore__ inline void InverseAICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
                                              GlobalTensor<bfloat16_t> z)
     {
-        mmFp32.SetOrgShape(chunkSize_, chunkSize_, chunkSize_);
-        mmFp32.SetSingleShape(INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE);
-        mmFp32.SetTensorA(x);
-        mmFp32.SetTensorB(y);
-        mmFp32.IterateAll(z);
-        mmFp32.End();
+        mm.SetOrgShape(chunkSize_, chunkSize_, chunkSize_);
+        mm.SetSingleShape(INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE);
+        mm.SetTensorA(x);
+        mm.SetTensorB(y);
+        mm.IterateAll(z);
+        mm.End();
     }
     
     TPipe *pipe_;
-    StageOneMT &mmFp32;
+    StageOneMT &mm;
     const ChunkGatedDeltaRuleTilingData *tiling_;
     ChunkGroup cg_;
     uint32_t nk_;
@@ -877,8 +870,8 @@ private:
     GlobalTensor<bfloat16_t> kkWsGm_;
     GlobalTensor<bfloat16_t> attnWsGm_;
     GlobalTensor<bfloat16_t> gBKWsGm_;
-    GlobalTensor<bfloat16_t> queryContinousGm_;
-    GlobalTensor<bfloat16_t> keyContinousGm_;
+    GlobalTensor<bfloat16_t> queryConGm_;
+    GlobalTensor<bfloat16_t> keyConGm_;
     GlobalTensor<float> stageOneMask_;
 
     // UB queues
