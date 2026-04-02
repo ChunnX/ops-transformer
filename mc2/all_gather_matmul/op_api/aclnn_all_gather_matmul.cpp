@@ -25,7 +25,6 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
-#include "aclnnInner_all_gather_matmul.h"
 
 using namespace Ops::Transformer;
 using namespace op;
