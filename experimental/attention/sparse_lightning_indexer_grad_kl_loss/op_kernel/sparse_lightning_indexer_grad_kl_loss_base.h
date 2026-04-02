@@ -224,6 +224,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::InitConstInfo
     constInfo.gatherKeyIndexSize = topKSize * constInfo.dSizeQueryIndex;
     if constexpr (!SLIT::hasRope) {
         constInfo.dSizeQueryRope = 0;
+        constInfo.gatherKeySize = topKSize * (constInfo.dSizeQuery);
     }
     constInfo.tilingInfo = tilingData->vectorParams.softmaxYTilingData;
     constInfo.simpleSoftMaxTilingInfo = tilingData->vectorParams.simpleSoftmaxPTilingData;
@@ -429,7 +430,20 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
         if (lastB) {
             extraLoopTimes = 2;// 最后一个Batch需要额外循环两次，因为preload方式会产生尾巴
         }
+        if (constInfo.cmpRatio == 4 && s1StartIdxThisBatch < constInfo.cmpRatio - 1) {
+            int64_t s1Offset = 0;
+            if constexpr (LAYOUT_T == SLILayout::TND) {
+                s1Offset = accumS1Len;
+            } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+                s1Offset = bIdx * constInfo.s1Size;
+            }
+            int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
+            int64_t s1Len = min(constInfo.cmpRatio - 1, s1EndIdxThisBatch) - s1StartIdxThisBatch;
+            AscendC::InitOutput(dQueryIndexGm[s1Offset * qBaseOffset], qBaseOffset * s1Len, static_cast<T>(0));
+            AscendC::InitOutput(dWeightGm[s1Offset * constInfo.gSizeQuery], constInfo.gSizeQuery * s1Len, static_cast<T>(0));
+        }
 
+        s1StartIdxThisBatch = max(constInfo.cmpRatio - 1, s1StartIdxThisBatch);
         for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch + extraLoopTimes; s1Idx++) {
             SLIGradKLLossRunInfo &runInfoNeg2 = runInfos[(taskId + 1) % 3];       // 上2轮
             SLIGradKLLossRunInfo &runInfoNeg1 = runInfos[(taskId + 2) % 3];       // 上1轮
@@ -442,13 +456,13 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
                 CrossCoreSetFlag<2, PIPE_MTE2>(14);
             }
 
-            if (runInfo0.isValid && (runInfo0.s1Idx + 1) >= constInfo.cmpRatio) {
+            if (runInfo0.isValid) {
                 if ASCEND_IS_AIV {
                     vectorService.ProcessVector0(runInfo0);  // V0
                 }
             }
 
-            if (runInfoNeg1.isValid && (runInfoNeg1.s1Idx + 1) >= constInfo.cmpRatio) {
+            if (runInfoNeg1.isValid) {
                 if ASCEND_IS_AIC {
                     matmulService.ComputeMm1(runInfoNeg1);   // C1
                     matmulService.ComputeMm2(runInfoNeg1);   // C1
@@ -463,7 +477,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
                 }
             }
 
-            if (runInfoNeg2.isValid && (runInfoNeg2.s1Idx + 1) >= constInfo.cmpRatio) {
+            if (runInfoNeg2.isValid) {
                 if ASCEND_IS_AIV {
                     if constexpr (deterministic){
                         vectorService.ProcessDeterVector2(runInfoNeg2);
