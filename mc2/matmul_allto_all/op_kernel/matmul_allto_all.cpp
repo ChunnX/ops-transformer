@@ -26,15 +26,15 @@
 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;
-using namespace MC2Kernel;
+using namespace Mc2Kernel;
 using MC2KernelTemplate::MC2AlltoAllContext;
 using MC2KernelTemplate::MC2AlltoAllPrimitives;
 
 #ifndef MATMUL_ALLTO_ALL_A3_FP_IMPL
 #define MATMUL_ALLTO_ALL_A3_FP_IMPL(tilingData, pipe)                                                                  \
     do {                                                                                                               \
-        DEFINE_MC2_MMATA_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_A3_FP(ComputationContextType);                          \
-        DEFINE_MC2_MMATA_MATMUL_FOR_MATMUL_COMPUTATION_A3_FP(ComputationType);                                         \
+        DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_A3_FP(ComputationContextType);                                \
+        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_A3_FP(false, MM_ALLTO_ALL_TRANS_X2, ComputationType);                 \
         ComputationType matmulImplName(&pipe);                                                                         \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
