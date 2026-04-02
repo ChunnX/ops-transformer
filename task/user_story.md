@@ -122,34 +122,6 @@ aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
 | all_gather_matmul | 1 | aclnnInner_all_gather_matmul.h | ✅ 编译成功 |
 | all_gather_matmul_v2 | 1 | aclnnInner_all_gather_matmul_v2.h | ✅ 编译成功 |
 
-#### 待修改的算子列表（共22个算子，38个cpp文件）
-
-**注意**：以下算子的内联声明已移除，头文件已添加，但const_cast需要手动处理。每个算子的char*参数名称不同（group、groupEp、groupTp、commMode、commAlg、reduceOp等），需要根据对应的头文件签名手动添加const_cast。
-
-| 算子名称 | 修改文件数 | 对应头文件 | 需要const_cast的参数 |
-|---------|-----------|-----------|-------------------|
-| matmul_all_reduce | 8 | aclnnInner_matmul_all_reduce.h | group, reduceOp |
-| matmul_all_reduce_add_rms_norm | 3 | aclnnInner_matmul_all_reduce_add_rms_norm.h | group, reduceOp |
-| moe_distribute_combine | 1 | aclnnInner_moe_distribute_combine.h | groupEp, groupTp |
-| moe_distribute_combine_v2 | 4 | aclnnInner_moe_distribute_combine_v2.h | groupEp, groupTp |
-| moe_distribute_combine_v3 | 1 | aclnnInner_moe_distribute_combine_v3.h | groupEp, groupTp |
-| moe_distribute_combine_add_rms_norm | 1 | aclnnInner_moe_distribute_combine_add_rms_norm.h | groupEp, groupTp |
-| moe_distribute_dispatch | 1 | aclnnInner_moe_distribute_dispatch.h | groupEp, groupTp |
-| moe_distribute_dispatch_v2 | 4 | aclnnInner_moe_distribute_dispatch_v2.h | groupEp, groupTp, commAlg |
-| moe_distribute_dispatch_v3 | 1 | aclnnInner_moe_distribute_dispatch_v3.h | groupEp, groupTp |
-| moe_distribute_dispatch_setup | 1 | aclnnInner_moe_distribute_dispatch_setup.h | groupEp, groupTp |
-| moe_distribute_dispatch_teardown | 1 | aclnnInner_moe_distribute_dispatch_teardown.h | groupEp, groupTp |
-| moe_update_expert | 1 | aclnnInner_moe_update_expert.h | groupEp, groupTp |
-| matmul_reduce_scatter | 1 | aclnnInner_matmul_reduce_scatter.h | group, reduceOp |
-| matmul_reduce_scatter_v2 | 1 | aclnnInner_matmul_reduce_scatter_v2.h | group, reduceOp |
-| distribute_barrier | 1 | aclnnInner_distribute_barrier.h | group |
-| ffn_to_attention | 1 | aclnnInner_ffn_to_attention.h | group |
-| attention_to_ffn | 1 | aclnnInner_attention_to_ffn.h | group |
-| allto_all_all_gather_batch_mat_mul | 1 | aclnnInner_allto_all_all_gather_batch_mat_mul.h | groupEp, groupTp |
-| allto_allv_grouped_mat_mul | 1 | aclnnInner_allto_allv_grouped_mat_mul.h | group |
-| grouped_mat_mul_allto_allv | 1 | aclnnInner_grouped_mat_mul_allto_allv.h | group |
-| batch_mat_mul_reduce_scatter_allto_all | 1 | aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h | groupEp, groupTp |
-| grouped_mat_mul_all_reduce | 1 | aclnnInner_grouped_mat_mul_all_reduce.h | group, reduceOp |
 
 #### 修改模式
 
@@ -184,33 +156,6 @@ aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
    - `commMode`：通信模式参数
    - `commAlg`：通信算法参数
    - `reduceOp`：归约操作参数
-
-#### 批量修改脚本
-
-可以使用以下脚本批量修改算子：
-
-```bash
-#!/bin/bash
-# fix_mc2_operators.sh
-
-# 1. 编译生成自动生成的头文件
-bash build.sh --pkg --soc=ascend910b
-
-# 2. 执行批量修改脚本
-bash /tmp/fix_mc2_operators_v3.sh
-```
-
-#### 验证方法
-
-修改完成后，执行编译验证：
-```bash
-bash build.sh --pkg --soc=ascend910b
-```
-
-编译成功后，检查生成的包文件：
-```bash
-ls -la build/cann-ops-transformer-custom_linux-aarch64.run
-```
 
 ### 相关信息
 
