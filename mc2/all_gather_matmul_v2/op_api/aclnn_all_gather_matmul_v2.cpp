@@ -10,7 +10,6 @@
 
 #include "aclnn_all_gather_matmul_v2.h"
 #include "aclnnInner_all_gather_matmul_v2.h"
-#include "aclnnInner_all_gather_matmul_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
