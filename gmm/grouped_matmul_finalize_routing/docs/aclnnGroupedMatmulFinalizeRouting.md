@@ -561,7 +561,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<float> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值
       groupListHostData[0] = 8;
       // 创建x aclTensor
@@ -646,7 +646,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                 return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
