@@ -37,5 +37,48 @@ struct QGmmInplaceAddTilingDataParams {
     TCubeTiling mmTilingData;
 };
 #pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMQuantParams {
+    uint32_t groupNum = 0;
+    uint32_t activeType = 0;
+    uint32_t aQuantMode = 0;
+    uint32_t bQuantMode = 0;
+    uint8_t singleX = 0;
+    uint8_t singleW = 0;
+    uint8_t singleY = 0;
+    int8_t groupType = 0;
+    uint8_t groupListType = 0;
+    uint8_t hasBias = 0;
+    uint16_t reserved = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct QuantBasicApiMMTiling {
+    uint32_t m = 0;
+    uint32_t n = 0;
+    uint32_t k = 0;
+    uint32_t baseM = 0;
+    uint32_t baseN = 0;
+    uint32_t baseK = 0;
+    uint32_t kAL1 = 0;
+    uint32_t kBL1 = 0;
+    uint32_t scaleKAL1 = 0;
+    uint32_t scaleKBL1 = 0;
+    uint8_t isBias = 0;
+    uint8_t dbL0C = 0;
+    uint16_t reserved1 = 0;
+    uint32_t reserved2 = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMQuantBasicApiTilingData {
+    GMMQuantParams gmmQuantParams;
+    QuantBasicApiMMTiling mmTilingData;
+};
+#pragma pack(pop)
+
 } // namespace GROUPED_MATMUL_INPLACE_ADD
 #endif
