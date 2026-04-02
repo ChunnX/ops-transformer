@@ -90,7 +90,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnQuantMatmulAllReduceAddRmsNorm", "December 2026",
-                                    "aclnnQuantMatmulAllReduce and aclnnAddRmsNorm");
+                                    "aclnnQuantMatmulAllReduce", "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;
