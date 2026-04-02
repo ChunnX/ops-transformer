@@ -28,14 +28,14 @@ const std::array<const aclTensor *, 2> MoeFinalizeRoutingV2Grad(
     const aclTensor* grad_y, const aclTensor* expanded_row_idx, const aclTensor* expanded_x,
     const aclTensor* scales, const aclTensor* expert_idx, const aclTensor* bias,
     int64_t drop_pad_mode, int64_t active_num, int64_t expert_num, int64_t expert_capacity,
-    const aclTensor* grad_expanded_x_out, const aclTensor* grad_scales_out, aclOpExecutor *executor) 
+    const aclTensor* grad_expanded_x_out, const aclTensor* grad_scales_out, aclOpExecutor *executor)
 {
     L0_DFX(MoeFinalizeRoutingV2Grad, grad_y, expanded_row_idx, expanded_x, scales, expert_idx, bias,
         drop_pad_mode, active_num, expert_num, expert_capacity, grad_expanded_x_out, grad_scales_out);
 
-    auto grad_expanded_x = executor->AllocTensor(grad_expanded_x_out->GetViewShape(), 
+    auto grad_expanded_x = executor->AllocTensor(grad_expanded_x_out->GetViewShape(),
         grad_expanded_x_out->GetDataType(), op::Format::FORMAT_ND);
-    auto grad_scales = executor->AllocTensor(grad_scales_out->GetViewShape(), 
+    auto grad_scales = executor->AllocTensor(grad_scales_out->GetViewShape(),
         grad_scales_out->GetDataType(), op::Format::FORMAT_ND);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2Grad,

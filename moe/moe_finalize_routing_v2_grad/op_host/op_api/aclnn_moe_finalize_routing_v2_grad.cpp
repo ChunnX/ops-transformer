@@ -34,7 +34,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2Grad,
         DFX_IN(gradY, expandedRowIdx, expandedXOptional, scalesOptional,
-                        expertIdxOptional, biasOptional, dropPadMode, activeNum, expertNum, expertCapacity),
+            expertIdxOptional, biasOptional, dropPadMode, activeNum, expertNum, expertCapacity),
         DFX_OUT(gradExpandedXOut, gradScalesOut));
 
     // 参数检查

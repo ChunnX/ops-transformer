@@ -51,8 +51,8 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
     const aclIntArray* restoreShapeOptional, aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermute,
-                DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
-                DFX_OUT(out));
+        DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
+        DFX_OUT(out));
 
     static bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2) {
@@ -85,7 +85,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
 
     // 调用l0接口进行计算
     auto out_ = l0op::MoeFinalizeRoutingV2(permutedTokensContiguous, sortedIndicesContiguous, nullptr, nullptr,
-                                           nullptr, probsContiguous, nullptr, READ_INDEX_BY_ROW, 
+                                           nullptr, probsContiguous, nullptr, READ_INDEX_BY_ROW,
                                            out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

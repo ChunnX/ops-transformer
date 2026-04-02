@@ -33,7 +33,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-                        scalesOptional, expertIdxOptional, dropPadMode),
+            scalesOptional, expertIdxOptional, dropPadMode),
         DFX_OUT(out));
 
     // 参数检查

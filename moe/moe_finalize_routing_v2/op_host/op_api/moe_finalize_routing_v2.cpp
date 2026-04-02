@@ -27,7 +27,7 @@ OP_TYPE_REGISTER(MoeFinalizeRoutingV2);
 const aclTensor* MoeFinalizeRoutingV2(
     const aclTensor* expanded_x, const aclTensor* expanded_row_idx, const aclTensor* x1,
     const aclTensor* x2, const aclTensor* bias, const aclTensor* scales,
-    const aclTensor* expert_idx, int64_t drop_pad_mode, const aclTensor* out, aclOpExecutor *executor) 
+    const aclTensor* expert_idx, int64_t drop_pad_mode, const aclTensor* out, aclOpExecutor *executor)
 {
     L0_DFX(MoeFinalizeRoutingV2, expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx, drop_pad_mode, out);
 

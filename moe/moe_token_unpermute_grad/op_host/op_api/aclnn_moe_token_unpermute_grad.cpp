@@ -43,8 +43,9 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     aclTensor* permutedTokensGradOut, aclTensor* probsGradOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermuteGrad,
-                DFX_IN(permuteTokens, unpermutedTokensGrad, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
-                DFX_OUT(permutedTokensGradOut, probsGradOut));
+        DFX_IN(permuteTokens, unpermutedTokensGrad, sortedIndices,
+            probsOptional, paddedMode, restoreShapeOptional),
+        DFX_OUT(permutedTokensGradOut, probsGradOut));
 
     static bool useMoeFinalizeRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2Grad) {
@@ -98,7 +99,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
-    auto viewCopyGradExpandedXOutResult = l0op::ViewCopy(gradExpandedXOut_, 
+    auto viewCopyGradExpandedXOutResult = l0op::ViewCopy(gradExpandedXOut_,
         permutedTokensGradOut, uniqueExecutor.get());
     CHECK_RET(viewCopyGradExpandedXOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto viewCopyGradScalesOutResult = l0op::ViewCopy(gradScalesOut_, probsGradOut, uniqueExecutor.get());

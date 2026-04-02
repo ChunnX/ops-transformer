@@ -30,42 +30,42 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
     int64_t expert_tokens_count_or_cumsum_flag, bool expert_tokens_before_capacity_flag,
     const aclTensor* expanded_x_out, const aclTensor* expanded_row_idx_out,
     const aclTensor* expert_tokens_count_or_cumsum_out, const aclTensor* expert_tokens_before_capacity_out,
-    aclOpExecutor *executor) 
+    aclOpExecutor *executor)
 {
     L0_DFX(MoeInitRoutingV2, x, expert_idx, active_num, expert_capacity, expert_num, drop_pad_mode,
         expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag,
         expanded_x_out, expanded_row_idx_out, expert_tokens_count_or_cumsum_out, expert_tokens_before_capacity_out);
 
-    auto expanded_x = executor->AllocTensor(expanded_x_out->GetViewShape(), 
+    auto expanded_x = executor->AllocTensor(expanded_x_out->GetViewShape(),
         expanded_x_out->GetDataType(), op::Format::FORMAT_ND);
-    auto expanded_row_idx = executor->AllocTensor(expanded_row_idx_out->GetViewShape(), 
+    auto expanded_row_idx = executor->AllocTensor(expanded_row_idx_out->GetViewShape(),
         expanded_row_idx_out->GetDataType(), op::Format::FORMAT_ND);
 
     const aclTensor* expert_tokens_count_or_cumsum = nullptr;
     if (expert_tokens_count_or_cumsum_out != nullptr) {
-        expert_tokens_count_or_cumsum = executor->AllocTensor(expert_tokens_count_or_cumsum_out->GetViewShape(), 
+        expert_tokens_count_or_cumsum = executor->AllocTensor(expert_tokens_count_or_cumsum_out->GetViewShape(),
             expert_tokens_count_or_cumsum_out->GetDataType(), op::Format::FORMAT_ND);
     }
 
     const aclTensor* expert_tokens_before_capacity = nullptr;
     if (expert_tokens_before_capacity_out != nullptr) {
-        expert_tokens_before_capacity = executor->AllocTensor(expert_tokens_before_capacity_out->GetViewShape(), 
+        expert_tokens_before_capacity = executor->AllocTensor(expert_tokens_before_capacity_out->GetViewShape(),
             expert_tokens_before_capacity_out->GetDataType(), op::Format::FORMAT_ND);
         // 由于expert_tokens_count_or_cumsum_out是第三个可选参数，如果它是nullptr的话，在aclnn的机制里输出会忽略它，需要创造一个空Tensor
         if (expert_tokens_count_or_cumsum_out == nullptr) {
             op::Shape zeroShape;
             zeroShape.AppendDim(0);
-            expert_tokens_count_or_cumsum = executor->AllocTensor(zeroShape, 
+            expert_tokens_count_or_cumsum = executor->AllocTensor(zeroShape,
             ge::DT_INT32, op::Format::FORMAT_ND);
         }
     }
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2,
         OP_INPUT(x, expert_idx),
-        OP_OUTPUT(expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum, 
+        OP_OUTPUT(expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
             expert_tokens_before_capacity),
         OP_ATTR(active_num, expert_capacity, expert_num, drop_pad_mode,
-                                  expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag));
+            expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag));
     if (ret != ACL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MoeInitRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return {nullptr, nullptr, nullptr, nullptr};

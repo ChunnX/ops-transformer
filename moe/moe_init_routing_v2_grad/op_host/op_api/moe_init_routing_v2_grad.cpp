@@ -27,7 +27,7 @@ OP_TYPE_REGISTER(MoeInitRoutingV2Grad);
 const aclTensor* MoeInitRoutingV2Grad(
     const aclTensor* grad_expanded_x, const aclTensor* expanded_row_idx,
     int64_t top_k, int64_t drop_pad_mode, int64_t active_num,
-    const aclTensor* out, aclOpExecutor *executor) 
+    const aclTensor* out, aclOpExecutor *executor)
 {
     L0_DFX(MoeInitRoutingV2Grad, grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode, active_num, out);
 

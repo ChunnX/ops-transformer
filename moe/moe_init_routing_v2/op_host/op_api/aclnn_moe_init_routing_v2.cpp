@@ -43,7 +43,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
                             expertNumOptional, dropPadModeOptional, expertTokensCountOrCumsumFlagOptional,
                             expertTokensBeforeCapacityFlagOptional),
         DFX_OUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOutOptional,
-                            expertTokensBeforeCapacityOutOptional));
+            expertTokensBeforeCapacityOutOptional));
 
     // 参数检查
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
@@ -79,13 +79,13 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
 
     // 处理可选输出
     if (expertTokensCountOrCumsumOutOptional != nullptr && expertTokensCountOrCumsumOut_ != nullptr) {
-        auto viewCopyExpertTokensCountOrCumsumOutResult = l0op::ViewCopy(expertTokensCountOrCumsumOut_, 
+        auto viewCopyExpertTokensCountOrCumsumOutResult = l0op::ViewCopy(expertTokensCountOrCumsumOut_,
             expertTokensCountOrCumsumOutOptional, uniqueExecutor.get());
         CHECK_RET(viewCopyExpertTokensCountOrCumsumOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     if (expertTokensBeforeCapacityOutOptional != nullptr && expertTokensBeforeCapacityOut_ != nullptr) {
-        auto viewCopyExpertTokensBeforeCapacityOutResult = l0op::ViewCopy(expertTokensBeforeCapacityOut_, 
+        auto viewCopyExpertTokensBeforeCapacityOutResult = l0op::ViewCopy(expertTokensBeforeCapacityOut_,
             expertTokensBeforeCapacityOutOptional, uniqueExecutor.get());
         CHECK_RET(viewCopyExpertTokensBeforeCapacityOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
