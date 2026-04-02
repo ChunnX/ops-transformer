@@ -567,8 +567,8 @@ protected:
         return std::min(s2RealSize, actualSeqLenKvData[bOutIdx]);
     }
 
-    bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray, int64_t bIdx) override
     {
+        bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray, int64_t bIdx) override
         (void)bIdx;
         OP_CHECK_IF(sparseValidArray.size() == 0,
                    OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."),

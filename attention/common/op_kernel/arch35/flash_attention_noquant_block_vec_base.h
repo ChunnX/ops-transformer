@@ -55,8 +55,9 @@ public:
     static constexpr bool isMlaFullQuant = isFp8 && hasRope;
     static constexpr bool isMlaNoQuant = !isFp8 && hasRope && isInfer && (dTemplateType == DTemplateType::Aligned576);
     static constexpr bool isGqaNoQuant = !isFp8 && isInfer && !isMlaNoQuant && !isMlaFullQuant;
-    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
-                                       s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    // static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
+    //                                    s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    static constexpr bool useDn = false;
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter = (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) ||
@@ -1134,9 +1135,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
         }
     }
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        GetDerived()->SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
-    }
+    // if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+    //     GetDerived()->SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
+    // }
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT

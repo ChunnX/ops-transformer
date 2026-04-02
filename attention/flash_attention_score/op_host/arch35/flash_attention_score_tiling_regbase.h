@@ -470,9 +470,9 @@ protected:
     uint8_t attenMaskCompressMode;
 
     int64_t s1BasicBlock;
-    int64_t s2BasicBlock;
     int64_t dBasicBlock;
     int64_t dVBasicBlock;
+    int64_t s2BasicBlock;
 
     int64_t maxValidS2Len;
     int64_t thresholdS2Size = std::numeric_limits<int64_t>::max();
