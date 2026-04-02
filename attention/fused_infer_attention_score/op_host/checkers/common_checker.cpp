@@ -190,16 +190,18 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
                 OP_LOGE(fiaInfo.opName, "The H of value is %u, it should be %u.",
                 valueH, fiaInfo.qkHeadDim * fiaInfo.n2Size),
                 ge::GRAPH_FAILED);
-    OP_CHECK_IF(keyD0 != 16 || valueD0 != 16,
-                OP_LOGE(fiaInfo.opName, "The D0 of key is %u, the D0 of value is %u, "
-                        "they both should be 16", keyD0, valueD0),
-                ge::GRAPH_FAILED);
-    OP_CHECK_IF(keyD1 != fiaInfo.qkHeadDim  / 16,
-                OP_LOGE(fiaInfo.opName, "The D1 of key is %u, it should be %u.", keyD1, fiaInfo.qkHeadDim / 16),
-                ge::GRAPH_FAILED);
-    OP_CHECK_IF(valueD1 != fiaInfo.vHeadDim / 16,
-                OP_LOGE(fiaInfo.opName, "The D1 of value is %u, it should be %u.", valueD1, fiaInfo.vHeadDim / 16),
-                ge::GRAPH_FAILED);
+    if (enableNonQuant_) {
+        OP_CHECK_IF(keyD0 != 16 || valueD0 != 16,
+                    OP_LOGE(fiaInfo.opName, "The D0 of key is %u, the D0 of value is %u, "
+                            "they both should be 16", keyD0, valueD0),
+                    ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyD1 != fiaInfo.qkHeadDim  / 16,
+                    OP_LOGE(fiaInfo.opName, "The D1 of key is %u, it should be %u.", keyD1, fiaInfo.qkHeadDim / 16),
+                    ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueD1 != fiaInfo.vHeadDim / 16,
+                    OP_LOGE(fiaInfo.opName, "The D1 of value is %u, it should be %u.", valueD1, fiaInfo.vHeadDim / 16),
+                    ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -813,17 +815,17 @@ ge::graphStatus CommonChecker::CheckNonQuantDataType(const FiaTilingInfo &fiaInf
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckNonQuantAttr(const FiaTilingInfo &fiaInfo)
+ge::graphStatus CommonChecker::CheckAttr(const FiaTilingInfo &fiaInfo)
 {
-    if (CheckNonQuantHeadNum(fiaInfo) != ge::GRAPH_SUCCESS ||
-        CheckNonQuantInputLayout(fiaInfo) != ge::GRAPH_SUCCESS ||
-        CheckNonQuantInnerPrecise(fiaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckHeadNum(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckInputLayout(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckInnerPrecise(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FiaTilingInfo &fiaInfo)
+ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
 {
     if ((fiaInfo.n1Size < 0) || (fiaInfo.n2Size < 0)) {
         OP_LOGE(fiaInfo.opName, "numHeads(%d) or numKeyValueHeads(%d) is negative!", fiaInfo.n1Size, fiaInfo.n2Size);
@@ -845,7 +847,7 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FiaTilingInfo &fiaInfo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckNonQuantInputLayout(const FiaTilingInfo &fiaInfo)
+ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.opParamInfo.layOut == nullptr) {
         return ge::GRAPH_FAILED;
@@ -857,16 +859,18 @@ ge::graphStatus CommonChecker::CheckNonQuantInputLayout(const FiaTilingInfo &fia
                 "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
             };
             if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
-                OP_LOGE(fiaInfo.opName, "When gqa noquant scenario is applied, the attr inputLayout only supports BSH, "
+                OP_LOGE(fiaInfo.opName, "When gqa scenario is applied, the attr inputLayout only supports BSH, "
                     "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
                 return ge::GRAPH_FAILED;
             }
         } else {
             const std::vector<std::string> INPUT_LAYOUT_LIST = {
-                "BSH", "BSND", "BNSD", "TND", "NTD", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD", "NTD_TND", "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
+                "BSH", "BSND", "BNSD", "TND", "NTD", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD", "NTD_TND",
+                "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
             };
             OP_CHECK_IF(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end(),
-                OP_LOGE(fiaInfo.opName, "When gqa noquant scenario is applied, layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
+                OP_LOGE(fiaInfo.opName, "When gqa noquant scenario is applied, layout only supports BSH, BSND, BNSD, TND, "
+                    "NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
                     inputLayout.c_str()),
                 return ge::GRAPH_FAILED);
             const std::vector<std::string> noRopeLayoutSupportListA = {"BSH", "BSND", "BNSD"};
@@ -946,7 +950,7 @@ ge::graphStatus CommonChecker::CheckNonQuantInputLayout(const FiaTilingInfo &fia
             "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
         };
         if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
-            OP_LOGE(fiaInfo.opName, "When prefill mla noquant scenario is applied, the attr inputLayout only supports BSH, "
+            OP_LOGE(fiaInfo.opName, "When prefill mla scenario is applied, the attr inputLayout only supports BSH, "
                 "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -954,7 +958,7 @@ ge::graphStatus CommonChecker::CheckNonQuantInputLayout(const FiaTilingInfo &fia
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckNonQuantInnerPrecise(const FiaTilingInfo &fiaInfo)
+ge::graphStatus CommonChecker::CheckInnerPrecise(const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF(fiaInfo.innerPrecise > INNER_PRECISE_LIMIT || fiaInfo.innerPrecise < 0,
         OP_LOGE(fiaInfo.opName, "The attr innerPrecise only support [0, %u], the current is %u.",
@@ -1061,11 +1065,13 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
 ge::graphStatus CommonChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
-        if (CheckNonQuantDataType(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckInputFormat(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckNonQuantAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+        if (CheckNonQuantDataType(fiaInfo) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
+    }
+    if (CheckInputFormat(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1082,39 +1088,43 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
     return ge::GRAPH_SUCCESS;
 }
+
 ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
-        if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-            if (CheckPAKeyValue(fiaInfo) != ge::GRAPH_SUCCESS) { // PA场景
-                return ge::GRAPH_FAILED;
-            }
-        } else if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-            OP_CHECK_IF((CheckTensorList(fiaInfo)) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                    "Check Tensorlist failed!"),
-                return ge::GRAPH_FAILED);
-        }
-        ge::DataType queryDataType = fiaInfo.opParamInfo.query.desc->GetDataType();
-        ge::DataType attenOutDataType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
-        if (!fiaInfo.isOutQuantEnable) {
-            OP_CHECK_IF((queryDataType != attenOutDataType),
-                        OP_LOGE(fiaInfo.opName, "The data type of query is xxx,the data type of attentionOut is xxx"),
-                        return ge::GRAPH_FAILED);
-        }
         if (!CheckTNDLayoutCrossover(fiaInfo) || !CheckNTDLayoutCrossover(fiaInfo) || !CheckTransposeLayoutCrossover(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
-        if (CheckMultiDtype(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckAxis(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckQueryOutConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckKeyValueConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckQueryShape(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckKeyShape(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckQueryKeyConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
-            CheckMultiAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+        if (CheckMultiDtype(fiaInfo) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
+    }
+    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+        if (CheckPAKeyValue(fiaInfo) != ge::GRAPH_SUCCESS) { // PA场景
+            return ge::GRAPH_FAILED;
+        }
+    } else if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        OP_CHECK_IF((CheckTensorList(fiaInfo)) != ge::GRAPH_SUCCESS,
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
+                "Check Tensorlist failed!"),
+            return ge::GRAPH_FAILED);
+    }
+    ge::DataType queryDataType = fiaInfo.opParamInfo.query.desc->GetDataType();
+    ge::DataType attenOutDataType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
+    if (!fiaInfo.isOutQuantEnable && !enableFullQuant_) {
+        OP_CHECK_IF((queryDataType != attenOutDataType),
+                    OP_LOGE(fiaInfo.opName, "The data type of query is %s,the data type of attentionOut is %s",
+                        DataTypeToSerialString(queryDataType).c_str(), DataTypeToSerialString(attenOutDataType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (CheckAxis(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckQueryOutConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckKeyValueConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckQueryShape(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckKeyShape(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckQueryKeyConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckMultiAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
