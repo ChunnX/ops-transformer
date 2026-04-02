@@ -13,10 +13,11 @@
 
 ## 功能说明
 
-- 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**该接口query、key、value参数支持多个长度相等或者多个长度不相等的sequence**
+- 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**该接口query、key、value参数支持多个长度相等或者多个长度不相等的sequence**
   - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV2.md)接口，功能差异如下：**：
     - 针对计算输入query、key、value参数，其数据类型新增支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8
     - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
+    -增加了sinkOptional可选输入，数据类型支持FLOAT32。
   - **该接口相较于[FlashAttentionVarLenScoreV5](./aclnnFlashAttentionVarLenScoreV5.md)接口，功能差异如下**：
     - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
 
@@ -31,7 +32,19 @@
      $$
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
-
+  其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
+  
+  $$
+  S = Q * K^{T}
+  $$
+  
+  $$
+  m = max(sink, max(S))
+  $$
+  
+  $$
+  Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
+  $$
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreV4”接口执行计算。
@@ -233,12 +246,17 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>sinkOptional</td>
         <td>输入</td>
-        <td>保留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>公式中的sink。</td>
+        <td>
+          <ul>
+            <li>提供解决注意力计算集中前一部分TOKEN问题的功能。</li>
+            <li>输入shape类型需为[N1]的一维Tensor。</li>
+          </ul>
+        </td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>0、1</td>
+        <td>√</td>
       </tr>
       <tr>
         <td>prefixOptional</td>
@@ -500,7 +518,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据类型不在支持的范围内。</td>
+      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据类型不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -558,13 +576,14 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - inputLayout必须一致。
 - 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同
 - 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同
+- 输入sinkOptional仅支持一维，size与N1保持一致
 - 关于数据shape的约束，以inputLayout的TND、BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
     - T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，D取值范围为1\~128。
-- 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时, 不支持queryRopeOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
+- 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时, 不支持queryRopeOptional、sinkOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - innerPrecise: 当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - pseType 各个取值含义
@@ -697,11 +716,13 @@ int main() {
   int64_t kv_size = S2 * B * H2;
   int64_t atten_mask_size = S1 * S2;
   int64_t softmax_size = B * N1 * S1 * 8;
+  int64_t sink_size = N1;
 
   std::vector<int64_t> qShape = {S1, B, H1};
   std::vector<int64_t> kShape = {S2, B, H2};
   std::vector<int64_t> vShape = {S2, B, H2};
   std::vector<int64_t> attenmaskShape = {S1, S2};
+  std::vector<int64_t> sinkShape = {N1};
 
   std::vector<int64_t> attentionOutShape = {S1, B, H1};
   std::vector<int64_t> softmaxMaxShape = {B, N1, S1, 8};
@@ -711,6 +732,7 @@ int main() {
   void* kDeviceAddr = nullptr;
   void* vDeviceAddr = nullptr;
   void* attenmaskDeviceAddr = nullptr;
+  void* sinkDeviceAddr = nullptr;
   void* attentionOutDeviceAddr = nullptr;
   void* softmaxMaxDeviceAddr = nullptr;
   void* softmaxSumDeviceAddr = nullptr;
@@ -737,6 +759,7 @@ int main() {
   std::vector<float> kHostData(kv_size, 1.0);
   std::vector<float> vHostData(kv_size, 1.0);
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
+  std::vector<float> sinkHostData(sink_size, 3.0);
   std::vector<float> attentionOutHostData(q_size, 255);
   std::vector<float> softmaxMaxHostData(softmax_size, 3.0);
   std::vector<float> softmaxSumHostData(softmax_size, 3.0);
@@ -748,6 +771,8 @@ int main() {
   ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(sinkHostData, sinkShape, &sinkDeviceAddr, aclDataType::ACL_FLOAT, &sink);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -820,6 +845,7 @@ int main() {
   aclDestroyTensor(k);
   aclDestroyTensor(v);
   aclDestroyTensor(attenmask);
+  aclDestoryTensor(sink);
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
@@ -829,6 +855,7 @@ int main() {
   aclrtFree(kDeviceAddr);
   aclrtFree(vDeviceAddr);
   aclrtFree(attenmaskDeviceAddr);
+  aclrtFree(sinkDeviceAddr);
   aclrtFree(attentionOutDeviceAddr);
   aclrtFree(softmaxMaxDeviceAddr);
   aclrtFree(softmaxSumDeviceAddr);
