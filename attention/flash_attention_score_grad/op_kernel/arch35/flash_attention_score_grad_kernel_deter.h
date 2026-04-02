@@ -360,7 +360,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
         int64_t b = this->constInfo.bSize * this->constInfo.n2Size;
         int64_t m = this->constInfo.s1Outer;
         int64_t n = this->constInfo.s2Outer;
-        TransTilingSplitMode<BaseClass::DETER_TILING_SPLIT_MODE>(m, n, r, useEven, deterLoopMax / 2);
+        TransTilingSplitMode<BaseClass::DETER_TILING_SPLIT_MODE>(m, n, r, useEven, deterLoopMax / NUM_TWO);
         if (this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL && m < n) {
             return -1;
         }
@@ -378,7 +378,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
             CalGQACausalIndex(k, m, n, b, j, r, this->constInfo.commonConstInfo.gSize, coordinateInfo);
         }
     } else {
-        TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / 2);
+        TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
         if constexpr (BaseClass::IS_N_EQUAL) {
             CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
@@ -484,7 +484,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
     int64_t j = this->cBlockIdx + 1;
     int64_t r = roundId + 1;
     bool useEven = false;
-    TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / 2);
+    TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
     if constexpr (!BaseClass::IS_TND) {
         if constexpr(BaseClass::IS_N_EQUAL) {
             CalBandIndex(this->bandInfo, j, r, coordinateInfo);
@@ -512,7 +512,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
     int64_t convertedMOffset = coordinateInfo.mOffset;
     int64_t convertedNOffset = coordinateInfo.nOffset;
     if constexpr (BaseClass::DETER_TILING_SPLIT_MODE == 1) {
-        convertedMOffset = coordinateInfo.mOffset * 2;
+        convertedMOffset = coordinateInfo.mOffset * NUM_TWO;
     }
     TransTilingSplitModeBack<BaseClass::DETER_TILING_SPLIT_MODE, BaseClass::IS_TND>(coordinateInfo, useEven);
     int64_t w = coordinateInfo.batchId;
@@ -575,7 +575,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
         int64_t s1Outer = this->constInfo.s1Outer;
         int64_t s2Outer = this->constInfo.s2Outer;
         if constexpr (BaseClass::DETER_TILING_SPLIT_MODE == 1) {
-            m = Ceil<int64_t>(m, 2);
+            m = Ceil<int64_t>(m, static_cast<int64_t>(NUM_TWO));
             s1Outer = m;
         }
         int64_t p = Ceil<int64_t>(this->constInfo.s1Token, this->DETER_CUBE_BASEM) + 1;
@@ -610,7 +610,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
         if constexpr(BaseClass::IS_N_EQUAL) {
             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
             int64_t convertedMaxRound = BaseClass::DETER_TILING_SPLIT_MODE ?
-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound / 2:
+                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound / NUM_TWO :
                 this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
             deterLoopMax = Max(convertedMaxRound, this->bandInfo.rm2);
         } else {
@@ -622,7 +622,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
         InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset, this->coordinateInfos[0]);
         InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset, this->coordinateInfos[1]);
         if constexpr (BaseClass::DETER_TILING_SPLIT_MODE) {
-            deterLoopMax *= 2;
+            deterLoopMax *= NUM_TWO;
         }
         return deterLoopMax;
     }
