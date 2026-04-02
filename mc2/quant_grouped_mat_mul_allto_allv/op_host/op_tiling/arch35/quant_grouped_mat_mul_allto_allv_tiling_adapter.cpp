@@ -19,10 +19,12 @@
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
-using namespace Mc2GroupedMatmulTiling;
-using namespace Mc2GroupedMatmulTiling::GmmConstant;
-using namespace optiling::Mc2GroupedMatmul;
+using namespace Mc2Tiling;
+using namespace optiling::Mc2GroupedMatmulTiling;
+using namespace optiling::Mc2GroupedMatmulTiling::GmmConstant;
+using namespace Mc2Tiling::Mc2GroupedMatmul;
+
+namespace Mc2Tiling {
 
 const std::vector<uint32_t> QUANT_MODE_MP = {0, 0, 1, 2, 4, 5, 3}; // 不量化 pertensor perchannel pertoken pergroup perblock mx; 分别对应gmm中各量化的移位数
 
@@ -111,4 +113,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::Process()
     GE_ASSERT_GRAPH_SUCCESS(DoOpTiling());
     GE_ASSERT_GRAPH_SUCCESS(DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
+}
+
 }

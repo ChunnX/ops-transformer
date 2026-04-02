@@ -19,9 +19,9 @@
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
 
-namespace optiling {
+namespace Mc2Tiling {
 constexpr uint32_t MAX_GROUP_BUFFER_SIZE = 128;
 
 // base check required
