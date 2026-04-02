@@ -53,7 +53,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeDispatchV3(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_dispatch v3 start");
-    return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
+    return aclnnMoeDistributeDispatchBase(workspace, workspaceSize, executor, stream);
 }
 #ifdef __cplusplus
 }
