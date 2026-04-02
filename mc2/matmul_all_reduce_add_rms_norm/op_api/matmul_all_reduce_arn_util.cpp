@@ -9,12 +9,12 @@
  */
 
 #include "matmul_all_reduce_arn_util.h"
-#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 

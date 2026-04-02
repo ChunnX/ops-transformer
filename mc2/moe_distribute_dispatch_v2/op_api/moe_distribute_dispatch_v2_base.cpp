@@ -19,8 +19,8 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "aclnnInner_moe_distribute_dispatch_v2.h"
 #include "moe_distribute_dispatch_v2_base.h"
+#include "aclnnInner_moe_distribute_dispatch_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;

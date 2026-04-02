@@ -13,7 +13,6 @@
  * \brief
  */
 #include "aclnn_moe_distribute_combine_teardown.h"
-#include "aclnnInner_moe_distribute_combine_teardown.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/matmul_util.h"
@@ -22,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
+#include "aclnnInner_moe_distribute_combine_teardown.h"
 
 namespace {
 

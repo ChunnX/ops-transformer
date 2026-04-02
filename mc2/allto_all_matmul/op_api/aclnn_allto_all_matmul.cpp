@@ -9,7 +9,6 @@
  */
 
 #include "aclnn_allto_all_matmul.h"
-#include "aclnnInner_allto_all_matmul.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -25,6 +24,7 @@
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
 #include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
+#include "aclnnInner_allto_all_matmul.h"
 
 
 namespace {

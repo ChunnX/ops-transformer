@@ -13,10 +13,10 @@
  * \brief
  */
 #include "aclnn_quant_matmul_all_reduce_v4.h"
-#include "aclnnInner_matmul_all_reduce.h"
-
 #include "common/op_api/mc2_aclnn_util.h"
+
 #include "matmul_all_reduce_util.h"
+#include "aclnnInner_matmul_all_reduce.h"
 
 using namespace op;
 

@@ -13,7 +13,6 @@
  * \brief
  */
 #include "aclnn_matmul_reduce_scatter.h"
-#include "aclnnInner_matmul_reduce_scatter.h"
 #include "matmul_reduce_scatter_v2/op_api/aclnn_matmul_reduce_scatter_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
@@ -28,6 +27,7 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/utils/hccl_util.h"
+#include "aclnnInner_matmul_reduce_scatter.h"
 
 using namespace op;
 

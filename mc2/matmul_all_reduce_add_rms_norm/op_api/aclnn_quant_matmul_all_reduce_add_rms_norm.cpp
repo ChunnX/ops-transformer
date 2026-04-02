@@ -14,7 +14,6 @@
  */
 
 #include "aclnn_quant_matmul_all_reduce_add_rms_norm.h"
-#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 #include "securec.h"
 
 #include "acl/acl.h"
@@ -29,6 +28,7 @@
 #include "opdev/platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 

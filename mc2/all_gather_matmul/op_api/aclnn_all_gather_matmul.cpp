@@ -9,7 +9,6 @@
  */
 
 #include "aclnn_all_gather_matmul.h"
-#include "aclnnInner_all_gather_matmul.h"
 #include "all_gather_matmul_v2/op_api/aclnn_all_gather_matmul_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
@@ -25,6 +24,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
+#include "aclnnInner_all_gather_matmul.h"
 
 using namespace Ops::Transformer;
 using namespace op;

@@ -9,12 +9,12 @@
  */
 
 #include "aclnn_attention_to_ffn.h"
-#include "aclnnInner_attention_to_ffn.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_attention_to_ffn.h"
 
 using namespace op;
 

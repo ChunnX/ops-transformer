@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_moe_distribute_combine_v2.h"
-#include "aclnnInner_moe_distribute_combine_v2.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -17,6 +16,7 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
+#include "aclnnInner_moe_distribute_combine_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;

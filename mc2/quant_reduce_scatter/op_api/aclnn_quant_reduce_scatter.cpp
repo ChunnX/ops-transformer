@@ -13,7 +13,6 @@
  * \brief
  */
 #include "aclnn_quant_reduce_scatter.h"
-#include "aclnnInner_quant_reduce_scatter.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -26,6 +25,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
+#include "aclnnInner_quant_reduce_scatter.h"
 
 using namespace op;
 

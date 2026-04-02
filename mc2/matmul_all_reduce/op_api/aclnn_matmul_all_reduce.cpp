@@ -13,9 +13,8 @@
  * \brief
  */
 #include "aclnn_matmul_all_reduce.h"
-#include "aclnnInner_matmul_all_reduce.h"
-
 #include "matmul_all_reduce_util.h"
+#include "aclnnInner_matmul_all_reduce.h"
 
 using namespace op;
 

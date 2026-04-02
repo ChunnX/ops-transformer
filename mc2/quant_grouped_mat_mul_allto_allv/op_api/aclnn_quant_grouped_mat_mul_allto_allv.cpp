@@ -9,7 +9,6 @@
  */
 
 #include "aclnn_quant_grouped_mat_mul_allto_allv.h"
-#include "aclnnInner_quant_grouped_mat_mul_allto_allv.h"
 #include "acl/acl.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/transdata.h"
@@ -26,6 +25,7 @@
 #include "opdev/platform.h"
 #include "securec.h"
 #include <algorithm>
+#include "aclnnInner_quant_grouped_mat_mul_allto_allv.h"
 
 namespace {
 using namespace op;

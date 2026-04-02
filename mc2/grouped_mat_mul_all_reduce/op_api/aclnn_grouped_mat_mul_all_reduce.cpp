@@ -13,7 +13,6 @@
  * \brief
  */
 #include "aclnn_grouped_mat_mul_all_reduce.h"
-#include "aclnnInner_grouped_mat_mul_all_reduce.h"
 #include <new>
 #include "securec.h"
 
@@ -30,6 +29,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "common/utils/hccl_util.h"
+#include "aclnnInner_grouped_mat_mul_all_reduce.h"
 
 static constexpr int64_t MAX_GROUP_LIST_SIZE = 64; // tiling data size only support 8192 bytes.
 

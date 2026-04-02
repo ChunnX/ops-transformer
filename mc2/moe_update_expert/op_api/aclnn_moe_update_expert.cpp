@@ -9,11 +9,11 @@
  */
 
 #include "aclnn_moe_update_expert.h"
-#include "aclnnInner_moe_update_expert.h"
 #include <algorithm>
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_moe_update_expert.h"
 
 using namespace op;
 

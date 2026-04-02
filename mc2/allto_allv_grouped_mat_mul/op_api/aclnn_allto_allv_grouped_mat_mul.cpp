@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_allto_allv_grouped_mat_mul.h"
-#include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_allto_allv_grouped_mat_mul.h"
 
 using namespace op;
 

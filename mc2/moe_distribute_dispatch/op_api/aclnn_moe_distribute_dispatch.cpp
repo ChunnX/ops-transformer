@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_moe_distribute_dispatch.h"
-#include "aclnnInner_moe_distribute_dispatch.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -16,6 +15,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
+#include "aclnnInner_moe_distribute_dispatch.h"
 
 using namespace Ops::Transformer;
 using namespace op;

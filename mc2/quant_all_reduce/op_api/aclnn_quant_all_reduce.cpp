@@ -13,7 +13,6 @@
  * \brief
  */
 #include "aclnn_quant_all_reduce.h"
-#include "aclnnInner_quant_all_reduce.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -28,6 +27,7 @@
 #include "opdev/format_utils.h"
 #include "common/utils/hccl_util.h"
 #include "aclnn_kernels/transdata.h"
+#include "aclnnInner_quant_all_reduce.h"
 
 namespace {
 
