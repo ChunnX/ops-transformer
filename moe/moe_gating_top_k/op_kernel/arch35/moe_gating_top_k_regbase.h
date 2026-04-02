@@ -687,7 +687,7 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -701,7 +701,7 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
             ops::StoreOneTensorForDtypeT<T>(outputAddr, vreg2, preg0, 0);
             MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
         }
-    } else {
+    } else if (tilingData_->normType == 1 || (tilingData_->normType == 0 && tilingData_->renorm == 1)) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -737,7 +737,7 @@ MoeGatingTopKRegbase<T>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vregSum;
@@ -769,7 +769,7 @@ MoeGatingTopKRegbase<T>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
                 MicroAPI::DataCopy(expertIdxAddr + i * VL_FLOAT_SIZE, vreg1, preg1);
             }
         }
-    } else {
+    } else if (tilingData_->normType == 1 || (tilingData_->normType == 0 && tilingData_->renorm == 1)) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -823,7 +823,7 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
     __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -847,7 +847,7 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
             ops::StoreOneTensorForDtypeT<T>(outputAddr, vreg2, preg0, 0);
             MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
         }
-    } else {
+    } else if (tilingData_->normType == 1 || (tilingData_->normType == 0 && tilingData_->renorm == 1)) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -893,7 +893,7 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<uint32_t> vreg1;
@@ -935,7 +935,7 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
                 MicroAPI::DataCopy(expertIdxAddr + i * VL_FLOAT_SIZE, vreg1, preg1);
             }
         }
-    } else {
+    } else if (tilingData_->normType == 1 || (tilingData_->normType == 0 && tilingData_->renorm == 1)) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
