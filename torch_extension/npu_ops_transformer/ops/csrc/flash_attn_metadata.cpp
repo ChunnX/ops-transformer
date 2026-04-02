@@ -19,24 +19,23 @@
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 
-at::Tensor npu_flash_attn_metadata(const c10::optional<at::Tensor> &actual_seq_lengths_q,
-                                   const c10::optional<at::Tensor> &actual_seq_lengths_kv, int64_t num_heads_q,
-                                   int64_t num_heads_kv, int64_t head_dim, int64_t sparse_mode, int64_t batch_size,
-                                   int64_t max_seqlen_q, int64_t max_seqlen_kv)
+at::Tensor
+npu_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
+                        const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
+                        int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, int64_t batch_size,
+                        int64_t max_seqlen_q, int64_t max_seqlen_kv,
+                        int64_t mask_mode, int64_t win_left,
+                        int64_t win_right, std::string layout_q,
+                        std::string layout_kv, std::string layout_out)
 {
-    const c10::string_view device = "npu:0";
-    at::Device output_device = at::Device(std::string(device));
-    if (actual_seq_lengths_q.has_value()) {
-        output_device = actual_seq_lengths_q.value().device();
-    } else if (actual_seq_lengths_kv.has_value()) {
-        output_device = actual_seq_lengths_kv.value().device();
-    }
+    // todo: metadata shape
     at::Tensor output = at::empty({4096}, at::TensorOptions()
                                               .dtype(at::kInt)
-                                              .device(output_device)
+                                              .device(c10::DeviceType::PrivateUse1)
                                               .memory_format(c10::MemoryFormat::Contiguous));
-    ACLNN_CMD(aclnnFlashAttnMetadata, actual_seq_lengths_q, actual_seq_lengths_kv, num_heads_q, num_heads_kv, head_dim,
-              sparse_mode, batch_size, max_seqlen_q, max_seqlen_kv, output);
+    ACLNN_CMD(aclnnFlashAttnMetadata, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size,
+              max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, mask_mode, win_left,
+              win_right, layout_q, layout_kv, layout_out, output);
     return output;
 }
 
