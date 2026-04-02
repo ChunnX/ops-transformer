@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -11,9 +11,11 @@
 #ifndef GEMM_HELPER_HPP
 #define GEMM_HELPER_HPP
 
+#include "../../attn_infra/arch/arch.hpp"
 #include "../../attn_infra/base_defs.hpp"
 #include "../../attn_infra/layout/layout.hpp"
 #include "../../attn_infra/gemm/gemm_type.hpp"
+#include "../../tla/layout.hpp"
 
 namespace NpuArch::Gemm::helper 
 {
@@ -97,6 +99,44 @@ struct ElementAccumulatorSelector<bfloat16_t, bfloat16_t> {
     using ElementAccumulator = float;
 };
 
+#if (__CCE_AICORE__ == 310)
+template<>
+struct ElementAccumulatorSelector<float8_e4m3_t, float8_e4m3_t> {
+    using ElementAccumulator = float;
+};
+
+template<>
+struct ElementAccumulatorSelector<float8_e5m2_t, float8_e5m2_t> {
+    using ElementAccumulator = float;
+};
+
+template<>
+struct ElementAccumulatorSelector<float8_e4m3_t, float8_e5m2_t> {
+    using ElementAccumulator = float;
+};
+
+template<>
+struct ElementAccumulatorSelector<float8_e5m2_t, float8_e4m3_t> {
+    using ElementAccumulator = float;
+};
+#endif
+
+// template <class Element_, bool isMx = false>
+// struct GetL0Element {
+//     using Element = Element_;
+// };
+// #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3101
+// template <>
+// struct GetL0Element<float8_e4m3_t, true> {
+//     using Element = AscendC::mx_fp8_e4m3_t;
+// };
+
+// template <>
+// struct GetL0Element<float8_e5m2_t, true> {
+//     using Element = AscendC::mx_fp8_e5m2_t;
+// };
+// #endif
+
 template<class GmAType>
 struct L1ATypeSelector {
     static_assert(DEPENDENT_FALSE<GmAType>,
@@ -104,7 +144,17 @@ struct L1ATypeSelector {
 };
 
 template<class Element>
+struct L1ATypeSelector<Gemm::GemmType<Element, layout::VectorLayout>> {
+    using L1AType = Gemm::GemmType<Element, layout::VectorLayout, AscendC::TPosition::A1>;
+};
+
+template<class Element>
 struct L1ATypeSelector<Gemm::GemmType<Element, layout::RowMajor>> {
+    using L1AType = Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>;
+};
+
+template<class Element>
+struct L1ATypeSelector<Gemm::GemmType<Element, layout::zN>> {
     using L1AType = Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>;
 };
 
@@ -115,6 +165,11 @@ struct L1ATypeSelector<Gemm::GemmType<Element, layout::PaddingRowMajor>> {
 
 template<class Element>
 struct L1ATypeSelector<Gemm::GemmType<Element, layout::ColumnMajor>> {
+    using L1AType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>;
+};
+
+template<class Element>
+struct L1ATypeSelector<Gemm::GemmType<Element, layout::nZ>> {
     using L1AType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>;
 };
 
@@ -163,6 +218,43 @@ template<class GmBiasType, class ElementAccumulator>
 struct L1BiasTypeSelector {
     static_assert(DEPENDENT_FALSE<GmBiasType>,
         "Unsupported layout selector, can not find the specialization.");
+};
+
+template<class ArchTag>
+struct L0ALayoutSelector {
+    static_assert(DEPENDENT_FALSE<ArchTag>,
+        "Unsupported layout selector, can not find the specialization.");
+};
+
+template<>
+struct L0ALayoutSelector<Arch::AtlasA2> {
+    using Layout = layout::zZ;
+};
+
+template<>
+struct L0ALayoutSelector<Arch::AtlasA5> {
+    using Layout = layout::zN;
+};
+
+template<class Element, class Layout, class Enable = void>
+struct L1AlignHelperTla {
+    static_assert(DEPENDENT_FALSE<Element>, "Unsupported align helper tla, can not find the specialization.");
+};
+
+template<class Element, class Layout>
+struct L1AlignHelperTla<Element, Layout, std::enable_if_t<tla::detail::isRowMajor<Layout>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t M_ALIGNED = C0_NUM_PER_FRACTAL;
+    static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
+    static constexpr uint32_t N_ALIGNED = ELE_NUM_PER_C0;
+};
+
+template<class Element, class Layout>
+struct L1AlignHelperTla<Element, Layout, std::enable_if_t<tla::detail::isColumnMajor<Layout>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t M_ALIGNED = ELE_NUM_PER_C0;
+    static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
+    static constexpr uint32_t N_ALIGNED = C0_NUM_PER_FRACTAL;
 };
 
 template<class ElementAccumulator>
