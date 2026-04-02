@@ -114,6 +114,20 @@ extern "C" __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x,
                                                                       GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     GET_TILING_DATA(tilingData, tilingGM);
+    if (GetBlockIdx() == 0) {
+        AscendC::printf(
+            "zzzlog [GMMFR][entry] key=%llu coreNum=%u groupNum=%u batch=%u m=%u n=%u k=%u baseM=%u baseN=%u"
+            " x=0x%llx w=0x%llx scale=0x%llx rowIndex=0x%llx y=0x%llx ws=0x%llx\n",
+            static_cast<unsigned long long>(TILING_KEY),
+            tilingData.coreNum, tilingData.groupNum, tilingData.batch, tilingData.totalInGroup, tilingData.n,
+            tilingData.k, tilingData.matmulTiling.baseM, tilingData.matmulTiling.baseN,
+            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(x)),
+            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(w)),
+            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(scale)),
+            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(row_index)),
+            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(y)),
+            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(workspaceGM)));
+    }
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
     MMInitParams initParams{x,      w,     bias,      group_list,  scale, pertoken_scale,
                             offset, logit, row_index, share_input, y,     workspaceGM};
