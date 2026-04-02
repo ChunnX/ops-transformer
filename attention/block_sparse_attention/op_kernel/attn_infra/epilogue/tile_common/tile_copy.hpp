@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -13,8 +13,12 @@
 
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/arch/arch.hpp"
+#include "../../../attn_infra/detail/tag_to_layout.hpp"
 #include "../../../attn_infra/epilogue/tile_common/copy_gm_to_ub.hpp"
 #include "../../../attn_infra/epilogue/tile_common/copy_ub_to_gm.hpp"
+#include "../../../attn_infra/epilogue/tile_common/copy_gm_to_ub_tla.hpp"
+#include "../../../attn_infra/epilogue/tile_common/copy_ub_to_gm_tla.hpp"
+#include "../../../tla/tensor.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {
@@ -103,6 +107,24 @@ struct TileCopyPerTokenDequant {
     using CopyGmToUbPerTokenScale = CopyPerTokenScale2Ub<ArchTag, PerTokenScaleType>;
     using CopyUbToGmD = CopyUb2Gm<ArchTag, DType>;
 };
-} // namespace NpuArch::Epilogue::Tile
+
+template <
+    class ArchTag,
+    class ElementO_,
+    class LayoutTagO_,
+    class LayoutTagOTmp_
+> 
+struct TileCopyRescaleO{
+    using ElementO = ElementO_;
+    using LayoutTagO = LayoutTagO_;
+    using LayoutTagOTmp = LayoutTagOTmp_;
+    using LayoutO = detail::TagToLayout_t<ElementO, LayoutTagO>;
+    
+    using TensorUbO = tla::Tensor<AscendC::LocalTensor<ElementO>, LayoutO, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::VECCALC>;
+    using TensorGmO = tla::Tensor<AscendC::GlobalTensor<ElementO>, LayoutO, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::GM>;
+
+    using CopyUbToGmO = Tile::CopyUb2GmTla<ArchTag, TensorUbO, TensorGmO>;
+};
+}
 
 #endif  // EPILOGUE_TILE_TILE_COPY_HPP
