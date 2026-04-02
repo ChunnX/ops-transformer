@@ -91,6 +91,7 @@ namespace optiling{
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
+    const double TAIL_TASK_RATIO = 0.5;
 
     enum class MaskType : uint32_t {
         NO_MASK = 0,
@@ -647,7 +648,7 @@ namespace optiling{
         uint32_t tailKvNBlockTile = 0;
         uint32_t tailLoopTaskNumRework = tailLoopTaskNum;
 
-        if (tailLoopTaskNum > 0 && tailLoopTaskNum <= coreNum / 2) {
+        if (tailLoopTaskNum > 0 && tailLoopTaskNum <= coreNum * TAIL_TASK_RATIO) {
             tailKvNBlockTile = 1;
             uint32_t remainingKvHeadsFirstBatch = faInfo_.kvHeads - tailStartN2;
             uint32_t remainingFullBatches = faInfo_.batch - tailStartBatch - 1;
