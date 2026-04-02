@@ -407,7 +407,7 @@ private:
         auto tmpTensor = fp32OutQueue_.AllocTensor<bfloat16_t>();
         // compute
         LocalTensor<bfloat16_t> bf16Tensor = fp32InQueue_.DeQue<bfloat16_t>();
-        DataCopy(tmpTensor, bf16Tensor, AscendC::RoundMode::CAST_NONE, subValidRows * dkAligned_);
+        DataCopy(tmpTensor, bf16Tensor, subValidRows * dkAligned_);
         PipeBarrier<PIPE_V>();
         if (subValidRows < halfChunkSize_) {
             Duplicate(tmpTensor[subValidRows * dkAligned_], static_cast<bfloat16_t>(0.0f),
