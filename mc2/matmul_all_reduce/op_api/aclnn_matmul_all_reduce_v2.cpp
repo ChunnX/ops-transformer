@@ -13,7 +13,7 @@
  * \brief
  */
 #include "aclnn_matmul_all_reduce_v2.h"
-#include "aclnnInner_matmul_all_reduce_v2.h"
+#include "aclnnInner_matmul_all_reduce.h"
 
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"

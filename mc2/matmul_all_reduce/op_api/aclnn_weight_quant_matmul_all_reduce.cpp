@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_weight_quant_matmul_all_reduce.h"
-#include "aclnnInner_weight_quant_matmul_all_reduce.h"
+#include "aclnnInner_matmul_all_reduce.h"
 
 #include "opdev/tensor_view_utils.h"
 #include "matmul_all_reduce_util.h"
