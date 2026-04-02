@@ -79,11 +79,16 @@ out = DataCopyOut(block_idx, tmp_result)
 ```
 
 # 2 流水排布
-对于CV类算子来说，为了能够充分做到Cube核和Vector核的并行，一般会用到双发。何为双发？例如，若不考虑CV并行，FAG的计算流应该如下：
+对于CV类算子来说，为了能够充分做到Cube核和Vector核的并行，一般会用到双发。为了更好的理解，我们先以不考虑CV并行的情况举例，由于Cube核和Vector核之间有强数据依赖关系，因此其是串形执行的，如下图所示：
 
-可以看到，这种情况下，由于Cube和Vector核之间有强数据依赖关系，因此其是串形执行的。而双发就是为了解决这种问题。我们预先发射两次Matmul计算，并在第二次matmul计算的同时计算第一次Vector的计算结果，从而达到了CV之间的并行。
+<div align="center">
+  <img src="image-21.png" alt="描述" width="600" height="100">
+</div>
 
-![alt text](image-4.png)
+而双发就是为了解决这种问题。我们预先发射两次Matmul计算，并在第二次matmul计算的同时计算第一次Vector的计算结果，以达到了CV之并行的目的，如下图所示：
+<div align="center">
+  <img src="image-22.png" alt="描述" width="600" height="100">
+</div>
 
 # 3 分核策略
 
@@ -99,7 +104,6 @@ out = DataCopyOut(block_idx, tmp_result)
 
 对于一次常规的Cube计算，我们一般会开启DoubleBuffer，将流水之间的耗时相互掩盖，如下图所示：
 
-可以看到上述的计算方式效率很差，因为其流水都是串行进行的，为了更好优化性能，我们一般会开启DoubleBuffer，将流水之间进行相互掩盖，如下图所示：
 <div align="center">
   <img src="image-7.png" alt="描述" width="600" height="300">
 </div>
@@ -114,7 +118,9 @@ out = DataCopyOut(block_idx, tmp_result)
 </div>
 可以发现，假设我们以MatrixA为外循环，MatrixB为内循环，MatrixB的数据是可以复用的。基于这个思路，我们在L1上开辟一块临时的空间，当第一次搬运时将MatrixB的数据存放在这块。那么，再之后对于B矩阵的搬运，我们都可以省去重复搬运。
 
-另一方面，回看FAG的计算公式，由于FAG需要重计算，因此存在P=QK和dk=dsQ的步骤，其两个公式都用到了Query，那么我们是否可以再计算P时，将Query常驻再L1上，留到dK的时候再使用呢？答案是可以的。但由于我们之前实现了双发，导致会存在两份Query数据，因此我们需要保留两份L1空间，用于Dk计算时候复用。同理，对于dy和key的复用，也是可以的，但是由于L1空间和分核策略的限制，本方案仅采用了Query复用方案。
+另一方面，回看FAG的计算公式，由于FAG需要重计算，因此存在P=QK和dk=dsQ的步骤，其两个公式都用到了Query，那么我们是否可以再计算P时，将Query常驻再L1上，留到dK的时候再使用呢？
+
+答案是可以的。但由于我们之前实现了双发，导致会存在两份Query数据，因此我们需要保留两份L1空间，用于Dk计算时候复用。同理，对于dy和key的复用，也是可以的，但是由于L1空间和分核策略的限制，本方案仅采用了Query复用方案。
 
 ## FIX_PIPE优化
 
