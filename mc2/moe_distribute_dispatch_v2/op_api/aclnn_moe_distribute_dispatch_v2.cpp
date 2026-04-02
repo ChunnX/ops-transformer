@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_moe_distribute_dispatch_v2.h"
+#include "aclnnInner_moe_distribute_dispatch_v2.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -23,9 +24,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize,
-                                                     aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,

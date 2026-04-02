@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_moe_distribute_dispatch.h"
+#include "aclnnInner_moe_distribute_dispatch.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -31,17 +32,6 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerMoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
-                                                                   const aclTensor* xActiveMask, const aclTensor* expertScales,
-                                                                   const char* groupEp, int64_t epWorldSize,
-                                                                   int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
-                                                                   int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t shareExpertRankNum,
-                                                                   int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, aclTensor* expandX,
-                                                                   aclTensor* dynamicScales, aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                                                                   aclTensor* tpRecvCounts, aclTensor* expandScales,
-                                                                   uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeDistributeDispatch(void* workspace, uint64_t workspaceSize,
-                                                        aclOpExecutor* executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -111,8 +101,8 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,
-                                                                            groupEp, epWorldSize, epRankId, moeExpertNum,
-                                                                            groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+                                                                            const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+                                                                            const_cast<char*>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
                                                                             shareExpertRankNum, quantMode, globalBs, expertTokenNumsType,
                                                                             expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
                                                                             expandScales, workspaceSize, executor);

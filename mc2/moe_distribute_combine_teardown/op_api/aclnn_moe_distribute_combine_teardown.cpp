@@ -13,6 +13,7 @@
  * \brief
  */
 #include "aclnn_moe_distribute_combine_teardown.h"
+#include "aclnnInner_moe_distribute_combine_teardown.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/matmul_util.h"
@@ -109,8 +110,8 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
         expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
-        sharedExpertXOptional, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, xOut, workspaceSize, executor);
+        sharedExpertXOptional, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, globalBs, commQuantMode, commType, const_cast<char*>(commAlg), xOut, workspaceSize, executor);
     OP_LOGD("aclnn_moe_distribute_combine_teardown get_workspace_size success");
     return ret;
 }

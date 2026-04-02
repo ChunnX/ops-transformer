@@ -14,6 +14,7 @@
  */
 
 #include "aclnn_quant_matmul_all_reduce_add_rms_norm.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 #include "securec.h"
 
 #include "acl/acl.h"
@@ -34,9 +35,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
