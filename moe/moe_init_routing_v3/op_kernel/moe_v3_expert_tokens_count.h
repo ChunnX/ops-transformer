@@ -16,7 +16,6 @@
 #define MOE_V3_EXPERT_TOKENS_COUNT_H
 
 #include "moe_v3_common.h"
-#include "kernel_operator.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;

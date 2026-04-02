@@ -16,7 +16,6 @@
 #define MOE_V3_MRGSORT_OUT_PERFORMANCE_H
 
 #include "moe_v3_mrgsort_performance.h"
-#include "kernel_operator.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;

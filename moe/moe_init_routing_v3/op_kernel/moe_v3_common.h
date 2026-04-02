@@ -15,7 +15,7 @@
 #ifndef MOE_V3_COMMON_H
 #define MOE_V3_COMMON_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_tensor.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
