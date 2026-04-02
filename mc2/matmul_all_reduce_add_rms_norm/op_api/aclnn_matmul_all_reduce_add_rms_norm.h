@@ -46,7 +46,7 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
  __attribute__((deprecated("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize is scheduled to be deprecated in a post-December 2026 version update. "
-                        "Please migrate to aclnnMatmulAllReduceGetWorkspaceSize and aclnnAddRmsNormGetWorkspaceSize"
+                        "Please migrate to aclnnMatmulAllReduceGetWorkspaceSize and aclnnAddRmsNormGetWorkspaceSize "
                         "in place of aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize. "
                         "We apologize for any inconvenience caused and appreciate your timely migration to the other interface.")))
 ACLNN_API aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
