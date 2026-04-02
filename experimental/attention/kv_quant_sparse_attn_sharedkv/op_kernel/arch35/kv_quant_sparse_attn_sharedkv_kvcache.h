@@ -230,14 +230,10 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
     runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
         runParam.s1RealSize, 0, runParam.actualS2Size);
     
-    runParam.oriSparseBlockCount = hasOriTopkLength ? oriTopkLengthGm.GetValue(runParam.boIdx) :
+    runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(runParam.boIdx), constInfo.oriSparseBlockCount) :
         constInfo.oriSparseBlockCount;
-    if (constInfo.cmpRatio == 4) {
-        runParam.cmpSparseBlockCount = hasCmpTopkLength ? cmpTopkLengthGm.GetValue(runParam.boIdx) : 512;
-    } else {
-        runParam.cmpSparseBlockCount = hasCmpTopkLength ? cmpTopkLengthGm.GetValue(runParam.boIdx) :
-            constInfo.cmpSparseBlockCount;
-    }
+    runParam.cmpSparseBlockCount = hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(runParam.boIdx), constInfo.cmpSparseBlockCount) :
+        constInfo.cmpSparseBlockCount;
 
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SWA_TEMPLATE_MODE || \
         TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
