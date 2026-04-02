@@ -648,7 +648,8 @@ private:
                                          LocalTensor<float> gCumExpUbFloat, const GlobalTensor<bfloat16_t> queryContinousGm)
     {
         qPrimeLocal_ = fp32OutQueue_.AllocTensor<float>();
-        // data copy in qUbFloatCon        uint32_t dstStride = 0;
+        // data copy in qUbFloatCon
+        uint32_t dstStride = 0;
         if (dk_ % BLOCK_BF16_NUM != 0) {
             dstStride = (dk_ % BLOCK_BF16_NUM) > BLOCK_FLOAT_NUM ? 0 : 1;
         }
