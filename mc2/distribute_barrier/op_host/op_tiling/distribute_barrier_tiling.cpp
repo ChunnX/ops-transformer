@@ -33,31 +33,13 @@
 #include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "distribute_barrier_tiling_helper.h"
 
 using namespace AscendC;
 using namespace ge;
 
 namespace optiling {
-constexpr uint64_t INIT_TILINGKEY = 10000UL;
-
-constexpr uint32_t INPUT_X_INDEX = 0U;
-constexpr uint32_t TIME_OUT_INDEX = 1U;
-constexpr uint32_t ELASTIC_INFO_INDEX = 2U;
-constexpr uint32_t ONE_DIM = 1U;
-constexpr uint32_t ELASTIC_METAINFO_OFFSET = 4U;
-constexpr uint32_t RANK_LIST_NUM = 2U;
-
-constexpr uint32_t ATTR_GROUP_INDEX = 0U;
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U;
-
-constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
-constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
-constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 const char *A_INNER_DEBUG_BARRIER = "DistributeBarrier Tiling Debug";
-
-const int64_t MIN_WORLD_SIZE = 2;
-const int64_t MAX_WORLD_SIZE = 384;
-
 static void PrintTilingDataInfo(DistributeBarrierTilingData &tilingData) {
   OPS_LOG_D(A_INNER_DEBUG_BARRIER, "worldSize is %u.",
             tilingData.distributeBarrierInfo.worldSize);
@@ -72,13 +54,13 @@ static void PrintTilingDataInfo(DistributeBarrierTilingData &tilingData) {
   OPS_LOG_D(A_INNER_DEBUG_BARRIER, "isInputElasticInfo is %u.",
             tilingData.distributeBarrierInfo.isInputElasticInfo);
 }
-static bool CheckTimeOut(const gert::TilingContext *context) {
+static bool CheckTimeOut(const gert::TilingContext *context, const DistributeBarrierConfig& config) {
   const char *nodeName = context->GetNodeName();
-  const gert::StorageShape *timeOutStorageShape = context->GetOptionalInputShape(TIME_OUT_INDEX);
+  const gert::StorageShape *timeOutStorageShape = context->GetOptionalInputShape(config.timeOutIndex);
   OP_TILING_CHECK(timeOutStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
                   OP_LOGE(nodeName, "timeOut dim must be 1, but current dim num is %lu.",
                   timeOutStorageShape->GetStorageShape().GetDimNum()), return false);    
-  auto timeOutDesc = context->GetOptionalInputDesc(TIME_OUT_INDEX);
+  auto timeOutDesc = context->GetOptionalInputDesc(config.timeOutIndex);
   OP_TILING_CHECK(timeOutDesc == nullptr, OP_LOGE(nodeName, "timeOutDesc is null."), return false);
   OP_TILING_CHECK(timeOutDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName,
                   "timeOutDesc dataType is invalid, dataType should be int32, but is %s.",
@@ -91,13 +73,14 @@ static bool CheckTimeOut(const gert::TilingContext *context) {
                   timeOutDim0), return false);
   return true;
 }
-static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t worldsize) {
+static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t worldsize, 
+                             const DistributeBarrierConfig& config) {
   const char *nodeName = context->GetNodeName();
-  const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(ELASTIC_INFO_INDEX);
+  const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
   OP_TILING_CHECK(elasticInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
                   OP_LOGE(nodeName, "elasticInfo dim must be 1, but current dim num is %lu.",
                   elasticInfoStorageShape->GetStorageShape().GetDimNum()), return false);    
-  auto elasticInfoDesc = context->GetOptionalInputDesc(ELASTIC_INFO_INDEX);
+  auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
   OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE(nodeName, "elasticInfoDesc is null."), return false);
   OP_TILING_CHECK(elasticInfoDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName,
                   "elasticInfoDesc dataType is invalid, dataType should be int32, but is %s.",
@@ -112,12 +95,13 @@ static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t 
   return true;                              
 }                                                        
 static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarrierTilingData &tilingData,
-                             std::string &group, bool isInputTimeOut, bool isInputElasticInfo) {
+                             std::string &group, bool isInputTimeOut, bool isInputElasticInfo,
+                             const DistributeBarrierConfig& config) {
   auto attrs = context->GetAttrs();
   OP_TILING_CHECK(attrs == nullptr, OPS_LOG_E(A_INNER_DEBUG_BARRIER, "GetAttrs returned nullptr!"), return false);
 
-  auto groupPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-  auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
+  auto groupPtr = attrs->GetAttrPointer<char>(config.attrGroupIndex);
+  auto worldSizePtr = attrs->GetAttrPointer<int64_t>(config.attrWorldSizeIndex);
 
   // 当前仅对必选属性进行校空
   OP_TILING_CHECK(groupPtr == nullptr,
@@ -137,12 +121,12 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
   OPS_LOG_D(A_INNER_DEBUG_BARRIER, "group = %s", groupPtr);
   group = string(groupPtr);
   if (isInputTimeOut) {
-    OP_TILING_CHECK(CheckTimeOut(context) == false,
+    OP_TILING_CHECK(CheckTimeOut(context, config) == false,
                     OPS_LOG_E(A_INNER_DEBUG_BARRIER, "timeOut is invalid!"),
                     return false);
   }
   if (isInputElasticInfo) {     
-    OP_TILING_CHECK(CheckElasticInfo(context, worldSize) == false,
+    OP_TILING_CHECK(CheckElasticInfo(context, worldSize, config) == false,
                     OPS_LOG_E(A_INNER_DEBUG_BARRIER, "elasticInfo is invalid!"),
                     return false);
   }
@@ -177,7 +161,34 @@ static ge::graphStatus SetHcommCfg([[maybe_unused]] const gert::TilingContext *c
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
+static void DistributeBarrierExtendConfigIndexSet(DistributeBarrierConfig& config)
+{
+  config.contextIndex = 0; // 根据disributeBarrierExtend算子原型标志位初始化context索引
+  config.xRefIndex = 1;  // 根据disributeBarrierExtend算子原型标志位初始化xRef索引
+  config.timeOutIndex = 2; // 根据disributeBarrierExtend算子原型标志位初始化timeOut索引
+  config.elasticInfoIndex = 3; // 根据disributeBarrierExtend算子原型标志位初始化elasticInfo索引
+  config.xRefOutIndex = 0; // 根据disributeBarrierExtend算子原型标志位设置xRefOut索引
+  config.attrGroupIndex = 0; // 根据disributeBarrierExtend算子原型标志位初始化attrGroupIndex索引
+  config.attrWorldSizeIndex = 1; // 根据disributeBarrierExtend算子原型标志位设置attrWorldSizeIndex索引
+  config.isMc2Context = true;
+  return;
+}
+
+static void DistributeBarrierConfigIndexSet(DistributeBarrierConfig& config)
+{
+  config.xRefIndex = 0;  // 根据disributeBarrierExtend算子原型标志位初始化xRef索引
+  config.timeOutIndex = 1; // 根据disributeBarrierExtend算子原型标志位初始化timeOut索引
+  config.elasticInfoIndex = 2; // 根据disributeBarrierExtend算子原型标志位初始化elasticInfo索引
+  config.xRefOutIndex = 0; // 根据disributeBarrierExtend算子原型标志位设置xRefOut索引
+  config.attrGroupIndex = 0; // 根据disributeBarrierExtend算子原型标志位初始化attrGroupIndex索引
+  config.attrWorldSizeIndex = 1; // 根据disributeBarrierExtend算子原型标志位设置attrWorldSizeIndex索引
+  config.isMc2Context = false;
+  return;
+}
+
+ge::graphStatus DistributeBarrierExtendTilingFuncNew(gert::TilingContext* context,
+                                                     const DistributeBarrierConfig& config)
+{
   const char *nodeName = context->GetNodeName();
   DistributeBarrierTilingData *tilingData =
       context->GetTilingData<DistributeBarrierTilingData>();
@@ -187,16 +198,17 @@ ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
   std::string group = "";
   bool isInputTimeOut = false;
   bool isInputElasticInfo = false;
-  const gert::StorageShape *timeOutStorageShape = context->GetOptionalInputShape(TIME_OUT_INDEX);
-  const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(ELASTIC_INFO_INDEX);
+  const gert::StorageShape *timeOutStorageShape = context->GetOptionalInputShape(config.timeOutIndex);
+  const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
   isInputTimeOut = (timeOutStorageShape != nullptr);
   isInputElasticInfo = (elasticInfoStorageShape != nullptr);
   tilingData->distributeBarrierInfo.isInputTimeOut = isInputTimeOut;
   tilingData->distributeBarrierInfo.isInputElasticInfo = isInputElasticInfo;
+  tilingData->distributeBarrierInfo.isMc2Context = config.isMc2Context;
 
   // Function that get check and set Attrs
   OP_TILING_CHECK(
-      !CheckAndSetAttrs(context, *tilingData, group, isInputTimeOut, isInputElasticInfo),
+      !CheckAndSetAttrs(context, *tilingData, group, isInputTimeOut, isInputElasticInfo, config),
       OPS_LOG_E(A_INNER_DEBUG_BARRIER, "Check and set attributes failed!"),
       return ge::GRAPH_FAILED);
 
@@ -206,10 +218,11 @@ ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
       OPS_LOG_E(A_INNER_DEBUG_BARRIER, "Tiling set workspace failed."),
       return ge::GRAPH_FAILED);
 
-  // Set HcommCfg
-  OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
-      OP_LOGE(nodeName, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
-  
+  if (!config.isMc2Context) {
+    // Set HcommCfg
+    OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
+  }
   // Set numBlocks
   uint32_t numBlocks = 1U;
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -227,6 +240,19 @@ ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
   PrintTilingDataInfo(*tilingData);
   OPS_LOG_D("DistributeBarrier", "tiling process finished successfully!!!");
   return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
+  DistributeBarrierConfig config;
+  const char* socName = aclrtGetSocName();
+  OP_TILING_CHECK(socName == nullptr,
+      OP_LOGE("DistributeBarrier", "socName is nullptr"), return ge::GRAPH_FAILED);
+  if (std::strstr(socName ? socName : "", "Ascend950") != nullptr) {
+    DistributeBarrierExtendConfigIndexSet(config);
+  } else {
+    DistributeBarrierConfigIndexSet(config);
+  }
+  return DistributeBarrierExtendTilingFuncNew(context, config);
 }
 
 struct DistributeBarrierCompileInfo {};
