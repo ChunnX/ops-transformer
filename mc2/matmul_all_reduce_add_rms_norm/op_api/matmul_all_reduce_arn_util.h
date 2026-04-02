@@ -24,6 +24,19 @@ extern "C" {
 bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma);
 bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual);
 
+#define DEPRECATED_MM_ARN_API_WARN_ONCE(oldApiName, deprecatedDate, newApiName1, newApiName2)                 \
+        do {                                                                                 \
+            static bool isFirstWarn = true;                                                  \
+            if (isFirstWarn) {                                                               \
+                OP_LOGW("%s is scheduled to be deprecated in a post-%s version update, "     \
+                            "Please migrate to %s and %s. "                                   \
+                            "We apologize for any inconvenience caused and appreciate "      \
+                            "your timely migration to the other interface.",                  \
+                            (oldApiName), (deprecatedDate), (newApiName1), (newApiName2));   \
+                isFirstWarn = false;                                                         \
+            }                                                                                \
+        } while (0)
+
 aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
     const aclTensor* antiquantOffset, const aclTensor* dequant, const aclTensor* residual, const aclTensor* gamma,
