@@ -235,18 +235,7 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
-    bool ParamsCheck();
     int32_t GetQueryBatchSize();
-    int32_t GetKvBatchSize();
-    bool CheckSingleParam();
-    bool CheckExistence();
-    bool CheckConsistency();
-    bool CheckFeature();
-    bool CheckSingleParamN128();
-    bool CheckExistenceN128();
-    bool CheckConsistencyN128();
-    bool CheckFeatureN128();
-    bool ParamsCheckN128();
     void CalcOriMaskMode();
     void CalcCmpMaskMode();
     bool ParamsInit();
