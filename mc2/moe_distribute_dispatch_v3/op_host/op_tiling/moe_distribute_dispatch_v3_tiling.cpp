@@ -26,20 +26,24 @@
 #include <cstdint>
 #include <string>
 
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
-#include "mc2_exception_dump.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_tiling_v2.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
+#include "cann_version.h"
+
+#if CANN_VERSION_NUM >= 90000000
+#include "mc2_exception_dump.h"
+using namespace Mc2Exception;
+#endif
 
 using namespace Mc2Tiling;
-using namespace Mc2Exception;
 using namespace AscendC;
 using namespace ge;
 
@@ -91,6 +95,7 @@ IMPL_OP_OPTILING(MoeDistributeDispatchV3)
     .Tiling(MoeDistributeDispatchV3TilingFunc)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV3);
 
+#if CANN_VERSION_NUM >= 90000000
 // Register exception func
 inline void MoeDistributeDispatchV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -99,4 +104,5 @@ inline void MoeDistributeDispatchV3ExceptionImplWrapper(aclrtExceptionInfo *args
 
 IMPL_OP(MoeDistributeDispatchV3)
     .ExceptionDumpParseFunc(MoeDistributeDispatchV3ExceptionImplWrapper);
+#endif
 } // namespace optiling

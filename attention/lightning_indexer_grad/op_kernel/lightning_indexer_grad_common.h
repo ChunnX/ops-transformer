@@ -48,6 +48,7 @@ struct ConstInfo {
     uint32_t topK;
     uint32_t usedCoreNum;
     int64_t dkSize;
+    int64_t dkCoreSize;
     int64_t dkWorkSpaceOffset;
     int64_t dkCoreWorkspaceOffset;
     int64_t keyGatherWorkspaceOffset;

@@ -282,8 +282,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
-      <td>不支持空tensor。</ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>INT32</td>
       <td>-</td>
       <td>
@@ -332,7 +331,6 @@ aclnnStatus aclnnLightningIndexer(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
-
 
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
@@ -403,10 +401,11 @@ aclnnStatus aclnnLightningIndexer(
 
 ## 约束说明
 
-- 参数query中的N支持小于等于64，key、value的N支持1。
-- sparseCount支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
+- 参数query中的N支持小于等于64，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
+- 参数query、key的数据类型应保持一致。
+- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
 
 ## 调用示例
 

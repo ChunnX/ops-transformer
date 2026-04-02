@@ -89,8 +89,8 @@ int32_t GetValueFromMKNConditionMapAllGather(int32_t m, int32_t k, int32_t n, in
 
 static void GetTilingKey(uint64_t &tilingKey, const AllGatherMatmulAIVModeInfo &info, const gert::TilingContext *context)
 {
-    const gert::StorageShape *matrix_bias = context->GetOptionalInputShape(BIAS_INDEX);
-    bool isBias = (matrix_bias == nullptr) ? false : true;
+    const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
+    bool isBias = (matrixBias == nullptr) ? false : true;
     tilingKey = GET_TPL_TILING_KEY(isBias, info.isTransposeX1, info.isTransposeX2);
 }
 
@@ -142,6 +142,22 @@ void AllGatherV2MatmulNPU910BTwoRankINT8Tiling(CoCTiling &cocTilingData)
         {&code,
          {ALLGATHERV2_MATMUL_NPU910B_TWO_RANK_INT8_CODE_DEFAULT,
           g_allGatherV2MatmulNPU910BTwoRankINT8CodeMap}}
+    };
+    SetTilingParam(cocTilingData, TilingParamMap);
+
+    AllGatherV2DecodeTilingData(code, cocTilingData);
+
+    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    DealTilingParamByBuffSize(cocTilingData);
+}
+
+void AllGatherV2MatmulNPU910BEightRankINT4Tiling(CoCTiling &cocTilingData)
+{
+    int32_t code = ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_INT4_CODE_DEFAULT;
+    std::map<int*, TilingValue> TilingParamMap = {
+        {&code,
+         {ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_INT4_CODE_DEFAULT,
+          g_allGatherV2MatmulNPU910BEightRankINT4CodeMap}}
     };
     SetTilingParam(cocTilingData, TilingParamMap);
 
@@ -325,6 +341,10 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
         N = cShape->GetOriginShape().GetDim(1);
     }
 
+    const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
+    OP_TILING_CHECK(matrixBias != nullptr,
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "AivMode, bias must be nullptr."), return GRAPH_FAILED);
+
     // shape相关校验与约束写在这里
     info.M = M;
     info.N = N;
@@ -459,7 +479,7 @@ bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
     return false;
 }
 
-bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize) 
+bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type) 
 {
     if (rankSize == RANKSIZE_TWO && info.quantFlag) {
         AllGatherV2MatmulNPU910BTwoRankINT8Tiling(cocTilingData);
@@ -469,6 +489,9 @@ bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
         return true;
     } else if (rankSize == RANKSIZE_FOUR && !info.quantFlag) {
         AllGatherV2MatmulNPU910BFourRankFP16Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_EIGHT && isInt4Type) {
+        AllGatherV2MatmulNPU910BEightRankINT4Tiling(cocTilingData);
         return true;
     } else if (rankSize == RANKSIZE_EIGHT && info.quantFlag) {
         AllGatherV2MatmulNPU910BEightRankINT8Tiling(cocTilingData);
@@ -480,12 +503,12 @@ bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
     return false;
 }
 
-void SetTilingData(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
+void SetTilingData(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type)
 {
     cocTilingData.rankSize = rankSize;
     if (info.is910C && SetTilingDataA3(cocTilingData, info, rankSize)) {
         return;
-    } else if (SetTilingDataA2(cocTilingData, info, rankSize)){
+    } else if (SetTilingDataA2(cocTilingData, info, rankSize, isInt4Type)){
         return;
     }
     // Default Tiling Func
@@ -498,8 +521,8 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     OP_LOGI("Enter AllGatherMatmulAIVMode tiling func.");
     
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    auto ret = context->SetScheduleMode(batch_mode);
+    uint32_t batchMode = 1U;
+    auto ret = context->SetScheduleMode(batchMode);
     GE_ASSERT_GRAPH_SUCCESS(ret); 
 
     // 1. tilingData
@@ -576,7 +599,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     }
 
     // Tiling
-    SetTilingData(tilingData->cocTiling, info, rankSize);
+    SetTilingData(tilingData->cocTiling, info, rankSize, isA4W4);
 
     // workspace
     uint32_t elementSize = 0;

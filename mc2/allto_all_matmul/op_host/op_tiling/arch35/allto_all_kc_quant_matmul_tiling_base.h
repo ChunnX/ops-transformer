@@ -18,7 +18,7 @@
 #pragma once
 #include "securec.h"
 #include "mc2_matmul_tiling_cfg.h"
-#include "tiling/new_mc2_tiling_utils.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
 #include "../allto_all_matmul_tiling_base.h"
@@ -50,8 +50,8 @@ protected:
     ge::graphStatus DoKcQuantMMTiling();
     ge::graphStatus SetHcclTiling();
     void SetUserWorkSpace();
-    ge::graphStatus SetKcDataTypeInfo(const gert::TilingContext *context, const char *opName,
-                                                        TilingContextInfo &contextInfo);
+    ge::graphStatus CheckKcTensorFormat(const gert::TilingContext *context, const char *opName);
+    ge::graphStatus SetKcDataTypeInfo(const gert::TilingContext *context, const char *opName, TilingContextInfo &contextInfo);
     
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
     void PrintAlltoAllKcQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);

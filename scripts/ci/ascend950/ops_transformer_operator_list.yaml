@@ -16,6 +16,9 @@ operator_group_1:
   - scatter_pa_kv_cache
   - attention_update
   - fused_infer_attention_score,10-7
+  - mhc_post
+  - mhc_sinkhorn
+  - mhc_pre
 operator_group_2:
   - grouped_matmul
   - grouped_matmul_add
@@ -58,7 +61,9 @@ operator_group_6:
   - prompt_flash_attention
   - kv_quant_sparse_flash_attention
   - quant_lightning_indexer
+  - kv_quant_sparse_flash_attention_pioneer
 operator_group_7:
+  - attention_pioneer
   - fused_infer_attention_score,10-0
 operator_group_8:
   - fused_infer_attention_score,10-1

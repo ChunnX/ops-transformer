@@ -23,7 +23,6 @@
 #include "lib/matmul_intf.h"
 #include "../common.h"
 
-#include "matmul_all_reduce_base.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_online_dynamic.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_quant_perchannel.h"
@@ -109,7 +108,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     OOMInit(context);
     hccl_.InitV2(GetHcclContext<0>(), tilingData);
     hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, mc2CcTiling));
-    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, mc2CcTilingCommQuant));
+    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, mc2CcTilingComm));
     cGM_ = cGM;
     tilingData_ = tilingData;
     tPipe_ = tPipe;

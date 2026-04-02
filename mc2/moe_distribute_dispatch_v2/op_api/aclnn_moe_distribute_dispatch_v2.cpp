@@ -9,8 +9,8 @@
  */
 #include "aclnn_moe_distribute_dispatch_v2.h"
 #include <algorithm>
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"

@@ -87,6 +87,7 @@ public:
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
     static constexpr uint32_t SPARSE_COUNT_8K = 8192;
+    static constexpr uint32_t BLOCK_CUBE_SIZE = 16;
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
@@ -182,6 +183,7 @@ __aicore__ inline void LIPreload<LIT>::InitTilingData(const LITilingData *__rest
 
  	constInfo.s1BaseSize = constInfo.isSparseCountOver2K ? SPARSE_COUNT_8K / constInfo.sparseCount * 2 : 8;
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
+    constInfo.mBaseSizeAlign = LICommon::Align(constInfo.mBaseSize, BLOCK_CUBE_SIZE);
 }
 
 template <typename LIT>
@@ -409,7 +411,7 @@ __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
     uint64_t offset = 0;
 
     // mm1开DoubleBuffer
-    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.mBaseSizeAlign * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 

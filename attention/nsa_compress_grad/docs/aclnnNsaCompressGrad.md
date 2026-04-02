@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：aclnnNsaCompress算子的反向计算。
@@ -26,7 +25,6 @@
     $$
     \text{dk} = W^\top \cdot \text{dk\_cmp}
     $$
-
 
 ## 函数原型
 
@@ -300,7 +298,6 @@ aclnnStatus aclnnNsaCompressGrad(
   </tbody>
   </table>
 
-
 ## aclnnNsaCompressGrad
 
 - **参数说明**
@@ -349,7 +346,6 @@ aclnnStatus aclnnNsaCompressGrad(
 - 确定性计算：
   - aclnnNsaCompressGrad默认确定性实现。
 - compressBlockSize和compressStride要是16的整数倍，且compressBlockSize > compressStride
-
 
 ## 调用示例
 

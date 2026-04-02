@@ -24,8 +24,7 @@
     详细说明请参考以下参数说明。
 - 计算公式：
 
-
-    - 情形1：如果quaneMode=0（非量化场景）：
+    - 情形1：如果quantMode=0（非量化场景）：
 
     $$
     allToAllXOut = AllToAllV(X)\\
@@ -36,7 +35,7 @@
     \end{cases}
     $$
 
-    - 情形2：如果quaneMode=1（静态量化场景）：
+    - 情形2：如果quantMode=1（静态量化场景）：
 
     $$
     xFp32 = CastToFp32(X) \times scales \\
@@ -49,7 +48,7 @@
     \end{cases}
     $$
 
-    - 情形3：如果quaneMode=2（pertoken动态量化场景）：
+    - 情形3：如果quantMode=2（pertoken动态量化场景）：
 
     $$
     xFp32 = CastToFp32(X) \times scales \\
@@ -69,7 +68,7 @@
     \end{cases}
     $$
 
-    - 情形4：如果quaneMode=3（pertile动态量化场景）：
+    - 情形4：如果quantMode=3（pertile动态量化场景）：
 
     $$
     xFp32 = CastToFp32(X) \times scales \\
@@ -89,7 +88,7 @@
     \end{cases}
     $$
 
-    - 情形5：如果quaneMode=4（mxfp8量化场景）：
+    - 情形5：如果quantMode=4（mxfp8量化场景）：
 
     $$
     sharedExp = Floor(log_2(max(x))) - emax \\
@@ -116,7 +115,6 @@
 
 > 说明：
 > `aclnnMoeDistributeCombineV2`、`aclnnMoeDistributeCombineAddRmsNorm`算子在后续文档中统称为**CombineV2系列算子**。
-
 
 ## 函数原型
 
@@ -555,7 +553,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>参数的取值不在支持的范围。</td>
+        <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -671,7 +669,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
         - commAlg为"fullmesh"：设置大小要求 (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
-        - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) * `maxBs` * (`H` * 2 + 16 * Align8(`K`)) * 1B + 6MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8)。
+        - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBs` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
         - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
@@ -681,16 +679,19 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - 其余量化模式下`alignedH = Align32(H) = ((H + 32 - 1) / 32) * 32`。
 
 9. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
+
    <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
 
 10. 本文公式中的“/”表示整除。
 
 11. 通信域使用约束：
+
    - 一个模型中的CombineV2系列算子和`aclnnMoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
    - 一个模型中的CombineV2系列算子和`aclnnMoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 12. 组网约束：
+
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
 ## 调用示例
@@ -727,18 +728,29 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     
     - 机器数量设置：
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
         ```Cpp
         const uint32_t MACHINE_NUM = 2;
         ```
+
         单机16卡场景则无需修改。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
-       
+
+- <term>Ascend 950PR/Ascend 950DT</term>：
+    - 环境变量配置：
+
+        ```bash
+        # 运行前需设置RANK_TABLE_FILE环境变量
+        export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
+        ```    
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>

@@ -20,7 +20,6 @@
 #include <numeric>
 #include "tiling/tiling_api.h"
 
-// #include "fused_infer_attention_score_tiling_check.h"
 #include "../../../common/op_host/fia_tiling_info.h"
 #include "../../../common/op_host/fia_tiling_shape.h"
 #include "../fused_infer_attention_score_tiling_utils.h"
@@ -37,8 +36,8 @@ public:
 protected:
     virtual ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) = 0;
     virtual ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) = 0;
-    virtual ge::graphStatus CheckFeature(const FiaTilingInfo &fiaInfo) = 0;
-    virtual ge::graphStatus CheckMultiPara(const FiaTilingInfo &fiaInfo) = 0;
+    virtual ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) = 0;
+    virtual ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) = 0;
 
     // public check funcs
     ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;

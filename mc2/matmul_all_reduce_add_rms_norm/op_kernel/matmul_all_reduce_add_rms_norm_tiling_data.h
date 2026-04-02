@@ -19,12 +19,12 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 #if __has_include("../matmul_all_reduce/arch32/quant_matmul_all_reduce_tiling_data.h")
-#include "../common/inc/kernel/mc2_tiling_struct.h"
+#include "../common/op_kernel/mc2_tiling_struct.h"
 #include "../matmul_all_reduce/arch32/quant_matmul_all_reduce_tiling_data.h"
 #include "../matmul_all_reduce/arch32/unquant_matmul_all_reduce_tiling_data.h"
 #include "../matmul_all_reduce/arch32/weight_quant_matmul_all_reduce_tiling_data.h"
 #else
-#include "../../common/inc/kernel/mc2_tiling_struct.h"
+#include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../matmul_all_reduce/op_kernel/arch32/quant_matmul_all_reduce_tiling_data.h"
 #include "../../matmul_all_reduce/op_kernel/arch32/unquant_matmul_all_reduce_tiling_data.h"
 #include "../../matmul_all_reduce/op_kernel/arch32/weight_quant_matmul_all_reduce_tiling_data.h"

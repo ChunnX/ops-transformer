@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
         <td>-</td>
       </tr>
-    <tbody></table>
+    </tbody></table>
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - x、weight支持FLOAT16、BFLOAT16、INT8
@@ -336,12 +336,13 @@ aclnnStatus aclnnGroupedMatmul(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnGroupedMatmul默认确定性实现。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 非量化场景支持的输入类型为：
-    - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为 空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
-    - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional 为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；
+    - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
+    - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；
   - 量化场景支持的输入类型为：
 
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为UINT64、 offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为INT8；
@@ -363,18 +364,20 @@ aclnnStatus aclnnGroupedMatmul(
   - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值  2147483647。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
+
     <details>
     <summary>非量化场景约束</summary>
       <a id="非量化场景约束"></a>
 
-  - 非量化场景支持的数据类型为：
-    - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1
-    - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional
-    - 不为空的参数支持的数据类型组合要满足下表：
-      | x       | weight  | biasOptional | y     |
-      |:-------:|:-------:| :------      |:------ |
-      |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
-      |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+    - 非量化场景支持的数据类型为：
+      - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1
+      - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional
+      - 不为空的参数支持的数据类型组合要满足下表：
+
+        | x       | weight  | biasOptional | y     |
+        |:-------:|:-------:| :------      |:------ |
+        |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
+        |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
 
     </details>
 
@@ -385,15 +388,19 @@ aclnnStatus aclnnGroupedMatmul(
     - 伪量化场景支持的数据类型为：
       - 以下入参为空：scaleOptional、offsetOptional
       - 不为空的参数支持的数据类型组合要满足下表：
+
           | x       | weight  | biasOptional | antiquantScaleOptional | antiquantOffsetOptional | y     |
           |:-------:|:-------:| :------      |:------ |:------ |:------ |
           |BFLOAT16    |INT8     |BFLOAT16/FLOAT32/null    | BFLOAT16 | BFLOAT16 | BFLOAT16 |
           |FLOAT16     |INT8     |FLOAT16/null             | FLOAT16  | FLOAT16  | FLOAT16  |
+
       - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表：
 
         | 使用场景 | shape限制 |
+
         |:---------:| :------ |
         |weight多tensor|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
+
     - 仅支持多多多场景。
     </details>
 

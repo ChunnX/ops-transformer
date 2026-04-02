@@ -13,13 +13,13 @@
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
-
 ## 功能说明
 
 * 接口功能：推理网络为了提升性能，将sin和cos输入通过cache传入，执行旋转位置编码计算。
 * 计算公式：
 
     1、**mrope模式**：positions的shape输入是[m, numTokens], m为mropeSection的元素数，支持3或4：
+
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -29,6 +29,7 @@
     $$
 
     - mropeSection的元素数为3：
+
       $$
       cos0 = cos[0, :, :mropeSection[0]]
       $$
@@ -70,6 +71,7 @@
       $$
 
     - mropeSection的元素数为4：
+
       $$
       cos = torch.cat([m[i]\ for\ i, m\ in\ enumerate(cos.split(mropeSection, dim=-1))], dim=-1)
       $$
@@ -87,6 +89,7 @@
       $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
+
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -108,6 +111,7 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
+
     $$
     x1 = queryRot[..., ::2]
     $$
@@ -133,6 +137,7 @@
     $$
 
     2、**rope模式**：positions的shape输入是[numTokens]：
+    
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -150,6 +155,7 @@
     $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
+
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -171,6 +177,7 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
+    
     $$
     x1 = queryRot[..., ::2]
     $$
@@ -224,7 +231,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
 
 ## aclnnRopeWithSinCosCacheGetWorkspaceSize
 
--   **参数说明**：
+- **参数说明**：
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
       <col style="width: 170px">
@@ -360,7 +367,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
       </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -397,15 +404,24 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <tr>
         <td>输入属性和输入tensor之间的shape信息不匹配。</td>
         </tr>
+        <tr>
+        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
+        <td rowspan="2"> 361001 </td>
+        <td>query或者key非64B对齐。</td>
+        </tr>
+        <tr>
+        <td>rotaryDim>headSize。</td>
+        </tr>
     </tbody></table>
 
 ## aclnnRopeWithSinCosCache
 
--   **参数说明：**
+- **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1030px"> <colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -435,11 +451,12 @@ aclnnStatus aclnnRopeWithSinCosCache(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnRopeWithSinCosCache默认确定性实现。
 - queryIn、keyIn、cosSinCache只支持2维shape输入。
@@ -450,7 +467,9 @@ aclnnStatus aclnnRopeWithSinCosCache(
 - mrope模式下，mropeSection：取值当前仅支持[16, 24, 24]、[24, 20, 20]、[8, 12, 12]和[16, 16, 16, 16]。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 ```Cpp
 #include <iostream>
 #include <vector>

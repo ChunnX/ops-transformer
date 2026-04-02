@@ -38,6 +38,9 @@ public:
     __aicore__ inline void InitBuffers();
     __aicore__ inline void AllocEvents();
     __aicore__ inline void ReleaseEvents();
+    __aicore__ inline void InitOutputDqAndDweights(GlobalTensor<dataType> dweightsGmTensor, GlobalTensor<dataType> dqTensor,
+        LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo);
+    __aicore__ inline void InitOutputDkcoreGm(GlobalTensor<float> dkCoreWorkspaceGM, LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo);
     __aicore__ inline void GatherTopk(GlobalTensor<int32_t> sparseIndicesTensor, GlobalTensor<dataType> keyTensor,
         GlobalTensor<dataType> gatherKTensor, LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo);
     __aicore__ inline void ScatterAdd(GlobalTensor<int32_t> sparseIndicesTensor, GlobalTensor<float> scatterAddTensor,
@@ -101,6 +104,8 @@ protected:
 
     constexpr static int64_t reduceUbOffset = reduceFloatUbOffset + reduceFloatUbSize;
     constexpr static int64_t reduceUbSize = LIMIT_GROUPNUM * 2;
+
+    constexpr static int64_t MAX_UB_SIZE = TOTAL_SIZE / sizeof(float) / 2;
 
     TPipe *pipe;
     TBuf<> unifiedBuffer;
@@ -247,6 +252,9 @@ template <typename LIGT>
 __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseIndicesTensor, GlobalTensor<float> scatterAddTensor,
     GlobalTensor<float> dkWorkSpaceGmTensor, LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo)
 {
+    if (runInfo.realTopk <= 0) {
+        return;
+    }
     LocalTensor<int32_t> indiceUb = unifiedBuffer.GetWithOffset<int32_t>(indicesUbSize / sizeof(int32_t), indicesUbOffset);
     LocalTensor<float> gatherPingUb = unifiedBuffer.GetWithOffset<float>(gatherPingUbSize / sizeof(float), gatherPingUbOffset);
     LocalTensor<float> gatherPongUb = unifiedBuffer.GetWithOffset<float>(gatherPongUbSize / sizeof(float), gatherPongUbOffset);
@@ -305,55 +313,120 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
 }
 
 template <typename LIGT>
-__aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM, GlobalTensor<float> dkWorkSpaceGm,
-    const LIGCommon::ConstInfo &constInfo, const LIGCommon::RunInfo &runInfo)
+__aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM,GlobalTensor<float> dkWorkSpaceGm,
+	const LIGCommon::ConstInfo &constInfo, const LIGCommon::RunInfo &runInfo)
 {
     uint64_t determinLen = constInfo.determinLen;
     uint64_t determinBeginPos = constInfo.determinBeginPos;
     if (determinLen <= 0) {
         return;
     }
-    int64_t dkCoreWorkspaceUbSize = determinLen * constInfo.headDim;
-    LocalTensor<float> dkCoreWorkspaceUb = unifiedBuffer.GetWithOffset<float>(dkCoreWorkspaceUbSize, gatherPingUbOffset);
+
+    uint64_t maxTileRows = MAX_UB_SIZE / constInfo.headDim;
+    uint64_t stridePerRow = constInfo.headNumK * constInfo.headDim;
+    LocalTensor<float> dkCoreWorkspaceUb = unifiedBuffer.GetWithOffset<float>(MAX_UB_SIZE, gatherPingUbOffset);
+
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
-    for (int i = 0; i < constInfo.splitCores; i++) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
-        uint64_t dkCoreWorkspaceOffset;
-        if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-            // layout: [B, S2, N2, D] flattened
-            dkCoreWorkspaceOffset = i * constInfo.seqlenK * constInfo.headDim + determinBeginPos * constInfo.headDim;
-        } else { // TND
-            dkCoreWorkspaceOffset = i * runInfo.actualSeqK * constInfo.headDim + determinBeginPos * constInfo.headDim;
+    for (int core = 0; core < constInfo.splitCores; core++) {
+        uint64_t processed = 0;
+        while (processed < determinLen) {
+            uint64_t tileRows = maxTileRows < (determinLen - processed) ? maxTileRows : (determinLen - processed);
+            uint64_t dkCoreWorkspaceOffset;
+            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+                dkCoreWorkspaceOffset = core * constInfo.seqlenK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
+            } else {
+                dkCoreWorkspaceOffset = core * runInfo.actualSeqK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
+            }
+
+            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
+            DataCopy(dkCoreWorkspaceUb, dkCoreWorkspaceGM[dkCoreWorkspaceOffset], tileRows * constInfo.headDim);
+            AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
+            AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
+
+            uint64_t baseDkOffset;
+            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+                baseDkOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim;
+            } else {
+                // prefixSumS2 is number of previous tokens; target starts from prefixSumS2
+                baseDkOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim;
+            }
+
+            baseDkOffset += runInfo.n2Idx * constInfo.headDim;
+            uint64_t dkeyOffset = baseDkOffset + (determinBeginPos + processed) * stridePerRow;
+            DataCopyParams dataCopyParams;
+            dataCopyParams.blockCount = tileRows;
+            dataCopyParams.blockLen = constInfo.headDim * sizeof(float) / 32;
+            dataCopyParams.dstStride = (stridePerRow - constInfo.headDim) * sizeof(float) / 32;
+            dataCopyParams.srcStride = 0;
+
+            AscendC::SetAtomicAdd<float>();
+            DataCopy(dkWorkSpaceGm[dkeyOffset], dkCoreWorkspaceUb, dataCopyParams);
+            AscendC::SetAtomicNone();
+            AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
+            processed += tileRows;
         }
-        DataCopy(dkCoreWorkspaceUb, dkCoreWorkspaceGM[dkCoreWorkspaceOffset], dkCoreWorkspaceUbSize);
-
-        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
-        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
-
-        uint64_t baseDkOffset = 0;
-        if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-            // layout: [B, S2, N2, D] flattened
-            baseDkOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim;
-        } else { // TND
-            // prefixSumS2 is number of previous tokens; target starts from prefixSumS2
-            baseDkOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim;
-        }
-        baseDkOffset += runInfo.n2Idx * constInfo.headDim;
-        uint64_t dkeyOffset;
-        const uint64_t stridePerRow = constInfo.headNumK * constInfo.headDim;
-        DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = determinLen;
-        dataCopyParams.blockLen = constInfo.headDim * sizeof(float) / 32;
-        dataCopyParams.dstStride = (stridePerRow - constInfo.headDim) * sizeof(float) / 32;
-        dataCopyParams.srcStride = 0;
-
-        dkeyOffset = baseDkOffset + determinBeginPos * stridePerRow;
-        AscendC::SetAtomicAdd<float>();
-        DataCopy(dkWorkSpaceGm[dkeyOffset], dkCoreWorkspaceUb, dataCopyParams);
-        AscendC::SetAtomicNone();
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
     }
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
+}
+
+template <typename LIGT>
+__aicore__ inline void LIGVector<LIGT>::InitOutputDqAndDweights(GlobalTensor<dataType> dweightsGmTensor, GlobalTensor<dataType> dqTensor,
+    LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo)
+{
+    uint32_t maxLen = constInfo.groupNum * constInfo.headDim;
+    LocalTensor<dataType> zeroDataTensor = unifiedBuffer.GetWithOffset<dataType>(maxLen, reluInPingUbOffset);
+
+    uint64_t blockGroupBegin = (GetBlockIdx() % 2 == 0) ? 0 : constInfo.groupNum / 2;
+    uint64_t blockGroupNum = (GetBlockIdx() % 2 == 0) ? constInfo.groupNum / 2 : (constInfo.groupNum + 1) / 2;
+
+    uint32_t dweightsGmOffset;
+    uint32_t dqGmOffset;
+    if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+        dweightsGmOffset = runInfo.bIdx * constInfo.seqlenQ * constInfo.headNumQ + runInfo.s1Idx *
+            constInfo.headNumQ + runInfo.n2Idx * constInfo.groupNum + blockGroupBegin;
+        dqGmOffset = runInfo.bIdx * constInfo.seqlenQ * constInfo.headNumQ * constInfo.headDim +
+            runInfo.s1Idx * constInfo.headNumQ * constInfo.headDim + runInfo.n2Idx * constInfo.groupNum * constInfo.headDim +
+            blockGroupBegin * constInfo.headDim;
+    } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
+        dweightsGmOffset = (runInfo.prefixSumS1 + runInfo.s1Idx) * constInfo.headNumQ + runInfo.n2Idx *
+            constInfo.groupNum + blockGroupBegin;
+        dqGmOffset = (runInfo.prefixSumS1 + runInfo.s1Idx) * constInfo.headNumQ * constInfo.headDim +
+            runInfo.n2Idx * constInfo.groupNum * constInfo.headDim + blockGroupBegin * constInfo.headDim;
+    }
+
+    AscendC::Duplicate(zeroDataTensor, static_cast<dataType>(0.0), maxLen);
+    AscendC::SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+    AscendC::WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+    AscendC::DataCopy(dweightsGmTensor[dweightsGmOffset], zeroDataTensor, blockGroupNum);
+    AscendC::DataCopy(dqTensor[dqGmOffset], zeroDataTensor, blockGroupNum * constInfo.headDim);
+    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+}
+
+template <typename LIGT>
+__aicore__ inline void LIGVector<LIGT>::InitOutputDkcoreGm(GlobalTensor<float> dkCoreWorkspaceGM, LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo)
+{
+    uint32_t dkCorePerSize;
+    if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+        dkCorePerSize =  constInfo.seqlenK * constInfo.headDim / 2;
+    } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
+        dkCorePerSize =  runInfo.actualSeqK * constInfo.headDim / 2;
+    }
+
+    LocalTensor<float> zeroDataTensor = unifiedBuffer.GetWithOffset<float>(MAX_UB_SIZE, gatherPingUbOffset);
+    AscendC::Duplicate(zeroDataTensor, static_cast<float>(0.0), MAX_UB_SIZE);
+    AscendC::SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+    AscendC::WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+
+    uint64_t processed = 0;
+    while (processed < dkCorePerSize) {
+        uint64_t curBlockSize = MAX_UB_SIZE < (dkCorePerSize - processed) ? MAX_UB_SIZE : (dkCorePerSize - processed);
+        AscendC::DataCopy(dkCoreWorkspaceGM[GetBlockIdx() * dkCorePerSize + processed], zeroDataTensor, curBlockSize);
+        processed += curBlockSize;
+    }
+
+    AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
 }
 
 // reluGrad calc elements num should be devided by two block in groupNum axis

@@ -11,13 +11,11 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
-
 ## 功能说明
 
--   **接口功能**：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
+- **接口功能**：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
 
--   **计算公式**：根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
+- **计算公式**：根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
 
   $$
    selectedKey\text{ }=\text{ }Gather \left( key,topkIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
@@ -51,7 +49,6 @@
    d\mathop{{S}}\nolimits_{{t,:}}= \left[ P\mathop{{}}\nolimits_{{t,:}}@ \left( dP\mathop{{}}\nolimits_{{t,:}}-FlashSoftmaxGrad \left( dO,O \left)  \left)  \right] \right. \right. \right. \right.
   $$
 
-
 <div style="padding-left:40px;">
 
    阶段3：计算$dQ$与$dK$:
@@ -66,11 +63,10 @@
    dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
   $$
 
-
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
+
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *query, 
@@ -100,6 +96,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t            *workspaceSize,
     aclOpExecutor      **executor)
 ```
+
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGrad(
     void             *workspace, 
@@ -218,8 +215,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>softmaxMax</td>
             <td>输入</td>
             <td>注意力正向计算的中间输出。</td>
-            <td>
-            -
+            <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
@@ -231,8 +227,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>softmaxSum</td>
             <td>输入</td>
             <td>注意力正向计算的中间输出。</td>
-            <td>
-            -
+            <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)
@@ -248,6 +243,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
                 <li>累加和与T1保持一致。</li>
+                <li>取值须为非负数，传入负值可能触发芯片告警（alarm）。</li>
             </ul>
             </td>
             <td>INT32</td>
@@ -302,9 +298,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>scaleValue</td>
             <td>输入</td>
             <td>缩放系数。</td>
-            <td>
-            建议值：公式中d开根号的倒数。</li>
-            </td>
+            <td>建议值：公式中d开根号的倒数。</td>
             <td>FLOAT32</td>
             <td>N/A</td>
             <td>-</td>
@@ -494,9 +488,13 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
                 <td>361001</td>
                 <td>API内存调用npu runtime的接口异常。</td>
             </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+                <td>561002</td>
+                <td>输入参数（如layout、sparseMode）的取值超出支持范围，或输入Tensor的shape维度不符合约束要求。</td>
+            </tr>
         </tbody>
     </table>
-
 
 ## aclnnSparseFlashAttentionGrad
 
@@ -541,7 +539,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -549,6 +546,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 - 公共约束
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
+    - 当前只支持value和key完全一致的场景。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -666,7 +664,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
             <td>K</td>
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
-            <td>-</td>
+            <td>A2/A3：不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
             <td>layout</td>
@@ -675,7 +673,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         </tbody>
     </table>
-
 
 ## 调用示例
 
@@ -855,9 +852,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(actSeqKvLenHostData, actSeqKvLenshape, &actSeqKvLenDeviceAddr, aclDataType::ACL_INT32, &actSeqKvLen);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(qRopeHostData, qRopeShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &qRope);
+  ret = CreateAclTensor(qRopeHostData, qRopeShape, &qRopeDeviceAddr, aclDataType::ACL_FLOAT16, &qRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kRopeHostData, kRopeShape, &dkDeviceAddr, aclDataType::ACL_FLOAT16, &kRope);
+  ret = CreateAclTensor(kRopeHostData, kRopeShape, &kRopeDeviceAddr, aclDataType::ACL_FLOAT16, &kRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dqHostData, qShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &dq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);

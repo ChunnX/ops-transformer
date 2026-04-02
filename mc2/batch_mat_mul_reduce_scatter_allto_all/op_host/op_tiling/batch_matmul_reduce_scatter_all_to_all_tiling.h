@@ -19,7 +19,7 @@
 #pragma once
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "tiling/mc2_tiling_struct.h"
+#include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "../../op_kernel/batch_mat_mul_reduce_scatter_allto_all_tiling_struct.h"
 #include "../../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h"
 

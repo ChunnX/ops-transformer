@@ -2,7 +2,6 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/apply_rotary_pos_emb)
 
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -14,11 +13,10 @@
 | <term>Atlas 推理系列产品</term>                             |    √     |
 | <term>Atlas 训练系列产品</term>                              |    x     |
 
-
 ## 功能说明
 
--  接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
--  计算公式：
+- 接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
+- 计算公式：
 
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
@@ -79,16 +77,16 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1557px">
+  <table style="undefined;table-layout: fixed; width: 1576px">
   <colgroup>
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 250px">
-    <col style="width: 300px">
-    <col style="width: 180px">
-    <col style="width: 80px">
-    <col style="width: 100px">
-    <col style="width: 100px">
+    <col style="width: 157px">
+    <col style="width: 125px">
+    <col style="width: 282px">
+    <col style="width: 319px">
+    <col style="width: 196px">
+    <col style="width: 122px">
+    <col style="width: 230px">
+    <col style="width: 145px">
   </colgroup>
   <tr>
     <th align="center">参数名</th>
@@ -212,9 +210,9 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   第一段接口完成入参校验，出现以下场景时报错：
   <table>
   <tr>
-  <td align="center">返回值</td>
-  <td align="center">错误码</td>
-  <td align="center">描述</td>
+  <td align="center" style="width:169px;">返回值</td>
+  <td align="center" style="width:125px;">错误码</td>
+  <td align="center" style="width:855px;">描述</td>
   </tr>
   <tr>
   <td align="left">ACLNN_ERR_PARAM_NULLPTR</td>
@@ -233,11 +231,11 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1557px">
+  <table style="undefined;table-layout: fixed; width: 1149px">
   <colgroup>
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 600px">
+    <col style="width: 169px">
+    <col style="width: 125px">
+    <col style="width: 855px">
   </colgroup>
   <tr>
     <th align="center">参数名</th>
@@ -293,7 +291,6 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   - 对于任意layout，queryRef与keyRef除N维度外其他维度必须相同；queryRef、keyRef输入shape的最后一维（D）必须相等，cos、sin输入shape的最后一维（D）必须相等，且小于等于queryRef、keyRef输入shape的最后一维（D）。
   - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
   - rotaryMode为"half"和"interleave"时，输入shape最后一维必须被2整除；rotaryMode为"quarter"时，输入shape最后一维必须被4整除。
-
 
 ## 调用示例
 

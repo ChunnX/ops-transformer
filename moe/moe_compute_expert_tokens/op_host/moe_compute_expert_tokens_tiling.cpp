@@ -99,7 +99,7 @@ static bool CheckParamsShape(const gert::TilingContext* context)
     int32_t dtypeSize = ge::GetSizeByDataType(sortedExpertType);
 
     auto attrs = context->GetAttrs();
-    auto numOfExpert = *(attrs->GetAttrPointer<int32_t>(0));
+    auto numOfExpert = *(attrs->GetAttrPointer<int64_t>(0));
 
     OP_CHECK_IF(
         sortedExpertShape.GetDimNum() != SHAPE_SIZE,
@@ -346,9 +346,9 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
     // 获取numExpert的输入数据的属性
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int32_t* numOfExpertPtr = attrs->GetAttrPointer<int32_t>(0);
+    const int64_t* numOfExpertPtr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, numOfExpertPtr);
-    const int32_t numOfExpert = *numOfExpertPtr;
+    const int64_t numOfExpert = *numOfExpertPtr;
     tilingData.set_numOfExpert(numOfExpert);
     OP_CHECK_IF(
         tilingData.get_numOfExpert() > E_BOUND_NUM_UP_LIMIT,

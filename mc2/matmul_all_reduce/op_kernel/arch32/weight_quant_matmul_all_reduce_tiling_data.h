@@ -19,10 +19,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 #ifdef __CCE_KT_TEST__
-#include "../../../common/inc/kernel/mc2_tiling_struct.h"
+#include "../../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 #else
-#include "../../common/inc/kernel/mc2_tiling_struct.h"
+#include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 #endif
 namespace Mc2Tiling {

@@ -18,8 +18,8 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
-#include "tiling/mc2_tiling_utils.h"
-#include "tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "../../op_kernel/arch35/matmul_reduce_scatter_v2_c_tiling.h"
 
 namespace optiling {
@@ -62,6 +62,7 @@ protected:
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64) const;
     ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling& rcsCfg);
+    CutResult GetTilingResult();
     uint32_t GetRankSize(const char* group) const;
     void Reset();
     bool ReduceScatterCheckShapeInfo();
@@ -86,6 +87,7 @@ protected:
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;
     NpuArch npuArch_;
+    bool isA2APath_;
     const char* opName_ = nullptr;
     int64_t rankSize_{0};
     uint64_t tileMValue_{0};   // mc2 切块后主块M的大小；

@@ -16,7 +16,7 @@
 #define __ALL_GATHER_FIT_BALANCE_TILING_H__
 
 #pragma once
-#include "tiling/mc2_fit_based_balance_tiling.h"
+#include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 
 class AllGatherMMFitBalanceTiling : public Mc2FitBasedBalanceTiling
 {
@@ -29,7 +29,7 @@ public:
     {
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
         commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
-        tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankTileNum_));
+        tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
     }
 

@@ -12,8 +12,6 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#define __aicore__
-
 struct ApplyRotaryPosEmbTilingData {
     int64_t useCoreNum = 0;
     int64_t lastDim = 0;

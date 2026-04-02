@@ -52,7 +52,8 @@ def count_opnames(sh_filenames):
         op_name = parse_opname_from_filename(filename)
         if op_name is not None:
             opname_to_count[op_name] = opname_to_count.get(op_name, 0) + 1
-    return opname_to_count
+    opname_to_count_sorted = dict(sorted(opname_to_count.items()))
+    return opname_to_count_sorted
 
 
 def grouped(gen_path, soc, group_size):
@@ -95,8 +96,54 @@ def grouped(gen_path, soc, group_size):
     return result
 
 
+def grouped_back(gen_path, soc, group_size):
+    result: list[list[str]] = [[] for _ in range(group_size)]
+    if not os.path.isdir(gen_path):
+        return result
+    sh_files = get_sh_files(gen_path)
+    op_counts = count_opnames(sh_files)
+
+    added_op_levels = set()
+    special_task_parts = []
+    current_group_index = 0
+
+    for op_name, count in op_counts.items():
+        op_name_real = op_name
+        if soc == 'ascend950' and op_name.endswith('_apt'):
+            op_name_real = op_name.replace('_apt', '')
+        elif op_name in ('allto_all_matmul_apt', 'matmul_allto_all_apt'):
+            op_name_real = op_name.replace('_apt', '')
+
+        if op_name_real in black_list:
+            continue
+        if op_name_real in op_level_list:
+            if op_name_real not in added_op_levels:
+                added_op_levels.add(op_name_real)
+                special_task_parts.append(str(op_name_real))
+            continue
+        if count >= group_size:
+            for i in range(group_size):
+                row_string = f"{op_name_real},{group_size}-{i}"
+                result[current_group_index].append(row_string)
+                current_group_index = (current_group_index + 1) % group_size
+        else:
+            for i in range(count):
+                row_string = f"{op_name_real},{count}-{i}"
+                result[current_group_index].append(row_string)
+                current_group_index = (current_group_index + 1) % group_size
+
+    if special_task_parts:
+        special_task = ','.join(special_task_parts)
+        result[current_group_index].append(special_task)
+
+    return result
+
+
 def main(repository_path, soc, group_size=1):
     project_path = os.path.abspath(repository_path)
     gen_path = os.path.abspath(os.path.join(project_path, "build", "binary", soc, "gen"))
-    op_data = grouped(gen_path, soc, group_size)
+    if group_size > 1:
+        op_data = grouped_back(gen_path, soc, group_size)
+    else:
+        op_data = grouped(gen_path, soc, group_size)
     return op_data

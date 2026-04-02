@@ -30,6 +30,7 @@ public:
     uint32_t headDim;
     uint32_t usedCoreNum;
     int64_t dkSize;
+    int64_t dkCoreSize;
     int64_t dkWorkSpaceOffset;
     int64_t dkCoreWorkspaceOffset;
     int64_t keyGatherWorkspaceOffset;
@@ -69,26 +70,47 @@ public:
     float get_usedCoreNum() const { return usedCoreNum; }
     void set_usedCoreNum(float usedCoreNum) { this->usedCoreNum = usedCoreNum; }
 
-    uint32_t get_dkSize() const { return dkSize; }
-    void set_dkSize(uint32_t dkSize) { this->dkSize = dkSize; }
+    int64_t get_dkSize() const { return dkSize; }
+    void set_dkSize(int64_t dkSize) { this->dkSize = dkSize; }
 
-    uint32_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
-    void set_dkWorkSpaceOffset(uint32_t dkWorkSpaceOffset) { this->dkWorkSpaceOffset = dkWorkSpaceOffset; }
+    int64_t get_dkCoreSize() const { return dkCoreSize; }
+    void set_dkCoreSize(int64_t dkCoreSize) { this->dkCoreSize = dkCoreSize; }
 
-    uint32_t get_dkCoreWorkspaceOffset() const { return dkCoreWorkspaceOffset; }
-    void set_dkCoreWorkspaceOffset(uint32_t dkCoreWorkspaceOffset) { this->dkCoreWorkspaceOffset = dkCoreWorkspaceOffset; }
+    int64_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
+    void set_dkWorkSpaceOffset(int64_t dkWorkSpaceOffset)
+    {
+        this->dkWorkSpaceOffset = dkWorkSpaceOffset;
+    }
 
-    uint32_t get_keyGatherWorkspaceOffset() const { return keyGatherWorkspaceOffset; }
-    void set_keyGatherWorkspaceOffset(uint32_t keyGatherWorkspaceOffset) { this->keyGatherWorkspaceOffset = keyGatherWorkspaceOffset; }
+    int64_t get_dkCoreWorkspaceOffset() const { return dkCoreWorkspaceOffset; }
+    void set_dkCoreWorkspaceOffset(int64_t dkCoreWorkspaceOffset)
+    {
+        this->dkCoreWorkspaceOffset = dkCoreWorkspaceOffset;
+    }
 
-    uint32_t get_reluInWorkspaceOffset() const { return reluInWorkspaceOffset; }
-    void set_reluInWorkspaceOffset(uint32_t reluInWorkspaceOffset) { this->reluInWorkspaceOffset = reluInWorkspaceOffset; }
+    int64_t get_keyGatherWorkspaceOffset() const { return keyGatherWorkspaceOffset; }
+    void set_keyGatherWorkspaceOffset(int64_t keyGatherWorkspaceOffset)
+    {
+        this->keyGatherWorkspaceOffset = keyGatherWorkspaceOffset;
+    }
 
-    uint32_t get_reluGradWorkspaceOffset() const { return reluGradWorkspaceOffset; }
-    void set_reluGradWorkspaceOffset(uint32_t reluGradWorkspaceOffset) { this->reluGradWorkspaceOffset = reluGradWorkspaceOffset; }
+    int64_t get_reluInWorkspaceOffset() const { return reluInWorkspaceOffset; }
+    void set_reluInWorkspaceOffset(int64_t reluInWorkspaceOffset)
+    {
+        this->reluInWorkspaceOffset = reluInWorkspaceOffset;
+    }
 
-    uint32_t get_scatterAddWorkspaceOffset() const { return scatterAddWorkspaceOffset; }
-    void set_scatterAddWorkspaceOffset(uint32_t scatterAddWorkspaceOffset) { this->scatterAddWorkspaceOffset = scatterAddWorkspaceOffset; }
+    int64_t get_reluGradWorkspaceOffset() const { return reluGradWorkspaceOffset; }
+    void set_reluGradWorkspaceOffset(int64_t reluGradWorkspaceOffset)
+    {
+        this->reluGradWorkspaceOffset = reluGradWorkspaceOffset;
+    }
+
+    int64_t get_scatterAddWorkspaceOffset() const { return scatterAddWorkspaceOffset; }
+    void set_scatterAddWorkspaceOffset(int64_t scatterAddWorkspaceOffset)
+    {
+        this->scatterAddWorkspaceOffset = scatterAddWorkspaceOffset;
+    }
 
     uint32_t get_sparseMode() const { return sparseMode; }
     void set_sparseMode(uint32_t sparseMode) { this->sparseMode = sparseMode; }
@@ -103,6 +125,7 @@ public:
         set_seqlenK(0);
         set_topK(0);
         set_headNumQ(0);
+        set_dkCoreSize(0);
         set_scatterAddWorkspaceOffset(0);
         set_reluGradWorkspaceOffset(0);
         set_reluInWorkspaceOffset(0);

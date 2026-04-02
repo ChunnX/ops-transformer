@@ -45,6 +45,8 @@ namespace ge {
 * @li d_scale_v: A matrix Tensor. An optional input parameter. The type support float32.
 * @li queryRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
 * @li keyRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
+* @li sink: A matrix Tensor. An optional input parameter. The type support float32.
+* @li p_scale: A matrix Tensor. An optional input parameter. The type support float32.
 
 * @par Attributes:
 * @li scale_value: A float. The scale value. Default: 1.0.
@@ -88,6 +90,7 @@ REG_OP(FlashAttentionScore)
     .OPTIONAL_INPUT(d_scale_v, TensorType({DT_FLOAT32}))
     .OPTIONAL_INPUT(query_rope, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))
     .OPTIONAL_INPUT(key_rope, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))
+    .OPTIONAL_INPUT(sink, TensorType({DT_FLOAT32}))
     .OPTIONAL_INPUT(p_scale, TensorType({DT_FLOAT32}))
     .OUTPUT(softmax_max, TensorType({DT_FLOAT32}))
     .OUTPUT(softmax_sum, TensorType({DT_FLOAT32}))

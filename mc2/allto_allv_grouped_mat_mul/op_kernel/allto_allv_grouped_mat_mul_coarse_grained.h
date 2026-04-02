@@ -110,7 +110,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
     const void *hcclInitTilingV2 = &(tilingData_->hcclInitTiling);
     uint64_t hcclCcTilingOffset = offsetof(AlltoAllvGmmTilingData, alltoAllvCcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
-    hccl_.SetCcTilingV2(hcclCcTilingOffset); 
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
     rankId_ = hccl_.GetRankId();
     rankDim_ = hccl_.GetRankDim();
 

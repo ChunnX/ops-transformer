@@ -54,17 +54,29 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
     MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::Init(
         unpermuted_tokens_grad, outIndex, permuteTokenId, routing_map, permuted_tokens, probs, permuted_tokens_grad,
         probs_grad, tiling_data);
+    int64_t taskNum = this->tokensNum * this->numExpert;
+    if (taskNum > 0) {
+        int64_t totalCoreNum = this->tailCoreNum + this->formerCoreNum;
+        int64_t initProbNumPerCore = taskNum / totalCoreNum;
+        int64_t initFormerCoreNum = taskNum % totalCoreNum;
+        int64_t initNum = this->coreIndex < initFormerCoreNum ? initProbNumPerCore + 1 : initProbNumPerCore;
+        if (initNum > 0) {
+            int64_t initAddr = this->coreIndex < initFormerCoreNum
+                ? (initProbNumPerCore + 1) * this->coreIndex
+                : (initProbNumPerCore + 1) * initFormerCoreNum
+                    + (this->coreIndex - initFormerCoreNum) * initProbNumPerCore;
+            GlobalTensor<ProbsT> probGradInitGm;
+            probGradInitGm.SetGlobalBuffer((__gm__ ProbsT*)probs_grad + initAddr);
+            Fill(probGradInitGm, initNum, static_cast<ProbsT>(0));
+        }
+        SyncAll();
+    }
     // 申请2块空间手动double buffer
     this->pipe.InitBuffer(unpermutedGradTQue, DOUBLE_BUFFER, this->hiddenSizeAlign * SIZE_FLOAT);
     this->pipe.InitBuffer(permutedTokensTQue, DOUBLE_BUFFER, this->hiddenSizeAlign * SIZE_FLOAT);
     this->pipe.InitBuffer(probGradReduceSumTBuf, this->hiddenSizeLoopTimesAlign * SIZE_FLOAT);
     this->pipe.InitBuffer(permutedTokensGradTQue, DOUBLE_BUFFER, this->hiddenSizeAlign * this->inputTypeSize);
     this->pipe.InitBuffer(probGradOutTBuf, BLOCK_SIZE_32);
-
-    InitOutput<ProbsT>(
-        this->probGradGm[this->unpermutedOutputDStartOffset * this->numExpert], this->tokensNum * this->numExpert,
-        ProbsT(0));
-    SyncAll();
 }
 
 template <typename PermutedTokenT, typename IdxT, typename ProbsT>

@@ -30,8 +30,40 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
 
-// 公共校验函数
-bool RopeChecker::CheckDimSupport(const FiaTilingInfo &fiaInfo)
+// check rope dtype
+ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF((fiaInfo.inputQRopeType != ge::DT_BF16 && fiaInfo.inputQRopeType != ge::DT_FLOAT16),
+        OP_LOGE(fiaInfo.opName,
+        "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16.",
+        DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((fiaInfo.inputKRopeType != ge::DT_BF16 && fiaInfo.inputKRopeType != ge::DT_FLOAT16),
+        OP_LOGE(fiaInfo.opName,
+        "When rope exist, the datatype(%s) of keyRope only support BF16 or FLOAT16.",
+        DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// check rope DSize
+ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF((fiaInfo.ropeHeadDim != NUM_64),
+        OP_LOGE(fiaInfo.opName,
+            "When rope exist, the d size of rope must be 64, but current is %u.", fiaInfo.ropeHeadDim),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF((fiaInfo.qkHeadDim != 128 && fiaInfo.qkHeadDim != 512),
         OP_LOGE(fiaInfo.opName,
@@ -40,20 +72,10 @@ bool RopeChecker::CheckDimSupport(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-bool RopeChecker::CheckRopeDimSupport(const FiaTilingInfo &fiaInfo)
-{
-    OP_CHECK_IF((fiaInfo.ropeHeadDim != NUM_64),
-        OP_LOGE(fiaInfo.opName,
-            "When rope exist, the d size of rope must be 64, but current is %u.", fiaInfo.ropeHeadDim),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus RopeChecker::CheckShapeSupport(const FiaTilingInfo &fiaInfo)
 {
     // check qk head dim and rope head dim
-    if (ge::GRAPH_SUCCESS != CheckDimSupport(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckRopeDimSupport(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckQDsizeSupport(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
 
@@ -75,22 +97,9 @@ ge::graphStatus RopeChecker::CheckShapeSupport(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-// check rope dtype (Q/K) fp16、bf16
-ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
+// check rope dtype 与 query/key的数据类型一致
+ge::graphStatus RopeChecker::CheckRopeDtypeConsistency(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF((fiaInfo.inputQRopeType != ge::DT_BF16 && fiaInfo.inputQRopeType != ge::DT_FLOAT16),
-        OP_LOGE(fiaInfo.opName,
-        "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16.",
-        DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF((fiaInfo.inputKRopeType != ge::DT_BF16 && fiaInfo.inputKRopeType != ge::DT_FLOAT16),
-        OP_LOGE(fiaInfo.opName,
-        "When rope exist, the datatype(%s) of keyRope only support BF16 or FLOAT16.",
-        DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
-        return ge::GRAPH_FAILED);
-    
-    // rope 与 query/key的数据类型一致
     if (enableNonQuant_) {
         OP_CHECK_IF((fiaInfo.inputQRopeType != fiaInfo.inputQType),
             OP_LOGE(fiaInfo.opName, "The datatype of query rope(%s) should be equal to query(%s).",
@@ -98,7 +107,8 @@ ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.inputKRopeType != fiaInfo.inputKvType),
             OP_LOGE(fiaInfo.opName, "The datatype of key rope(%s) should be equal to key(%s).",
-            DataTypeToSerialString(fiaInfo.inputKRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+            DataTypeToSerialString(fiaInfo.inputKRopeType).c_str(),
+            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -194,7 +204,7 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyBlockSize != keyRopeBlockSize,
         OP_LOGE(fiaInfo.opName,
-            "When page attention enable, the axis blockSzie of keyRope(%u) should be equal to key(%u).",
+            "When page attention enable, the axis blockSize of keyRope(%u) should be equal to key(%u).",
             keyRopeBlockSize, keyBlockSize),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyN != keyRopeN,
@@ -269,41 +279,51 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo)
         OP_LOGI(fiaInfo.opName, "Rope mode is ROPE_SPLIT.");
         OP_CHECK_IF((queryRopeTensor == nullptr || keyRopeTensor == nullptr),
             OP_LOGE(fiaInfo.opName,
-            "When rope exsists, queryRope or keyRope should not be null."),
+            "When rope exists, queryRope or keyRope should not be null."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckFeatureExistence(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
         return ge::GRAPH_SUCCESS;
     }
     // 不支持 prefix
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-        OP_LOGE(fiaInfo.opName, "When rope exsists, system prefix is not supported."),
+        OP_LOGE(fiaInfo.opName, "When rope exists, system prefix is not supported."),
                 return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(fiaInfo.pseShiftFlag,
+        OP_LOGE(fiaInfo.opName,
+                "When rope exists, pse is not supported."),
+            return ge::GRAPH_FAILED);
     
     // 不支持alibepse
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
-        OP_LOGE(fiaInfo.opName, "When rope exsists, pseType = 2/3 is not supported."),
+        OP_LOGE(fiaInfo.opName, "When rope exists, pseType = 2/3 is not supported."),
         return ge::GRAPH_FAILED);
+    
+    if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
+        // 不支持左padding
+        OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
+            OP_LOGE(fiaInfo.opName, "When rope exsists, leftPadding is not supported."),
+            return ge::GRAPH_FAILED);
+        // 不支持tensorlist
+        OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
+            OP_LOGE(fiaInfo.opName, "When rope exsists, tensorlist is not supported."),
+            return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo)
 {
-    // d=512, 不支持左padding, tensorlist, pse
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return ge::GRAPH_SUCCESS;
     }
-
-    OP_CHECK_IF(fiaInfo.pseShiftFlag,
-        OP_LOGE(fiaInfo.opName,
-                "In the Decode MLA scenario, pse is not supported."),
-            return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
         OP_LOGE(fiaInfo.opName,
@@ -318,22 +338,48 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-// MLA D=512时  S1：1-16 N:1/2/4/8/16/32/64/128
-ge::graphStatus RopeChecker::CheckAxisSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo)
+{
+    // 不支持伪量化
+    OP_CHECK_IF(fiaInfo.opParamInfo.queryRope.tensor != nullptr || fiaInfo.opParamInfo.keyRope.tensor != nullptr,
+        OP_LOGE(fiaInfo.opName,
+                "Rope is not supported in antiquant scenario."),
+            return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// check QS size
+ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 || fiaInfo.isMaxWorkspace) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // 全量化场景下 QS仅支持1-16
+    constexpr uint32_t maxQuerySeqLenForMLAFullquant = 16U;
+    
+
+    OP_CHECK_IF((fiaInfo.s1Size < NUM1),
+        OP_LOGE(fiaInfo.opName,
+            "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0.",
+            fiaInfo.s1Size),
+        return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(enableFullQuant_ && (fiaInfo.s1Size > maxQuerySeqLenForMLAFullquant),
+        OP_LOGE(fiaInfo.opName,
+            "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u].",
+            fiaInfo.s1Size, maxQuerySeqLenForMLAFullquant),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// Decode MLA N1:1/2/4/8/16/32/64/128 N2:1
+ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return ge::GRAPH_SUCCESS;
     }
-
-    constexpr uint32_t maxQuerySeqLenForMLA = 16U;
     static const std::set<uint32_t> supportNumHeadForMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-
-    OP_CHECK_IF((fiaInfo.s1Size < NUM1 || fiaInfo.s1Size > maxQuerySeqLenForMLA),
-        OP_LOGE(fiaInfo.opName,
-            "In the Decode MLA scenario, sequence length(%u) of query only support [1, %u].",
-            fiaInfo.s1Size, maxQuerySeqLenForMLA),
-        return ge::GRAPH_FAILED);
-
     OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
         OP_LOGE(fiaInfo.opName,
             "In the Decode MLA scenario, "
@@ -348,101 +394,62 @@ ge::graphStatus RopeChecker::CheckAxisSupport(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-// check attenOut dtype
-ge::graphStatus RopeChecker::CheckOutDtypeSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckAxisSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
-        return ge::GRAPH_SUCCESS;
+    if (ge::GRAPH_SUCCESS != CheckQSSize(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckNSize(fiaInfo)) {
+        return ge::GRAPH_FAILED;
     }
-
-    OP_CHECK_IF((!enableFullQuant_ && fiaInfo.inputQType != fiaInfo.outputType),
-        OP_LOGE(fiaInfo.opName,
-            "In the Decode MLA scenario, the attenOut datatype(%s) and query datatype(%s) should be equal.",
-            DataTypeToSerialString(fiaInfo.outputType).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()),
-        return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus RopeChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin RopeChecker::CheckSinglePara!");
-
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
+    if (ge::GRAPH_SUCCESS != CheckRopeDtype(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckRopeDSizeSupport(fiaInfo)) {
+        return ge::GRAPH_FAILED;
     }
-    OP_LOGI(fiaInfo.opName, "End RopeChecker::CheckSinglePara!");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus RopeChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin RopeChecker::CheckParaExistence!");
-
-    if (ge::GRAPH_SUCCESS != CheckRopeExistence(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckFeatureExistence(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckRopeExistence(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
-
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
-    }
-    OP_LOGI(fiaInfo.opName, "End RopeChecker::CheckParaExistence!");
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "Begin RopeChecker::CheckFeature!");
-
-    if (ge::GRAPH_SUCCESS != CheckFeatureSupport(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-    }
-
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
-    }
-    
-    OP_LOGI(fiaInfo.opName, "End RopeChecker::CheckFeature!");
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus RopeChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
-{
-    OP_LOGI(fiaInfo.opName, "Begin RopeChecker::CheckMultiPara!");
-
     if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
         return ge::GRAPH_SUCCESS;
     }
+    if (ge::GRAPH_SUCCESS != CheckFeatureSupport(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckFeatureDecodeMLA(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+    }
 
     if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckRopeDtype(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckOutDtypeSupport(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckRopeDtypeConsistency(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
-   
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
-    }
-    OP_LOGI(fiaInfo.opName, "End RopeChecker::CheckMultiPara!");
 
+    if (enableAntiQuant_) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureAntiQuant(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        };
+    }
+    
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus RopeChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
+        return ge::GRAPH_SUCCESS;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -83,7 +83,7 @@ def check_topk(target_path: str, moe_num_func: int, bs_func: int, sp_moe_num_fun
             check_mask(mask, moe_num_func, expert_ids_reshape)
             return k_func, expert_ids_reshape
     logging.warning('1.3 该卡未发现输入expertids对应的input.1.bin文件, 无法分析输入expertids')
-    return k_func, []
+    return k_func, np.array([])
 
 
 #获取a
@@ -126,39 +126,57 @@ def get_local_expert_num(moe_num_func: int, share_expert_card_count_func: int, c
 
 
 #根据expertids计算epsendcnt
-def count_epsendcnt(ep_worldsize_func: int, tp_worldsize_func: int, local_expert_num_func: int, expertids_func):
-    shape_func = ep_worldsize_func * tp_worldsize_func * local_expert_num_func
-    expert_count = np.zeros(shape_func, dtype=int)
-    all_expertids = expertids_func.flatten()
-    for expert_id_func in all_expertids:
-        if 0 <= expert_id_func < shape_func:
-            expert_count[expert_id_func] += 1
-    epsendcnt_func = np.cumsum(expert_count)
-    logging.info('1.5 该卡根据输入experids计算得到的epsendcnt为:%s', epsendcnt_func)
-    logging.info('1.5 该epsendcnt大小为:%d', shape_func)
-    return epsendcnt_func
+def count_all_card_epsendcnt(all_card_expertids_func, all_local_expetrnum_func):
+    cards = sorted(all_card_expertids_func.keys(), key=lambda x: int(x))
+    current_id = 0
+    card_id_experts = {}
+    for card in cards:
+        num = all_local_expetrnum_func[card]
+        card_id_experts[card] = list(range(current_id, current_id + num))
+        current_id += num   
+    all_expertids = []
+    for per_expertids in all_card_expertids_func.values():
+        for arr_func in per_expertids:
+            all_expertids.extend(arr_func)
+    result = {}
+    for card in cards:
+        expert_idx = card_id_experts[card]
+        count_list = [all_expertids.count(e) for e in expert_idx]
+        cumulative = []
+        total = 0
+        for num in count_list:
+            total += num
+            cumulative.append(total)
+        result[card] = cumulative
+    return result
 
 
-def check_epsendcnt(epsendcnt_input, epsendcnt_func):
-    if (len(epsendcnt_input) != len(epsendcnt_func)):
-        logging.warning('1.5 该卡根据输入experids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
-                len(epsendcnt_func), len(epsendcnt_input))
-    else:
-        if np.array_equal(epsendcnt_input, epsendcnt_func):
-            logging.info('1.5 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
+def check_epsendcnt(epsendcnt_count_func, epsendcnt_dump_func):
+    for card in sorted(epsendcnt_count_func.keys(), key=lambda x: int(x)):
+        if len(epsendcnt_dump_func[card]) == 0:
+            logging.info("卡%s 算子执行流程未卡死在combine算子,不进行epsendcnt对比", card)
+            continue
+        logging.info("卡%s 计算得出的epsendcnt为:%s", card, epsendcnt_count_func[card])
+        logging.info("卡%s dump数据获取的epsendcnt为:%s", card, epsendcnt_dump_func[card])
+        if len(epsendcnt_count_func[card]) != len(epsendcnt_dump_func[card]):
+            logging.warning('7. 该卡根据输入experids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
+                len(epsendcnt_count_func[card]), len(epsendcnt_dump_func[card]))
+            continue
+        if epsendcnt_count_func[card] != epsendcnt_dump_func[card]:
+            logging.warning('7 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
         else:
-            logging.warning('1.5 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
+            logging.info('7. 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
 
 
 #从input.3.bin中获取epsendcnt
-def compare_epsendcnt(target_path: str, epsendcnt_func):
+def get_dump_epsendcnt(target_path: str):
+    epsendcnt_input = np.array([], dtype=np.int32)
     for filename_func in os.listdir(os.path.join(target_path)):
         if 'input.3.bin' in filename_func:
             file_path_func = os.path.join(target_path, filename_func)
             epsendcnt_input = np.fromfile(file_path_func, dtype=np.int32)
-            logging.info('1.5 根据该卡的dump数据取得的epsendcnt为%s', epsendcnt_input)
-            logging.info('1.5 该epsendcnt大小为:%d', len(epsendcnt_input))
-            check_epsendcnt(epsendcnt_input, epsendcnt_func)
+            return epsendcnt_input
+    return epsendcnt_input
 
 
 #获取该卡dump数据的从input.2.bin中获取expandidx
@@ -319,8 +337,8 @@ def get_hccl_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     for i in range(card_num_func):
         hccl_rankid_num.append(arr_func[8 + (i * per_core)])
         hccl_ep_num.append(arr_func[9 + (i * per_core)])
-    logging.info("1.1 %s各核hccl中的rankid:%s\n", d_c, hccl_rankid_num)
-    logging.info("1.1 %s各核hccl中的epworldsize:%s\n", d_c, hccl_ep_num)
+    logging.info("1.1 %s各核建立hccl通信链路时的输入rankid:%s\n", d_c, hccl_rankid_num)
+    logging.info("1.1 %s各核建立hccl通信链路时的输入epworldsize:%s\n", d_c, hccl_ep_num)
     hccl_rankid_num_count = Counter(hccl_rankid_num)
     hccl_ep_num_count = Counter(hccl_ep_num)
     hccl_max_rankid_num = max(hccl_rankid_num_count, key=hccl_rankid_num_count.get)
@@ -328,10 +346,10 @@ def get_hccl_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     diff_hccl_ep = [idx for idx, val in enumerate(hccl_ep_num) if val != hccl_max_ep_num]
     diff_hccl_rankid = [idx for idx, val in enumerate(hccl_rankid_num) if val != hccl_max_rankid_num]
     if diff_hccl_rankid != []:
-        logging.warning("1.1 %s有如下下标的核的hccl中rankid与其他核不相等%s,共%d个核\n", diff_hccl_rankid,
+        logging.warning("1.1 %s有如下下标的核的建立hccl通信链路时的输入rankid与其他核不相等%s,共%d个核\n", diff_hccl_rankid,
                         len(diff_hccl_rankid))
     if diff_hccl_ep != []:
-        logging.warning("1.1 %s有如下下标的核的hccl中epworldsize与其他核不相等%s,共%d个核\n",
+        logging.warning("1.1 %s有如下下标的核的建立hccl通信链路时的输入epworldsize与其他核不相等%s,共%d个核\n",
                         diff_hccl_ep, len(diff_hccl_ep))
     return hccl_rankid_num, hccl_max_rankid_num, hccl_ep_num, hccl_max_ep_num
 
@@ -416,7 +434,7 @@ def dis_status_analysis(parms: WinData, dis_core_num_func: int, dis_unwait_index
     logging.info("3.2 dispatch 中各核分配到状态位数量%s", dis_status_core)
     if dis_unwait_index_func == []:
         return dis_status_error_dict
-    logging.warning("3.2 dispatch有如下下标的核没有等到状态%s,共%d个核",
+    logging.warning("3.2 dispatch有如下下标的核未等到状态%s,(共%d个核)",
                     dis_unwait_index_func, len(dis_unwait_index_func))
     # 在未等到状态的核的对应0/1状态区查找具体哪个状态没有等到
     for i in dis_unwait_index_func:
@@ -427,7 +445,7 @@ def dis_status_analysis(parms: WinData, dis_core_num_func: int, dis_unwait_index
         for core_num_func in range(dis_status_core[i]):
             if int32_status_data[(sum(dis_status_core[:i + 1]) - dis_status_core[i] + core_num_func) * 8] == 0:
                 dis_status_error_dict[f"d{card_num_func}_第{i}个核_第{core_num_func}状态位_dispatch{dis_0_1_func}"] = (
-                                                    f"状态位没有等到")
+                                                    f"状态位未等到")
     return dis_status_error_dict
 
 
@@ -455,7 +473,7 @@ def com_status_analysis(parms: WinData, com_core_num_func: int, share_expert_num
     logging.info("3.2 combine 中各核分配到状态位数量%s", com_status_core)
     if com_unwait_index_func == []:
         return com_statu_error_dict
-    logging.warning("3.2 combine有如下下标的核没有等到状态%s,共%d个核",
+    logging.warning("3.2 combine有如下下标的核未等到状态%s,(共%d个核)",
                     com_unwait_index_func, len(com_unwait_index_func))
     # 在未等到状态的核的对应0/1状态区查找具体哪个状态没有等到
     for i in com_unwait_index_func:
@@ -466,7 +484,7 @@ def com_status_analysis(parms: WinData, com_core_num_func: int, share_expert_num
         for core_num_func in range(com_status_core[i]):
             if int32_status_data[(sum(com_status_core[:i + 1]) - com_status_core[i] + core_num_func) * 8] == 0:
                 com_statu_error_dict[f"d{card_num_func}_第{i}个核_第{core_num_func}个状态位_combine{com_0_1_func}区"] = (
-                                                    f"状态位没有等到")
+                                                    f"状态位未等到")
     return com_statu_error_dict
 
 
@@ -498,8 +516,9 @@ dis_bs = 0
 com_bs = 0
 bs = 0
 k = 0
-expertids = []
+expertids = np.array([])
 dump_expandidx = []
+dump_epsendcnt = []
 start_idx = 0
 
 if (soc_version == SOC_VERSION_950):
@@ -556,10 +575,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                 "dispatch_hccl epworldsize:%d, dispatch moe专家数:%d, dispatch globalbs:%d, 根据dispatch输入计算的bs:%d",
                 dis_rankid, dis_hccl_rankid, dis_epworldsize, dis_hccl_epworldsize, dis_moe_num, dis_globalbs, dis_bs)
             if dis_rankid != dis_hccl_rankid:
-                logging.warning("1.1 dispatch win区数据中的rankid:%d 与hccl的rankid输入:%s 不同",
+                logging.warning("1.1 dispatch win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
                                 dis_rankid, dis_hccl_rankid)
             if dis_epworldsize != dis_hccl_epworldsize:
-                logging.warning("1.1 dispatch win区数据中的epworldsize:%d 与hccl的epworldsize输入:%s 不同",
+                logging.warning("1.1 dispatch win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
                                 dis_epworldsize, dis_hccl_epworldsize)
         else:
             logging.info("1. 未调用到dispatch算子不进行dispatch的rankid,moe专家输入分析")
@@ -576,9 +595,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                 "combine_hccl epworldsize:%d, combine moe专家数:%d, combine globalbs:%d, 根据combine输入计算的bs:%d",
                 com_rankid, com_hccl_rankid, com_epworldsize, com_hccl_epworldsize, com_moe_num, com_globalbs, com_bs)
             if com_rankid != com_hccl_rankid:
-                logging.warning("1.1 combine win区数据中的rankid:%d 与hccl中的输入:%s 不同", com_rankid, com_hccl_rankid)
+                logging.warning("1.1 combine win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
+                                com_rankid, com_hccl_rankid)
             if com_epworldsize != com_hccl_epworldsize:
-                logging.warning("1.1 combine win区数据中的epworldsize:%d 与hccl中的输入:%s 不同",
+                logging.warning("1.1 combine win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
                                 com_epworldsize, com_hccl_epworldsize)
         else:
             logging.info("1.1 未调用到combine算子不进行combine的rankid,moe专家输入分析")
@@ -616,13 +636,8 @@ for filename in os.listdir(os.path.join(floder_path)):
             a = get_a(floder_path)
             h = get_h(floder_path, a, tp_worldsize)
             logging.info("1.4 根据combine输入计算得出的A:%d, 根据combine输入计算得出的H:%d", a, h)
-            epsendcnt = count_epsendcnt(com_epworldsize, tp_worldsize, local_expert_num, expertids)
-            compare_epsendcnt(floder_path, epsendcnt)
+            dump_epsendcnt = get_dump_epsendcnt(floder_path)
             dump_expandidx = get_dump_expandidx(floder_path)
-        elif com_core_num == 0:
-            logging.info('1.4 未调用到combine算子不进行epsendcnt分析')
-        else:
-            logging.info('1.4 该卡没有挂在combine算子上,不进行epsendcnt分析')
         logging.info('1.5 输入异常分析完成\n')
 
         # 执行序分析
@@ -785,8 +800,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                                     header=not file_all_card_dat_eixsts, encoding="gbk")
 
         file_all_card_expandx_eixsts = os.path.exists("win_all_card_expandidx.csv")
-        all_card_expandx_info = pd.DataFrame([[expertids.tolist(), dump_expandidx, local_expert_num, dis_com]],
-                            columns=['expertids', 'dump数据中读取的expandidx', '本卡专家数', '挂在哪个算子上'], 
+        all_card_expandx_info = pd.DataFrame([[expertids.tolist(), dump_expandidx, dump_epsendcnt,
+                                            local_expert_num, dis_com]],
+                            columns=['expertids', 'dump数据中读取的expandidx', 'dump数据中读取的epsendcnt',
+                                    '本卡专家数', '挂在哪个算子上'], 
                             index=[card_num])
         all_card_expandx_info.to_csv("win_all_card_expandidx.csv", index=True, mode='a',
                                     header=not file_all_card_expandx_eixsts, encoding="gbk")
@@ -850,12 +867,13 @@ for filename in os.listdir(os.path.join(floder_path)):
             logging.info("6. 各卡中combine的globalbs:%s", all_card_com_globalbs_num[:all_card_num])
             logging.info("6. 各卡中dispatch、combine的执行次数、moe专家数、globalbs数据已归档至win_all_card_data.csv")
 
-            logging.info("7. 开始所有卡的expandidx对比")
+            logging.info("7. 开始所有卡的expandidx,epsendcnt对比")
             expandidx_count = {}
             all_card_expertids = {}
             all_card_expandidx = {}
             all_card_dis_com = {}
             all_local_expetrnum = {}
+            all_card_epsendcnt = {}
             with open("win_all_card_expandidx.csv", "r", encoding="gbk") as f_expandidx_num:
                 reader = csv.DictReader(f_expandidx_num)
                 row_index_col = reader.fieldnames[0]
@@ -863,10 +881,13 @@ for filename in os.listdir(os.path.join(floder_path)):
                     row_index = row[row_index_col].strip()
                     expertids_data = ast.literal_eval(row["expertids"])
                     expandidx_data = ast.literal_eval(row["dump数据中读取的expandidx"])
+                    raw_data = row["dump数据中读取的epsendcnt"].replace("[ ", '[').replace('] ', ']')
+                    epsendcnt_data = ast.literal_eval(raw_data.replace(" ", ",").strip(',').replace(",,", ","))
                     dis_com = row["挂在哪个算子上"]
                     expetrnum = int(row["本卡专家数"])
                     all_card_expertids[row_index] = expertids_data
                     all_card_expandidx[row_index] = expandidx_data
+                    all_card_epsendcnt[row_index] = epsendcnt_data
                     all_card_dis_com[row_index] = dis_com
                     all_local_expetrnum[row_index] = expetrnum
             sorted_card_ids = sorted(all_card_expertids.keys())
@@ -879,7 +900,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                         triple = (int(card_id), bs_idx, topkid)
                         expandidx_count[expertid].append(triple)
             expandidx_count = dict(sorted(expandidx_count.items()))
-            logging.info('7. 所有专家的expandidx如下:%s', expandidx_count)
+            epsendcnt_count = count_all_card_epsendcnt(all_card_expertids, all_local_expetrnum)
+            logging.info('7. 所有卡的计算的epsendcnt如下:%s', epsendcnt_count)
+            check_epsendcnt(epsendcnt_count, all_card_epsendcnt)
+            logging.info('7. 所有专家计算得到的的expandidx如下:%s', expandidx_count)
             for card_id in sorted_card_ids:
                 compare_expandidx = []
                 local_expert_num_one_card = all_local_expetrnum[card_id]
@@ -900,9 +924,9 @@ for filename in os.listdir(os.path.join(floder_path)):
                     if judge_expandidx == True:
                         logging.info('7. 卡%s的expandidx没有异常', card_id)
                 else:
-                    logging.info('7. 卡%s的没有挂在combine不进行分析', card_id)
+                    logging.info('7. 卡%s的算子执行流程并未卡死combine算子上,不进行分析', card_id)
                     continue
                 start_idx += local_expert_num_one_card
-            logging.info('7. 各卡的expertids,dump数据中读取的expandidx,本卡专家数,该卡挂在哪个算子上已归档至'
+            logging.info('7. 各卡的expertids,dump数据中读取的expandidx,epsendcnt,本卡专家数,该卡挂在哪个算子上已归档至'
                     'win_all_card_expandidx.csv')
-            logging.info('7. 所有卡的expandidx对比结束')
+            logging.info('7. 所有卡的expandidx,epsendcnt对比结束')

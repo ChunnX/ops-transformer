@@ -28,7 +28,6 @@ constexpr size_t TWO_DIMS = 2U;
 constexpr size_t MAX_GROUP_LEN = 128U;
 constexpr int64_t KVALUE_MIN = 1;
 constexpr int64_t KVALUE_MAX = 65535;
-constexpr int64_t MX_QUANT_GROUP_SIZE = 4295032864;
 
 // 通信域相关枚举值
 enum class NnopbaseHcclServerType : uint32_t {
@@ -63,21 +62,14 @@ bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* b
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
 bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional);
 
-// 校验groupSize是否合法，仅在组量化（MX）场景下需要取值，其它场景默认为0
-bool CheckGroupSizeValid(int64_t groupSize, int64_t x1QuantMode, int64_t x2QuantMode);
-
 // 检查tensor是否连续
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 
 // 检查x2是否合法，空指针、空tensor和维度
-bool CheckX2Valid(const aclTensor* x2);
+aclnnStatus CheckX2Valid(const aclTensor* x2);
 
 // 检查是否有alltoallout输出
 bool IsAll2AllOut(const aclTensor *alltoAllOut);
-
-// 检查预留参数是否为合法值，若为预设之外的值会提示Warning
-bool CheckReservedParams(const aclTensor *commScaleOptional, const aclTensor* x1OffsetOptional,
-                         const aclTensor* x2OffsetOptional, int64_t commQuantMode, int64_t commQuantDtype);
 
 // 处理支持转置的tensor物理排布不连续问题
 aclTensor *TransX2Tensor(const aclTensor *x2);

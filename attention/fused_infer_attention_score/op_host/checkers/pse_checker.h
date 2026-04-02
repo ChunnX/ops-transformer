@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef PSE_CHECKER_H
 #define PSE_CHECKER_H
 
@@ -32,11 +31,10 @@ public:
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
     ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckFeature(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckMultiPara(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
 
 private:
-    // 公共校验函数
     // singlepara
     ge::graphStatus CheckPseType(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckPseShiftDataType(const FiaTilingInfo &fiaInfo);

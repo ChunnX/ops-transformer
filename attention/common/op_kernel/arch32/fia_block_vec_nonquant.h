@@ -127,7 +127,7 @@ protected:
     __aicore__ inline void SinkValueNoBrc(LocalTensor<COMPUTE_T> tmpSinkResUb,
                                             LocalTensor<COMPUTE_T> tmpSinkResUbBrcb, uint32_t dealRowCount);
     __aicore__ inline void SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-                                            int64_t s1Idx, int64_t row);
+                                            int64_t s1Idx, int64_t row, int64_t dealRowCount);
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
     __aicore__ inline void DealPostQuantOutPerChn(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb,
                                                   uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount);
@@ -579,7 +579,6 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = info.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = info.kvPaddingBeginOffset;
-
         if (constInfo.qSeqSize == 1) {
             maskInfo.layout = fa_base_vector::S1_EQUAL1;
         } else if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
@@ -587,24 +586,50 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         } else {
             maskInfo.layout = fa_base_vector::GS;
         }
+
         maskInfo.attenMaskType = fa_base_vector::MASK_BOOL; // compatible with int8/uint8
-        LocalTensor<bool> maskUb;
-        LocalTensor<bool> attenMaskTmpUb;
+
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
-            maskUb = inputQue2.AllocTensor<bool>();
-            attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
-            AscendC::PipeBarrier<PIPE_V>();
-            fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
+        if (maskInfo.sparseMode == fa_base_vector::TREE) {
+            // TREE模式：提前分配并初始化为0，保持占用直到处理完成
+            LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
+            LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
+            event_t eventIdVMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+            LocalTensor<int16_t> mask16 = maskUb.template ReinterpretCast<int16_t>();
+            Duplicate(mask16, static_cast<int16_t>(0), BUFFER_SIZE_BYTE_8K / sizeof(int16_t));
+            maskUb = mask16.template ReinterpretCast<bool>();
+            SetFlag<HardEvent::V_MTE2>(eventIdVMte2);
+            WaitFlag<HardEvent::V_MTE2>(eventIdVMte2);
+            maskInfo.attenMaskBatchStride *= maskInfo.batchIdx;
+            if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
+                maskInfo.attenMaskStride = info.actS1Size;
+                maskInfo.attenMaskBatchStride = 0;
+                for (int32_t i = 0; i < maskInfo.batchIdx; i++) {
+                    maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
+                }
+            }
+            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                AscendC::PipeBarrier<PIPE_V>();
+                fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
+            }
             inputQue2.FreeTensor(maskUb);
-        }
-        if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
-            maskUb = inputQue2.AllocTensor<bool>();
-            attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2]; 
-            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
-            fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
-            inputQue2.FreeTensor(maskUb);
+        } else {
+            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+                LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
+                LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
+                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                AscendC::PipeBarrier<PIPE_V>();
+                fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
+                inputQue2.FreeTensor(maskUb);
+            }
+            if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
+                LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
+                LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
+                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+                fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
+                inputQue2.FreeTensor(maskUb);
+            }
         }
     }
 }
@@ -651,6 +676,9 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
         return;
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDimAlign;
+    if (mSplitSize > fa_base_vector::MAX_REPEAT_TIMES) {
+        mSplitSize = fa_base_vector::MAX_REPEAT_TIMES;
+    }
     if constexpr (!SOFTMAX_WITH_BRC) {
         uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
@@ -999,7 +1027,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info
 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-    int64_t s1Idx, int64_t row)
+    int64_t s1Idx, int64_t row, int64_t dealRowCount)
 {
     int64_t s1BottomTok = info.actS1Size + info.preTokensPerBatch;
     int64_t s1Tok = -info.nextTokensPerBatch;
@@ -1007,7 +1035,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
 
     if (unlikely(info.nextTokensPerBatch < 0)) { // 上方存在行无效
         if (s1Idx < s1Tok) {
-            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum);
+            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum * dealRowCount);
         }
     }
 
@@ -1017,37 +1045,67 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
 
     if (unlikely(info.preTokensPerBatch < 0)) { // 下方存在行无效
         if (s1Idx >= s1BottomTok && s1Idx < info.actS1Size) {
-            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum);
+            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum * dealRowCount);
         }
     }
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-    uint32_t wsMStart, uint32_t dealRowCount)
+__aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info,
+                                                                   LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
+                                                                   uint32_t wsMStart, uint32_t dealRowCount)
 {
     constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
-    int64_t gIdx = 0;
-    int64_t s1Idx = 0;
+
 
     LocalTensor<COMPUTE_T> sinkBuf = tmpBuff1.GetWithOffset<COMPUTE_T>(BUFFER_SIZE_BYTE_8K, BUFFER_SIZE_BYTE_8K * 2);
     SinkCopyIn(info, sinkBuf);
 
-    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
-        constInfo.sparseMode, constInfo.attenMaskFlag, constInfo.isRowInvalid);
+    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, constInfo.sparseMode,
+                                           constInfo.attenMaskFlag, constInfo.isRowInvalid);
 
-    for (uint32_t row = 0; row < dealRowCount; ++row) {
-        if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { //内存按照S1G排布
-            gIdx = (info.gS1Idx + wsMStart + row) % constInfo.gSize;
-            s1Idx = (info.gS1Idx + wsMStart + row) / constInfo.gSize;
-        } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { //内存按照GS1排布
+    if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) {
+        int64_t s1IdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) / constInfo.gSize;
+        int64_t gIdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) % constInfo.gSize;
+        int64_t s1IdxEnd = (info.gS1Idx + wsMStart + dealRowCount) / constInfo.gSize;
+        int64_t gIdxEnd = (info.gS1Idx + wsMStart + dealRowCount) % constInfo.gSize;
+        int64_t gStartIdx = 0; // 循环当前s1中的g的起点
+        int64_t dealCount = 0;
+        int64_t curDealRows = 0;
+        for (int64_t i = s1IdxStart; i <= s1IdxEnd; i++) {
+            if (i == s1IdxStart && s1IdxEnd == s1IdxStart) {
+                curDealRows = gIdxEnd - gIdxStart;
+            } else if (i == s1IdxStart && s1IdxEnd != s1IdxStart) {
+                curDealRows = constInfo.gSize - gIdxStart;
+            } else if (i == s1IdxEnd) {
+                curDealRows = gIdxEnd;
+            } else {
+                curDealRows = constInfo.gSize;
+            }
+            if (i == s1IdxStart) {
+                gStartIdx = gIdxStart; // 只有第一块的g的起点不是0
+            } else {
+                gStartIdx = 0;
+            }
+            if (curDealRows == 0) {
+                continue;
+            }
+            DataCopy(tmpSinkResUbBrcb[dealCount * brcbNum], sinkBuf[gStartIdx * brcbNum], brcbNum * curDealRows);
+            if (unlikely(isInvalidRows)) { // 行无效处理
+                SinkInvalidRow(info, tmpSinkResUbBrcb, i, dealCount, curDealRows);
+            }
+            dealCount += curDealRows;
+        }
+    } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) {
+        int64_t gIdx = 0;
+        int64_t s1Idx = 0;
+        for (uint32_t row = 0; row < dealRowCount; ++row) {
             gIdx = (info.gS1Idx + wsMStart + row) / info.actS1Size;
             s1Idx = (info.gS1Idx + wsMStart + row) % info.actS1Size;
-        }
-        DataCopy(tmpSinkResUbBrcb[row * brcbNum], sinkBuf[gIdx * brcbNum], brcbNum);
-
-        if (unlikely(isInvalidRows)) { // 行无效处理
-            SinkInvalidRow(info, tmpSinkResUbBrcb, s1Idx, row);
+            DataCopy(tmpSinkResUbBrcb[row * brcbNum], sinkBuf[gIdx * brcbNum], brcbNum);
+            if (unlikely(isInvalidRows)) { // 行无效处理
+                SinkInvalidRow(info, tmpSinkResUbBrcb, s1Idx, row, 1);
+            }
         }
     }
 }

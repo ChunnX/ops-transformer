@@ -13,7 +13,7 @@
  * \brief
  */
 #include "matmul_all_reduce_tiling_310_general.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 namespace optiling {
 bool MatmulAllReduceTiling310General::IsCapable()

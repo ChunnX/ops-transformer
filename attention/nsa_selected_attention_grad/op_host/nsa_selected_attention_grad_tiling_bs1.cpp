@@ -397,6 +397,7 @@ ge::graphStatus NsaSelectedAttentionGradTiling::GetWorkspaceSize()
                                            aicoreParams_.aicNum, aicoreParams_.numBlocks),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
+    context_->SetScheduleMode(1);
 
     // 系统预留
     int64_t sysLen = WORKSPACE_BASE_CAL;

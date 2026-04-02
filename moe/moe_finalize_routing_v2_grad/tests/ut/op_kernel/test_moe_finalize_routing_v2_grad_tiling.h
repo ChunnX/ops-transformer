@@ -13,10 +13,6 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#define __aicore__
-
-
-
 #define DT_FLOAT float
 #define DT_FLOAT16 half
 #define DT_BF16 bfloat16_t

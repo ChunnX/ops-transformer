@@ -70,6 +70,10 @@ if (ENABLE_BUILT_IN)
   set(COMMON_LIB_INSTALL_DIR          ops_transformer/lib)
   set(VERSION_INFO_INSTALL_DIR        ops_transformer)
   set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+else()
+ 	# custom pkg
+ 	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)
+ 	set(ES_LIB_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
 endif()
 
 if (ENABLE_TEST)
@@ -119,10 +123,11 @@ set(OPAPI_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
 
-  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
-  ${OPS_TRANSFORMER_DIR}/mc2/3rd
-  ${OPS_TRANSFORMER_DIR}/mc2
+   ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
+   ${OPS_TRANSFORMER_DIR}/mc2/3rd
+   ${OPS_TRANSFORMER_DIR}/mc2
 )
 
 if (NOT BUILD_OPEN_PROJECT)
@@ -144,9 +149,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include
+    ${TOP_DIR}/tmp/host-prefix/src/host-build/asl/ops/cann/ops/built-in/op_host/inner/
   )
 else()
-  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS})
+  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS} ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
 endif()
 
 set(OP_TILING_INCLUDE
@@ -164,13 +170,17 @@ set(OP_TILING_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/include/
   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
   
-  ${OPS_TRANSFORMER_DIR}/mc2/common
-  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
-  ${OPS_TRANSFORMER_DIR}/mc2/3rd
-  ${OPS_TRANSFORMER_DIR}/mc2
-  ${NNOPBASE_INCLUDE_DIRS}
-  ${AICPU_INC_DIRS}
+   ${OPS_TRANSFORMER_DIR}/mc2/common
+   ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_graph
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_api
+   ${OPS_TRANSFORMER_DIR}/mc2/3rd
+   ${OPS_TRANSFORMER_DIR}/mc2
+   ${NNOPBASE_INCLUDE_DIRS}
+   ${AICPU_INC_DIRS}
 )
 
 if (NOT BUILD_OPEN_PROJECT)
@@ -187,7 +197,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/ops-nn/inner
     ${TOP_DIR}/asl/ops/cann/ops/matmul
     ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
-    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/inc
+    ${TOP_DIR}/asl/ops/cann/ops/mc2/common
+    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/utils
+    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/op_host/op_tiling
+    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/op_kernel
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
 
@@ -217,12 +230,14 @@ set(OP_PROTO_INCLUDE
   ${OPS_TRANSFORMER_DIR}
   ${OPS_TRANSFORMER_DIR}/mc2/common
 
-  ${OPS_TRANSFORMER_DIR}/common/include
+   ${OPS_TRANSFORMER_DIR}/common/include
 
-  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
-  ${OPS_TRANSFORMER_DIR}/mc2/3rd
-  ${OPS_TRANSFORMER_DIR}/mc2
+   ${OPS_TRANSFORMER_DIR}/mc2/common
+   ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
+   ${OPS_TRANSFORMER_DIR}/mc2/3rd
+   ${OPS_TRANSFORMER_DIR}/mc2
 )
 
 if (NOT BUILD_OPEN_PROJECT)

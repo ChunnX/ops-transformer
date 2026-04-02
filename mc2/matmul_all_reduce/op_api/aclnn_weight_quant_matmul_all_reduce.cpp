@@ -9,34 +9,15 @@
  */
 
 #include "aclnn_weight_quant_matmul_all_reduce.h"
-#include "securec.h"
 
-#include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
-#include "opdev/common_types.h"
-#include "opdev/op_dfx.h"
-#include "opdev/op_executor.h"
-#include "opdev/make_op_executor.h"
-#include "opdev/op_log.h"
-#include "opdev/platform.h"
 #include "opdev/tensor_view_utils.h"
 #include "matmul_all_reduce_util.h"
-#include "aclnn_kernels/contiguous.h"
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
 
 static constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 
@@ -194,51 +175,11 @@ static bool IsAntiquantScaleShapeValid(
     return false;
 }
 
-static bool IsWeightNZFormat(const aclTensor* x2)
-{
-    auto format = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    if (format == Format::FORMAT_ND) {
-        OP_LOGD("MatmulAllReduce, Recieved weight format is ACL_FORMAT_ND");
-    }
-    if (format == Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGD("MatmulAllReduce, Recieved weight format is ACL_FORMAT_FRACTAL_NZ");
-        uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-        OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsNum);
-        const uint64_t transdataNzDim = 4U;
-        if (storageDimsNum == transdataNzDim) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 通过TransMatmulWeight接口预处理成NZ格式场景；
-static bool IsAclnnPreTransposed(const aclTensor* x2)
-{
-    auto viewFormat = ge::GetPrimaryFormat(x2->GetViewFormat());
-    auto storageFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 &&
-                                viewFormat == Format::FORMAT_ND && storageFormat == Format::FORMAT_FRACTAL_NZ;
-    OP_LOGD("MatmulAllReduce, IsAclnnPreTransposed is %d", isAclnnPreTransposed);
-    return isAclnnPreTransposed;
-}
-
-static void ProcessTransposedX2(const aclTensor* x2, int64_t& x2Dim0, int64_t& x2Dim1, ge::AscendString& x2ShapeStr)
-{
-    op::Shape x2ViewShape = x2->GetViewShape();
-    x2ViewShape.SetDim(0, x2Dim0);
-    x2ViewShape.SetDim(1, x2Dim1);
-    if (IsAclnnPreTransposed(x2)) {
-        x2ShapeStr = op::ToString(x2ViewShape);
-    }
-    OP_LOGD("MatmulAllReduce, x2 view shape is %s", x2ShapeStr.GetString());
-}
-
 static bool CheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
     const aclTensor* x3, const aclTensor* output, int64_t antiquantGroupSize)
 {
-    bool isWeightNZ = IsWeightNZFormat(x2);
+    bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
     OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
     OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
     OP_LOGD("MatmulAllReduce, CheckShape isWeightNZ is %d", isWeightNZ);
@@ -249,10 +190,10 @@ static bool CheckShape(
     OP_LOGD("MatmulAllReduce, CheckShape weightDim is %lu", weightDim);
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
     OP_CHECK_WRONG_DIMENSION(x2, weightDim, return false);
-    int64_t x2Dim0 = IsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
-    int64_t x2Dim1 = IsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
+    uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
+    uint64_t x2Dim1 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ShapeStr = op::ToString(x2->GetViewShape());
-    ProcessTransposedX2(x2, x2Dim0, x2Dim1, x2ShapeStr);
+    QuantMatmulAllReduceProcessTransposedX2(x2, x2Dim0, x2Dim1, x2ShapeStr);
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
@@ -341,7 +282,7 @@ static bool IsAffineInconsistent(const aclTensor *affineTensor, bool transposeX2
 static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const aclTensor *offset)
 {
     // check x2(weight) is transposed, scale and offset should also be transposed
-    const bool transposeX2 = IsTransposeLastTwoDims(x2) || IsAclnnPreTransposed(x2);
+    const bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
     const bool isNpuArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
     const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
     if ((!isNpuArch3510) && (!isASCEND910B)) {
@@ -428,7 +369,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
 
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
-    bool transposeX2 = IsTransposeLastTwoDims(x2) || IsAclnnPreTransposed(x2);
+    bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
     aclTensor* pertokenScale = nullptr;
     aclTensor* commQuantScale1 = nullptr;
     aclTensor* commQuantScale2 = nullptr;
@@ -438,7 +379,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
         return ACLNN_ERR_INNER_NULLPTR;
     }
     auto copyX2 = CopyTensor(x2);
-    auto tempX2 = IsWeightNZFormat(x2) ? copyX2 : x2;
+    auto tempX2 = MatmulAllReduceIsWeightNZFormat(x2) ? copyX2 : x2;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, bias, x3, antiquantScale, antiquantOffset, dequantScale, pertokenScale, commQuantScale1,

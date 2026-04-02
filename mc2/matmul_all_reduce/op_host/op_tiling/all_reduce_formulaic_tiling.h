@@ -16,7 +16,7 @@
 #define __ALL_REDUCE_FORMULAIC_TILING_H__
 
 #pragma once
-#include "tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
 constexpr double QUANT_COMM_GROWTH_FACTOR_SOC310P = 0.8;
 constexpr double QUANT_COMM_GROWTH_FACTOR_SOC910B = 0.6;
 constexpr double QUANT_CALC_BOUND_RATIO = 0.7;

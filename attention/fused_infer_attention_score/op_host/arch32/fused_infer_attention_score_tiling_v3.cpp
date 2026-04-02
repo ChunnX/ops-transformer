@@ -15,7 +15,8 @@
 
 #include "fused_infer_attention_score_tiling_v3.h"
 #include "fused_infer_attention_score_tiling_check.h"
-#include "fused_infer_attention_score_tiling_info_parser.h"
+#include "../checkers/fia_checker.h"
+#include "../fused_infer_attention_score_tiling_info_parser.h"
 #include "../../../common/op_host/arch32/fia_tiling_nonquant_mla.h"
 #include "../../../common/op_host/arch32/fia_tiling_nonquant.h"
 #include "../../../common/op_host/arch32/fia_tiling_empty_tensor.h"
@@ -722,7 +723,7 @@ constexpr uint32_t NZ_D1_IDX = 2;
 constexpr uint32_t NZ_D0_IDX = 4;
 constexpr uint32_t TND_NTD_D_IDX = 2;
 constexpr int64_t HEAD_DIM_192 = 192;
-
+constexpr int64_t HEAD_DIM_64 = 64;
 
 FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext *context)
 {
@@ -732,8 +733,11 @@ FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContex
         return ge::GRAPH_FAILED;
     }
 
+    FIAChecker fiaChecker;
+    fiaChecker.Init(fiaInfo);
+
     // Check函数只做校验，不能修改fiaInfo中的信息
-    if (TilingCheck::Check(fiaInfo) != ge::GRAPH_SUCCESS) {
+    if (fiaChecker.Process(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -743,8 +747,8 @@ FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContex
 bool GetPaValueD(const gert::TilingContext *context, int64_t &valueD)
 {
     auto attrs = context->GetAttrs();
-    int64_t numHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
-    int64_t numKvHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_NUM_KV_HEADS_INDEX));
+    int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
+    int64_t numKvHeads = *attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX);
     if (numKvHeads == 0) {
         numKvHeads = numHeads;
     }
@@ -775,8 +779,8 @@ bool GetValueD(gert::TilingContext *context, int64_t &valueD)
     }
 
     auto attrs = context->GetAttrs();
-    int64_t numHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
-    int64_t numKvHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_NUM_KV_HEADS_INDEX));
+    int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
+    int64_t numKvHeads = *attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX);
     if (numKvHeads == 0) {
         numKvHeads = numHeads;
     }
@@ -855,7 +859,7 @@ bool GetQkvD(gert::TilingContext *context, int64_t &queryD, int64_t &queryRopeD,
         return false;
     }
 
-    int64_t numHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
+    int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     if (inputLayoutStr == "BNSD_BSND" ||
         inputLayoutStr == "BSND_BNSD" ||
@@ -1001,10 +1005,10 @@ bool CheckSpecConditions(const gert::TilingContext *context)
 
     auto attrs = context->GetAttrs();
     string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    int32_t headNum = *(attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX));
-    int32_t kvHeadNum = *(attrs->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX));
-    int32_t innerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
-    int32_t sparseMode = *(attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX));
+    int64_t headNum = *(attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX));
+    int64_t kvHeadNum = *(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX));
+    int32_t innerPrecise = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_INNER_PRECISE_INDEX)));
+    int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     
     bool isLayoutSupported = (inputLayoutStr == "TND");
     bool isPageAttention = (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr);
@@ -1013,7 +1017,7 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     if (isLearnableSink && isLayoutSupported) {
         int64_t tempQHeadDim = tempQ->GetStorageShape().GetDim(DIM_2);
         auto sinkDataType = context->GetOptionalInputDesc(LEARNABLE_SINK_INDEX)->GetDataType();
-        if (tempQHeadDim == 64 && sinkDataType == ge::DT_BF16) { // 64: qD need 64, condition to set sinkflag to disable
+        if (tempQHeadDim == HEAD_DIM_64 && sinkDataType == ge::DT_BF16) {
             isLearnableSinkFlag = false;
         }
     }
@@ -1183,8 +1187,8 @@ bool RouteToFia(gert::TilingContext *context)
 
     if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
         auto attrs = context->GetAttrs();
-        int32_t headNum = *(attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX));
-        int32_t kvHeadNum = *(attrs->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX));
+        int64_t headNum = *(attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX));
+        int64_t kvHeadNum = *(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX));
         bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
         bool isPageAttention = (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr);
         bool isPrefix = (context->GetOptionalInputShape(KEY_SHARED_PREFIX_INDEX) != nullptr) ||

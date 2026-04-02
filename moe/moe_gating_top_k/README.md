@@ -76,7 +76,7 @@
       </tr>
       <tr>
         <td>biasOptional</td>
-        <td>可选属性</td>
+        <td>输入</td>
         <td>与输入x进行计算的bias值，对应公式中的`bias`。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>

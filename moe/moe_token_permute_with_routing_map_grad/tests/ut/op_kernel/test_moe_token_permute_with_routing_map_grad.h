@@ -20,8 +20,6 @@
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
 
-#define __aicore__
-
 #define DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD bfloat16_t
 
 // struct MoeTokenPermuteWithRoutingMapGradTilingData {

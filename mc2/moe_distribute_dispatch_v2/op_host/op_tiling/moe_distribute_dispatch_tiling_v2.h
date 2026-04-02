@@ -21,8 +21,7 @@
 #include "graph/utils/type_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
-#include "tiling/mc2_opversion_manager.h"
-using namespace Ops::Transformer::OpTiling;
+#include "op_host/op_tiling/mc2_opversion_manager.h"
 
 namespace optiling {
 
@@ -55,6 +54,7 @@ struct DispatchV2Config {
     uint32_t attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     bool isMc2Context = false;
 };
+using namespace Ops::Transformer::OpTiling;
 
 ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext* context, DispatchV2Config& config);
 

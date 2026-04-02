@@ -15,7 +15,7 @@
 #include "allto_all_fp_matmul_tiling_910_93.h"
 #include <string>
 #include <vector>
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "platform/platform_infos_def.h"
 #include "hccl/hccl_types.h"
@@ -35,7 +35,7 @@ namespace MC2Tiling {
 bool AllToAllFpMatmulTilingBaseA3::IsCapable()
 {
     fe::PlatFormInfos *platformInfoPtr = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(opName_, "fail to get platfoem info"), return false);
+    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(opName_, "fail to get platform info"), return false);
     fe::PlatFormInfos &platformInfo = *platformInfoPtr;
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersionStr_);
     OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr_.c_str());

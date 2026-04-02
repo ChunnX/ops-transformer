@@ -43,11 +43,12 @@
 #define FAG_FUNCTION_TEMPLATE                                                                                          \
     template <typename T1, typename T2, const bool IS_ATTEN_MASK, const bool IS_PSE, const bool IS_DROP,               \
               const bool IS_TND, const bool IS_BN2_MULTIBLK, const uint8_t DETER_SPARSE_TYPE, const bool IS_N_EQUAL, const bool IS_D_NO_EQUAL,                   \
-              const bool IS_ROPE, const bool FP8_OPEN_TSCM, const uint8_t SPLIT_AXIS, S1TemplateType s1TemplateType, S2TemplateType s2TemplateType,                  \
+              const bool IS_ROPE, const bool FP8_OPEN_TSCM,                                     \
+              const uint8_t SPLIT_AXIS, S1TemplateType s1TemplateType, S2TemplateType s2TemplateType,                  \
               DTemplateType dTemplateType, typename OUTDTYPE>
 #define FAG_FUNCTION_PARAMS_TEMPLATE                                                                                   \
-    T1, T2, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType,     \
-        s2TemplateType, dTemplateType, OUTDTYPE
+    T1, T2, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL,     \
+        IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType, OUTDTYPE
 
 using namespace matmul;
 using namespace optiling::fag;

@@ -114,7 +114,6 @@ protected:
     int32_t s2CubeExtend;
     int32_t attenMaskDimS2;
     // offset
-    int64_t sfmgOffset = 0;
     int32_t softMaxOffset = 0;
     int64_t attnMaskOffset = 0;
     int64_t copyInOffset = 0;
@@ -170,10 +169,10 @@ __aicore__ void VecOpDet<FAGT>::Init(
     actual_seq_qlen_addr = actual_seq_qlen;
     actual_seq_kvlen_addr = actual_seq_kvlen;
     layout = tilingData->basicDetTensorTilingData.layout;
-    if (layout == BSNGD) {  // BSH格式
-            dimS1 = tilingData->basicDetTensorTilingData.s1;
-            dimS2 = tilingData->basicDetTensorTilingData.s2;
-        }
+    if (layout != TND) {
+        dimS1 = tilingData->basicDetTensorTilingData.s1;
+        dimS2 = tilingData->basicDetTensorTilingData.s2;
+    }
 
     pipe->InitBuffer(unifiedBuffer, TOTAL_SIZE);
 
@@ -250,13 +249,8 @@ __aicore__ void VecOpDet<FAGT>::Init(
 template <typename FAGT>
 __aicore__ inline void VecOpDet<FAGT>::GetSeqQlenKvlenByBidx(
     int64_t bIdx, SEQLEN_TYPE &actualSeqQlen, SEQLEN_TYPE &actualSeqKvlen)
-{
-    
-    if (layout == BSNGD){
-        actualSeqQlen = dimS1;
-        actualSeqKvlen = dimS2;
-    }
-    else{
+{   
+    if (layout == TND){
         if (unlikely(bIdx == 0)) {
             actualSeqQlen = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[0];
             actualSeqKvlen = ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[0];
@@ -265,6 +259,9 @@ __aicore__ inline void VecOpDet<FAGT>::GetSeqQlenKvlenByBidx(
             actualSeqKvlen =
                 ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[bIdx] - ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[bIdx - 1];
         }
+    } else {
+        actualSeqQlen = dimS1;
+        actualSeqKvlen = dimS2;
     }
     return;
 }
@@ -461,6 +458,7 @@ __aicore__ inline void VecOpDet<FAGT>::SubGrapA(int64_t curIdx,
     WAIT_FLAG(V, MTE3, EVENT_ID0);
 
     DataCopyPad(dropWorkSpaceGm[copyOutOffset], softmaxCastTensor, copyOutParam);
+
     if (curIdx < blockLen - 1) {
         SET_FLAG(MTE3, MTE2, mte2WaitMte3A);
     }
@@ -486,7 +484,7 @@ __aicore__ inline void VecOpDet<FAGT>::SubGrapB(int64_t curIdx,
     }
 
     if (!skipSftMaxSumCopy) {
-        DataCopy(sfmgTensor, sfmgWorkspaceGm[sfmgOffset], s1Extend * 8);
+        DataCopy(sfmgTensor, sfmgWorkspaceGm[softMaxOffset], s1Extend * 8);
     }
 
     SET_FLAG(MTE2, V, EVENT_ID0);
@@ -564,46 +562,26 @@ __aicore__ inline void VecOpDet<FAGT>::DetVector1(const VecAddrInfoDet &addrs)
             dropMaskInfo.s1CopySize = (blockInfo.s1Len + 1) / 2;
             dropMaskInfo.splitS1BaseSize = (blockInfo.s1Len + 1) / 2;
         }
-        sfmgOffset = 0;
-        if (batchIdx > 0) {
-            if (layout == BSNGD){
-                sfmgOffset = dimS1 * n2 * g * 8;  
-            }
-            else{
-                sfmgOffset = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[batchIdx- 1] * n2 * g * 8;  
-            }
-        }
-        sfmgOffset +=
-            ((blockInfo.n2Idx * g + blockInfo.gIdx) * actualS1Len + blockInfo.s1Idx + subIdx * s1VecSize) * 8;
-
-        if (tndSoftmaxIn) {
-            int64_t originInnerBatchOffset = ((blockInfo.n2Idx * g + blockInfo.gIdx) * actualS1Len +
-                                              blockInfo.s1Idx + subIdx * s1VecSize) *
-                                             32 / sizeof(float);
-            int64_t innerRowOffsetLeft = 0;
-            if (layout == BSNGD){
-                innerRowOffsetLeft =
-                unlikely(batchIdx == 0) ?
-                    0 :
-                    dimS1 * 32 / sizeof(float);
-            
-                softMaxOffset = ((dimS1 * 32 / sizeof(float)) *
-                                    (blockInfo.n2Idx * g + blockInfo.gIdx) +
-                                innerRowOffsetLeft + originInnerBatchOffset % (actualS1Len * 32 / sizeof(float)));
-            }
-            else{
-                innerRowOffsetLeft =
-                unlikely(batchIdx == 0) ?
-                    0 :
-                    ((__gm__ int64_t *)actual_seq_qlen_addr)[batchIdx - 1] * 32 / sizeof(float);
-            
+        softMaxOffset = 0;
+        if (layout == TND){
+            if (tndSoftmaxIn){
+                int64_t originInnerBatchOffset = ((blockInfo.n2Idx * g + blockInfo.gIdx) * actualS1Len +
+                                                blockInfo.s1Idx + subIdx * s1VecSize) *
+                                                32 / sizeof(float);
+                int64_t  innerRowOffsetLeft = unlikely(batchIdx == 0) ? 
+                                                                    0 : ((__gm__ int64_t *)actual_seq_qlen_addr)[batchIdx - 1] * 32 / sizeof(float);
                 softMaxOffset = ((((__gm__ int64_t *)actual_seq_qlen_addr)[batch - 1] * 32 / sizeof(float)) *
                                     (blockInfo.n2Idx * g + blockInfo.gIdx) +
                                 innerRowOffsetLeft + originInnerBatchOffset % (actualS1Len * 32 / sizeof(float)));
+            } else {
+                if (batchIdx > 0) {
+                    softMaxOffset = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[batchIdx- 1] * n2 * g * 8;  
+                }
+                softMaxOffset +=
+                    ((blockInfo.n2Idx * g + blockInfo.gIdx) * actualS1Len + blockInfo.s1Idx + subIdx * s1VecSize) * 8;
             }
-            
         } else {
-            softMaxOffset = sfmgOffset;
+            softMaxOffset = (((batchIdx * n2 + blockInfo.n2Idx) * g + blockInfo.gIdx) * actualS1Len + blockInfo.s1Idx + subIdx * s1VecSize) * 8;
         }
 
         copyInOffset = cubeCoreIdx * CUBE_BLOCK_SIZE * 2 + pingpongIdx * CUBE_BLOCK_SIZE + blockInfo.cubeBlockOffset +
@@ -805,10 +783,22 @@ __aicore__ inline void VecOpDet<FAGT>::OrderAccum(
   if (loclBlockIdx < tailS1) {
     processS1 += 1;
     copyInGmOffset = loclBlockIdx * processS1 * headDim;
-    copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1) * headNum * headDim;
+    if (layout == BNGSD){
+        copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1) * headDim;
+    } else if(layout == SBNGD){
+        copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1) * batch * headNum * headDim;
+    } else {
+        copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1) * headNum * headDim;
+    }
   } else {
     copyInGmOffset = (loclBlockIdx * processS1 + tailS1) * headDim;
-    copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1 + tailS1) * headNum * headDim;
+    if (layout == BNGSD){
+        copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1 + tailS1) * headDim;
+    } else if(layout == SBNGD){
+        copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1 + tailS1) * batch * headNum * headDim;
+    } else {
+        copyOutGmOffset = detGrop.outAddr + (loclBlockIdx * processS1 + tailS1) * headNum * headDim;
+    }
   }
 
   uint32_t dataSize = processS1 * headDim;
@@ -844,10 +834,18 @@ __aicore__ inline void VecOpDet<FAGT>::OrderAccum(
 
   // end process
   AscendC::DataCopyExtParams intriParams;
+  int32_t _dstStride;
+  if (layout == BNGSD){
+    _dstStride = 0;
+  } else if (layout == SBNGD){
+    _dstStride = (batch * headNum - 1) * headDim * sizeof(float);
+  } else {
+    _dstStride = (headNum - 1) * headDim * sizeof(float);
+  }
   intriParams.blockCount = processS1;
   intriParams.blockLen = headDim * sizeof(float);
   intriParams.srcStride = 0;
-  intriParams.dstStride = (headNum - 1) * headDim * sizeof(float);
+  intriParams.dstStride = _dstStride;
 
   AscendC::SetAtomicType<float>();
   DataCopyPad(dstTensor[copyOutGmOffset], addTensor, intriParams);

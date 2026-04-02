@@ -55,7 +55,7 @@
       <tr>
         <td>finishedOptional</td>
         <td>输入</td>
-        <td>表示如果对应的行finished为True，则expert序号直接填num_expert值（即x的最后一个轴大小）。</td>
+        <td>表示如果对应的行finishedOptional为True，则expert序号直接填num_expert值（即x的最后一个轴大小）。</td>
         <td>BOOL</td>
         <td>ND</td>
       </tr>

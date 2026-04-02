@@ -1543,7 +1543,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::PostTiling()
                                            fBaseParams.coreNum),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
-
+    context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
 }

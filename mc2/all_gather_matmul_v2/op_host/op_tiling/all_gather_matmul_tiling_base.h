@@ -20,10 +20,10 @@
 #include "tiling/tiling_api.h"
 #include "weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_struct.h"
-#include "tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_struct.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_tiling_arch35.h"
 
 namespace optiling
@@ -51,6 +51,7 @@ constexpr size_t IS_GATHER_OUT = 8;
 constexpr size_t IS_AMAX_OUT = 9;
 constexpr size_t Y_DTYPE = 10;
 
+constexpr uint64_t PERBLOCK_SCALE_SIZE = 128;
 constexpr uint32_t COMM_VERSION3 = 3U;
 
 class AllGatherMatmulTilingBase : public TilingBaseClass
@@ -84,6 +85,7 @@ protected:
                            ::TCubeTiling& tailTiling, uint32_t& debugMode, uint32_t& dataType);
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     void DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg);
+    void PostDoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode);
     CutResult GetTilingResult();
     virtual ge::graphStatus CheckInput()
     {

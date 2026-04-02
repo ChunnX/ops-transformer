@@ -14,6 +14,7 @@
  */
 
 #include <iostream>
+#include <cstring>
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_mla_prolog.h"
@@ -52,18 +53,19 @@ int Init(int32_t deviceId, aclrtStream* stream) {
 template <typename T>
 int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hostAddr,
                     aclDataType dataType, aclTensor** tensor) {
-    auto size = GetShapeSize(shape) * sizeof(T);
+    auto size = GetShapeSize(shape) * aclDataTypeSize(dataType);
     // 调用aclrtMalloc申请device侧内存
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    // 调用aclrtMalloc申请host侧内存
-    ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    // 调用aclrtMallocHost申请host侧内存
+    ret = aclrtMallocHost(hostAddr, size);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+    memset(*hostAddr, 0, size);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
     return 0;
 }
@@ -71,18 +73,19 @@ int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hos
 template <typename T>
 int CreateAclTensorNZ(const std::vector<T>& shape, void** deviceAddr, void** hostAddr,
                     aclDataType dataType, aclTensor** tensor) {
-    auto size = GetShapeSize(shape) * sizeof(T);
+    auto size = GetShapeSize(shape) * aclDataTypeSize(dataType);
     // 调用aclrtMalloc申请device侧内存
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    // 调用aclrtMalloc申请host侧内存
-    ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    // 调用aclrtMallocHost申请host侧内存
+    ret = aclrtMallocHost(hostAddr, size);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMallocHost failed. ERROR: %d\n", ret); return ret);
+    memset(*hostAddr, 0, size);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
                               shape.data(), shape.size(), *deviceAddr);
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
     return 0;
 }
@@ -251,12 +254,13 @@ int main() {
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     auto size = GetShapeSize(queryShape);
-    std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), queryDeviceAddr, size * sizeof(float),
+    auto copySize = size * aclDataTypeSize(aclDataType::ACL_BF16);
+    std::vector<uint16_t> resultData(size, 0);
+    ret = aclrtMemcpy(resultData.data(), copySize, queryDeviceAddr, copySize,
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < size; i++) {
-      LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+      LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
     }
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(tokenX);
@@ -291,20 +295,20 @@ int main() {
     aclrtFree(queryRopeDeviceAddr);
 
     // 8. 释放host侧资源
-    aclrtFree(tokenXHostAddr);
-    aclrtFree(weightDqHostAddr);
-    aclrtFree(weightUqQrHostAddr);
-    aclrtFree(weightUkHostAddr);
-    aclrtFree(weightDkvKrHostAddr);
-    aclrtFree(rmsnormGammaCqHostAddr);
-    aclrtFree(rmsnormGammaCkvHostAddr);
-    aclrtFree(ropeSinHostAddr);
-    aclrtFree(ropeCosHostAddr);
-    aclrtFree(cacheIndexHostAddr);
-    aclrtFree(kvCacheHostAddr);
-    aclrtFree(krCacheHostAddr);
-    aclrtFree(queryHostAddr);
-    aclrtFree(queryRopeHostAddr);
+    aclrtFreeHost(tokenXHostAddr);
+    aclrtFreeHost(weightDqHostAddr);
+    aclrtFreeHost(weightUqQrHostAddr);
+    aclrtFreeHost(weightUkHostAddr);
+    aclrtFreeHost(weightDkvKrHostAddr);
+    aclrtFreeHost(rmsnormGammaCqHostAddr);
+    aclrtFreeHost(rmsnormGammaCkvHostAddr);
+    aclrtFreeHost(ropeSinHostAddr);
+    aclrtFreeHost(ropeCosHostAddr);
+    aclrtFreeHost(cacheIndexHostAddr);
+    aclrtFreeHost(kvCacheHostAddr);
+    aclrtFreeHost(krCacheHostAddr);
+    aclrtFreeHost(queryHostAddr);
+    aclrtFreeHost(queryRopeHostAddr);
 
     if (workspaceSize > static_cast<uint64_t>(0)) {
       aclrtFree(workspaceAddr);

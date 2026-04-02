@@ -72,7 +72,6 @@
   y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
   $$
 
-
   **Step 5: Renorm 与缩放**
 
   normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
@@ -334,7 +333,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <th>描述</th>
     </tr>
   </thead>
-  
+  <tbody>
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
@@ -413,7 +412,7 @@ aclnnStatus aclnnMoeGatingTopK(
     * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
     * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-    * renorm仅支持0和1，表示先进行norm操作，再计算topk。
+    * renorm仅支持0，表示先进行norm操作，再计算topk。
 * 其他限制：
     * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
     * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
@@ -596,4 +595,3 @@ int main() {
   return 0;
 }
 ```
-

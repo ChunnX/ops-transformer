@@ -15,8 +15,8 @@
 #include "aclnn_quant_all_reduce.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
@@ -25,7 +25,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/format_utils.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 #include "aclnn_kernels/transdata.h"
 
 namespace {
