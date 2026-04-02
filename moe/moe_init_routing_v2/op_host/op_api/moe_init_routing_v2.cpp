@@ -51,6 +51,13 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
     if (expert_tokens_before_capacity_out != nullptr) {
         expert_tokens_before_capacity = executor->AllocTensor(expert_tokens_before_capacity_out->GetViewShape(), 
             expert_tokens_before_capacity_out->GetDataType(), op::Format::FORMAT_ND);
+        // 由于expert_tokens_count_or_cumsum_out是第三个可选参数，如果它是nullptr的话，在aclnn的机制里输出会忽略它，需要创造一个空Tensor
+        if (expert_tokens_count_or_cumsum_out == nullptr) {
+            op::Shape zeroShape;
+            zeroShape.AppendDim(0);
+            expert_tokens_count_or_cumsum_out = executor->AllocTensor(zeroShape, 
+            ge::DT_INT32, op::Format::FORMAT_ND);
+        }
     }
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2,
