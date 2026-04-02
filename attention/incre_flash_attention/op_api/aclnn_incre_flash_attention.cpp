@@ -16,7 +16,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+// todo reset commitid  71ed7c6121fa641ae9b35a41e4a1239723d97e4a
 extern aclnnStatus aclnnInnerIncreFlashAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value, const aclTensor *pseShift,
     const aclTensor *attenMask, const aclIntArray *actualSeqLengths, const aclTensor *deqScale1,
