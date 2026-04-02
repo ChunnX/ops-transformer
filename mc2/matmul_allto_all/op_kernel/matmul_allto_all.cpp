@@ -21,13 +21,14 @@
 #include "arch32/matmul_allto_all_tiling_key.h"
 #include "arch32/matmul_allto_all_tiling.h"
 #include "arch32/matmul_allto_all.h"
-#include "./arch35/template_head.h" // A3调用kernel模板库
+#include "./arch35/matmul_allto_all_pipeline.h" // A3调用kernel模板库
 #include "./arch35/matmul_allto_all_arch35.h" // A3非量化与A5共用流水
 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;
-using namespace MatmulAlltoAllImpl;
-using namespace MC2KernelTemplate;
+using namespace MC2Kernel;
+using MC2KernelTemplate::MC2AlltoAllContext;
+using MC2KernelTemplate::MC2AlltoAllPrimitives;
 
 #ifndef MATMUL_ALLTO_ALL_A3_FP_IMPL
 #define MATMUL_ALLTO_ALL_A3_FP_IMPL(tilingData, pipe)                                                                  \
