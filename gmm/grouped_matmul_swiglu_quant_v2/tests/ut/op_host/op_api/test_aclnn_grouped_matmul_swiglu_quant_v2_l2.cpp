@@ -345,7 +345,7 @@ struct SwigluOpApiCase {
         SetupPlatformForCase(socVersion);
         // Convergent UT style: only rely on view_shape/dtype/format.
         // Ignore storage/stride to reduce the chance of building invalid tensor descriptors.
-        auto x = MakeTensorDescWithRange(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat), {}, {}, -1, 1);
+        auto x = MakeTensorDescWithRange(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat), {}, {}, -10, 10);
         auto weightShapesVec = ParseDimsList(weightShapes);
         auto weightStorageShapesVec = ParseDimsList(weightStorageShapes);
         auto weightFormatVal = ParseFormat(weightFormat);
@@ -353,15 +353,15 @@ struct SwigluOpApiCase {
         FallbackSingleNzWeightToNdStorage(api, weightFormatVal, weightShapesVec, weightStorageShapesVec);
         // Ignore weight storage/stride in UT descriptor building.
         auto weight = MakeTensorListDescWithRange(weightShapesVec, ParseDtype(weightDtype), weightFormatVal,
-                                                  {}, {}, -1, 1, false);
+                                                  {}, {}, -10, 10, false);
         auto xScale = MakeTensorDescWithRange(ParseDims(xScaleShape), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat), {}, {},
-                                              0, 3);
+                                              -10, 10);
         auto groupList = MakeTensorDescWithRange(ParseDims(groupListShape), ParseDtype(groupListDtype),
-                                                 ParseFormat(groupListFormat), {}, {}, 0, 64);
+                                                 ParseFormat(groupListFormat), {}, {}, -10, 10);
         auto out1 = MakeTensorDescWithRange(ParseDims(out1Shape), ParseDtype(out1Dtype), ParseFormat(out1Format), {}, {},
-                                            -1, 1);
+                                            -10, 10);
         auto out2 = MakeTensorDescWithRange(ParseDims(out2Shape), ParseDtype(out2Dtype), ParseFormat(out2Format), {}, {},
-                                            -1, 1);
+                                            -10, 10);
 
         const auto weightAssistShapesVec = ParseDimsList(weightAssistShapes);
         const auto smoothScaleDims = ParseDims(smoothScaleShape);
@@ -450,7 +450,7 @@ struct SwigluOpApiCase {
         } else {
             auto weightScale = MakeTensorListDescWithRange(weightScaleShapesVec, ParseDtype(weightScaleDtype),
                                                            ParseFormat(weightScaleFormat),
-                                                           {}, {}, 0, 3);
+                                                           {}, {}, -10, 10);
             if (hasWeightAssist && hasSmoothScale) {
                 auto weightAssist = MakeTensorListDesc(weightAssistShapesVec, ParseDtype(weightAssistDtype),
                                                        ParseFormat(weightAssistFormat), {}, {});
