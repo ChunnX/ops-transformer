@@ -23,6 +23,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
+#include "common/op_api/mc2_context.h"
 using namespace Ops::Transformer;
 using namespace op;
 #ifdef __cplusplus
