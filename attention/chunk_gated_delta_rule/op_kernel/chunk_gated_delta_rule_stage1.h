@@ -401,31 +401,23 @@ private:
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<bfloat16_t>& dstGm,
                                         const GlobalTensor<bfloat16_t>& outKgGm, uint32_t subValidRows, bool kgFlag = false)
     {
-        // copyIn
         DataCopyInBf16WithStride(subValidRows, dk_, srcGm, nk_ * dk_);
-        // copyOut
-        auto tmpTensor = fp32OutQueue_.AllocTensor<bfloat16_t>();
-        // compute
         LocalTensor<bfloat16_t> bf16Tensor = fp32InQueue_.DeQue<bfloat16_t>();
-        DataCopy(tmpTensor, bf16Tensor, AscendC::RoundMode::CAST_NONE, subValidRows * dkAligned_);
-        PipeBarrier<PIPE_V>();
+
         if (subValidRows < halfChunkSize_) {
-            Duplicate(tmpTensor[subValidRows * dkAligned_], static_cast<bfloat16_t>(0.0f),
-                      (halfChunkSize_ - subValidRows) * dkAligned_);
+            Duplicate(bf16Tensor[subValidRows * dkAligned_], bfloat16_t(0.0f),
+                    (halfChunkSize_ - subValidRows) * dkAligned_);
             PipeBarrier<PIPE_V>();
         }
-        fp32OutQueue_.EnQue(tmpTensor);
-        fp32InQueue_.FreeTensor(bf16Tensor);
-        tmpTensor = fp32OutQueue_.DeQue<bfloat16_t>();
 
         uint32_t srcStride = (dkAligned_ - dk_) * sizeof(bfloat16_t) / BLOCK_SIZE;
         DataCopyExtParams outParams{static_cast<uint16_t>(halfChunkSize_),
                                     static_cast<uint32_t>(dk_ * sizeof(bfloat16_t)), srcStride, 0, 0};
-        DataCopyPad(dstGm, tmpTensor, outParams);
+        DataCopyPad(dstGm, bf16Tensor, outParams);
         if (!gOptional_ && kgFlag) {
-            DataCopyPad(outKgGm[subOffset_ * dk_], tmpTensor, outParams);
+            DataCopyPad(outKgGm[subOffset_ * dk_], bf16Tensor, outParams);
         }
-        fp32OutQueue_.FreeTensor(tmpTensor);
+        fp32InQueue_.FreeTensor(bf16Tensor);
     }
 
     __aicore__ inline void GCumExpCompute(const GlobalTensor<float> src, const GlobalTensor<bfloat16_t> dst,
