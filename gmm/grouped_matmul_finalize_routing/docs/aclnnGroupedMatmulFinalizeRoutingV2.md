@@ -573,7 +573,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<uint16_t> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值
       groupListHostData[0] = 8;
       // 创建x aclTensor
@@ -627,7 +627,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       std::unique_ptr<void, aclError (*)(void *)> rowIndexDeviceAddrPtr(rowIndexDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建out aclTensor
-      ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
+      ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> outTensorPtr(out, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> outDeviceAddrPtr(outDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);

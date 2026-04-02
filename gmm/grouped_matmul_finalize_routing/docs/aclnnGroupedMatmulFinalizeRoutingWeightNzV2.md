@@ -608,7 +608,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
         std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
         std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-        std::vector<uint16_t> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+        std::vector<float> outHostData(GetShapeSize(outShape));
 
         // 创建x aclTensor
         ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_INT8, &x);
@@ -700,14 +700,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
         // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
         auto size = GetShapeSize(outShape);
-        std::vector<uint16_t> resultData(
-            size, 0);  // C语言中无法直接打印fp16的数据，需要用uint16_t读出来，自行通过二进制转成fp16
+        std::vector<float> resultData(size, 0);
         ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                   return ret);
         for (int64_t i = 0; i < size; i++) {
-            LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+            LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
         }
 
         // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
@@ -919,7 +918,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<uint16_t> outHostData(GetShapeSize(outShape)); // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
 
       // 创建x aclTensor
       ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_HIFLOAT8, &x);
@@ -982,14 +981,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
       // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
       auto size = GetShapeSize(outShape);
-      std::vector<uint16_t> resultData(size,
-                                      0); // C语言中无法直接打印fp16的数据，需要用uint16读出来，自行通过二进制转成fp16
+      std::vector<float> resultData(size, 0);
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                         size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                     return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+          LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改

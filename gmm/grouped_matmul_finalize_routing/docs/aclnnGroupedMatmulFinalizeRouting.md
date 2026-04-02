@@ -561,7 +561,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<float> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值
       groupListHostData[0] = 8;
       // 创建x aclTensor
