@@ -408,7 +408,6 @@ private:
         // compute
         LocalTensor<bfloat16_t> bf16Tensor = fp32InQueue_.DeQue<bfloat16_t>();
         DataCopy(tmpTensor, bf16Tensor, subValidRows * dkAligned_);
-        PipeBarrier<PIPE_V>();
         if (subValidRows < halfChunkSize_) {
             Duplicate(tmpTensor[subValidRows * dkAligned_], static_cast<bfloat16_t>(0.0f),
                       (halfChunkSize_ - subValidRows) * dkAligned_);
@@ -493,7 +492,6 @@ private:
         PipeBarrier<PIPE_V>();
         Mul(attnUbFloat_, kkLocal_, attnUbFloat_, chunkSize_ * halfChunkSize_);
         PipeBarrier<PIPE_V>();
-        fp32InQueue_.FreeTensor(kkLocal_);
     }
 
     __aicore__ inline void InverseCompute(const GlobalTensor<bfloat16_t> dst, LocalTensor<float> gammaUbFloat)
