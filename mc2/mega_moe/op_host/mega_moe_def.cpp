@@ -8,11 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file mega_moe_def.cpp
- * \brief
- */
-
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -26,47 +21,54 @@ public:
         .AutoContiguous();
     this->Input("x")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    this->Input("expert_ids")
+    this->Input("topk_ids")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    this->Input("expert_scales")
+    this->Input("topk_weights")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight1")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
+        .ParamType(DYNAMIC)
+        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
+                   ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
     this->Input("weight2")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
-    this->Input("scales")
-        .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
+        .ParamType(DYNAMIC)
+        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
+                   ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
     this->Input("x_active_mask")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_BOOL})
+        .DataTypeList({ge::DT_INT8})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales1")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales2")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("scales")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
@@ -74,15 +76,17 @@ public:
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
         .FormatList({ge::FORMAT_ND});
+    this->Output("expert_token_nums")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND});
 
-    this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-    this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
     this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
+    this->Attr("ep_world_size").AttrType(REQUIRED).Int();
     this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
     this->Attr("max_recv_token_num").AttrType(OPTIONAL).Int(0);
-    this->Attr("shared_expert_num").AttrType(OPTIONAL).Int(1);
     this->Attr("dispatch_quant_mode").AttrType(OPTIONAL).Int(0);
-    this->Attr("dispatch_quant_out_type").AttrType(OPTIONAL).Int(0);
+    this->Attr("dispatch_quant_out_type").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("combine_quant_mode").AttrType(OPTIONAL).Int(0);
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
     this->Attr("global_bs").AttrType(OPTIONAL).Int(0);

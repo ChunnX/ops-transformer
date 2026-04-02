@@ -26,37 +26,45 @@ extern "C" {
 #endif
 
 extern aclnnStatus aclnnInnerMegaMoeGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* expertIds,
-    const aclTensor* expertScales, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, int64_t cclBufferSize, int64_t maxRecvTokenNum,
-    int64_t sharedExpertNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
+    const aclTensor* context, const aclTensor* x, const aclTensor* topkIds,
+    const aclTensor* topkWeights, const aclTensorList* weight1, const aclTensorList* weight2,
+    const aclTensor* xActiveMask, const aclTensor* weightScales1, const aclTensor* weightScales2,
+    const aclTensor* scales,
+    int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum,
+    int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
     int64_t combineQuantMode, const char* commAlg, int64_t globalBs,
-    aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor);
+    aclTensor* y, aclTensor* expertTokenNums, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 extern aclnnStatus aclnnInnerMegaMoe(void* workspace, uint64_t workspaceSize,
                                      aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* expertIds,
-    const aclTensor* expertScales, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, int64_t cclBufferSize, int64_t maxRecvTokenNum,
-    int64_t sharedExpertNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
+    const aclTensor* context, const aclTensor* x, const aclTensor* topkIds,
+    const aclTensor* topkWeights, const aclTensorList* weight1, const aclTensorList* weight2,
+    const aclTensor* xActiveMask, const aclTensor* weightScales1, const aclTensor* weightScales2,
+    const aclTensor* scales,
+    int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum,
+    int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
     int64_t combineQuantMode, const char* commAlg, int64_t globalBs,
-    aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)
+    aclTensor* y, aclTensor* expertTokenNums, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
     OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expertIds, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expertScales, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(topkIds, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(topkWeights, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(weight1, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(weight2, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(y, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(expertTokenNums, return ACLNN_ERR_PARAM_NULLPTR);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
-        context, x, expertIds, expertScales, epWorldSize, epRankId, moeExpertNum,
-        cclBufferSize, maxRecvTokenNum, sharedExpertNum, dispatchQuantMode,
-        dispatchQuantOutType, combineQuantMode, commAlg, globalBs,
-        y, workspaceSize, executor);
+        context, x, topkIds, topkWeights, weight1, weight2,
+        xActiveMask, weightScales1, weightScales2, scales,
+        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+        dispatchQuantMode, dispatchQuantOutType, combineQuantMode, commAlg, globalBs,
+        y, expertTokenNums, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

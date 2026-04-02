@@ -1,0 +1,25 @@
+字段分组,字段名,字段类型,字段类型范围,默认值,可选Format,shape,说明
+INPUT,context,tensor,INT32,N/A,ND,"(xx, )",mc2 context信息
+INPUT,x,tensor,BF16、FP16、FP8_E5M2、FP8_E4M3、HIF8、FP4_E2M1、FP4_E1M2,N/A,ND,"(BS, H)",输入的hidden_states，二维tensor。一个die输入BS个tokens，每个token长度为H。
+INPUT,topk_ids,tensor,INT32,N/A,ND,"(BS, K)","输入的topK专家id，值为Moe的rank_id，即[shared_expert_rank_num, world_size)，二维tensor。指的是BS个tokens，每个token发给指定的k个专家。"
+INPUT,topk_weights,tensor,FP32、BF16,N/A,ND,"(BS, K)",Combine聚合权重，用于对专家输出做加权求和
+INPUT,weight1,tensorList,BF16、FP16、INT8、INT4、FP8_E5M2、FP8_E4M3、HIF8、FP4_E2M1、FP4_E1M2,N/A,ND、NZ,"(expertPerRank, H, N)",dispatchGmm计算的右矩阵，即moe专家和共享专家的权重，共享专家权重在前
+INPUT,weight2,tensorList,BF16、FP16、INT8、INT4、FP8_E5M2、FP8_E4M3、HIF8、FP4_E2M1、FP4_E1M2,N/A,ND、NZ,"(expertPerRank, N/2, H)",gmmCombine计算的右矩阵，即moe专家和共享专家的权重，共享专家权重在前
+OPTIONAL_INPUT,x_active_mask,tensor,INT8,N/A,ND,"(BS, )、(BS, K)","一维或二维，mask值，0的不需要发送, 1表示发送，（2表示拷贝专家）"
+OPTIONAL_INPUT,weight_scales1,tensorList,FP32、FP8_E8M0,N/A,ND,"(expertPerRank, N, H/32)",可选输入，量化场景需要，dispatchGmm右矩阵反量化参数，包含moe专家和共享专家的scale
+OPTIONAL_INPUT,weight_scales2,tensorList,FP32、FP8_E8M0,N/A,ND,"(expertPerRank, H, N/2/32)",可选输入，量化场景需要，gmmCombine右矩阵反量化参数，包含moe专家和共享专家的scale
+OPTIONAL_INPUT,scales,tensor,FP32、FP8_E8M0,N/A,ND,"(shared_expert_num+moe_expert_num, H)",（预留）可选smooth参数，非量化不传；动态量化可不传入，传入场景的数据排布顺序为共享专家共有的一行scale+每个moe专家对应scale，二维tensor。
+OUTPUT,y,tensor,BF16、FP16,N/A,ND,"(BS, H)",计算输出，输入序列中每个 token在经过动态路由分发、专家网络计算、原路返还并加权融合后得到的最终特征向量
+OUTPUT,expert_token_nums,tensor,INT32,N/A,ND,"(expertPerRank,)",计算输出，本卡专家收到的token数量
+,,,,,,,
+REQUIRED_ATTR,moe_expert_num,int,,,,,"moe专家数, 共享专家数根据expertPerRank-moe专家数/ep_world_size自动计算"
+REQUIRED_ATTR,ep_world_size,int,,,,,ep域大小
+REQUIRED_ATTR,ccl_buffer_size,int,,,,,HCCL通信内存大小
+ATTR,max_recv_token_num,int,,0,,,alltoall接收的最多的token数，0表示使用默认值，内部自行按最大值计算
+ATTR,dispatch_quant_mode,int,,0,,,dispatch通信时量化模式，0表示非量化、1 pertensor、2 per-group
+ATTR,dispatch_quant_out_type,int,,ge::DT_UNDEFINED,,,量化时，量化后输出的数据类型
+ATTR,combine_quant_mode,int,,0,,,combine通信时量化模式，0表示非量化
+ATTR,comm_alg,str,,"""""",,,通信亲和内存布局算法
+ATTR,global_bs,int,,0,,,"标识ep域全局的global大小，传ep域全局总hidden_states，或者传0。
+如果该值为0，则认为
+global_bs = BS*ep_world_size"
