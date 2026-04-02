@@ -943,17 +943,17 @@ def gen_cmp_kv_quant_1_pa(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, ro
     if (template_run_mode == "SCFA" or template_run_mode == "ALL_SCFA") and cmp_max_s2 != 0:
         if topk_value_mode == 1:
             if layout_q == "BSND":
-                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, seqused_kv, cmp_mask_mode, \
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mode, \
                     cmp_sparse_indices_mode, kv_topk_mode)
             elif layout_q == "TND":
-                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, cu_seqlens_q, seqused_kv, \
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, \
                     cmp_mask_mode, cmp_sparse_indices_mode, kv_topk_mode)
         else:
             if layout_q == "BSND":
-                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, cmp_max_s2, d_aligned_128, seqused_kv, cmp_mask_mode, \
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, d_aligned_128, seqused_kv, cmp_mask_mode, \
                     cmp_sparse_indices_mode, kv_topk_mode, cmp_block_table, cmp_max_block_num_per_batch, block_size2)
             elif layout_q == "TND":
-                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, cmp_max_s2, d_aligned_128, cu_seqlens_q, seqused_kv, \
+                cmp_sparse_data, cmp_sparse_indices, cmp_topk_length = gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, d_aligned_128, cu_seqlens_q, seqused_kv, \
                     cmp_mask_mode,cmp_sparse_indices_mode, kv_topk_mode,  cmp_block_table, cmp_max_block_num_per_batch, block_size2)
 
     # if topk_value_mode == 1:
