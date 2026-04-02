@@ -2177,19 +2177,23 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV22Process(LocalTensor<P> &
 
     __VEC_SCOPE__
     {
+        MicroAPI::RegTensor<P> invRmsReg;
+        MicroAPI::RegTensor<P> NDReg;
+        MicroAPI::RegTensor<uint32_t> invRmsIdexReg;
+        MicroAPI::MaskReg maskAll, mask;
         for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(currentChunkSize); bsIdx++) {
             uint32_t vfloopCnt1 = Ceil(copySizeND, eleNumPerVf_);
             uint32_t curLen1 = copySizeND;
-            MicroAPI::RegTensor<P> invRmsReg;
-            MicroAPI::RegTensor<P> NDReg;
-            MicroAPI::RegTensor<P> invRmsTempReg;
+            maskAll = MicroAPI::CreateMask<P,MicroAPI::MaskPattern::ALL>();
             P invRmsSclar = invRmsUbAddr[bsIdx];
             MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
             MicroAPI::Duplicate<P>(invRmsReg, invRmsSclar, maskAll);
+            // MicroAPI::Duplicate(invRmsIdexReg, bsIdx, maskAll);
+            // MicroAPI::Gather(invRmsReg, invRmsUbAddr, invRmsIdexReg, maskAll);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < static_cast<uint16_t>(vfloopCnt1); vfBlockIdx++) {
                 uint32_t elemOffset = vfBlockIdx * eleNumPerVf_;
                 uint32_t srcOffset = bsIdx * copySizeND;
-                MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLen1);
+                mask = MicroAPI::UpdateMask<P>(curLen1);
                 // MicroAPI::Duplicate<P>(invRmsReg, invRmsSclar, mask);
                 MicroAPI::LoadAlign(NDReg, xRsFp32BufAddr + srcOffset + elemOffset);
                 MicroAPI::Mul(NDReg, NDReg, invRmsReg, mask);
@@ -2221,7 +2225,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV21Process(LocalTensor<P> &
         MicroAPI::Duplicate<P>(scaleMeanReg, (-scaleMean_), maskAll);
         for (uint16_t vfBlockIdx = 0; vfBlockIdx < static_cast<uint16_t>(vfloopCnt); vfBlockIdx++) {
             uint32_t elemOffset = vfBlockIdx * eleNumPerVf_;
-            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLen);
+            mask = MicroAPI::UpdateMask<P>(curLen);
             MicroAPI::LoadAlign(invRmsInReg, invRmsInBufAddr + elemOffset);
             MicroAPI::Mul(invRmsTempReg, invRmsInReg, invRmsInReg, mask);
             MicroAPI::Mul(invRmsUbReg, invRmsTempReg, invRmsInReg, mask);
