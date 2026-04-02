@@ -56,15 +56,21 @@ __aicore__ inline uint32_t AlignDown(uint32_t a, uint32_t base)
     size_t offset##var = (size_t)(&((tilingType*)0)->member);        \
     __gm__ uint8_t*(var) = (tiling) + (offset##var)
 
-__aicore__ inline int32_t GetSplitValueFromGroupList(
-    uint32_t groupIdx, int32_t& preOffset, const AscendC::GlobalTensor<int64_t>& groupListGm)
+__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t& preOffset, int64_t groupListType,
+                                                     const AscendC::GlobalTensor<int64_t>& groupListGm)
 {
     int32_t splitValue = 0;
     AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         groupListGm);
-    int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
-    splitValue = offset - preOffset;
-    preOffset = offset;
+    if (groupListType == 0) {
+        // gListType = 0: cumulative sum mode
+        int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
+        splitValue = offset - preOffset;
+        preOffset = offset;
+    } else {
+        // gListType = 1: direct length mode
+        splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
+    }
     return splitValue;
 }
 } // namespace AscendC

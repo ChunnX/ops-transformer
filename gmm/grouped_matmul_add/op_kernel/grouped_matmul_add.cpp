@@ -212,8 +212,9 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Process()
         }
     }
 
+    int64_t gListType = gmmBaseParams->groupListType;
     for (uint32_t groupIdx = 0, count = 0; groupIdx < groupNum; ++groupIdx) {
-        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, groupListGm);
+        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, gListType, groupListGm);
         SetMNConfig(splitValue, mnConfig);
         uint32_t dimM = Ceil(mnConfig.m, mnConfig.singleM);
         uint32_t dimN = Ceil(mnConfig.n, mnConfig.singleN);
@@ -404,6 +405,7 @@ extern "C" __global__ __aicore__ void grouped_matmul_add(GM_ADDR x, GM_ADDR weig
     auto gmmBaseParamsObj = GroupedMatmulAddTilingData.gmmBaseParams;
     auto mmTilingDataObj = GroupedMatmulAddTilingData.mmTilingData;
 #endif
+    printf("ljm hello ");
     if (TILING_KEY_IS(0)) {
         using matmulType = MmImplType<xType<true>, weightType<false>, yType>;
         matmulType::MT mm;

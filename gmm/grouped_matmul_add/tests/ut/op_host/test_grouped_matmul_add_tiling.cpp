@@ -47,13 +47,25 @@ TEST_F(GroupedMatmulAddTiling, test_tiling_bf16)
                                                {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
                                                {{{690, 567}, {690, 567}}, ge::DT_FLOAT, ge::FORMAT_ND}},
                                               // output info
-                                              {{{{690, 567}, {690, 567}}, ge::DT_FLOAT, ge::FORMAT_ND}}, &compileInfo);
+                                              {{{{690, 567}, {690, 567}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+                                              {
+                                                  {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                  {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                  {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                  {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+                                              },
+                                              &compileInfo);
     int64_t expectTilingKey = 1; // tilngkey
-    string expectTilingData =
-        "2 128 2 1481763717121 5497558139447 1481763718400 5497558139136 1099511627904 34359738432 4294967304 1 0 "
-        "1970324836974592 131072 4294967297 4294967297 17179869188 0 8589934594 1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {33554432}; // workspace
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    int groupListTypeMode = 2;
+    int groupListTypeIndex = 3;
+    string expectTilingData = "";
+    for (int i = 0; i < groupListTypeMode; i++) {
+        expectTilingData = "2 128 2 " + to_string(i) + " 1481763717121 5497558139447 1481763718400 5497558139136 1099511627904 34359738432 4294967304 1 0 "
+        "1970324836974592 131072 4294967297 4294967297 17179869188 0 8589934594 1 0 0 0 0 0 0 0 0 ";
+        tilingContextPara.attrs_.at(groupListTypeIndex).attr_ = Ops::Transformer::AnyValue::CreateFrom<int64_t>(i);
+        ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    }
 }
 
 TEST_F(GroupedMatmulAddTiling, test_tiling_fp16)
@@ -67,11 +79,23 @@ TEST_F(GroupedMatmulAddTiling, test_tiling_fp16)
                                                {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
                                                {{{690, 567}, {690, 567}}, ge::DT_FLOAT, ge::FORMAT_ND}},
                                               // output info
-                                              {{{{690, 567}, {690, 567}}, ge::DT_FLOAT, ge::FORMAT_ND}}, &compileInfo);
+                                              {{{{690, 567}, {690, 567}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+                                              {
+                                                  {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                  {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                  {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                  {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+                                              },
+                                              &compileInfo);
     int64_t expectTilingKey = 0; // tilngkey
-    string expectTilingData =
-        "2 128 2 1481763717121 5497558139447 1481763718400 5497558139136 1099511627904 34359738432 4294967304 1 0 "
-        "1970324836974592 131072 4294967297 4294967297 17179869188 0 8589934594 1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {33554432}; // workspace
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    int groupListTypeMode = 2;
+    int groupListTypeIndex = 3;
+    string expectTilingData = "";
+    for (int i = 0; i < groupListTypeMode; i++) {
+        expectTilingData = "2 128 2 " + to_string(i) + " 1481763717121 5497558139447 1481763718400 5497558139136 1099511627904 34359738432 4294967304 1 0 "
+        "1970324836974592 131072 4294967297 4294967297 17179869188 0 8589934594 1 0 0 0 0 0 0 0 0 ";
+        tilingContextPara.attrs_.at(groupListTypeIndex).attr_ = Ops::Transformer::AnyValue::CreateFrom<int64_t>(i);
+        ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    }
 }
