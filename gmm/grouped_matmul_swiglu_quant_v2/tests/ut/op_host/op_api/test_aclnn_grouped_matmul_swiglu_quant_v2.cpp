@@ -9,12 +9,13 @@
  */
 
  /*!
- * \file test_aclnn_grouped_matmul_swiglu_quant_v2_l2.cpp
- * \brief CSV-driven unit tests for grouped_matmul_swiglu_quant_v2 opapi.
+ * \file test_aclnn_grouped_matmul_swiglu_quant_v2.cpp
+ * \brief CSV-driven opapi UT for grouped_matmul_swiglu_quant_v2 (aligned with gmm grouped_matmul opapi UT style).
  */
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <string>
@@ -70,6 +71,21 @@ string GetCurrentFileDir()
     return pos == string::npos ? string(".") : path.substr(0, pos);
 }
 
+string GetCwd()
+{
+#if defined(_WIN32)
+    char path[MAX_PATH] = {0};
+    DWORD len = GetCurrentDirectoryA(MAX_PATH, path);
+    return len == 0 ? string(".") : string(path, len);
+#else
+    char path[kPathBufferSize] = {0};
+    if (getcwd(path, sizeof(path)) == nullptr) {
+        return ".";
+    }
+    return string(path);
+#endif
+}
+
 string JoinPath(const string &dir, const string &file)
 {
     if (dir.empty()) {
@@ -90,15 +106,28 @@ bool FileExists(const string &path)
 
 string ResolveCsvPath(const string &csvName)
 {
-    const string exePath = JoinPath(GetExeDirPath(), csvName);
-    if (FileExists(exePath)) {
-        return exePath;
+    const string cwd = GetCwd();
+    const string codePath = []() {
+        const char *env = std::getenv("CODE_PATH");
+        return env == nullptr ? string() : string(env);
+    }();
+
+    vector<string> candidates;
+    candidates.emplace_back(JoinPath(GetExeDirPath(), csvName));
+    candidates.emplace_back(JoinPath(GetCurrentFileDir(), csvName));
+    candidates.emplace_back(JoinPath(cwd, csvName));
+    candidates.emplace_back(JoinPath(cwd, "../../../../../gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/op_api/" + csvName));
+    if (!codePath.empty()) {
+        candidates.emplace_back(
+            JoinPath(codePath, "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/op_api/" + csvName));
     }
-    const string srcPath = JoinPath(GetCurrentFileDir(), csvName);
-    if (FileExists(srcPath)) {
-        return srcPath;
+
+    for (const auto &path : candidates) {
+        if (FileExists(path)) {
+            return path;
+        }
     }
-    return exePath;
+    return candidates.front();
 }
 
 void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
@@ -573,6 +602,7 @@ vector<SwigluOpApiCase> LoadCases(const string &csvFilePath)
             cases.emplace_back(c);
         }
     }
+    EXPECT_FALSE(cases.empty()) << "No valid cases parsed from CSV: " << csvFilePath;
     return cases;
 }
 
@@ -597,7 +627,7 @@ TEST_P(grouped_matmul_swiglu_quant_v2_opapi_csv_test, run_case)
 INSTANTIATE_TEST_SUITE_P(
     grouped_matmul_swiglu_quant_v2_opapi_csv,
     grouped_matmul_swiglu_quant_v2_opapi_csv_test,
-    testing::ValuesIn(LoadCases(ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_v2_l2.csv"))),
+    testing::ValuesIn(LoadCases(ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_v2.csv"))),
     BuildCaseName);
 
 }  // namespace
