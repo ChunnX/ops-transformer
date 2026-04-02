@@ -370,7 +370,6 @@ static bool GetBuiltinLibPath(string &libPath)
                  return true);
     }
 
-    OP_LOGD("print GetBuiltinLibPath func test\n");
     const char *currLibPath = nullptr;
     MM_SYS_GET_ENV(MM_ENV_ASCEND_OPP_PATH, currLibPath);
     OP_CHECK(currLibPath != nullptr, OP_LOGW("ASCEND_LIB_PATH not config."), return false);
