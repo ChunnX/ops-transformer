@@ -21,7 +21,6 @@
 
 struct MegaMoeInfo {
     uint32_t epWorldSize;
-    uint32_t epRankId;
     uint32_t moeExpertNum;
     uint32_t sharedExpertNum;
     uint32_t globalBs;
@@ -38,7 +37,7 @@ struct MegaMoeInfo {
 struct MegaMoeTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-    MegaMoeInfo dispatchFFNCombineInfo;
+    MegaMoeInfo megaMoeInfo;
 };
 
 #endif

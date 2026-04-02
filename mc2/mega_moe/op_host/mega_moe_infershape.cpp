@@ -8,10 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file mega_moe_infershape.cpp
- * \brief
- */
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "platform/platform_info.h"
@@ -27,25 +23,24 @@ static constexpr int64_t NEG_ONE = -1;
 
 static constexpr size_t MEGA_MOE_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t MEGA_MOE_INPUT_X_INDEX = 1;
-static constexpr size_t MEGA_MOE_INPUT_EXPERT_IDS_INDEX = 2;
-static constexpr size_t MEGA_MOE_INPUT_EXPERT_SCALES_INDEX = 3;
+static constexpr size_t MEGA_MOE_INPUT_TOPK_IDS_INDEX = 2;
+static constexpr size_t MEGA_MOE_INPUT_TOPK_WEIGHTS_INDEX = 3;
 // weight1 starts at index 4 (dynamic input)
 // weight2 follows weight1 (dynamic input)
-// scales, x_active_mask, weight_scales1, weight_scales2 are optional/dynamic inputs
+// x_active_mask, weight_scales1, weight_scales2, scales are optional/dynamic inputs
 
 static constexpr size_t MEGA_MOE_OUTPUT_Y_INDEX = 0;
+static constexpr size_t MEGA_MOE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX = 1;
 
-static constexpr size_t MEGA_MOE_ATTR_EP_WORLD_SIZE_INDEX = 0;
-static constexpr size_t MEGA_MOE_ATTR_EP_RANK_ID_INDEX = 1;
-static constexpr size_t MEGA_MOE_ATTR_MOE_EXPERT_NUM_INDEX = 2;
-static constexpr size_t MEGA_MOE_ATTR_CCL_BUFFER_SIZE_INDEX = 3;
-static constexpr size_t MEGA_MOE_ATTR_MAX_RECV_TOKEN_NUM_INDEX = 4;
-static constexpr size_t MEGA_MOE_ATTR_SHARED_EXPERT_NUM_INDEX = 5;
-static constexpr size_t MEGA_MOE_ATTR_DISPATCH_QUANT_MODE_INDEX = 6;
-static constexpr size_t MEGA_MOE_ATTR_DISPATCH_QUANT_OUT_TYPE_INDEX = 7;
-static constexpr size_t MEGA_MOE_ATTR_COMBINE_QUANT_MODE_INDEX = 8;
-static constexpr size_t MEGA_MOE_ATTR_COMM_ALG_INDEX = 9;
-static constexpr size_t MEGA_MOE_ATTR_GLOBAL_BS_INDEX = 10;
+static constexpr size_t MEGA_MOE_ATTR_MOE_EXPERT_NUM_INDEX = 0;
+static constexpr size_t MEGA_MOE_ATTR_EP_WORLD_SIZE_INDEX = 1;
+static constexpr size_t MEGA_MOE_ATTR_CCL_BUFFER_SIZE_INDEX = 2;
+static constexpr size_t MEGA_MOE_ATTR_MAX_RECV_TOKEN_NUM_INDEX = 3;
+static constexpr size_t MEGA_MOE_ATTR_DISPATCH_QUANT_MODE_INDEX = 4;
+static constexpr size_t MEGA_MOE_ATTR_DISPATCH_QUANT_OUT_TYPE_INDEX = 5;
+static constexpr size_t MEGA_MOE_ATTR_COMBINE_QUANT_MODE_INDEX = 6;
+static constexpr size_t MEGA_MOE_ATTR_COMM_ALG_INDEX = 7;
+static constexpr size_t MEGA_MOE_ATTR_GLOBAL_BS_INDEX = 8;
 
 static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 {
@@ -54,41 +49,33 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
     }
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMegaMoe.");
 
-    // Get input shapes
     const gert::Shape *xShape = context->GetInputShape(MEGA_MOE_INPUT_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
-    // Get output shape
     gert::Shape *yShape = context->GetOutputShape(MEGA_MOE_OUTPUT_Y_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, yShape);
 
-    // Get attributes
+    gert::Shape *expertTokenNumsShape = context->GetOutputShape(MEGA_MOE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, expertTokenNumsShape);
+
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-
-    const auto epWorldSize = attrs->GetAttrPointer<int64_t>(MEGA_MOE_ATTR_EP_WORLD_SIZE_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
-
-    const auto epRankId = attrs->GetAttrPointer<int64_t>(MEGA_MOE_ATTR_EP_RANK_ID_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, epRankId);
 
     const auto moeExpertNum = attrs->GetAttrPointer<int64_t>(MEGA_MOE_ATTR_MOE_EXPERT_NUM_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, moeExpertNum);
 
-    const auto sharedExpertNum = attrs->GetAttrPointer<int64_t>(MEGA_MOE_ATTR_SHARED_EXPERT_NUM_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedExpertNum);
+    const auto epWorldSize = attrs->GetAttrPointer<int64_t>(MEGA_MOE_ATTR_EP_WORLD_SIZE_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
 
-    const auto globalBs = attrs->GetAttrPointer<int64_t>(MEGA_MOE_ATTR_GLOBAL_BS_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, globalBs);
-
-    // TODO: Calculate output shape based on input shapes and attributes
-    // y shape: (bs, h) same as input x
     int64_t bs = xShape->GetDim(0);
     int64_t h = xShape->GetDim(1);
 
     yShape->SetDimNum(DIM_TWO);
     yShape->SetDim(0U, bs);
     yShape->SetDim(1U, h);
+
+    expertTokenNumsShape->SetDimNum(DIM_ONE);
+    expertTokenNumsShape->SetDim(0U, *moeExpertNum / *epWorldSize);
 
     OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", bs, h);
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMegaMoe.");
@@ -100,9 +87,8 @@ static ge::graphStatus InferDataTypeMegaMoe(gert::InferDataTypeContext *context)
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMegaMoe.");
 
     auto xDtype = context->GetInputDataType(MEGA_MOE_INPUT_X_INDEX);
-
-    // Output y has same dtype as input x
     context->SetOutputDataType(MEGA_MOE_OUTPUT_Y_INDEX, xDtype);
+    context->SetOutputDataType(MEGA_MOE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX, ge::DT_INT32);
 
     OP_LOGD(context->GetNodeName(), "End to do InferDataTypeMegaMoe.");
     return ge::GRAPH_SUCCESS;

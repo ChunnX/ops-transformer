@@ -19,14 +19,13 @@
 using namespace AscendC;
 
 __global__ __aicore__ void mega_moe(
-    GM_ADDR context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR expertScales,
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
     GM_ADDR weight1, GM_ADDR weight2,
-    GM_ADDR scales, GM_ADDR xActiveMask,
-    GM_ADDR weightScales1, GM_ADDR weightScales2,
-    GM_ADDR yOut,
+    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
+    GM_ADDR scales,
+    GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     TPipe pipe;
-    // TODO: Implement kernel logic
 }
