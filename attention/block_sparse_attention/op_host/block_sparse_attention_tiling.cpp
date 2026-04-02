@@ -894,6 +894,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
         ParseRequiredTensors(bsaContext) != ge::GRAPH_SUCCESS ||
         ParseOptionalTensors(bsaContext) != ge::GRAPH_SUCCESS) {
         ret = ge::GRAPH_FAILED;
+        return ret;
     }
     // 校验TND格式下qseqlen和kvseqlen之和是否分别等于Q和KV的T
     ret = ValidateTNDSeqlenSum(bsaContext);

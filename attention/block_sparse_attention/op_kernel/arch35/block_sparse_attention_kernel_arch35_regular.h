@@ -587,7 +587,6 @@ private:
     uint32_t vL1BufNum_;
     uint32_t pL1BufNum_;
     uint32_t pvL1AddrStart_ = 0;
-    uint32_t ubAddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
 };
