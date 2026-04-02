@@ -89,6 +89,7 @@ enum class CommMode {
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
+using namespace Mc2Kernel;
 
 #define TemplateDispatchKFCTypeClass                                                                                   \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
@@ -519,7 +520,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         reinterpret_cast<__gm__ uint32_t *>(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    dataState_ = InitWinState(selfDataStatusGMTensor_, winContext_[COMM_EP_IDX], epRankIdOriginal_, moeExpertNum_,
+    uint32_t epRankIdHccl = Mc2Kernel::GetRankId(winContext);
+    uint32_t epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext);
+    dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
 }
