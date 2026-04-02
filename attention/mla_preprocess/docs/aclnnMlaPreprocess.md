@@ -570,7 +570,7 @@ aclnnStatus aclnnMlaPreprocess(
     <tr>
       <td>qRopeOut</td>
       <td>输出</td>
-      <td>表示Query经过旋转编程后的输出。</td>
+      <td>表示Query经过旋转编码后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
@@ -588,7 +588,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：cacheMode为2或3：shape为[blockNum, 4 ,blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为2或3：shape为[blockNum, 4 ,blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -597,7 +597,7 @@ aclnnStatus aclnnMlaPreprocess(
     </tr>
     <tr>
       <td>workspaceSize</td>
-      <td>出参</td>
+      <td>输出参数</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
@@ -607,7 +607,7 @@ aclnnStatus aclnnMlaPreprocess(
     </tr>
     <tr>
       <td>executor</td>
-      <td>出参</td>
+      <td>输出参数</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
       <td>-</td>
@@ -786,7 +786,7 @@ bool ReadFile(const std::string &filePath, std::vector<int64_t> shape, std::vect
 template <typename T>
 bool WriteFile(const std::string &filePath, int64_t size, std::vector<T>& hostData)
 {
-    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWRITE);
+    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd < 0) {
         LOG_PRINT("Open file failed. path = %s", filePath.c_str());
         return false;
