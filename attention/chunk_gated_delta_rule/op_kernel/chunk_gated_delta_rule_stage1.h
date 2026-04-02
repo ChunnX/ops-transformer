@@ -516,7 +516,7 @@ private:
         InverseAIV(subOffset_, INVERSE_SHAPE);
         auto tmp = fp32OutQueue_.AllocTensor<float>();
         Cast(tmp, inverseRes_, AscendC::RoundMode::CAST_NONE, curVecLen);
-        fp32OutQueue_.EnQue(ymp);
+        fp32OutQueue_.EnQue(tmp);
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
 
@@ -768,7 +768,6 @@ private:
                                         uint32_t colsAligned, GlobalTensor<bfloat16_t> y)
     {
         fp32OutLocal_ = fp32OutQueue_.DeQue<float>();
-        // 复用 gBroadUbFloat_ 空间做 bf16 中转，不额外占 UB
         auto bf16Local = gBroadUbFloat_.ReinterpretCast<bfloat16_t>();
         Cast(bf16Local, fp32OutLocal_, RoundMode::CAST_RINT, rows * colsAligned);
         PipeBarrier<PIPE_V>();
