@@ -49,10 +49,9 @@ using namespace regbaseutil;
         using CubeBlockType = FABlockCubeNoquantMla<__VA_ARGS__>;                                                   \
         using VecBlockType = BaseApi::FANoQuantBlockVecInfer<__VA_ARGS__>;                                                     \
         templateClass<CubeBlockType, VecBlockType> op;                                                                  \
-        op.Init(query, key, value, pseShift, attenMask, actualSeqLengths,                                               \
+        op.Run(query, key, value, pseShift, attenMask, actualSeqLengths,                                               \
                 actualSeqLengthsKV, blocktable, postQuantScale, postQuantOffset, queryRope, keyRope, softmaxLse, attentionOut,                           \
                 user, tilingData, &tPipe);                                                                              \
-        op.Process();                                                                                                   \
     } while(0)
 
 #if defined(__DAV_C310_CUBE__) || (defined __DAV_310R6_CUBE__)
