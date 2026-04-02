@@ -16,8 +16,6 @@
 #ifndef MATMUL_ALLTO_ALL_ARCH35_H
 #define MATMUL_ALLTO_ALL_ARCH35_H
 
-#include "matmul_allto_all_tiling_data.h"
-
 namespace MatmulAlltoAllImpl
 {
 using namespace AscendC;

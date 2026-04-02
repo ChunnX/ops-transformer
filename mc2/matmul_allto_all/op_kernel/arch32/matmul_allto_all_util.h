@@ -16,7 +16,7 @@
 #define MATMUL_ALLTO_ALL_UTIL
 
 #include "matmul_allto_all_tiling.h"
-
+namespace{
 constexpr static uint32_t BUFFER_NUM = 2U;                   // 多buf
 constexpr static uint32_t STATE_OFFSET = 512U;               // 状态空间偏移地址
 constexpr static uint32_t BLOCK_SIZE = 32U;
@@ -31,6 +31,7 @@ constexpr static int32_t FLAG_VALUE = 1;
 constexpr static int32_t USED_UB_SIZE = 160 * 1024;
 constexpr static int32_t FLAG_OFFSET = 180 * 1024 * 1024 / sizeof(int32_t);
 constexpr static uint32_t UB_OFFSET = 97440 / sizeof(int16_t);  // 2 是 size of T
+}
 
 template <typename T, size_t SIZE>
 struct BaseBlock {
