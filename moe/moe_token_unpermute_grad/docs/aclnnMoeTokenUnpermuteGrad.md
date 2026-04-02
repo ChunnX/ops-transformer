@@ -124,7 +124,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>sortedIndices</td>
       <td>输入</td>
       <td>表示输入输出梯度的映射关系。</td>
-      <td>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</td>
+      <td>取值范围为[0, tokens_num * topK_num - 1]，且索引值不重复。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(tokens_num * topK_num)</td>
