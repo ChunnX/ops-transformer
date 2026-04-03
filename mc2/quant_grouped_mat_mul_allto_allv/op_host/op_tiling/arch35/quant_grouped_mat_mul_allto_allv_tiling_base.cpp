@@ -50,7 +50,7 @@ bool QuantGroupedMatmulAllToAllvTilingBase::IsContains(const std::vector<uint32_
 }
 
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::CheckShapeDimensions(const gert::StorageShape *shape,
-    uint64_t dims, const char *shapeName)
+                                                                            uint64_t dims, const char *shapeName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK((dimNum != dims),

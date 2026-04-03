@@ -50,7 +50,7 @@ const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128, 256};
 constexpr int64_t RANK_DEFAULT_NUM = -1;
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::MxCheckShapeDimensions(const gert::StorageShape *shape,
-    uint64_t dims, const char *shapeName)
+                                                                            uint64_t dims, const char *shapeName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK((dimNum != dims),
