@@ -23,9 +23,6 @@ def check_valid_param(params):
     if q_type not in (torch.float16, torch.bfloat16):
         raise ValueError(f"q_type should be torch.float16 or torch.bfloat16, but got {q_type}")
 
-    # if kv_dtype not in (None, "hifloat8", "float8_e4m3fn"):
-    #     raise ValueError(f"kv_dtype should be None/hifloat8/float8_e4m3fn, but got {kv_dtype}")
-
     if layout_query not in ("BSND", "TND"):
         raise ValueError(f"layout_query only supports BSND/TND, but got {layout_query}")
 

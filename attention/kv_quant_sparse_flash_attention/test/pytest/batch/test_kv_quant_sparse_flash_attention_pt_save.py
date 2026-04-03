@@ -11,9 +11,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 from pathlib import Path
+import concurrent.futures
 import pytest
 import utils
-import concurrent.futures
 
 
 PT_SAVE_PATH = "./pt_files/"
@@ -23,16 +23,20 @@ SAVE_PT = True
 RESULT_PATH = Path("result.xlsx")
 ENABLED_PARAMS = utils.load_excel_test_cases("./excel/example.xlsx", "decode")
 PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS, pytest_paramset=False)
-
 case_id = 0
+
+
 def execute_qsfa(param_combination):
+    # 先将 Excel 参数转成 pt 用例，供 batch 回放复用。
     global case_id
     utils.qsfa(case_id, param_combination, PT_SAVE_PATH, DEVICE_ID, RUN_NPU, SAVE_PT, RESULT_PATH)
     case_id += 1
 
+
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combination", PARAM_COMBINATION_SET)
 def test_kv_quant_sparse_flash_attention_pt_save(param_combination):
+    # batch 的第一步：根据 Excel 参数批量生成 pt 文件。
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, param_combination)
         for future in concurrent.futures.as_completed([futures]):

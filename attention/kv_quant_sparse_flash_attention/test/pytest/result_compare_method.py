@@ -11,21 +11,23 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-import random
-import logging
-import torch
 import datetime
 import os
 import sys
+import random
+import logging
+import torch
 import numpy as np
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
+
 def cal_relative_diff_np_isclose(real_data, expect_data, type_str='fp16'):
     diff = abs(float(real_data) - float(expect_data))
     result = diff / (np.abs(expect_data) + 10e-10)
     return result
+
 
 def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_data=None):
     def display_inner(idx):
@@ -71,10 +73,12 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
+
 def print_log(data=None, level='INFO'):
     print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
         "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
                                     str(sys._getframe().f_back.f_lineno).zfill(4), data))
+
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(
@@ -115,6 +119,8 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
             break
     print_log(
         '---------------------------------------------------------------------------------------')
+
+
 # fuzz 中 precision_method == 1的精度对比方式
 def check_result(expect, npu_result):
     diff_thd=0.005

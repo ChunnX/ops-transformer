@@ -12,7 +12,7 @@
 
 import torch
 
-
+# 当前由于torchair拦截的原因，kv_dtype为float8_e4m3fn时只能传None
 TEST_PARAMS = {
     "runpy_style": {
         "Testcase_Prefix": ["runpy_style"],
