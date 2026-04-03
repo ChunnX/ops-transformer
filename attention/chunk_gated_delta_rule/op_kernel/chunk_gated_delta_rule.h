@@ -252,8 +252,8 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<highType> stateIn,
-                                     GlobalTensor<highType> stateOut)
+    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<lowType> stateIn,
+                                     GlobalTensor<lowType> stateOut)
     {
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
