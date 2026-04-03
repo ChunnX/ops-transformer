@@ -73,7 +73,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
 
-    ParamsInit();
+    return ParamsInit();
 }
 
 int32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetQueryBatchSize()
