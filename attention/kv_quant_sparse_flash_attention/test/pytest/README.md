@@ -97,6 +97,12 @@ batch 流程依赖 `./excel/example.xlsx`，执行时会先生成 `.pt` 用例�
 bash test_run.sh batch
 ```
 
+下面给一个可直接参考的 Excel 用例，列名需与 batch 框架读取字段保持一致：
+
+| Testcase_Prefix | Testcase_Number | layout_query | layout_kv | q_type | kv_dtype | B | S1 | S2 | N1 | N2 | D | K | scale_value | key_quant_mode | value_quant_mode | sparse_block_size | tile_size | rope_head_dim | sparse_mode | attention_mode | quant_scale_repo_mode | block_size | block_num | actual_seq_q | actual_seq_kv |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tnd_sample | 1 | TND | TND | torch.bfloat16 | hifloat8 | 2 | 8 | 8 | 16 | 1 | 512 | 4 | 0.04166666666666666 | 2 | 2 | 1 | 128 | 64 | 3 | 2 | 1 | 256 |  | [5,8] | [6,8] |
+
 
 
 ## 结果文件

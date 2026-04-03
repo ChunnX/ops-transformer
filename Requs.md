@@ -55,3 +55,35 @@ attention/kv_quant_sparse_flash_attention/test/pytest/框架实现代码
 attention/kv_quant_sparse_flash_attention/test/下面已移植好qsfa的pytest框架，但有个问题是代码里没有注释，导致函数极其难懂其含义，请在attention/kv_quant_sparse_flash_attention/test/下面的pytest框架合适的地方添加一点注释，精简一点，比如简要描述一下函数功能。
 另外不允许动代码逻辑了，只允许你加注释
 还有你列了tnd的数据，麻烦你再本文档给我提供一个相关的用例数据（excel格式），在qsfa的pytest/README.md文档中的### batch下面也加一个表格，提供一个用例
+
+# 需求2实现说明
+
+## 已完成内容
+1. 仅在 `attention/kv_quant_sparse_flash_attention/test/pytest/` 目录下补充了精简注释，没有修改任何执行逻辑。
+2. 注释主要补在函数入口和少量关键分支处，帮助快速理解函数职责，例如：
+   - 测试数据如何从 BSND 转成 TND；
+   - PA block_table 如何生成；
+   - single / batch 两条回放链路分别负责什么。
+3. 已在 `attention/kv_quant_sparse_flash_attention/test/pytest/README.md` 的 `### batch` 小节下新增一个表格形式的 Excel 示例用例。
+4. 已在本文档补充一个 TND 场景的 Excel 示例数据，便于直接复制到 batch 用例表。
+
+## 本次加注释的位置
+1. `attention/kv_quant_sparse_flash_attention/test/pytest/kv_quant_sparse_flash_attention_golden.py`
+2. `attention/kv_quant_sparse_flash_attention/test/pytest/utils.py`
+3. `attention/kv_quant_sparse_flash_attention/test/pytest/batch/kv_quant_sparse_flash_attention_process.py`
+4. `attention/kv_quant_sparse_flash_attention/test/pytest/test_kv_quant_sparse_flash_attention_single.py`
+5. `attention/kv_quant_sparse_flash_attention/test/pytest/test_kv_quant_sparse_flash_attention_batch.py`
+6. `attention/kv_quant_sparse_flash_attention/test/pytest/batch/test_kv_quant_sparse_flash_attention_pt_save.py`
+
+## TND Excel 示例
+
+下面是一行可直接放入 Excel 的 TND 用例数据，列顺序与 batch 框架读取字段保持一致：
+
+```text
+Testcase_Prefix,Testcase_Number,layout_query,layout_kv,q_type,kv_dtype,B,S1,S2,N1,N2,D,K,scale_value,key_quant_mode,value_quant_mode,sparse_block_size,tile_size,rope_head_dim,sparse_mode,attention_mode,quant_scale_repo_mode,block_size,block_num,actual_seq_q,actual_seq_kv
+tnd_sample,1,TND,TND,torch.bfloat16,hifloat8,2,8,8,16,1,512,4,0.04166666666666666,2,2,1,128,64,3,2,1,256,,"[5,8]","[6,8]"
+```
+
+## 本地校验
+1. 本次修改后再次执行了 `python3 -m py_compile attention/kv_quant_sparse_flash_attention/test/pytest/*.py attention/kv_quant_sparse_flash_attention/test/pytest/batch/*.py`。
+2. 校验通过，说明本次仅加注释和文档后的 Python 文件语法正常。
