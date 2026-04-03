@@ -383,9 +383,9 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>softmaxOutLayout</td>
         <td>输入</td>
-        <td>保留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
+        <td>表示softmax_sum和softmax_max输出的格式</td>
+        <td>只在TND场景生效，取值为"same as input"时表示sum和max保存为TN8格式</td>
+        <td>String</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
