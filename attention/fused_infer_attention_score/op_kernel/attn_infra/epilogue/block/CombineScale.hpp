@@ -202,7 +202,7 @@ public:
 
             uint32_t tokenTile = UB_UINT8_LINE_SIZE / (headSizeV * sizeof(float));
 
-            if (q_len > 1 && tokenTile >= n_len) {
+            if (q_len > 1 && tokenTile >= n_len && n_len % 8 == 0) {
                 tokenTile = (tokenTile / n_len) * n_len;
             }
 
