@@ -44,8 +44,8 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
     int64_t          preTokens,
     int64_t          nextTokens,
     bool             returnValues,
-    const aclTensor *sparseIndicesOut,
-    const aclTensor *sparseValuesOut,
+    aclTensor *sparseIndicesOut,
+    aclTensor *sparseValuesOut,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
