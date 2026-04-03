@@ -1504,6 +1504,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 特性交叉约束
   - 伪量化场景
     - key/value 的数据类型为 INT8 时，query 的 layout 不支持 TND
+    - Q_S = 1 时：
+      - inputLayout 不支持 BNSD_BSND
     - Q_S > 1 时：
       - key/value 的数据类型为 INT8 时，keyAntiquantMode 不支持 2，3，4，5
       - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，query 和 output 的数据类型仅支持 BF16
