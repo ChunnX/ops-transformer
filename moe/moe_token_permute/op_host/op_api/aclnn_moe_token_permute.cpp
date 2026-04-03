@@ -81,7 +81,7 @@ aclnnStatus aclnnMoeTokenPermute(void* workspace, uint64_t workspaceSize, aclOpE
         ret != ACLNN_SUCCESS,
         OP_LOGE(
             ACLNN_ERR_INNER,
-            "aclnnMoeTokePermute calls alcnnMoeInitRoutingV2, please refer to the document for parameter "
+            "aclnnMoeTokePermute calls aclnnMoeInitRoutingV2, please refer to the document for parameter "
             "correspondence."),
         return ret);
 }
