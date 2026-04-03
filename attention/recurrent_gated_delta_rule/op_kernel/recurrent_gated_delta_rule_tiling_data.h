@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file recurrent_gated_delta_rule_tiling_data.h
+ * \file recurrent_gated_delta_rule.cpp
  * \brief
  */
 #ifndef RECURRENT_GATED_DELTA_RULE_TILING_DATA_H

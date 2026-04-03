@@ -46,7 +46,6 @@ enum class SplitCoreMode {
     SPLIT_ONEN_CUBE,
     BALANCE_VECTOR,
     BALANCE_CUBE,
-    SPLIT_S1OUT_CUBE,
 };
 } // namespace optiling
 

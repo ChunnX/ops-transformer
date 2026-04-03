@@ -11,6 +11,7 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
+
 ## 功能说明
 
 - 接口功能：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
@@ -38,6 +39,7 @@
   K=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
   
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaSelectedAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttentionGrad”接口执行计算。
@@ -297,6 +299,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   </tbody>
   </table>
 
+
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -331,6 +334,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
     </tr>
   </tbody>
   </table>
+
 
 ## aclnnNsaSelectedAttentionGrad
 
@@ -399,6 +403,8 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
 - 关于softmaxMax与softmaxSum参数shape的约束：\[T1, N1, 8\]。
 - 关于topkIndices参数shape的约束：[T1, N2, selectedBlockCount]。
+
+
 
 ## 调用示例
 

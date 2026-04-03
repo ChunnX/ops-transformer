@@ -17,7 +17,6 @@
 
 - 计算公式：
   - 场景一：
-
     ```
     key:[batch * seq_len, num_head, k_head_size]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -30,7 +29,6 @@
     $$
 
   - 场景二：
-
     ```
     key:[batch, seq_len, num_head, k_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -50,7 +48,6 @@
     $$
 
   - 场景三：
-
     ```
     key:[batch, seq_len, num_head, k_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -67,7 +64,6 @@
   上述场景根据构造的参数来区别，符合第一种入参构造走场景一，符合第二种构造走场景二，符合第三种构造走场景三。场景一没有compressLensOptional、seqLensOptional、compressSeqOffsetOptional这三个可选参数，场景三没有compressSeqOffsetOptional可选参数。
 
 ## 参数说明
-
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
@@ -135,7 +131,6 @@
   </tbody></table>
 
 ## 约束说明
-
 - 参数说明中shape使用的变量说明如下：
   - batch：当前输入的序列数量（一次处理的样本数），取值为正整数。
   - seq_len：序列的长度，取值为正整数。

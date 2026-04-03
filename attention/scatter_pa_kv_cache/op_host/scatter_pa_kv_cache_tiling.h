@@ -215,7 +215,6 @@ private:
     ge::graphStatus CheckInputDimNumNorm();
     ge::graphStatus CheckInputDimNumNz();
     ge::graphStatus CheckInputDimNumCompress();
-    ge::graphStatus CheckInputDimNumNHSD();
     ge::graphStatus CheckInputDimNum();
     ge::graphStatus CheckInputShapeSiso();
     ge::graphStatus CheckInputShapeNorm();
@@ -226,8 +225,6 @@ private:
     ge::graphStatus DoNoCompressOpTiling();
     ge::graphStatus DoCompressAlibiOpTiling();
     ge::graphStatus DoCompressRopeAndOmniOpTiling();
-    ge::graphStatus CheckInputShapeNHSD();
-    ge::graphStatus DoNHSDOpTiling();
 private:
     ScatterPaKvCacheMembaseParams params_;
     ScatterPaKvCacheTilingData tilingData_;

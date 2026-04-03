@@ -30,7 +30,7 @@ protected:
     }
 };
 
-#if 0
+#if 1
 TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_0)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
@@ -585,6 +585,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_9)
     int64_t expectTilingKey = 1747193088;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
+#endif
 
 TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_10)
 {
@@ -2421,4 +2422,3 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_42)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 
-#endif

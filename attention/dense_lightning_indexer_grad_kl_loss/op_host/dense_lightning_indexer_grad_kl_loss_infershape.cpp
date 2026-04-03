@@ -45,8 +45,7 @@ enum OutputIdx {
 
 ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContext *context)
 {
-    if (context == nullptr) {
-        OP_LOGE("DenseLightningIndexerGradKLLoss", "context is nullptr!");
+    if (context == nullptr){
         return ge::GRAPH_FAILED;
     }
     
@@ -85,12 +84,10 @@ ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContex
 
 ge::graphStatus InferDataTypeDenseLightningIndexerGradKLLoss(gert::InferDataTypeContext *context)
 {
-    if (context == nullptr) {
-        OP_LOGE("DenseLightningIndexerGradKLLoss", "context is nullptr!");
-        return ge::GRAPH_FAILED;
-    }
-
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeDenseLightningIndexerGradKLLoss");
+    if (context == nullptr){
+        return ge::GRAPH_FAILED;
+    } 
     const auto inputDataType = context->GetInputDataType(queryEnum);
     context->SetOutputDataType(0, inputDataType);
 

@@ -26,7 +26,7 @@
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h"
-#include "arch35/fused_infer_attention_score_tiling_v4.h"
+#include "arch35/fused_infer_attention_score_tiling_v2.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -343,9 +343,6 @@ static ge::graphStatus ConvertAttrsPFA(gert::TilingContext &context, ContextPara
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support query dequant now"),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(*contextKeyParams.sparseMode == 9U,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support Tree Sparse(9) now"),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1055,7 +1052,7 @@ ge::graphStatus CheckFAIQKV(gert::TilingContext *context, bool isPageAttention)
     auto kDataType = context->GetInputDesc(KEY_INDEX)->GetDataType();
     auto vDataType = context->GetInputDesc(VALUE_INDEX)->GetDataType();
     OP_CHECK_IF((qDataType != kDataType) || (qDataType != vDataType),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be consistent"),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be consitent"),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF((qDataType != ge::DT_FLOAT16) && (qDataType != ge::DT_BF16),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be FP16 or BF16"),
@@ -1379,9 +1376,8 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
             faInfo.flashDecodeFlag = true; 
         }
         if (faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
-            (batch >= aicoreNum) &&
-            !faInfo.lseFlag && !faInfo.learnableSinkFlag && (faInfo.innerPrecise == 0) &&
-            ((faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128)) {
+            !faInfo.lseFlag && !faInfo.learnableSinkFlag && (faInfo.innerPrecise == 0) && (aicoreNum != 0) &&
+            (faInfo.batch % aicoreNum == 0)) {
             faInfo.decodingFlag = true;
         }
     } else {
@@ -1620,7 +1616,7 @@ bool IsMlaIfaOrMtp(gert::TilingContext &context, const string inputLayoutStr, co
         if (queryS == 1)  {
             return true;
         }
-        if ((queryS > 1 && queryS <= 32) && (queryD == 512)) { // 16: mtp; 512: qD need 512
+        if ((queryS > 1 && queryS <= 16) && (queryD == 512)) { // 16: mtp; 512: qD need 512
             return true;
         }
     }
@@ -2100,7 +2096,7 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        return TilingFusedInferAttentionScoreV4(context);
+        return TilingFusedInferAttentionScoreV2(context);
     } else {
         return TilingFusedInferAttentionScore(context);
     }

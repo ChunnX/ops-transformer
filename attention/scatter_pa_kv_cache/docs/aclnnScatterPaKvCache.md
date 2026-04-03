@@ -135,6 +135,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 - **参数说明**
 
+  </style>
   <table class="tg" style="undefined;table-layout: fixed; width: 1548px"><colgroup>
   <col style="width: 265px">
   <col style="width: 86px">
@@ -171,7 +172,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">keyCacheRef(aclTensor*)</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的key cache，当前layer的key cache。</td>
-      <td class="tg-0pky">支持4维或5维，当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
+      <td class="tg-0pky">仅支持4维，当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4-5</td>
@@ -201,10 +202,10 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">valueCacheRef(aclTensor*)</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的value cache，当前layer的value cache。</td>
-      <td class="tg-0pky">支持0维、4维或5维，非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
+      <td class="tg-0pky">支持0维或4维，非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
-      <td class="tg-0pky">0、4、5</td>
+      <td class="tg-0pky">4-5</td>
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
@@ -407,7 +408,6 @@ aclnnStatus aclnnScatterPaKvCache(
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
   ```c++
@@ -588,3 +588,4 @@ aclnnStatus aclnnScatterPaKvCache(
     return 0;
   }
   ```
+

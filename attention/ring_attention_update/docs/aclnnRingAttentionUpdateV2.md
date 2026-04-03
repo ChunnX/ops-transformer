@@ -51,7 +51,7 @@ aclnnStatus aclnnRingAttentionUpdateV2GetWorkspaceSize(
 ```
 
 ```cpp
-aclnnStatus aclnnRingAttentionUpdateV2(
+aclnnRingAttentionUpdateV2(
   void          *workspace, 
   uint64_t       workspaceSize, 
   aclOpExecutor *executor, 

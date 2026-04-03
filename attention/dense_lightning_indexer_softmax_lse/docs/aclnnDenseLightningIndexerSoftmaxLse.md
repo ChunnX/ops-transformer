@@ -138,12 +138,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>(B,)</td>
       <td>-</td>
      </tr>
-     <tr>
       <td>layoutOptional（char*）</td>
       <td>输入</td>
       <td>layout格式</td>
-      <td>仅支持BSND和TND格式。</td>
-      <td>STRING</td>
+      <td><ul><li>仅支持BSND和TND格式。</li></ul></td><td>STRING</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -162,7 +160,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1。</td>
+       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1</a>。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -172,7 +170,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1。</td>
+       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1</a>。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>

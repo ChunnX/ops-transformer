@@ -18,9 +18,7 @@
     4. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前，因此最后需要将ub中的ub_attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
 
 ## 2 每个计算阶段的入口
-
 以S1模板为例
-
 1. 得到每个核处理的任务块数后，调用函数：`Process`
 2. Cube1阶段，上图中Cube1，计算入口：`IterateBmm1`
 3. Vector1阶段，上图中Vector1，计算入口：`ProcessVec1`
@@ -56,6 +54,7 @@
 2. Ascend 950PR/Ascend 950DT
   Ascend 950PR/Ascend 950DT既支持AIC&AIV分离架构，又支持AIC&AIV融合架构；AIC和AIV之间的交互通路包括L2、GM以及UB(Unified Buffer)，UB是AIC&AIV之间相较于GM更高效的交互通路。AIC可以直接输出到UB上，AIV利用UB上的数据进行vec运算，极大降低了数据搬运的时间。由于UB的容量有限，D_v>128时，mm2的输出依旧需要先保存到GM；mm1的输出始终保存在UB。
 
+
 ## 4 流水设计
 
 为了追求极致性能，必须充分利用硬件资源，通常需要进行不同pipeline的流水设计。流水设计的宗旨是尽量使某一条pipeline达成bound效果，使硬件的某一个单元一直在工作，达到性能上限。
@@ -67,6 +66,8 @@ V侧流水设计需要考虑Vector的搬运及计算过程，实施的优化手�
 将图的流水任务做ping-pong流水间的double buffer处理后，从运行图中可以看出，对于同一片数据，搬运DataCopy与计算Clc之间，串行处理；不同的数据切片，同一时间点，可以有多个任务在并行处理，由此达到任务并行、提升性能的目的。
 
 ![设计图2](./fig/设计图2.png)
+
+
 
 其中ping、pong两块计算数据所占用的内存资源均相互独立。
 ​FA类融合算子V侧计算过程较多，情况也比较复杂，通常简单的double buffer是无法覆盖所有情况的，因此会出现不同的计算流水排布。不同的计算流水适用于不同类的shape特征，以达到在该类特征下最好的流水设计。
@@ -267,6 +268,8 @@ ops-transformer-dev/attention/flash_attention_score_grad/op_kernel/flash_attenti
 ```
 
 以Cube为主核对于FlashAttention来说由于V0、V1的Matmul任务可以复用左矩阵，且输出的部分结果可以在L0C累加，减少了对于带宽的依赖诉求，大部分场景性能会更优。
+
+
 
 ### 6.2 AscendC低阶API
 

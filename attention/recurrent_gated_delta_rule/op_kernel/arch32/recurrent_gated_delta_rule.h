@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file recurrent_gated_delta_rule.h
+ * \file grouped_matmul_finalize_routing.h
  * \brief
  */
 
-#ifndef RECURRENT_GATED_DELTA_RULE_H
-#define RECURRENT_GATED_DELTA_RULE_H
+#ifndef __RECURRENT_GATED_DELTA_RULE_KERNEL_H_
+#define __RECURRENT_GATED_DELTA_RULE_KERNEL_H_
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
