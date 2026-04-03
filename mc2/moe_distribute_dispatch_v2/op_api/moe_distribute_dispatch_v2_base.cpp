@@ -21,6 +21,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "common/op_api/mc2_moe_context_tensor.h"
+#include "comm/utils/mc2_hcom_topo_info.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -177,7 +178,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
         ret = LoadBuiltinOpApi(libPath);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        // ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes =  aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
