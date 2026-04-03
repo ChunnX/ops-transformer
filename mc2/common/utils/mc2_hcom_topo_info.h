@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_hcom_topo_info.h
@@ -18,6 +18,8 @@
 
 #include <memory>
 #include "hccl/hcom.h"
+#include "aclnn/acl_meta.h"
+#include "mc2_moe_context.h"
 
 #ifdef BUILD_OPEN_PROJECT
 #include "hccl/hccl_rank_graph.h"
@@ -36,10 +38,31 @@ public:
     static HcclResult TryGetGroupTopoType(const char *group, uint32_t *topoType);
     static HcclResult CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm);
     static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t* cclBufferSize);
+    
+    // 新增的静态接口，通过实例内部的hcclHandle_获取数据
+    static aclnnStatus GetMc2ContextTensor(const char* groupEp, const char* opName,
+                                         uint64_t& hcclBuffSize, aclTensor*& mc2Context);
 
 private:
     static MC2HcomTopology &GetInstance();
     explicit MC2HcomTopology(const char *libPath);
+    ~MC2HcomTopology();
+    
+    // 内部辅助方法
+    aclnnStatus LoadHcclSymbols();
+    aclnnStatus GetCommHandle(const char* groupEp);
+    aclnnStatus GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId,
+                              uint32_t dstRankId, const CommProtocol& protocol, CommLink*& links);
+    aclnnStatus GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId,
+                                 const CommProtocol& protocol, const CommEngine& engine, std::vector<ChannelHandle>& channels);
+    aclnnStatus GetHcclCommResource(const CommEngine& engine,
+                                  const CommProtocol& protocol, Mc2MoeContext* mc2ContextStruct);
+    aclnnStatus CreatMc2Context(const std::string& mc2ContextTag,
+                              const CommEngine& engine, const CommProtocol& protocol, void*& ctx, Mc2MoeContext* mc2ContextStruct);
+    aclnnStatus CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context);
+    aclnnStatus GetHcclBufferSize(uint64_t& hcclBuffSize);
+    aclnnStatus GetCommEngine(CommEngine& engine, CommProtocol& protocol);
+
     HcclResult CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle) const;
 #ifdef BUILD_OPEN_PROJECT
     HcclResult CallHcomGetRankSizeEx(const char *group, uint32_t *ranksize, uint32_t flag) const;
@@ -52,9 +75,25 @@ private:
     HcclResult CallCommGetCCLBufSizeCfg(HcclComm comm, uint64_t *cclBufferSize) const;
 
     void *handle_ = nullptr;
-    bool isNewHcclLib = true;
-
+    void* hcclLibHandle_ = nullptr;
+    HcclComm hcclHandle_ = nullptr;  // 实例变量存储HCCL句柄
+    
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
+    using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
+    
+    // HCCL新API函数指针
+    int (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
+    int (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
+    int (*HcclRankGraphGetLayers)(HcclComm, uint32_t**, uint32_t*) = nullptr;
+    int (*HcclChannelAcquire)(HcclComm, const CommEngine&, const HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
+    int (*HcclGetHcclBuffer)(HcclComm, void**, uint64_t*) = nullptr;
+    int (*HcclChannelGetHcclBuffer)(HcclComm, const ChannelHandle&, void**, uint64_t*) = nullptr;
+    int (*HcclEngineCtxCreate)(HcclComm, const char*, const CommEngine&, uint64_t, void**) = nullptr;
+    int (*HcclEngineCtxGet)(HcclComm, const char*, const CommEngine&, void**, uint64_t*) = nullptr;
+    int (*HcclEngineCtxCopy)(HcclComm, const CommEngine&, const char*, const void*, uint64_t, uint64_t) = nullptr;
+    int (*HcclGetRankId)(HcclComm, uint32_t*) = nullptr;
+    int (*HcclGetRankSize)(HcclComm, uint32_t*) = nullptr;
+
 #ifdef BUILD_OPEN_PROJECT
     using FuncGetRankSizeEx = HcclResult (*)(const char *group, uint32_t *rankSize, uint32_t flag);
     using FuncGetL0TopoTypeEx = HcclResult (*)(const char *group, CommTopo *topoType, uint32_t flag);
@@ -63,8 +102,7 @@ private:
     using FuncGetTopoType = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
     using FuncGetInstSize = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 #endif
-    using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
-    void *hcclHandle_ = nullptr;
+    
     FuncGetHandle getCommHandle_ = nullptr;
 #ifdef BUILD_OPEN_PROJECT
     FuncGetRankSizeEx getRankSizeEx_ = nullptr;
