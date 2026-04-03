@@ -102,7 +102,8 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod2 = 0; \
     uint8_t multiCoreIdxMod3 = 0; \
     bool    isCmp; \
-    uint8_t resv[3]; \
+    bool    isS2Gather; \
+    uint8_t resv[2]; \
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
 
@@ -191,7 +192,9 @@ struct RunInfo {
     int64_t attentionOutStride; \
     uint32_t aivIdx; \
     uint8_t layoutType; \
-    uint8_t subBlockIdx;\
+    uint8_t subBlockIdx; \
+    bool hasOriTopkLength; \
+    bool hasCmpTopkLength; \
 
 #define INFER_CONST_INFO \
     /* 推理 */ \

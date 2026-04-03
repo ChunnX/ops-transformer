@@ -259,7 +259,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
 }
 
 TEMPLATE_INTF
-__aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &runInfo)
+__aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &runInfo, const ConstInfo &constInfo)
 {
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
@@ -272,6 +272,17 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
     runInfo.oriSparseBlockCount = runParam.oriSparseBlockCount;
     runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
+        TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        if (((runInfo.isCmp) && (!constInfo.hasCmpTopkLength)) || ((!runInfo.isCmp) && (!constInfo.hasOriTopkLength))) {
+            runInfo.isS2Gather = true;
+        } else {
+            runInfo.isS2Gather = false;
+        }
+    } else {
+        runInfo.isS2Gather = false;
+    }
 }
 
 #endif  // KV_QUANT_SPARSE_ATTN_SHAREDKV_KVCACHE_H

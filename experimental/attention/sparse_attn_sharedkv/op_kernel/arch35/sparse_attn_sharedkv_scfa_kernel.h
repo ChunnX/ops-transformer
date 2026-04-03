@@ -95,8 +95,6 @@ private:
     __gm__ int32_t *actualSeqQlenAddr = nullptr;
     GlobalTensor<int32_t> oriTopkLengthGm;
     GlobalTensor<int32_t> cmpTopkLengthGm;
-    bool hasOriTopkLength = false;
-    bool hasCmpTopkLength = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     BuffersPolicy3buff<BufferType::GM> s2LenGmBuffers;
@@ -138,6 +136,8 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
 
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
+    constInfo.hasOriTopkLength = (oriTopkLength != nullptr);
+    constInfo.hasCmpTopkLength = (cmpTopkLength != nullptr);
 
     this->pipe = tPipe;
     vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, cuSeqlensQ,
@@ -204,13 +204,11 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (oriTopkLength != nullptr) {
             oriTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)oriTopkLength);
-            hasOriTopkLength = true;
         }
     }
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (cmpTopkLength != nullptr) {
             cmpTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)cmpTopkLength);
-            hasCmpTopkLength = true;
         }
     }
 
@@ -254,18 +252,36 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Init
         v0ResGmBufferManager.Init(workspace + v0ResTotalOffset);
         v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
 
-        // v0聚合的s2实际长度
-        int64_t v0ResTotalSize = v0ResSize * 3;
-        int64_t aicNum = GetBlockNum();
-        if constexpr (IS_SPLIT_G) {
-            v0ResTotalSize *= (aicNum >> 1U);
-        } else {
-            v0ResTotalSize *= aicNum;
+        bool allocS2LenBuf = false;
+        if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+            if (!constInfo.hasOriTopkLength) {
+                allocS2LenBuf = true;
+            }
         }
-        int64_t s2LenBufferSize = 128 * sizeof(int32_t) * 4; // Cube要看到相邻核4个vector的结果;
-        int64_t s2LenTotalOffset = s2LenBufferSize * 3 * (aicIdx >> 1);
-        s2LenGmBufferManager.Init(workspace + v0ResTotalSize + s2LenTotalOffset);
-        s2LenGmBuffers.Init(s2LenGmBufferManager, s2LenBufferSize);
+        if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+            if (!constInfo.hasOriTopkLength || !constInfo.hasCmpTopkLength) {
+                allocS2LenBuf = true;
+            }
+        }
+        if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+            if (!constInfo.hasCmpTopkLength) {
+                allocS2LenBuf = true;
+            }
+        }
+        // v0聚合的s2实际长度
+        if (allocS2LenBuf) {
+            int64_t v0ResTotalSize = v0ResSize * 3;
+            int64_t aicNum = GetBlockNum();
+            if constexpr (IS_SPLIT_G) {
+                v0ResTotalSize *= (aicNum >> 1U);
+            } else {
+                v0ResTotalSize *= aicNum;
+            }
+            int64_t s2LenBufferSize = 128 * sizeof(int32_t) * 4; // Cube要看到相邻核4个vector的结果;
+            int64_t s2LenTotalOffset = s2LenBufferSize * 3 * (aicIdx >> 1);
+            s2LenGmBufferManager.Init(workspace + v0ResTotalSize + s2LenTotalOffset);
+            s2LenGmBuffers.Init(s2LenGmBufferManager, s2LenBufferSize);
+        }
     }
 }
 
@@ -433,7 +449,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Proc
                     runParam, this->constInfo, gS1Index, this->cuSeqlensQAddr);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQAddr, oriTopkLengthGm,
-                        hasOriTopkLength, cmpTopkLengthGm, hasCmpTopkLength, runParam, this->constInfo);
+                        constInfo.hasOriTopkLength, cmpTopkLengthGm, constInfo.hasCmpTopkLength, runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
@@ -601,7 +617,7 @@ __aicore__ inline void
 SparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr &runParam, RunInfo &runInfo)
 {
-    InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
+    InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
