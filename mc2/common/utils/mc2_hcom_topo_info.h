@@ -22,7 +22,7 @@
 #include "opdev/platform.h"
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
-#include "opdev/common_types.h"
+#include "opdev/op_errno.h"
 
 
 // #ifdef BUILD_OPEN_PROJECT
@@ -82,6 +82,7 @@ private:
     void *handle_ = nullptr;
     void* hcclLibHandle_ = nullptr;
     HcclComm hcclHandle_ = nullptr;  // 实例变量存储HCCL句柄
+    bool isNewHcclLib = true;
     
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
