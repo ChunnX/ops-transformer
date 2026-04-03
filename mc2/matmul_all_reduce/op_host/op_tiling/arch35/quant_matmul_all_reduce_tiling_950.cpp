@@ -130,8 +130,9 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoOpTiling()
     GE_ASSERT_GRAPH_SUCCESS(CheckA8W8());
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
     DoRCSTiling();
+    GE_ASSERT_GRAPH_SUCCESS(CheckHCCLSize());
     DoSplitMTiling();
-    DoCommFp8ReTiling();
+    GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit());
     GE_ASSERT_GRAPH_SUCCESS(DoQuantTiling());
     if (MutableRCSTilingData().isInputCommQuantScale == 1) {
         isCommInt8Enable_ = true;
@@ -145,30 +146,55 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantMatmulAllReduceTilingA5::DoCommFp8ReTiling()
+ge::graphStatus QuantMatmulAllReduceTilingA5::CheckHCCLSize()
 {
     auto &&param = MutableRCSTilingData();
-    if (param.isInputCommQuantScale == QUANT_MODE_FP8) {
-        uint64_t maxDataCnt = CCU_ALLTOALL_MAX_DATACNT * rankSize_; // CCU限制的AlltoAll单次通信最大数据量
-        if (((tileMValue_ * param.rankN) > maxDataCnt) || ((tailMValue_ * param.rankN) > maxDataCnt)) {
-            OP_LOGD(opName_, "Comm DataCnt Exeeds CCU Limit.");
-            param.tailM = maxDataCnt / param.rankN;
-            param.tailCnt = param.rankM / param.tailM;
-            tileMValue_ = param.rankM % param.tailM;
-            if (tileMValue_ == 0) {
-                tileMValue_ = param.tailM;
-                param.tileCnt = param.tailCnt;
-                param.tailCnt = 0;
-                param.tailM = 0;
-                tailMValue_ = 0;
-            } else {
-                param.tileCnt = 1;
-                tailMValue_ = param.tailM;
-            }
-            OP_LOGD(opName_, "TileCnt Enter CommFp8. tileM=%u, tailM=%u, tileCnt=%u, tailCnt=%u.", tileMValue_,
-                    param.tailM, param.tileCnt, param.tailCnt);
-        }
+    if (param.isInputCommQuantScale != QUANT_MODE_FP8) {
+        return ge::GRAPH_SUCCESS;
     }
+    uint64_t commDtypeSize = ge::GetSizeByDataType(args_.geCType);
+    uint64_t sizeOfSingleM = static_cast<uint64_t>(param.rankN) * commDtypeSize;
+    OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
+        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), "
+            "the size %lu still exceeds 256MB.", sizeOfSingleM),
+        return ge::GRAPH_FAILED);
+
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM),
+        mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
+    OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
+        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), "
+            "the size %lu still exceeds 256MB.", sizeOfSplitM),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantMatmulAllReduceTilingA5::AdjustHCCLLimit()
+{
+    auto &&param = MutableRCSTilingData();
+    if (param.isInputCommQuantScale != QUANT_MODE_FP8) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t commDtypeSize = ge::GetSizeByDataType(args_.geCType);
+    uint64_t singleTileDataSize = tileMValue_ * static_cast<uint64_t>(param.rankN) * commDtypeSize;
+    if (singleTileDataSize <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGI(opName_, "The formulaic tiling result does not meet the hccl restriction,"
+        " current splitting: tileM [%lu], tileCnt [%u], tailM [%lu], tailCnt [%u].",
+        tileMValue_, param.tileCnt, tailMValue_, param.tailCnt);
+    
+    uint64_t totalDataSize = static_cast<uint64_t>(param.rankM) * static_cast<uint64_t>(param.rankN) * commDtypeSize;
+    uint64_t minSplitPart = Ops::Base::CeilDiv(totalDataSize, mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
+    tileMValue_ = Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM), minSplitPart);
+    param.tileCnt = static_cast<uint32_t>(Ops::Base::FloorDiv(static_cast<uint64_t>(param.rankM), tileMValue_));
+    param.tailM = static_cast<uint32_t>(static_cast<uint64_t>(param.rankM) -
+        static_cast<uint64_t>(param.tileCnt) * tileMValue_);
+    tailMValue_ = param.tailM;
+    param.tailCnt = (tailMValue_ == 0) ? 0 : 1;
+    OP_LOGI(opName_, "Because the formulaic tiling result does not meet the hccl restriction,"
+        " the re-splitM result: tileM [%lu], tileCnt [%u], tailM [%lu], tailCnt [%u]. end re-splitM.",
+        tileMValue_, param.tileCnt, tailMValue_, param.tailCnt);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantMatmulAllReduceTilingA5::GetDynamicQuantTempBuffSize()
