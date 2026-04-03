@@ -29,7 +29,7 @@
 #include "../../../op_kernel/quant_grouped_mat_mul_allto_allv_tiling_key.h"
 #include "register/tilingdata_base.h"
 
-namespace optiling {
+namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
 
 struct QuantGmmAlltoAllvParamsInfo {
@@ -96,6 +96,8 @@ protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;
     virtual bool IsCapable() = 0;
+    virtual bool IsContains(const std::vector<uint32_t> &list, uint32_t value);
+    ge::graphStatus CheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName);
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;

@@ -13,15 +13,15 @@
  * \brief
  */
 
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
 
-namespace optiling {
+namespace Mc2Tiling {
 constexpr uint32_t MAX_GROUP_BUFFER_SIZE = 128;
 
 // base check required
