@@ -516,7 +516,7 @@ private:
 
         InverseAIV(subOffset_, INVERSE_SHAPE);
         auto tmp = fp32OutQueue_.AllocTensor<bfloat16_t>();	 
-        Cast(tmp, inverseRes_, , RoundMode::CAST_RINT, curVecLen);
+        Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
         fp32OutQueue_.EnQue(tmp);
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
