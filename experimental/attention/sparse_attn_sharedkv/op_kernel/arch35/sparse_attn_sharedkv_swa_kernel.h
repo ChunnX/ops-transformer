@@ -158,6 +158,8 @@ __aicore__ inline void SparseAttnSharedkvSwa<CubeBlockType, VecBlockType>::Init(
             *tempTiling = *tempTilingSSbuf;
         }
     }
+    constInfo.hasOriTopkLength = (oriTopkLength != nullptr);
+    constInfo.hasCmpTopkLength = (cmpTopkLength != nullptr);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
         cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedKv, sinks, workspace, tiling, tPipe); // gm设置
@@ -465,7 +467,7 @@ __aicore__ inline void
 SparseAttnSharedkvSwa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr &runParam, RunInfo &runInfo)
 {
-    InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
+    InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>

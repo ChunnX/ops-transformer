@@ -808,7 +808,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     }
     if constexpr (IS_SPLIT_G) {
         CrossCoreSetFlag<0, PIPE_MTE3>(15);
-        CrossCoreWaitFlag(15);
+        if (runInfo.isS2Gather) {
+            CrossCoreWaitFlag(15);
+        } else {
+            CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+        }
     }
     outputL1.SetCrossCore(); // 核间同步
     if constexpr (IS_SPLIT_G) {
@@ -848,7 +852,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM> &s2LenGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (sparseCalSize == 0) {
-        UpdateS2RealLengthToGm(0, s2LenGm, runInfo, constInfo);
+        if (runInfo.isS2Gather) {
+            UpdateS2RealLengthToGm(0, s2LenGm, runInfo, constInfo);
+        }
         return;
     }
     bool meetEnd = false;
@@ -877,7 +883,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         }
         if (dealRow  == 0) {
             stage0InQue.FreeTensor(kvInUb);
-            UpdateS2RealLengthToGm(s2Start - sparseS2Start, s2LenGm, runInfo, constInfo);
+            if (runInfo.isS2Gather) {
+                UpdateS2RealLengthToGm(s2Start - sparseS2Start, s2LenGm, runInfo, constInfo);
+            }
             return;
         }
         stage0InQue.EnQue(kvInUb);
@@ -898,7 +906,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         s2Start += dealRow;
         stage0OutQue.FreeTensor(kvDequantOutUb);
     }
-    UpdateS2RealLengthToGm(s2Start - sparseS2Start, s2LenGm, runInfo, constInfo);
+    if (runInfo.isS2Gather) {
+        UpdateS2RealLengthToGm(s2Start - sparseS2Start, s2LenGm, runInfo, constInfo);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -964,15 +974,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
 
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
-        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+    if (runInfo.isS2Gather) {
         UpdateS2RealSizeFromGm(s2LenGm, runInfo, constInfo);
-    } else if (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        if (runInfo.isCmp) {
-            UpdateS2RealSizeFromGm(s2LenGm, runInfo, constInfo);
-        } else {
-            runInfo.s2RealSizeUpdate = runInfo.s2RealSize;
-        }
     } else {
         runInfo.s2RealSizeUpdate = runInfo.s2RealSize;
     }
@@ -1250,9 +1253,23 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
 
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE ||
-                  TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE ||
-                  TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+    bool allocS2LenBuf = false;
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
+        if (!constInfo.hasOriTopkLength) {
+            allocS2LenBuf = true;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        if (!constInfo.hasOriTopkLength || !constInfo.hasCmpTopkLength) {
+            allocS2LenBuf = true;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        if (!constInfo.hasCmpTopkLength) {
+            allocS2LenBuf = true;
+        }
+    }
+    if (allocS2LenBuf) {
         tPipe->InitBuffer(s2LenBuf[0], S2_REAL_BUF_LEN * sizeof(int32_t) * 4);
         tPipe->InitBuffer(s2LenBuf[1], S2_REAL_BUF_LEN * sizeof(int32_t) * 4);
         tPipe->InitBuffer(s2LenBuf[2], S2_REAL_BUF_LEN * sizeof(int32_t) * 4);
