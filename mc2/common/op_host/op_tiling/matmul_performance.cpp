@@ -260,6 +260,7 @@ void MatmulPerformanceModel::GetMatmulGradient() {
 double MatmulPerformanceModel::MatmulTime(uint64_t tileSize,
                                           uint64_t rankTileNum) {
   tileSize = std::max(mmShapeInfo_.baseM, tileSize);
+  OP_LOGI("alltoallmatmul-test", "mmShapeInfo_.kValue:%lu, mmShapeInfo_.nValue:%lu", mmShapeInfo_.kValue, mmShapeInfo_.nValue);
   return static_cast<double>(tileSize) * static_cast<double>(rankTileNum) *
          matmulGradient_;
 }
