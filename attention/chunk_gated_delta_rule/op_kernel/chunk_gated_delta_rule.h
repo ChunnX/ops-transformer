@@ -205,7 +205,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        initHighState();
+        // initHighState();
         SyncAll<false>();
         int64_t seqStart = 0;
         int64_t seqEnd = 0;
@@ -215,7 +215,6 @@ public:
             int32_t length = actualSeqLens_.GetValue(bid);
             seqStart = seqEnd;
             seqEnd = seqStart + (int64_t)length;
-            GlobalTensor<highType> curState = highState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
             for (int64_t pos = seqStart; pos < seqEnd; pos += tiling_->maxGroupLength) {
                 // set chunk group
                 cg.startPos = pos;
@@ -224,18 +223,22 @@ public:
                 } else {
                     cg.length = tiling_->maxGroupLength;
                 }
+                auto curState = (pos == seqStart) ?
+                                initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                                finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                 // compute this chunk group
                 RunStage1(cg);
                 SyncAll<false>();
 
-                RunStage2(cg, curState);
+                RunStage2(cg, curState,
+                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
                 SyncAll<false>();
 
                 RunStage3(cg);
                 SyncAll<false>();
             }
         }
-        SetFinalState();
+        // SetFinalState();
     }
 
 private:
@@ -249,11 +252,12 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<highType> state)
+    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<highType> stateIn,
+                                     GlobalTensor<highType> stateOut)
     {
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
-            qPrime_, vInner_, gCumExp_, kCumDecay_, state, kg_,
+            qPrime_, vInner_, gCumExp_, kCumDecay_, stateIn, stateOut, kg_,
             attnInter_, stageWsAddr_, &stage2MT_, pipe_, &cg,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
@@ -263,16 +267,16 @@ private:
 
     __aicore__ inline void RunStage3(ChunkGroup& cg)
     {
-        Stage3 stageThreeOp;
-        StageThreeParams initStageThreeParams{
-            qkt_, gCumExp_, attnInter_, vInner_,
-            stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
-            stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
-            &stage3MT_, pipe_, &cg, tiling_->scale,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
-        stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
-        stageThreeOp.Process();
-        pipe_->Reset();
+        // Stage3 stageThreeOp;
+        // StageThreeParams initStageThreeParams{
+        //     qkt_, gCumExp_, attnInter_, vInner_,
+        //     stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
+        //     stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
+        //     &stage3MT_, pipe_, &cg, tiling_->scale,
+        //     tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
+        // stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
+        // stageThreeOp.Process();
+        // pipe_->Reset();
     }
 
     __aicore__ inline void initHighState()
