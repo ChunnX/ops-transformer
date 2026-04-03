@@ -44,7 +44,9 @@ protected:
     ge::graphStatus GetOptionalAttrAndSetTilingData();
     ge::graphStatus GetComplexAttrAndSetTilingData();
 
-    ge::graphStatus CheckTensorDataType();
+    ge::graphStatus CheckTensorDataTypeAndFormat();
+    bool CheckTensorDataType();
+    bool CheckTensorDataFormat();
     ge::graphStatus CheckTensorDim();
     ge::graphStatus CheckTensorShapeRelation();
     ge::graphStatus CheckTensorShapeSizeAInMoeRank();
