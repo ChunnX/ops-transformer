@@ -70,7 +70,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
                 "The datatype of keySharedPrefix(%s) and valueSharedPrefix(%s) are different. The datatype "
                 "of keySharedPrefix and valueSharedPrefix must be the same.",
                 DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                DataTypeToSerialString(valueSharedPredixType).c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
