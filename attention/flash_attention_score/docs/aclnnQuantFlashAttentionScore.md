@@ -11,6 +11,7 @@
 | <term>Atlas 推理系列产品</term>                          |    ×     |
 | <term>Atlas 训练系列产品</term>                          |    ×     |
 
+
 ## 功能说明
 
 - 接口功能：量化的训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。
@@ -42,18 +43,18 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
   const aclTensor   *dScaleQ,
   const aclTensor   *dScaleK,
   const aclTensor   *dScaleV,
-  const aclTensor   *attenMaskOptional,
-  const aclTensor  	*pScale,
+  const aclTensor *attenMaskOptional,
+  const aclTensor	*pScale,
   double             scaleValue,
-  int64_t 			     preTokens,
-  int64_t 			     nextTokens,
+  int64_t 			 preTokens,
+  int64_t 			 nextTokens,
   int64_t            headNum,
   char              *inputLayout,
-  int64_t 			     sparseMode,
-  aclTensor   	  	*softmaxMaxOut,
-  aclTensor   	  	*softmaxSumOut,
-  aclTensor   	  	*softmaxOutOut,
-  aclTensor   	  	*attentionOutOut,
+  int64_t 			 sparseMode,
+  aclTensor   		*softmaxMaxOut,
+  aclTensor   		*softmaxSumOut,
+  aclTensor   		*softmaxOutOut,
+  aclTensor   		*attentionOutOut,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -65,6 +66,7 @@ aclnnStatus aclnnQuantFlashAttentionScore(
   aclOpExecutor    *executor, 
   const aclrtStream stream)
 ```
+
 
 ## aclnnQuantFlashAttentionScoreGetWorkspaceSize
 

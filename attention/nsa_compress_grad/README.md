@@ -8,6 +8,7 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
+
 ## 功能说明
 
 - 算子功能：aclnnNsaCompress算子的反向计算。
@@ -22,6 +23,7 @@
     $$
     \text{dk} = W^\top \cdot \text{dk\_cmp}
     $$
+
 
 ## 参数说明
 

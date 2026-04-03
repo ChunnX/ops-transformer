@@ -236,13 +236,9 @@ void QSFAMlaTiling::GenTilingKey()
 {
     uint32_t layoutQuery = static_cast<uint32_t>(sfaaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaaInfo_->kvLayout);
-    uint32_t pageAttention = 0U;
-    if (sfaaInfo_->kvLayout == QSFALayout::PA_BSND) {
-        pageAttention = 1U;
-    }
 
-    tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
-    
+    tilingKey_ = GET_TPL_TILING_KEY(0U, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
+
     OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
 
@@ -1089,26 +1085,14 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
         return ge::GRAPH_FAILED);
 
     if (isA5_) {
-        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64};
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64, 128};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 48, 64, but got %u", gSize_),
+            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 48, 64, 128, but got %u", gSize_),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
             OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
-            return ge::GRAPH_FAILED);
-    }
-
-    if (isA5_) {
-        OP_CHECK_IF(sparseBlockSize_ != 1,
-            OP_LOGE(opName_, "sparse block size must be 1, but got %u", sparseBlockSize_),
-            return ge::GRAPH_FAILED);
-    } else {
-        std::vector<uint32_t> sparseBlockSizeSupportList = {1, 2, 4, 8, 16};
-        OP_CHECK_IF(std::find(sparseBlockSizeSupportList.begin(), sparseBlockSizeSupportList.end(),
-            sparseBlockSize_) == sparseBlockSizeSupportList.end(),
-            OP_LOGE(opName_, "sparse block size should be in 1, 2, 4, 8, 16, but got %u", sparseBlockSize_),
             return ge::GRAPH_FAILED);
     }
     

@@ -184,7 +184,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
         if (actBatchS1 < constInfo.s1Size) {
             constInfo.needInit = true;
         }
-        totalBaseNum += actBatchS1 * actBatchS2;
+        totalBaseNum += actBatchS1*actBatchS2;
     }
     uint32_t avgBaseNum = 1;
     if (totalBaseNum > coreNum) {
@@ -192,7 +192,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     } else {
         usedCoreNum = totalBaseNum;
     }
-    if (aicIdx >= usedCoreNum) {
+    if (aicIdx>=usedCoreNum) {
         return;
     }
 	// 计算当前核的基本块
@@ -202,7 +202,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     uint32_t lastValidactBatchS1 = 0;
     bool setStart = false;
     targetBaseNum = (currCoreIdx + 1) * avgBaseNum; // 计算当前的目标权重
-    uint32_t targetStartBaseNum = targetBaseNum - avgBaseNum;
+    uint32_t targetStartBaseNum = targetBaseNum-avgBaseNum;
     for (uint32_t bN2Idx = 0; bN2Idx < constInfo.bSize * constInfo.n2Size; bN2Idx++) {
         uint32_t bIdx = bN2Idx / constInfo.n2Size;
         actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
@@ -231,12 +231,12 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     }
     if (!setStart) {
         constInfo.bN2Start = lastValidBIdx;
-        constInfo.gS1Start = lastValidactBatchS1 - 1;
+        constInfo.gS1Start = lastValidactBatchS1-1;
     }
     if (accumBaseNum < targetBaseNum) {
 		// 更新最后一个核的End分核信息
         constInfo.bN2End = lastValidBIdx;
-        constInfo.gS1End = lastValidactBatchS1 - 1;
+        constInfo.gS1End = lastValidactBatchS1-1;
         constInfo.s2End = 0;
         if (aicIdx != 0) {
             GetAxisStartIdx(constInfo.bN2Start, constInfo.gS1Start, 0);
@@ -276,7 +276,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
 {
     uint32_t bEndPrev = bN2EndPrev / constInfo.n2Size;
     uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bEndPrev);
-    uint32_t s1GPrevBaseNum = actualSeqQPrev;
+    uint32_t s1GPrevBaseNum = (actualSeqQPrev * constInfo.gSize + constInfo.s1BaseSize - 1) / constInfo.s1BaseSize;
     constInfo.bN2Start = bN2EndPrev;
     constInfo.gS1Start = s1GEndPrev;
     
@@ -431,7 +431,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
     // 适配分核左闭右开
     uint32_t bIdx = constInfo.bN2End / constInfo.n2Size;
     uint32_t actS1Size = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-    uint32_t gS1max = actS1Size;
+    uint32_t gS1max = (actS1Size * constInfo.gSize + (constInfo.s1BaseSize - 1)) / constInfo.s1BaseSize;
     if (constInfo.gS1End + 1 < gS1max) {
         /* constInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
         constInfo.gS1End = constInfo.gS1End + 1;
@@ -443,11 +443,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
 
     // 分核信息
     uint32_t bN2StartIdx = constInfo.bN2Start;
-    uint32_t bN2EndIdx = constInfo.bN2End;
     uint32_t gS1StartIdx = constInfo.gS1Start;
+    uint32_t s2StartIdx = constInfo.s2Start;
+    uint32_t bN2EndIdx = constInfo.bN2End;
     uint32_t nextGs1Idx = constInfo.gS1End;
-    uint32_t s2StartIdx = 0;
-    uint32_t s2EndIdx = 0;
+    uint32_t s2EndIdx = constInfo.s2End;
     uint32_t s2LoopLimit = 0;
 
     if (nextGs1Idx != 0) {
@@ -495,7 +495,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
                     continue;
                 }
                 if constexpr (hasSink) {
-                    runParam.s2LoopEndIdx += 1;
+                    if (runParam.s2LoopEndIdx > 0) {
+                        runParam.s2LoopEndIdx += 1;
+                    }
                 }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;
             } else {
@@ -551,24 +553,10 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
-    if constexpr (hasSink) {
-        if (s2LoopCount == 0) {
-            runInfo.s2StartIdx = 0;
-            runInfo.s2EndIdx = 128;
-        } else {
-            int64_t adjustedS2LoopCount = s2LoopCount - 1;
-            if (adjustedS2LoopCount < runParam.kvLoopEndIdx) {
-                runInfo.s2StartIdx = runParam.s2LineStartIdx;
-                runInfo.s2EndIdx = runParam.s2LineEndIdx;
-            }
-        }
-    } else {
-        if (s2LoopCount < runParam.kvLoopEndIdx) {
-            runInfo.s2StartIdx = runParam.s2LineStartIdx;
-            runInfo.s2EndIdx = runParam.s2LineEndIdx;
-        }
+    if (s2LoopCount < runParam.kvLoopEndIdx) {
+        runInfo.s2StartIdx = runParam.s2LineStartIdx;
+        runInfo.s2EndIdx = runParam.s2LineEndIdx;
     }
-
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
         runInfo.s1oIdx = runParam.s1oIdx;
@@ -619,7 +607,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = constInfo.s2BaseSize;
     runInfo.s2AlignedSize = runInfo.s2RealSize;
-    int64_t curS2LoopCnt = runInfo.s2LoopCount;
+    int64_t curS2LoopCnt =runInfo.s2LoopCount;
     if constexpr (hasSink) {
         if (runInfo.s2LoopCount == 0) {
             return;

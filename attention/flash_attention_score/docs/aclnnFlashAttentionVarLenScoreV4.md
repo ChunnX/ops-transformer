@@ -11,6 +11,7 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
+
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**与[aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md)接口的区别是：在输入排布为TND的场景下，原FlashAttentionVarLenScore接口中的softmax相关输出的数据排布为 NTD，FlashAttentionVarLenScoreV4 接口支持传入字符串参数 softmaxOutLayout，用于控制 softmax 相关输出的数据排布是否与输入保持一致（即采用 TND 排布）。**
@@ -24,6 +25,7 @@
     $$
     attention\_out=Dropout(Softmax(Mask(scale*(pse+query*key^T),atten\_mask)),keep\_prob)*value
     $$
+
 
 ## 函数原型
 
@@ -57,7 +59,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
-
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   void             *workspace,
@@ -65,6 +66,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
+
 
 ## aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize
 
@@ -379,6 +381,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   </tbody>
   </table>
 
+
+
 ## aclnnFlashAttentionVarLenScoreV4
 
 - **参数说明**
@@ -418,7 +422,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   </tbody>
   </table>
 
-- **返回值**
+
+-   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -461,6 +466,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
 - attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional，假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
+
 
 ## 调用示例
 

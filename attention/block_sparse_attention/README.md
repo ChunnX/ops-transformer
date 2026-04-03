@@ -119,7 +119,6 @@ if (ret == ACLNN_SUCCESS) {
     aclrtFree(workspace);
 }
 ```
-
 ## 稀疏模式说明
 
 ### BlockSparseMask稀疏pattern
@@ -138,7 +137,7 @@ BlockSparseAttention使用blockSparseMask稀疏pattern,不需要selectIdx索引�
 Q方向: ceil(512/128)=4块 [0, 1, 2, 3]
 KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 
-每个Q块可以选择任意KV块组合：
+每个Q块可以选择任意KV块组合:
 - Q块0选择的KV块: [0, 2, 5]
 - Q块1选择的KV块: [1, 3, 6]
 - Q块2选择的KV块: [0, 4, 7]

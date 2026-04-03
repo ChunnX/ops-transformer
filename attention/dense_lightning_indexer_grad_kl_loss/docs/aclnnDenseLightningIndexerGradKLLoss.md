@@ -284,7 +284,6 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>-</td>
        <td>-</td>
        <td>-</td>
-      </tr>
       <tr>
        <td>layout（char*）</td>
        <td>输入</td>
@@ -309,7 +308,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td>>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
+       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1</a>。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -319,7 +318,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
+       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1</a>。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -359,7 +358,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>loss（aclTensor*）</td>
        <td>输出</td>
        <td>损失函数值</td>
-       <td>-</td>
+       <td>-</ul></td>
        <td>FLOAT32</td>
        <td>ND</td>
        <td>(1,)</td>
@@ -617,7 +616,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tbody>
       <tr>
        <td>query</td>
-       <td>N1=128/64/32; D=128</td>
+       <td>N1=128/64/32; D=128<td>
       </tr>
       <tr>
        <td>queryIndex</td>

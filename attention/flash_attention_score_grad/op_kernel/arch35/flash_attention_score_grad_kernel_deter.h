@@ -51,9 +51,6 @@ public:
     __aicore__ inline bool IsValidDeterForTnd(FagRunInfo &runInfo, int64_t index, CoordinateInfo &coordinateInfo);
     __aicore__ inline void GetNextDxAndQueryOffsetTND(FagRunInfo &runInfo, int64_t nextIndex, PreloadArgs<IS_ROPE>& preloadArgs);
     __aicore__ inline void Process();
-    __aicore__ inline void Process_NEW_DETER();
-    __aicore__ inline void Process_OLD_DETER();
-    __aicore__ inline void GetIsNeedDeter(int64_t computeLoopIdx);
     __aicore__ inline void DeterSync(int64_t loopIdx);
     __aicore__ inline int64_t SpecialS2Index(int64_t dkvGmOffset);
  
@@ -72,10 +69,6 @@ GlobalTensor<float> deterGm;
     typename std::conditional<IS_DETER_NEW(DETER_SPARSE_TYPE), CoordinateInfo[2], std::nullptr_t>::type coordinateInfos{};
     typename std::conditional<DETER_SPARSE_TYPE == DETER_BAND, BandInfo, std::nullptr_t>::type bandInfo;
     bool isMm3NeedWait = false;
-    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), bool[2], std::nullptr_t>::type dqIsNeedDeter{};
-    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), bool[2], std::nullptr_t>::type dkDvIsNeedDeter{};
-    constexpr static int64_t OUTINDEX = -1;
-    int64_t deterLoopMax = 0;
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -354,20 +347,18 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
     int64_t r = roundId + 1;
     int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
     int64_t mGap = 0;
-    bool useEven = false;
-
+ 
     if constexpr (!BaseClass::IS_TND) {
         int64_t b = this->constInfo.bSize * this->constInfo.n2Size;
         int64_t m = this->constInfo.s1Outer;
         int64_t n = this->constInfo.s2Outer;
-        TransTilingSplitMode<BaseClass::DETER_TILING_SPLIT_MODE>(m, n, r, useEven, deterLoopMax / NUM_TWO);
+ 
         if (this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL && m < n) {
             return -1;
         }
  
         if (this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL && m > n) {
-            mGap = (this->constInfo.commonConstInfo.s1Size - this->constInfo.commonConstInfo.s2Size) /
-                BaseClass::DETER_CUBE_BASEM;
+            mGap = (this->constInfo.commonConstInfo.s1Size - this->constInfo.commonConstInfo.s2Size) / BaseClass::CUBE_BASEM;
             m -= mGap;
         } else if ((this->constInfo.sparseMode == NO_MASK || this->constInfo.sparseMode == LEFT_UP_CAUSAL) && n > m) {
             n = m;
@@ -378,16 +369,11 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
             CalGQACausalIndex(k, m, n, b, j, r, this->constInfo.commonConstInfo.gSize, coordinateInfo);
         }
     } else {
-        TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2,
-                this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
-                this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            CalTNDCausalIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(
+                this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0, this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2, this->constInfo.bSize, this->constInfo.n2Size, k, j, r, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
         } else {
-            CalTNDGQACausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
+            CalTNDGQACausalIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(this->actualSeqQlenAddr, this->actualSeqKvlenAddr, 
                 this->tilingData->deterParam.deterPrefix0, this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2, this->constInfo.bSize,
                 this->constInfo.commonConstInfo.gSize, this->constInfo.n2Size, k, j, r, this->tilingData->deterParam.deterPrefixStep, this->tilingData->deterParam.coreDivide, coordinateInfo);
         }
@@ -405,10 +391,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
         coordinateInfo.n2Idx -= 1;
         coordinateInfo.gIdx -= 1;
     }
-    coordinateInfo.s1Idx = coordinateInfo.s1Idx + mGap;
-    // [64, 128]场景特化
-    TransTilingSplitModeBack<BaseClass::DETER_TILING_SPLIT_MODE, BaseClass::IS_TND>(coordinateInfo, useEven);
-    coordinateInfo.s1Idx -= 1;
+    coordinateInfo.s1Idx = coordinateInfo.s1Idx + mGap - 1;
     coordinateInfo.s2Idx = coordinateInfo.s2Idx - 1;
     if (!(w > 0 && coordinateInfo.batchId < this->constInfo.bSize && coordinateInfo.n2Idx < this->constInfo.n2Size &&
           coordinateInfo.gIdx < this->constInfo.commonConstInfo.gSize && coordinateInfo.s1Idx >= 0 &&
@@ -483,8 +466,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
 {
     int64_t j = this->cBlockIdx + 1;
     int64_t r = roundId + 1;
-    bool useEven = false;
-    TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
+ 
     if constexpr (!BaseClass::IS_TND) {
         if constexpr(BaseClass::IS_N_EQUAL) {
             CalBandIndex(this->bandInfo, j, r, coordinateInfo);
@@ -496,25 +478,18 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
         coordinateInfo.p = this->constInfo.s1Token;
         coordinateInfo.q = this->constInfo.s2Token;
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDBandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
-                this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size,
-                k, j, r, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            CalTNDBandIndex<BaseClass::CUBE_BASEM,BaseClass::CUBE_BASEN>(this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
+                                                this->tilingData->deterParam.deterPrefix0,
+                                                this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size,
+                                                k, j, r, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
         } else {
-            CalTNDGQABandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+            CalTNDGQABandIndex<BaseClass::CUBE_BASEM,BaseClass::CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
                 this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.commonConstInfo.gSize, this->constInfo.n2Size,
                 k, j, r, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
         }
     }
-    // [64, 128]场景特化
-    int64_t convertedMOffset = coordinateInfo.mOffset;
-    int64_t convertedNOffset = coordinateInfo.nOffset;
-    if constexpr (BaseClass::DETER_TILING_SPLIT_MODE == 1) {
-        convertedMOffset = coordinateInfo.mOffset * NUM_TWO;
-    }
-    TransTilingSplitModeBack<BaseClass::DETER_TILING_SPLIT_MODE, BaseClass::IS_TND>(coordinateInfo, useEven);
+ 
     int64_t w = coordinateInfo.batchId;
     int64_t n1 = this->constInfo.commonConstInfo.gSize * this->constInfo.n2Size;
     if (!BaseClass::IS_TND || this->constInfo.commonConstInfo.gSize == 1) {
@@ -527,14 +502,15 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
         coordinateInfo.n2Idx -= 1;
         coordinateInfo.gIdx -= 1;
     }
-    coordinateInfo.s1Idx = coordinateInfo.s1Idx - 1 + convertedMOffset;
-    coordinateInfo.s2Idx = coordinateInfo.s2Idx - 1 + convertedNOffset;
+    coordinateInfo.s1Idx = coordinateInfo.s1Idx - 1 + coordinateInfo.mOffset;
+    coordinateInfo.s2Idx = coordinateInfo.s2Idx - 1 + coordinateInfo.nOffset;
     if (!(w > 0 && coordinateInfo.batchId < this->constInfo.bSize && coordinateInfo.n2Idx < this->constInfo.n2Size &&
           coordinateInfo.gIdx < this->constInfo.commonConstInfo.gSize && coordinateInfo.s1Idx >= 0 &&
           coordinateInfo.s1Idx < coordinateInfo.s1Outer && coordinateInfo.s2Idx >= 0 &&
           coordinateInfo.s2Idx < coordinateInfo.s2Outer)) {
         return -1;
     }
+ 
     return (coordinateInfo.batchId * n1 + coordinateInfo.n2Idx * this->constInfo.commonConstInfo.gSize +
             coordinateInfo.gIdx) * this->constInfo.s1Outer * this->constInfo.s2Outer +
            coordinateInfo.s2Idx * this->constInfo.s1Outer + coordinateInfo.s1Idx;
@@ -548,11 +524,11 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
     int64_t m = this->constInfo.s1Outer;
     int64_t n = this->constInfo.s2Outer;
     int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
-    deterLoopMax = 0;
+    int64_t loopMax = 0;
     if constexpr (BaseClass::IS_TND) {
         return this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
     }
-
+ 
     InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0, this->coordinateInfos[0]);
     InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0, this->coordinateInfos[1]);
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_CAUSAL) {
@@ -570,18 +546,13 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
                    m;
         }
     }
-
+ 
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
-        int64_t s1Outer = this->constInfo.s1Outer;
-        int64_t s2Outer = this->constInfo.s2Outer;
-        if constexpr (BaseClass::DETER_TILING_SPLIT_MODE == 1) {
-            m = Ceil<int64_t>(m, static_cast<int64_t>(NUM_TWO));
-            s1Outer = m;
-        }
-        int64_t p = Ceil<int64_t>(this->constInfo.s1Token, this->DETER_CUBE_BASEM) + 1;
-        int64_t q = Ceil<int64_t>(this->constInfo.s2Token, this->DETER_CUBE_BASEN) + 1;
-        p = p > s1Outer ? s1Outer : p;
-        q = q > s2Outer ? s2Outer : q;
+        int64_t p = Ceil<int64_t>(this->constInfo.s1Token, this->CUBE_BASEM) + 1;
+        int64_t q = Ceil<int64_t>(this->constInfo.s2Token, this->CUBE_BASEN) + 1;
+        p = p > this->constInfo.s1Outer ? this->constInfo.s1Outer : p;
+        q = q > this->constInfo.s2Outer ? this->constInfo.s2Outer : q;
+ 
         int64_t actualM, actualN, actualP, actualQ;
         int64_t mOffset, nOffset;
         if (p < 0) {
@@ -609,24 +580,18 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
  
         if constexpr(BaseClass::IS_N_EQUAL) {
             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
-            int64_t convertedMaxRound = BaseClass::DETER_TILING_SPLIT_MODE ?
-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound / NUM_TWO :
-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
-            deterLoopMax = Max(convertedMaxRound, this->bandInfo.rm2);
+            loopMax = Max(this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound, this->bandInfo.rm2);
         } else {
             k = Min(Min(k, b * this->constInfo.commonConstInfo.gSize * m), b * n);
             int64_t b2 = b % k;
             GenGQABandInfo(k, actualM, actualN, actualP, actualQ, b, this->constInfo.commonConstInfo.gSize, this->bandInfo);
-            deterLoopMax = this->bandInfo.rm + this->bandInfo.rm2;
+            loopMax = this->bandInfo.rm + this->bandInfo.rm2;
         }
         InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset, this->coordinateInfos[0]);
         InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset, this->coordinateInfos[1]);
-        if constexpr (BaseClass::DETER_TILING_SPLIT_MODE) {
-            deterLoopMax *= NUM_TWO;
-        }
-        return deterLoopMax;
+        return loopMax;
     }
-    return deterLoopMax;
+    return loopMax;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -695,14 +660,14 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::DeterSync(int64
 }
  
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::Process_NEW_DETER()
+__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::Process()
 {
     if constexpr (SPLIT_AXIS == BN2S2) {
         if ASCEND_IS_AIV {
             InitOutput<float>(this->deterGm[deterGmOffset + this->vSubBlockIdx * this->CUBE_BASEN * this->HEAD_DIM_ALIGN], this->CUBE_BASEN * this->HEAD_DIM_ALIGN, 0);
         }
     }
-    deterLoopMax = CalDeterMaxLoopNum();
+    int64_t loopMax = CalDeterMaxLoopNum();
     int64_t blockInnerIdx = 0;
     int64_t taskId = 0;
     int64_t nextValidLoopIdx;
@@ -715,17 +680,18 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
     LocalTensor<CALC_TYPE> mm2ResTensor;
  
     FagRunInfo runInfos[2];  // for ping pongs
-    CalDeterIndex(0, deterLoopMax, nextValidLoopIdx, nextblockIdx, taskId,
+    CalDeterIndex(0, loopMax, nextValidLoopIdx, nextblockIdx, taskId,
         this->coordinateInfos[taskId & 1], runInfos[taskId & 1]);
  
-    for (int64_t loopIdx = 0; loopIdx < deterLoopMax + 1; loopIdx++) {
+    for (int64_t loopIdx = 0; loopIdx < loopMax + 1; loopIdx++) {
         if (loopIdx >= nextValidLoopIdx) {
             blockInnerIdx = nextblockIdx;
-            CalDeterIndex(loopIdx + 1, deterLoopMax, nextValidLoopIdx, nextblockIdx, taskId,
+            CalDeterIndex(loopIdx + 1, loopMax, nextValidLoopIdx, nextblockIdx, taskId,
                 this->coordinateInfos[(taskId + 1) & 1], runInfos[(taskId + 1) & 1]);
         } else {
             blockInnerIdx = -1;
         }
+ 
         bool isValidBlock = (blockInnerIdx >= 0);
         if constexpr (BaseClass::IS_TND) {
             isValidBlock = isValidBlock && !(this->coordinateInfos[taskId & 1].batchId < 0 || blockInnerIdx < 0);
@@ -943,281 +909,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
             specialFirstHalfS2RealSize, dAlign16, dvAlign16, specialDkGmOffset, specialDvGmOffset);
         this->vecBlock.template ProcessPostDeter<false>(this->constInfo, this->deterGm[deterGmOffset + this->CUBE_BASEN * this->HEAD_DIM_ALIGN], 
             this->dvGm,  specialHalfS2RealSize, specialFirstHalfS2RealSize, dAlign16, dvAlign16, specialDkGmOffset, specialDvGmOffset);
-    }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::Process()
-{
-    if constexpr (IS_DETER_NEW(DETER_SPARSE_TYPE)) {
-        Process_NEW_DETER();
-    } else {
-        Process_OLD_DETER();
-    }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::Process_OLD_DETER()
-{
-    // maxValidBBLen表示所有核中处理有效块最多的数量，需要做这么多次确定性计算
-    int64_t maxValidBBLen = this->tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen;
-    int64_t remainLoopNum = maxValidBBLen;
-    int64_t blockInnerIdx = 0;
-    int64_t nextValidBlockInnerIdx = 0;
-    int64_t taskId = 0;
-    int64_t loopIdx = 0;
-    FagRunInfo runInfos[2]; // for ping pong
-    FagRunInfo prevRunInfo;
-
-    LocalTensor<CALC_TYPE> mm1ResTensor;
-    LocalTensor<CALC_TYPE> mm2ResTensor;
-    bool needSyncDkMM = false;
-
-    while (remainLoopNum > 0) { // remainLoop每次做完确定性计算减1
-        blockInnerIdx = this->tilingData->s1s2BNGS1S2BlockNumList.blockStarts[this->cBlockIdx] + loopIdx;
-        if (this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx] != 0) { // 有主流程需要处理的核
-            if (blockInnerIdx < this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx] +
-                                    1) { // 这个1是提前发射mm1mm2，所以需要额外增加一个轮次
-                this->isLastLoop = (blockInnerIdx == this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx]);
-                // 无效块跳过
-                if (!this->isLastLoop && !this->IsValid(runInfos[taskId & 1], taskId, blockInnerIdx)) {
-                    loopIdx++;
-                    continue;
-                }
-                if (taskId > 0) {
-                    prevRunInfo = runInfos[(taskId + 1) & 1];
-                    deterPpFlag = 1 - deterPpFlag;
-                    // softmaxGrad
-                    this->vecBlock.ProcessVec1(this->constInfo, runInfos[(taskId + 1) & 1]); // v1: softmaxGrad
-                    // wait mm1 and mm2 result
-                    if ASCEND_IS_AIV {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C2_TO_V2_FLAG[(taskId + 1) & 1]);
-                    }
-                }
-                if (!this->isLastLoop) {
-                    nextValidBlockInnerIdx = this->GetNextValidIdx(runInfos[(taskId + 1) & 1], taskId + 1, blockInnerIdx + 1);
-                    this->SetRunInfo(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, blockInnerIdx, nextValidBlockInnerIdx);
-                    // IterateMm1Mm2
-                    if ASCEND_IS_AIC {
-                        if (needSyncDkMM) {
-                            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
-                            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_DETER_FIX_FLAG);
-                        }
-                    }
-                    mm1ResTensor = this->mm1ResBuf[runInfos[taskId & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                    this->cubeBlock.IterateMmDyV(mm1ResTensor, this->constInfo, runInfos[taskId & 1], this->preloadArgs);
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[taskId & 1]);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[taskId & 1]);
-                    }
-                    mm2ResTensor = this->mm2ResBuf[runInfos[taskId & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                    this->cubeBlock.IterateMmQK(mm2ResTensor, this->constInfo, runInfos[taskId & 1], this->preloadArgs);
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_FLAG[taskId & 1]);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C2_TO_V2_FLAG[taskId & 1]);
-                    }
-                    if constexpr (IS_ROPE) {
-                        this->vecBlock.WriteOffsetToGM(this->constInfo, runInfos[taskId & 1].queryOffsetWithRope, 
-                            runInfos[taskId & 1].keyOffsetWithRope, runInfos[taskId & 1].commonRunInfo.valueOffset, 
-                            taskId, maxValidBBLen - taskId);
-                    } else {
-                        this->vecBlock.WriteOffsetToGM(this->constInfo, runInfos[taskId & 1].commonRunInfo.queryOffset, 
-                            runInfos[taskId & 1].commonRunInfo.keyOffset, runInfos[taskId & 1].commonRunInfo.valueOffset, 
-                            taskId, maxValidBBLen - taskId);
-                    }
-
-                    // CopyInMaxSum
-                    this->vecBlock.CopyMaxSum(this->constInfo, runInfos[taskId & 1], taskId); // copy in max and sum double buffer
-                }
-                if (taskId > 0) {
-                    mm1ResTensor =
-                        this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                    mm2ResTensor =
-                        this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                    //ProcessReCompute
-                    this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo, prevRunInfo); // v2: pse + attenMask + simpleSoftmax
-                    if (unlikely(this->constInfo.isSink && !IS_DROP)) {
-                        this->vecBlock.ProcessVecSink(mm1ResTensor,
-                            mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]);
-                    }
-                    if ASCEND_IS_AIV {
-                        if (needSyncDkMM) {
-                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
-                        }
-                    }
-                    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
-                    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
-                    // GetIsNeedDeter, vec3需要知道是否dqneedDeter
-                    GetIsNeedDeter(taskId - 1);
-                    this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
-                                            prevRunInfo, dqIsNeedDeter[deterPpFlag]); // v3: dropout + cast + nd2nz
-                    if (unlikely(this->constInfo.isSink && IS_DROP)) {
-                        this->vecBlock.ProcessVecSink(mm1ResTensor,
-                            mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]);
-                    }
-                    if ASCEND_IS_AIV {
-                        if (needSyncDkMM) {
-                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C5_TO_V4_FLAG);
-                        }
-                    }
-                    this->vecBlock.ProcessVec4(pL1Buffer, mm2ResTensor, this->constInfo, prevRunInfo); // v4: cast + nd2nz
-                    if ASCEND_IS_AIV {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG); // dqk must wait ds copy completely
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG); // dv must wait ds copy completely
-                    } else {
-                        // wait ds in ub copy to l1
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V3_TO_C3_FLAG);
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V3_TO_C3_FLAG);
-                        // wait p in ub copy to l1
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V4_TO_C5_FLAG);
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V4_TO_C5_FLAG);
-                    }                    
-
-                    // compute dq
-                    if (likely(this->constInfo.deterConstInfo.noNeedDeter)) {
-                        // c3-normal
-                        this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                            this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo);
-                    } else {
-                        if (dqIsNeedDeter[deterPpFlag]) {
-                            int64_t offset = this->cBlockIdx * this->BASE_DQ_SIZE +
-                                deterPpFlag * (this->BASE_DQ_SIZE + 2 * this->BASE_DKV_SIZE) * this->constInfo.deterConstInfo.usedCubeCoreNum;
-                            // c3-deter
-                            this->cubeBlock.template IterateMmDsKOlderDeter<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                                this->deterGm[offset], this->dSL1Buf, this->constInfo, prevRunInfo);                            
-                        } else {
-                            // c3-normal
-                            this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
-                                this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo);
-                        }
-                    }                    
-                    // compute dk
-                    if (likely(this->constInfo.deterConstInfo.noNeedDeter)) {
-                        // c4-normal
-                        this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                            this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo, dqIsNeedDeter[deterPpFlag]); // c4
-                    } else {
-                        if (dkDvIsNeedDeter[deterPpFlag]) {
-                            int64_t offset = this->cBlockIdx * this->BASE_DKV_SIZE + this->BASE_DQ_SIZE * this->constInfo.deterConstInfo.usedCubeCoreNum +
-                                deterPpFlag * (this->BASE_DQ_SIZE + 2 * this->BASE_DKV_SIZE) * this->constInfo.deterConstInfo.usedCubeCoreNum;
-                            // c4-deter
-                            this->cubeBlock.template IterateMmDsQOlderDeter<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                                this->deterGm[offset], this->dSL1Buf, this->constInfo, prevRunInfo, dqIsNeedDeter[deterPpFlag]); // c4
-                        } else {
-                            // c4-normal
-                            this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-                                this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo, prevRunInfo, dqIsNeedDeter[deterPpFlag]); // c4
-                        }
-                    }
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
-                    }
-                    // compute dv
-                    if (likely(this->constInfo.deterConstInfo.noNeedDeter)) {
-                        // c5-normal
-                        this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                            this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
-                    } else {
-                        if (dkDvIsNeedDeter[deterPpFlag]) {
-                        int64_t offset = this->cBlockIdx * this->BASE_DKV_SIZE + (this->BASE_DQ_SIZE + this->BASE_DKV_SIZE) * this->constInfo.deterConstInfo.usedCubeCoreNum +
-                            deterPpFlag * (this->BASE_DQ_SIZE + 2 * this->BASE_DKV_SIZE) * this->constInfo.deterConstInfo.usedCubeCoreNum;
-                            // c5-deter
-                            this->cubeBlock.template IterateMmPDyOlderDeter<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                                this->deterGm[offset], this->pL1Buf, this->constInfo, prevRunInfo); // c5
-                        } else {
-                            // c5-normal
-                            this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                                this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
-                        }
-                    }
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
-                    }
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
-                    }
-
-                    needSyncDkMM = true;                    
-                    if (taskId > 1) {
-                        // 确定性计算的基本块滞后于上面的mm345一次
-                        // WaitMm3Result
-                        if ASCEND_IS_AIV {
-                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
-                        }
-                        // DeterCompute
-                        this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
-                                                    false, maxValidBBLen - remainLoopNum, remainLoopNum, &deterPpFlag);
-                        if ASCEND_IS_AIV {
-                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
-                        }
-                        remainLoopNum--;
-                    }
-                }
-                if (this->isLastLoop && taskId > 0) {
-                    mm1ResTensor =
-                        this->mm1ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                    mm2ResTensor =
-                        this->mm2ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                    // WaitMm3Result
-                    if ASCEND_IS_AIV {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
-                    }
-                    // DeterCompute
-                    this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
-                                                true, maxValidBBLen - remainLoopNum, remainLoopNum, &deterPpFlag);
-                    remainLoopNum--;
-                }
-                taskId++;
-            } else { // 主流程做完的核，后面需要参与到确定性计算中
-                mm1ResTensor =
-                    this->mm1ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                mm2ResTensor =
-                    this->mm2ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-                int64_t computeLoopIdx = maxValidBBLen - remainLoopNum;
-                GetIsNeedDeter(computeLoopIdx);
-                this->vecBlock.WriteOffsetToGM(this->constInfo, OUTINDEX, OUTINDEX, OUTINDEX, computeLoopIdx, remainLoopNum);
-                deterPpFlag = 1 - deterPpFlag;
-                // DeterCompute
-                this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
-                                            true, computeLoopIdx, remainLoopNum, &deterPpFlag);
-                remainLoopNum--;
-            }
-        } else { // 没有主流程需要处理的核，只参与确定性计算
-            mm1ResTensor =
-                this->mm1ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-            mm2ResTensor =
-                this->mm2ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-            GetIsNeedDeter(loopIdx);
-            deterPpFlag = 1 - deterPpFlag;
-            // DeterCompute
-            this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
-                                        true, loopIdx, remainLoopNum, &deterPpFlag);
-            remainLoopNum--;
-        }
-        loopIdx++;
-    }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::GetIsNeedDeter(int64_t computeLoopIdx)
-{
-    if (this->constInfo.deterConstInfo.noNeedDeter) {
-        return;
-    }
-    if (unlikely(computeLoopIdx >= this->MAX_BITS_IN_TILING)) {
-        dqIsNeedDeter[computeLoopIdx & 1] = true;
-        dkDvIsNeedDeter[computeLoopIdx & 1] = true;
-    } else {
-        // caculate index and bit position
-        int64_t arrayIndex = computeLoopIdx / this->BITS_EACH_UINT64;
-        int64_t bitShift = computeLoopIdx % this->BITS_EACH_UINT64;
-        uint64_t mask = 1ULL << bitShift;
-        dqIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->s1s2BNGS1S2SplitCoreParams.dqIsNeedDeter[arrayIndex] & mask) != 0;
-        dkDvIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[arrayIndex] & mask) != 0;
     }
 }
  

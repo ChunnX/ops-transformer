@@ -1847,10 +1847,7 @@ ge::graphStatus IFATilingV2::ProcessAttenMask() {
   if (isPFAFlag_) {
     return ge::GRAPH_SUCCESS;
   }
-  OP_CHECK_IF((sparseMode_ != SPARSE_MODE_NO_MASK),
-    OP_LOGE(ifaContext_->opName, "When S of query equal to 1, sparseMode only support 0(defaultMask),"
-            "but got %u.", sparseMode_),
-            return ge::GRAPH_FAILED);
+
   auto maskShape = ifaContext_->attenMask.tensor;  // input shape = 4
   if (maskShape == nullptr) {
     attenMaskFlag_ = false;
@@ -2533,14 +2530,10 @@ ge::graphStatus IFATilingV2::CheckAntiQuantParam(const int64_t antiquantMode, co
               inputKvType_ == ge::DT_FLOAT4_E2M1)),
               OP_LOGE(ifaContext_->opName, "When input key/value dataType is fp8/hifp8/fp4_e2m1, antiquantOffset is not supported."),
               return ge::GRAPH_FAILED);
-  OP_CHECK_IF(((antiquantMode == PER_TENSOR_HEAD_MODE || antiquantMode == PER_TOKEN_HEAD_PA_MODE) && inputKvType_ != ge::DT_INT8),
- 	            OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is 2 or 5, input key/value type should be int8, "
- 	                       "but now is %s.", DataTypeToString(inputKvType_).c_str()),
- 	             return ge::GRAPH_FAILED);
- 	OP_CHECK_IF(((antiquantMode == PER_TOKEN_PA_MODE) && (inputKvType_ != ge::DT_INT8 && inputKvType_ != ge::DT_FLOAT8_E4M3FN)),
- 	            OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is 4, input key/value type should be int8 or fp8_e4m3, "
- 	                       "but now is %s.", DataTypeToString(inputKvType_).c_str()),
- 	             return ge::GRAPH_FAILED);
+  OP_CHECK_IF(((antiquantMode == PER_TENSOR_HEAD_MODE || antiquantMode == PER_TOKEN_PA_MODE || antiquantMode == PER_TOKEN_HEAD_PA_MODE) && inputKvType_ != ge::DT_INT8),
+            OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is 2, 4 or 5, input key/value type should be int8, "
+                      "but now is %s.", DataTypeToString(inputKvType_).c_str()),
+            return ge::GRAPH_FAILED);
   OP_CHECK_IF((antiquantMode == PER_TOKEN_GROUP_MODE && !(inputKvType_ == ge::DT_FLOAT4_E2M1)),
             OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is PER_TOKEN_GROUP(6), input key/value type should be fp4_e2m1, "
                       "but now is %s.", DataTypeToString(inputKvType_).c_str()),
@@ -2594,18 +2587,10 @@ ge::graphStatus IFATilingV2::CheckAntiQuantParam(const int64_t antiquantMode, co
   gert::Shape expectedShape1 = gert::Shape({1});
   if (antiquantMode == PER_CHANNEL_MODE) {
     // per-tensor
-    if (inputKvType_ == ge::DT_INT4 || inputKvType_ == ge::DT_INT32) {
-      OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
-                  OP_LOGE(ifaContext_->opName,
-                          "In per-tensor mode, the data type of key/value should be int8, but now is INT4/INT32."),
-                  return ge::GRAPH_FAILED);
-    } else {
-      OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
-                  OP_LOGE(ifaContext_->opName,
-                          "In per-tensor mode, the data type of key/value should be int8, but now is %s.",
-                          DataTypeToString(inputKvType_).c_str()),
-                  return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
+                OP_LOGE(ifaContext_->opName,
+                        "In per-tensor mode, the input key/value type should be int8, but now is %s.", DataTypeToString(inputKvType_).c_str()),
+                return ge::GRAPH_FAILED);
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -2714,10 +2699,6 @@ ge::graphStatus IFATilingV2::ProcessAntiQuant() {
                             keyAntiquantScaleDesc, keyAntiquantOffsetDesc) == ge::GRAPH_FAILED) {
       return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF((antiquantMode_ == PER_TOKEN_MODE || antiquantMode_ == PER_TOKEN_PA_MODE)
- 	                   && (inputKvType_ == ge::DT_FLOAT8_E4M3FN && (outputType_ != ge::DT_BF16 && outputType_ != ge::DT_FLOAT16)),
- 	        OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is 1 or 4, if data type of key/value is float8_e4m3, post quant is not supported."),
- 	        return ge::GRAPH_FAILED);
     if (kPerChnVPerTokFlag_) {
       OP_CHECK_IF((inputKvType_ == ge::DT_INT8 && (inputQType_ == ge::DT_BF16 || outputType_ == ge::DT_BF16)),
         OP_LOGE(ifaContext_->opName, "When key in per-channel scenario and value in pre-token scenario,"
@@ -4006,7 +3987,6 @@ ge::graphStatus IFATilingV2::GenTilingKey() {
     UpdateTilingKeyPFAMask();
     UpdateTilingKeyPFAMatMulType();
     UpdateTilingKeyEnableKVPrefix();
-    UpdateTilingKeySplitCoreMode();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -4101,11 +4081,6 @@ void IFATilingV2::UpdateTilingKeyPFAMatMulType() {
 
 void IFATilingV2::UpdateTilingKeyEnableKVPrefix() {
   enableKVPrefix = enableKVPrefix_;
-}
-
-void IFATilingV2::UpdateTilingKeySplitCoreMode() 
-{
-  enableS1OutSplit = false;
 }
 
 ge::graphStatus IFATilingV2::DoTiling(gert::TilingContext& context) {
@@ -4424,13 +4399,13 @@ ge::graphStatus IFATilingV2::DoOpTiling()
     ret = DoSubOpTiling(ifaContext);
     uint64_t tiling_key = GET_TPL_TILING_KEY(static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config),
                                             static_cast<uint64_t>(pseMode), static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor, 
-                                            static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix, enableS1OutSplit);
+                                            static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix);
     context_->SetTilingKey(tiling_key);
     OP_LOGI(ifaContext.opName, "The new template tilingkey is %llu.", tiling_key);
-    OP_LOGI(ifaContext.opName, "The new template tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu,quantMode: %llu, hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, pFAMatMulType: %llu, enableKVPrefix: %llu, enableS1OutSplit: %llu.", 
+    OP_LOGI(ifaContext.opName, "The new template tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu,quantMode: %llu, hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, pFAMatMulType: %llu, enableKVPrefix: %llu.", 
             static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config),
             static_cast<uint64_t>(pseMode), static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor, 
-            static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix, enableS1OutSplit);
+            static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix);
     return ret;
 }
 
@@ -4453,7 +4428,7 @@ ge::graphStatus IFATilingV2::DoSubOpTiling(IncreFlashAttentionContext& ifaContex
         OP_CHECK_IF(ret == ge::GRAPH_FAILED,
                     OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
                     return ge::GRAPH_FAILED);
-        PromptFlashAttentionTilingDataV2 tilingData;
+        PromptFlashAttentionTilingData tilingData;
         ret = flashTilingV2.DoSubOpTiling(tilingData, contextParamsForPFATiling);
         inOutLayoutType = flashTilingV2.inOutLayoutType;
         config = flashTilingV2.config;

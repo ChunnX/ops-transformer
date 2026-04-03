@@ -223,9 +223,6 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOut
     int64_t n2Offset;
     int64_t gOffset;
     int64_t s1Offset;
-    if (constInfo.learnableSinkFlag) {
-        SinkSubExpAddVF<float>(sumUb, maxUb, constInfo.sinkValue, runInfo.halfS1RealSize);
-    }
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // tndSoftmaxOut=1时，softmaxMax、softMaxSum按(T, N, 8)格式存储
         // tndSoftmaxOut=0时，softmaxMax、softMaxSum按(B, N, Sq, 8)格式存储

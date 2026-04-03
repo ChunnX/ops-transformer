@@ -7,11 +7,13 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
+
+
 ## 功能说明
 
-- **算子功能**：NSA中compress attention以及select topk索引计算。论文：https://arxiv.org/pdf/2502.11089
+-   **算子功能**：NSA中compress attention以及select topk索引计算。论文：https://arxiv.org/pdf/2502.11089
 
-- **计算公式**：压缩block大小：$l$，select block大小：$l'$，压缩stride大小：$d$
+-   **计算公式**：压缩block大小：$l$，select block大小：$l'$，压缩stride大小：$d$
 
 $$
 P_{cmp} = Softmax(query*key^T) \\
@@ -38,13 +40,13 @@ topkIndices = topk(P_{slc'})
 $$
 
 NsaCompressAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过inputLayout传入，当前仅支持TND。
-
 - B：表示输入样本批量大小（Batch）
 - T：B和S合轴紧密排列的长度
 - S：表示输入样本序列长度（Seq-Length）
 - H：表示隐藏层的大小（Head-Size）
 - N：表示多头数（Head-Num）
 - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
+
 
 ## 参数说明
 
@@ -89,3 +91,7 @@ NsaCompressAttention输入query、key、value的数据排布格式支持从多�
 | 调用方式        | 调用样例        | 说明                                                 |
 |----------------|----------------|------------------------------------------------------|
 | aclnn调用 | [test_aclnn_nsa_compress_attention](./examples/test_aclnn_nsa_compress_attention.cpp) | 非TND场景，通过[aclnnNsaCompressAttention](./docs/aclnnNsaCompressAttention.md)接口方式调用NsaCompressAttention算子。|
+
+
+
+
