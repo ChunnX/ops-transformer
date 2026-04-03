@@ -89,6 +89,7 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoOpTiling()
     // 参数校验通过后赋值给全局上下文变量
     GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
     // 进行通算切分
+    matmulQuantType_ = QuantType::FP_QUANT;
     GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
     // 调用非量化Matmul的tiling方法进行切分
     GE_ASSERT_GRAPH_SUCCESS(DoMMTiling());
