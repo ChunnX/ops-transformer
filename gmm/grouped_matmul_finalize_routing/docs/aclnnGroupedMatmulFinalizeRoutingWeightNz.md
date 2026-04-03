@@ -94,13 +94,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>-</td>
       <td>INT8</td>
       <td>NZ</td>
-      <td>shape支持5维。维度为(e, n1, k1, k0, n0)，其中k0 = 16，n0 = 32， x shape中的k和w shape中的k1需要满足以下关系：ceilDiv（k,16） = k1。可使用aclnnCalculateMatmulWeightSizeV2接口以及aclnnTransMatmulWeight接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。e取值范围[1,256]。</td>
+      <td>shape支持5维。维度为(e, n1, k1, k0, n0)，其中k0 = 16，n0 = 32， x1 shape中的k和x2 shape中的k1需要满足以下关系：ceilDiv（k,16） = k1。可使用aclnnCalculateMatmulWeightSizeV2接口以及aclnnTransMatmulWeight接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。e取值范围[1,256]。</td>
       <td>-</td>
     </tr>
     <tr>
       <td>scale</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，perchannel量化参数。</td>
+      <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
@@ -286,13 +286,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
     <tr>
       <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="8">161002</td>
-      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、logitOptional、rowIndex、sharedInputWeight、sharedInputOffset、transposeX1、transposeX2或out的数据类型和数据格式不在支持的范围内。</td>
+      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex、sharedInputWeight、sharedInputOffset、transposeX1、transposeX2或out的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>x1、x2、scaleOptional、bias、pertokenScaleOptional、groupList、sharedInput、logitOptional、rowIndex或out的shape不满足校验条件。</td>
+      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x1、x2、scaleOptional、bias、pertokenScaleOptional、groupList、sharedInput、 logitOptional、rowIndex或out是空tensor。</td>
+      <td>x1、x2、scale、bias、pertokenScaleOptional、groupList、sharedInput、 logit、rowIndex或out是空tensor。</td>
     </tr>
     <tr>
       <td>dtype、sharedInputOffset、transposeX1、transposeX2、groupListType的取值范围不满足条件。</td>
@@ -481,7 +481,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       int64_t bsdp = 8;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffset = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -498,7 +498,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
       void *xDeviceAddr = nullptr;
       void *wDeviceAddr = nullptr;
-      void *biasDeviceAddr = nullptr;
       void *scaleDeviceAddr = nullptr;
       void *pertokenScaleDeviceAddr = nullptr;
       void *groupListDeviceAddr = nullptr;
@@ -524,14 +523,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       std::vector<float> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
       std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
       groupListHostData[0] = 7;
-      groupListHostData[0] = 32;
-      groupListHostData[0] = 40;
-      groupListHostData[0] = 64;
+      groupListHostData[1] = 32;
+      groupListHostData[2] = 40;
+      groupListHostData[3] = 64;
 
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<float> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
 
       // 创建x aclTensor
       ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_INT8, &x);
@@ -599,7 +598,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
       // 调用aclnnGroupedMatmulFinalizeRoutingWeightNz第一段接口
       workspaceSize = 0;
-      ret = aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(x, w, scale, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(x, w, scale, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
 
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
@@ -619,14 +618,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
       // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
       auto size = GetShapeSize(outShape);
-      std::vector<uint16_t> resultData(
-          size, 0);  // C语言中无法直接打印fp16的数据，需要用uint16读出来，自行通过二进制转成fp16
+      std::vector<float> resultData(size, 0);
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                         size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                 return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改

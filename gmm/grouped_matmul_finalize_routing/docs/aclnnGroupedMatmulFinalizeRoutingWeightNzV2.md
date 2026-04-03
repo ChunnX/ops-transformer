@@ -109,7 +109,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     <tr>
       <td>scale</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，perchannel量化参数。</td>
+      <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
       <td>INT64、FLOAT32、BF16</td>
       <td>ND</td>
@@ -237,7 +237,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>transposeX</td>
+      <td>transposeX1</td>
       <td>输入</td>
       <td>左矩阵是否转置，仅支持false。</td>
       <td>-</td>
@@ -557,7 +557,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         int64_t bsdp = 8;
         int64_t dtype = 0;
         float shareInputWeight = 1.0;
-        int64_t shareInputOffset = 0;
+        int64_t sharedInputOffset = 0;
         bool transposeX = false;
         bool transposeW = false;
         int64_t groupListType = 1;
@@ -575,7 +575,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
         void *xDeviceAddr = nullptr;
         void *wDeviceAddr = nullptr;
-        void *biasDeviceAddr = nullptr;
         void *scaleDeviceAddr = nullptr;
         void *pertokenScaleDeviceAddr = nullptr;
         void *groupListDeviceAddr = nullptr;
@@ -602,14 +601,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         std::vector<float> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
         std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
         groupListHostData[0] = 7;
-        groupListHostData[0] = 32;
-        groupListHostData[0] = 40;
-        groupListHostData[0] = 64;
+        groupListHostData[1] = 32;
+        groupListHostData[2] = 40;
+        groupListHostData[3] = 64;
 
         std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
         std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
         std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-        std::vector<float> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+        std::vector<float> outHostData(GetShapeSize(outShape));
 
         // 创建x aclTensor
         ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_INT8, &x);
@@ -660,7 +659,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
         std::unique_ptr<aclIntArray, aclnnStatus (*)(const aclIntArray *)> tuningConfigIntArrayPtr(tuningConfig, aclDestroyIntArray);
         std::unique_ptr<void, aclError (*)(void *)> tuningConfigDeviceAddrPtr(tuningConfigDeviceAddr, aclrtFree);
-        CHECK_RET(tuningConfig == nullptr, -1);
+        CHECK_RET(tuningConfig != nullptr, -1);
         // 3. 调用CANN算子库API，需要修改为具体的Api名称
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
@@ -681,7 +680,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
         // 调用aclnnGroupedMatmulFinalizeRoutingWeightNzV2第一段接口
         workspaceSize = 0;                                               
-        ret = aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(x, w, scale, nullptr, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffset, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
+        ret = aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(x, w, scale, nullptr, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
 
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize failed. ERROR: %d\n", ret);
                   return ret);
@@ -701,14 +700,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
         // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
         auto size = GetShapeSize(outShape);
-        std::vector<uint16_t> resultData(
-            size, 0);  // C语言中无法直接打印fp16的数据，需要用uint16读出来，自行通过二进制转成fp16
+        std::vector<float> resultData(size, 0);
         ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                   return ret);
         for (int64_t i = 0; i < size; i++) {
-            LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+            LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
         }
 
         // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
@@ -874,7 +872,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       int64_t bsdp = 8;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffset = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -920,7 +918,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<float> outHostData(GetShapeSize(outShape)); // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
 
       // 创建x aclTensor
       ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_HIFLOAT8, &x);
@@ -960,7 +958,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       // 调用aclnnGroupedMatmulFinalizeRoutingWeightNzV2第一段接口
       ret = aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
           x, w, scale, nullptr, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype,
-          shareInputWeight, shareInputOffset, transposeX, transposeW, groupListType, nullptr, out, &workspaceSize,
+          shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, nullptr, out, &workspaceSize,
           &executor);
       CHECK_FREE_RET(ret == ACL_SUCCESS,
                     LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -983,14 +981,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
       // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
       auto size = GetShapeSize(outShape);
-      std::vector<uint16_t> resultData(size,
-                                      0); // C语言中无法直接打印fp16的数据，需要用uint16读出来，自行通过二进制转成fp16
+      std::vector<float> resultData(size, 0);
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                         size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                     return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
