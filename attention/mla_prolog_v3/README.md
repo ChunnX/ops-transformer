@@ -99,20 +99,20 @@
 | quant_scale_ckv      | 输入      | KVCache输出量化参数 | FLOAT          | ND         |
 | quant_scale_ckr      | 输入      | KRCache输出量化参数 | FLOAT          | ND         |
 | smooth_scales_cq     | 输入      | RmsNormCq输出动态量化参数 | FLOAT          | ND         |
-| actual_seq_len                 | 输入      | 预留参数，当前版本暂未使用，必须传入空指针 | INT32          | ND         |
+| actual_seq_len                 | 输入      | 可选参数，用于BS合轴且CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，指定当前batch中实际的序列长度，其他场景传入空指针 | INT32          | ND         |
 | k_nope_clip_alpha    | 输入      | 对kv_cache做clip操作时的缩放因子  | FLOAT  | ND         |    
-| rmsnorm_epsilon_cq           | 输入      | 计算$c^Q$的RmsNorm公式中$\epsilon$参数 | DOUBLE         | -          |
-| rmsnorm_epsilon_ckv          | 输入      | 计算$c^{KV}$的RmsNorm公式中$\epsilon$参数 | DOUBLE         | -          |
-| cache_mode          | 输入      | kvCache模式 | CHAR*          | -          |
-| query_norm_flag           | 输入      | 表示是否输出query_norm，Host侧参数 | BOOL         | -          |
-| weight_quant_mode          | 输入      | 表示weight_dq、weight_uq_qr、weight_uk、weight_dkv_kr的量化模式 | INT64         | -          |
-| kv_cache_quant_mode           | 输入      | 表示kv_cache的量化模式 | INT64         | -          |
-| query_quant_mode          | 输入      | 表示query的量化模式 | INT64         | -          |
-| ckvkr_repo_mode           | 输入      | 表示kv_cache和kr_cache的存储模式 | INT64         | -          |
-| quant_scale_repo_mode           | 输入      | 表示量化scale的存储模式 | INT64         | -          |
-| tile_size          | 输入      | 表示per-tile量化时每个tile的大小，需要传入128 | INT64         | -          |
-| qc_qr_scale          | 输入      | Query的尺度矫正参数，对应$\alpha_q$，默认传1.0 | DOUBLE         | -          |
-| kc_scale          | 输入      | Key的尺度矫正参数，对应$\alpha_{kv}$，默认传1.0 | DOUBLE         | -          |
+| rmsnorm_epsilon_cq           | 属性      | 计算$c^Q$的RmsNorm公式中$\epsilon$参数 | DOUBLE         | -          |
+| rmsnorm_epsilon_ckv          | 属性      | 计算$c^{KV}$的RmsNorm公式中$\epsilon$参数 | DOUBLE         | -          |
+| cache_mode          | 属性      | kvCache模式，默认值为"PA_BSND" | CHAR*          | -          |
+| query_norm_flag           | 属性      | 表示是否输出query_norm，Host侧参数 | BOOL         | -          |
+| weight_quant_mode          | 属性      | 表示weight_dq、weight_uq_qr、weight_uk、weight_dkv_kr的量化模式 | INT64         | -          |
+| kv_cache_quant_mode           | 属性      | 表示kv_cache的量化模式 | INT64         | -          |
+| query_quant_mode          | 属性      | 表示query的量化模式 | INT64         | -          |
+| ckvkr_repo_mode           | 属性      | 表示kv_cache和kr_cache的存储模式 | INT64         | -          |
+| quant_scale_repo_mode           | 属性      | 表示量化scale的存储模式 | INT64         | -          |
+| tile_size          | 属性      | 表示per-tile量化时每个tile的大小，需要传入128 | INT64         | -          |
+| qc_qr_scale          | 属性      | Query的尺度矫正参数，对应$\alpha_q$，默认传1.0 | DOUBLE         | -          |
+| kc_scale          | 属性      | Key的尺度矫正参数，对应$\alpha_{kv}$，默认传1.0 | DOUBLE         | -          |
 | query                   | 输出      | 公式中Query的输出tensor（对应$q^N$） | FLOAT16, BF16, INT8 | ND         |
 | query_rope               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$） | FLOAT16, BF16, INT8       | ND |
 | dequant_scale_q_nope | 输出     | 表示Query的输出tensor的量化参数   | FLOAT             | ND         |
@@ -190,14 +190,14 @@
       <td> kv_cache per-tensor量化 </td>
       <td>
           入参：token_x传入pertoken量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入perchannel量化数据，kv_cache传入pertensor量化数据，其余入参皆为非量化数据 <br>
-          出参：query_out返回pertoken_head量化数据，kv_cache出参返回pertensor量化数据，其余出参范围非量化数据
+          出参：query_out返回pertoken_head量化数据，kv_cache出参返回pertensor量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td> kv_cache per-tile量化 </td>
       <td>
           入参：token_x传入pertoken量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入perchannel量化数据，其余入参皆为非量化数据 <br>
-          出参：query_out返回pertoken_head量化数据，kv_cache出参返回pertensor量化数据，其余出参范围非量化数据
+          出参：query_out返回pertoken_head量化数据，kv_cache出参返回pertensor量化数据，其余出参返回非量化数据
       </td>
     </tr>
   </table>

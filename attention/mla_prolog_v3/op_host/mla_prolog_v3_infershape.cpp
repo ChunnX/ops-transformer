@@ -125,9 +125,9 @@ ge::graphStatus InferDataTypeMlaPrologV3(gert::InferDataTypeContext *context)
 
     // Get attribute pointers and dereference once
     const int64_t *weightQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT_QUANT_MODE_FLAG_INDEX);
-    const int weightQuantMode = (weightQuantModePtr == nullptr) ? 0 : *weightQuantModePtr;
+    const int64_t weightQuantMode = (weightQuantModePtr == nullptr) ? 0 : *weightQuantModePtr;
     const int64_t *kvQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_KV_QUANT_MODE_FLAG_INDEX);
-    const int kvQuantMode = (kvQuantModePtr == nullptr) ? 0 : *kvQuantModePtr;
+    const int64_t kvQuantMode = (kvQuantModePtr == nullptr) ? 0 : *kvQuantModePtr;
 
     // mxfp8 quant
     if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT) {

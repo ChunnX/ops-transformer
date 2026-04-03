@@ -95,41 +95,41 @@ bool MlaPrologTilingCheck::CheckAttrsRange() const
             const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U, 4U, 5U};
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
                 OP_LOGE(context_.opName,
-                    "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.",
+                    "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %ld.",
                     *context_.weightQuantMode),
                     return false);
         } else {
             const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U};
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
                 OP_LOGE(context_.opName,
-                    "WeightQuantMode must be within {0, 1, 2}, actually is %d.",
+                    "WeightQuantMode must be within {0, 1, 2}, actually is %ld.",
                     *context_.weightQuantMode),
                     return false);
         }
 
         const std::set<uint32_t> supportedKvQuantMode {0U, 1U, 2U, 3U};
         OP_CHECK_IF(supportedKvQuantMode.find(*context_.kvQuantMode) == supportedKvQuantMode.end(),
-            OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.kvQuantMode),
+            OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %ld.", *context_.kvQuantMode),
                 return false);
 
         const std::set<uint32_t> supportedQueryQuantMode {0U, 1U};
         OP_CHECK_IF(supportedQueryQuantMode.find(*context_.queryQuantMode) == supportedQueryQuantMode.end(),
-            OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %d.", *context_.queryQuantMode),
+            OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %ld.", *context_.queryQuantMode),
                 return false);
                 
         const std::set<uint32_t> supportedCkvkrRepoMode {0U, 1U};
         OP_CHECK_IF(supportedCkvkrRepoMode.find(*context_.ckvkrRepoMode) == supportedCkvkrRepoMode.end(),
-            OP_LOGE(context_.opName, "CkvkrRepoMode must be within {0, 1}, actually is %d.", *context_.ckvkrRepoMode),
+            OP_LOGE(context_.opName, "CkvkrRepoMode must be within {0, 1}, actually is %ld.", *context_.ckvkrRepoMode),
                 return false);
                 
         const std::set<uint32_t> supportedQuantScaleRepoMode {0U, 1U};
         OP_CHECK_IF(supportedQuantScaleRepoMode.find(*context_.quantScaleRepoMode) == supportedQuantScaleRepoMode.end(),
-            OP_LOGE(context_.opName, "QuantScaleRepoMode must be within {0, 1}, actually is %d.", *context_.quantScaleRepoMode),
+            OP_LOGE(context_.opName, "QuantScaleRepoMode must be within {0, 1}, actually is %ld.", *context_.quantScaleRepoMode),
                 return false);
 
         const std::set<uint32_t> supportedTileSize {128U};
         OP_CHECK_IF(supportedTileSize.find(*context_.tileSize) == supportedTileSize.end(),
-            OP_LOGE(context_.opName, "TileSize must be within {128}, actually is %d.", *context_.tileSize),
+            OP_LOGE(context_.opName, "TileSize must be within {128}, actually is %ld.", *context_.tileSize),
                 return false);
     }
     return true;
@@ -1186,7 +1186,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_BSND, CACHE_MODE_LEN) == 0) ||
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_NZ, CACHE_MODE_LEN) == 0)) {
         OP_LOGE(
-            context_.opName, "Not support both cacheMode {PA_NZ, PA_BLK_BSND, PA_BLK_NZ} and pertile effective.");
+            context_.opName, "Not support both cacheMode {PA_NZ, PA_BLK_BSND, PA_BLK_NZ} and per-tile effective.");
         return ge::GRAPH_FAILED;
     }
     
