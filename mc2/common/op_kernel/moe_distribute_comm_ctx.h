@@ -18,6 +18,12 @@
 
 constexpr uint32_t HCCL_MTE_MAX_RANK_NUM = 64;
 constexpr uint32_t EP_HCCL_BUFFER_RANK_NUM = 1024;
+constexpr uint32_t AICPU_MAX_RANK_NUM_1 = 128 * 1024;
+
+struct RemoteResPtr {
+    uint64_t nextHostPtr;
+    uint64_t nextDevicePtr;
+};
 
 // A5 HCCL Context
 struct HcclCombinOpParam {
@@ -34,6 +40,12 @@ struct HcclCombinOpParam {
     uint64_t ckeAddr; // CKE寄存器起始地址
     uint64_t msAddr; // MS地址，预留
     uint64_t msSize; // 可写的MS个数，预留
+
+    // MC2 Win区地址
+    uint64_t localWindowsIn;  // 全F为无效值
+    uint64_t localWindowsOut; // 全F为无效值
+    uint32_t remoteResNum;                       // 有效的remoteResNum
+    RemoteResPtr remoteRes[AICPU_MAX_RANK_NUM_1];  // 数组指针，下标为remoteUserRankId
 };
 
 struct CommContextForDump {
