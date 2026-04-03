@@ -12,7 +12,6 @@
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
 
 #include "../../gemm/gemm_type.hpp"
-#include "../../../tla/tensor.hpp"
 namespace Catlass::Gemm::Tile {
 
 enum class ScaleGranularity {
@@ -186,66 +185,6 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
         AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_NZ>(dst, src, intriParams);
     }
 };
-
-///////////////////////////////////////////CopyL0CToGmTla/////////////////////////////////////////////////
-template <
-    class ArchTag,
-    class TensorSrc,
-    class TensorDst,
-    ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
-    bool ReluEnable = false,
-    class Enable = void
->
-struct CopyL0CToGmTla {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, can not find the specialization.");
-};
-
-template <
-    class TensorSrc_,
-    class ElementDst_,
-    class LayoutDst_,
-    bool ReluEnable_
->
-struct CopyL0CToGmTla<Catlass::Arch::AtlasA2,
-                   TensorSrc_,
-                   tla::Tensor<AscendC::GlobalTensor<ElementDst_>, LayoutDst_, AscendC::TPosition::GM>,
-                   ScaleGranularity::NO_QUANT,
-                   ReluEnable_,
-                   std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>>
-{
-    using ArchTag = Catlass::Arch::AtlasA2;
-    using TensorDst = tla::Tensor<AscendC::GlobalTensor<ElementDst_>, LayoutDst_, AscendC::TPosition::GM>;
-    using ElementDst = ElementDst_;
-    using TensorSrc = TensorSrc_;
-    using ElementSrc = typename TensorSrc::Element;
-    static constexpr auto quantPre = CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst,
-        ScaleGranularity::NO_QUANT>::VALUE;
-    static constexpr auto reluEn = ReluEnable_;
-
-    CATLASS_DEVICE
-    void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
-    {
-        AscendC::FixpipeParamsV220 intriParams;
-
-        // Fixpipe layout information
-        intriParams.nSize = tla::get<1>(dstTensor.shape());
-        intriParams.mSize = tla::get<0>(dstTensor.shape());
-        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
-        intriParams.dstStride = tla::get<0>(dstTensor.stride());
-
-        // Fixpipe auxiliary arguments
-        intriParams.quantPre = quantPre;
-        intriParams.reluEn = reluEn;
-        intriParams.unitFlag = unitFlag;
-
-        // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_ROW_MAJOR>(
-            dstTensor.data(), srcTensor.data(), intriParams);
-    }
-};
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 }  // namespace Catlass::Gemm::Tile
 

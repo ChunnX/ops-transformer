@@ -13,7 +13,6 @@
 
 #include "../../catlass.hpp"
 #include "../../gemm/helper.hpp"
-#include "../../../tla/tensor.hpp"
 namespace Catlass::Gemm::Tile {
 
 ///////////////////////////////////////////////////////////
@@ -94,55 +93,6 @@ struct TileMmad {
         }
     }
 };
-
-///////////////////////////////////////////TileMmadTla/////////////////////////////////////////////////
-
-template <
-    /// Tag indicating architecture
-    class ArchTag_,
-    /// tla::Tensor type for A matrix operand
-    class TensorA,
-    /// tla::Tensor type for B matrix operand
-    class TensorB,
-    /// tla::Tensor type for C matrix operand
-    class TensorC,
-    /// tla::Tensor type for Bias operand
-    class TensorBias = void
->
-struct TileMmadTla {
-    // Methods
-
-    CATLASS_DEVICE
-    TileMmadTla() {}
-
-    CATLASS_DEVICE
-    void operator()(TensorC const &l0CTensor,
-         TensorA const &l0ATensor,
-         TensorB const &l0BTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
-    {
-        AscendC::MmadParams mmadParams;
-        mmadParams.m = m;
-        mmadParams.n = n;
-        mmadParams.k = k;
-        mmadParams.unitFlag = unitFlag;
-        mmadParams.cmatrixInitVal = initC;
-
-        AscendC::Mmad(l0CTensor.data(),
-                      l0ATensor.data(),
-                      l0BTensor.data(),
-                      mmadParams);
-
-        const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
-        if ((m / C0_NUM_PER_FRCATLASSAL) * (n / C0_NUM_PER_FRCATLASSAL) < PIPE_M_BARRIER_THRESHOLD) {
-            AscendC::PipeBarrier<PIPE_M>();
-        }
-    }
-};
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 } // namespace Catlass::Gemm::Tile
 
 #endif // CATLASS_GEMM_TILE_TILE_MMAD_HPP

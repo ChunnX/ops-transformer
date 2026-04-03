@@ -15,9 +15,6 @@
 #include "../../arch/arch.hpp"
 #include "../../layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
-#include "../../../tla/tensor.hpp"
-
-using namespace tla;
 
 namespace Catlass::Gemm::Tile {
 
