@@ -10,7 +10,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
  */
 
 /* !
- * \file chunk_gated_delta_rule_inverse.cc
+ * \file mhc_pre_backward_infershape.cpp
  * \brief
  */
 #include <map>
