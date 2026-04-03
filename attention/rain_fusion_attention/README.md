@@ -72,8 +72,8 @@ aclnnStatus aclnnRainFusionAttention(
   - 存储每个Q块实际选择的KV块数量
 
 - **blockShape**: 稀疏块形状 [blockShapeX, blockShapeY]
-  - blockShapeX：Q方向块大小
-  - blockShapeY：KV方向块大小
+  - blockShapeX: Q方向块大小
+  - blockShapeY: KV方向块大小
 
 ### 输出参数
 

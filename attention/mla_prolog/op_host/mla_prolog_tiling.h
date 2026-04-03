@@ -287,12 +287,12 @@ struct MlaPrologContext {
     const char *cacheMode;
     const bool *queryNormFlag;
 
-    const int *weightQuantMode;
-    const int *kvQuantMode;
-    const int *queryQuantMode;
-    const int *ckvkrRepoMode;
-    const int *quantScaleRepoMode;
-    const int *tileSize;
+    const int64_t *weightQuantMode;
+    const int64_t *kvQuantMode;
+    const int64_t *queryQuantMode;
+    const int64_t *ckvkrRepoMode;
+    const int64_t *quantScaleRepoMode;
+    const int64_t *tileSize;
 
     const float *qcQrScale;
     const float *kcScale;

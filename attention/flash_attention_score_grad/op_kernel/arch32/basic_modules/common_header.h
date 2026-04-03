@@ -20,9 +20,7 @@
 #include <limits>
 #include <type_traits>
 #include "kernel_operator.h"
-#include "kernel_event.h"
 #include "kernel_tensor.h"
-#include "kernel_macros.h"
 
 constexpr static uint32_t DYV = 0;
 constexpr static uint32_t QK = 1;

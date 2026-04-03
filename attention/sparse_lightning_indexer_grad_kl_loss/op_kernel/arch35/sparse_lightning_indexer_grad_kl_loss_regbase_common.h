@@ -243,18 +243,6 @@ __aicore__ inline T AlignTo(const T n, const T alignSize)
 #define TEMPLATE_BASE_ARGS                                                                                             \
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-
-__aicore__ inline void set_mark(uint64_t v)
-{
-#if defined(__CCE_KT_TEST__) && __CCE_KT_TEST__ == 1
-
-#else
-    __asm__ __volatile__("");
-    asm volatile("MOV COND, %0\n" : "+l"(v));
-    __asm__ __volatile__("");
-#endif
-}
-
 template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
 {
     return (a < b) ? (b) : (a);

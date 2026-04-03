@@ -710,7 +710,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>用户不特意指定时建议传入0，表示key/value和query的head个数相等。</li>
-            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; 其他场景仅支持numHeads与numKeyValueHeads的比值不能大于64</li>
+            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
             <li>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND、NTD、NTD_TND、TND_NTD场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常</li>
         </ul>
         </td>
@@ -1124,7 +1124,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <li>query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。</li>
                 <li>P_S1需大于等于query的S长度，P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
                 <li>P_S2建议padding到32对齐，提升性能</li>
-                <li>当query的S长度为1时不支持该场景</li>
                 </ul>
                 </td>
             </tr>
@@ -1350,7 +1349,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </tr>
             <tr>
                 <td rowspan="2">per-token</td>
-                <td rowspan="2">支持kv_dtype为INT8、INT4(INT32)、FLOAT8_E4M3FN</td>
+                <td rowspan="2">支持kv_dtype为INT8、INT4(INT32)</td>
                 <td>Q_S>1</td>
                 <td rowspan="2">1</td>
                 <td> shape为(1, B, S)，( B, S)。数据类型固定为FLOAT32</td>
@@ -1362,33 +1361,27 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <tr>
                 <td>per-tensor叠加per-head</td>
                 <td>支持kv_dtype为INT8</td>
-                <td>Q_S=1</td>
+                <td>-</td>
                 <td>2</td>
                 <td>shape为(N),数据类型和query数据类型相同</td>
             </tr>
-            <tr>
-                <td>per-token叠加per-head</td>
-                <td>支持kv_dtype为INT8、INT4(INT32)</td>
-                <td>Q_S=1</td>
-                <td>3</td>
-                <td>shape为(B, N, S)，数据类型固定为FLOAT32</td>
+            <td>per-token叠加per-head</td>
+            <td>支持kv_dtype为INT8、INT4(INT32)</td>
+            <td>-</td>
+            <td>3</td>
+            <td>shape为(B, N, S)，数据类型固定为FLOAT32</td>
             </tr>
-            <tr>
-                <td rowspan="2">per-token模式使用page attention管理scale/offset</td>
-                <td rowspan="2">支持kv_dtype为INT8、FLOAT8_E4M3FN</td>
-                <td>Q_S>1</td>
-                <td rowspan="2">4</td>
-                <td rowspan="2">shape为(blocknum, blocksize)，数据类型固定为FLOAT32</td>
+            <td>per-token模式使用page attention管理scale/offset</td>
+            <td>支持kv_dtype为INT8</td>
+            <td>-</td>
+            <td>4</td>
+            <td>shape为(blocknum, blocksize)，数据类型固定为FLOAT32</td>
             </tr>
-            <tr>
-                <td>Q_S=1</td>
-            </tr>
-            <tr>
-                <td>per-token叠加per-head模式并使用page attention管理scale/offset</td>
-                <td>支持kv_dtype为INT8</td>
-                <td>Q_S=1</td>
-                <td>5</td>
-                <td>shape为(blocknum, N, blocksize)，数据类型固定为FLOAT32</td>
+            <td>per-token叠加per-head模式并使用page attention管理scale/offset</td>
+            <td>支持kv_dtype为INT8</td>
+            <td>-</td>
+            <td>5</td>
+            <td>shape为(blocknum, N, blocksize)，数据类型固定为FLOAT32</td>
             </tr>
             <tr>
                 <td rowspan="2"> key支持per-channel叠加value支持per-token</td>
@@ -1414,9 +1407,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td colspan="8">
                     <ul>
                         <li>INT4(INT32)、FLOAT4_E2M1伪量化场景不支持后量化</li>
-                        <li>FLOAT8_E4M3伪量化场景下，当keyAntiquantMode和valueAntiquantMode为1或4时不支持后量化</li>
                         <li>INT8伪量化场景下，当keyAntiquantMode=0且valueAntiquantMode=1时，query和output仅支持FP16</li>
-                        <li>INT8/INT4(INT32)伪量化场景下，当keyAntiquantMode和valueAntiquantMode为2/3/4/5时，Q_S仅支持1</li>
                     </ul>
                 <td>
             <tr>
@@ -1449,8 +1440,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                             MLA场景blocksize需要16对齐且最大不超过1024；
                             GQA场景且query、key、value的headdim=64/128时，blocksize需要16对齐且最大不超过1024；
                             GQA场景且query、key、value的headdim≠64/128，Q_S>1时，blocksize需要128对齐且最大不超过512；
-                            GQA场景且query、key、value的headdim≠64/128，Q_S=1时，blocksize需要16对齐且最大不超过512；
-                            在MLA全量化场景下，blocksize需等于128。</li>
+                            GQA场景且query、key、value的headdim≠64/128，Q_S=1时，blocksize需要16对齐且最大不超过512。</li>
                         <li>在使能PagedAttention，并且全量化场景下，blockSize需要传入非0值, 且blocksize最大不超过512。</li>
                         <li>在使能PagedAttention，并且全量化场景下，Q_S=1时：</li>
                             key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；</br>

@@ -16,9 +16,7 @@
 
 - **算子功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 
-- **计算公式**：
-
-  稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
+- **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
   $$
   attentionOut = Softmax(scale \cdot query \cdot key^T + atten\_mask) \cdot value
@@ -166,7 +164,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>blockShape</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，稀疏块形状数组。</td>
+      <td>稀疏块形状数组。</td>
       <td>
         <ul>
           <li>必须包含至少两个元素[blockShapeX, blockShapeY]。</li>
@@ -192,7 +190,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>actualSeqLengthsOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的query序列长度。</td>
+      <td>描述每个Batch对应的query序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -207,7 +205,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>actualSeqLengthsKvOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的key/value序列长度。</td>
+      <td>描述每个Batch对应的key/value序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -232,7 +230,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>qInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
+      <td>代表输入query的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -242,7 +240,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>kvInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入key、value的数据排布格式。</td>
+      <td>代表输入key、value的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -252,7 +250,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>numKeyValueHeads</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -262,7 +260,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>maskType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Mask类型。</td>
+      <td>Mask类型。</td>
       <td>0表示无mask，其他值表示不同的mask类型。</td>
       <td>INT64</td>
       <td>-</td>
@@ -272,7 +270,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -282,7 +280,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>innerPrecise</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Softmax精度控制。</td>
+      <td>Softmax精度控制。</td>
       <td>0表示float32 softmax，1表示fp16 softmax。</td>
       <td>INT64</td>
       <td>-</td>
@@ -292,7 +290,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>blockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，PagedAttention的block大小。</td>
+      <td>PagedAttention的block大小。</td>
       <td>用于PagedAttention场景，如不使用可传0。</td>
       <td>INT64</td>
       <td>-</td>
@@ -340,7 +338,7 @@ aclnnStatus aclnnRainFusionAttention(
       <td>-</td>
     </tr>
   </tbody>
-  </table>
+</table>
 
 
 - **返回值：**

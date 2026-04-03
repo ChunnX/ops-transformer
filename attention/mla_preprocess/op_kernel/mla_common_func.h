@@ -19,7 +19,7 @@
 #include "stub_fun.h"
 #else
 #ifndef __aicore__
-#define __aicore__ [aicore]
+#define __aicore__  [aicore]
 #endif
 #endif
 
