@@ -385,6 +385,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                                     ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
                                      (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
+        // cyr_debug: dump mask tensor before applying to vec1 stage (Dn path)
+        AscendC::printf("cyr [KERNEL_MaskDump_Dn] s2LoopCount=%d, s2RealSize=%d, s1RealSizeAlign32=%d, compressMode=%d\n",
+            runInfo.s2LoopCount, runInfo.s2RealSize, runInfo.s1RealSizeAlign32, attenMaskInfoPtr->compressMode);
+        AscendC::DumpTensor(attenMaskUb, 2000 + runInfo.s2LoopCount, runInfo.s2AlignedSize * runInfo.s1RealSizeAlign32);
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
@@ -775,6 +779,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+    AscendC::printf("CYR, ProcessVec1Nd");
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<pseShiftType> pseUb;
     if constexpr (hasPseOuter == true) {
@@ -798,11 +803,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
         if constexpr (isMlaFullQuant || isMlaNoQuant) {
+            AscendC::printf("CYR, isMlaFullQuant || isMlaNoQuant");
             this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
             attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         } else if constexpr (isGqaNoQuant) {
+            AscendC::printf("CYR, isGqaNoQuant");
             if (constInfo.isPfaGS1Merge) {
+                AscendC::printf("CYR, isGqaNoQuant, isPfaGS1Merge");
                 MaskInfo maskInfo;
                 maskInfo.gs1StartIdx = (constInfo.subBlockIdx == 0) ? 0 : runInfo.firstHalfS1RealSize;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
@@ -838,15 +846,21 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
                 AttentionmaskCopyGS1(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
             } else {
+                AscendC::printf("CYR, isGqaNoQuant, isPfaGS1Merge else");
                 AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                     this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
             }
         } else {
+            AscendC::printf("CYR, isGqaNoQuant else");
             AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
             attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         }
+        // cyr_debug: dump mask tensor before applying to vec1 stage
+        AscendC::printf("cyr [KERNEL_MaskDump] s2LoopCount=%d, s2RealSize=%d, s1RealSizeAlign32=%d, compressMode=%d\n",
+            runInfo.s2LoopCount, runInfo.s2RealSize, runInfo.s1RealSizeAlign32, attenMaskInfoPtr->compressMode);
+        AscendC::DumpTensor(attenMaskUb, 1000 + runInfo.s2LoopCount, runInfo.s2AlignedSize * runInfo.s1RealSizeAlign32);
     }
     LocalTensor<uint8_t> dropMaskUb;
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
@@ -1065,6 +1079,11 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     if constexpr (hasPseOuter) {
         this->pseInQue.template FreeTensor(pseUb);
     }
+
+    // cyr_debug: dump vec1 result tensor before enqueue
+    AscendC::printf("cyr [KERNEL_Vec1Result] s2LoopCount=%d, halfS1RealSize=%d, s2RealSize=%d\n",
+        runInfo.s2LoopCount, runInfo.halfS1RealSize, runInfo.s2RealSize);
+    AscendC::DumpTensor(stage1CastTensor, 3000 + runInfo.s2LoopCount, runInfo.s2AlignedSize * runInfo.halfS1RealSize);
 
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
