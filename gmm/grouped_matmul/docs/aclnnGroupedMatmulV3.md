@@ -641,7 +641,7 @@ int main() {
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
         for (int64_t j = 0; j < size; j++) {
-            LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+            LOG_PRINT("result[%ld] is: %u\n", j, resultData[j]);
         }
     }
 
