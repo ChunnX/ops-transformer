@@ -98,7 +98,6 @@ public:
         const uint32_t quantUbSize, int64_t& blockAddrOffset, uint32_t& tileCalCntM, uint32_t& tailCalCntM,
         uint32_t& aivLoopNum)
     {
-        
         uint32_t aivAddOneIndex = quantAivCoreNum_ + 1; // 要多算一轮的核的下标，如果不均分，使用后面 [aivAddOneIndex,
                                                         // quantAivCoreNum_ - 1] 核来完成多余一轮的计算
         if (quantM_ % quantAivCoreNum_ != 0) {
