@@ -456,4 +456,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
   
 6. 通信域使用约束：
     * 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    
+
+## 调用示例
+
+- <term>Ascend 950PR/Ascend 950DT</term>：aclnnMoeDistributeDispatchTeardown必须在aclnnMoeDistributeDispatchSetup调用之后调用，请参考[aclnnMoeDistributeDispatchSetup](../../moe_distribute_dispatch_setup/docs/aclnnMoeDistributeDispatchSetup.md)中的调用示例。
