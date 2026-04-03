@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -565,7 +565,8 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Ini
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTilingAttrs(
+    const MoeDistributeCombineV2TilingData *tilingData)
 {
     axisBS_ = tilingData->moeDistributeCombineV2Info.bs;
     axisH_ = tilingData->moeDistributeCombineV2Info.h;
@@ -673,7 +674,8 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::All
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::SplitCoreByToken(const uint32_t totalSendCnt)
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::SplitCoreByToken(
+    const uint32_t totalSendCnt)
 {
     // 对需要发送的token数平均分核，得到每个核上处理的卡的数量
     sendCntNum_ = totalSendCnt / aivNum_;
@@ -713,7 +715,8 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Spl
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::PrepareServerShareLayout(LocalTensor<ExpandIdxType> expandIdxLocal)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::PrepareServerShareLayout(
+    LocalTensor<ExpandIdxType> expandIdxLocal)
 {
     // Step1：统计本核 -> 每个 targetLocalRank 的 token 数。写 gmCoreTargetCnt_[coreIdx_][t]
     CalcLocalTargetCnt(expandIdxLocal);
@@ -825,7 +828,8 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::All
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::DispatchTokensToShareMem(LocalTensor<ExpandIdxType> expandIdxLocal)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::DispatchTokensToShareMem(
+    LocalTensor<ExpandIdxType> expandIdxLocal)
 {
     for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
         const uint32_t localIdx = loop;
@@ -940,8 +944,9 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Sum
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId, LocalTensor<float> sumTileUb,
-    LocalTensor<uint32_t> existFlagUb)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId, 
+    LocalTensor<float> sumTileUb, LocalTensor<uint32_t> existFlagUb)
+    
 {
     GM_ADDR winOutSliceBase = windowOutGM_ + (toServerId * winOutSliceBytes_);
     GlobalTensor<uint64_t> winOutHeaderGm;
