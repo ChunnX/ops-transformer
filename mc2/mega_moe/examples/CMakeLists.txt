@@ -64,7 +64,7 @@ find_package(Threads REQUIRED)
 
 # 2. 假设你的目标名称是 test_aclnn_mega_moe
 # 将线程库链接到你的目标上
-target_link_libraries(test_aclnn_mega_moe PRIVATE Threads::Threads)
+target_link_libraries(test_aclnn_mega_moe PRIVATE Threads::Threads stdc++fs)
 
 # 链接所需的动态库
 target_link_libraries(test_aclnn_mega_moe PRIVATE             # 替换实际算子可执行文件

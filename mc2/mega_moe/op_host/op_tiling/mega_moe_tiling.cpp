@@ -275,10 +275,13 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         tilingData->moeFinalizeRoutingTilingKey    // uint64_t &tilingKey)
     );
 
+    int32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *workspace = context->GetWorkspaceSizes(1);
     WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
-    int64_t workspaceSize = workspaceInfo.workspaceSize + 1024 * 1024 * 100;
+    int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + 1024 * 1024 * 50;
     workspace[0] = workspaceSize;
+
+    printf("sysWorkspaceSize: %d, workspaceSize: %ld \n", sysWorkspaceSize, workspaceSize);
 
     PrintMegaMoeTilingData(tilingData);
     printWorkspaceInfo(&workspaceInfo);
