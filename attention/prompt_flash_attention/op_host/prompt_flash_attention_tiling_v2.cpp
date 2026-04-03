@@ -1607,6 +1607,8 @@ void PromptFlashAttentionTilingV2::SetSparseModeData(ContextParamsForPFATiling& 
             // 不转换为左上坐标系，直接透传用户输入的 preToken/nextToken
             // sparsePreTokens and sparseNextTokens already set from user input above
             // sparsePreTokens = SPARSE_MODE_INT_MAX;
+            OP_LOGI("cyr_debug", "[TILING_SetSparseModeData] RIGHT_DOWN: keep user input sparsePreTokens=%ld, sparseNextTokens=%ld",
+                    sparsePreTokens, sparseNextTokens);
         } else if (*sparseMode == SPARSE_MODE_ALL_MASK) {
             sparsePreTokens = SPARSE_MODE_INT_MAX;
             sparseNextTokens = SPARSE_MODE_INT_MAX;
@@ -3100,6 +3102,9 @@ void PromptFlashAttentionTilingV2::SetTilingDataAttribute(ContextParamsForPFATil
     tilingData.promptAttentionBaseParams.set_preTokens(sparsePreTokens);
     tilingData.promptAttentionBaseParams.set_nextTokens(sparseNextTokens);
     tilingData.promptAttentionBaseParams.set_sparseMode(static_cast<uint32_t>(sparseModeVal));
+
+    OP_LOGI("cyr_debug", "[TILING] SetTilingDataAttribute: sparseMode=%d, sparsePreTokens=%ld, sparseNextTokens=%ld, sparseType=%d",
+            sparseModeVal, sparsePreTokens, sparseNextTokens, sparseType);
 
     bool isActualSeqLengthsNull = isMaxWorkspace ? true : !enableActSeqLen;
     bool isActualSeqLengthsKVNull = isMaxWorkspace ? true : !enableActSeqLenKV;

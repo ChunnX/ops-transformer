@@ -26,6 +26,8 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
     const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
 {
     if constexpr (hasAtten) {
+        AscendC::printf("cyr [KERNEL_GetSparseParam] ENTER: compressMode=%d, attenMask.preTokens=%ld, attenMask.nextTokens=%ld\n",
+            (int32_t)attenMaskInfo.compressMode, attenMaskInfo.preTokens, attenMaskInfo.nextTokens);
         if constexpr (hasRope && dTemplateType == DTemplateType::Aligned576) {
             runParam.preTokensOfMlaPerBatch = attenMaskInfo.preTokens;
             runParam.nextTokensOfMlaPerBatch = attenMaskInfo.nextTokens;
@@ -63,6 +65,11 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
                     runParam.nextTokensPerBatch += constInfo.actualKVPrefixSize;
                 }
             }
+            AscendC::printf("[KERNEL_GetSparseParam] BAND_MODE branch: preTokensPerBatch=%ld, nextTokensPerBatch=%ld\n",
+                runParam.preTokensPerBatch, runParam.nextTokensPerBatch);
+        } else {
+            AscendC::printf("[KERNEL_GetSparseParam] NON-BAND branch: preTokensPerBatch=%ld, nextTokensPerBatch=%ld, actualS1Size=%ld, actualS2Size=%ld\n",
+                runParam.preTokensPerBatch, runParam.nextTokensPerBatch, runParam.actualS1Size, runParam.actualS2Size);
         }
     }
 }
