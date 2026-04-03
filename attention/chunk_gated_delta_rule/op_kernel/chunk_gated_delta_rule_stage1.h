@@ -764,13 +764,13 @@ private:
     __aicore__ inline void DataCopyOutBf16(uint32_t rows, uint32_t cols,
                                         uint32_t colsAligned, GlobalTensor<bfloat16_t> y)
     {
-        fp16OutLocal_ = fp32OutQueue_.DeQue<bfloat16_t>();
+        auto tmpLocal = fp32OutQueue_.DeQue<bfloat16_t>();
         uint32_t srcStride = (colsAligned - cols) * sizeof(bfloat16_t) / BLOCK_SIZE;
         DataCopyExtParams yGMParams{static_cast<uint16_t>(rows),
                                     static_cast<uint32_t>(cols * sizeof(bfloat16_t)),
                                     static_cast<uint32_t>(srcStride), 0, 0};
-        DataCopyPad(y, fp16OutLocal_, yGMParams);
-        fp32OutQueue_.FreeTensor(fp16OutLocal_);
+        DataCopyPad(y, tmpLocal, yGMParams);
+        fp32OutQueue_.FreeTensor(tmpLocal);
     }
 
     __aicore__ inline void AttnInverseMMCompute(uint64_t offset)
@@ -908,7 +908,6 @@ private:
     
     LocalTensor<bfloat16_t> bf16InLocal_;
     LocalTensor<float> fp32InLocal_;
-    LocalTensor<bfloat16_t> bf16OutLocal_;
 };
 } // namespace ChunkGatedDeltaRule
 #endif // CHUNK_GATED_DELTA_RULE_STAGE1_H
