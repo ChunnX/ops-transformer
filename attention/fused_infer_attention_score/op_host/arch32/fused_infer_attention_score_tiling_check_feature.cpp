@@ -75,7 +75,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
     constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
     constexpr uint16_t BLOCK_SIZE_MAX = 512;
 
-    if (ropeMode_.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
+    if (ropeMode_ != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
         OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
             blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
             OP_LOGE(opName_,
