@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-  - **接口功能**：实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。基本功能为矩阵乘，如$y_i[m_i,n_i]=x_i[m_i,k_i] times weight_i[k_i,n_i], i=1...g$，其中g为分组个数，$m_i/k_i/n_i$为对应shape。输入输出数据类型均为aclTensorList，对应的功能为：
+  - **接口功能**：实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。基本功能为矩阵乘，如$y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中g为分组个数，$m_i/k_i/n_i$为对应shape。输入输出数据类型均为aclTensorList，对应的功能为：
 
       - k轴分组：$k_i$各不相同，但$m_i/n_i$每组相同，此时$x_i/weight_i$可以在$k_i$上拼接。
       - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接。
@@ -369,7 +369,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输出</td>
     <td>公式中的输出<code>y</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-    <td>FLOAT16、BFLOAT16、INT8、FLOAT32、INT32</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -429,7 +429,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - `groupType`支持m轴分组，仅非量化支持不分组。
         - `quantGroupSize`暂不支持。
         - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
-        - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化和全量化场景支持最多128个tensor。
+        - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在全量化场景最多支持1个tensor。
 
   - **返回值：**
 
@@ -663,7 +663,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - 以下入参为空：offsetOptional、biasOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
         |groupType| x       | weight  | scaleOptional |  perTokenScaleOptional |out     |
-        |:-------:|:-------:|:-------:|:-------:| :-------    | :------   | :------ |
+        |:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
         |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
 
     - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
