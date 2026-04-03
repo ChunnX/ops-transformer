@@ -87,7 +87,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     int64_t              next_tokens,
     bool                 deterministic,
     const aclTensor     *dQueryIndex,
-    const aclTensor     *dKeyKndex,
+    const aclTensor     *dKeyIndex,
     const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
@@ -384,7 +384,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>query、key、queryIndex、keyIndex、weights、sparseIndicessoftmaxMax等输入变量的数据类型和数据格式不在支持的范围内。</td>
+                <td>query、key、queryIndex、keyIndex、weights、sparseIndices、softmaxMax等输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
