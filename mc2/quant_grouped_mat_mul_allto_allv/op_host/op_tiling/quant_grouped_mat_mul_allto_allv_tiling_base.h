@@ -21,7 +21,7 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
-namespace optiling {
+namespace Mc2Tiling {
 enum GmmA2AvInputTensorIndex : uint32_t {
     GMM_X_INDEX = 0,
     GMM_WEIGHT_INDEX,
@@ -149,6 +149,6 @@ protected:
 
     NpuArch npuArch_;
 };
-} // namespace optiling
+} // namespace Mc2Tiling
 
 #endif // MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H

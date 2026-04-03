@@ -23,15 +23,10 @@
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
-using namespace optiling::Mc2GroupedMatmul;
+using namespace Mc2Tiling;
+using namespace Mc2Tiling::Mc2GroupedMatmul;
 
-// namespace Mc2GroupedMatmul {
-
-static bool IsContains(const std::vector<uint32_t> &list, uint32_t value)
-{
-    return std::count(list.begin(), list.end(), value) > 0;
-}
+namespace Mc2Tiling {
 
 bool TTQuantGroupedMatmulAllToAllvTiling::IsCapable()
 {
@@ -68,4 +63,4 @@ uint64_t TTQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 // 注册tiling类
 REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatMulAlltoAllv, TTQuantGroupedMatmulAllToAllvTiling, 0);
 
-// }
+}
