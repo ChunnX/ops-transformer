@@ -95,41 +95,41 @@ bool MlaPrologTilingCheck::CheckAttrsRange() const
             const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U, 4U, 5U};
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
                 OP_LOGE(context_.opName,
-                    "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.",
+                    "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %ld.",
                     *context_.weightQuantMode),
                     return false);
         } else {
             const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U};
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
                 OP_LOGE(context_.opName,
-                    "WeightQuantMode must be within {0, 1, 2}, actually is %d.",
+                    "WeightQuantMode must be within {0, 1, 2}, actually is %ld.",
                     *context_.weightQuantMode),
                     return false);
         }
 
         const std::set<uint32_t> supportedKvQuantMode {0U, 1U, 2U, 3U};
         OP_CHECK_IF(supportedKvQuantMode.find(*context_.kvQuantMode) == supportedKvQuantMode.end(),
-            OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.kvQuantMode),
+            OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %ld.", *context_.kvQuantMode),
                 return false);
 
         const std::set<uint32_t> supportedQueryQuantMode {0U, 1U};
         OP_CHECK_IF(supportedQueryQuantMode.find(*context_.queryQuantMode) == supportedQueryQuantMode.end(),
-            OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %d.", *context_.queryQuantMode),
+            OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %ld.", *context_.queryQuantMode),
                 return false);
                 
         const std::set<uint32_t> supportedCkvkrRepoMode {0U, 1U};
         OP_CHECK_IF(supportedCkvkrRepoMode.find(*context_.ckvkrRepoMode) == supportedCkvkrRepoMode.end(),
-            OP_LOGE(context_.opName, "CkvkrRepoMode must be within {0, 1}, actually is %d.", *context_.ckvkrRepoMode),
+            OP_LOGE(context_.opName, "CkvkrRepoMode must be within {0, 1}, actually is %ld.", *context_.ckvkrRepoMode),
                 return false);
                 
         const std::set<uint32_t> supportedQuantScaleRepoMode {0U, 1U};
         OP_CHECK_IF(supportedQuantScaleRepoMode.find(*context_.quantScaleRepoMode) == supportedQuantScaleRepoMode.end(),
-            OP_LOGE(context_.opName, "QuantScaleRepoMode must be within {0, 1}, actually is %d.", *context_.quantScaleRepoMode),
+            OP_LOGE(context_.opName, "QuantScaleRepoMode must be within {0, 1}, actually is %ld.", *context_.quantScaleRepoMode),
                 return false);
 
         const std::set<uint32_t> supportedTileSize {128U};
         OP_CHECK_IF(supportedTileSize.find(*context_.tileSize) == supportedTileSize.end(),
-            OP_LOGE(context_.opName, "TileSize must be within {128}, actually is %d.", *context_.tileSize),
+            OP_LOGE(context_.opName, "TileSize must be within {128}, actually is %ld.", *context_.tileSize),
                 return false);
     }
     return true;
@@ -829,7 +829,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheIndexDim()
     OP_CHECK_IF(context_.cacheIndex.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_1,
         OP_LOGE(context_.opName,
             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX shape dim num is 2,"
-            "cacheIndex shape dim num should be 1, but got %d.",
+            "cacheIndex shape dim num should be 1, but got %zu.",
             context_.cacheIndex.shape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -1120,29 +1120,29 @@ bool MlaPrologTilingCheck::CheckCacheModeParamShape() const
     if (std::strncmp(context_.cacheMode, CACHE_MODE_TND, CACHE_MODE_LEN) == 0) {
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_2,
             OP_LOGE(context_.opName,
-                "When cacheMode is TND, tokenX dim must be 2, actually is %d.",
+                "When cacheMode is TND, tokenX dim must be 2, actually is %zu.",
                 context_.tokenX.shape->GetStorageShape().GetDimNum()),
             return false);
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
             OP_LOGE(context_.opName,
-                "When cacheMode is TND, kvCache dim must be 3, actually is %d.",
+                "When cacheMode is TND, kvCache dim must be 3, actually is %zu.",
                 context_.kvCache.shape->GetStorageShape().GetDimNum()),
             return false);
     } else if (std::strncmp(context_.cacheMode, CACHE_MODE_BSND, CACHE_MODE_LEN) == 0) {
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
             OP_LOGE(context_.opName,
-                "When cacheMode is BSND, tokenX dim must be 3, actually is %d.",
+                "When cacheMode is BSND, tokenX dim must be 3, actually is %zu.",
                 context_.tokenX.shape->GetStorageShape().GetDimNum()),
             return false);
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
             OP_LOGE(context_.opName,
-                "When cacheMode is BSND, kvCache dim must be 4, actually is %d.",
+                "When cacheMode is BSND, kvCache dim must be 4, actually is %zu.",
                 context_.kvCache.shape->GetStorageShape().GetDimNum()),
             return false);
     } else {
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
             OP_LOGE(context_.opName,
-                "When cacheMode is in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4, actually is %d.",
+                "When cacheMode is in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4, actually is %zu.",
                 context_.kvCache.shape->GetStorageShape().GetDimNum()),
             return false);
     }
@@ -1186,7 +1186,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_BSND, CACHE_MODE_LEN) == 0) ||
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_NZ, CACHE_MODE_LEN) == 0)) {
         OP_LOGE(
-            context_.opName, "Not support both cacheMode {PA_NZ, PA_BLK_BSND, PA_BLK_NZ} and pertile effective.");
+            context_.opName, "Not support both cacheMode {PA_NZ, PA_BLK_BSND, PA_BLK_NZ} and per-tile effective.");
         return ge::GRAPH_FAILED;
     }
     
