@@ -4279,3 +4279,4 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SyncALLC
 }
 
 #endif // _FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2GS1S2_SAMEAB_H_
+

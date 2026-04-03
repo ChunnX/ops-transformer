@@ -565,6 +565,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <ul>
             <li>仅支持非量化场景。</li>
             <li>仅支持V_D=128/64。</li>
+            <li>不支持pse/左padding/公共前缀/后量化。</li>
         </ul>
         </td>
         <td>BFLOAT16、FLOAT16</td>
@@ -633,7 +634,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>表示key/value的head个数</td>
         <td>
         <ul>
-            <li>需要满足numHeads整除numKeyValueHeads。</li>
+            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
             <li>在BSND、TND、BNSD、NTD、BSND_BNSD、BNSD_BSND、NTD_TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。</li>
         </ul>
         </td>
@@ -1255,7 +1256,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>类型为FLOAT16。</td>
             </tr>
             <tr>
-                <td rowspan="10">输入FLOAT16或BFLOAT16，输出为INT8的场景</td>
+                <td rowspan="9">输入FLOAT16或BFLOAT16，输出为INT8的场景</td>
                 <td>query</td>
                 <td>类型为FLOAT16或BFLOAT16。</td>
             </tr>
@@ -1299,21 +1300,6 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>attentionOut</td>
                 <td>类型为INT8。</td>
             </tr>
-            <tr>
-                <td>sparseMode</td>
-                <td>
-                    <ul>
-                    <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
-                    <li>输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：</li>
-                        <ul>
-                        <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
-                        <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
-                        <li>sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件</li>
-                        <li>sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件</li>
-                        </ul>
-                    </ul>
-                </td>
-            <tr>
         </tbody>
     </table>
 
@@ -1810,7 +1796,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td>inputLayout</td>
-        <td>BSH、BSND、BNSD、TND</td>
+        <td>BSH、BSND、BNSD</td>
         <td>-</td>
     </tr>
     <tr>
@@ -1824,7 +1810,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td rowspan="9">伪量化</td>
-        <td colspan="4">仅支持KV分离；仅支持高性能模式；仅支持q为BF16，kv为INT8的伪量化；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)；inputLayout为TND时，仅支持per-channel量化模式</td>
+        <td colspan="4">仅支持KV分离；仅支持高性能模式；仅支持q为BF16，kv为INT8的伪量化；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)</td>
     </tr>
     <tr>
         <td rowspan="4">per-channel</td>
@@ -1839,7 +1825,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td>keyAntiquantScale</td>
-        <td>inputLayout为BSH时：[H]<br>inputLayout为BNSD时：[N,1,D]<br>inputLayout为BSND或TND时：[N,D]</td>
+        <td>inputLayout为BSH时：[H]<br>inputLayout为BNSD时：[N,1,D]<br>inputLayout为BSND时：[N,D]</td>
         <td>-</td>
     </tr>
     <tr>
@@ -2040,6 +2026,21 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
                     <ul>
                     <li>输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、RingAttention或者D非32Byte对齐的场景。</li>
+                    </ul>
+                </td>
+            <tr>
+            <tr>
+                <td>sparseMode</td>
+                <td>
+                    <ul>
+                    <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
+                    <li>输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：</li>
+                        <ul>
+                        <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
+                        <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
+                        <li>sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件</li>
+                        <li>sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件</li>
+                        </ul>
                     </ul>
                 </td>
             <tr>

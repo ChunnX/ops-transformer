@@ -41,6 +41,7 @@ constexpr int64_t INDEX_OUTPUT_KEY = 0;
 constexpr int64_t INDEX_OUTPUT_VALUE = 1;
 constexpr int64_t DIM_ONE = 1;
 constexpr int64_t DIM_TWO = 2;
+constexpr int64_t DIM_THREE = 3;
 
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t WORKSPACE_SIZE = 32;
@@ -60,6 +61,8 @@ static const std::set<ge::DataType> KV_SUPPORT_DTYPE = {
 
 static const std::set<ge::DataType> INDEX_SUPPORT_DTYPE = {ge::DT_INT32, ge::DT_INT64};
 
+#define FORMAT_KEY_VALUE_NOT_SUPPORTED \
+    "%s dtype only support [float32, float16, bf16, hf8, fp8_e5m2, fp8_e4m3fn, int32, uint32, int16, uint16, int8, uint8], please check."
 
 ge::graphStatus GatherPaKvCacheTiling::GetPlatformInfo()
 {
@@ -107,17 +110,16 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
 {
     auto kCacheDesc = context_->GetInputDesc(INDEX_INPUT_KEY_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheDesc);
-    ge::DataType kCacheDType_ = kCacheDesc->GetDataType();
+    ge::DataType kCacheDType = kCacheDesc->GetDataType();
     ge::Format kCacheFormat = kCacheDesc->GetFormat().GetStorageFormat();
 
     // 校验数据类型是否合法
-    OP_CHECK_IF((KV_SUPPORT_DTYPE.find(kCacheDType_) == KV_SUPPORT_DTYPE.end()),
-                OP_LOGE(context_,
-                        "key_cache dtype only support [float32, float16, bf16,"
-                        " hf8, fp8_e5m2, fp8_e4m3fn, int32, uint32, int16, uint16, int8, uint8], please check."),
+    OP_CHECK_IF((KV_SUPPORT_DTYPE.find(kCacheDType) == KV_SUPPORT_DTYPE.end()),
+                OP_LOGE(context_, FORMAT_KEY_VALUE_NOT_SUPPORTED, "key_cache"),
                 return ge::GRAPH_FAILED);
 
-    cacheDTypeByteSize_ = tilingDataTypeByteTable.find(kCacheDType_)->second;
+    uint32_t kCacheDTypeByteSize = tilingDataTypeByteTable.find(kCacheDType)->second;
+    keyByteSize_ = kCacheDTypeByteSize;
 
     auto kCacheStoreShape = context_->GetInputShape(INDEX_INPUT_KEY_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheStoreShape);
@@ -127,6 +129,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
     OP_CHECK_IF(kCacheDimNum_ != 4,
                 OP_LOGE(context_, "key_cache dimension must be 4, but got %zu. Please check.", kCacheDimNum_),
                 return ge::GRAPH_FAILED);
+
     for (size_t i = 0; i < kCacheDimNum_; i++) {
         OP_CHECK_IF(kCacheShape_.GetDim(i) <= 0,
                     OP_LOGE(context_, "key_cache.shape[%zu] must be positive, Please check.", i),
@@ -137,8 +140,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
     blockSize_ = kCacheShape_.GetDim(1);
     // 当数据格式为NZ时
     if (!isCacheModeNorm_) {
-        uint32_t kCacheByteAlign = BLOCK_SIZE / cacheDTypeByteSize_;
-        OP_CHECK_IF(kCacheShape_.GetDim(kCacheDimNum_ - 1) != kCacheByteAlign,
+        OP_CHECK_IF(kCacheShape_.GetDim(kCacheDimNum_ - 1) * keyByteSize_ != BLOCK_SIZE,
                     OP_LOGE(context_, "key_cache.shape[3](%ld) must align and equal to 32B, please check.",
                             kCacheShape_.GetDim(kCacheDimNum_ - 1)),
                     return ge::GRAPH_FAILED);
@@ -165,10 +167,10 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(vCacheDType) == KV_SUPPORT_DTYPE.end()),
-                OP_LOGE(context_,
-                        "value_cache dtype only support [float32, float16, bf16,"
-                        " hf8, fp8_e5m2, fp8_e4m3fn, int32, uint32, int16, uint16, int8, uint8], please check."),
+                OP_LOGE(context_, FORMAT_KEY_VALUE_NOT_SUPPORTED, "value_cache"),
                 return ge::GRAPH_FAILED);
+    uint32_t vCacheDTypeByteSize = tilingDataTypeByteTable.find(vCacheDType)->second;
+    valueByteSize_ = vCacheDTypeByteSize;
 
     auto vCacheStoreShape = context_->GetInputShape(INDEX_INPUT_VALUE_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vCacheStoreShape);
@@ -181,12 +183,8 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
 
     // 当数据格式为NZ时，需要检查尾轴是否与32B对齐。kcache和vcache除第1维，其他轴必须相等。
     // 当数据格式为ND时，kcache和vcache的shape的非尾轴必须相等。
-    size_t skipAxis = vCacheDimNum_ - 1;
     if (!isCacheModeNorm_) {
-        skipAxis = 1;
-        uint32_t vCacheDtypeSize = static_cast<uint32_t>(tilingDataTypeByteTable.find(vCacheDType)->second);
-        uint32_t vCacheByteAlign = BLOCK_SIZE / vCacheDtypeSize;
-        OP_CHECK_IF(vCacheShape_.GetDim(vCacheDimNum_ - 1) != vCacheByteAlign,
+        OP_CHECK_IF(vCacheShape_.GetDim(vCacheDimNum_ - 1) * valueByteSize_ != BLOCK_SIZE,
                     OP_LOGE(context_, "value_cache last dimension must align and equal to 32B, please check."),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(
@@ -198,8 +196,8 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
                     OP_LOGE(context_, "value_cache format should be ND when cache_mode is Norm, please check."),
                     return ge::GRAPH_FAILED);
     }
-    for (size_t i = 0; i < vCacheDimNum_; i++) {
-        if (i == skipAxis) {
+    for (size_t i = 0; i < vCacheDimNum_ - 1; i++) {
+        if (!isCacheModeNorm_ && i == DIM_ONE) {
             continue;
         }
         OP_CHECK_IF(vCacheShape_.GetDim(i) != kCacheShape_.GetDim(i),
@@ -290,9 +288,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(keyDType) == KV_SUPPORT_DTYPE.end()),
-                OP_LOGE(context_,
-                        "key dtype only support [float32, float16, bf16, "
-                        "hf8, fp8_e5m2, fp8_e4m3fn, int32, uint32, int16, uint16, int8, uint8], please check."),
+                OP_LOGE(context_, FORMAT_KEY_VALUE_NOT_SUPPORTED, "key"),
                 return ge::GRAPH_FAILED);
 
     auto keyStoreShape = context_->GetInputShape(INDEX_INPUT_KEY);
@@ -300,7 +296,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
     keyShape_ = EnsureNotScalar(keyStoreShape->GetStorageShape());
     size_t keyDimNum = keyShape_.GetDimNum();
 
-    uint32_t keyDimExpect = (isCacheModeNorm_) ? uint32_t(3) : uint32_t(2);
+    uint32_t keyDimExpect = (isCacheModeNorm_) ? uint32_t(DIM_THREE) : uint32_t(DIM_TWO);
     OP_CHECK_IF(keyDimNum != keyDimExpect,
                 OP_LOGE(context_, "key dimension must be %u, but got %zu. Please check.", keyDimExpect, keyDimNum),
                 return ge::GRAPH_FAILED);
@@ -313,7 +309,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
 
     if (isCacheModeNorm_) {
         // ND
-        hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyShape_.GetDim(DIM_TWO);
+        hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyShape_.GetDim(DIM_TWO) * keyByteSize_;
         for (size_t i = 1; i < keyDimNum; i++) {
             OP_CHECK_IF(keyShape_.GetDim(i) != kCacheShape_.GetDim(i + 1),
                         OP_LOGE(context_,
@@ -324,14 +320,14 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
         }
     } else {
         // NZ
-        hiddenSizeK_ = keyShape_.GetDim(1);
-        int64_t kCacheShape1 = kCacheShape_.GetDim(1);
-        int64_t kCacheShape3 = kCacheShape_.GetDim(3);
-        uint64_t hiddenSizeKCache = static_cast<uint64_t>(kCacheShape1) * kCacheShape3;
+        hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyByteSize_;
+        uint64_t kCacheShape1 = kCacheShape_.GetDim(DIM_ONE);
+        uint64_t kCacheShape3 = kCacheShape_.GetDim(DIM_THREE) * keyByteSize_;
+        uint64_t hiddenSizeKCache = kCacheShape1 * kCacheShape3;
         OP_CHECK_IF(hiddenSizeK_ != hiddenSizeKCache,
                     OP_LOGE(context_,
                             "key.shape[1] (%lu) is not equal to "
-                            "the product of key_cache.shape[1] and key_cache.shape[3] (%ld * %ld = %lu), "
+                            "the product of key_cache.shape[1] and key_cache.shape[3] (%lu * %lu = %lu), "
                             "please check.",
                             hiddenSizeK_, kCacheShape1, kCacheShape3, hiddenSizeKCache),
                     return ge::GRAPH_FAILED);
@@ -347,9 +343,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(valueDType) == KV_SUPPORT_DTYPE.end()),
-                OP_LOGE(context_,
-                        "value dtype only support [float32, float16, bf16, "
-                        "hf8, fp8_e5m2, fp8_e4m3fn, int32, uint32, int16, uint16, int8, uint8], please check."),
+                OP_LOGE(context_, FORMAT_KEY_VALUE_NOT_SUPPORTED, "value"),
                 return ge::GRAPH_FAILED);
 
     auto valueStoreShape = context_->GetInputShape(INDEX_INPUT_VALUE);
@@ -358,7 +352,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
     size_t valueDimNum = valueShape_.GetDimNum();
 
     // 检查形状是否合法
-    uint32_t valueDimExpect = (isCacheModeNorm_) ? uint32_t(3) : uint32_t(2);
+    uint32_t valueDimExpect = (isCacheModeNorm_) ? uint32_t(DIM_THREE) : uint32_t(DIM_TWO);
     OP_CHECK_IF(
         valueDimNum != valueDimExpect,
         OP_LOGE(context_, "value dimension must be %u, but got %zu. Please check.", valueDimExpect, valueDimNum),
@@ -372,7 +366,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
 
     if (isCacheModeNorm_) {
         // ND
-        hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueShape_.GetDim(DIM_TWO);
+        hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueShape_.GetDim(DIM_TWO) * valueByteSize_;
         for (size_t i = 1; i < valueDimNum; i++) {
             OP_CHECK_IF(valueShape_.GetDim(i) != vCacheShape_.GetDim(i + 1),
                         OP_LOGE(context_,
@@ -383,14 +377,14 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
         }
     } else {
         // NZ
-        hiddenSizeV_ = valueShape_.GetDim(1);
-        int64_t vCacheShape1 = vCacheShape_.GetDim(1);
-        int64_t vCacheShape3 = vCacheShape_.GetDim(3);
-        uint64_t hiddenSizeVCache = static_cast<uint64_t>(vCacheShape1) * vCacheShape3;
+        hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueByteSize_;
+        uint64_t vCacheShape1 = vCacheShape_.GetDim(DIM_ONE);
+        uint64_t vCacheShape3 = vCacheShape_.GetDim(DIM_THREE) * valueByteSize_;
+        uint64_t hiddenSizeVCache = vCacheShape1 * vCacheShape3;
         OP_CHECK_IF(hiddenSizeV_ != hiddenSizeVCache,
                     OP_LOGE(context_,
                             "value.shape[1] (%lu) is not equal to "
-                            "the product of value_cache.shape[1] and value_cache.shape[3] (%ld * %ld = %lu), "
+                            "the product of value_cache.shape[1] and value_cache.shape[3] (%lu * %lu = %lu), "
                             "please check.",
                             hiddenSizeV_, vCacheShape1, vCacheShape3, hiddenSizeVCache),
                     return ge::GRAPH_FAILED);
@@ -464,12 +458,12 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     int64_t batchPerCore = Ops::Base::CeilDiv(batchCount_, coreNum_);
     needCoreNum_ = static_cast<uint32_t>(std::min(Ops::Base::CeilDiv(batchCount_, batchPerCore), coreNum_));
     // uint32_t batchTail = batchCount_ - batchPerCore * (needCoreNum - 1);
-    uint32_t tileBase = BLOCK_SIZE / cacheDTypeByteSize_;
+    uint32_t tileBase = BLOCK_SIZE;
 
     // 计算UB最大能放下的KV Cache大小
     uint32_t seqLenAccumSize = 1024;
     uint32_t factor = (ubSize_ - UB_REVERSE - seqLenAccumSize * DOUBLE_BUFFER * indexByteSize_ - BLOCK_SIZE) /
-                      (tileBase * DOUBLE_BUFFER * cacheDTypeByteSize_);
+                      (tileBase * DOUBLE_BUFFER);
     uint64_t cacheBlockK = static_cast<uint64_t>(blockSize_) * static_cast<uint64_t>(hiddenSizeK_);
     uint64_t cacheBlockV = static_cast<uint64_t>(blockSize_) * static_cast<uint64_t>(hiddenSizeV_);
     uint64_t maxUbHiddenSizeK =
@@ -482,10 +476,15 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     // 动态调整: 如果有多余空间，就用于累加和的计算
     if (maxUbHiddenSizeK == cacheBlockK || maxUbHiddenSizeV == cacheBlockV) {
         uint32_t spareBuffer =
-            ubSize_ - UB_REVERSE - maxUbHiddenSize * DOUBLE_BUFFER * cacheDTypeByteSize_ - BLOCK_SIZE;
+            ubSize_ - UB_REVERSE - maxUbHiddenSize * DOUBLE_BUFFER - BLOCK_SIZE;
         seqLenAccumSize = Ops::Base::CeilDiv(spareBuffer / DOUBLE_BUFFER, BLOCK_SIZE) * BLOCK_SIZE / indexByteSize_;
     }
 
+    hiddenSizeK_ /= keyByteSize_;
+    hiddenSizeV_ /= valueByteSize_;
+    maxUbHiddenSizeK /= keyByteSize_;
+    maxUbHiddenSizeV /= valueByteSize_;
+    maxUbHiddenSize /= keyByteSize_;
     // 配置tilingdata
     tilingData_.set_batchCount(batchCount_);
     tilingData_.set_batchPerCore(batchPerCore);

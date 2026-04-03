@@ -34,12 +34,12 @@
 
 ## 模板设计
 
-为了使不同的输入可以复用相同的tiling和流水, 采用了模板的方式来实现融合算子，但是不同的输入全部使用同一套模板时又无法达到性能最优和功能泛化, 因此需要根据输入shape的特征区分不同的模板来实现。
+为了使不同的输入可以复用相同的tiling和流水, 采用了模板的方式来实现融合算子, 但是不同的输入全部使用同一套模板时又无法达到性能最优和功能泛化, 因此需要根据输入shape的特征区分不同的模板来实现。
 
 ### 模板类型
 
 1. C+V模板：对应文件名incre_flash_attention_split_Bbn2s2_Us2.h, IFA 基础模板, 支持绝大多数输入场景, 计算时同时使能VectorCore 和 CubeCore, matmul计算放在CubeCore执行; matmul计算为调用AscendC提供的高阶API;
-2. All-Vector模板：对应文件名incre_flash_attention_allvec_new.h, 对C+V模板的补充, 主流程与C+V模板基本一致，matmul计算由vector实现,  降低Cube启动和CV通信开销, 对于部分输入类型有更好的性能表现；支持场景：
+2. All-Vector模板：对应文件名incre_flash_attention_allvec_new.h, 对C+V模板的补充, 主流程与C+V模板基本一致, matmul计算由vector实现,  降低Cube启动和CV通信开销, 对于部分输入类型有更好的性能表现；支持场景：
 
 - <term>Atlas 推理系列加速卡产品</term>：全部使用该模板。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：非PA, 非GQA, 且Q、KV 、Output类型全部为FP16 。
@@ -50,13 +50,13 @@
 本模板支持范围参考Tiling中的EnableCubeViewMM函数。
 4. 伪量化MSD DD模板：对应文件为incre_flash_attention_preload_dd.h, 基于incre_flash_attention_preload.h开发, 用于伪量化MTP场景, 优化了MSD算法；该模板基于incre_flash_attention_preload.h开发；当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
 5. MLA全量化模板：对应文件为incre_flash_attention_preload_mla.h, 适用于MLA场景query、key、value为INT8并且query_rope、key_rope为BF16时的attention计算；该模板基于incre_flash_attention_preload.h开发, 并将matmul相关的计算抽取到了文件ifa_service_matmul_full_quant.h中；当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
-下面主要介绍C+V模板, 其它模板后续将逐步收编至FIA算子，暂不做介绍。
+下面主要介绍C+V模板, 其它模板后续将逐步收编至FIA算子, 暂不做介绍。
 
 ### 计算过程
 
 #### 数据切分
 
-由于硬件buffer大小是有限的, 而计算的数据量又是巨大的, 无法一次计算完, 那么就需要进行tiling切分, shape不同会导致算子的切分轴不同, 而算子的切分轴, 会影响模板的功能及性能。简单的element-wise类算子，往往会将所有的轴fuse成一根轴进行切分, 逻辑简单, 因此模板也比较单一。而融合算子融合了element-wise、broadcast、reduce及matmul等多类场景, 功能复杂, 为达到较高的性能要求, 往往需要根据切分轴进行模板拆分, 模板拆分时为了达到性能最优, 需要考虑如下几个点：
+由于硬件buffer大小是有限的, 而计算的数据量又是巨大的, 无法一次计算完, 那么就需要进行tiling切分, shape不同会导致算子的切分轴不同, 而算子的切分轴, 会影响模板的功能及性能。简单的element-wise类算子, 往往会将所有的轴fuse成一根轴进行切分, 逻辑简单, 因此模板也比较单一。而融合算子融合了element-wise、broadcast、reduce及matmul等多类场景, 功能复杂, 为达到较高的性能要求, 往往需要根据切分轴进行模板拆分, 模板拆分时为了达到性能最优, 需要考虑如下几个点：
 
 a. 将核心的数量用满, 防止部分核闲置 ;
 

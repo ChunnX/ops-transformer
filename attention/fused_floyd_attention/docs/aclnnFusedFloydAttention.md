@@ -147,7 +147,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>scaleValue</td>
           <td>输入</td>
-          <td>公式中的scale，代表缩放系数。</td>
+          <td>Host侧的double，公式中的scale，代表缩放系数。</td>
           <td>-</td>
           <td>DOUBLE</td>
           <td>-</td>
@@ -302,7 +302,6 @@ aclnnStatus aclnnFusedFloydAttention(
 - key2与value2 shape需相同。
 - softmaxMax与softmaxSum shape需相同。
 - D只支持32/64/128。
-- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降，此时建议使用小算子拼接替换实现。
 
 ## 调用示例
 

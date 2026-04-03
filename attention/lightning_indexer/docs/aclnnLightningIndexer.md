@@ -66,15 +66,15 @@ aclnnStatus aclnnLightningIndexer(
 > - query、key、weights参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 > - S1表示query shape中的S，S2表示key shape中的S，T1表示query shape中的T，T2表示key shape中的T，N1表示query shape中的N，N2表示key shape中的N。
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 110px">
-  <col style="width: 301px">
-  <col style="width: 219px">
-  <col style="width: 328px">
-  <col style="width: 101px">
-  <col style="width: 143px">
-  <col style="width: 146px">
+  <table style="undefined;table-layout: fixed; width: 1601px"><colgroup>
+  <col style="width: 264px">
+  <col style="width: 132px">
+  <col style="width: 232px">
+  <col style="width: 330px">
+  <col style="width: 164px">
+  <col style="width: 119px">
+  <col style="width: 215px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -282,7 +282,8 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
-      <td>不支持空tensor。</td>
+      <td>不支持空tensor。</ul>
+      </td>
       <td>INT32</td>
       <td>-</td>
       <td>
@@ -358,6 +359,8 @@ aclnnStatus aclnnLightningIndexer(
     </table>
 
 ## aclnnLightningIndexer
+
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
   <col style="width: 184px">
@@ -510,6 +513,7 @@ struct TensorResources {
     aclTensor* weightsTensor = nullptr;
     aclTensor* sparseIndicesTensor = nullptr;
     aclTensor* sparseValuesTensor = nullptr;
+
 };
 
 int InitializeTensors(TensorResources& resources) {
@@ -517,7 +521,7 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> keyShape = {1, 2, 1, 128};
     std::vector<int64_t> weightsShape = {1, 2, 1};
     std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 2048};
-    std::vector<int64_t> sparseValuesShape = {1, 2, 1, 2048};
+    std::vector<int64_t> sparseValuesShape = {1, 2, 1, 16};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
@@ -569,7 +573,7 @@ int ExecuteLightningIndexer(TensorResources& resources, aclrtStream stream,
     int64_t sparseMode = 3;
     int64_t preTokens = 9223372036854775807;
     int64_t nextTokens = 9223372036854775807;
-    bool returnValue = true;
+    bool returnValue = false;
     constexpr const char layerOutStr[] = "BSND";
     constexpr size_t layerOutLen = sizeof(layerOutStr);
     char layoutQuery[layerOutLen];
@@ -605,14 +609,14 @@ int ExecuteLightningIndexer(TensorResources& resources, aclrtStream stream,
 
     ret = aclnnLightningIndexer(*workspaceAddr, *workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnLightningIndexer failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnSparseFlashAttention failed. ERROR: %d\n", ret);
         return ret;
     }
 
     return ACL_SUCCESS;
 }
 
-int PrintValueOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
+int PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   auto size = GetShapeSize(shape);
   std::vector<aclFloat16> resultData(size, 0);
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
@@ -623,21 +627,6 @@ int PrintValueOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   }
   for (int64_t i = 0; i < size; i++) {
     LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
-  }
-  return ACL_SUCCESS;
-}
-
-int PrintIndicesOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
-  auto size = GetShapeSize(shape);
-  std::vector<int32_t> resultData(size, 0);
-  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                         *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
-        return ret;
-  }
-  for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %d\n", i, resultData[i]);
   }
   return ACL_SUCCESS;
 }
@@ -694,8 +683,8 @@ int main() {
     TensorResources resources = {};
     void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
-    std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 2048};
-    std::vector<int64_t> sparseValuesShape = {1, 2, 1, 2048};
+    std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 16};
+    std::vector<int64_t> sparseValuesShape = {1, 2, 1, 16};
     int ret = ACL_SUCCESS;
 
     // 1. Initialize device and stream
@@ -728,8 +717,8 @@ int main() {
     }
 
     // 5. Process results
-    PrintIndicesOutResult(sparseIndicesShape, &resources.sparseIndicesDeviceAddr);
-    PrintValueOutResult(sparseValuesShape, &resources.sparseValuesDeviceAddr);
+    PrintOutResult(sparseIndicesShape, &resources.sparseIndicesDeviceAddr);
+    PrintOutResult(sparseValuesShape, &resources.sparseValuesDeviceAddr);
 
     // 6. Cleanup resources
     CleanupResources(resources, workspaceAddr, stream, deviceId);

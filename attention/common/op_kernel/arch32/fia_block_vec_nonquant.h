@@ -127,7 +127,7 @@ protected:
     __aicore__ inline void SinkValueNoBrc(LocalTensor<COMPUTE_T> tmpSinkResUb,
                                             LocalTensor<COMPUTE_T> tmpSinkResUbBrcb, uint32_t dealRowCount);
     __aicore__ inline void SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
- 	                                             int64_t s1Idx, int64_t row, int64_t dealRowCount);
+                                            int64_t s1Idx, int64_t row, int64_t dealRowCount);
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
     __aicore__ inline void DealPostQuantOutPerChn(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb,
                                                   uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount);
@@ -1026,17 +1026,18 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
 }
 
 template <typename FIAT>
- __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info,
- 	                                                                    LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
- 	                                                                    uint32_t wsMStart, uint32_t dealRowCount)
+__aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info,
+                                                                   LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
+                                                                   uint32_t wsMStart, uint32_t dealRowCount)
 {
     constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
+
 
     LocalTensor<COMPUTE_T> sinkBuf = tmpBuff1.GetWithOffset<COMPUTE_T>(BUFFER_SIZE_BYTE_8K, BUFFER_SIZE_BYTE_8K * 2);
     SinkCopyIn(info, sinkBuf);
 
-    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
-        constInfo.sparseMode, constInfo.attenMaskFlag, constInfo.isRowInvalid);
+    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, constInfo.sparseMode,
+                                           constInfo.attenMaskFlag, constInfo.isRowInvalid);
 
     if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) {
         int64_t s1IdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) / constInfo.gSize;

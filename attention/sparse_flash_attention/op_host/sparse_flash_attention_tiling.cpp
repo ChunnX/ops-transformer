@@ -998,7 +998,7 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMaxShape()
         shapeParams.G = n1Size_/n2Size_;
         if (CompareShape(shapeParams, softmaxMaxShapeCmp_, softmaxMaxLayout_, SOFTMAX_MAX_NAME) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
-        }
+    }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1010,6 +1010,7 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSumShape()
         shapeParams.B = bSize_;
         shapeParams.N = n2Size_;
         shapeParams.S = s1Size_;
+        shapeParams.D = vHeadDim_;
         shapeParams.T = qTSize_;
         shapeParams.G = n1Size_/n2Size_;
         if (CompareShape(shapeParams, softmaxSumShapeCmp_, softmaxSumLayout_, SOFTMAX_SUM_NAME) != ge::GRAPH_SUCCESS) {
@@ -1046,9 +1047,9 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
                 return ge::GRAPH_FAILED;
         }
     } else {
-        if (opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0) {
-            OP_LOGW(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor.");
-        }
+        OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0,
+                OP_LOGE(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor."),
+                return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1063,9 +1064,9 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
                 OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
     } else {
-        if(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0){
-            OP_LOGW(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor.");
-        }
+        OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0,
+                OP_LOGE(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor."),
+                return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
