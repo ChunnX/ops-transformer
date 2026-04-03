@@ -164,12 +164,12 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Compute(LocalTensor<float> &
         MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL8);
 
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-
+        static constexpr Reg::DivSpecificMode mode = {Reg::MaskMergeMode::ZEROING, true, DivAlgo::PRECISION_0ULP_FTZ_FALSE};
         sreg = static_cast<uint32_t>(cols_);
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
+            MicroAPI::Div<float, &mode>(inReg, inReg, scaleValueReg, maskRegInLoop);
             MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
             MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
             MicroAPI::DataCopy<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
