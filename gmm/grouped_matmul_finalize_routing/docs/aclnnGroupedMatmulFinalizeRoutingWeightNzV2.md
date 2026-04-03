@@ -450,7 +450,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
             }                            \
         } while (0)
 
-    #define CHECK_RET(cond, return_expr) \
+    #define CHECK_FREE_RET(cond, return_expr) \
         do {                                  \
             if (!(cond)) {                    \
                 Finalize(deviceId, stream);   \
