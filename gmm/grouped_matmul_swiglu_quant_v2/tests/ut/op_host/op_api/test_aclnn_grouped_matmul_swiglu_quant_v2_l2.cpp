@@ -664,7 +664,7 @@ TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a4_wrong_nd_
     EXPECT_EQ(aclRet, 161002);
 }
 
-TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a8_wrong_nd_wtrans_case)
+TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a8_nd_wrong_wtrans_case)
 {
     int64_t m = 192;
     int64_t k = 2048;
@@ -696,7 +696,7 @@ TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a8_wrong_nd_
     EXPECT_EQ(aclRet, 161002);
 }
 
-TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w8a8_wrong_nd_wtrans_case)
+TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w8a8_nd_wrong_wtrans_case)
 {
     int64_t m = 192;
     int64_t k = 2048;
@@ -728,7 +728,7 @@ TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w8a8_wrong_nd_
     EXPECT_EQ(aclRet, 161002);
 }
 
-TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a8_wrong_nz_wtrans_case)
+TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a8_nz_wrong_wtrans_case)
 {
     int64_t m = 192;
     int64_t k = 2048;
@@ -760,7 +760,7 @@ TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w4a8_wrong_nz_
     EXPECT_EQ(aclRet, 161002);
 }
 
-TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w8a8_wrong_nz_wtrans_case)
+TEST_F(l2_GroupedMatmulSwigluQuantV2_test, ascend910B2_test_opapi_w8a8_nz_wrong_wtrans_case)
 {
     int64_t m = 192;
     int64_t k = 2048;
