@@ -262,8 +262,8 @@ __aicore__ inline void LoadDataL1ToL0(const LocalTensor<T> &l0Tensor, const Loca
         loadDataAParams.filterSizeH = 0;
         loadDataAParams.fMatrixCtrl = false;
         uint16_t dstStride = CeilDivT(mSize, BLOCK_CUBE_SIZE);
-        SetLoadDataRepeat({0,1,0,dstStride});
-        LoadData<T>(l0Tensor, l1Tensor, loadDataAParams);
+        SetLoadDataRepeatWithStride({0, 1, 0, dstStride});
+        LoadDataWithStride<T>(l0Tensor, l1Tensor, loadDataAParams);
     }
 }
 
