@@ -1,0 +1,387 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file mhc_post_backward.h
+ * \brief
+ */
+
+#ifndef MHC_POST_BACKWARD_H
+#define MHC_POST_BACKWARD_H
+
+#include "kernel_operator.h"
+using namespace AscendC;
+
+template <typename T>
+class KernelMhcPostBackward{
+public:
+    __aicore__ inline KernelMhcPostBackward() {}
+
+    __aicore__ inline void Init(
+        GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post,
+        GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
+        const MhcPostBackwardTilingData& tilingData, TPipe* pipe);
+    __aicore__ inline void Process();
+
+protected:
+    static constexpr uint64_t BUFFER_NUM = 1;
+
+    __aicore__ inline void VecMatmul_mknk(LocalTensor<float>& A, LocalTensor<float>& B, LocalTensor<float>& C, LocalTensor<float>& broadcastBuffer, LocalTensor<float>& reduceBuffer, LocalTensor<uint8_t>& tempBuffer, uint32_t m, uint32_t k, uint32_t n, uint32_t alignN);
+    __aicore__ inline void VecMatmul_mkkn(LocalTensor<float>&A, LocalTensor<float>&B, LocalTensor<float>&C, LocalTensor<float>& broadcastBuffer, uint32_t m, uint32_t k, uint32_t n);
+
+    TBuf<TPosition::VECCALC> dFPostResCastBuf, FOutCastBuf, HLPostBuf, xLCastBuf, HLResBuf;
+    TBuf<TPosition::VECCALC> dHLPostBuf, dFOutCastBuf, dHLResBuf, dxLCastBuf;
+    TBuf<TPosition::VECCALC> dFPostResBuf, FOutBuf, xLBuf, dFOutBuf, dxLBuf;
+    TBuf<TPosition::VECCALC> dHLPostTmpBuf1, dHLPostTmpBuf2, dHLPostTmpBuf3, dHLPostTmpBuf4, dHLPostTmpBuf5;
+    TBuf<TPosition::VECCALC> dHLResTmpBuf1, dHLResTmpBuf2, dHLResTmpBuf3, dHLResTmpBuf4, dHLResTmpBuf5;
+    TBuf<TPosition::VECCALC> dxLTmpBuf2, dxLTmpBuf3;
+
+    GlobalTensor<T> dFPostResGm, FOutGm, xLGm;
+    GlobalTensor<float> HLResGm, HLPostGm;
+
+    GlobalTensor<T> dxLGm, dFOutGm;
+    GlobalTensor<float> dHResGm, dHPostGm;
+    
+    LocalTensor<float> dFPostResUb, FOutUb, HLPostUb, xLUb, HLResUb;
+    LocalTensor<T> dFPostResCastUb, FOutCastUb, xLCastUb, dFOutCastUb, dxLCastUb;
+    LocalTensor<float> dHLPostUb, dFOutUb, dHLResUb, dxLUb;
+
+    LocalTensor<float> dHLResTmp1, dHLResTmp2, dHLResTmp3;
+    LocalTensor<uint8_t> dHLResTmp4;
+
+    LocalTensor<float> dxLTmp2;
+
+    //分核
+    uint64_t coreUsed;
+    uint64_t singleCoreBS;
+    uint64_t tailBS;
+    uint64_t frontCore;
+    uint64_t tailCore;
+
+    //分块
+    int32_t blockChannel;
+    int32_t channel;
+    int32_t n;
+    int32_t alignN;
+    int32_t loopC;
+    int32_t tailC;
+
+    uint64_t dFPostResSize;
+    uint64_t xSize;
+    uint64_t hResSize;
+    uint64_t hOutSize;
+    uint64_t hPostSize;
+
+    DataCopyPadParams padParams{false, 0, 0, 0};
+};
+
+template <typename T>
+__aicore__ inline void KernelMhcPostBackward<T>::Init(
+    GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post,
+    GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
+    const MhcPostBackwardTilingData& tilingData, TPipe* pipe
+)
+{
+    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
+    this->coreUsed = tilingData.coreUsed;
+    this->singleCoreBS = tilingData.singleCoreBS;
+    this->tailBS = tilingData.tailBS;
+    this->frontCore = tilingData.frontCore;
+    this->tailCore = tilingData.tailCore;
+    this->coreUsed = tilingData.coreUsed;
+
+    this->blockChannel = tilingData.blockChannel;
+    this->channel = tilingData.channel;
+    this->n = tilingData.n;
+    this->alignN = tilingData.alignN;
+    this->loopC = tilingData.loopC;
+    this->tailC = tilingData.tailC;
+
+    this->dFPostResSize = tilingData.dFPostResSize;
+    this->xSize = tilingData.xSize;
+    this->hResSize = tilingData.hResSize;
+    this->hOutSize = tilingData.hOutSize;
+    this->hPostSize = tilingData.hPostSize;
+
+    this->dFPostResGm.SetGlobalBuffer((__gm__ T*)grad_y, this->dFPostResSize);
+    this->FOutGm.SetGlobalBuffer((__gm__ T*)h_out, this->hOutSize);
+    this->xLGm.SetGlobalBuffer((__gm__ T*)x, this->xSize);
+    this->HLResGm.SetGlobalBuffer((__gm__ float*)h_res, this->hResSize);
+    this->HLPostGm.SetGlobalBuffer((__gm__ float*)h_post, this->hPostSize);
+
+    this->dxLGm.SetGlobalBuffer((__gm__ T*)grad_x, this->xSize);
+    this->dFOutGm.SetGlobalBuffer((__gm__ T*)grad_h_out, this->hOutSize);
+    this->dHResGm.SetGlobalBuffer((__gm__ float*)grad_h_res, this->hResSize);
+    this->dHPostGm.SetGlobalBuffer((__gm__ float*)grad_h_post, this->hPostSize);
+    //in
+    pipe->InitBuffer(this->dFPostResCastBuf, this->n * this->blockChannel * sizeof(T));
+    pipe->InitBuffer(this->FOutCastBuf, this->blockChannel * sizeof(T));
+    pipe->InitBuffer(this->HLPostBuf, this->n * sizeof(float));
+    pipe->InitBuffer(this->xLCastBuf, this->n * this->blockChannel * sizeof(T));
+    pipe->InitBuffer(this->HLResBuf, this->n * this->n * sizeof(float));
+    //out
+    pipe->InitBuffer(this->dHLPostBuf, this->alignN * sizeof(float));
+    pipe->InitBuffer(this->dFOutCastBuf, this->blockChannel * sizeof(T));//复用FOutCastBuf
+    pipe->InitBuffer(this->dHLResBuf, this->n * this->alignN * sizeof(float));
+    pipe->InitBuffer(this->dxLCastBuf, this->n * this->blockChannel * sizeof(T));//复用xLCastBuf
+
+    pipe->InitBuffer(this->dFPostResBuf, this->n * this->blockChannel * sizeof(float)); // [n, tileC]
+    pipe->InitBuffer(this->FOutBuf, this->blockChannel * sizeof(float)); // [1, tileC]
+    pipe->InitBuffer(this->xLBuf, this->n * this->blockChannel * sizeof(float)); // [n, tileC]
+    pipe->InitBuffer(this->dFOutBuf, this->blockChannel * sizeof(float)); // [1, tileC]
+    pipe->InitBuffer(this->dxLBuf, this->n * this->blockChannel * sizeof(float)); // [n, tileC]
+
+    pipe->InitBuffer(this->dHLResTmpBuf1, this->blockChannel * this->n * sizeof(float)); // [tilC, n] [k, n]
+    pipe->InitBuffer(this->dHLResTmpBuf2, this->blockChannel * this->n * this->n * sizeof(float));
+    pipe->InitBuffer(this->dHLResTmpBuf3, this->n * this->alignN * sizeof(float)); // [n, n] [m, n]
+    pipe->InitBuffer(this->dHLResTmpBuf4, this->n * this->n * sizeof(uint8_t)); // [n, n] [m, n]
+
+    pipe->InitBuffer(this->dxLTmpBuf2, this->n * this->n * sizeof(float));
+}
+
+template <typename T>
+__aicore__ inline void KernelMhcPostBackward<T>::Process()
+{
+    uint32_t coreId = GetBlockIdx();
+
+    if(coreId >= this->coreUsed) {
+        return;
+    }
+
+    uint64_t startIdx = coreId > this->frontCore ? (coreId - this->frontCore) * this->tailBS + this->frontCore * this->singleCoreBS : coreId * this->singleCoreBS;
+
+    uint64_t endIdx = startIdx + ((coreId < this->frontCore) ? this->singleCoreBS : this->tailBS);
+    //顺序是否影响？
+    this->dFPostResCastUb = this->dFPostResCastBuf.template Get<T>();
+    this->FOutCastUb = this->FOutCastBuf.template Get<T>();
+    this->HLPostUb = this->HLPostBuf.template Get<float>();
+    this->xLCastUb = this->xLCastBuf.template Get<T>();
+    this->HLResUb = this->HLResBuf.template Get<float>();
+
+    this->dHLPostUb = this->dHLPostBuf.template Get<float>();
+    this->dFOutCastUb = this->dFOutCastBuf.template Get<T>();
+    this->dHLResUb = this->dHLResBuf.template Get<float>();
+    this->dxLCastUb = this->dxLCastBuf.template Get<T>();
+
+    this->dFPostResUb = this->dFPostResBuf.template Get<float>();
+    this->FOutUb = this->FOutBuf.template Get<float>();
+    this->xLUb = this->xLBuf.template Get<float>();
+    this->dFOutUb = this->dFOutBuf.template Get<float>();
+    this->dxLUb = this->dxLBuf.template Get<float>();
+
+    this->dHLResTmp1 = this->dHLResTmpBuf1.template Get<float>();
+    this->dHLResTmp2 = this->dHLResTmpBuf2.template Get<float>();
+    this->dHLResTmp3 = this->dHLResTmpBuf3.template Get<float>();
+    this->dHLResTmp4 = this->dHLResTmpBuf4.template Get<uint8_t>();
+
+    this->dxLTmp2 = this->dxLTmpBuf2.template Get<float>();
+
+    for(uint64_t i = startIdx; i < endIdx; i++) {
+        // Hlpost 和Hlres 驻留
+        SetFlag<HardEvent::V_MTE2>(0);
+        WaitFlag<HardEvent::V_MTE2>(0);
+
+        DataCopyParams copyParamsHLPostUb{1, (uint16_t)(this->n * sizeof(float)), 0, 0};
+        DataCopyPad(this->HLPostUb, this->HLPostGm[i * this->n], copyParamsHLPostUb, this->padParams);
+        DataCopyParams copyParamsHLResUb{1, (uint16_t)(this->n * this->n * sizeof(float)), 0, 0};
+        DataCopyPad(this->HLResUb, this->HLResGm[i * this->n * this->n], copyParamsHLResUb, this->padParams);
+        
+        // 清0
+        SetFlag<HardEvent::MTE3_V>(0);
+        WaitFlag<HardEvent::MTE3_V>(0);
+
+        Duplicate(this->dHLPostUb, float(0.0), this->alignN);
+        Duplicate(this->dHLResUb, float(0.0), this->n * this->alignN);
+
+        for(int j = 0; j < this->loopC; j ++) {
+            uint16_t channelStride = this->channel - this->blockChannel;
+            SetFlag<HardEvent::V_MTE2>(0);
+            WaitFlag<HardEvent::V_MTE2>(0);
+
+            SetFlag<HardEvent::MTE3_V>(1);
+            WaitFlag<HardEvent::MTE3_V>(1);
+
+            DataCopyParams copyParamsdFPostResUb{(uint16_t)this->n, (uint16_t)(this->blockChannel * sizeof(T)), (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyPad(this->dFPostResCastUb, this->dFPostResGm[i * this->n * this->channel + j * this->blockChannel], copyParamsdFPostResUb, this->padParams);
+            
+
+            DataCopyParams copyParamsFOutUb{1, (uint16_t)(this->blockChannel * sizeof(T)), 0, 0};
+            DataCopyPad(this->FOutCastUb, this->FOutGm[i * this->channel + j * this->blockChannel], copyParamsFOutUb, this->padParams);
+            
+            DataCopyParams copyParamsXLUb{(uint16_t)this->n, (uint16_t)(this->blockChannel * sizeof(T)), (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyPad(this->xLCastUb, this->xLGm[i * this->n * this->channel + j * this->blockChannel], copyParamsXLUb, this->padParams);
+
+            SetFlag<HardEvent::MTE2_V>(0);
+            WaitFlag<HardEvent::MTE2_V>(0);
+
+            SetFlag<HardEvent::MTE3_V>(0);
+            WaitFlag<HardEvent::MTE3_V>(0);
+
+            // dHLPost : Fout @ dFPostRes.T [1, blockChannel] @ [n, blockChannel]^T
+            // 搬运量：[1, n, blockChannel] + [1, 1, blockChannel]
+            // 输出：[1, n] 驻留在ub做累加
+            // for(int ta=0;ta<5;ta++){
+            //     printf("%f ", this->FOutUb.GetValue(ta));
+            // }
+            Cast(this->dFPostResUb, this->dFPostResCastUb, RoundMode::CAST_NONE, this->n * this->blockChannel); // bf16--> fp32
+            Cast(this->FOutUb, this->FOutCastUb, RoundMode::CAST_NONE, this->blockChannel); // bf16--> fp32
+            Cast(this->xLUb, this->xLCastUb, RoundMode::CAST_NONE, this->n * this->blockChannel); // bf16--> fp32
+
+            VecMatmul_mknk(this->FOutUb, this->dFPostResUb, this->dHLPostUb, this->dHLResTmp1, this->dHLResTmp3, this->dHLResTmp4, 1, this->blockChannel, this->n, this->alignN);
+
+            // dHres: dF@x^T //x@dF^T
+            // [n, C]@[C, n] = [n, n] 驻留在ub做累加
+            VecMatmul_mknk(this->xLUb, this->dFPostResUb, this->dHLResUb, this->dHLResTmp1, this->dHLResTmp3, this->dHLResTmp4, this->n, this->blockChannel, this->n, this->alignN);
+
+            // dFout: H_post@dF
+            // [1, n]@[n, C] = [1, C] 直接搬出
+            Duplicate(this->dFOutUb, float(0.0), this->blockChannel);
+            VecMatmul_mkkn(this->HLPostUb, this->dFPostResUb, this->dFOutUb, this->dHLResTmp2, 1, this->n, this->blockChannel);
+
+            // dx_l: H_res^T@dF
+            // [n, n]@[n, C] = [n, C] 直接搬出, 
+            Duplicate(this->dxLUb, float(0.0), this->n * this->blockChannel);
+            VecMatmul_mkkn(this->HLResUb, this->dFPostResUb, this->dxLUb, this->dHLResTmp2, this->n, this->n, this->blockChannel);
+
+            
+            DataCopyParams copyParamsdxLGm{(uint16_t)this->n, (uint16_t)(this->blockChannel * sizeof(T)), 0, (uint16_t)(channelStride * sizeof(T))};
+            DataCopyParams copyParamsdFOutGm{1, (uint16_t)(this->blockChannel * sizeof(T)), 0, 0};
+            Cast(this->dFOutCastUb, this->dFOutUb, RoundMode::CAST_ROUND,  this->blockChannel); // float--> bf16
+            Cast(this->dxLCastUb, this->dxLUb, RoundMode::CAST_ROUND, this->n * this->blockChannel); // float--> bf16
+            
+            SetFlag<HardEvent::V_MTE3>(0);
+            WaitFlag<HardEvent::V_MTE3>(0);
+            DataCopyPad(this->dxLGm[i * this->n * this->channel + j * this->blockChannel], this->dxLCastUb, copyParamsdxLGm);
+            DataCopyPad(this->dFOutGm[i * this->channel + j * this->blockChannel], this->dFOutCastUb, copyParamsdFOutGm);
+        }
+
+        if (this->tailC != 0) {
+            // 尾部C的处理
+            uint16_t channelStride = this->channel - this->tailC;
+            
+            SetFlag<HardEvent::V_MTE2>(0);
+            WaitFlag<HardEvent::V_MTE2>(0);
+
+            SetFlag<HardEvent::MTE3_V>(1);
+            WaitFlag<HardEvent::MTE3_V>(1);
+
+            DataCopyParams copyParamsdFPostResUb{(uint16_t)this->n, (uint16_t)(this->tailC * sizeof(T)), (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyPad(this->dFPostResCastUb, this->dFPostResGm[i * this->n * this->channel + this->loopC * this->blockChannel], copyParamsdFPostResUb, this->padParams);
+            
+            DataCopyParams copyParamsFOutUb{1, (uint16_t)(this->tailC * sizeof(T)), 0, 0};
+            DataCopyPad(this->FOutCastUb, this->FOutGm[i * this->channel + this->loopC * this->blockChannel], copyParamsFOutUb, this->padParams);
+            DataCopyParams copyParamsXLUb{(uint16_t)this->n, (uint16_t)(this->tailC * sizeof(T)), (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyPad(this->xLCastUb, this->xLGm[i * this->n * this->channel + this->loopC * this->blockChannel], copyParamsXLUb, this->padParams);
+            SetFlag<HardEvent::MTE2_V>(0);
+            WaitFlag<HardEvent::MTE2_V>(0);
+
+            SetFlag<HardEvent::MTE3_V>(0);
+            WaitFlag<HardEvent::MTE3_V>(0);
+
+            // dHLPost : Fout @ dFPostRes.T [1, tailC] @ [n, tailC]^T
+            // 搬运量：[1, n, tailC] + [1, 1, tailC]
+            // 输出：[1, n] 驻留在ub做累加
+            Cast(this->dFPostResUb, this->dFPostResCastUb, RoundMode::CAST_NONE, this->n * this->tailC); // bf16--> fp32
+            Cast(this->FOutUb, this->FOutCastUb, RoundMode::CAST_NONE, this->tailC); // bf16--> fp32
+            Cast(this->xLUb, this->xLCastUb, RoundMode::CAST_NONE, this->n * this->tailC); // bf16--> fp32
+
+            VecMatmul_mknk(this->FOutUb, this->dFPostResUb, this->dHLPostUb, this->dHLResTmp1, this->dHLResTmp3, this->dHLResTmp4, 1, this->tailC, this->n, this->alignN);
+
+            // dHres: dF@x^T
+            // [n, tailC]@[tailC, n] = [n, n] 驻留在ub做累加
+            VecMatmul_mknk(this->xLUb, this->dFPostResUb, this->dHLResUb, this->dHLResTmp1, this->dHLResTmp3, this->dHLResTmp4, this->n, this->tailC, this->n, this->alignN);
+
+            // dFout: H_post@dF
+            // [1, n]@[n, tailC] = [1, tailC] 直接搬出
+            Duplicate(this->dFOutUb, float(0.0), this->tailC);
+            VecMatmul_mkkn(this->HLPostUb, this->dFPostResUb, this->dFOutUb, this->dHLResTmp2, 1, this->n, this->tailC);
+            // dx_l: H_res^T@dF
+            // [n, n]@[n, tailC] = [n, tailC] 直接搬出
+            Duplicate(this->dxLUb, float(0.0), this->n * this->tailC);
+            VecMatmul_mkkn(this->HLResUb, this->dFPostResUb, this->dxLUb, this->dHLResTmp2, this->n, this->n, this->tailC);
+
+            DataCopyParams copyParamsdxLGm{(uint16_t)this->n, (uint16_t)(this->tailC * sizeof(T)), 0, (uint16_t)(channelStride * sizeof(T))};
+            DataCopyParams copyParamsdFOutGm{1, (uint16_t)(this->tailC * sizeof(T)), 0, 0};
+            Cast(this->dFOutCastUb, this->dFOutUb, RoundMode::CAST_ROUND, this->tailC); // float--> bf16
+            Cast(this->dxLCastUb, this->dxLUb, RoundMode::CAST_ROUND, this->n * this->tailC); // float--> bf16
+            
+            SetFlag<HardEvent::V_MTE3>(0);
+            WaitFlag<HardEvent::V_MTE3>(0);
+            DataCopyPad(this->dxLGm[i * this->n * this->channel + this->loopC * this->blockChannel], this->dxLCastUb, copyParamsdxLGm);
+            DataCopyPad(this->dFOutGm[i * this->channel + this->loopC * this->blockChannel], this->dFOutCastUb, copyParamsdFOutGm);
+        }
+
+        DataCopyParams copyParamsdHLResGm{(uint16_t)this->n, (uint16_t)(this->n * sizeof(float)), 0, 0};
+        DataCopyParams copyParamsdHLPostGm{1, (uint16_t)(this->n * sizeof(float)), 0, 0};
+
+        SetFlag<HardEvent::V_MTE3>(2);
+        WaitFlag<HardEvent::V_MTE3>(2);
+        DataCopyPad(this->dHPostGm[i * this->n], this->dHLPostUb, copyParamsdHLPostGm);
+        DataCopyPad(this->dHResGm[i * this->n * this->n], this->dHLResUb, copyParamsdHLResGm);
+    }
+}
+
+template <typename T>
+__aicore__ inline void KernelMhcPostBackward<T>::VecMatmul_mknk(
+    LocalTensor<float>& A, 
+    LocalTensor<float>& B,
+    LocalTensor<float>& C, 
+    LocalTensor<float>& broadcastBuffer,
+    LocalTensor<float>& reduceBuffer,
+    LocalTensor<uint8_t>& tempBuffer,
+    uint32_t m, uint32_t k, uint32_t n, uint32_t alignN)
+{
+    // Compute matrix multiplication using vector instructions.
+    uint32_t reduceShape[] = {n, k};
+    uint32_t broadcastSrcShape[] = {1, k};
+    constexpr bool isReuse = true;
+
+    for (int32_t i = 0; i < m; i++) {
+        // 广播 A[i] 到与 B 相同的形状
+        Broadcast<float, 2, 0>(broadcastBuffer, A[i * k], reduceShape, broadcastSrcShape);
+        
+        // 逐元素相乘
+        Mul(broadcastBuffer, broadcastBuffer, B, k * n);
+        
+        // 沿第0维求和
+        ReduceSum<float, AscendC::Pattern::Reduce::AR, isReuse>(
+            reduceBuffer[i * alignN], broadcastBuffer, tempBuffer, reduceShape, true);
+    }
+    
+    // 累加到输出 C
+    Add(C, C, reduceBuffer, m * alignN);
+}
+
+template <typename T>
+__aicore__ inline void KernelMhcPostBackward<T>::VecMatmul_mkkn(
+    LocalTensor<float>&A,
+    LocalTensor<float>&B,
+    LocalTensor<float>&C,
+    LocalTensor<float>&broadcastBuffer,
+    uint32_t m,
+    uint32_t k,
+    uint32_t n
+)
+{
+    uint32_t broadcastSrcShape[] = {m*k, 1};
+    uint32_t broadcastDstShape[] = {m*k, n};
+    Broadcast<float, 2, 1>(broadcastBuffer, A, broadcastDstShape, broadcastSrcShape);
+    //c清0
+    PipeBarrier<PIPE_V>();
+    for (int32_t i = 0; i < m; i++) {
+        for(int32_t j = 0; j < k; j++){
+            PipeBarrier<PIPE_V>();
+            Mul(broadcastBuffer[(i*m+j)*n], broadcastBuffer[(i*m+j)*n], B[j * n], n);
+            PipeBarrier<PIPE_V>();
+            Add(C[i * n], C[i * n], broadcastBuffer[(i*m+j)*n], n);
+        }
+    }
+}
+#endif
