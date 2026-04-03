@@ -32,15 +32,18 @@ const aclTensor* MoeInitRoutingV2Grad(
     L0_DFX(MoeInitRoutingV2Grad, grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode, active_num, out);
 
     auto grad_x = executor->AllocTensor(out->GetViewShape(), out->GetDataType(), op::Format::FORMAT_ND);
-
-    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2Grad,
-        OP_INPUT(grad_expanded_x, expanded_row_idx),
-        OP_OUTPUT(grad_x),
-        OP_ATTR(top_k, drop_pad_mode, active_num));
-    if (ret != ACL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MoeInitRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
-        return nullptr;
+    // 如果输出是空，直接不走算子逻辑
+    if (!grad_x->IsEmpty()) {
+        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2Grad,
+            OP_INPUT(grad_expanded_x, expanded_row_idx),
+            OP_OUTPUT(grad_x),
+            OP_ATTR(top_k, drop_pad_mode, active_num));
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MoeInitRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+            return nullptr;
+        }
     }
+
     return grad_x;
 }
 
