@@ -179,7 +179,7 @@ public:
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
+        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
         kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
@@ -311,7 +311,7 @@ private:
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
-    GlobalTensor<highType> attnInter_;    // (Nv, maxGroupLength, Dv)
+    GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> qkt_;          // (Nv, maxGroupLength, C)
     GlobalTensor<highType> highState_;
