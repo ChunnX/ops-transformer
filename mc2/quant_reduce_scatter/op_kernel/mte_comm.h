@@ -67,6 +67,7 @@ public:
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
+    int32_t i_ = 0;
 private:
 
     uint32_t xNumPerBlock_{0};
@@ -123,12 +124,19 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
     // Win区OOM检测适配，告知OOM框架Win区地址和大小
     #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
         for(uint64_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
-            OOMCheckAddrRange(GetWinAddrGm(curRank), winSpaceGmSize);
+            uint32_t curRankId = hcclContext_->rankId;
+            GM_ADDR winAddr;
+            if (curRank == curRankId) {
+                winAddr = hcclContext_->localWindowsIn;
+            } else {
+                winAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[curRank].nextDevicePtr))->windowsIn);
+            }
+            OOMCheckAddrRange(winAddr, winSpaceGmSize);
         }
     #endif
 
     //  处理 0/1 分区 标志位
-    uint64_t currCoreFlagOffset = 2UL * SINGLE_STATE_REGION_SIZE + aivId_ * WIN_ADDR_ALIGN; // 计算当前核的标志位在Win区的偏移
+    uint64_t currCoreFlagOffset = STATE_WIN_SIZE + aivId_ * WIN_ADDR_ALIGN; // 计算当前核的标志位在Win区的偏移
     selfWinFlagGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)GetWinAddrGm(hcclContext_->rankId, currCoreFlagOffset));
     LocalTensor<uint32_t> winFlagLocalTensor = winFlagsBuf_.Get<uint32_t>();
     DataCopy(winFlagLocalTensor, selfWinFlagGMTensor_, UB_ALIGN_BYTES / sizeof(uint32_t)); // GM -> UB
@@ -281,8 +289,12 @@ template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 {
     uint32_t coreOffset = aivId_ * hcclContext_->rankDim; // Win区大小为 aivNum * rankDim, 此处计算核偏移
+    AscendC::PRINTF("WriteStatusToWin");
+    AscendC::PRINTF("winBufferFlags_");
     // 遍历每一张卡，给每一张卡都要写入状态
     for (uint32_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
+        AscendC::PRINTF("for");
+        AscendC::PRINTF("winBufferFlags_");
         // 写入状态到对端，每个核写一个状态，表示自己的数据块已经写完
         LocalTensor<float> statusTensor = writeStateBuf_.Get<float>();
         DataCopy<float>(statusTensor, stateResetTensor_, FLOAT_UB_ALIGN_NUM); // 先重置statusTensor数据，后面累加需要Tensor内全部数据，防止脏数据
@@ -320,13 +332,19 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     float minTarget = hcclContext_->rankDim - (float)0.5;
     float maxTarget = hcclContext_->rankDim + (float)0.5;
     // 读取statusCnt个数据求和
-    while ((flag < minTarget) || (flag > maxTarget)) {
+    AscendC::PRINTF("ReadStatus");
+    AscendC::PRINTF("winBufferFlags_");
+    while (i_ < 1000) {
+    // while ((flag < minTarget) || (flag > maxTarget)) {
+        AscendC::PRINTF("while");
+        AscendC::PRINTF("winBufferFlags_");
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
+        i_++;
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
@@ -359,7 +377,14 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64
 template <TemplateTypeClass>
 __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinAddrGm(uint32_t rankId, uint64_t offset)
 {
-    return (GM_ADDR)(hcclContext_->windowsIn[rankId] + offset);
+    uint32_t curRankId = hcclContext_->rankId;
+    GM_ADDR baseAddr;
+    if (rankId == curRankId) {
+        baseAddr = (GM_ADDR)(hcclContext_->localWindowsIn);
+    } else {
+        baseAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[rankId].nextDevicePtr))->windowsIn);
+    }
+    return baseAddr + offset;
 }
 
 // 根据0/1分区标志位，获取对应rank的Win区数据区的地址
@@ -372,7 +397,11 @@ __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinDataAddrGm(uint3
     }
     else {
         // 若使用 1 分区，即WinOut
-        return (GM_ADDR)(hcclContext_->windowsOut[rankId]);
+        uint32_t curRankId = hcclContext_->rankId;
+        if (rankId == curRankId) {
+            return (GM_ADDR)(hcclContext_->localWindowsOut);
+        }
+        return (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[rankId].nextDevicePtr))->windowsOut);
     }
 }
 
