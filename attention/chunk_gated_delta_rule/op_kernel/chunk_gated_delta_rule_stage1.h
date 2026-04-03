@@ -170,7 +170,7 @@ public:
         vBetaUbFloat_ = inverseBuffer_;
         gBKUbFloat_ = inverseBuffer_;
         kgUbFloat_ = inverseBuffer_;
-                                                        buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
+        buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
         
         inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
         buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
