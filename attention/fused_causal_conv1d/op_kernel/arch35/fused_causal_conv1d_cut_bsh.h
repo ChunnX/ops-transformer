@@ -349,6 +349,9 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weigh
     pipe_.InitBuffer(xQueue_,          BUFFER_NUM,  xBufBytes);
 
     if (blockIdx == 0) {
+        DisplayTensor(xGM_, tiling->cuSeqLen * dim_, 1, "xGM_");
+        DisplayTensor(weightGM_, 3 * dim_, 1, "weightGM_");
+        // DisplayTensor(cacheStatesGM_, batchSize_, 1, "cacheStatesGM_");
         DisplayTensor(seqStartIndexGM_, batchSize_, 0, "queryStartLoc");
         DisplayTensor(cacheIndicesGM_, batchSize_, 0, "cacheIndices");
         DisplayTensor(hasInitialStateGM_, batchSize_, 0, "initialStateMode");
