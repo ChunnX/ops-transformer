@@ -199,62 +199,103 @@ public:
             AscendC::Exp(glUbTensor, glUbTensor, count);
             AscendC::PipeBarrier<PIPE_V>();
 
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-            for (uint32_t nIdx = 0; nIdx < splitNum; nIdx++) {
 
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-                AscendC::DataCopyPad(loFloatUbTensor, oCoreTmpGmTensor[addrOOffset + nIdx * oCount_vector],
-                    AscendC::DataCopyExtParams(1, oCount * sizeof(float), 0, 0, 0),
-                    AscendC::DataCopyPadExtParams<float>(true, 0, 0, 0));
+            uint32_t tokenTile = UB_UINT8_LINE_SIZE / (headSizeV * sizeof(float));
 
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+            if (q_len > 1 && tokenTile >= n_len) {
+                tokenTile = (tokenTile / n_len) * n_len;
+            }
 
-                uint32_t dstShapeO[2] = { lseBlockAlign, headSizeV };
-                uint32_t srcShapeO[2] = { lseBlockAlign, 1 };
-                AscendC::BroadCast<float, 2, 1>(broadCastOTensor, glUbTensor[nIdx * lseBlockAlign], dstShapeO, srcShapeO, tempReduceSum);
-                AscendC::PipeBarrier<PIPE_V>();
+            for (uint32_t tileStart = 0; tileStart < lseBlock; tileStart += tokenTile) {
+                uint32_t curTile = (tileStart + tokenTile <= lseBlock) ?
+                                    tokenTile : (lseBlock - tileStart);
+                uint32_t curTileAlign = (curTile + 7) / 8 * 8;
+                uint32_t oTileCount = curTile * headSizeV;
 
-                AscendC::Mul(toUbTensor, loFloatUbTensor, broadCastOTensor, oCount); // toUbTensor和broadCastOTensor共用一块空间
-                AscendC::PipeBarrier<PIPE_V>();
-
-                if (nIdx == 0) {
-                    AscendC::Adds(goUbTensor, toUbTensor, 0.0f, oCount); // goUbTensor和loFloatUbTensor一块空间
-                    AscendC::PipeBarrier<PIPE_V>();
-                } else {
-                    AscendC::Add(goUbTensor, toUbTensor, goUbTensor, oCount);
-                    AscendC::PipeBarrier<PIPE_V>();
-                }
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-            }
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+                for (uint32_t nIdx = 0; nIdx < splitNum; nIdx++) {
 
-            // Cast and move out
-            if (std::is_same<ElementOutput, bfloat16_t>::value) {
-                AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_RINT, oCount);
-            } else {
-                AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_NONE, oCount);
-            }
-            AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+ 
+                    AscendC::DataCopyPad(loFloatUbTensor,
+                        oCoreTmpGmTensor[addrOOffset + tileStart * headSizeV + nIdx * oCount_vector],
+                        AscendC::DataCopyExtParams(1, oTileCount * sizeof(float), 0, 0, 0),
+                        AscendC::DataCopyPadExtParams<float>(true, 0, 0, 0));
 
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+                    uint32_t dstShapeO[2] = { curTileAlign, headSizeV };
+                    uint32_t srcShapeO[2] = { curTileAlign, 1 };
+                    AscendC::BroadCast<float, 2, 1>(broadCastOTensor,
+                        glUbTensor[nIdx * lseBlockAlign + tileStart],
+                        dstShapeO, srcShapeO, tempReduceSum);
+                    AscendC::PipeBarrier<PIPE_V>();
 
-            if (q_len == 1) {
-                AscendC::DataCopyPad(oGmTensor[gmOScalar], go16UbTensor, AscendC::DataCopyExtParams(1, oCount * sizeof(ElementOutput) , 0, 0, 0));
-            } else {
-                uint32_t q_half = q_len / 2;
-                if (vectorsubBlockID == 0) {
-                    AscendC::DataCopyPad(oGmTensor[gmOScalar], go16UbTensor,
-                            AscendC::DataCopyExtParams(q_half, (headEndIndx - headStartIndx) * headSizeV * sizeof(ElementOutput) , 0, (qHeads - (headEndIndx - headStartIndx)) * headSizeV * sizeof(ElementOutput), 0));
+                    AscendC::Mul(toUbTensor, loFloatUbTensor, broadCastOTensor, oTileCount); // toUbTensor和broadCastOTensor共用一块空间
+                    AscendC::PipeBarrier<PIPE_V>();
+
+                    if (nIdx == 0) {
+                        AscendC::Adds(goUbTensor, toUbTensor, 0.0f, oTileCount);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    } else {
+                        AscendC::Add(goUbTensor, toUbTensor, goUbTensor, oTileCount);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+                }
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+
+                // Cast and move out
+                if (std::is_same<ElementOutput, bfloat16_t>::value) {
+                    AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_RINT, oTileCount);
                 } else {
-                    AscendC::DataCopyPad(oGmTensor[gmOScalar], go16UbTensor,
-                            AscendC::DataCopyExtParams(q_len - q_half, (headEndIndx - headStartIndx) * headSizeV * sizeof(ElementOutput) , 0, (qHeads - (headEndIndx - headStartIndx)) * headSizeV * sizeof(ElementOutput), 0));
+                    AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_NONE, oTileCount);
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+
+                if (q_len == 1) {
+                    AscendC::DataCopyPad(oGmTensor[gmOScalar + tileStart * headSizeV], go16UbTensor,
+                        AscendC::DataCopyExtParams(1, oTileCount * sizeof(ElementOutput), 0, 0, 0));
+                } else {
+                    uint32_t tileQStart = tileStart / n_len;
+                    uint32_t tileNStart = tileStart % n_len;
+
+                    if (tileNStart == 0 && curTile % n_len == 0) {
+                        uint32_t qTile = curTile / n_len;
+                        uint32_t gmTileOffset = tileQStart * qHeads * headSizeV;
+                        AscendC::DataCopyPad(oGmTensor[gmOScalar + gmTileOffset], go16UbTensor,
+                            AscendC::DataCopyExtParams(qTile,
+                                n_len * headSizeV * sizeof(ElementOutput), 0,
+                                (qHeads - n_len) * headSizeV * sizeof(ElementOutput), 0));
+                    } else {
+                        uint32_t writeRemaining = curTile;
+                        uint32_t writeUbOffset = 0;
+                        uint32_t writeFlatIdx = tileStart;
+                        while (writeRemaining > 0) {
+                            uint32_t writeQIdx = writeFlatIdx / n_len;
+                            uint32_t writeNStart = writeFlatIdx % n_len;
+                            uint32_t writeNCount = (n_len - writeNStart < writeRemaining) ?
+                                                    (n_len - writeNStart) : writeRemaining;
+                            uint32_t gmSegOffset = writeQIdx * qHeads * headSizeV + writeNStart * headSizeV;
+                            AscendC::DataCopyPad(oGmTensor[gmOScalar + gmSegOffset],
+                                go16UbTensor[writeUbOffset],
+                                AscendC::DataCopyExtParams(1,
+                                    writeNCount * headSizeV * sizeof(ElementOutput), 0, 0, 0));
+                            writeUbOffset += writeNCount * headSizeV;
+                            writeFlatIdx += writeNCount;
+                            writeRemaining -= writeNCount;
+                        }
+                    }
+                }
+
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                if (tileStart + tokenTile < lseBlock) {
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 }
             }
-
-
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
