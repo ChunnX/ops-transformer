@@ -12,8 +12,8 @@
  * \file moe_distribute_combine_v2_host_kfc.h
  * \brief
  */
-#ifndef MOE_DISTRIBUTE_COMBINE_V2_HOST_H
-#define MOE_DISTRIBUTE_COMBINE_V2_HOST_H
+#ifndef MOE_DISTRIBUTE_COMBINE_V2_HOST_KFC_H
+#define MOE_DISTRIBUTE_COMBINE_V2_HOST_KFC_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -91,9 +91,9 @@ using namespace MoeDistributeV2Base;
 using namespace AscendC;
 
 template <CombineV2HostTypeClass>
-class MoeDistributeCombineV2Host {
+class MoeDistributeCombineV2HostKfc {
 public:
-    __aicore__ inline MoeDistributeCombineV2Host(){};
+    __aicore__ inline MoeDistributeCombineV2HostKfc(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
                                 GM_ADDR tpSendCount, GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask,
                                 GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
@@ -440,7 +440,7 @@ private:
 };
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Init(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Init(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
     GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
     GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut,
@@ -489,7 +489,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Init(
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::CommunInit(const MoeDistributeCombineV2TilingData *tilingData,
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::CommunInit(const MoeDistributeCombineV2TilingData *tilingData,
     GM_ADDR workspaceGM)
 {
     // 1. Server 拓扑
@@ -542,7 +542,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::CommunInit(const MoeDistribut
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::InitInputAndOutput(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitInputAndOutput(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR expertScales,
     GM_ADDR expandScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
     GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut)
@@ -565,7 +565,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::InitIn
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData)
 {
     axisBS_ = tilingData->moeDistributeCombineV2Info.bs;
     axisH_ = tilingData->moeDistributeCombineV2Info.h;
@@ -596,7 +596,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::InitTilingAttrs(const MoeDist
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::InitAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitAttrs(const MoeDistributeCombineV2TilingData *tilingData)
 {
     InitTilingAttrs(tilingData);
     uint32_t sharedExpertRankNum = tilingData->moeDistributeCombineV2Info.sharedExpertRankNum;
@@ -626,7 +626,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::InitAttrs(const MoeDistribute
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::BuffInit()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::BuffInit()
 {
     tpipe_->Reset();
     tpipe_->InitBuffer(indexCountsBuf_, sendCntNum_ * EXPAND_IDX_INFO * sizeof(int32_t));
@@ -639,7 +639,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::BuffIn
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoAllBuffInitAndMaskCal()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AlltoAllBuffInitAndMaskCal()
 {
     tpipe_->Reset();
     tpipe_->InitBuffer(localOutTempBuf_, hFloatAlign32Size_);
@@ -673,7 +673,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoA
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SplitCoreByToken(const uint32_t totalSendCnt)
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::SplitCoreByToken(const uint32_t totalSendCnt)
 {
     // 对需要发送的token数平均分核，得到每个核上处理的卡的数量
     sendCntNum_ = totalSendCnt / aivNum_;
@@ -689,7 +689,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SplitC
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SplitCoreByServer()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::SplitCoreByServer()
 {
     // 要处理的总量是 serverNum_（toServerId 的数量）
     if (serverNum_ == 0 || aivNum_ == 0) {
@@ -713,7 +713,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SplitC
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::PrepareServerShareLayout(LocalTensor<ExpandIdxType> expandIdxLocal)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::PrepareServerShareLayout(LocalTensor<ExpandIdxType> expandIdxLocal)
 {
     // Step1：统计本核 -> 每个 targetLocalRank 的 token 数。写 gmCoreTargetCnt_[coreIdx_][t]
     CalcLocalTargetCnt(expandIdxLocal);
@@ -727,7 +727,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::PrepareServerShareLayout(Loca
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::CalcLocalTargetCnt(LocalTensor<ExpandIdxType> expandIdxLocal)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::CalcLocalTargetCnt(LocalTensor<ExpandIdxType> expandIdxLocal)
 {
     tpipe_->InitBuffer(localTargetCntBuf_, rowStrideBytes_);
     localTargetCnt_ = localTargetCntBuf_.Get<uint32_t>();
@@ -753,7 +753,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::CalcLocalTargetCnt(LocalTenso
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::BuildPrefixBaseOnCore0()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::BuildPrefixBaseOnCore0()
 {
     if (coreIdx_ != 0) {
         return;
@@ -788,7 +788,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::BuildP
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::LoadLocalBaseFromGm()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::LoadLocalBaseFromGm()
 {
     tpipe_->InitBuffer(localTargetBaseBuf_, serverRankSize_ * sizeof(uint32_t));
     tpipe_->InitBuffer(localTargetRunBuf_, serverRankSize_ * sizeof(uint32_t));
@@ -802,7 +802,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::LoadLo
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoAllDispatch()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AlltoAllDispatch()
 {
     if (sendCntNum_ == 0U) {
         return;
@@ -825,7 +825,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoA
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::DispatchTokensToShareMem(LocalTensor<ExpandIdxType> expandIdxLocal)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::DispatchTokensToShareMem(LocalTensor<ExpandIdxType> expandIdxLocal)
 {
     for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
         const uint32_t localIdx = loop;
@@ -849,7 +849,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::DispatchTokensToShareMem(Loca
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::DispatchTokenInner(uint32_t globalIdx, uint32_t originRankId,
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::DispatchTokenInner(uint32_t globalIdx, uint32_t originRankId,
     uint32_t originTokenId, uint32_t topkId, uint32_t tokenIdInServer, uint64_t shareDataAddr)
 {
     LocalTensor<ExpandXType> tokenUb = tempBuf_.Get<ExpandXType>();
@@ -882,7 +882,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::DispatchTokenInner(uint32_t g
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::UpdateShareFlag()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::UpdateShareFlag()
 {
     if (coreIdx_ != 0) {
         return;
@@ -909,7 +909,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Update
 
 // Server内加权求和
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SumToWindow()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::SumToWindow()
 {
     // Step1. 等待本卡 ShareFlag[fromLocalRank][*] 全部 READY
     if (coreIdx_ == 0) {
@@ -940,7 +940,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SumToW
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId, LocalTensor<float> sumTileUb,
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId, LocalTensor<float> sumTileUb,
     LocalTensor<uint32_t> existFlagUb)
 {
     GM_ADDR winOutSliceBase = windowOutGM_ + (toServerId * winOutSliceBytes_);
@@ -987,7 +987,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toS
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AccumulateRankDataToUb(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AccumulateRankDataToUb(
     uint32_t fromLocalRank, uint32_t targetServerId, uint32_t baseId, uint32_t endId, LocalTensor<float> sumTileUb,
     LocalTensor<uint32_t> existFlagUb)
 {
@@ -1016,7 +1016,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Accumu
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ProcessBatchTokens(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessBatchTokens(
     LocalTensor<ExpandXType> inputBatchUb, uint32_t curBatch, uint32_t targetServerId, uint32_t baseId, uint32_t endId,
     LocalTensor<float> sumTileUb, LocalTensor<uint32_t> existFlagUb, LocalTensor<float> tmpUb)
 {
@@ -1051,7 +1051,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Proces
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ReadRankTokenCnt(uint32_t fromLocalRank,
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ReadRankTokenCnt(uint32_t fromLocalRank,
     uint32_t &tokenCnt, GM_ADDR shareBase)
 {
     GM_ADDR flagAddr = shareBase + static_cast<uint64_t>(fromLocalRank * shareFlagSliceBytes_);
@@ -1064,7 +1064,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ReadRa
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::TokenToWinOut(GM_ADDR dstTokenBase,
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::TokenToWinOut(GM_ADDR dstTokenBase,
     uint32_t tokenIdInServer, LocalTensor<float> srcSumTensor)
 {
     LocalTensor<uint32_t> headerU32 = tempBuf_.Get<uint32_t>();
@@ -1106,7 +1106,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::TokenT
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::WriteWinOutHeader(GlobalTensor<uint64_t> headerGm,
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::WriteWinOutHeader(GlobalTensor<uint64_t> headerGm,
     uint32_t winTokenCnt)
 {
     LocalTensor<uint64_t> headerUb = shareFlagUbBuf_.Get<uint64_t>(flagU64CopyCntAlign_);
@@ -1119,7 +1119,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::WriteWinOutHeader(GlobalTenso
 
 // 传递token
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoAllServerDispatch()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AlltoAllServerDispatch()
 {
     SyncAll<true>();
     // 0核处理 hccl_.BatchWrite<true>()
@@ -1152,7 +1152,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoA
 
 // 读取count的flag位，确保所有server组都执行结束
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::WaitWinInCount()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::WaitWinInCount()
 {
     if (coreIdx_ < serverNum_) {
         tpipe_->InitBuffer(localCntBuf_, UB_ALIGN);
@@ -1178,7 +1178,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::WaitWi
 
 // 等待token拆分后的block块到齐
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::WaitTokenBlockReady(GM_ADDR winInTkAddr,
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::WaitTokenBlockReady(GM_ADDR winInTkAddr,
     uint32_t countIdx)
 {
     GM_ADDR tokenBase = winInTkAddr + (countIdx * packedTokenBytes_);
@@ -1206,7 +1206,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::WaitTo
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::LoadTokenToUb(LocalTensor<ExpandXType> &outTokenUb,
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::LoadTokenToUb(LocalTensor<ExpandXType> &outTokenUb,
     GM_ADDR winInTkAddr, uint32_t countIdx)
 {
     GM_ADDR tokenBase = winInTkAddr + (countIdx * packedTokenBytes_);
@@ -1222,7 +1222,7 @@ MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::LoadTokenToUb(LocalTensor<Exp
 
 // 对来自不同server的相同token id进行求和
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoAllCombine()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AlltoAllCombine()
 {
     SplitCoreByToken(axisBS_);
     LocalTensor<uint32_t> tokenCntArray = countBuf_.Get<uint32_t>();
@@ -1234,7 +1234,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AlltoA
 
 // 统计winIn每个server分区token个数
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::LoadTokenCounts(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::LoadTokenCounts(
     LocalTensor<uint32_t> &tokenCntArray)
 {
     GlobalTensor<uint64_t> flagGmU64;
@@ -1253,7 +1253,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::LoadTo
 
 // 按照token进行分核并开始累加求和
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ProcessSingleToken(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessSingleToken(
     uint32_t tokenId, LocalTensor<uint32_t> &tokenCntArray)
 {
     const uint32_t targetTokenId = tokenIdBaseInServer_ + tokenId;
@@ -1270,7 +1270,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Proces
 
 // 按照server分区查找对应token
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::SearchAndAccumulateToken(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::SearchAndAccumulateToken(
     uint32_t targetTokenId, LocalTensor<uint32_t>& tokenCntArray,
     LocalTensor<float>& sumLocal, bool& foundAny)
 {
@@ -1305,7 +1305,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Search
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::AccumulateTokenFromServer(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AccumulateTokenFromServer(
     GM_ADDR winInTkAddr, uint32_t hitIdx, LocalTensor<float>& sumLocal)
 {
     WaitTokenBlockReady(winInTkAddr, hitIdx);
@@ -1320,7 +1320,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Accumu
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::ProcessSharedExpertAndOutput(
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessSharedExpertAndOutput(
     uint32_t tokenId, LocalTensor<float>& sumLocal)
 {
     if (hasSharedExpertX_) {
@@ -1344,7 +1344,7 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Proces
 }
 
 template <CombineV2HostTypeClass>
-__aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Process()
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
         BuffInit();
@@ -1360,4 +1360,4 @@ __aicore__ inline void MoeDistributeCombineV2Host<CombineV2HostTypeFunc>::Proces
 }
 
 } // namespace MoeDistributeCombineV2Impl
-#endif // MOE_DISTRIBUTE_COMBINE_V2_HOST_H
+#endif // MOE_DISTRIBUTE_COMBINE_V2_HOST_KFC_H
