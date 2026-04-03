@@ -45,7 +45,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
     ASCENDC_TPL_UINT_DECL(KernelTypeKey, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     // bit:3-2  ImplMode: 0=高精度, 1=高性能, 2=invalid_line高精度
     ASCENDC_TPL_UINT_DECL(ImplMode, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2),
-    // bit:7-4  Layout (Q的数据布局): 1=BSND, 2=BNSD, 3=TND (与flash_attn_score保持一致)
+    // bit:7-4  Layout (Q的数据布局): None(BSND) = 0, LAYOUT_BSH = 1, LAYOUT_SBH = 2, LAYOUT_BNSD = 3, LAYOUT_TND = 4, 
+    //                               (LAYOUT_NTD_TND = 5, LAYOUT_NTD = 6) (与flash_attn_score保持一致)
     ASCENDC_TPL_UINT_DECL(Layout, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
     // bit:17-8  S1TemplateType
     ASCENDC_TPL_UINT_DECL(S1TemplateType, ASCENDC_TPL_10_BW, ASCENDC_TPL_UI_LIST, 0, 64, 128),
@@ -72,13 +73,13 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(Layout, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
         ASCENDC_TPL_UINT_SEL(S1TemplateType, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(S2TemplateType, ASCENDC_TPL_UI_LIST, 128),
-        ASCENDC_TPL_UINT_SEL(DTemplateType, ASCENDC_TPL_UI_LIST, 0, 64, 128, 192, 256, 768),
+        ASCENDC_TPL_UINT_SEL(DTemplateType, ASCENDC_TPL_UI_LIST, 64, 128, 192, 256, 768),
         ASCENDC_TPL_UINT_SEL(DvTemplateType, ASCENDC_TPL_UI_LIST, 0, 64),
         ASCENDC_TPL_UINT_SEL(HasAtten, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(IsPA, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(IsSoftmaxLse, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttnSimplifiedTilingData)
     ),
 );
 

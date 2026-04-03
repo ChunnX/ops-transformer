@@ -1,4 +1,4 @@
-分析这段代码：/**
+/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -21,7 +21,7 @@
 #include <algorithm>
 #include <cstdio>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_flash_attn.h"
+#include "../op_api/aclnn_flash_attn.h"
 
 namespace {
 
@@ -192,8 +192,8 @@ int main()
     // Q/Out: BNSD (B, N, S, D)
     // KV:    BSND (B, S, N, D) — layoutKv仅支持BSND/TND/PA_ND/PA_Nz
     std::vector<int64_t> qShape   = {B, N_q,  S_q,  D};   // BNSD
-    std::vector<int64_t> kShape   = {B, N_kv, S_kv, D};   // BSND
-    std::vector<int64_t> vShape   = {B, N_kv, S_kv, D};   // BSND
+    std::vector<int64_t> kShape   = {B, N_kv, S_kv, D};   // BNSD
+    std::vector<int64_t> vShape   = {B, N_kv, S_kv, D};   // BNSD
     std::vector<int64_t> outShape = {B, N_q,  S_q,  D};   // BNSD
 
     void *qDeviceAddr   = nullptr;
@@ -258,8 +258,8 @@ int main()
     if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
 
     // 属性参数
-    // softmaxMode=0.0f 表示使用默认缩放系数 1/sqrt(D)
-    float   softmaxMode      = 1.0 / sqrt((double)D);
+    // softmaxScale=0.0f 表示使用默认缩放系数 1/sqrt(D)
+    double  softmaxScale      = 1.0 / sqrt((double)D);
     int64_t maskMode         = 0;      // 0: 无掩码
     int64_t winLeft          = 0;
     int64_t winRight         = 0;
@@ -285,7 +285,7 @@ int main()
         nullptr,    // sequsedKvOptional
         nullptr,    // sinksOptional
         nullptr,    // metadataOptional
-        softmaxMode, maskMode, winLeft, winRight, maxseqlenq, maxseqlenkv,
+        softmaxScale, maskMode, winLeft, winRight, maxseqlenq, maxseqlenkv,
         layoutQ, layoutKv, layoutOut,
         returnSoftmaxLse, deterministic,
         outTensor,

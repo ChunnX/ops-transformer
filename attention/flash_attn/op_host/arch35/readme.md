@@ -23,7 +23,7 @@
 | `layoutQ`    | "BNSD"   | Q 布局                               |
 | `layoutKv`   | "BSND"   | KV 布局（仅支持 BSND/TND/PA_ND/PA_Nz） |
 | `layoutOut`  | "BNSD"   | 输出布局                              |
-| `softmaxMode`| 0.0f     | 0 表示默认缩放 = 1/√D = 1/√64 = 0.125f |
+| `softmaxScale`| 0.0f     | 0 表示默认缩放 = 1/√D = 1/√64 = 0.125f |
 | `maskMode`   | 0        | 无注意力掩码                            |
 | `winLeft`    | 0        | 无滑动窗口                             |
 | `winRight`   | 0        | 无滑动窗口                             |
@@ -54,7 +54,7 @@
 
 | 字段          | 固定值  | 来源/含义                                              |
 |-------------|---------|------------------------------------------------------|
-| `scaleValue`| 0.125f  | softmaxMode=0 → 1/√D = 1/√64 = 0.125f               |
+| `softmaxScale`| 0.125f  | softmaxScale=0 → 1/√D = 1/√64 = 0.125f               |
 | `implMode`  | 0       | HIGH_PRECISION（高精度模式）                           |
 
 ### Layout 类

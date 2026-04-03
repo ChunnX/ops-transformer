@@ -46,8 +46,8 @@ extern "C" {
  * @param sinksOptional       [IN]  可选。可学习的sink注意力权重，数据类型FLOAT32。
  * @param metadataOptional    [IN]  可选。预计算的tiling切分方案，数据类型INT32，由上游算子传入。
  *                                  当该输入不为nullptr时，tiling侧跳过切分方案计算，直接使用该元数据。
- * @param softmaxMode         [IN]  ATTR可选。softmax缩放系数，对应老接口的scaleValue。
- *                                  数据类型FLOAT。默认值0.0表示使用1/sqrt(D)。
+ * @param softmaxScale        [IN]  ATTR可选。softmax缩放系数，对应老接口的scaleValue。
+ *                                  数据类型DOUBLE。默认值0.0表示使用1/sqrt(D)。
  * @param maskMode            [IN]  ATTR可选。掩码模式，对应老接口的sparseMode。数据类型INT。
  *                                  0: 不使用掩码；1: 因果掩码（下三角）；2: 非因果掩码（上三角）；
  *                                  3: prefix/band掩码；4: 滑动窗口掩码（使用winLeft/winRight）。
@@ -78,7 +78,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional,
     const aclTensor *metadataOptional,
-    float softmaxMode,
+    double softmaxScale,
     int64_t maskMode,
     int64_t winLeft,
     int64_t winRight,

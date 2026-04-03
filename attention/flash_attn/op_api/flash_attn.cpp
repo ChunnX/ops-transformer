@@ -29,7 +29,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional,
     const aclTensor *metadataOptional,
-    float softmaxMode,
+    double softmaxScale,
     int64_t maskMode,
     int64_t winLeft,
     int64_t winRight,
@@ -44,7 +44,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
 {
     L0_DFX(FlashAttn, q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, metadataOptional,
-           softmaxMode, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
+           softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
            returnSoftmaxLse, deterministic);
 
     if (blockTableOptional == nullptr) {
@@ -76,7 +76,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
                            OP_INPUT(q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-                           OP_ATTR(softmaxMode, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
+                           OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
                                    layoutQ, layoutKv, layoutOut, returnSoftmaxLse, deterministic));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn InferShape failed.");
@@ -88,7 +88,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
         OP_INPUT(q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                  sequsedQOptional, sequsedKvOptional, sinksOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-        OP_ATTR(softmaxMode, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
+        OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
                 layoutQ, layoutKv, layoutOut, returnSoftmaxLse, deterministic));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn launch kernel failed.");
