@@ -345,10 +345,10 @@
     - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
     - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
     - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
-    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需跟`expand_x`保持一致。
-    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需跟`expand_x`保持一致。
-    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需跟`expand_x`保持一致。
-    - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需跟`expand_x`保持一致。
+    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
+    - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需与`expand_x`保持一致。
 
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：
