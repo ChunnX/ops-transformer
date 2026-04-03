@@ -19,14 +19,6 @@
 #include "hcom/hcom_topo_info.h"
 #endif
 
-#include <climits>
-#include <cstring>
-#include "mc2_moe_context.h"
-#include "opdev/platform.h"
-#include "hccl/hccl_rank_graph.h"
-#include "mmpa/mmpa_api.h"
-#include "acl/acl_tensor.h"
-
 namespace Mc2Hcom {
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcomGetCommHandleByGroup";
 #ifdef BUILD_OPEN_PROJECT

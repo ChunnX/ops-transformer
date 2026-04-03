@@ -18,8 +18,11 @@
 
 #include <memory>
 #include "hccl/hcom.h"
-#include "aclnn/acl_meta.h"
 #include "mc2_moe_context.h"
+#include "opdev/platform.h"
+#include "hccl/hccl_rank_graph.h"
+#include "mmpa/mmpa_api.h"
+
 
 #ifdef BUILD_OPEN_PROJECT
 #include "hccl/hccl_rank_graph.h"
@@ -32,6 +35,7 @@ static constexpr uint32_t COMM_RING = (COMM_MESH << 2U);
 static constexpr uint32_t COMM_PAIRWISE = (COMM_MESH << 3U);
 static constexpr uint32_t COMM_IS_NOT_SET_DEVICE = 0;
 namespace Mc2Hcom {
+using namespace Mc2Aclnn;
 class MC2HcomTopology {
 public:
     static HcclResult CommGetInstSizeByGroup(const char *group, uint32_t *rankNum);
