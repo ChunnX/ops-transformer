@@ -606,28 +606,16 @@ vector<SwigluOpApiCase> LoadCases(const string &csvFilePath)
     return cases;
 }
 
-string BuildCaseName(const testing::TestParamInfo<SwigluOpApiCase> &info)
+// Run all CSV rows in one test body so cases execute strictly in order (serial),
+// avoiding any parallel scheduling of parameterized instances in the test runner.
+TEST(grouped_matmul_swiglu_quant_v2_opapi_csv, run_all_cases_serially)
 {
-    string name = info.param.caseName;
-    for (char &c : name) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
-            c = '_';
-        }
+    const vector<SwigluOpApiCase> cases =
+        LoadCases(ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_v2.csv"));
+    for (size_t i = 0; i < cases.size(); ++i) {
+        SCOPED_TRACE(::testing::Message() << "CSV row " << i << " caseName=" << cases[i].caseName);
+        cases[i].Run();
     }
-    return name;
 }
-
-class grouped_matmul_swiglu_quant_v2_opapi_csv_test : public testing::TestWithParam<SwigluOpApiCase> {};
-
-TEST_P(grouped_matmul_swiglu_quant_v2_opapi_csv_test, run_case)
-{
-    GetParam().Run();
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    grouped_matmul_swiglu_quant_v2_opapi_csv,
-    grouped_matmul_swiglu_quant_v2_opapi_csv_test,
-    testing::ValuesIn(LoadCases(ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_v2.csv"))),
-    BuildCaseName);
 
 }  // namespace
