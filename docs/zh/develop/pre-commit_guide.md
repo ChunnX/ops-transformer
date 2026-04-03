@@ -23,7 +23,7 @@ pre-commit 是一个 Git Hooks 框架，用于在 `git commit` 时自动运行�
 
 ```bash
 # 方式一: 使用 pip
-pip install pre-commit
+pip3 install pre-commit
 
 # 方式二: 使用系统包管理器 (Ubuntu/Debian)
 sudo apt install pre-commit
