@@ -10,7 +10,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
  */
 
 /*!
- * \file mainifold_constrained_hyper_connection_tiling.cpp
+ * \file mhc_pre_backward_tiling.cpp
  * \brief
  */
 
