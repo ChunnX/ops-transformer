@@ -112,10 +112,23 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
 
     // init vec block
     if ASCEND_IS_AIV {
+        // 计算 lossWorkspace 地址（位于 scatterAddResGm 之后）
+        int64_t scatterAddOutSize;
+        if constexpr (LAYOUT_Q == SLILayout::TND) {
+            scatterAddOutSize = constInfo.totalCost * constInfo.dSizeQueryIndex * sizeof(float);
+        } else {
+            scatterAddOutSize = constInfo.bSize * constInfo.s2Size * constInfo.dSizeQueryIndex * sizeof(float);
+        }
+        int64_t totalOffset = GetBlockNum() * (2 * constInfo.kSize * sizeof(float) +
+                                               constInfo.gSizeQueryIndex * constInfo.kSize * sizeof(float) +
+                                               constInfo.kSize * constInfo.dSizeQueryIndex * sizeof(INPUT_T));
+        int64_t lossWorkspaceOffset = totalOffset + scatterAddOutSize;
+        GM_ADDR lossWorkspace = workspace + lossWorkspaceOffset;
+
         // InitVecOP
         vecBlock.InitParams(constInfo, tilingData);
         vecBlock.InitGlobalBuffer(key, keyIndex, weight, sparseIndices, softmaxMax, softmaxSum, keyRope,
-                                  dKeyIndex, dWeight, loss, gatherSYRes, reluRes, reduceSumRes,
+                                  dKeyIndex, dWeight, loss, lossWorkspace, gatherSYRes, reluRes, reduceSumRes,
                                   scatterAddResGm);
         vecBlock.InitBuffers(pipe);
     } else if ASCEND_IS_AIC {
@@ -262,6 +275,14 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         }
     }
     SyncAll<false>();
+
+    // [INFO][Deterministic] 确定性模式：由核0执行最终loss归约
+    if constexpr (IS_DETER) {
+        vecBlock.FinalReduceLoss();
+        // 再次同步确保 lossGm 写入完成后所有核再继续
+        SyncAll<false>();
+    }
+
     if ASCEND_IS_AIV {
         vecBlock.ReInitBuffers(pipe);
         vecBlock.ProcessVector8();
@@ -511,6 +532,7 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitWor
     gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
     offset += gatherSYOffset;
     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
+
     if ASCEND_IS_AIV {
         if constexpr (LAYOUT_Q == SLILayout::TND) {
             constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);

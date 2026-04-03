@@ -32,7 +32,7 @@ public:
     __aicore__ inline SligKlLossBlockVec(){};
     __aicore__ inline void InitParams(const SLIGradKLLossConstInfo &vecConstInfo, const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tiling);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
+        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GM_ADDR lossWorkspace, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
         GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
@@ -47,6 +47,7 @@ public:
     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
     __aicore__ inline void ReInitBuffers(TPipe *pipe);
     __aicore__ inline void ProcessVector8();
+    __aicore__ inline void FinalReduceLoss();  // [INFO][Deterministic] 最终loss确定性归约
 
     // gm addr
     GlobalTensor<INPUT_T> keyGm;
@@ -66,6 +67,7 @@ public:
     GlobalTensor<T> reduceSumResGm;
     GlobalTensor<T> reluGm;
     GlobalTensor<T> scatterAddResGm;
+    GlobalTensor<float> lossWorkspaceGm;  // [INFO][Deterministic] 每个核的loss累加区
 
     const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tilingData;
     TPipe *pipe;
@@ -129,7 +131,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitParams(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-    GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
+    GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GM_ADDR lossWorkspace, GlobalTensor<INPUT_T> &gatherSYRes,
     GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes)
 {
     keyGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
@@ -145,6 +147,12 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKeyIndex);
     dWeightGm.SetGlobalBuffer((__gm__ OUT_T *)dWeight);
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
+    lossWorkspaceGm.SetGlobalBuffer((__gm__ float *)lossWorkspace);
+    // [INFO][Deterministic] 初始化当前核的 workspace 槽位为 0
+    // subBlockIdx=1 的核不会在 ProcessVector5 中写入 loss，必须初始化避免脏数据
+    if constexpr (IS_DETER) {
+        lossWorkspaceGm.SetValue(constInfo.aivIdx, 0.0f);
+    }
     if (constInfo.aivIdx == 0) {
         lossGm.SetValue(0, 0.0F);
         AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);
@@ -594,9 +602,17 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector5(SLIGrad
         dataCopyGmParams.blockLen = sizeof(T);
         dataCopyGmParams.srcStride = 0;
         dataCopyGmParams.dstStride = 0;
-        SetAtomicAdd<float>();
-        DataCopyPad(lossGm, lossSumUb, dataCopyGmParams);
-        SetAtomicNone();
+        // [INFO][Deterministic] 条件编译：确定性模式使用 workspace，否则使用 atomic add
+        if constexpr (IS_DETER) {
+            // 确定性路径：写入当前核的 workspace 槽位（无竞争）
+            LocalTensor<float> lossTemp = lossSumUb.template ReinterpretCast<float>();
+            DataCopyPad(lossWorkspaceGm[constInfo.aivIdx], lossTemp, dataCopyGmParams);
+        } else {
+            // 非确定性路径：使用 SetAtomicAdd（原逻辑，多核竞争）
+            SetAtomicAdd<float>();
+            DataCopyPad(lossGm, lossSumUb, dataCopyGmParams);
+            SetAtomicNone();
+        }
     }
     this->mulsInQue.template FreeTensor(mulsInUb);
     this->mulsResQue.template FreeTensor(mulsResUb);
@@ -788,11 +804,40 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector8()
     }
 }
 
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::FinalReduceLoss()
+{
+    // [INFO][Deterministic] 最终loss确定性归约：由AIV核0将所有核的loss结果顺序累加
+    // 使用标量 GM 读写，避免 lossSumQue buffer（仅32字节）无法容纳 totalCores 个元素的越界问题
+    if constexpr (!IS_DETER) {
+        return;
+    }
+    if (constInfo.aivIdx != 0) {
+        return;
+    }
+
+    int32_t totalCores = GetBlockNum();
+    if (totalCores <= 0) {
+        return;
+    }
+
+    // 直接标量累加各核 loss（GM 标量读，无 UB buffer 大小限制）
+    float lossSum = 0.0f;
+    for (int32_t i = 0; i < totalCores; ++i) {
+        lossSum += lossWorkspaceGm.GetValue(i);
+    }
+
+    // 标量写回最终 lossGm，并刷新 cache 确保其他核可见
+    lossGm.SetValue(0, static_cast<T>(lossSum));
+    AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                      AscendC::DcciDst::CACHELINE_OUT>(lossGm);
+}
+
 TEMPLATES_DEF
 class SligKlLossBlockVecDummy {
 public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
+        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GM_ADDR lossWorkspace, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
         GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes){};
     __aicore__ inline void InitBuffers(TPipe *pipe){};
     __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
@@ -807,6 +852,7 @@ public:
     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
     __aicore__ inline void ReInitBuffers(TPipe *pipe){};
     __aicore__ inline void ProcessVector8(){};
+    __aicore__ inline void FinalReduceLoss(){};
 };
 } // namespace SligKlLoss
 #endif
