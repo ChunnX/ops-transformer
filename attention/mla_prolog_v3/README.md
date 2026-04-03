@@ -160,44 +160,44 @@
       <td rowspan="3">部分量化</td>
       <td>kv_cache非量化 </td>
       <td>
-          入参：weight_uq_qr传入pertoken量化数据，其余入参皆为非量化数据 <br>
+          入参：weight_uq_qr传入per-token量化数据，其余入参皆为非量化数据 <br>
           出参：所有出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td>kv_cache per-channel量化 </td>
       <td>
-          入参：weight_uq_qr传入pertoken量化数据，kv_cache、kr_cache传入perchannel量化数据，其余入参皆为非量化数据 <br>
-          出参：kv_cache、kr_cache返回perchannel量化数据，其余出参返回非量化数据
+          入参：weight_uq_qr传入per-token量化数据，kv_cache、kr_cache传入per-channel量化数据，其余入参皆为非量化数据 <br>
+          出参：kv_cache、kr_cache返回per-channel量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td>kv_cache per-tile量化 </td>
       <td>
-          入参：weight_uq_qr传入pertoken量化数据，kv_cache传入per-tile量化数据,其余入参皆为非量化数据 <br>
-          出参：kv_cache_out返回pertile量化数据，其余出参返回非量化数据
+          入参：weight_uq_qr传入per-token量化数据，kv_cache传入per-tile量化数据,其余入参皆为非量化数据 <br>
+          出参：kv_cache_out返回per-tile量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td rowspan="3">全量化</td>
       <td> kv_cache非量化</td>
       <td>
-          入参：token_x传入pertoken量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入perchannel量化数据，其余入参皆为非量化数据 <br>
+          入参：token_x传入per-token量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入per-channel量化数据，其余入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>
     <tr>
       <td> kv_cache per-tensor量化 </td>
       <td>
-          入参：token_x传入pertoken量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入perchannel量化数据，kv_cache传入pertensor量化数据，其余入参皆为非量化数据 <br>
-          出参：query_out返回pertoken_head量化数据，kv_cache出参返回pertensor量化数据，其余出参返回非量化数据
+          入参：token_x传入per-token量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入per-channel量化数据，kv_cache传入per-tensor量化数据，其余入参皆为非量化数据 <br>
+          出参：query_out返回per-token-head量化数据，kv_cache出参返回per-tensor量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td> kv_cache per-tile量化 </td>
       <td>
-          入参：token_x传入pertoken量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入perchannel量化数据，其余入参皆为非量化数据 <br>
-          出参：query_out返回pertoken_head量化数据，kv_cache出参返回pertensor量化数据，其余出参返回非量化数据
+          入参：token_x传入per-token量化数据，weight_dq、weight_uq_qr、weight_dkv_kr传入per-channel量化数据，其余入参皆为非量化数据 <br>
+          出参：query_out返回per-token-head量化数据，kv_cache出参返回per-tensor量化数据，其余出参返回非量化数据
       </td>
     </tr>
   </table>

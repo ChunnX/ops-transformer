@@ -6,15 +6,15 @@
 
 ## Summary
 
-- Total issues identified: 13
-- Confirmed after validation: 7
-- False positives filtered: 6
-- Fixes applied: 7
+- Total issues identified: 17
+- Confirmed after validation: 9
+- False positives filtered: 8
+- Fixes applied: 9
 
 | Dimension | Errors | Warnings | Suggestions |
 |-----------|--------|----------|-------------|
-| Doc-Code Consistency | 3 | 0 | 0 |
-| Diagnostic Accuracy | 2 | 1 | 0 |
+| Doc-Code Consistency | 3 | 1 | 0 |
+| Diagnostic Accuracy | 3 | 1 | 0 |
 | Interception Completeness | 0 | 0 | 0 |
 | Readability | 0 | 1 | 0 |
 
@@ -35,14 +35,24 @@
 - **Problem**: `weightQuantMode` and `kvQuantMode` declared as `const int` but assigned from dereferenced `int64_t*` pointers, causing implicit narrowing conversion.
 - **Fix**: Changed both to `const int64_t`.
 
+### Issue 4 (warning): Inconsistent quantization terminology between README.md and aclnn doc
+- **File**: `README.md` lines 163, 170-171, 177-178, 185, 192-193, 199-200
+- **Problem**: README.md used unhyphenated forms ("pertoken", "perchannel", "pertensor", "pertile", "pertoken_head") while `docs/aclnnMlaPrologV3WeightNz.md` consistently uses hyphenated forms ("per-token", "per-channel", "per-tensor", "per-tile", "per-token-head").
+- **Fix**: Standardized all occurrences in README.md to hyphenated forms matching the aclnn API doc.
+
 ## 2. Tiling Diagnostic Information Accuracy
 
-### Issue 4 (error): Wrong format specifiers for int64_t values
+### Issue 5 (error): Wrong format specifiers for int64_t values
 - **File**: `mla_prolog_tiling_check.cpp` lines 98, 105, 112, 117, 122, 127, 132
 - **Problem**: Log messages use `%d` (32-bit int) for values dereferenced from `int64_t*` pointers (`weightQuantMode`, `kvQuantMode`, `queryQuantMode`, `ckvkrRepoMode`, `quantScaleRepoMode`, `tileSize`). On LP64 systems, `int64_t` is `long` (64-bit), so `%d` causes undefined behavior due to argument size mismatch.
 - **Fix**: Changed all 7 occurrences from `%d` to `%ld`.
 
-### Issue 5 (warning): Typo "pertile" in error message
+### Issue 6 (error): Wrong format specifiers for size_t values
+- **File**: `mla_prolog_tiling_check.cpp` lines 832, 1123, 1128, 1134, 1139, 1145
+- **Problem**: Log messages use `%d` (32-bit int) for `GetDimNum()` return values which are `size_t`. On LP64 systems, `size_t` is 64-bit, so `%d` causes undefined behavior.
+- **Fix**: Changed all 6 occurrences from `%d` to `%zu`.
+
+### Issue 7 (warning): Typo "pertile" in error message
 - **File**: `mla_prolog_tiling_check.cpp` line 1189
 - **Problem**: Error message says "pertile effective" — inconsistent with documentation which uses "per-tile".
 - **Fix**: Changed "pertile" to "per-tile".
@@ -55,7 +65,7 @@ No issues found. Validation noted:
 
 ## 4. Documentation & Log Readability
 
-### Issue 6 (warning): Chinese typo in quantization scenario descriptions
+### Issue 8 (warning): Chinese typo in quantization scenario descriptions
 - **File**: `README.md` lines 193, 200
 - **Problem**: "其余出参范围非量化数据" — "范围" (range/scope) is semantically incorrect; should be "返回" (return).
 - **Fix**: Changed "范围" to "返回" on both lines.
@@ -70,6 +80,6 @@ No issues found. Validation noted:
 
 | File | Changes |
 |------|---------|
-| `attention/mla_prolog/op_host/mla_prolog_tiling_check.cpp` | Fixed 7 format specifiers (`%d` → `%ld` for `int64_t` values); fixed "pertile" → "per-tile" typo |
-| `attention/mla_prolog_v3/README.md` | Fixed actual_seq_len description; corrected 12 attribute parameters from "输入" to "属性"; fixed 2 Chinese typos ("范围" → "返回") |
+| `attention/mla_prolog/op_host/mla_prolog_tiling_check.cpp` | Fixed 7 format specifiers (`%d` → `%ld` for `int64_t` values); fixed 6 format specifiers (`%d` → `%zu` for `size_t` values); fixed "pertile" → "per-tile" typo |
+| `attention/mla_prolog_v3/README.md` | Fixed actual_seq_len description; corrected 12 attribute parameters from "输入" to "属性"; fixed 2 Chinese typos ("范围" → "返回"); standardized quantization terminology to hyphenated forms (per-token, per-channel, per-tensor, per-tile, per-token-head) |
 | `attention/mla_prolog_v3/op_host/mla_prolog_v3_infershape.cpp` | Fixed type narrowing: `const int` → `const int64_t` for `weightQuantMode` and `kvQuantMode` |

@@ -829,7 +829,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheIndexDim()
     OP_CHECK_IF(context_.cacheIndex.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_1,
         OP_LOGE(context_.opName,
             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX shape dim num is 2,"
-            "cacheIndex shape dim num should be 1, but got %d.",
+            "cacheIndex shape dim num should be 1, but got %zu.",
             context_.cacheIndex.shape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -1120,29 +1120,29 @@ bool MlaPrologTilingCheck::CheckCacheModeParamShape() const
     if (std::strncmp(context_.cacheMode, CACHE_MODE_TND, CACHE_MODE_LEN) == 0) {
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_2,
             OP_LOGE(context_.opName,
-                "When cacheMode is TND, tokenX dim must be 2, actually is %d.",
+                "When cacheMode is TND, tokenX dim must be 2, actually is %zu.",
                 context_.tokenX.shape->GetStorageShape().GetDimNum()),
             return false);
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
             OP_LOGE(context_.opName,
-                "When cacheMode is TND, kvCache dim must be 3, actually is %d.",
+                "When cacheMode is TND, kvCache dim must be 3, actually is %zu.",
                 context_.kvCache.shape->GetStorageShape().GetDimNum()),
             return false);
     } else if (std::strncmp(context_.cacheMode, CACHE_MODE_BSND, CACHE_MODE_LEN) == 0) {
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
             OP_LOGE(context_.opName,
-                "When cacheMode is BSND, tokenX dim must be 3, actually is %d.",
+                "When cacheMode is BSND, tokenX dim must be 3, actually is %zu.",
                 context_.tokenX.shape->GetStorageShape().GetDimNum()),
             return false);
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
             OP_LOGE(context_.opName,
-                "When cacheMode is BSND, kvCache dim must be 4, actually is %d.",
+                "When cacheMode is BSND, kvCache dim must be 4, actually is %zu.",
                 context_.kvCache.shape->GetStorageShape().GetDimNum()),
             return false);
     } else {
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
             OP_LOGE(context_.opName,
-                "When cacheMode is in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4, actually is %d.",
+                "When cacheMode is in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4, actually is %zu.",
                 context_.kvCache.shape->GetStorageShape().GetDimNum()),
             return false);
     }
