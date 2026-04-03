@@ -1344,6 +1344,12 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
 
 ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.s1Size == 1) {
+        const std::string inputLayout = fiaInfo.opParamInfo.layOut;
+        OP_CHECK_IF(inputLayout == "BNSD_BSND",
+                    OP_LOGE(fiaInfo.opName, "BNSD_BSND layout is not supported when queryS is 1!"),
+                    return ge::GRAPH_FAILED);
+    }
     if (fiaInfo.s1Size > 1) {
         int64_t keyAntiquantMode = 0;
         if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
