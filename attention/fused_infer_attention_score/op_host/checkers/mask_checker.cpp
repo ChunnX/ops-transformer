@@ -89,13 +89,13 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     if (enableIFAMLA) {
         if (fiaInfo.s1Size == 1U) {
             // mla fullquant int8
-            if(fiaInfo.inputQType == ge::DT_INT8) {
+            if (fiaInfo.inputQType == ge::DT_INT8) {
                 const std::vector<std::string> layoutSupportList = {
                     "TND", "TND_NTD",
                 };
                 std::string layoutStr(fiaInfo.opParamInfo.layOut);
                 std::string layout = layoutStr;
-                OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) && 
+                OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) &&
                         std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
                         OP_LOGE(fiaInfo.opName,
                                 "Sparse 0 without mask is only supported when using IFA MLA full quantization, with Int8 input datatype and layout not being TND or TND_NTD, "
