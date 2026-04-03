@@ -155,11 +155,8 @@ public:
         kUbFloatCon_ = tmpBuff_.GetWithOffset<float>( static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
         buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
 
-        gatherOffsetFp32_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(chunkSize_), buffOffset);
+        inputGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(chunkSize_), buffOffset);
         buffOffset += chunkSize_ * sizeof(uint32_t);
-
-        gatherOffsetBf16_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(halfChunkSize_), buffOffset);
-        buffOffset += halfChunkSize_ * sizeof(uint32_t);
 
         gCumExpUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * paraNum_), buffOffset);
         buffOffset += chunkSize_ * sizeof(float) * paraNum_;
@@ -181,10 +178,7 @@ public:
     __aicore__ inline void InitGatherBuffer()
     {
         for (uint32_t i = 0; i < chunkSize_; ++i) {
-            gatherOffsetFp32_.SetValue(i, i * BLOCK_SIZE);
-        }
-        for (uint32_t i = 0; i < halfChunkSize_; ++i) {
-            gatherOffsetBf16_.SetValue(i, i * BLOCK_SIZE);
+            inputGatherBuffer_.SetValue(i, i * BLOCK_SIZE);
         }
         for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
             inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
@@ -706,7 +700,7 @@ private:
             Duplicate(betaUbBfloat16_, bfloat16_t(0.0f), halfChunkSize_);
             PipeBarrier<PIPE_V>();
         }
-        Gather(betaUbBfloat16_, betaLocal_, gatherOffsetBf16_, static_cast<uint32_t>(0), subValidRows);
+        Gather(betaUbBfloat16_, betaLocal_, inputGatherBuffer_, static_cast<uint32_t>(0), subValidRows);
         PipeBarrier<PIPE_V>();
 
         Cast(betaUbFloat, betaUbBfloat16_, AscendC::RoundMode::CAST_NONE, halfChunkSize_);
@@ -722,7 +716,7 @@ private:
             Duplicate(gCumUbFloat_, 0.0f, chunkSize_);
             PipeBarrier<PIPE_V>();
         }
-        Gather(gCumUbFloat_, gLocal_, gatherOffsetFp32_, static_cast<uint32_t>(0), validLen);
+        Gather(gCumUbFloat_, gLocal_, inputGatherBuffer_, static_cast<uint32_t>(0), validLen);
         PipeBarrier<PIPE_V>();
 
         fp32InQueue_.FreeTensor(gLocal_);
@@ -894,8 +888,7 @@ private:
     LocalTensor<float> kgUbFloat_;
     LocalTensor<float> vBetaUbFloat_;
     LocalTensor<float> qPrimeUbFloat_;
-    LocalTensor<uint32_t> gatherOffsetFp32_;
-    LocalTensor<uint32_t> gatherOffsetBf16_;
+    LocalTensor<uint32_t> inputGatherBuffer_;
 
     LocalTensor<bfloat16_t> betaLocal_;
     LocalTensor<bfloat16_t> valueLocal_;
