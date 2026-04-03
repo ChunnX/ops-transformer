@@ -295,6 +295,12 @@ static aclnnStatus CheckParams(
             x1, x2, bias, dequantScale, pertokenScale, commQuantScale1Optional, commQuantScale2Optional, x3, output),
         ACLNN_ERR_PARAM_INVALID);
 
+    // 5.【A2】检查x2矩阵非连续合法性
+    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
+        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
+        CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
+    }
+
     return ACLNN_SUCCESS;
 }
 
