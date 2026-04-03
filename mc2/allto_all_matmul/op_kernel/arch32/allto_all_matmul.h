@@ -48,7 +48,7 @@
 using namespace AscendC;
 using namespace Catlass;
 
-namespace Mc2Kernel {
+namespace AlltoAllMatmulImpl {
 
 // A2AMM : AlltoAllMatmul
 #define TemplateA2AMMClass typename AType, typename BType, typename BiasType, typename PerTokenScaleType, typename ScaleType, typename CType, typename AllToAllResultType, bool hasBias, bool transB, int32_t QuantType
@@ -559,8 +559,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm
 template <TemplateA2AMMClass>
 __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Quant(uint64_t flagIdx, int32_t commIdx) {
     __gm__ AType* dataSrc = (__gm__ AType *)buff[rank];
-    int32_t totalDataSize = x1DataSize < allToAllSizeAllRanksPerLoop ?
-        x1DataSize : allToAllSizeAllRanksPerLoop; // 实际需要处理的数据量
+    int32_t totalDataSize = min(x1DataSize, allToAllSizeAllRanksPerLoop); // 实际需要处理的数据量
     int32_t quantSizePerCore =  (totalDataSize / quantCoreNum) / tokenSize * tokenSize; //每核均分的数据量
     int32_t remainTokenNum = (totalDataSize - quantSizePerCore * quantCoreNum) / tokenSize; //每个核均分quantSizePerCore之后，剩余的token由前remainTokenNum个核各多分担一个
     uint32_t globalAivIdx = aicIdx * 2 + aivIdx;
@@ -815,5 +814,5 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Process()
     SyncAll<false>();
 }
 
-} // Mc2Kernel
+} // AlltoAllMatmulImpl
 #endif // ALL_TO_ALL_MATMUL_H

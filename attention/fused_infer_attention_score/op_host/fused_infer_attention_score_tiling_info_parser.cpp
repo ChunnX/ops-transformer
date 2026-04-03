@@ -130,10 +130,8 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
 
 ge::graphStatus FiaInfoParser::GetMaxWorkspaceFlag()
 {
-    if ((opParamInfo_.actualSeqLengths.tensor != nullptr &&
-        opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
-        (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
-        opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
+    if ((opParamInfo_.actualSeqLengths.tensor && !opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>()) ||
+        (opParamInfo_.actualSeqLengthsQ.tensor && !opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>())) {
         isMaxWorkspace_ = true;
         OP_LOGI(opName_, "FIA tiling sink");
     } else {
@@ -202,7 +200,8 @@ ge::graphStatus FiaInfoParser::GetNpuInfo()
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND310P) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (npuArch_ != NpuArch::DAV_3510)) {
+        (npuArch_ != NpuArch::DAV_3510) &&
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_55)) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d]/NpuArch[%d] is not support.", static_cast<int32_t>(socVersion_), static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -435,12 +434,6 @@ void FiaInfoParser::GetPreNextToken()
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     }
-
-    if ((quantMode_ == FiaQuantMode::ANTI_QUANT) && (s1Size_ == 1)) {
-        preToken_ = SPARSE_MODE_INT_MAX;
-        nextToken_ = SPARSE_MODE_INT_MAX;
-    }
-
 }
 
 ge::graphStatus FiaInfoParser::GetKvCache()
@@ -725,11 +718,10 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
         int32_t blockNumPerBatch = 0;
         int64_t blockNumValid = 0;
         maxBlockNumPerBatch_ = 0;
-        if (actSeqLenKV == nullptr || actSeqLenKV->GetData<int64_t>() == nullptr || blockSize_ == 0) {
+        if (actSeqLenKV->GetData<int64_t>() == nullptr) {
             return ge::GRAPH_SUCCESS;
         }
-        uint32_t loops = std::min(bSize_, static_cast<uint32_t>(actSeqLenKV->GetShapeSize()));
-        for (uint32_t i = 0; i < loops; i++) {
+        for (uint32_t i = 0; i < bSize_; i++) {
             actualSeqKVPerBatch = (actSeqLenKV->GetShapeSize() > 1) ?
                                       static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[i]) :
                                       static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[0]);
@@ -1087,9 +1079,6 @@ void FiaInfoParser::GetPaddingSizeFlag()
             needInit_ = true;
         }
     }
-    if ((quantMode_ == FiaQuantMode::ANTI_QUANT) && (s1Size_ == 1)) {
-        qPaddingSizeFlag_ = false;
-    }
 }
 
 void FiaInfoParser::GetMaskFlag()
@@ -1218,11 +1207,14 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                 }
             }
         }
-    }
 
-    if ((quantMode_ == FiaQuantMode::ANTI_QUANT) && (s1Size_ == 1)) {
-        if (qLayout_ != FiaLayout::TND) {
-            actualLenQDims_ = 0;
+        if ((quantMode_ == FiaQuantMode::ANTI_QUANT) && (s1Size_ == 1)) {
+            preToken_ = SPARSE_MODE_INT_MAX;
+            nextToken_ = SPARSE_MODE_INT_MAX;
+            if (qLayout_ != FiaLayout::TND) {
+                actualLenQDims_ = 0;
+            }
+            qPaddingSizeFlag_ = false;
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1420,6 +1412,9 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
     GetInOutDataType();
     GetKvStorageMode();
     GetQuantMode();
+    if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
+        return ge::GRAPH_FAILED;
+    }
     if (ge::GRAPH_SUCCESS != GetAntiQuantInfo()) {
         return ge::GRAPH_FAILED;
     }
@@ -1451,9 +1446,6 @@ ge::graphStatus FiaInfoParser::ParseAxisInfo()
         return ge::GRAPH_FAILED;
     }
     GetUpdateInfo();
-    if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size()) {
         return ge::GRAPH_FAILED;
     }
@@ -1479,4 +1471,4 @@ ge::graphStatus FiaInfoParser::ParseFeatureInfo()
     }
     return ge::GRAPH_SUCCESS;
 }
-} // namespace optiling
+}

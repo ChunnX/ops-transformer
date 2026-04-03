@@ -460,6 +460,10 @@ namespace BSA {
             // pre
             VecPre(params);
             PipeBarrier<PIPE_ALL>();
+            
+            // softmaxgrad
+            VecSoftMaxGrad(params);
+            PipeBarrier<PIPE_ALL>();
 
             // simply softmax
             VecOp(params);
@@ -525,18 +529,9 @@ namespace BSA {
             // uint32_t count = 0;
             uint32_t pingpongFlag = 0;
             uint64_t gSOffset = coreIdx * WORKSPACE_BLOCK_SIZE_DB;
-
-            GM_ADDR sftmgGm = params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize;
-            SfmgParams SfmgParams(params.dout, params.out, params.actualQseqlen, sftmgGm, params.tiling);
-            EpilogueFAGSfmg vecSftmg(SfmgParams);
-            EpilogueFAGOp sStmOp;
-
             for (uint32_t i = 0; i < taskLengthVec; i++) {
                 TaskInfo curInfo = taskInfoVec[i % 2];
                 uint64_t beginKVOffset = curInfo.kvOffset;
-
-                vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize);
-
                 for (uint32_t idx = 0; idx < kvBlockNum; idx++) {
                     // BlcokSpaseMask shape : [batch, numhead, CeilDiv(maxQSeqlen, blockShapeX), CeilDiv(maxKvSeqlen, blockShapeY)]
                     uint64_t maskOffset = curInfo.curBatchIdx * batchBlocks + curInfo.curHeadIdx * headBlocks + curInfo.curQBlcokIdx * kvBlockNum + idx;
@@ -584,7 +579,8 @@ namespace BSA {
                             if (vecCoreIdx % 2 == 0) {
                                 SfmParams sfmParams(s, softmaxLse, dp, blockSparseMask, actualSeqQlen, actualSeqKvlen, sftmgGm, pWorkspace, dsWorkspace, tiling,
                                                     actualRow, actualCol, processNums, curCoreBatch, curCoreN1Idx, curCoreS1Idx, curT1Idx);
-                                sStmOp(sfmParams);
+                                EpilogueFAGOp sStmOp(sfmParams);
+                                sStmOp();
                             }
 
                             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(VEC2CUBE);
@@ -601,6 +597,25 @@ namespace BSA {
                         blockShapeX, basicQBlockSize, inputLayout, taskInfoVec[i % 2], taskInfoVec[(i + 1) % 2]);
                 }
             }
+        }
+
+        __aicore__ inline
+        void VecSoftMaxGrad(Params const &params)
+        {
+            __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+
+            uint64_t sOutSize = tilingData->sOutSize;
+            uint64_t dPOutSize = tilingData->dPOutSize;
+            uint64_t dQOutSize = tilingData->dQOutSize;
+            uint64_t dKOutSize = tilingData->dKOutSize;
+            uint64_t dVOutSize = tilingData->dVOutSize;
+
+            GM_ADDR gDqWrkGm = params.workspace + sOutSize + dPOutSize;
+
+            GM_ADDR sftmgGm = params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize;
+            SfmgParams SfmgParams(params.dout, params.out, params.actualQseqlen, sftmgGm, params.tiling);
+            EpilogueFAGSfmg vecSftmg(SfmgParams);
+            vecSftmg();
         }
 
         __aicore__ inline

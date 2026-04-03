@@ -129,7 +129,6 @@ public:
         uint64_t blockNums = BLOCK_BYTE_SIZE / sizeof(InputDType);
         dAlign = (d + blockNums - 1) / blockNums * blockNums;
         actualSeqQlenAddr = params.actualQSeqlen;
-
         // 计算 buffer 大小
         constexpr static uint64_t inputBufferLen = 24 * 1024;                    // castBuffer 24K*2=48K
         constexpr static uint64_t castBufferLen = 48 * 1024;                     // castBuffer 48K*2=96K
@@ -191,36 +190,32 @@ public:
 
     template <int32_t CORE_TYPE = g_coreType>
     __aicore__ inline
-    void operator()(uint64_t startIdx, uint64_t singleCoreCount);
+    void operator()();
 
     template <>
     __aicore__ inline
-    void operator()<AscendC::AIC>(uint64_t startIdx, uint64_t singleCoreCount)
+    void operator()<AscendC::AIC>()
     {
+
     }
 
-    /*
-    * brief: softmaxgrad execute
-    *
-    * startIdx : input 开始序号
-    * singleCoreRowCount: 当前核需要处理的行数，BNSD格式，bns进行并轴；tnd, tn进行并轴
-    */
     template <>
     __aicore__ inline
-    void operator()<AscendC::AIV>(uint64_t startIdx, uint64_t singleCoreRowCount)
+    void operator()<AscendC::AIV>()
     {
         if (cBlockIdx >= usedCoreNums) {
             return;
         }
-
-        normalCoreLoopTimes = CeilDiv(singleCoreRowCount, singleLoopNBurstNum); // loop次数
-        normalCoreLastLoopNBurstNum = singleCoreRowCount - (normalCoreLoopTimes - 1) * singleLoopNBurstNum; // 尾循环处理行数
-
         uint64_t singleCoreLoop = normalCoreLoopTimes;
         uint64_t singleCoreLastLoopNBurstNum = normalCoreLastLoopNBurstNum; // 普通单核最后一次loop处理多少个D
+        if (cBlockIdx == usedCoreNums - 1) {
+            singleCoreLoop = tailCoreLoopTimes;
+            singleCoreLastLoopNBurstNum = tailCoreLastLoopNBurstNum;
+        }
 
+        uint64_t startIdx = cBlockIdx * normalCoreSize; // input start idx
         uint64_t nBurst = singleLoopNBurstNum; // single loop nums
-        uint64_t curS = s1; // tnd 格式需修改
+        uint64_t curS = s1;
         uint32_t ping = 0;
 
             

@@ -1,5 +1,5 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -51,13 +51,6 @@ public:
     /// Ctor
     HOST_DEVICE
     RowMajor(Shape shape, Stride stride) : shape_(shape), stride_(stride) {}
-
-    template <class Element>
-    HOST_DEVICE
-    static RowMajor MakeLayout(Index rows, Index cols)
-    {
-        return RowMajor(rows, cols);
-    }
 
     template <class Element>
     HOST_DEVICE
@@ -137,14 +130,7 @@ public:
         return stride_[idx];
     }
 
-    /// Returns the length of the layout
-    HOST_DEVICE
-    LongIndex Capacity() const
-    {
-        return static_cast<LongIndex>(shape_[0]) * stride_[0];
-    }
-
-protected:
+private:
     //
     // Data members
     //
@@ -190,13 +176,6 @@ public:
     /// Ctor
     HOST_DEVICE
     ColumnMajor(Shape shape, Stride stride) : shape_(shape), stride_(stride) {}
-
-    template <class Element>
-    HOST_DEVICE
-    static ColumnMajor MakeLayout(Index rows, Index cols)
-    {
-        return ColumnMajor(rows, cols);
-    }
 
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
@@ -269,14 +248,7 @@ public:
         return stride_[idx];
     }
 
-    /// Returns the length of the layout
-    HOST_DEVICE
-    LongIndex Capacity() const
-    {
-        return static_cast<LongIndex>(shape_[1]) * stride_[1];
-    }
-
-protected:
+private:
     //
     // Data members
     //
@@ -444,13 +416,6 @@ public:
     typename Stride::Index &stride(int idx)
     {
         return stride_[idx];
-    }
-
-    /// Returns the length of the layout
-    HOST_DEVICE
-    LongIndex Capacity() const
-    {
-        return static_cast<LongIndex>(stride_[1]) * shape_[1];
     }
 
 private:
@@ -635,13 +600,6 @@ public:
     typename Stride::Index &stride(int idx)
     {
         return stride_[idx];
-    }
-
-    /// Returns the length of the layout
-    HOST_DEVICE
-    LongIndex Capacity() const
-    {
-        return static_cast<LongIndex>(stride_[3]) * shape_[3];
     }
 
 private:

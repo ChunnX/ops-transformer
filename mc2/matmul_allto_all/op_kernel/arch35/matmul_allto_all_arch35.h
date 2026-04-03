@@ -16,8 +16,11 @@
 #ifndef MATMUL_ALLTO_ALL_ARCH35_H
 #define MATMUL_ALLTO_ALL_ARCH35_H
 
-namespace Mc2Kernel
+#include "matmul_allto_all_tiling_data.h"
+
+namespace MatmulAlltoAllImpl
 {
+using namespace AscendC;
 /**
  * SchedulerType: 流水线类的数据类型
  * SchedulerContextType: 流水线类使用的上下文的数据类型
@@ -30,7 +33,7 @@ public:
     __aicore__ inline MatmulAlltoAllArch35(SchedulerType* pipeLine) : pipeLine_(pipeLine){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
                                 GM_ADDR workspaceGM, MatmulAlltoAllTilingDataType* tilingData,
-                                AscendC::TPipe* tPipe);
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -38,7 +41,7 @@ private:
     SchedulerContextType pipeLineContext_;
     MatmulAlltoAllTilingDataType* tilingData_;
     // 数据控制
-    AscendC::TPipe* tPipe_;
+    TPipe* tPipe_;
     // 输入输出矩阵地址
     GM_ADDR x1_;
     GM_ADDR x2_;
@@ -55,9 +58,8 @@ private:
 };
 
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
-__aicore__ inline void MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR workspaceGM,
-    MatmulAlltoAllTilingDataType* tilingData, AscendC::TPipe* tPipe)
+__aicore__ inline void MatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
+    GM_ADDR workspaceGM, MatmulAlltoAllTilingDataType* tilingData,TPipe* tPipe)
 {   
     // 获取tilingdata数据
     tilingData_ = tilingData;
@@ -169,6 +171,6 @@ __aicore__ inline void MatmulAlltoAllArch35<SchedulerType, SchedulerContextType,
 
     pipeLine_->Process(taskCnt);
 }
-}; // namespace Mc2Kernel
+}; // namespace MatmulAlltoAllImpl
 
 #endif

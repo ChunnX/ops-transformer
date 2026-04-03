@@ -955,17 +955,9 @@ install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
 )
 
-file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
-foreach(_3rd_op_dir ${_3rd_op_dirs})
-    if(IS_DIRECTORY "${_3rd_op_dir}")
-        if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
-            get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
-            install(DIRECTORY ${_3rd_op_dir}/op_kernel
-                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
-            )
-        endif()
-    endif()
-endforeach()
+install(DIRECTORY ${OPS_ADV_DIR}/mc2/3rd/
+        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd
+)
 
 install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
@@ -1029,7 +1021,7 @@ if (ENABLE_OPS_KERNEL)
     add_custom_target(ops_transformer_kernel ALL)
     add_custom_target(ops_transformer_config ALL)
     add_dependencies(ops_transformer_kernel ops_transformer_config)
-    add_dependencies(ops_transformer_kernel generate_transformer_adapt_py generate_compile_cmd)
+    add_dependencies(ops_transformer_kernel generate_compile_cmd)
 
     foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
         add_bin_compile_target(

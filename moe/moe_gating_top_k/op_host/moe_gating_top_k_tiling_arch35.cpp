@@ -99,9 +99,6 @@ protected:
 private:
     ge::graphStatus CheckInputShape();
     ge::graphStatus CheckAttr();
-    ge::graphStatus CheckAttrBasic();
-    ge::graphStatus CheckAttrExpert();
-    ge::graphStatus CheckAttrMode();
     ge::graphStatus CheckOutShape();
     void CalTmpBufUbSize();
     void SplitRows();
@@ -171,7 +168,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrBasic()
+ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
 {
     OP_CHECK_IF(k_ <= 0, OP_LOGE(context_, "k is: %ld, but should be greater than 0.", k_), return ge::GRAPH_FAILED);
     OP_CHECK_IF(kGroup_ <= 0, OP_LOGE(context_, "k_group is: %ld, but should be greater than 0.", kGroup_),
@@ -190,11 +187,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrBasic()
                         "k_group * group expert count is: %ld, but it must be greater than or equal to k: %ld.",
                         kGroup_, k_),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
 
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrExpert()
-{
     if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
         kGroup_ = 1;
         groupCount_ = 1;
@@ -220,21 +213,16 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrExpert()
     OP_CHECK_IF(groupExpertCount < 1,
                 OP_LOGE(context_, "per group expert count is: %ld, but should be greater than 0.", groupExpertCount),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
-{
     OP_CHECK_IF(groupSelectMode_ != GROUP_SELECT_MODE_SUM && groupSelectMode_ != GROUP_SELECT_MODE_MAX,
                 OP_LOGE(context_, "group select mode is: %ld, but currently only support %ld and %ld.",
                         groupSelectMode_, GROUP_SELECT_MODE_SUM, GROUP_SELECT_MODE_MAX),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        groupSelectMode_ == GROUP_SELECT_MODE_SUM && (expertCount_ / groupCount_) < 2,
+        groupSelectMode_ == GROUP_SELECT_MODE_SUM && groupExpertCount < 2,
         OP_LOGE(
             context_,
             "group expert count is: %ld, if group select mode is: %ld, group expert count should be greater than 1.",
-            expertCount_ / groupCount_, groupSelectMode_),
+            groupExpertCount, groupSelectMode_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(renorm_ != RENORM_NO,
@@ -245,17 +233,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
                 OP_LOGE(context_, "norm type is: %ld, but currently only support %ld and %ld.", normType_,
                         NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
 
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
-{
-    OP_CHECK_IF(CheckAttrBasic() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckAttrBasic failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckAttrExpert() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckAttrExpert failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckAttrMode() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckAttrMode failed."),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
