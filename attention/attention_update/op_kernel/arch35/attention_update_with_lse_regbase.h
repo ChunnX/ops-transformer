@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -185,7 +185,7 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeMaxVF(uint32_t cur
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<float> vreg1; // 搬入的lse
+        AscendC::MicroAPI::RegTensor<float> vreg1; // 处理INF后的lse
         AscendC::MicroAPI::RegTensor<float> vreg2; // reduce max
         AscendC::MicroAPI::RegTensor<float> vreg3;
         AscendC::MicroAPI::RegTensor<float> vreg4;
@@ -194,22 +194,34 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeMaxVF(uint32_t cur
         AscendC::MicroAPI::RegTensor<float> vreg7; // 可选输出 lse_max
         AscendC::MicroAPI::RegTensor<float> vreg8;
         AscendC::MicroAPI::RegTensor<float> vreg9;
+        AscendC::MicroAPI::RegTensor<float> vreg10; // 待替换的-INF
+        AscendC::MicroAPI::RegTensor<float> vreg11; // 搬入的初始Max
+        AscendC::MicroAPI::RegTensor<float> vreg12; // 搬入的初始lse
 
         AscendC::MicroAPI::MaskReg preg1;
+        AscendC::MicroAPI::MaskReg pregAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg pregCompare;
         uint32_t sreg = curBlockNum;
         static constexpr AscendC::MicroAPI::ExpSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING,
                                                                     AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
+        MicroAPI::Duplicate(vreg10, NEG_INF);
         for (uint16_t i = 0; i < vfLoop; i++) {
             preg1 = AscendC::MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(sreg);
-            AscendC::MicroAPI::DataCopy<float>(vreg2, lseAddr + i * VL);
+            AscendC::MicroAPI::DataCopy<float>(vreg11, lseAddr + i * VL);
+            MicroAPI::Compares<float, CMPMODE::EQ>(pregCompare, vreg11, POS_INF, pregAll);
+            MicroAPI::Select<float>(vreg2, vreg10, vreg11, pregCompare);
             for (uint16_t j = 1; j < spSize; j++) {
-                AscendC::MicroAPI::DataCopy<float>(vreg1, lseAddr + i * VL + j * blockStride);
+                AscendC::MicroAPI::DataCopy<float>(vreg12, lseAddr + i * VL + j * blockStride);
+                MicroAPI::Compares<float, CMPMODE::EQ>(pregCompare, vreg12, POS_INF, pregAll);
+                MicroAPI::Select<float>(vreg1, vreg10, vreg12, pregCompare);
                 AscendC::MicroAPI::Max<float>(vreg2, vreg2, vreg1, preg1);
             }
 
             AscendC::MicroAPI::Duplicate(vreg5, static_cast<float>(0), preg1);
             for (uint16_t j = 0; j < spSize; j++) {
-                AscendC::MicroAPI::DataCopy<float>(vreg1, lseAddr + i * VL + j * blockStride);
+                AscendC::MicroAPI::DataCopy<float>(vreg12, lseAddr + i * VL + j * blockStride);
+                MicroAPI::Compares<float, CMPMODE::EQ>(pregCompare, vreg12, POS_INF, pregAll);
+                MicroAPI::Select<float>(vreg1, vreg10, vreg12, pregCompare);
                 AscendC::MicroAPI::Sub<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vreg3, vreg1, vreg2, preg1);
                 AscendC::MicroAPI::Exp<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vreg4, vreg3, preg1);
                 AscendC::MicroAPI::Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vreg5, vreg4, vreg5, preg1);
@@ -218,7 +230,9 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeMaxVF(uint32_t cur
             AscendC::MicroAPI::Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vreg7, vreg6, vreg2, preg1);
             AscendC::MicroAPI::DataCopy<float>(maxAddr + i * VL, vreg7, preg1);
             for (uint16_t j = 0; j < spSize; j++) {
-                AscendC::MicroAPI::DataCopy<float>(vreg1, lseAddr + i * VL + j * blockStride);
+                AscendC::MicroAPI::DataCopy<float>(vreg12, lseAddr + i * VL + j * blockStride);
+                MicroAPI::Compares<float, CMPMODE::EQ>(pregCompare, vreg12, POS_INF, pregAll);
+                MicroAPI::Select<float>(vreg1, vreg10, vreg12, pregCompare);
                 AscendC::MicroAPI::Sub<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vreg8, vreg1, vreg7, preg1);
                 AscendC::MicroAPI::Exp<float, &mode>(vreg9, vreg8, preg1);
                 AscendC::MicroAPI::DataCopy<float>(expAddr + i * VL + j * blockStride, vreg9, preg1);
