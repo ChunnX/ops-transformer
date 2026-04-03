@@ -955,9 +955,17 @@ install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
 )
 
-install(DIRECTORY ${OPS_ADV_DIR}/mc2/3rd/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd
-)
+file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
+foreach(_3rd_op_dir ${_3rd_op_dirs})
+    if(IS_DIRECTORY "${_3rd_op_dir}")
+        if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
+            get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
+            install(DIRECTORY ${_3rd_op_dir}/op_kernel
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
+            )
+        endif()
+    endif()
+endforeach()
 
 install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
