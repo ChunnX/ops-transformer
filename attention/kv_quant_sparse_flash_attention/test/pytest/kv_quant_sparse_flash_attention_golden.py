@@ -32,6 +32,7 @@ UNSUPPORTED_GOLDEN_MSG = (
 
 
 def _resolve_actual_seq(actual_seq, default_value, batch_size, name):
+    # 将可选的 actual_seq 统一整理成按 batch 对齐的长度列表。
     if actual_seq is None:
         return [default_value] * batch_size
     if len(actual_seq) != batch_size:
@@ -40,6 +41,7 @@ def _resolve_actual_seq(actual_seq, default_value, batch_size, name):
 
 
 def _build_query_tensors(batch_size, seq_q, head_num_q, head_dim, rope_head_dim, q_type):
+    # 构造 query 的 base 和 rope 部分，并在最后一维拼接。
     query_base = torch.tensor(
         np.random.uniform(DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT,
                           (batch_size, seq_q, head_num_q, head_dim)),
@@ -54,6 +56,7 @@ def _build_query_tensors(batch_size, seq_q, head_num_q, head_dim, rope_head_dim,
 
 
 def _build_kv_tensors(kv_dtype, kv_dim0, seq_kv, head_num_kv, head_dim, rope_head_dim, num_tiles, q_type):
+    # 构造 K/V 存储张量，以及与 key 一起存放的 antiquant_scale。
     key_rope = torch.tensor(
         np.random.uniform(DATA_RANGE_ROPE_LEFT, DATA_RANGE_ROPE_RIGHT,
                           (kv_dim0, seq_kv, head_num_kv, rope_head_dim)),
@@ -100,6 +103,7 @@ def _build_kv_tensors(kv_dtype, kv_dim0, seq_kv, head_num_kv, head_dim, rope_hea
 
 
 def _build_pa_block_table(batch_size, block_num, block_size, seq_kv, actual_seq_kv_list):
+    # PA 场景下为每个 batch 分配可用的缓存块索引。
     max_blocks_per_batch = max(
         math.ceil(seq_kv / block_size),
         math.ceil(max(actual_seq_kv_list) / block_size),
@@ -122,6 +126,7 @@ def _build_pa_block_table(batch_size, block_num, block_size, seq_kv, actual_seq_
 
 def _build_sparse_indices(batch_size, seq_q, head_num_kv, sparse_count, sparse_block_size,
                           sparse_mode, actual_seq_q_list, actual_seq_kv_list):
+    # 根据 sparse_mode 和实际长度生成每个 query 位置的稀疏 block 索引。
     sparse_indices_np = np.full((batch_size, seq_q, head_num_kv, sparse_count), -1, dtype=np.int32)
 
     for batch_index in range(batch_size):
@@ -153,6 +158,7 @@ def _build_sparse_indices(batch_size, seq_q, head_num_kv, sparse_count, sparse_b
 
 
 def _to_tnd(tensor_bsnd, actual_seq_list):
+    # 将 BSND 数据按有效长度裁剪后压平为 TND。
     tensor_list = []
     for batch_index, actual_seq in enumerate(actual_seq_list):
         tensor_list.append(tensor_bsnd[batch_index, :actual_seq])
@@ -162,6 +168,7 @@ def _to_tnd(tensor_bsnd, actual_seq_list):
 
 
 def _to_tnd_sparse_indices(sparse_indices_bsnd, actual_seq_q_list):
+    # TND 下的 sparse_indices 也需要按有效 query token 重新拼接。
     tensor_list = []
     for batch_index, actual_seq in enumerate(actual_seq_q_list):
         tensor_list.append(sparse_indices_bsnd[batch_index, :actual_seq])
@@ -172,12 +179,14 @@ def _to_tnd_sparse_indices(sparse_indices_bsnd, actual_seq_q_list):
 
 
 def _build_actual_seq_tensor(layout, actual_seq_list):
+    # TND 需要前缀和形式，其他布局直接保持逐 batch 长度。
     if layout == "TND":
         return torch.tensor(np.cumsum(actual_seq_list), dtype=torch.int32)
     return torch.tensor(actual_seq_list, dtype=torch.int32)
 
 
 def _save_test_case(input_data, output_dir):
+    # batch 流程会先把输入固化成 pt，后续测试直接回放该文件。
     os.makedirs(output_dir, exist_ok=True)
     case_name = input_data["Testcase_Name"]
     filepath = os.path.join(output_dir, f"{case_name}.pt")
@@ -187,6 +196,7 @@ def _save_test_case(input_data, output_dir):
 
 
 def generate_and_save_testdata(params, save_pt=False, save_path="", compute_golden=True):
+    # 该接口负责把参数组装成 qsfa 直调所需的完整输入字典。
     (testcase_name, layout_query, layout_kv, q_type, kv_dtype,
      batch_size, seq_q, seq_kv, head_num_q, head_num_kv, head_dim, sparse_count,
      scale_value, key_quant_mode, value_quant_mode, sparse_block_size,
@@ -199,6 +209,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
     actual_seq_kv_list = _resolve_actual_seq(actual_seq_kv, seq_kv, batch_size, "actual_seq_kv")
 
     if pa_mode:
+        # PA_BSND 下 key/value 采用 block 形式存储。
         if block_num is None:
             raise ValueError("PA mode requires block_num")
         kv_dim0 = block_num
@@ -246,6 +257,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
             value_input = value
 
     if layout_query == "TND":
+        # TND 需要把每个 batch 的有效 token 拼成连续序列。
         query_input = _to_tnd(query_bsnd, actual_seq_q_list)
         sparse_indices = _to_tnd_sparse_indices(sparse_indices_bsnd, actual_seq_q_list)
     else:
@@ -255,6 +267,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
     actual_seq_q_tensor = _build_actual_seq_tensor(layout_query, actual_seq_q_list)
 
     if compute_golden:
+        # 当前版本不再生成 CPU golden，只输出说明信息。
         print(UNSUPPORTED_GOLDEN_MSG)
     cpu_result = None
 

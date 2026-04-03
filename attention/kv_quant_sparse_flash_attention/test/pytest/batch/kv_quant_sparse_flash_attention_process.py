@@ -17,6 +17,7 @@ from torchair.configs.compiler_config import CompilerConfig
 
 
 def _load_inputs_to_npu(input_dict):
+    # 将输入字典中的 tensor 逐个搬到 NPU。
     def to_npu(value):
         if isinstance(value, torch.Tensor):
             return value.npu()
@@ -25,6 +26,7 @@ def _load_inputs_to_npu(input_dict):
 
 
 def _get_kv_torch_dtype(kv_dtype_str):
+    # 把配置里的 kv 类型字符串映射成接口实际需要的 dtype。
     if kv_dtype_str == "hifloat8":
         return torch_npu.hifloat8
     if kv_dtype_str == "float8_e4m3fn":
@@ -33,6 +35,7 @@ def _get_kv_torch_dtype(kv_dtype_str):
 
 
 def _call_npu_op(npu_inputs, input_dict):
+    # 单算子直调路径，参数组织与 torch_npu 接口保持一致。
     kv_torch_dtype = _get_kv_torch_dtype(input_dict.get("kv_dtype", "hifloat8"))
     return torch_npu.npu_kv_quant_sparse_flash_attention(
         query=npu_inputs["query"],
@@ -63,6 +66,7 @@ def _call_npu_op(npu_inputs, input_dict):
 
 
 class Network(torch.nn.Module):
+    # 图模式下的最小封装，便于 torch.compile 捕获整个调用。
     def forward(self, query, key, value, sparse_indices,
                 scale_value, key_quant_mode, value_quant_mode,
                 key_dequant_scale, value_dequant_scale, block_table,
@@ -100,6 +104,7 @@ class Network(torch.nn.Module):
 
 
 def test_qsfa_process_ci(test_data, device_id=0):
+    # single/batch 默认走该路径，直接执行 aclnn 单算子。
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
@@ -112,6 +117,7 @@ def test_qsfa_process_ci(test_data, device_id=0):
 
 
 def test_qsfa_process_graph(test_data, device_id=0):
+    # graph 模式下先编译，再用同一组输入做回放。
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
