@@ -133,6 +133,14 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Mxfp8() const
         } else {
             OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.", *(context_->kvQuantMode)); 
         }
+    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::PARTIAL_QUANT)) {
+        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+                return QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_CHANNEL)) {
+                return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL;
+        } else {
+            OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2}, actually is %d.", *(context_->kvQuantMode));
+        }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT;
@@ -570,11 +578,6 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
         cvMode = ASCENDC_TPL_MIX_AIC_1_1; // cv 1:1模式
     }
 
-    if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 && GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(context_->opName, "CV1:1 mode is not support on Ascend 950PR/Ascend 950DT.");
-        return ge::GRAPH_FAILED;
-    }
-
     if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 &&
             (scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT ||
             (scenarioInfo_.cacheMode_ != CACHE_MODE::PA_BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::PA_NZ))) {
@@ -697,12 +700,12 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
     mlaPrologContext.cacheMode = attrs->GetStr(CACHE_MODE_ATTR_INDEX);
     if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         mlaPrologContext.queryNormFlag = attrs->GetAttrPointer<bool>(QUERY_NORM_FLAG_ATTR_INDEX);
-        mlaPrologContext.weightQuantMode = attrs->GetAttrPointer<int>(WEIGHT_QUANT_MODE_ATTR_INDEX);
-        mlaPrologContext.kvQuantMode = attrs->GetAttrPointer<int>(KV_CACHE_QUANT_MODE_ATTR_INDEX);
-        mlaPrologContext.queryQuantMode = attrs->GetAttrPointer<int>(QUERY_QUANT_MODE_ATTR_INDEX);
-        mlaPrologContext.ckvkrRepoMode = attrs->GetAttrPointer<int>(CKVKR_REPO_MODE_ATTR_INDEX);
-        mlaPrologContext.quantScaleRepoMode = attrs->GetAttrPointer<int>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
-        mlaPrologContext.tileSize = attrs->GetAttrPointer<int>(TILE_SIZE_ATTR_INDEX);
+        mlaPrologContext.weightQuantMode = attrs->GetAttrPointer<int64_t>(WEIGHT_QUANT_MODE_ATTR_INDEX);
+        mlaPrologContext.kvQuantMode = attrs->GetAttrPointer<int64_t>(KV_CACHE_QUANT_MODE_ATTR_INDEX);
+        mlaPrologContext.queryQuantMode = attrs->GetAttrPointer<int64_t>(QUERY_QUANT_MODE_ATTR_INDEX);
+        mlaPrologContext.ckvkrRepoMode = attrs->GetAttrPointer<int64_t>(CKVKR_REPO_MODE_ATTR_INDEX);
+        mlaPrologContext.quantScaleRepoMode = attrs->GetAttrPointer<int64_t>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
+        mlaPrologContext.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
         mlaPrologContext.qcQrScale = attrs->GetAttrPointer<float>(QC_QR_SCALE_ATTR_INDEX);
         mlaPrologContext.kcScale = attrs->GetAttrPointer<float>(KC_SCALE_ATTR_INDEX);
     } else {

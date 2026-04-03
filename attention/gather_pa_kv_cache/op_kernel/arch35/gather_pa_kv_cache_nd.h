@@ -102,13 +102,13 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     batchCount_ = tl_->batchCount;
     blockTableWidth_ = tl_->blockTableWidth;
     // UB放得下的kv Cache Block大小
-    maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK;
-    maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV;
-    maxUbHiddenSize_ = tl_->maxUbHiddenSize;
+    maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK * sizeof(DTYPE_KEY);
+    maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV * sizeof(DTYPE_VALUE);
+    maxUbHiddenSize_ = tl_->maxUbHiddenSize * sizeof(DTYPE_KEY);
     seqLenAccSize_ = tl_->seqLenAccumSize;
     numBlocks_ = tl_->numBlocks;
-    hiddenSizeK_ = tl_->hiddenSizeK;
-    hiddenSizeV_ = tl_->hiddenSizeV;
+    hiddenSizeK_ = tl_->hiddenSizeK * sizeof(DTYPE_KEY);
+    hiddenSizeV_ = tl_->hiddenSizeV * sizeof(DTYPE_VALUE);
     numTokens_ = tl_->numTokens;
 
     padExtParams_.isPad = false;

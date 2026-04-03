@@ -313,7 +313,7 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
 }
 
 template <typename LIGT>
-__aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM, GlobalTensor<float> dkWorkSpaceGm,
+__aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM,GlobalTensor<float> dkWorkSpaceGm,
 	const LIGCommon::ConstInfo &constInfo, const LIGCommon::RunInfo &runInfo)
 {
     uint64_t determinLen = constInfo.determinLen;

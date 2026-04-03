@@ -84,11 +84,10 @@ ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContex
 
 ge::graphStatus InferDataTypeDenseLightningIndexerGradKLLoss(gert::InferDataTypeContext *context)
 {
-    if (context == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeDenseLightningIndexerGradKLLoss");
+    if (context == nullptr){
+        return ge::GRAPH_FAILED;
+    } 
     const auto inputDataType = context->GetInputDataType(queryEnum);
     context->SetOutputDataType(0, inputDataType);
 

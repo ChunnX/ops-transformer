@@ -340,10 +340,7 @@ __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::CopyDqkv2GM(FagRunInfo &
     dataCopyParams.srcStride = QUANT_S1_BASE_COUNT * sizeof(CALC_TYPE) / BLOCK_SIZE;
     dataCopyParams.dstStride = constInfo.copyOutDStride;
 
-    bool needAtomic =
-        ((mode == 0 && (constInfo.s2Outer != 1 || (constInfo.s2Outer == 1 && runInfo.quantRunInfo.s2Idx == 0))) ||
-         ((constInfo.s2Outer != 1 && runInfo.isValueReuse) ||
-          !(runInfo.isFirstProcessBlock && constInfo.s2Outer == 1 && runInfo.quantRunInfo.s1Idx == 0)));
+    bool needAtomic = ((mode == 0 && constInfo.s2Outer != 1) || (mode != 0 && runInfo.quantRunInfo.kvNeedAtomic));
     if (needAtomic) {
         SetAtomicAdd<CALC_TYPE>();
     }
