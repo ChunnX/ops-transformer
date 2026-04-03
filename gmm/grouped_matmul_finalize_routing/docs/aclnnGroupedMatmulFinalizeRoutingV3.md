@@ -138,7 +138,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     <tr>
       <td>scaleOptional</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，perchannel量化参数。</td>
+      <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
       <td>INT64，FLOAT8_E8M0</td>
       <td>ND</td>
