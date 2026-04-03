@@ -2139,7 +2139,7 @@ __aicore__ inline void CalGQABandIndex(const BandInfo &bandInfo, int64_t j, int6
         int64_t R1 = bandInfo.R1;
         int64_t R2 = bandInfo.R2;
         // 对称性好的情况特殊处理
-        if (NUM_TWO * b2 == k && L1 == L3) {
+        if (NUM_TWO * b2 == k && L1 == L3 && m > 1) {
             b_id = (j + 1) / NUM_TWO;
             if (L2 % NUM_TWO == 1) {
                 int64_t R0 = Max(NUM_TWO * p, m);
