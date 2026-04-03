@@ -353,8 +353,8 @@ public:
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);
         for (uint64_t i = 0; i < loopTimes; i ++) {
             auto event_id = ping ? EVENT_ID0 : EVENT_ID1;
-            uint64_t sCount = singleLoopScount;
-            uint64_t totalSCout = i * singleLoopScount;
+            uint64_t sCount = singleLoopSCount;
+            uint64_t totalSCout = i * singleLoopSCount;
             uint64_t gmOffset = totalSCout * d;
             if (i == loopTimes - 1 && tailS != 0) {
                 sCount = tailS;
