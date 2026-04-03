@@ -31,7 +31,7 @@
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
-namespace optiling {
+namespace Mc2Tiling {
 static ge::graphStatus QuantGroupedMatMulAlltoAllvTilingFunc(gert::TilingContext* context)
 {
     return TilingRegistry::GetInstance().DoTilingImpl(context);
@@ -48,4 +48,4 @@ static ge::graphStatus TilingParseForQuantGroupedMatMulAlltoAllv(gert::TilingPar
 IMPL_OP_OPTILING(QuantGroupedMatMulAlltoAllv)
     .Tiling(QuantGroupedMatMulAlltoAllvTilingFunc)
     .TilingParse<QuantGroupedMatMulAlltoAllvCompileInfo>(TilingParseForQuantGroupedMatMulAlltoAllv);
-} // namespace optiling
+} // namespace Mc2Tiling

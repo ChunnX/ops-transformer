@@ -19,7 +19,7 @@
 #pragma once
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 
-namespace optiling {
+namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
 
 constexpr uint64_t GROUP_M_OFFSET = 32;
@@ -49,6 +49,7 @@ protected:
     ge::graphStatus CheckParamsRelationGmm() override;
     ge::graphStatus CheckParamsRelationMm() override;
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
+    ge::graphStatus MxCheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName);
 
 private:
     ge::graphStatus CheckMxQuantGmmScaleShapes();
