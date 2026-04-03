@@ -69,31 +69,47 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    uint64_t workspaceSize_ =
-        libApiWorkSpaceSize_ + inferredInfo.mmResultLen + inferredInfo.permuteLen;
+    uint64_t workspaceSize_ = libApiWorkSpaceSize_ + inferredInfo.mmResultLen + inferredInfo.permuteLen;
     workspaces[0] = workspaceSize_;
     OP_LOGD(opName_, "Workspaces[0] size=%ld, mmResultLen=%d", workspaces[0], inferredInfo.mmResultLen);
     return ge::GRAPH_SUCCESS;
 }
 
+CutResult MatmulAllToAllTilingBase::GetTilingResult()
+{
+    if (mc2tiling::IsStandardCard4P(contextInfo.args_.rankDim, npuArch_)) {
+        MMAlltoAllFitBalanceTiling alltoallTiling(contextInfo.args_, KernelType::ALL_TO_ALL);
+        return alltoallTiling.GetTiling();
+    } else {
+        SocVersion nowSocVersion = SocVersion::SOC950;
+        std::string socVersionStr = mc2tiling::GetSocVersion(context_);
+        OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+        if (socVersionStr == "Ascend910_93") {
+            nowSocVersion = SocVersion::SOC910_93;
+        }
+        AlltoAllMM tileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion);
+        tileFormulate.GetTiling();
+        return tileFormulate.tilingM_.cutRes;
+    }
+}
+
 /**
- * @brief 进行通算切分:使用公式化tiling的方式，当前阶段公式化tiling只是个预估，需要针对alltoall的场景进行细化分析
+ * @brief :tilingtilingalltoall
  *
  * @return ge::graphStatus
  */
 ge::graphStatus MatmulAllToAllTilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
-    SocVersion nowSocVersion = SocVersion::SOC950;
-    std::string socVersionStr = mc2tiling::GetSocVersion(context_);
-    OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
-    if (socVersionStr == "Ascend910_93") {
-        nowSocVersion = SocVersion::SOC910_93;
-    }
-    AlltoAllMM tileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL,
-                             nowSocVersion);
-    tileFormulate.GetTiling();
-    CutResult mCutMMAlltoAll = tileFormulate.tilingM_.cutRes;
+    // SocVersion nowSocVersion = SocVersion::SOC950;
+    // std::string socVersionStr = mc2tiling::GetSocVersion(context_);
+    // OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+    // if (socVersionStr == "Ascend910_93") {
+    //     nowSocVersion = SocVersion::SOC910_93;
+    // }
+    // AlltoAllMM tileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion);
+    // tileFormulate.GetTiling();
+    CutResult mCutMMAlltoAll = GetTilingResult();
     inferredInfo.tileCnt = mCutMMAlltoAll.numLongTile;
     inferredInfo.tileM = mCutMMAlltoAll.longTileLen;
     inferredInfo.tailCnt = 0;
@@ -177,7 +193,8 @@ ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::Til
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantMatrixMulShapes(const gert::TilingContext *context, const char *opName)
+ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantMatrixMulShapes(const gert::TilingContext *context,
+                                                                      const char *opName)
 {
     OP_TILING_CHECK(Check2DMatrixMulShapes(context, opName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Kc quant tiling check x1 x2 and y shape failed."), return ge::GRAPH_FAILED);
@@ -191,12 +208,13 @@ ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantMatrixMulShapes(const gert
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::TilingContext *context, const char *opName)
+ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::TilingContext *context,
+                                                                  const char *opName)
 {
     bool TransX2Flag = false;
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const bool *isX2TransX2 = attrs->GetAttrPointer<bool>(ATTR_X2_TRANSPOSE_INDEX);
-    
+
     if (isX2TransX2) {
         TransX2Flag = *isX2TransX2;
     }
@@ -208,17 +226,17 @@ ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::Ti
     uint64_t x1ScaleDim = x1ScaleShape->GetStorageShape().GetDim(0);
     uint64_t x2ScaleDim = x2ScaleShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK((x1ScaleDim != shapeInfo.x1Dim0),
-                        OP_LOGE(opName,
-                                "the x1Scale dim should be same with the "
-                                "x1 first dim, the x1Scale dim is %lu, the x1 first dim is %lu.",
-                                x1ScaleDim, shapeInfo.x1Dim0),
+                    OP_LOGE(opName,
+                            "the x1Scale dim should be same with the "
+                            "x1 first dim, the x1Scale dim is %lu, the x1 first dim is %lu.",
+                            x1ScaleDim, shapeInfo.x1Dim0),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleDim != nAxis),
-                        OP_LOGE(opName,
-                                "the x2Scale dim should be same with the "
-                                "x2 second dim, the x2Scale dim is %lu, the x2 second dim is %lu.",
-                                x2ScaleDim, nAxis),
-                        return ge::GRAPH_FAILED);
+                    OP_LOGE(opName,
+                            "the x2Scale dim should be same with the "
+                            "x2 second dim, the x2Scale dim is %lu, the x2 second dim is %lu.",
+                            x2ScaleDim, nAxis),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
