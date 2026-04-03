@@ -9,8 +9,8 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_MHC_PRE_GRAD_H
-#define OP_API_INC_MHC_PRE_GRAD_H
+#ifndef OP_API_INC_MHC_PRE_BACKWARD_H
+#define OP_API_INC_MHC_PRE_BACKWARD_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -65,4 +65,4 @@ aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpEx
 }
 #endif
 
-#endif // OP_API_INC_MHC_PRE_GRAD_H
+#endif // OP_API_INC_MHC_PRE_BACKWARD_H
