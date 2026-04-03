@@ -26,29 +26,23 @@ using Ops::Base::CeilDiv;
 namespace {
 
 // input tensor index
-enum All_TO_ALL_MATMUL_INPUT_IDX : size_t {
-    INDEX_IN_X1 = 0,
-    INDEX_IN_X2,
-    INDEX_IN_BIAS,
-    INDEX_IN_X1_SCALE,
-    INDEX_IN_X2_SCALE,
-};
+constexpr size_t INDEX_IN_X1 = 0;
+constexpr size_t INDEX_IN_X2 = 1;
+constexpr size_t INDEX_IN_BIAS = 2;
+constexpr size_t INDEX_IN_X1_SCALE = 3;
+constexpr size_t INDEX_IN_X2_SCALE = 4;
 // attr index
-enum All_TO_ALL_MATMUL_ATTR_IDX : size_t {
-    INDEX_ATTR_WORLD_SIZE = 1,
-    INDEX_ATTR_ALLTO_ALL_AXES,
-    INDEX_ATTR_Y_DTYPE,
-    INDEX_ATTR_X1_QUANT_MODE,
-    INDEX_ATTR_X2_QUANT_MODE,
-    INDEX_ATTR_TRANS_X1 = 9,
-    INDEX_ATTR_TRANS_X2,
-    INDEX_ATTR_ALLTOALL_OUT_FLAG,
-};
+constexpr size_t INDEX_ATTR_WORLD_SIZE = 1;
+constexpr size_t INDEX_ATTR_ALLTO_ALL_AXES = 2;
+constexpr size_t INDEX_ATTR_Y_DTYPE = 3;
+constexpr size_t INDEX_ATTR_X1_QUANT_MODE = 4;
+constexpr size_t INDEX_ATTR_X2_QUANT_MODE = 5;
+constexpr size_t INDEX_ATTR_TRANS_X1 = 9;
+constexpr size_t INDEX_ATTR_TRANS_X2 = 10;
+constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 12;
 // output tensor index
-enum All_TO_ALL_MATMUL_OUTPUT_IDX : size_t {
-    INDEX_OUT = 0,
-    INDEX_ALLTO_ALL_OUT,
-};
+constexpr size_t INDEX_OUT = 0;
+constexpr size_t INDEX_ALLTO_ALL_OUT = 1;
 
 // 维度信息
 constexpr uint64_t DIM_ONE = 1;
@@ -282,33 +276,10 @@ static ge::graphStatus CheckRankDimForAlltoAllMatmul(gert::InferShapeContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 推导输出shape
- *
- * @param context
- */
-static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext* context)
+static ge::graphStatus InferOutputShapeAlltoAllMatmul(gert::InferShapeContext* context,
+                                                      AlltoAllMatmulShapeInfo& shape) 
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
     const auto attrs = context->GetAttrs();
-    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    // 动静态shape图都要进行校验
-    CheckXShapeForAlltoAllMatmul(context);
-    CheckAllToAllAxesShapeForAlltoAllMatmul(context);
-    // 初始化shape结构体
-    AlltoAllMatmulShapeInfo shape;
-    OPS_CHECK(CheckRankDimForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
-              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check rank dim for allto all matmul."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(GetMatmulAxisInfoForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
-              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check shape for allto all matmul"),
-              return ge::GRAPH_FAILED);
-    if (shape.m != NUM_MINUS_ONE) {
-        // 静态shape图校验
-        CheckAxisKShapeForAlltoAllMatmul(context, shape);
-        CheckBiasShapeForAlltoAllMatmul(context, shape);
-        CheckXScaleShapeForAlltoAllMatmul(context, shape);
-    }
     // 推导output shape
     const bool* allToAllOutFlag = attrs->GetAttrPointer<bool>(INDEX_ATTR_ALLTOALL_OUT_FLAG);
     OPS_CHECK_NULL_WITH_CONTEXT(context, allToAllOutFlag);
@@ -340,6 +311,57 @@ static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext* context
         OP_LOGI(INNER_DEBUG, "allto all matmul output shape after infer shape, m: %ld n: %ld.",
                 outFirstDim, outSecondDim);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 推导输出shape
+ *
+ * @param context
+ */
+static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext* context)
+{
+    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    const auto attrs = context->GetAttrs();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t* x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
+    const int64_t* x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
+    if ((*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) ||
+        (*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM)) {
+        // 动静态shape图都要进行校验
+        OPS_CHECK(CheckXShapeForAlltoAllMatmul(context) != ge::GRAPH_SUCCESS,
+            CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check x shape for allto all matmul."),
+            return ge::GRAPH_FAILED);
+        OPS_CHECK(CheckAllToAllAxesShapeForAlltoAllMatmul(context) != ge::GRAPH_SUCCESS,
+            CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check all_to_all_axes shape for allto all matmul."),
+            return ge::GRAPH_FAILED);
+    }
+    // 初始化shape结构体
+    AlltoAllMatmulShapeInfo shape;
+    OPS_CHECK(CheckRankDimForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check rank dim for allto all matmul."),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(GetMatmulAxisInfoForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check shape for allto all matmul"),
+              return ge::GRAPH_FAILED);
+    if ((*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) ||
+        (*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM)) {
+        if (shape.m != NUM_MINUS_ONE) {
+            // 静态shape图校验
+            OPS_CHECK(CheckAxisKShapeForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check axis k shape for allto all matmul"),
+                      return ge::GRAPH_FAILED);
+            OPS_CHECK(CheckBiasShapeForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check bias shape for allto all matmul"),
+                      return ge::GRAPH_FAILED);
+            OPS_CHECK(CheckXScaleShapeForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check x_scale shape for allto all matmul"),
+                      return ge::GRAPH_FAILED);
+        }
+    }
+    OPS_CHECK(InferOutputShapeAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to infer output shape for allto all matmul"),
+              return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
