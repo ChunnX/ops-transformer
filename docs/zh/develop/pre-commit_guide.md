@@ -16,6 +16,7 @@ pre-commit 是一个 Git Hooks 框架，用于在 `git commit` 时自动运行�
 - **Java**: 17+ (OAT 工具依赖,可自动安装)
 - **clang-format**: 14.0+ (代码格式化)
 - **Maven**: 3.6+ (OAT 工具依赖,可自动安装)
+- **pre-commit**: 2.0+ (Hook框架)
 
 ## 安装步骤
 注：若需要使用pre-commit提供的代码检查功能，需要按照如下步骤进行安装配置；若无需pre-commit提供的代码检查功能，可不安装。
