@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <string>
@@ -64,6 +65,21 @@ string GetCurrentFileDir()
     return pos == string::npos ? string(".") : p.substr(0, pos);
 }
 
+string GetCwd()
+{
+#if defined(_WIN32)
+    char path[MAX_PATH] = {0};
+    DWORD len = GetCurrentDirectoryA(MAX_PATH, path);
+    return len == 0 ? string(".") : string(path, len);
+#else
+    char path[kPathBufferSize] = {0};
+    if (getcwd(path, sizeof(path)) == nullptr) {
+        return ".";
+    }
+    return string(path);
+#endif
+}
+
 string JoinPath(const string &dir, const string &file)
 {
     if (dir.empty()) {
@@ -84,15 +100,29 @@ bool FileExists(const string &path)
 
 string ResolveCsvPath(const string &csvName)
 {
-    const string exePath = JoinPath(GetExeDirPath(), csvName);
-    if (FileExists(exePath)) {
-        return exePath;
+    const string cwd = GetCwd();
+    const string codePath = []() {
+        const char *env = std::getenv("CODE_PATH");
+        return env == nullptr ? string() : string(env);
+    }();
+
+    vector<string> candidates;
+    candidates.emplace_back(JoinPath(GetExeDirPath(), csvName));
+    candidates.emplace_back(JoinPath(GetCurrentFileDir(), csvName));
+    candidates.emplace_back(JoinPath(cwd, csvName));
+    candidates.emplace_back(
+        JoinPath(cwd, "../../../../../gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/op_api/" + csvName));
+    if (!codePath.empty()) {
+        candidates.emplace_back(
+            JoinPath(codePath, "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/op_api/" + csvName));
     }
-    const string srcPath = JoinPath(GetCurrentFileDir(), csvName);
-    if (FileExists(srcPath)) {
-        return srcPath;
+
+    for (const auto &path : candidates) {
+        if (FileExists(path)) {
+            return path;
+        }
     }
-    return exePath;
+    return candidates.front();
 }
 
 void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)

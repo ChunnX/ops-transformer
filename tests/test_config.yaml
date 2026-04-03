@@ -417,6 +417,20 @@ gmm:
     options:
       - grouped_matmul_finalize_routing
 
+  quant_grouped_matmul_inplace_add:
+    module: True
+    src:
+      - gmm/quant_grouped_matmul_inplace_add
+    exclude:
+      - gmm/quant_grouped_matmul_inplace_add/docs
+      - gmm/quant_grouped_matmul_inplace_add/README.md
+    ut_cov_exclude:
+      - gmm/quant_grouped_matmul_inplace_add/op_kernel
+    options:
+      - quant_grouped_matmul_inplace_add
+    test:
+      examples: False
+
 ffn:
   ffn:
     module: True
