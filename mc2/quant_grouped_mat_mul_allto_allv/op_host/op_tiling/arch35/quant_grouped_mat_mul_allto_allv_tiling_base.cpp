@@ -49,7 +49,7 @@ bool QuantGroupedMatmulAllToAllvTilingBase::IsContains(const std::vector<uint32_
     return std::count(list.begin(), list.end(), value) > 0;
 }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::CheckShapeDimensions(const gert::StorageShape *shape, 
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::CheckShapeDimensions(const gert::StorageShape *shape,
     uint64_t dims, const char *shapeName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
