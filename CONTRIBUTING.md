@@ -55,6 +55,7 @@ PR上库要求：
   - 代码是否符合《[C++ 编程规范](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)》
   - 代码是否编译通过
   - Markdown文档语法是否符合规范
+  - 使用git进行代码提交前，可以参考[pre-commit工具使用说明](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/develop/pre-commit_guide.md)来使您的代码提交更合规高效。
 - 贡献目录：按sig成员意见提交至指定目录下`experimental/${op_class}`，可参考已有算子文件放置规则。
 - PR提交：通过`git`命令提交目标分支PR，检查PR标题是否清晰、PR描述是否规范（指明更改内容和原因、是否关联对应Issue）、是否签署CLA。
 
