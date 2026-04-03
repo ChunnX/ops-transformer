@@ -501,16 +501,16 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 【A2、A3】校验非连续入参合法性
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-      OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
-        return ACLNN_ERR_PARAM_INVALID;});
+        OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
+            return ACLNN_ERR_PARAM_INVALID;
+        });
     }
-    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char*>(group),
-                                                                transposeX1, transposeX2, gatherIndex, commTurn,
-                                                                rankSize, blockSize, groupSize, isGatherOut, isAmaxOut,
-                                                                yDtype, const_cast<char*>(commMode), output, gatherOut, amaxOut, workspaceSize,
-                                                                executor);
+    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
+        x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char *>(group), transposeX1, transposeX2, gatherIndex,
+        commTurn, rankSize, blockSize, groupSize, isGatherOut, isAmaxOut, yDtype, const_cast<char *>(commMode), output,
+        gatherOut, amaxOut, workspaceSize, executor);
     OP_LOGD("allGatherMatmulV2AIVMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
 }

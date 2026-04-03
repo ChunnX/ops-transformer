@@ -412,12 +412,14 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-                    "but it is non-contiguous.");
+                                             "but it is non-contiguous.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
+        x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char *>(group), const_cast<char *>(reduceOp),
+        transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
+        const_cast<char *>(commMode), output, amaxOutOptional, workspaceSize, executor);
     OP_LOGD("MatmulReduceScatterV2AivMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
 }

@@ -198,29 +198,33 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
     OP_LOGD("X1 is %s, X2 is %s.", x1->ToString().GetString(), x2->ToString().GetString());
     OP_LOGD("Output is %s, gatherOut is %s.", output->ToString().GetString(), gatherOut->ToString().GetString());
 
-  uint32_t rankSize = 0;
-  bool transposeX1 = IsTransposeLastTwoDims(x1);
-  bool transposeX2 = IsTransposeLastTwoDims(x2);
-  CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
-  // 【A2】校验非连续入参合法性
-  if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-    OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-              "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
-      return ACLNN_ERR_PARAM_INVALID;});
-  }
-  bool isGatherOut = IsGatherOut(gatherOut);
-  if (IsAscend910A5()) {
-    const char *commMode = "ccu";
-    return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, const_cast<char*>(group), gatherIndex,
-                                                  commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
-                                                  const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);
-  }
-  aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(x1, x2, bias, const_cast<char*>(group), transposeX1, transposeX2, gatherIndex, commTurn, rankSize, isGatherOut, output, gatherOut, workspaceSize, executor);
-  OP_LOGD("AllGatherMatmul, aclnnInnerGetWorkspaceSize ret = %d.", ret);
-  static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-  NnopbaseReportApiInfo(timeStamp, dfxId);
-  return ret;
+    uint32_t rankSize = 0;
+    bool transposeX1 = IsTransposeLastTwoDims(x1);
+    bool transposeX2 = IsTransposeLastTwoDims(x2);
+    CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
+    // 【A2】校验非连续入参合法性
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+        OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
+            return ACLNN_ERR_PARAM_INVALID;
+        });
+    }
+    bool isGatherOut = IsGatherOut(gatherOut);
+    if (IsAscend910A5()) {
+        const char *commMode = "ccu";
+        return aclnnAllGatherMatmulV2GetWorkspaceSize(
+            x1, x2, bias, nullptr, nullptr, nullptr, 0, const_cast<char *>(group), gatherIndex, commTurn, streamMode, 0,
+            commMode, const_cast<aclTensor *>(output), const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize,
+            executor);
+    }
+    aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(
+        x1, x2, bias, const_cast<char *>(group), transposeX1, transposeX2, gatherIndex, commTurn, rankSize, isGatherOut,
+        output, gatherOut, workspaceSize, executor);
+    OP_LOGD("AllGatherMatmul, aclnnInnerGetWorkspaceSize ret = %d.", ret);
+    static NnopbaseDfxId dfxId = {0x60000, __func__, false};
+    NnopbaseReportApiInfo(timeStamp, dfxId);
+    return ret;
 }
 
 aclnnStatus aclnnAllGatherMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
