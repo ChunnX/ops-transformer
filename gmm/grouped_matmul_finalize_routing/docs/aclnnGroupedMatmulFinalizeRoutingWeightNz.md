@@ -524,9 +524,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       std::vector<float> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
       std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
       groupListHostData[0] = 7;
-      groupListHostData[0] = 32;
-      groupListHostData[0] = 40;
-      groupListHostData[0] = 64;
+      groupListHostData[1] = 32;
+      groupListHostData[2] = 40;
+      groupListHostData[3] = 64;
 
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
