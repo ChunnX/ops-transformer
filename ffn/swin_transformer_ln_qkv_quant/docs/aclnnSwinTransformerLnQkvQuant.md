@@ -38,7 +38,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuantGetWorkspaceSize(
   double           epsilon, 
   int64_t          oriHeight, 
   int64_t          oriWeight, 
-  int64_t          WinSize, 
+  int64_t          hWinSize, 
   int64_t          wWinSize, 
   bool             weightTranspose, 
   const aclTensor *queryOutputOut, 
