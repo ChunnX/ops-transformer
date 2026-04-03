@@ -39,8 +39,9 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
     const gert::CompileTimeTensorDesc *learnableSinkDesc = fiaInfo.opParamInfo.learnableSink.desc;
     if (learnableSinkDesc != nullptr) {
         if (fiaInfo.npuArch == NpuArch::DAV_3510) {
-            OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_FLOAT16,
-                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support FP16.",
+            OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_FLOAT16 &&
+                        learnableSinkDesc->GetDataType() != ge::DT_BF16,
+                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support FP16/BF16.",
                     DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
 
@@ -49,13 +50,12 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
                     DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str(), 
                     DataTypeToSerialString(fiaInfo.inputQType).c_str()),
             return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_BF16,
+                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support BF16.",
+                    DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
+            return ge::GRAPH_FAILED);
         }
-        OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_BF16,
-            OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support BF16.",
-                DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
-        return ge::GRAPH_FAILED);
-        
-        
     }
     return ge::GRAPH_SUCCESS;
 }
