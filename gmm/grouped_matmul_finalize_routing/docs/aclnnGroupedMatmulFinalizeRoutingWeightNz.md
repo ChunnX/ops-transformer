@@ -498,7 +498,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
       void *xDeviceAddr = nullptr;
       void *wDeviceAddr = nullptr;
-      void *biasDeviceAddr = nullptr;
       void *scaleDeviceAddr = nullptr;
       void *pertokenScaleDeviceAddr = nullptr;
       void *groupListDeviceAddr = nullptr;
