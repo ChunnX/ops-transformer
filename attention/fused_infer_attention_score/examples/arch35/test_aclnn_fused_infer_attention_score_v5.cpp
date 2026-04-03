@@ -107,8 +107,12 @@ int main() {
     std::vector<int64_t> keyShape = {1, 2, 2, 16};   // BNSD
     std::vector<int64_t> valueShape = {1, 2, 2, 16}; // BNSD
     std::vector<int64_t> pseShape = {2}; // N
-    std::vector<int64_t> attenShape = {1, 1, 2, 2};  // B 1 S1 S2
     std::vector<int64_t> outShape = {1, 2, 2, 16};   // BNSD
+
+    int64_t actualS1 = 2; // actual seq length of query
+    int64_t actualS2 = 2; // actual seq length of key
+    std::vector<int64_t> attenShape = {1, 1, actualS1, actualS2};  // B 1 S1 S2
+
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *valueDeviceAddr = nullptr;
@@ -131,8 +135,17 @@ int main() {
     std::vector<float> keyHostData(keyShapeSize, 1);
     std::vector<float> valueHostData(valueShapeSize, 1);
     std::vector<float> pseHostData(pseShapeSize, 1);
-    std::vector<float> attenHostData(attenShapeSize, 1);
     std::vector<float> outHostData(outShapeSize, 1);
+
+    // sparseMode=3 为右下三角mask: attenMask[i][j] = (i >= j) ? true : false
+    std::vector<uint8_t> attenHostData(attenShapeSize, 0);
+    for (int64_t i = 0; i < actualS1; i++) {
+        for (int64_t j = 0; j < actualS2; j++) {
+            if (i >= j) {
+                attenHostData[i * actualS2 + j] = 1;
+            }
+        }
+    }
 
     // Create query aclTensor.
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
@@ -182,7 +195,7 @@ int main() {
     string sLayerOut = "BNSD";
     char layerOut[sLayerOut.length() + 1];
     strcpy(layerOut, sLayerOut.c_str());
-    int64_t sparseMode = 0;
+    int64_t sparseMode = 3;
     int64_t innerPrecise = 1;
     int blockSize = 0;
     int antiquantMode = 0;
@@ -195,11 +208,12 @@ int main() {
     aclOpExecutor *executor;
     // Call the first interface.
     ret = aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
-        queryTensor, tensorKeyList, tensorValueList, pseTensor, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        queryTensor, tensorKeyList, tensorValueList, pseTensor, attenTensor, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, layerOut,
         numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
         valueAntiquantMode, 0, pseType, outTensor, nullptr, &workspaceSize, &executor);
+    LOG_PRINT("cyr", "sparsemode is %ld\n", sparseMode);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnFusedInferAttentionScoreV5GetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
