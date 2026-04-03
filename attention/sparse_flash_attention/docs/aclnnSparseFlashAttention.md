@@ -133,11 +133,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>shape与key的shape一致。</li>
-          </ul>
-      </td>
+      <td>shape与key的shape一致。</td>
       <td>x</td>
     </tr>
     <tr>

@@ -113,7 +113,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutShape
     if (inputLayout[DIM_NUM_0] == 'T' && inputLayout[DIM_NUM_1] == 'N' && inputLayout[DIM_NUM_2] == 'D') {
         if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) || inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) 
             || inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2)) {
-            OP_LOGE(context_, "SparseFlashAttentionGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
                 inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2),
                 inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2));
             return ge::GRAPH_FAILED;
@@ -121,7 +121,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutShape
     } else {
         if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) || inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) 
             || inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2) || inputshape.GetDim(DIM_NUM_3) != outputshape.GetDim(DIM_NUM_3)){
-            OP_LOGE(context_, "SparseFlashAttentionGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
                 inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2), inputshape.GetDim(DIM_NUM_3),
                 inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2), outputshape.GetDim(DIM_NUM_3));
             return ge::GRAPH_FAILED;

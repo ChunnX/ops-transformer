@@ -14,7 +14,7 @@
 
 ## 功能说明
 
-- 算子功能：DenseLightningIndexerSoftmaxLse算子是DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。
+- 接口功能：DenseLightningIndexerSoftmaxLse算子是DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。
 
 - 计算公式：
 
@@ -95,7 +95,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td><ul><li>B：支持泛化且与query的B保持一致。</li><li>S1：支持泛化，不能为Matmul的M轴。</li><li>Nidx1：64、32、16、8。</li><li>D：128。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
+      <td>(B,S1,Nidx1,D);(T1,Nidx1,D)</td>
       <td>×</td>
      </tr>
      <tr>
@@ -105,7 +105,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td><ul><li>B：支持泛化且与queryIndex的B保持一致。</li> <li>S2：支持泛化。</li><li>Nidx2：1。</li><li>D：128。</li><li>T2：多个Batch的S2累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
+      <td>(B,S2,Nidx2,D);(T2,Nidx2,D)</td>
       <td>×</td>
      </tr>
      <tr>
@@ -115,7 +115,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td><ul><li>B：支持泛化且与queryIndex的B保持一致。</li><li>S1：支持泛化且与queryIndex的S1保持一致。</li><li>Nidx1：64、32、16、8。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
+      <td>(B,S1,Nidx1);(T1,Nidx1)</td>
       <td>×</td>
      </tr>
      <tr>
@@ -183,7 +183,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td><ul><li>B：支持泛化与queryIndex的B保持一致。</li><li>Nidx2：与keyIndex的Nidx2保持一致。</li><li>S1：支持泛化，且与queryIndex的S1保持一致。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>(B,Nidx2,S1)、(Nidx2,T1)</td>
+      <td>(B,Nidx2,S1);(Nidx2,T1)</td>
       <td>×</td>
      </tr>
      <tr>
@@ -193,7 +193,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td><ul><li>B：支持泛化与query的B保持一致。</li><li>Nidx2：与keyIndex的Nidx2保持一致。</li><li>S1：支持泛化，且与queryIndex的S1保持一致。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>(B,Nidx2,S1)、(Nidx2,T1)</td>
+      <td>(B,Nidx2,S1);(Nidx2,T1)</td>
       <td>×</td>
      </tr>
      <tr> 
@@ -299,9 +299,9 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
 ## 约束说明
 
-   - 参数queryIndex、keyIndex的数据类型应保持一致。
+  - 参数queryIndex、keyIndex的数据类型应保持一致。
 
-   - 参数weights不为float32时，参数queryIndex、keyIndex、weights的数据类型应保持一致。
+  - 参数weights不为float32时，参数queryIndex、keyIndex、weights的数据类型应保持一致。
 
   - 确定性计算：
     aclnnDenseLightningIndexerSoftmaxLse默认确定性实现。

@@ -16,9 +16,7 @@
 #include <limits>
 #include <type_traits>
 #include "kernel_operator.h"
-#include "kernel_event.h"
 #include "kernel_tensor.h"
-#include "kernel_macros.h"
 
 namespace NSAG_BASIC {
 

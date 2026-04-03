@@ -136,49 +136,70 @@ public:
     }
 
     __aicore__ inline
+    void ReduceSumByPair(const AscendC::LocalTensor<half> &srcUb, uint32_t numRowsRound, uint32_t loopCount,
+                                uint32_t columnStrideIndex, uint8_t dataBlockStride, uint8_t repeatStride)
+    {
+        for (uint32_t i = 0; i < loopCount; i += columnStrideIndex) {
+            uint32_t src0Start = i * HALF_VECTOR_SIZE;
+            uint32_t src1Start = (i + columnStrideIndex / 2) * HALF_VECTOR_SIZE;
+            AscendC::Add<half, false>(
+                srcUb[src0Start],
+                srcUb[src0Start],
+                srcUb[src1Start],
+                AscendC::MASK_PLACEHOLDER, // (uint64_t)0
+                numRowsRound,
+                AscendC::BinaryRepeatParams(
+                    dataBlockStride,
+                    dataBlockStride,
+                    dataBlockStride,
+                    repeatStride,
+                    repeatStride,
+                    repeatStride));
+        }
+    }
+
+    __aicore__ inline
+    void RowsumTileFlexible(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowsumUb,
+                            uint32_t numRowsRound, uint32_t numElemsAligned)
+    {
+        // Vector计算单元每个迭代最多处理256Byte数据，因此half低精度场景，每次迭代最多处理256/2=128个元素
+        uint32_t loopCount = numElemsAligned / HALF_VECTOR_SIZE; // half低精度场景，每行需要numElemsAligned/128次循环处理
+        // 每个datablock长度32Byte，因此half低精度场景，每个datablock内有32/2=16个元素
+        uint8_t dataBlockNumPerRow = numElemsAligned / BLOCK_SIZE; // half低精度场景，每行共有numElemsAligned/16个datablock
+        uint8_t dataBlockStride = 1;
+
+        // 举例，若numElemsAligned为1024，以128为单位分治求和，1024->512->256->128
+        for (uint32_t columnStrideIndex = 2; columnStrideIndex <= loopCount; columnStrideIndex *= 2) {
+            ReduceSumByPair(srcUb, numRowsRound, loopCount, columnStrideIndex, dataBlockStride, dataBlockNumPerRow);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        //每行128个元素分别规约求和
+        AscendC::WholeReduceSum<half, false>(
+            rowsumUb,
+            srcUb,
+            AscendC::MASK_PLACEHOLDER, // (uint64_t)0
+            numRowsRound,
+            dataBlockStride,
+            dataBlockStride,
+            dataBlockNumPerRow);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+    
+    __aicore__ inline
+    void RowsumSPECTILE1024(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowsumUb,
+                            const AscendC::LocalTensor<half> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                            uint32_t numElemsAligned)
+    {
+        RowsumTileFlexible(srcUb, rowsumUb, numRowsRound, numElemsAligned);
+    }
+
+    __aicore__ inline
     void RowsumSPECTILE512(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowsumUb,
         const AscendC::LocalTensor<half> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
         uint32_t numElemsAligned)
     {
-        AscendC::Add<half, false>(
-            srcUb,
-            srcUb,
-            srcUb[HALF_VECTOR_SIZE],
-            (uint64_t)0,
-            numRowsRound,
-            AscendC::BinaryRepeatParams(
-                1, 1, 1,
-                numElemsAligned / BLOCK_SIZE,
-                numElemsAligned / BLOCK_SIZE,
-                numElemsAligned / BLOCK_SIZE));
-        AscendC::Add<half, false>(
-            srcUb[HALF_VECTOR_SIZE * SPLIT_COL_IDX_2],
-            srcUb[HALF_VECTOR_SIZE * SPLIT_COL_IDX_2],
-            srcUb[HALF_VECTOR_SIZE * SPLIT_COL_IDX_3],
-            (uint64_t)0,
-            numRowsRound,
-            AscendC::BinaryRepeatParams(
-                1, 1, 1,
-                numElemsAligned / BLOCK_SIZE,
-                numElemsAligned / BLOCK_SIZE,
-                numElemsAligned / BLOCK_SIZE));
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Add<half, false>(
-            srcUb,
-            srcUb,
-            srcUb[HALF_VECTOR_SIZE * SPLIT_COL_IDX_2],
-            (uint64_t)0,
-            numRowsRound,
-            AscendC::BinaryRepeatParams(
-                1, 1, 1,
-                numElemsAligned / BLOCK_SIZE,
-                numElemsAligned / BLOCK_SIZE,
-                numElemsAligned / BLOCK_SIZE));
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::WholeReduceSum<half, false>(
-            rowsumUb, srcUb, (int32_t)0, numRowsRound, 1, 1,
-            numElemsAligned / BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
+        RowsumTileFlexible(srcUb, rowsumUb, numRowsRound, numElemsAligned);
     }
 
     __aicore__ inline
@@ -205,8 +226,8 @@ public:
                         numElemsAligned / BLOCK_SIZE,
                         numElemsAligned / BLOCK_SIZE,
                         numElemsAligned / BLOCK_SIZE));
-                AscendC::PipeBarrier<PIPE_V>();
             }
+            AscendC::PipeBarrier<PIPE_V>();
             if (numElems % HALF_VECTOR_SIZE > 0) {
                 SetVecMask(numElems % HALF_VECTOR_SIZE);
                 AscendC::Add<half, false>(
@@ -228,6 +249,80 @@ public:
                 numElemsAligned / BLOCK_SIZE);
         }
         AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline
+    void ReduceMaxByPair(const AscendC::LocalTensor<half> &dstUb, const AscendC::LocalTensor<half> &srcUb,
+                                           uint32_t numRowsRound, uint32_t loopCount, uint32_t columnStrideIndex,
+                                           uint8_t dataBlockStride, uint8_t repeatStride)
+    {
+        for (uint32_t i = 0; i < loopCount; i += columnStrideIndex) {
+            uint32_t src0Start = i * HALF_VECTOR_SIZE;
+            uint32_t src1Start = (i + columnStrideIndex / 2) * HALF_VECTOR_SIZE;
+            AscendC::Max<half, false>(
+                dstUb[src0Start],
+                srcUb[src0Start],
+                srcUb[src1Start],
+                AscendC::MASK_PLACEHOLDER, // (uint64_t)0
+                numRowsRound,
+                AscendC::BinaryRepeatParams(
+                    dataBlockStride,
+                    dataBlockStride,
+                    dataBlockStride,
+                    repeatStride,
+                    repeatStride,
+                    repeatStride));
+        }
+    }
+
+    __aicore__ inline
+    void RowmaxTileFlexible(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowmaxUb,
+                            uint32_t numRowsRound, uint32_t numElemsAligned)
+    {
+        // Vector计算单元每个迭代最多处理256Byte数据，因此half低精度场景，每次迭代最多处理256/2=128个元素
+        uint32_t loopCount = numElemsAligned / HALF_VECTOR_SIZE; // half低精度场景，每行需要numElemsAligned/128次循环处理
+        // 每个datablock长度32Byte，因此half低精度场景，每个datablock内有32/2=16个元素
+        uint8_t dataBlockNumPerRow = numElemsAligned / BLOCK_SIZE; // half低精度场景，每行共有numElemsAligned/16个datablock
+        uint8_t dataBlockStride = 1;
+
+        // 举例，若numElemsAligned为1024，以128为单位分治求最大值，1024->512->256->128
+        uint32_t columnStrideIndex = 2;
+        // 后续Rowsum计算还会使用到srcUb，因此第一轮分治使用lsUbTensor作为目的操作数，srcUb作为源操作数
+        ReduceMaxByPair(lsUbTensor, srcUb, numRowsRound, loopCount, columnStrideIndex, dataBlockStride, dataBlockNumPerRow);
+        AscendC::PipeBarrier<PIPE_V>();
+        columnStrideIndex *= 2;
+        for (; columnStrideIndex <= loopCount; columnStrideIndex *= 2) {
+            ReduceMaxByPair(lsUbTensor, lsUbTensor, numRowsRound, loopCount, columnStrideIndex, dataBlockStride, dataBlockNumPerRow);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        //每行128个元素分别规约求最大值
+        AscendC::WholeReduceMax<half, false>(
+            rowmaxUb,
+            lsUbTensor,
+            AscendC::MASK_PLACEHOLDER, // (uint64_t)0
+            numRowsRound,
+            dataBlockStride,
+            dataBlockStride,
+            dataBlockNumPerRow,
+            AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline
+    void RowmaxSPECTILE1024(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowmaxUb,
+                            const AscendC::LocalTensor<half> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                            uint32_t numElemsAligned)
+    {
+        RowmaxTileFlexible(srcUb, rowmaxUb, numRowsRound, numElemsAligned);
+    }
+
+    __aicore__ inline
+    void RowmaxSPECTILE512(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowmaxUb,
+                            const AscendC::LocalTensor<half> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                            uint32_t numElemsAligned)
+    {
+        RowmaxTileFlexible(srcUb, rowmaxUb, numRowsRound, numElemsAligned);
     }
 
     __aicore__ inline
@@ -263,8 +358,8 @@ public:
                         numElemsAligned / BLOCK_SIZE,
                         numElemsAligned / BLOCK_SIZE,
                         numElemsAligned / BLOCK_SIZE));
-                AscendC::PipeBarrier<PIPE_V>();
             }
+            AscendC::PipeBarrier<PIPE_V>();
             if (numElems % HALF_VECTOR_SIZE > 0) {
                 SetVecMask(numElems % HALF_VECTOR_SIZE);
                 AscendC::Max<half, false>(
@@ -428,13 +523,31 @@ public:
     void CalcLocalRowMax(uint32_t sUbOffset, uint32_t rowNumCurLoopRound, uint32_t columnNum, uint32_t columnNumRound,
         uint32_t rowOffset)
     {
-        RowmaxTAILTILE(
-            computeUbTensor,
-            lmUbTensor[rowOffset],
-            tvUbTensor,
-            rowNumCurLoopRound,
-            columnNum,
-            columnNumRound);
+        if (columnNum == 1024U) {
+            RowmaxSPECTILE1024(
+                computeUbTensor,
+                lmUbTensor[rowOffset],
+                tvUbTensor,
+                rowNumCurLoopRound,
+                columnNum,
+                columnNumRound);
+        } else if (columnNum == 512U) {
+            RowmaxSPECTILE512(
+                computeUbTensor,
+                lmUbTensor[rowOffset],
+                tvUbTensor,
+                rowNumCurLoopRound,
+                columnNum,
+                columnNumRound);
+        } else {
+            RowmaxTAILTILE(
+                computeUbTensor,
+                lmUbTensor[rowOffset],
+                tvUbTensor,
+                rowNumCurLoopRound,
+                columnNum,
+                columnNumRound);
+        }
     }
 
     __aicore__ inline
@@ -534,15 +647,25 @@ public:
         uint32_t rowOffset)
     {
         // *** ll = rowsum(ls32)
-        if (columnNum == 512U) {
-            RowsumSPECTILE512(computeUbTensor,
+        if (columnNum == 1024U) {
+            RowsumSPECTILE1024(
+                computeUbTensor,
+                llUbTensor[rowOffset],
+                tvUbTensor,
+                rowNumCurLoopRound,
+                columnNum,
+                columnNumRound);
+        } else if (columnNum == 512U) {
+            RowsumSPECTILE512(
+                computeUbTensor,
                 llUbTensor[rowOffset],
                 tvUbTensor,
                 rowNumCurLoopRound,
                 columnNum,
                 columnNumRound);
         } else {
-            RowsumTAILTILE(computeUbTensor,
+            RowsumTAILTILE(
+                computeUbTensor,
                 llUbTensor[rowOffset],
                 tvUbTensor,
                 rowNumCurLoopRound,

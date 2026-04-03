@@ -760,7 +760,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
     int64_t t = 0;
     bool lseFlag = *attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX);
     bool usingIFA = false;
-    if (inputLayoutStr == "BNSD" || inputLayoutStr == "BNSD_BSND") {
+    if (inputLayoutStr == "BNSD" || inputLayoutStr == "BNSD_BSND" || inputLayoutStr == "BNSD_NBSD") {
         s = tempQ->GetStorageShape().GetDim(QUERY_DIM_2);
     } else if (inputLayoutStr == "TND" || inputLayoutStr == "TND_NTD") {
         if (isMaxWorkspace) {
@@ -1034,7 +1034,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
         constexpr int64_t D_ALIGN_32 = 32;
         constexpr int64_t D_ALIGN_16 = 16;
 
-        PromptFlashAttentionTilingDataV2 pfaTilingData;
+        PromptFlashAttentionTilingData pfaTilingData;
         PromptFlashAttentionTilingV2 pfa_tiling(context_);
         ContextParamsForPFATiling contextParamsForPFATiling;
         PromptFlashAttentionCompileInfo tempCompileInfoPtr;
