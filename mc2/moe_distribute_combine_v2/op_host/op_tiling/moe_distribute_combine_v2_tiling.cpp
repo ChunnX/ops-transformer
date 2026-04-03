@@ -2259,8 +2259,20 @@ inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args,
     Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
 }
 
-IMPL_OP(MoeDistributeCombineV2)
-    .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeCombineV2ExceptionFunc()
+{
+    int32_t version_num = 0;
+
+    if (aclsysGetVersionNum("ops_transformer", &version_num) != ACL_SUCCESS) {
+        return;
+    }
+    if (version_num < 90000000) {
+       return;
+    }
+
+    IMPL_OP(MoeDistributeCombineV2)
+        .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
+}
 #endif
 
 } // namespace optiling
