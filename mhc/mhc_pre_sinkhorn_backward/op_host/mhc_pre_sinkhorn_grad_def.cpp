@@ -15,9 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MhcPreSinkhornGrad : public OpDef {
+class MhcPreSinkhornBackward : public OpDef {
 public:
-    explicit MhcPreSinkhornGrad(const char* name) : OpDef(name)
+    explicit MhcPreSinkhornBackward(const char* name) : OpDef(name)
     {
         this->Input("grad_hin")
             .ParamType(REQUIRED)
@@ -118,6 +118,6 @@ public:
     }
 };
 
-OP_ADD(MhcPreSinkhornGrad);
+OP_ADD(MhcPreSinkhornBackward);
 
 }

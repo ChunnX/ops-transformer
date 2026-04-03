@@ -1,4 +1,4 @@
-# aclnnMhcPreSinkhornGrad
+# aclnnMhcPreSinkhornBackward
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mhc/mhc_pre_sinkhorn_grad)
 
@@ -13,20 +13,20 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-- **接口功能**：MhcPreSinkhornGrad是MhcPreSinkhorn的反向算子,实现对应的梯度方向传播。
+- **接口功能**：MhcPreSinkhornBackward是MhcPreSinkhorn的反向算子,实现对应的梯度方向传播。
 
 - **计算公式**：
 
-  MhcPreSinkhornGrad算子是MhcPreSinkhorn前向算子的反向传播，根据输出梯度和前向保存的中间结果计算输入张量和参数的梯度。
+  MhcPreSinkhornBackward算子是MhcPreSinkhorn前向算子的反向传播，根据输出梯度和前向保存的中间结果计算输入张量和参数的梯度。
 
 
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMhcPreSinkhornGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPreSinkhornGrad"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMhcPreSinkhornBackwardGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPreSinkhornBackward"接口执行计算。
 
 ```cpp
-aclnnStatus aclnnMhcPreSinkhornGradGetWorkspaceSize(
+aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
     const aclTensor *gradY,
     const aclTensor *gradPost,
     const aclTensor *gradCombFrag,
@@ -49,14 +49,14 @@ aclnnStatus aclnnMhcPreSinkhornGradGetWorkspaceSize(
 ```
 
 ```cpp
-aclnnStatus aclnnMhcPreSinkhornGrad(
+aclnnStatus aclnnMhcPreSinkhornBackward(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     aclrtStream stream)
 ```
 
-## aclnnMhcPreSinkhornGradGetWorkspaceSize
+## aclnnMhcPreSinkhornBackwardGetWorkspaceSize
 
 - **参数说明：**
 
@@ -311,7 +311,7 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
     </tbody>
   </table>
 
-## aclnnMhcPreSinkhornGrad
+## aclnnMhcPreSinkhornBackward
 
 - **参数说明：**
 
@@ -337,7 +337,7 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
       <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMhcPreSinkhornGradGetWorkspaceSize</code>获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMhcPreSinkhornBackwardGetWorkspaceSize</code>获取。</td>
       </tr>
       <tr>
         <td>executor</td>
@@ -359,7 +359,7 @@ aclnnStatus aclnnMhcPreSinkhornGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMhcPreSinkhornGrad默认确定性实现。
+  - aclnnMhcPreSinkhornBackward默认确定性实现。
 
 - 规格约束：
 
@@ -549,14 +549,14 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
 
-    ret = aclnnMhcPreSinkhornGradGetWorkspaceSize(
+    ret = aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
         gradY, gradPost, gradCombFrag,
         x, hcFn, hcScale, hcBase,
         pre, hcBeforeNorm, rsqrt,
         sumOut, normOut, hcEps,
         gradX, gradHcFn, gradHcScale, gradHcBase,
         &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackwardGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
@@ -564,13 +564,13 @@ int main() {
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
-    ret = aclnnMhcPreSinkhornGrad(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornGrad failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnMhcPreSinkhornBackward(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackward failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    LOG_PRINT("MhcPreSinkhornGrad execution succeeded\n");
+    LOG_PRINT("MhcPreSinkhornBackward execution succeeded\n");
 
     aclDestroyTensor(gradY);
     aclDestroyTensor(gradPost);
