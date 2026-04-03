@@ -40,29 +40,8 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
             runParam.preTokensPerBatch = attenMaskInfo.preTokens;
             runParam.nextTokensPerBatch = attenMaskInfo.nextTokens;
         }
-        if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
-            runParam.preTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
-            if constexpr (!(hasRope && (dTemplateType == DTemplateType::Aligned576))) {
-                runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
-                if constexpr (enableKVPrefix) {
-                    runParam.nextTokensPerBatch += constInfo.actualKVPrefixSize;
-                }
-            } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-                    runParam.nextTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
-                    runParam.nextTokensOfMlaPerBatch = runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
-                    if constexpr (enableKVPrefix) {
-                        runParam.nextTokensOfMlaPerBatch += constInfo.actualKVPrefixSize;
-                    }
-                } else {
-                    runParam.nextTokensOfMlaPerBatch = runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
-                    if constexpr (enableKVPrefix) {
-                        runParam.nextTokensOfMlaPerBatch += constInfo.actualKVPrefixSize;
-                    }
-                    runParam.nextTokensPerBatch = runParam.nextTokensOfMlaPerBatch * constInfo.gSize;
-                }
-            }
-        }
+        // RIGHT_DOWN_CAUSAL_MODE: 不进行左上坐标系转换，直接使用从 tiling 传入的 preTokens/nextTokens
+        // 因此这里不做特殊处理，保留 attenMaskInfo.preTokens/nextTokens 的值
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
             if constexpr (hasRope && dTemplateType == DTemplateType::Aligned576) {
                 runParam.preTokensOfMlaPerBatch = attenMaskInfo.preTokens - runParam.actualS2Size + runParam.actualSeqLengthOfMlaPerBatch;

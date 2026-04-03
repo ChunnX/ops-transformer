@@ -1620,7 +1620,9 @@ void PromptFlashAttentionTilingV2::SetSparseModeData(ContextParamsForPFATiling& 
             sparseNextTokens = 0;
         // Right down tokens are calculated on the kernel side.
         } else if (*sparseMode == SPARSE_MODE_RIGHT_DOWN) {
-            sparsePreTokens = SPARSE_MODE_INT_MAX;
+            // 不转换为左上坐标系，直接透传用户输入的 preToken/nextToken
+            // sparsePreTokens and sparseNextTokens already set from user input above
+            // sparsePreTokens = SPARSE_MODE_INT_MAX;
         } else if (*sparseMode == SPARSE_MODE_ALL_MASK) {
             sparsePreTokens = SPARSE_MODE_INT_MAX;
             sparseNextTokens = SPARSE_MODE_INT_MAX;
@@ -2663,10 +2665,13 @@ void PromptFlashAttentionTilingV2::SetSparseType(uint32_t qS)
         sparseType = static_cast<uint8_t>(PfaSparseEnum::PFA_CAUSAL);
     } else if (sparseModeVal == SPARSE_MODE_RIGHT_DOWN) {
         if (!enablePA && qS == S2) {
+            OP_LOGI("CYR ", "!enablePA && qS == S2 is true");
             sparseType = static_cast<uint8_t>(PfaSparseEnum::PFA_CAUSAL);
         } else {
+            OP_LOGI("CYR ", "!enablePA && qS == S2 is false");
             sparseType = static_cast<uint8_t>(PfaSparseEnum::PFA_BAND);
         }
+        OP_LOGI("CYR ", "!enablePA && qS == S2 is else");
     } else if (sparseModeVal == SPARSE_MODE_BAND) {
         sparseType = static_cast<uint8_t>(PfaSparseEnum::PFA_BAND);
     }
@@ -3056,12 +3061,15 @@ bool PromptFlashAttentionTilingV2::CheckMultiFeatureCrossover(ContextParamsForPF
     int64_t nextTokensPerbatch = 0;
     for (uint32_t i = LOOP_BEGIN_NUM; i < lenDims; i++) {
         if (sparseModeVal == SPARSE_MODE_RIGHT_DOWN) {
-            preTokensPerbatch = SPARSE_MODE_INT_MAX;
-            if (enableIFAMLA) {
-                nextTokensPerbatch = actualSeqLengthsKV[i] + actualSharedPrefixLen - actualSeqLengths[i] / gSize;
-            } else {
-                nextTokensPerbatch = actualSeqLengthsKV[i] + actualSharedPrefixLen - actualSeqLengths[i];
-            }
+            // preTokensPerbatch = SPARSE_MODE_INT_MAX;
+            // if (enableIFAMLA) {
+            //     nextTokensPerbatch = actualSeqLengthsKV[i] + actualSharedPrefixLen - actualSeqLengths[i] / gSize;
+            // } else {
+            //     nextTokensPerbatch = actualSeqLengthsKV[i] + actualSharedPrefixLen - actualSeqLengths[i];
+            // }
+            OP_LOGI("CYR", "3016 sparseModeVal == SPARSE_MODE_RIGHT_DOWN");
+            preTokensPerbatch = sparsePreTokens;
+            nextTokensPerbatch = sparseNextTokens;
         } else if (sparseModeVal == SPARSE_MODE_BAND) {
             preTokensPerbatch = sparsePreTokens - actualSeqLengthsKV[i] - actualSharedPrefixLen + actualSeqLengths[i];
             nextTokensPerbatch = sparseNextTokens + actualSeqLengthsKV[i] + actualSharedPrefixLen - actualSeqLengths[i];
@@ -3640,18 +3648,28 @@ void PromptFlashAttentionTilingV2::GetPreNextTokensLeftUp(PromptFlashAttentionTi
 {
     PromptAttentionBaseParams* baseParams = &tilingData.promptAttentionBaseParams;
     if (baseParams->get_sparseMode() == SPARSE_MODE_RIGHT_DOWN) {
-        preTokensLeftUp = SPARSE_MODE_INT_MAX;
+        // preTokensLeftUp = SPARSE_MODE_INT_MAX;
+        // if (enableIFAMLA) {
+        //     if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
+        //         nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
+        //     } else { // BNSD场景下分核不做优化
+        //         nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+        //     }
+        // } else if (enableIFA){
+        //     nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
+        // }else {
+        //     nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
+        // }
         if (enableIFAMLA) {
-            if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
-            } else { // BNSD场景下分核不做优化
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
+            OP_LOGI("cyr ", "enableIFAMLA");
         } else if (enableIFA){
-            nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
+            OP_LOGI("cyr ", "enableIFA");
         }else {
-            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
+            OP_LOGI("cyr ", "enableIFAMLA enableIFA else");
         }
+        OP_LOGI("cyr ", "enableIFAMLA enableIFA else SPARSE_MODE_RIGHT_DOWN");
+        preTokensLeftUp = baseParams->get_preTokens();
+        nextTokensLeftUp = baseParams->get_nextTokens();
     } else if (baseParams->get_sparseMode() == SPARSE_MODE_BAND) {
         if (enableIFAMLA) {
             if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {

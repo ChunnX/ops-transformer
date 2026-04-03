@@ -334,17 +334,10 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
                                                                 int64_t &nextTokensLeftUp)
 {
     if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
-        preTokensLeftUp = SPARSE_MODE_INT_MAX;
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == 512) {
-            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
-                fiaInfo.qLayout == FiaLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
-            } else {  // BNSD场景下分核不做优化
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
-        } else {
-            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
-        }
+        // 不转换为左上顶点坐标系，直接使用用户输入的 preToken/nextToken
+        preTokensLeftUp = fiaInfo.preToken;
+        nextTokensLeftUp = fiaInfo.nextToken;
+        OP_LOGI("cyr", "GetPreNextTokensLeftUp is SPARSE_MODE_RIGHT_DOWN");
     } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
         preTokensLeftUp = fiaInfo.preToken - actualSeqLengthKV + actualSeqLength;
         nextTokensLeftUp = fiaInfo.nextToken + actualSeqLengthKV - actualSeqLength;
@@ -352,6 +345,7 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
         preTokensLeftUp = fiaInfo.preToken;
         nextTokensLeftUp = fiaInfo.nextToken;
     }
+    OP_LOGI("cyr", "GetPreNextTokensLeftUp end");
 }
 
 void FusedInferAttentionScoreTilingImpl::FixParamWithRowInvalid(const FiaTilingInfo &fiaInfo, int64_t &actualSeqLength,
