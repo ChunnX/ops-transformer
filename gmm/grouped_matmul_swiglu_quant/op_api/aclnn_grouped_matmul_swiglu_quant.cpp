@@ -190,8 +190,8 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W8, Length of 'groupList' out of range (expected to be in range of [1, "
-                "%ld], but got %ld)",
+                "aclnnGroupedMatmulSwiGluQuant A8W8, Length of 'groupList' out of range"
+                " (expected to be in range of [1, %ld], but got %ld)",
                 e, groupListLen);
         return false;
     }
@@ -278,8 +278,8 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant A8W4, Length of 'groupList' out of range (expected to be in range of [1, "
-                "%ld], but got %ld)",
+                "aclnnGroupedMatmulSwiGluQuant A8W4, Length of 'groupList' out of range"
+                " (expected to be in range of [1, %ld], but got %ld)",
                 e, groupListLen);
         return false;
     }
