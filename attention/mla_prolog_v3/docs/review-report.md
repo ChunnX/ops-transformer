@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-03
 **Reviewer**: Claude Code (automated)
-**PR**: (pending creation)
+**PR**: cann/ops-transformer#3758
 
 ## Summary
 
