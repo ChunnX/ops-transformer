@@ -46,16 +46,14 @@ __aicore__ inline void DynamicQuant(uint32_t curScaleCnt, uint32_t padCalCnt, Lo
     Abs(tempWorkTiles, tilesLocal, padCalCnt);
     Duplicate(tempScale, 0.0f, padCalCnt);
     ReduceMax<float, AscendC::Pattern::Reduce::AR, true>(tempScale, tempWorkTiles, broadCastDst, false);
-    CompareScalar(tempMskBuf, tempScale, 0.0f, AscendC::CMPMODE::NE, compareCnt);
-    // 量化参数为0的位置不做量化
-    Select(tempScale, tempMskBuf, tempScale, xTypeMax, AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, curScaleCnt);
     Duplicate(tempWorkTiles, xTypeMax, curScaleCnt);
-    Div(curScale, tempWorkTiles, tempScale, curScaleCnt);
+    Div(curScale, tempScale, tempWorkTiles, curScaleCnt);
+    // 量化参数为0的位置不做量化
     CompareScalar(tempMskBuf, curScale, 0.0f, AscendC::CMPMODE::NE, compareCnt);
     Select(curScale, tempMskBuf, curScale, 1.0f, AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, curScaleCnt);
     // Broadcast到{curScaleCnt, 128}，随后Div一次算出所有量化后的数据
     Broadcast<float, BROADCAST_DIM, 1, false>(tempScale, curScale, broadCastDst, broadCastSrc);
-    Mul(tilesLocal, tilesLocal, tempScale, padCalCnt);
+    Div(tilesLocal, tilesLocal, tempScale, padCalCnt);
     Cast(curOutTiles, tilesLocal, RoundMode::CAST_RINT, padCalCnt);
 }
 
@@ -69,10 +67,10 @@ __aicore__ inline void DynamicDequant(uint32_t curScaleCnt, uint32_t padCalCnt, 
     Cast(tempOut, tilesLocal, RoundMode::CAST_NONE, padCalCnt);
     Broadcast<float, BROADCAST_DIM, 1, false>(tempScale, scalesLocal, broadCastDst, broadCastSrc);
     if constexpr (!std::is_same<U, float>::value) {
-        Div(tempOut, tempOut, tempScale, padCalCnt);
+        Mul(tempOut, tempOut, tempScale, padCalCnt);
         Cast(outLocal, tempOut, RoundMode::CAST_RINT, padCalCnt);
     } else {
-        Div(outLocal.template ReinterpretCast<float>(), tempOut, tempScale, padCalCnt);
+        Mul(outLocal.template ReinterpretCast<float>(), tempOut, tempScale, padCalCnt);
     }
 }
 
