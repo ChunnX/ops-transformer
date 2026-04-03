@@ -78,6 +78,11 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint64_t, splitOTotalSize)
     TILING_DATA_FIELD_DEF(uint32_t, totalSplitNodeNum)
     TILING_DATA_FIELD_DEF(uint32_t, needCoreNum)
+    TILING_DATA_FIELD_DEF(uint32_t, mainLoopTaskNum)
+    TILING_DATA_FIELD_DEF(uint32_t, tailLoopTaskNum)
+    TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
+    TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
+    TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
@@ -91,6 +96,7 @@ namespace optiling{
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
+    const uint32_t TAIL_TASK_DIVISOR = 2;
 
     enum class MaskType : uint32_t {
         NO_MASK = 0,
@@ -625,29 +631,46 @@ namespace optiling{
 
     void FAInferTiling::SplitCoreDecodeBS1GN2(FAInferTilingData &faTilingData)
     {
-        uint32_t totalTaskNum = 0;
         uint32_t groupSize = faInfo_.numHeads / faInfo_.kvHeads;
+        uint32_t coreNum = this->blockNum_;
 
-        for (int32_t batchIdx = 0; batchIdx < faInfo_.batch; batchIdx++) {
-            uint32_t qSeqlen = *(faInfo_.qSeqlenList + batchIdx);
-            if (batchIdx > 0 && faInfo_.layout == "TND") {
-                uint64_t prevQSeqlenSum = *(faInfo_.qSeqlenList + batchIdx - 1);
-                qSeqlen = qSeqlen - prevQSeqlenSum;
-            }
-            uint32_t curGBlockTile = GetQNBlockTile(qSeqlen, groupSize);
-            uint32_t curGBlockNum = (groupSize + curGBlockTile - 1) / curGBlockTile;
-            uint32_t curQSBlockTile = GetQSBlockTileDecode(qSeqlen);
-            uint32_t curQSBlockNum = (qSeqlen + curQSBlockTile - 1) / curQSBlockTile;
-            uint32_t curQSGBlockTile = curGBlockTile * curQSBlockTile;
-            uint32_t curKvNBlockTile = curGBlockTile < groupSize ? 1 : GetKvNBlockTile(curQSGBlockTile, faInfo_.kvHeads);
-            uint32_t curKvNBlockNum = (faInfo_.kvHeads + curKvNBlockTile - 1) / curKvNBlockTile;
-            uint32_t curTaskNum = curGBlockNum * curQSBlockNum * curKvNBlockNum;
-            if (batchIdx == 0) {
-                faTilingData.set_firstBatchTaskNum(curTaskNum);
-            }
-            totalTaskNum += curTaskNum;
-        }
+        uint32_t curKvNBlockTile = GetKvNBlockTile(groupSize, faInfo_.kvHeads);
+        uint32_t curKvNBlockNum = (faInfo_.kvHeads + curKvNBlockTile - 1) / curKvNBlockTile;
+        uint32_t taskNumPerBatch = curKvNBlockNum;
+
+        faTilingData.set_firstBatchTaskNum(taskNumPerBatch);
+        uint32_t totalTaskNum = taskNumPerBatch * faInfo_.batch;
         faTilingData.set_totalTaskNum(totalTaskNum);
+
+        uint32_t mainLoopCount = totalTaskNum / coreNum;
+        uint32_t mainLoopTaskNum = mainLoopCount * coreNum;
+        uint32_t tailLoopTaskNum = totalTaskNum - mainLoopTaskNum;
+
+        uint32_t tailStartBatch = mainLoopTaskNum / taskNumPerBatch;
+        uint32_t remainInBatch = mainLoopTaskNum - tailStartBatch * taskNumPerBatch;
+        uint32_t tailStartN2 = remainInBatch * curKvNBlockTile;
+
+        uint32_t tailKvNBlockTile = 0;
+        uint32_t tailLoopTaskNumRework = tailLoopTaskNum;
+
+        if (tailLoopTaskNum > 0 && tailLoopTaskNum <= coreNum / TAIL_TASK_DIVISOR) {
+            tailKvNBlockTile = 1;
+            uint32_t remainingKvHeadsFirstBatch = faInfo_.kvHeads - tailStartN2;
+            uint32_t remainingFullBatches = faInfo_.batch - tailStartBatch - 1;
+            tailLoopTaskNumRework = remainingKvHeadsFirstBatch + remainingFullBatches * faInfo_.kvHeads;
+        } else if (tailLoopTaskNum > 0) {
+            tailKvNBlockTile = 0;
+            tailLoopTaskNumRework = tailLoopTaskNum;
+        } else {
+            tailKvNBlockTile = 0;
+            tailLoopTaskNumRework = 0;
+        }
+        
+        faTilingData.set_mainLoopTaskNum(mainLoopTaskNum);
+        faTilingData.set_tailLoopTaskNum(tailLoopTaskNumRework);
+        faTilingData.set_tailStartBatch(tailStartBatch);
+        faTilingData.set_tailStartN2(tailStartN2);
+        faTilingData.set_tailKvNBlockTile(tailKvNBlockTile);
     }
 
     ge::graphStatus FAInferTiling::DoTiling(FAInferTilingData &tilingdata)
