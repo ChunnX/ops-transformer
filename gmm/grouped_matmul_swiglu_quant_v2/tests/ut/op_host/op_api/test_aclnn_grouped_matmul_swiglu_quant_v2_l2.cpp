@@ -633,7 +633,7 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
 
     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
-        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {e, 1, k}, 0, {e, n, k}).ValueRange(-1, 1);
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {k*n, 1, k}, 0, {e, n, k}).ValueRange(-1, 1);
     TensorListDesc weight_desc = TensorListDesc({weight});
     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
@@ -663,7 +663,7 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
 
     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
-        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {e, 1, k}, 0, {e, n, k}).ValueRange(-1, 1);
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {k*n, 1, k}, 0, {e, n, k}).ValueRange(-1, 1);
     TensorListDesc weight_desc = TensorListDesc({weight});
     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
@@ -695,7 +695,7 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
 
     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
-        TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND, {e, 1, k}, 0, {e, n, k}).ValueRange(-1, 1);
+        TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND, {k*n, 1, k}, 0, {e, n, k}).ValueRange(-1, 1);
     TensorListDesc weight_desc = TensorListDesc({weight});
     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
@@ -727,7 +727,7 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
 
     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
-        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_FRACTAL_NZ, {e, 1, k}, 0, {e, k/64, n/16, 16, 64}).ValueRange(-1, 1);
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_FRACTAL_NZ, {k*n, 1, k}, 0, {e, k/64, n/16, 16, 64}).ValueRange(-1, 1);
     TensorListDesc weight_desc = TensorListDesc({weight});
     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
@@ -759,7 +759,7 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
 
     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
-        TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {e, 1, k}, 0, {e, k/32, n/16, 16, 32}).ValueRange(-1, 1);
+        TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {k*n, 1, k}, 0, {e, k/32, n/16, 16, 32}).ValueRange(-1, 1);
     TensorListDesc weight_desc = TensorListDesc({weight});
     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
