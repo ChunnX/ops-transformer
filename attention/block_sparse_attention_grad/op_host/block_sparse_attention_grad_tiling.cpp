@@ -61,6 +61,7 @@ constexpr int SCALE_VALUE_INDEX = 4;
 constexpr int VALID_HEAD_DIM_128 = 128;
 constexpr uint64_t VEC_POST_DIVISION = 3; // post 划分的空间块数， input 2份，output 1份
 constexpr uint64_t WORKSPACE_NUM_ALIGN = 256;
+constexpr uint32_t BATCH_SCHEDULE_MODE = 1;
 
 namespace optiling {
 
@@ -93,7 +94,6 @@ ge::graphStatus BSAGradTiling::GetNpuInfo(gert::TilingContext *context)
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     aicNum_ = ascendcPlatform.GetCoreNumAic();
-    aicNum_ = static_cast<uint32_t>(1);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -475,6 +475,7 @@ ge::graphStatus BSAGradTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_tilingKey(tilingKey);
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(blockDim_);
+    context->SetScheduleMode(BATCH_SCHEDULE_MODE);
 
     tilingData_->set_sOutSize(sOutSize_);
     tilingData_->set_dPOutSize(dPOutSize_);
