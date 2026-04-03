@@ -18,7 +18,7 @@ pre-commit 是一个 Git Hooks 框架，用于在 `git commit` 时自动运行�
 - **Maven**: 3.6+ (OAT 工具依赖,可自动安装)
 
 ## 安装步骤
-注：若需要使用`git commit`提供的代码检查功能，需要按照如下步骤进行安装配置，不安装则无法使用该功能
+注：若需要使用pre-commit提供的代码检查功能，需要按照如下步骤进行安装配置；若无需pre-commit提供的代码检查功能，可不安装。
 ### 1. 安装 pre-commit
 
 ```bash
