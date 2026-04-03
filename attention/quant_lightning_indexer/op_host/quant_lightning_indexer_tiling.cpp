@@ -152,6 +152,7 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs got from ge is nullptr"),
                return ge::GRAPH_FAILED);
+    int64_t defaultValue = -1;
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
@@ -165,8 +166,8 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX);
     opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKENS_INDEX);
     opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
-    opParamInfo_.keyBlockStride = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_BLOCK_STRIDE_INDEX));
-    opParamInfo_.keyDequantScaleBlockStride = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_DEQUANT_SCALE_BLOCK_STRIDE_INDEX));
+    opParamInfo_.keyBlockStride = defaultValue;
+    opParamInfo_.keyDequantScaleBlockStride = defaultValue;
 
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
