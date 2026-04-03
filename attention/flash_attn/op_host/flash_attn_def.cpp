@@ -129,7 +129,7 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("softmax_mode")
+        this->Attr("softmax_scale")
             .AttrType(OPTIONAL)
             .Float(0.0f);
         this->Attr("mask_mode")

@@ -22,8 +22,6 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace {
-
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *q,
@@ -36,7 +34,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional,
     const aclTensor *metadataOptional,
-    float softmaxMode,
+    double softmaxScale,
     int64_t maskMode,
     int64_t winLeft,
     int64_t winRight,
@@ -67,7 +65,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
         cuSeqlensQOptional, cuSeqlensKvOptional,
         sequsedQOptional, sequsedKvOptional,
         sinksOptional, metadataOptional,
-        softmaxMode, maskMode, winLeft, winRight,
+        softmaxScale, maskMode, winLeft, winRight,
         maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
         returnSoftmaxLse, deterministic,
         attentionOut, placeHolder,
@@ -90,8 +88,6 @@ aclnnStatus aclnnFlashAttn(
 {
     return aclnnInnerFlashAttn(workspace, workspaceSize, executor, stream);
 }
-
-} // namespace
 
 #ifdef __cplusplus
 }

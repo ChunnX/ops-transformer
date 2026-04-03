@@ -87,7 +87,7 @@ class FlashAttenOpBuilder(OpBuilder):
                 attentionOutSize = (bSize, sSize, nSize, dSize)
 
             
-            return attentionOutSiz, softmaxOutSize#
+            return attentionOutSize, softmaxOutSize
 
 
 # Instantiate the builder

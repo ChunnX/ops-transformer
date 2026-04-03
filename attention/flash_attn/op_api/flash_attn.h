@@ -31,7 +31,7 @@ namespace l0op {
  * @param sequsedKvOptional   kv各batch实际序列长度tensor（可选，INT32）
  * @param sinksOptional       可学习sink权重（可选，FLOAT32）
  * @param metadataOptional    预计算tiling元数据（可选，INT32）
- * @param softmaxMode         softmax缩放系数（float）
+ * @param softmaxScale         softmax缩放系数（float）
  * @param maskMode            掩码模式（int64_t）
  * @param winLeft             左窗口大小（int64_t）
  * @param winRight            右窗口大小（int64_t）
@@ -55,7 +55,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional,
     const aclTensor *metadataOptional,
-    float softmaxMode,
+    double softmaxScale,
     int64_t maskMode,
     int64_t winLeft,
     int64_t winRight,

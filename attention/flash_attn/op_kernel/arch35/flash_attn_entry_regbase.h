@@ -20,77 +20,82 @@
 #ifndef FLASH_ATTN_ENTRY_REGBASE_H_
 #define FLASH_ATTN_ENTRY_REGBASE_H_
 
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_kernel_base.h"
+#include "flash_attn_tiling_regbase.h"
+// #include "../../../common/op_kernel/arch35/flash_attn_kernel_infer.h"
+// #include "../../../common/op_kernel/arch35/flash_attn_kernel_base.h"
 #include "flash_attn_kernel_base.h"
 
 #ifdef __DAV_C310_CUBE__ // CUBE 实现
 
-#define INVOKE_FA_IMPL(templateClass, ...)                                                          \
-    do {                                                                                                       \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
-        TPipe tPipe;                                                                                           \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockCube<__VA_ARGS__>, BaseApi::FANoQuantBlockCubeDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>, BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>>::type; \
-        templateClass<CubeBlockType, VecBlockType> op;                                                         \
-        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,     \
-                actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,       \
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,   \
-                nullptr, &tPipe);                                                                              \
-        op.Process();                                                                                          \
+#define INVOKE_FA_IMPL(templateClass, ...)                                                                             \
+    do {                                                                                                               \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
+        TPipe tPipe;                                                                                                   \
+        using CubeBlockType =                                                                                          \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockCube<__VA_ARGS__>,            \
+                                      BaseApi::FANoQuantBlockCubeDummy<__VA_ARGS__>>::type;                            \
+        using VecBlockType =                                                                                           \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>,        \
+                                      BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>>::type;                             \
+        templateClass<CubeBlockType, VecBlockType> op;                                                                 \
+        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,              \
+                       actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,     \
+                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse,    \
+                       nullptr, attentionOut, user, nullptr, &tPipe);                                                  \
+        op.Process();                                                                                                  \
     } while (0)
 #else // VECTOR 实现
-#define FA_COPY_TILING_DATA(tiling)                                                                       \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                \
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;                      \
+#define FA_COPY_TILING_DATA(tiling)                                                                                    \
+    GET_TILING_DATA_WITH_STRUCT(FlashAttnSimplifiedTilingData, tilingDataIn, tiling);                                  \
+    const FlashAttnSimplifiedTilingData *__restrict tilingData = &tilingDataIn;
 
 #ifdef __CCE_KT_TEST__
-#define INVOKE_FA_IMPL(templateClass, ...)                                                          \
-    do {                                                                                                       \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
-        FA_COPY_TILING_DATA(tiling);                                                                      \
-        TPipe tPipe;                                                                                           \
-        using CubeBlockType = typename BaseApi::FANoQuantBlockCube<__VA_ARGS__>;                                      \
-        using VecBlockType = typename BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>;                                   \
-        templateClass<CubeBlockType, VecBlockType> op;                                                         \
-        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,     \
-                actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,       \
-                nullptr,nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,   \
-                tilingData, &tPipe);                                                                           \
-        op.Process();                                                                                          \
+#define INVOKE_FA_IMPL(templateClass, ...)                                                                             \
+    do {                                                                                                               \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
+        FA_COPY_TILING_DATA(tiling);                                                                                   \
+        TPipe tPipe;                                                                                                   \
+        using CubeBlockType = typename BaseApi::FANoQuantBlockCube<__VA_ARGS__>;                                       \
+        using VecBlockType = typename BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>;                                    \
+        templateClass<CubeBlockType, VecBlockType> op;                                                                 \
+        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,              \
+                       actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,     \
+                       nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,           \
+                       tilingData, &tPipe);                                                                            \
+        op.Process();                                                                                                  \
     } while (0)
 #else
-#define INVOKE_FA_IMPL(templateClass, ...)                                                          \
-    do {                                                                                                       \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
-        FA_COPY_TILING_DATA(tiling);                                                                      \
-        TPipe tPipe;                                                                                           \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockCube<__VA_ARGS__>, BaseApi::FANoQuantBlockCubeDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>, BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>>::type; \
-        templateClass<CubeBlockType, VecBlockType> op;                                                         \
-        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,     \
-                actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,       \
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,   \
-                tilingData, &tPipe);                                                                           \
-        op.Process();                                                                                          \
+#define INVOKE_FA_IMPL(templateClass, ...)                                                                             \
+    do {                                                                                                               \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
+        FA_COPY_TILING_DATA(tiling);                                                                                   \
+        TPipe tPipe;                                                                                                   \
+        using CubeBlockType =                                                                                          \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockCube<__VA_ARGS__>,            \
+                                      BaseApi::FANoQuantBlockCubeDummy<__VA_ARGS__>>::type;                            \
+        using VecBlockType =                                                                                           \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>,        \
+                                      BaseApi::FANoQuantBlockVecTrain<__VA_ARGS__>>::type;                             \
+        templateClass<CubeBlockType, VecBlockType> op;                                                                 \
+        op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,              \
+                       actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,     \
+                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse,    \
+                       nullptr, attentionOut, user, tilingData, &tPipe);                                               \
+        op.Process();                                                                                                  \
     } while (0)
 #endif
 #endif
 
 // FlashAttn kernel核心函数（arch35）
-template<uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
-    uint16_t dTemplateType, uint16_t dvTemplateType, bool hasAtten, bool isPA, bool isSoftmaxLse,
-    uint8_t regbase>
-inline __aicore__ void flash_attn_regbase(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-    __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKv,
-    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
-    
+template <uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType, uint16_t dTemplateType,
+          uint16_t dvTemplateType, bool hasAtten, bool isPA, bool isSoftmaxLse, uint8_t regbase>
+inline __aicore__ void flash_attn_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                          __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
+                                          __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *sequsedQ,
+                                          __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
+                                          __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+                                          __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+
 {
 // BNSD
 // AscendC::printf("query: %p, key: %p, value: %p", query, key, value);
@@ -106,21 +111,30 @@ inline __aicore__ void flash_attn_regbase(
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     AscendC::printf("-----------kernel----------\n");
-    #if (ORIG_DTYPE_Q == DT_FLOAT)
-        AscendC::printf("-----------DT_FLOAT----------\n");
-        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(64), DTemplateType(64), PseTypeEnum(9), 0, 0, 0);
-        return;
-    #endif
-    #if (ORIG_DTYPE_Q == DT_BF16)
-        AscendC::printf("-----------DT_BF16----------\n");
-        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(64), DTemplateType(64), PseTypeEnum(9), 0, 0, 0);
-        return;
-    #endif
-    #if (ORIG_DTYPE_Q == DT_FLOAT16)
-        AscendC::printf("-----------DT_FLOAT16----------\n");
-        INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, half, float, half, ImplModeEnum(0), LayOutTypeEnum(3), S1TemplateType(128), S2TemplateType(128), DTemplateType(64), DTemplateType(64), PseTypeEnum(9), 0, 0, 0);
-        return;
-    #endif
+#if (ORIG_DTYPE_Q == DT_FLOAT)
+    AscendC::printf("-----------DT_FLOAT----------\n");
+    INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(implMode), LayOutTypeEnum(layout),
+                   S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType),
+                   DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(9), hasAtten, isPA,
+                   isSoftmaxLse);
+    return;
+#endif
+#if (ORIG_DTYPE_Q == DT_BF16)
+    AscendC::printf("-----------DT_BF16----------\n");
+    INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode),
+                   LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
+                   DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
+                   PseTypeEnum(9), hasAtten, isPA, isSoftmaxLse);
+    return;
+#endif
+#if (ORIG_DTYPE_Q == DT_FLOAT16)
+    AscendC::printf("-----------DT_FLOAT16----------\n");
+    INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, half, float, half, ImplModeEnum(implMode), LayOutTypeEnum(layout),
+                   S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType),
+                   DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(9), hasAtten, isPA,
+                   isSoftmaxLse);
+    return;
+#endif
 #endif
 
 

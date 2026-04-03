@@ -18,13 +18,13 @@
 
 #include <cstdint>
 #include <register/op_impl_registry.h>
-#include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../op_kernel/arch35/flash_attn_tiling_regbase.h"
 #include "flash_attn_tiling_common.h"
 
 namespace optiling {
 
 // FlashAttn 使用common中的公共结构
-using FlashAttnTilingData = FlashAttentionScoreSimplifiedTilingData;
+using FlashAttnTilingData = FlashAttnSimplifiedTilingData;
 
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context);
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context);

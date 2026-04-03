@@ -20,7 +20,7 @@
 #include "flash_attn_tiling.h"
 #include "flash_attn_tiling_common.h"
 #include "../op_kernel/arch35/flash_attn_template_tiling_key.h"
-#include "arch35/flash_attn_tiling_regbase.h"
+#include "arch35/flash_attn_tiling_v2.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -50,7 +50,8 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
     //     }
     // }
 
-    return TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    return TilingFlashAttnV2(context);
+    // return TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context)
