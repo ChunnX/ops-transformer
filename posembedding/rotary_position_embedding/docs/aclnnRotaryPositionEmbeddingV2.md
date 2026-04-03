@@ -218,7 +218,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     
   - 参数rotate当前支持BFLOAT16、FLOAT16、FLOAT32类型。
   
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
 
     输入张量x共有四维，不支持辅助矩阵输入，各参数的shape约束可以描述如下：
     - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
