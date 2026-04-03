@@ -4,12 +4,13 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_MHC_PRE_BACKWARD_H
-#define OP_API_INC_MHC_PRE_BACKWARD_H
+#ifndef OP_API_INC_MHC_PRE_GRAD_H
+#define OP_API_INC_MHC_PRE_GRAD_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -36,32 +37,32 @@ extern "C" {
  * @param [out] hc_weight_grad: 输出梯度，数据类型支持：FP32。
  * @param [out] alpha_grad: 输出梯度，数据类型支持：FP32。
  * @param [out] bias_post_grad: 输出梯度，数据类型支持：FP32。
+ * @param [out] gamma_grad: 输出梯度，数据类型支持：FP32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-    const aclTensor *h_in_grad, const aclTensor *h_post_grad, const aclTensor *h_res_grad,
-    const aclTensor *inv_rms, const aclTensor *mm_res, const aclTensor *h_pre, const aclTensor *h_post, const aclTensor *gamma,
-    double hc_eps,
-    const aclTensor *x_grad, const aclTensor *hc_weight_grad, const aclTensor *alpha_grad, const aclTensor *bias_post_grad,
-    const aclTensor *gamma_grad, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *h_in_grad,
+    const aclTensor *h_post_grad, const aclTensor *h_res_grad, const aclTensor *inv_rms, const aclTensor *mm_res,
+    const aclTensor *h_pre, const aclTensor *h_post, const aclTensor *gamma, const aclTensor *grad_x_post,
+    double hc_eps, const aclTensor *x_grad, const aclTensor *hc_weight_grad, const aclTensor *alpha_grad,
+    const aclTensor *bias_post_grad, const aclTensor *gamma_grad, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
 
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口 aclnnMhcPreBackwardGetWorkspaceSize 获取。
+ * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口 aclnnMhcPreBackwardGetWorkspaceSize
+ 获取。
  * @param [in] exector: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                          aclrtStream stream);
+aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_MHC_PRE_BACKWARD_H
+#endif // OP_API_INC_MHC_PRE_GRAD_H

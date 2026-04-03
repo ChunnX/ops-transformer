@@ -4,12 +4,13 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
- * \file mhc_pre_backward_tiling.h
+ * \file chunk_gated_delta_rule_inverse_tiling.h
  * \brief
  */
 #ifndef __OP_HOST_MHC_PRE_GRAD_H__
@@ -23,16 +24,16 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MhcPreBackwardTilingData)
-  TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC0);
-  TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC1);
-  TILING_DATA_FIELD_DEF(uint32_t, coreNum);
-  TILING_DATA_FIELD_DEF(uint32_t, vecCoreNum);
-  TILING_DATA_FIELD_DEF(uint64_t, totalLength);
-  TILING_DATA_FIELD_DEF(uint64_t, nD);
-  TILING_DATA_FIELD_DEF(uint64_t, N);
-  TILING_DATA_FIELD_DEF(uint64_t, D);
-  TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
-  TILING_DATA_FIELD_DEF(float, hcEps);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC0);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC1);
+TILING_DATA_FIELD_DEF(uint32_t, coreNum);
+TILING_DATA_FIELD_DEF(uint32_t, vecCoreNum);
+TILING_DATA_FIELD_DEF(uint64_t, totalLength);
+TILING_DATA_FIELD_DEF(uint64_t, nD);
+TILING_DATA_FIELD_DEF(uint64_t, N);
+TILING_DATA_FIELD_DEF(uint64_t, D);
+TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
+TILING_DATA_FIELD_DEF(float, hcEps);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreBackward, MhcPreBackwardTilingData);
@@ -50,27 +51,41 @@ struct MhcPreBackwardCompileInfo {
 
 class MhcPreBackwardBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
- public:
-    explicit MhcPreBackwardBaseTiling(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
+public:
+    explicit MhcPreBackwardBaseTiling(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
     ~MhcPreBackwardBaseTiling() override = default;
 
 protected:
-    bool IsCapable() override { 
-        return true; 
+    bool IsCapable() override
+    {
+        return true;
     }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
-    ge::graphStatus GetPlatformInfo() override {return ge::GRAPH_SUCCESS;};
+    ge::graphStatus GetPlatformInfo() override
+    {
+        return ge::GRAPH_SUCCESS;
+    };
     // 2、获取INPUT/OUTPUT/ATTR信息
-    ge::graphStatus GetShapeAttrsInfo() override{return ge::GRAPH_SUCCESS;};
+    ge::graphStatus GetShapeAttrsInfo() override
+    {
+        return ge::GRAPH_SUCCESS;
+    };
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
-    ge::graphStatus DoLibApiTiling() override{return ge::GRAPH_SUCCESS;};
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    };
     // 5、计算TilingKey
     uint64_t GetTilingKey() const override;
     // 6、计算Workspace 大小
-    ge::graphStatus GetWorkspaceSize() override{return ge::GRAPH_SUCCESS;};
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        return ge::GRAPH_SUCCESS;
+    };
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
 
@@ -79,7 +94,7 @@ protected:
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
     ge::graphStatus TilingProcess();
-    
+
     /**
      * @brief 计算workspace所需的总大小（以字节为单位）
      * 内存布局：
@@ -93,13 +108,14 @@ protected:
      * @param elementSize 每个元素的大小（字节）
      * @return uint64_t 总字节数
      */
-    static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum, uint64_t elementSize);
+    static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
+                                           uint64_t elementSize);
 
 
 private:
     MhcPreBackwardTilingData tilingData_;
-    uint32_t blockDim_;     // AIC
-    uint32_t vecCoreNum_;     // AIV
+    uint32_t blockDim_;   // AIC
+    uint32_t vecCoreNum_; // AIV
     uint64_t totalLength_;
     uint64_t m_;
     uint64_t ubSize_;
@@ -112,8 +128,7 @@ private:
     uint64_t D_;
     float hcEps_;
     uint32_t fusionSize_;
-
 };
 
-}
+} // namespace optiling
 #endif // __OP_HOST_MHC_PRE_GRAD_H__
