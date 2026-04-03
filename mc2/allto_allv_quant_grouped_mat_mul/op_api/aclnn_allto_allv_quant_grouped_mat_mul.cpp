@@ -389,22 +389,18 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous, and set gmmWeight transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
         transGmmWeight = !transGmmWeight;
         // 把非连续gmmWeight转成连续
         transposeGmmWeight = TransGmmWeightTensor(gmmWeight);
         CHECK_RET(transposeGmmWeight != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        OP_LOGD("gmmWeight is a non-contiguous tensor. The original dim1 is %ld, and dim2 is %ld. After processing, "
-                "transposeGmmWeight dim1 is %ld, and dim2 is %ld.",
-                gmmWeight->GetViewShape().GetDim(1), gmmWeight->GetViewShape().GetDim(2),
-                transposeGmmWeight->GetViewShape().GetDim(1), transposeGmmWeight->GetViewShape().GetDim(2));
+        OP_LOGD("gmmWeight is a non-contiguous tensor. The original dim1 is %ld, and dim2 is %ld. After processing, transposeGmmWeight dim1 is %ld, and dim2 is %ld.",
+            gmmWeight->GetViewShape().GetDim(1), gmmWeight->GetViewShape().GetDim(2), transposeGmmWeight->GetViewShape().GetDim(1), transposeGmmWeight->GetViewShape().GetDim(2));
     }
 
     // 处理非连续Tensor，目前支持转置的mmWeightOptional涉及该处理
     if (CheckMmWeightValid(mmWeightOptional)) {
-        bool notContiguous =
-            IsTransposeLastTwoDims(mmWeightOptional); // notContiguous标识mmWeightOptional是否是非连续的
+        bool notContiguous = IsTransposeLastTwoDims(mmWeightOptional); // notContiguous标识mmWeightOptional是否是非连续的
         auto transMmWeightOptional = mmWeightOptional;
         if (notContiguous && transMmWeight) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
