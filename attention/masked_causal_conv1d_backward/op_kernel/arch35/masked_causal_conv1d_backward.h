@@ -104,9 +104,9 @@ public:
 
 private:
     __aicore__ inline void CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                            int64_t bLen, int64_t sLen, int64_t hLenThis);
+                                            int64_t sEff, int64_t hLenThis);
     __aicore__ inline void CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                       int64_t bLen, int64_t sLen, int64_t hLenThis);
+                                       int64_t sLen, int64_t hLenThis);
     __aicore__ inline void CopyInWeight(int64_t hTile, int64_t hLenThis);
     __aicore__ inline void CopyInMask(int64_t bTile, int64_t sTile, int64_t bLen, int64_t sLen);
     __aicore__ inline void ComputeGradOutputMask(int64_t bLen, int64_t sLen, int64_t hLenThis);
@@ -114,7 +114,7 @@ private:
                                    int64_t bLen, int64_t sEff, int64_t sLen, int64_t hLenThis,
                                    LocalTensor<DT> &wLocal);
     __aicore__ inline void CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                            int64_t bLen, int64_t sEff, int64_t sLen, int64_t hLenThis);
+                                            int64_t sLen, int64_t hLenThis);
     __aicore__ inline void CopyOutGradWeight(int64_t hTile, int64_t hLenThis);
 
     template <HardEvent event>
@@ -157,15 +157,15 @@ private:
     }
 
     __aicore__ inline void printBuffer(){
-        uint64_t gradOutQSize = kBufferNum * (ubMainFactorH_ * ubMainFactorB_ * ubMainFactorS_ * sizeof(DT));
+        uint64_t gradOutQSize = kBufferNum * (ubMainFactorH_ * ubMainFactorB_ * (ubMainFactorS_ + 2) * sizeof(DT));
         uint64_t inputQSize = kBufferNum * (ubMainFactorH_ * ubMainFactorB_ * ubMainFactorS_ * sizeof(DT));
         uint64_t weightQSize = kBufferNum * (ubMainFactorH_ * kW * sizeof(DT));
         uint64_t gradInQSize = kBufferNum * (ubMainFactorH_ * ubMainFactorB_ * ubMainFactorS_ * sizeof(DT));
         uint64_t gradWeightQSize = kBufferNum * (ubMainFactorH_ * kW * sizeof(DT));
-        uint64_t tmpBufSize = kW * ubMainFactorH_ * sizeof(float);
+        uint64_t tmpBufSize = kW * ubMainFactorH_ * B_ * sizeof(float);
         uint64_t maskQSize = 0; 
         if (hasMask_) {
-            uint32_t maskBytes = static_cast<uint32_t>(ubMainFactorB_ * ubMainFactorS_);
+            uint32_t maskBytes = static_cast<uint32_t>(ubMainFactorB_ * (ubMainFactorS_ + 2));
             uint32_t maskBufSize = (maskBytes + (kAlignBytes - 1)) / kAlignBytes * kAlignBytes;
             maskQSize = kBufferNum * maskBufSize;
         }
@@ -177,7 +177,7 @@ private:
         printf("tmpBufSize=%ld", tmpBufSize);
         printf("maskQSize=%ld", maskQSize);
         printf("allSize=%ld", gradOutQSize + inputQSize + weightQSize + gradInQSize + gradWeightQSize + tmpBufSize + maskQSize);
-        printf("available UB size: 245760 Byte, 240KB"); 
+        printf("available UB size: (256-8)*1024=253,952"); 
     }
 
 private:
@@ -240,6 +240,21 @@ private:
 
     int64_t hStart_{0}, hLen_{0};
 
+    // whether this block is a main core (true) or tail core (false)
+    bool isMainCore_{true};
+
+    // per-core selected loop counts and UB factors
+    int64_t hLoopCntCur_{0};
+    int64_t bLoopCntCur_{0};
+    int64_t sLoopCntCur_{0};
+
+    int64_t ubMainHCur_{0};
+    int64_t ubTailHCur_{0};
+    int64_t ubMainBCur_{0};
+    int64_t ubTailBCur_{0};
+    int64_t ubMainSCur_{0};
+    int64_t ubTailSCur_{0};
+
     // fp32 accumulators for grad_weight
     LocalTensor<float> gwAccF32_[kW];
 };
@@ -293,7 +308,8 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
 
     // compute this core's H start/len
     uint64_t blkIdx = GetBlockIdx();
-    if (blkIdx < static_cast<uint64_t>(hMainCoreCnt_)) {
+    isMainCore_ = (blkIdx < static_cast<uint64_t>(hMainCoreCnt_));
+    if (isMainCore_) {
         hStart_ = blkIdx * hMainSize_;
         hLen_ = hMainSize_;
     } else {
@@ -302,15 +318,22 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
         hLen_ = hTailSize_;
     }
 
-    // printf("hStart=%ld", hStart_);
-    // printf("hLen=%ld", hLen_);
+    // set per-core loop counts and UB factors
+    hLoopCntCur_ = isMainCore_ ? hLoopCnt_ : tailHLoopCnt_;
+    bLoopCntCur_ = isMainCore_ ? bLoopCnt_ : tailBLoopCnt_;
+    sLoopCntCur_ = isMainCore_ ? sLoopCnt_ : tailSLoopCnt_;
+
+    ubMainHCur_ = isMainCore_ ? ubMainFactorH_ : tailCoreUbMainFactorH_;
+    ubTailHCur_ = isMainCore_ ? ubTailFactorH_ : tailCoreUbTailFactorH_;
+    ubMainBCur_ = isMainCore_ ? ubMainFactorB_ : tailCoreUbMainFactorB_;
+    ubTailBCur_ = isMainCore_ ? ubTailFactorB_ : tailCoreUbTailFactorB_;
+    ubMainSCur_ = isMainCore_ ? ubMainFactorS_ : tailCoreUbMainFactorS_;
+    ubTailSCur_ = isMainCore_ ? ubTailFactorS_ : tailCoreUbTailFactorS_;
 
     // bind GM tensors (assume contiguous ND layout)
     gradOutGm_.SetGlobalBuffer((__gm__ DT *)grad_output, S_ * B_ * H_);
-    // DisplayTensor(gradOutGm_[0], S_ * B_ * H_, 1, "gradOutGm_");
     inputGm_.SetGlobalBuffer((__gm__ DT *)input, S_ * B_ * H_);
     weightGm_.SetGlobalBuffer((__gm__ DT *)weight, W_ * H_);
-    // DisplayTensor(weightGm_[0],W_ * H_, 1, "weightGm_");
     gradInGm_.SetGlobalBuffer((__gm__ DT *)grad_input, S_ * B_ * H_);
     gradWeightGm_.SetGlobalBuffer((__gm__ DT *)grad_weight, W_ * H_);
     if (hasMask_) {
@@ -318,67 +341,64 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     }
 
     // init queues and tmp buffers
-    pipe_->InitBuffer(gradOutQ_, kBufferNum, static_cast<uint32_t>(ubMainFactorH_ * ubMainFactorB_ * ubMainFactorS_ * sizeof(DT)));
-    pipe_->InitBuffer(inputQ_, kBufferNum, static_cast<uint32_t>(ubMainFactorH_ * ubMainFactorB_ * ubMainFactorS_ * sizeof(DT)));
-    pipe_->InitBuffer(weightQ_, kBufferNum, static_cast<uint32_t>(ubMainFactorH_ * kW * sizeof(DT)));
+    pipe_->InitBuffer(gradOutQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * ubMainBCur_ * (ubMainSCur_ + 2) * sizeof(DT)));
+    pipe_->InitBuffer(inputQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * ubMainBCur_ * ubMainSCur_ * sizeof(DT)));
+    pipe_->InitBuffer(weightQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * kW * sizeof(DT)));
     if (hasMask_) {
-        uint32_t maskBytes = static_cast<uint32_t>(ubMainFactorB_ * ubMainFactorS_);
+        uint32_t maskBytes = static_cast<uint32_t>(ubMainBCur_ * (ubMainSCur_ + 2));
         uint32_t maskBufSize = (maskBytes + (kAlignBytes - 1)) / kAlignBytes * kAlignBytes;
         pipe_->InitBuffer(maskQ_, kBufferNum, maskBufSize);
     }
-    pipe_->InitBuffer(gradInQ_, kBufferNum, static_cast<uint32_t>(ubMainFactorH_ * ubMainFactorB_ * ubMainFactorS_ * sizeof(DT)));
-    pipe_->InitBuffer(gradWeightQ_, kBufferNum, static_cast<uint32_t>(ubMainFactorH_ * kW * sizeof(DT)));
+    pipe_->InitBuffer(gradInQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * ubMainBCur_ * ubMainSCur_ * sizeof(DT)));
+    pipe_->InitBuffer(gradWeightQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * kW * sizeof(DT)));
 
-    // tmp buffer holds fp32 accumulators for grad_weight: 3 * ubMainFactorH_
-    pipe_->InitBuffer(tmpBuf_, static_cast<uint32_t>(kW * ubMainFactorH_ * sizeof(float)));
+    // tmp buffer holds fp32 accumulators for grad_weight per-B: W * ubMainHCur_ * B_
+    pipe_->InitBuffer(tmpBuf_, static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float)));
     uint32_t off = 0;
-    gwAccF32_[0] = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(ubMainFactorH_), off);
-    off += static_cast<uint32_t>(ubMainFactorH_ * sizeof(float));
-    gwAccF32_[1] = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(ubMainFactorH_), off);
-    off += static_cast<uint32_t>(ubMainFactorH_ * sizeof(float));
-    gwAccF32_[2] = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(ubMainFactorH_), off);
+    for (int32_t k = 0; k < kW; ++k) {
+        // gwAccF32_[k] points to slice for current W, starting at batch 0; per-batch offset will be applied in process
+        gwAccF32_[k] = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(ubMainHCur_ * B_), off);
+        off += static_cast<uint32_t>(ubMainHCur_ * B_ * sizeof(float));
+    }
 
-    printTiling();
-    // printBuffer();
+    if (blkIdx == 0) {
+        printTiling();
+        printBuffer();
+    }
+    
 }
 
 template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Process()
 {
     // Accumulate grad_weight in fp32 across all (b,s) tiles per h-tile, then cast+store once per h-tile
-    bool isTailCore = (GetBlockIdx() >= static_cast<uint64_t>(hMainCoreCnt_));
-    int64_t hLoopCntCur = isTailCore ? tailHLoopCnt_ : hLoopCnt_;
-    int64_t bLoopCntCur = isTailCore ? tailBLoopCnt_ : bLoopCnt_;
-    int64_t sLoopCntCur = isTailCore ? tailSLoopCnt_ : sLoopCnt_;
-    for (int64_t hTile = 0; hTile < hLoopCntCur; ++hTile) {
-        int64_t hLenThis = (hTile == hLoopCntCur - 1 && ubTailFactorH_ > 0) ? ubTailFactorH_ : ubMainFactorH_;
+    for (int64_t hTile = 0; hTile < hLoopCntCur_; ++hTile) {
+        int64_t hLenThis = (hTile == hLoopCntCur_ - 1 && ubTailHCur_ > 0) ? ubTailHCur_ : ubMainHCur_;
 
-        // zero fp32 accumulators for this h-tile
-        Duplicate(gwAccF32_[0], 0.0f, static_cast<uint32_t>(hLenThis));
-        Duplicate(gwAccF32_[1], 0.0f, static_cast<uint32_t>(hLenThis));
-        Duplicate(gwAccF32_[2], 0.0f, static_cast<uint32_t>(hLenThis));
+        // zero fp32 accumulators for this h-tile (per-batch slices)
+        for (int64_t b = 0; b < B_; ++b) {
+            LocalTensor<float> acc0 = gwAccF32_[0][static_cast<uint32_t>(b * ubMainHCur_)];
+            LocalTensor<float> acc1 = gwAccF32_[1][static_cast<uint32_t>(b * ubMainHCur_)];
+            LocalTensor<float> acc2 = gwAccF32_[2][static_cast<uint32_t>(b * ubMainHCur_)];
+            Duplicate(acc0, 0.0f, static_cast<uint32_t>(hLenThis));
+            Duplicate(acc1, 0.0f, static_cast<uint32_t>(hLenThis));
+            Duplicate(acc2, 0.0f, static_cast<uint32_t>(hLenThis));
+        }
 
         // Load weight once per h-tile
         CopyInWeight(hTile, hLenThis);
         SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         LocalTensor<DT> wLocal = weightQ_.DeQue<DT>();
 
-        for (int64_t bTile = 0; bTile < bLoopCntCur; ++bTile) {
-            int64_t bLen = (bTile == bLoopCntCur - 1 && ubTailFactorB_ > 0 && isTailCore) ? ubTailFactorB_ : ubMainFactorB_;
-            for (int64_t sTile = 0; sTile < sLoopCntCur; ++sTile) {
-                int64_t sLen = (sTile == sLoopCntCur - 1 && ubTailFactorS_ > 0) ? ubTailFactorS_ : ubMainFactorS_;
-                int64_t sEff = (sTile == sLoopCntCur - 1) ? sLen : (sLen - 2);
-                printf("bTile=%ld, bLen=%ld, sTile=%ld, sLen=%ld, sEff=%ld", bTile, bLen, sTile, sLen, sEff);
-                CopyInGradOutput(bTile, sTile, hTile, bLen, sLen, hLenThis);
-                CopyInInput(bTile, sTile, hTile, bLen, sLen, hLenThis);
-                SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-                // if (hasMask_) {
-                //     CopyInMask(bTile, sTile, bLen, sLen);
-                //      SetWaitFlag;
-                //     ComputeGradOutputMask(bLen, sLen, hLenThis);
-                // }
+        for (int64_t bTile = 0; bTile < B_; ++bTile) {
+            int64_t bLen = 1;
+            for (int64_t sTile = 0; sTile < sLoopCntCur_; ++sTile) {
+                int64_t sLen = (sTile == sLoopCntCur_ - 1 && ubTailSCur_ > 0) ? ubTailSCur_ : ubMainSCur_;
+                int64_t sEff = (sTile == sLoopCntCur_ - 1) ? sLen : (sLen + 2);
+                CopyInGradOutput(bTile, sTile, hTile, sEff, hLenThis);
+                CopyInInput(bTile, sTile, hTile, sLen, hLenThis);
                 Compute(bTile, sTile, hTile, bLen, sEff, sLen, hLenThis, wLocal);
-                CopyOutGradInput(bTile, sTile, hTile, bLen, sEff, sLen, hLenThis);
+                CopyOutGradInput(bTile, sTile, hTile, sLen, hLenThis);
             }
         }
 
@@ -395,24 +415,22 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Compute(int64_t bTi
     LocalTensor<DT> inLocal = inputQ_.DeQue<DT>();
     LocalTensor<DT> giLocal = gradInQ_.AllocTensor<DT>();
 
-    // DisplayTensor(goLocal[0], sLen * bLen * hLenThis, 1, "goLocal");
-    // DisplayTensor(wLocal[0], 3 * hLenThis, 1, "wLocal");
     // Compute grad_input using VF (reuse weight already loaded for this h-tile)
     // sEff accounts for 2-row overlap between adjacent s-tiles
     AggHiddenGradVF::DoGradInput<DT>(goLocal, wLocal, giLocal, static_cast<uint32_t>(bLen),
                                      static_cast<uint32_t>(sEff), static_cast<uint32_t>(sLen),
                                      static_cast<uint32_t>(hLenThis));
-    // if (GetBlockIdx() == 0)           {
-    //     DisplayTensor(giLocal[0], sLen * bLen * hLenThis, 1, "giLocal");
-    // }
-    // DisplayTensor(goLocal, sLen * bLen * hLenThis, 1, "goLocal");
-    // DisplayTensor(inLocal, sLen * bLen * hLenThis, 1, "inLocal");
+
     // Accumulate grad_weight in fp32 using VF Acc variant
-    // DisplayTensor(gwAccF32_[2], hLenThis, 1, "gwAccF32_[2]");
-    AggHiddenGradVF::DoGradWeightAcc<DT>(goLocal, inLocal, gwAccF32_[0], gwAccF32_[1], gwAccF32_[2],
-                                         static_cast<uint32_t>(bLen), static_cast<uint32_t>(sEff),
-                                         static_cast<uint32_t>(sLen), static_cast<uint32_t>(hLenThis));
-    // DisplayTensor(gwAccF32_[2], hLenThis, 1, "gwAccF32_[2]");
+    // Create lvalue slices for accumulators to satisfy ref parameters
+    LocalTensor<float> acc0Slice = gwAccF32_[0][static_cast<uint32_t>(bTile * ubMainHCur_)];
+    LocalTensor<float> acc1Slice = gwAccF32_[1][static_cast<uint32_t>(bTile * ubMainHCur_)];
+    LocalTensor<float> acc2Slice = gwAccF32_[2][static_cast<uint32_t>(bTile * ubMainHCur_)];
+    AggHiddenGradVF::DoGradWeightAcc<DT>(
+        goLocal, inLocal,
+        acc0Slice, acc1Slice, acc2Slice,
+        static_cast<uint32_t>(bLen), static_cast<uint32_t>(sEff),
+        static_cast<uint32_t>(sLen), static_cast<uint32_t>(hLenThis));
     pipe_barrier(PIPE_ALL);
     gradOutQ_.FreeTensor(goLocal);
     inputQ_.FreeTensor(inLocal);
@@ -440,40 +458,51 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ComputeGradOutputMa
 
 template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                                                       int64_t bLen, int64_t sLen, int64_t hLenThis)
+                                                                       int64_t sEff, int64_t hLenThis)
 {
     LocalTensor<DT> goLocal = gradOutQ_.AllocTensor<DT>();
-    // Copy a [sLen, bLen, hLenThis] block along contiguous H
-    DataCopyExtParams inParams{static_cast<uint16_t>(sLen * bLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
-                               static_cast<uint32_t>((H_ - hLenThis) * sizeof(DT)), 0, 0};
-    bool isTailCore = (GetBlockIdx() >= static_cast<uint64_t>(hMainCoreCnt_));
-    int64_t sLoopCntCur = isTailCore ? tailSLoopCnt_ : sLoopCnt_;
-    int64_t sStride = ubMainFactorS_ - 2;
-    int64_t sStart = sTile * sStride;
-    int64_t bStart = bTile * ubMainFactorB_;
-    int64_t hOff = hTile * ubMainFactorH_;
-    int64_t base = ((sStart * B_ + bStart) * H_) + (hStart_ + hOff);
+
+    int64_t sStart = sTile * ubMainSCur_;
+    int64_t bStart = bTile * ubMainBCur_;
+    int64_t hOff = hTile * ubMainHCur_;
     DataCopyPadExtParams<DT> padParams{false, 0, 0, 0};
-    DataCopyPad(goLocal, gradOutGm_[base], inParams, padParams);
+
+    // bLen 固定为 1，逐 batch 搬运
+    int64_t base = (((sStart) * B_ + (bStart)) * H_) + (hStart_ + hOff);
+    LocalTensor<DT> dstBlock = goLocal[0];
+    DataCopyExtParams inParams{static_cast<uint16_t>(sEff), static_cast<uint32_t>(hLenThis * sizeof(DT)),
+                               static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0, 0};
+    DataCopyPad(dstBlock, gradOutGm_[base], inParams, padParams);
+
+    // For last S-tile, zero the remaining 2 halo rows in buffer
+    if (sTile == sLoopCntCur_ - 1) {
+        uint32_t tailOff = static_cast<uint32_t>(sEff * hLenThis);
+        LocalTensor<DT> row1 = goLocal[tailOff];
+        Duplicate(row1, static_cast<DT>(0), static_cast<uint32_t>(hLenThis));
+        LocalTensor<DT> row2 = goLocal[tailOff + static_cast<uint32_t>(hLenThis)];
+        Duplicate(row2, static_cast<DT>(0), static_cast<uint32_t>(hLenThis));
+    }
+
     gradOutQ_.EnQue<DT>(goLocal);
 }
 
 template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                                                  int64_t bLen, int64_t sLen, int64_t hLenThis)
+                                                                  int64_t sLen, int64_t hLenThis)
 {
     LocalTensor<DT> inLocal = inputQ_.AllocTensor<DT>();
-    DataCopyExtParams inParams{static_cast<uint16_t>(sLen * bLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
-                               static_cast<uint32_t>((H_ - hLenThis) * sizeof(DT)), 0, 0};
-    bool isTailCore = (GetBlockIdx() >= static_cast<uint64_t>(hMainCoreCnt_));
-    int64_t sLoopCntCur = isTailCore ? tailSLoopCnt_ : sLoopCnt_;
-    int64_t sStride = ubMainFactorS_ - 2;
-    int64_t sStart = sTile * sStride;
-    int64_t bStart = bTile * ubMainFactorB_;
-    int64_t hOff = hTile * ubMainFactorH_;
-    int64_t base = ((sStart * B_ + bStart) * H_) + (hStart_ + hOff);
+
+    int64_t sStart = sTile * ubMainSCur_;
+    int64_t bStart = bTile * ubMainBCur_;
+    int64_t hOff = hTile * ubMainHCur_;
     DataCopyPadExtParams<DT> padParams{false, 0, 0, 0};
-    DataCopyPad(inLocal, inputGm_[base], inParams, padParams);
+
+    int64_t base = (((sStart) * B_ + (bStart)) * H_) + (hStart_ + hOff);
+    LocalTensor<DT> dstBlock = inLocal[0];
+    DataCopyExtParams inParams{static_cast<uint16_t>(sLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
+                               static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0, 0};
+    DataCopyPad(dstBlock, inputGm_[base], inParams, padParams);
+
     inputQ_.EnQue<DT>(inLocal);
 }
 
@@ -483,7 +512,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInWeight(int64_
     LocalTensor<DT> wLocal = weightQ_.AllocTensor<DT>();
     DataCopyExtParams inParams{static_cast<uint16_t>(kW), static_cast<uint32_t>(hLenThis * sizeof(DT)),
                                static_cast<uint32_t>((H_ - hLenThis) * sizeof(DT)), 0, 0};
-    int64_t hOff = hTile * ubMainFactorH_;
+    int64_t hOff = hTile * ubMainHCur_;
     int64_t base = (hStart_ + hOff);
     DataCopyPadExtParams<DT> padParams{false, 0, 0, 0};
     DataCopyPad(wLocal, weightGm_[base], inParams, padParams);
@@ -510,20 +539,21 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInMask(int64_t 
 
 template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                                                       int64_t bLen, int64_t sEff, int64_t sLen,
+                                                                       int64_t sLen,
                                                                        int64_t hLenThis)
 {
     LocalTensor<DT> giLocal = gradInQ_.DeQue<DT>();
-    DataCopyExtParams outParams{static_cast<uint16_t>(sEff * bLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
-                               0, static_cast<uint32_t>((H_ - hLenThis) * sizeof(DT)), 0};
-    bool isTailCore = (GetBlockIdx() >= static_cast<uint64_t>(hMainCoreCnt_));
-    int64_t sLoopCntCur = isTailCore ? tailSLoopCnt_ : sLoopCnt_;
-    int64_t sStride = ubMainFactorS_ - 2;
-    int64_t sStart = sTile * sStride;
-    int64_t bStart = bTile * ubMainFactorB_;
-    int64_t hOff = hTile * ubMainFactorH_;
-    int64_t base = ((sStart * B_ + bStart) * H_) + (hStart_ + hOff);
-    DataCopyPad(gradInGm_[base], giLocal, outParams);
+
+    int64_t sStart = sTile * ubMainSCur_;
+    int64_t bStart = bTile * ubMainBCur_;
+    int64_t hOff = hTile * ubMainHCur_;
+
+    int64_t base = (((sStart) * B_ + (bStart)) * H_) + (hStart_ + hOff);
+    LocalTensor<DT> srcBlock = giLocal[0];
+    DataCopyExtParams outParams{static_cast<uint16_t>(sLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
+                               0, static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0};
+    DataCopyPad(gradInGm_[base], srcBlock, outParams);
+
     pipe_barrier(PIPE_ALL);
     gradInQ_.FreeTensor(giLocal);
 }
@@ -531,16 +561,27 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyOutGradInput(in
 template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyOutGradWeight(int64_t hTile, int64_t hLenThis)
 {
-    // Cast fp32 accumulators to DT and write to GM: layout [W,H]
-    int64_t hOff = hTile * ubMainFactorH_;
+    // Reduce across B in fp32, cast to DT, then write to GM: layout [W,H]
+    int64_t hOff = hTile * ubMainHCur_;
     int64_t baseH = hStart_ + hOff;
+
+    // Allocate UB buffer to hold casted [W,H] slices for this h-tile
     LocalTensor<DT> gwCast = gradWeightQ_.AllocTensor<DT>();
+    LocalTensor<DT> out0 = gwCast;                                      // k=0 slice at offset 0
+    LocalTensor<DT> out1 = gwCast[static_cast<uint32_t>(ubMainHCur_)];  // k=1 slice
+    LocalTensor<DT> out2 = gwCast[static_cast<uint32_t>(2 * ubMainHCur_)]; // k=2 slice
+
+    // Perform B-reduction on fp32 accumulators and cast to DT into out0/out1/out2
+    AggHiddenGradVF::DoReduceBToHAndCast<DT>(
+        gwAccF32_[0], gwAccF32_[1], gwAccF32_[2],
+        static_cast<uint32_t>(B_), static_cast<uint32_t>(hLenThis),
+        out0, out1, out2);
+
+    // Store each W slice to GM
     for (int32_t k = 0; k < kW; ++k) {
-        // Cast first hLenThis elements
-        LocalTensor<DT> gwSlice = gwCast[static_cast<uint32_t>(k * ubMainFactorH_)];
-        Cast<DT, float>(gwSlice, gwAccF32_[k], RoundMode::CAST_RINT, static_cast<uint32_t>(hLenThis));
         int64_t base = static_cast<int64_t>(k) * H_ + baseH;
         DataCopyExtParams outParams{static_cast<uint16_t>(1), static_cast<uint32_t>(hLenThis * sizeof(DT)), 0, 0, 0};
+        LocalTensor<DT> gwSlice = gwCast[static_cast<uint32_t>(k * ubMainHCur_)];
         DataCopyPad(gradWeightGm_[base], gwSlice, outParams);
     }
     gradWeightQ_.FreeTensor(gwCast);

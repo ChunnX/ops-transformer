@@ -298,8 +298,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         // gradWeightQueue: hUb * W * sizeof(DTYPE) - double buffer
         int64_t gradWeightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
 
-        // tempBuff: hUb * W * sizeof(float) - TBuf (单buffer，用于临时存储权重梯度)
-        int64_t tempBuffSize = h * W_ * sizeof(float);
+        // tempBuff: hUb * W * B * sizeof(float) - TBuf (单buffer，用于临时存储权重梯度，按B维分别累加)
+        int64_t tempBuffSize = h * W_ * B_ * sizeof(float);
 
         // 所有Queue都是double buffer，tempBuff是单buffer
         int64_t totalSize = BUFFER_NUM * (gradOutputSize + inputSize + weightSize + maskSize +
@@ -307,89 +307,44 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         return totalSize;
     };
 
-    // 首先尝试H=64，全载BS
+    // 新策略：B 维不在 UB 内切分，核内仅切 S（bUB 固定为 1）
     // 注意：sUB_ 存储的是有效输出行数（不包含重叠部分）
     hUB_ = minH;
-    bUB_ = B_;
-    sUB_ = S_;  // 有效输出大小
-    if (calculateBufferSize(hUB_, bUB_, sUB_) <= availableUbSize) {  //H=64能全载BS，看H能否增加
-        // 计算理论最大H（简化公式，基于Buffer占用）
-        int64_t s_effective = sUB_;
-        int64_t s_with_overlap = s_effective + (W_ - 1);
-        int64_t coeff = B_ * s_with_overlap * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                        2 * B_ * s_effective * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                        2 * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                        W_ * sizeof(float);
-        // maskQueue 始终存在，大小为 bUb * (sUb + W-1)
-        int64_t const_cost = BUFFER_NUM * B_ * s_with_overlap;
-        int64_t maxH = std::min(perCoreH, (availableUbSize - const_cost) / coeff);
-        hUB_ = (maxH / minH) * minH;  // 对齐到64
+    bUB_ = 1;
 
-        // 确保至少是minH
-        if (hUB_ < minH) {
-            hUB_ = minH;
-        }
-    } else {
-        // 不能全载，先压缩B
-        bUB_ = 1;
-        if (calculateBufferSize(hUB_, bUB_, sUB_) <= availableUbSize) { //B=1时能全载S，尝试增加B
-            // 计算最大B
-            int64_t s_effective = sUB_;
-            int64_t s_with_overlap = s_effective + (W_ - 1);
-            int64_t coeff_b = hUB_ * s_with_overlap * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM+
-                              2 * hUB_ * s_effective * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM;
-            int64_t fixed_cost = 2 * hUB_ * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                                 hUB_ * W_ * sizeof(float);
-            int64_t maxB = std::min(B_, (availableUbSize - fixed_cost) / coeff_b);
-            bUB_ = std::max<int64_t>(1, maxB);
-        } else {  //即便B=1也不能全载S，切S
-            // 计算最大的有效输出大小
-            // Buffer总大小 = s * coeff_s + const_cost_s
-            // coeff_s = (3 input/output queues) * BUFFER_NUM * h * b * dtype + maskQueue * BUFFER_NUM * b
-            // const_cost_s = BUFFER_NUM * (gradOutput/mask的常数项 + weight相关) + tempBuff
-            int64_t coeff_s = 3 *  hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM+
-                              bUB_ * BUFFER_NUM;
-            int64_t const_cost_s = 2 * hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                                   2 * hUB_ * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                                   2 * bUB_ * BUFFER_NUM +
-                                   hUB_ * W_ * sizeof(float);
+    // 在 bUB_=1 下，按 UB 容量求最大的 sUB_
+    // Buffer总大小 = s * coeff_s + const_cost_s
+    // coeff_s = (3 input/output queues) * BUFFER_NUM * h * b * dtype + maskQueue * BUFFER_NUM * b
+    // const_cost_s = BUFFER_NUM * (gradOutput/mask的常数项 + weight相关) + tempBuff
+    int64_t coeff_s = 3 * hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                      bUB_ * BUFFER_NUM;
+    int64_t const_cost_s = 2 * hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                           2 * hUB_ * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
+                           2 * bUB_ * BUFFER_NUM +
+                           hUB_ * W_ * sizeof(float);
 
-            int64_t min_s_effective = 1;
-            int64_t maxS = (availableUbSize - const_cost_s) / coeff_s;
-            sUB_ = std::max(min_s_effective, maxS);
-        }
-    }
+    int64_t maxS = (availableUbSize - const_cost_s) / coeff_s;
+    int64_t min_s_effective = 1;
+    sUB_ = std::max(min_s_effective, std::min(S_, maxS));
 
-    // 计算主核的循环次数和尾块大小
-    // sUB_ 是有效输出行数（不包含重叠部分）
+    // 循环次数（B 不切分，bLoopCnt_=1，尾块同理）
     hLoopCnt_ = (perCoreH + hUB_ - 1) / hUB_;
-    bLoopCnt_ = (B_ + bUB_ - 1) / bUB_;
+    bLoopCnt_ = 1;
     sLoopCnt_ = (S_ + sUB_ - 1) / sUB_;
 
-    // 计算主核的主块和尾块大小
+    // 主块与尾块
     ubMainFactorH_ = hUB_;
     ubTailFactorH_ = (hLoopCnt_ == 1) ? perCoreH : (perCoreH % hUB_ == 0 ? hUB_ : perCoreH % hUB_);
 
-    ubMainFactorB_ = bUB_;
-    ubTailFactorB_ = (bLoopCnt_ == 1) ? B_ : (B_ % bUB_ == 0 ? bUB_ : B_ % bUB_);
+    ubMainFactorB_ = 1;
+    ubTailFactorB_ = 1;
 
-    // ubMainFactorS 和 ubTailFactorS 存储有效输出大小（不包含重叠部分）
+    // 有效输出（不含重叠）
     ubMainFactorS_ = sUB_;
-
-    // 计算尾块：有效输出的余数
     int64_t s_effective_remain = S_ % sUB_;
-    if (s_effective_remain == 0 && sLoopCnt_ > 0) {
-        // 能整除，尾块和主块一样
-        ubTailFactorS_ = sUB_;
-    } else if (s_effective_remain > 0) {
-        // 有余数，尾块 = 余数
-        ubTailFactorS_ = s_effective_remain;
-    } else {
-        // sLoopCnt_ == 0 的异常情况
-        ubTailFactorS_ = sUB_;
-    }
+    ubTailFactorS_ = (s_effective_remain == 0 && sLoopCnt_ > 0) ? sUB_ : (s_effective_remain > 0 ? s_effective_remain : sUB_);
 
-    // 计算尾核的参数（如果有尾核）
+    // 尾核（保持 B 参数为 1）
     if (hTailCoreCnt_ > 0 && hTailSize_ > 0) {
         // 尾核可能需要不同的H循环次数
         int64_t tailCoreH = hTailSize_;
@@ -458,18 +413,11 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
     tilingData_.ubMainFactorS = ubMainFactorS_;
     tilingData_.ubTailFactorS = ubTailFactorS_;
 
-    // 尾核循环参数
-    tilingData_.tailHLoopCnt = tailHLoopCnt_;
-    tilingData_.tailBLoopCnt = tailBLoopCnt_;
-    tilingData_.tailSLoopCnt = tailSLoopCnt_;
-
-    // 尾核UB切块参数
-    tilingData_.tailCoreUbMainFactorH = tailCoreUbMainFactorH_;
-    tilingData_.tailCoreUbTailFactorH = tailCoreUbTailFactorH_;
-    tilingData_.tailCoreUbMainFactorB = tailCoreUbMainFactorB_;
-    tilingData_.tailCoreUbTailFactorB = tailCoreUbTailFactorB_;
-    tilingData_.tailCoreUbMainFactorS = tailCoreUbMainFactorS_;
-    tilingData_.tailCoreUbTailFactorS = tailCoreUbTailFactorS_;
+    // 尾核循环参数（B 不切分 -> 1）
+    tilingData_.tailBLoopCnt = 1;
+    // 尾核UB切块参数（B 相关为 1）
+    tilingData_.tailCoreUbMainFactorB = 1;
+    tilingData_.tailCoreUbTailFactorB = 1;
 
     // 全局参数
     tilingData_.hasMask = hasMask_;
