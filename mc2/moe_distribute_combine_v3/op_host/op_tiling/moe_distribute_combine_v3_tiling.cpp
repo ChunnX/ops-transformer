@@ -115,6 +115,18 @@ inline void MoeDistributeCombineV3ExceptionImplWrapper(aclrtExceptionInfo *args,
     Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV3");
 }
 
-IMPL_OP(MoeDistributeCombineV3)
-    .ExceptionDumpParseFunc(MoeDistributeCombineV3ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeCombineV3ExceptionFunc()
+{
+    int32_t VersionNum = 0;
+
+    if (aclsysGetVersionNum("metadef", &VersionNum) != ACL_SUCCESS) {
+        return;
+    }
+    if (VersionNum < 90000000) {
+       return;
+    }
+
+    IMPL_OP(MoeDistributeCombineV3)
+        .ExceptionDumpParseFunc(MoeDistributeCombineV3ExceptionImplWrapper);
+}
 #endif
