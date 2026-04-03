@@ -481,7 +481,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       int64_t bsdp = 8;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffset = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -599,7 +599,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
       // 调用aclnnGroupedMatmulFinalizeRoutingWeightNz第一段接口
       workspaceSize = 0;
-      ret = aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(x, w, scale, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(x, w, scale, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
 
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
