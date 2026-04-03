@@ -487,7 +487,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             }
             runParam.s1LoopTimes = 1; // GQA支持后解决
         }
-
+        if (unlikely(lastBN && runParam.s1LoopTimes == 0)) runParam.s1LoopTimes = 1;
         gS1EndIdx = runParam.s1LoopTimes;
         for (int64_t gS1Index = gS1StartIdx; gS1Index <runParam.s1LoopTimes; gS1Index++) {
             s2LoopLimit = 0;
