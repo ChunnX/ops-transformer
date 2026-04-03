@@ -14,6 +14,7 @@
  */
 #include "allto_all_matmul_tiling_base.h"
 #include "mc2_log.h"
+#include "./arch35/allto_all_matmul_fit_balance_tiling.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -122,24 +123,36 @@ void AllToAllMatmulTilingBase::SetUserWorkSpace()
 ge::graphStatus AllToAllMatmulTilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
-    SocVersion nowSocVersion = SocVersion::SOC950;
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
     OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
-    if (socVersionStr == "Ascend910_93") {
-        nowSocVersion = SocVersion::SOC910_93;
-    }
-    // 最后一个参数true代表AlltoAllMatmul
-    AlltoAllMM alltoallMatmulTileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL,
-                                           nowSocVersion, true);
-    alltoallMatmulTileFormulate.GetTiling();
-    CutResult mCutMMAlltoAll = alltoallMatmulTileFormulate.tilingM_.cutRes;
-    inferredInfo.tileM = mCutMMAlltoAll.longTileLen;
-    inferredInfo.tileCnt = mCutMMAlltoAll.numLongTile;
-    inferredInfo.tailM = 0;
-    inferredInfo.tailCnt = 0;
-    if (mCutMMAlltoAll.numShortTile > 0) {
-        inferredInfo.tailM = mCutMMAlltoAll.shortTileLen;
-        inferredInfo.tailCnt = mCutMMAlltoAll.numShortTile;
+
+    if (socVersionStr == "Ascend950") {
+        // Arch35 path: use Mc2FitBasedBalanceTiling with arch35-specific performance models
+        AlltoAllMatmulFitBalanceTiling tiling(contextInfo.args_, SocVersion::SOC950);
+        CutResult cutRes = tiling.GetTiling();
+        inferredInfo.tileM = cutRes.longTileLen;
+        inferredInfo.tileCnt = cutRes.numLongTile;
+        inferredInfo.tailM = 0;
+        inferredInfo.tailCnt = 0;
+        if (cutRes.numShortTile > 0) {
+            inferredInfo.tailM = cutRes.shortTileLen;
+            inferredInfo.tailCnt = cutRes.numShortTile;
+        }
+    } else {
+        // Legacy path: Ascend910_93 and others use AlltoAllMM (OneCalcOneCommBase)
+        SocVersion nowSocVersion = SocVersion::SOC910_93;
+        AlltoAllMM alltoallMatmulTileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL,
+                                               nowSocVersion, true);
+        alltoallMatmulTileFormulate.GetTiling();
+        CutResult mCutMMAlltoAll = alltoallMatmulTileFormulate.tilingM_.cutRes;
+        inferredInfo.tileM = mCutMMAlltoAll.longTileLen;
+        inferredInfo.tileCnt = mCutMMAlltoAll.numLongTile;
+        inferredInfo.tailM = 0;
+        inferredInfo.tailCnt = 0;
+        if (mCutMMAlltoAll.numShortTile > 0) {
+            inferredInfo.tailM = mCutMMAlltoAll.shortTileLen;
+            inferredInfo.tailCnt = mCutMMAlltoAll.numShortTile;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
