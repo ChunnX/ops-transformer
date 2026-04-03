@@ -11,6 +11,7 @@
 │   ├── ...
 ├── develop                            # 算子开发指导文档
 │   ├── aicore_develop_guide.md
+│   ├── pre-commit_guide.md            # 开发环境pre-commita安装指导文档
 │   ├── ...
 ├── figures                            # 图片目录
 ├── install                            # 环境安装指导文档
