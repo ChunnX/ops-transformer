@@ -67,13 +67,13 @@ ge::graphStatus FiaTilingCheck::CheckFeatureNoQuantDtype() const
 
 ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
 {
-    const constexpr BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
-    const constexpr BLOCK_SIZE_ALIGN_SIZE_16 = 16;
-    const constexpr NUM_64 = 64;
-    const constexpr NUM_128 = 128;
-    const constexpr NUM1 = 1;
-    const constexpr BLOCK_SIZE_ALIGN_SIZE_128 = 128;
-    const constexpr BLOCK_SIZE_MAX = 512;
+    constexpr uint16_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
+    constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
+    constexpr uint16_t NUM_64 = 64;
+    constexpr uint16_t NUM_128 = 128;
+    constexpr uint16_t NUM1 = 1;
+    constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
+    constexpr uint16_t BLOCK_SIZE_MAX = 512;
 
     if (ropeMode_.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
         OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
