@@ -137,7 +137,7 @@ int LaunchOneProcess(Args &args)
     int64_t moeExpertNum = 32;
     int64_t commQuantMode = 0;
     int64_t tpWorldSize = 1;
-    int64_t epWorldSize = 2;
+    int64_t epWorldSize = DEV_NUM;
     int64_t commType = 2;
     int64_t timeOut = 100000000;
 
