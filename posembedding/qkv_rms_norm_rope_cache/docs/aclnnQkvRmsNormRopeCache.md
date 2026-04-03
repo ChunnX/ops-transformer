@@ -128,11 +128,11 @@ aclnnStatus aclnnQkvRmsNormRopeCacheGetWorkspaceSize(
   const aclIntArray *headNums,
   double             epsilon,
   char              *cacheModeOptional,
-  aclTensor         *qOutBeforeQuant,
-  aclTensor         *kOutBeforeQuant,
-  aclTensor         *vOutBeforeQuant,
-  uint64_t           workspaceSize,
-  aclOpExecutor     *executor)
+  const aclTensor   *qOutBeforeQuant,
+  const aclTensor   *kOutBeforeQuant,
+  const aclTensor   *vOutBeforeQuant,
+  uint64_t          *workspaceSize,
+  aclOpExecutor     **executor)
 ```
 
 ```Cpp
