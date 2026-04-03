@@ -22,11 +22,12 @@
 #include "opdev/platform.h"
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
+#include "opdev/common_types.h"
 
 
-#ifdef BUILD_OPEN_PROJECT
-#include "hccl/hccl_rank_graph.h"
-#endif
+// #ifdef BUILD_OPEN_PROJECT
+// #include "hccl/hccl_rank_graph.h"
+// #endif
 
 static constexpr uint32_t COMM_ALG_DEFAULT = 0U;
 static constexpr uint32_t COMM_MESH = 0b1U;
