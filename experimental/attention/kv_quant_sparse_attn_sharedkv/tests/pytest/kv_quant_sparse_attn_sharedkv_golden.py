@@ -160,7 +160,7 @@ class GeneralizedSFAQuant:
         elif mask_mode == 0:
             threshold = math.floor(cur_act_kv / cmp_ratio)
         if topk_length_bnsd != None:
-            valid_count = min(topk_length_bnsd[i_B, 0, 0, 0], math.ceil(threshold / sparse_block_size))
+            valid_count = min(topk_length_bnsd[i_B, 0, i_S1, 0], math.ceil(threshold / sparse_block_size))
         elif not isOri:
             valid_count = min(self.K2, math.ceil(threshold / sparse_block_size))
         else:
@@ -241,32 +241,32 @@ class GeneralizedSFAQuant:
     def trans_topk_length_shape_to_bnsd(self, tensor, shape, layout, act_seq=None):
         if layout in ["BSND"]:
             B = shape[0]
-            # S = shape[1]
-            # tensor = tensor.reshape(B, 1, S, 1)
-            # return tensor, [B, 1, S, 1]
-            tensor = tensor.reshape(B, 1, 1, 1)
-            return tensor, [B, 1, 1, 1]
-        elif layout in ["TND"]:
-            T = shape[0]
-            B = len(act_seq) - 1  # TND act_q is cumulative
-            tensor = tensor.reshape(B, 1, 1, 1)
-            return tensor, [B, 1, 1, 1]
+            S = shape[1]
+            tensor = tensor.reshape(B, 1, S, 1)
+            return tensor, [B, 1, S, 1]
+            # tensor = tensor.reshape(B, 1, 1, 1)
+            # return tensor, [B, 1, 1, 1]
         # elif layout in ["TND"]:
         #     T = shape[0]
         #     B = len(act_seq) - 1  # TND act_q is cumulative
-        #     max_s1 = get_max_adjacent_diff(act_seq)
-        #     act_seq_per_batch = prefix_sum_to_original(act_seq)
-        #     new_tensor = torch.zeros((B, 1, max_s1, 1), dtype=tensor.dtype)
-        #     t_start = 0
-        #     for b_index in range(B):
-        #         cur_act_seq = act_seq_per_batch[b_index]
-        #         t_end = t_start + cur_act_seq
-        #         if cur_act_seq == 0:
-        #             continue
-        #         for n_index in range(1):
-        #             new_tensor[b_index, 0, 0:cur_act_seq, :] = tensor[t_start:t_end, :]
-        #         t_start += cur_act_seq
-        #    return new_tensor, [B, 1, max_s1, 1]
+        #     tensor = tensor.reshape(B, 1, 1, 1)
+        #     return tensor, [B, 1, 1, 1]
+        elif layout in ["TND"]:
+            T = shape[0]
+            B = len(act_seq) - 1  # TND act_q is cumulative
+            max_s1 = get_max_adjacent_diff(act_seq)
+            act_seq_per_batch = prefix_sum_to_original(act_seq)
+            new_tensor = torch.zeros((B, 1, max_s1, 1), dtype=tensor.dtype)
+            t_start = 0
+            for b_index in range(B):
+                cur_act_seq = act_seq_per_batch[b_index]
+                t_end = t_start + cur_act_seq
+                if cur_act_seq == 0:
+                    continue
+                for n_index in range(1):
+                    new_tensor[b_index, 0, 0:cur_act_seq, :] = tensor[t_start:t_end, :]
+                t_start += cur_act_seq
+            return new_tensor, [B, 1, max_s1, 1]
         else:
             return tensor, shape
 
@@ -407,7 +407,7 @@ def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, spar
     if kv_topk_mode == "no":
         topk_length = None
     else:
-        topk_length = torch.zeros((B), dtype = torch.int32)
+        topk_length = torch.zeros((B, S1, N2), dtype = torch.int32)
 
     for i_B in range(B):
         cur_act_kv = seqused_kv[i_B]
@@ -429,24 +429,20 @@ def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, spar
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
  	 
+                if kv_topk_mode != "no":
+                    if kv_topk_mode == "fullK":
+                        topk_length[i_B, i_S1, i_N2] = min(cur_valid_s2_max_update, K)
+                    elif kv_topk_mode == "random":
+                        if K > 1:
+                            topk_length[i_B, i_S1, i_N2] = min(torch.randint(1, K, (1, 1))[0], cur_valid_s2_max_update)
+                        else:
+                            topk_length[i_B, i_S1, i_N2] = 1
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
 
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
-
-            # gen tok length
-            if kv_topk_mode != "no":
-                # if kv_topk_mode == "full":
-                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
-                if kv_topk_mode == "fullK":
-                    topk_length[i_B] = min(cur_valid_s2_max, K)
-                elif kv_topk_mode == "random":
-                    if K > 1:
-                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
-                    else:
-                        topk_length[i_B] = 1
-
+    topk_length = topk_length.view(B, -1)
     return sparse_data, sparse_data, topk_length
 
 def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode, block_table, max_block_num_per_batch, block_size):
@@ -464,7 +460,7 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sp
     if kv_topk_mode == "no":
         topk_length = None
     else:
-        topk_length = torch.zeros((B), dtype = torch.int32)
+        topk_length = torch.zeros((B, S1, N2), dtype = torch.int32)
         
     for i_B in range(B):
         cur_act_kv = seqused_kv[i_B]
@@ -486,6 +482,15 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sp
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
  	 
+                if kv_topk_mode != "no":
+                    if kv_topk_mode == "fullK":
+                        topk_length[i_B, i_S1, i_N2] = min(cur_valid_s2_max_update, K)
+                    elif kv_topk_mode == "random":
+                        if K > 1:
+                            topk_length[i_B, i_S1, i_N2] =  min(torch.randint(1, K, (1, 1))[0], cur_valid_s2_max_update)
+                        else:
+                            topk_length[i_B, i_S1, i_N2] = 1
+ 	 
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
             
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
@@ -500,19 +505,7 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sp
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
-
-            # gen tok length
-            if kv_topk_mode != "no":
-                # if kv_topk_mode == "full":
-                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
-                if kv_topk_mode == "fullK":
-                    topk_length[i_B] = min(cur_valid_s2_max, K)
-                elif kv_topk_mode == "random":
-                    if K > 1:
-                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
-                    else:
-                        topk_length[i_B] = 1
-
+    topk_length = topk_length.view(B, -1)
     return sparse_data, sparse_indices, topk_length
 
 def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode):
@@ -529,7 +522,7 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, ma
     if kv_topk_mode == "no":
         topk_length = None
     else:
-        topk_length = torch.zeros((B), dtype = torch.int32)
+        topk_length = torch.zeros((T1, N2), dtype = torch.int32)
 
     for i_B in range(B):
         cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
@@ -551,25 +544,22 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, ma
                         cur_valid_s2_max_update = 1
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
+                
+                if kv_topk_mode != "no":
+                    if kv_topk_mode == "fullK":
+                        topk_length[s1_prefix + i_S1, i_N2] = min(cur_valid_s2_max_update, K)
+                    elif kv_topk_mode == "random":
+                        if K > 1:
+                            topk_length[s1_prefix + i_S1, i_N2] = min(torch.randint(1, K, (1, 1))[0], cur_valid_s2_max_update)
+                        else:
+                            topk_length[s1_prefix + i_S1, i_N2] = 1
 
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
 
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
-
-            # gen tok length
-            if kv_topk_mode != "no":
-                # if kv_topk_mode == "full":
-                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
-                if kv_topk_mode == "fullK":
-                    topk_length[i_B] = min(cur_valid_s2_max, K)
-                elif kv_topk_mode == "random":
-                    if K > 1:
-                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
-                    else:
-                        topk_length[i_B] = 1
-
+    topk_length = topk_length.view(T1, -1)
     return sparse_data, sparse_data, topk_length
 
 def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode, block_table, max_block_num_per_batch, block_size):
@@ -587,7 +577,7 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
     if kv_topk_mode == "no":
         topk_length = None
     else:
-        topk_length = torch.zeros((B), dtype = torch.int32)
+        topk_length = torch.zeros((T1, N2), dtype = torch.int32)
 
     for i_B in range(B):
         cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
@@ -609,6 +599,15 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
                         cur_valid_s2_max_update = 1
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
+                
+                if kv_topk_mode != "no":
+                    if kv_topk_mode == "fullK":
+                        topk_length[s1_prefix + i_S1, i_N2] = min(cur_valid_s2_max_update, K)
+                    elif kv_topk_mode == "random":
+                        if K > 1:
+                            topk_length[s1_prefix + i_S1, i_N2] = min(torch.randint(1, K, (1, 1))[0], cur_valid_s2_max_update)
+                        else:
+                            topk_length[s1_prefix + i_S1, i_N2] = 1
 
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
@@ -623,19 +622,7 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
-
-            # gen tok length
-            if kv_topk_mode != "no":
-                # if kv_topk_mode == "full":
-                #     topk_length[i_B, i_S1] = min(cur_valid_s2_max_update, K)
-                if kv_topk_mode == "fullK":
-                    topk_length[i_B] = min(cur_valid_s2_max, K)
-                elif kv_topk_mode == "random":
-                    if K > 1:
-                        topk_length[i_B] = torch.randint(1, K, (1, 1))[0]
-                    else:
-                        topk_length[i_B] = 1
-
+    topk_length = topk_length.view(T1, -1)
     return sparse_data, sparse_indices, topk_length
 
 def gen_ori_kv_quant_1_tnd(q_type, B, T1, T2, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,

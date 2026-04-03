@@ -203,7 +203,7 @@ TEST_PARAMS = {
         "template_run_mode": ["ALL_SCFA"], # SWA SCFA CFA ALL_SCFA ORI_SCFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False],
-        "ori_kv_topk_mode":["fullK"],    # toklength: full rullK random
+        "ori_kv_topk_mode":["fullK"],    # toklength: fullK random
         "cmp_kv_topk_mode":["fullK"],
         "ori_sparse_indices_mode":["full"],  # full ramdom None
         "cmp_sparse_indices_mode":["full"],
