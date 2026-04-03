@@ -176,8 +176,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         auto ret = GetBuiltinLibPath(libPath);
         OP_CHECK(
         ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
-        ret = LoadBuiltinOpApi(libPath);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        // ret = LoadBuiltinOpApi(libPath);
+        // CHECK_RET(ret == ACLNN_SUCCESS, ret);
         //ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
