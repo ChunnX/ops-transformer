@@ -31,52 +31,41 @@ aclnnStatus aclnnKvQuantSparseAttnSharedkvMetadataGetWorkspaceSize(
 
 __attribute__((visibility("default"))) 
 aclnnStatus ParamsCheckQSasN128(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
-                                const aclTensor* cuSeqLensOriKvOptional, const aclTensor* sequsedKvOptional, 
-                                const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
-                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional, char* layoutQOptional, 
-                                char* layoutKvOptional);
+                               const aclTensor* cuSeqLensOriKvOptional, const aclTensor* sequsedKvOptional, 
+                               const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
+                               int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
+                               int64_t maxSeqlenQOptional, char* layoutQOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamQSasN128(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                      int64_t numHeadsKv, char* layoutQOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceQSasN128(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                                   const aclTensor* sequsedKvOptional);
+aclnnStatus CheckExistenceQSas(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
+                               const aclTensor* sequsedKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQSasN128(const aclTensor* cmpTopkLengthOptional, const aclTensor* sequsedQOptional, 
-                                     const aclTensor* cuSeqLensQOptional, char* layoutQOptional, 
-                                     const aclTensor* sequsedKvOptional, const aclTensor* cuSeqLensOriKvOptional, 
-                                     char* layoutKvOptional, int64_t batchSizeOptional);
+aclnnStatus CheckConsistencyQSas(const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
+                                 const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
+                                 char* layoutQOptional, const aclTensor* sequsedKvOptional, 
+                                 const aclTensor* cuSeqLensOriKvOptional, char* layoutKvOptional, 
+                                 int64_t batchSizeOptional, int64_t maxSeqlenQOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureQSasN128();
+aclnnStatus CheckFeatureQSas();
 
 __attribute__((visibility("default"))) 
 aclnnStatus ParamsCheckQSasN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, int64_t numHeadsQ, 
-                               int64_t numHeadsKv, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-                               int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, char* layoutQOptional, 
-                               char* layoutKvOptional);
+                              const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, 
+                              const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
+                              int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
+                              int64_t maxSeqlenQOptional, int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, 
+                              char* layoutQOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamQSasN64(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                     int64_t numHeadsKv, int64_t oriMaskMode_, int64_t winLeft_, char* layoutQOptional, 
                                     char* layoutKvOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceQSasN64(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                                  const aclTensor* sequsedKvOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQSasN64(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                                    char* layoutQOptional, const aclTensor* sequsedKvOptional, 
-                                    const aclTensor* cuSeqLensOriKvOptional, char* layoutKvOptional, 
-                                    int64_t batchSizeOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureQSasN64();
 
 __attribute__((visibility("default"))) 
 aclnnStatus aclnnKvQuantSparseAttnSharedkvMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 
