@@ -1019,7 +1019,7 @@ mc2:
         - mc2/allto_all_matmul/docs
         - mc2/allto_all_matmul/README.md
       ut_cov_exclude:
-        - mc2/allto_all_matmul/op_host
+        - mc2/allto_all_matmul/op_host/op_tiling
         - mc2/allto_all_matmul/op_graph
         - mc2/allto_all_matmul/op_kernel
       test:
