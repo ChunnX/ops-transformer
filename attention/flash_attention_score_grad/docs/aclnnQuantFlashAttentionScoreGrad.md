@@ -77,13 +77,13 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspace(
   const aclTensor   *dScaleDy, 
   const aclTensor   *dsScale, 
   const aclTensor   *pScale,
-  double             scaleValueOptional, 
-  int64_t 			     preTokensOptional,
-  int64_t            nextTokensOptional,
+  double             scaleValue, 
+  int64_t 			     preTokens,
+  int64_t            nextTokens,
   int64_t            headNum, 
   char              *inputLayout,
-  int64_t           sparseModeOptional,
-  int64_t            outDtypeOptional, 
+  int64_t           sparseMode,
+  int64_t            outDtype, 
   aclTensor         *dqOut, 
   aclTensor         *dkOut, 
   aclTensor         *dvOut, 
@@ -268,7 +268,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>scaleValueOptional</td>
+      <td>scaleValue</td>
       <td>输入</td>
       <td>公式中的scale缩放系数，默认值为1。</td>
       <td>-</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
       <tr>
-      <td>preTokensOptional</td>
+      <td>preTokens</td>
       <td>可选输入</td>
       <td>暂不使用。</td>
       <td>-</td>
@@ -288,7 +288,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
         <tr>
-      <td>nextTokensOptional</td>
+      <td>nextTokens</td>
       <td>可选输入</td>
       <td>暂不使用。</td>
       <td>-</td>
@@ -318,7 +318,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
      <tr>
-      <td>sparseModeOptional</td>
+      <td>sparseMode</td>
       <td>可选输入</td>
       <td>暂不使用。</td>
       <td>-</td>
@@ -328,7 +328,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>outDtypeOptional</td>
+      <td>outDtype</td>
       <td>输入</td>
       <td>值为0表示dqOut等输出是FLOAT16，为1表示是BFLOAT16。</td>
       <td>-</td>

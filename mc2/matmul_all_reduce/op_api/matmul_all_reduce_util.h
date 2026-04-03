@@ -106,7 +106,8 @@ bool QuantMatmulAllReduceCheckShape(
 bool MatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
 bool QuantMatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
 
-bool MatmulAllReduceCheckValidContiguous(const aclTensor* x2, const char* tensorName);
+bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* tensorName);
+bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2);
 
 // 全量化
 bool QuantMatmulAllReduceIsAclnnPreTransposed(const aclTensor* x2);

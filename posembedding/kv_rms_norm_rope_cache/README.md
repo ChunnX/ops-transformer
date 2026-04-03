@@ -199,15 +199,7 @@
     
   </tbody></table>
 
-- Kirin X90/Kirin 9030 处理器系列产品:
-  - kv 数据类型不支持 BFLOAT16
-  - gamma 数据类型不支持 BFLOAT16
-  - cos 数据类型不支持 BFLOAT16
-  - sin 数据类型不支持 BFLOAT16
-  - k_cache 数据类型不支持 BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN
-  - ckv_cache 数据类型不支持 BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN
-  - k_rope 数据类型不支持 BFLOAT16
-  - c_kv 数据类型不支持 BFLOAT16
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
 
 ## 约束说明
 

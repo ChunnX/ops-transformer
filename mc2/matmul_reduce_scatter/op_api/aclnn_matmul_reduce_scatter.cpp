@@ -132,15 +132,6 @@ static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const a
     "Features and accuracy are not guaranteed if inputting bias with values other than 0s.");
   }
 
-  // 【A2】检查x2矩阵非连续合法性
-  if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-    if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-              "but it is non-contiguous.");
-      return ACLNN_ERR_PARAM_INVALID;
-    }
-  }
-
   // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
   CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
@@ -209,6 +200,14 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
   bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
   bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
   CHECK_RET(CheckShape(x1, x2, output, transposeX1), ACLNN_ERR_PARAM_INVALID);
+  // 【A2】检查x2矩阵非连续合法性
+  if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+    if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
+      OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
+              "but it is non-contiguous.");
+      return ACLNN_ERR_PARAM_INVALID;
+    }
+  }
   if (IsAscend910A5()) {
     const char *commMode = "ccu";
     return aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, reduce_op,
