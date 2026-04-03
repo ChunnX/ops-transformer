@@ -70,7 +70,7 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx
     GetAttrValueOpt(ctx, "layout_q", layoutQuery_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
 
-    ParamsInit();
+    return ParamsInit();
 }
 
 int32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetQueryBatchSize()

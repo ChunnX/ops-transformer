@@ -112,3 +112,5 @@ def npu_kv_quant_sparse_flash_attention_metadata_fallback(
         num_heads_q, num_heads_kv, head_dim, kv_quant_mode, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, 
         topk_length, batch_size, max_seqlen_q, max_seqlen_kv, topk, tile_size, rope_head_dim, mask_mode, win_left, 
         win_right, layout_q, layout_kv)
+        
+torch.compiler.allow_in_graph(npu_kv_quant_sparse_flash_attention_metadata)

@@ -353,26 +353,19 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIC num or AIV num should not be 0, but got %u and %u", aicCoreNum, aivCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    //auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
-    //CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    //auto cuSeqLensKvOptionalContiguous = l0op::Contiguous(cuSeqLensKvOptional, uniqueExecutor.get());
-    //CHECK_RET(cuSeqLensKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    //auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-    //CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    //auto sequsedKvOptionalContiguous = l0op::Contiguous(sequsedKvOptional, uniqueExecutor.get());
-    //CHECK_RET(sequsedKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    //auto topkLengthOptionalContiguous = l0op::Contiguous(topkLengthOptional, uniqueExecutor.get());
-    //CHECK_RET(topkLengthOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    //auto output = l0op::KvQuantSparseFlashAttentionMetadata(
-    //    cuSeqLensQOptionalContiguous, cuSeqLensKvOptionalContiguous, sequsedQOptionalContiguous, 
-    //    sequsedKvOptionalContiguous, topkLengthOptionalContiguous, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
-    //    maxSeqlenQOptional, maxSeqlenKvOptional, topKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, 
-    //    maskModeOptional, winLeftOptional, winRightOptional, layoutQOptional, layoutKvOptional, socVersion, aicCoreNum, 
-    //    aivCoreNum, metaData, uniqueExecutor.get());
-
+    auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
+    CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto cuSeqLensKvOptionalContiguous = l0op::Contiguous(cuSeqLensKvOptional, uniqueExecutor.get());
+    CHECK_RET(cuSeqLensKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+    CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto sequsedKvOptionalContiguous = l0op::Contiguous(sequsedKvOptional, uniqueExecutor.get());
+    CHECK_RET(sequsedKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto topkLengthOptionalContiguous = l0op::Contiguous(topkLengthOptional, uniqueExecutor.get());
+    CHECK_RET(topkLengthOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto output = l0op::KvQuantSparseFlashAttentionMetadata(
-        cuSeqLensQOptional, cuSeqLensKvOptional, sequsedQOptional, 
-        sequsedKvOptional, topkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
+        cuSeqLensQOptionalContiguous, cuSeqLensKvOptionalContiguous, sequsedQOptionalContiguous, 
+        sequsedKvOptionalContiguous, topkLengthOptionalContiguous, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
         maxSeqlenQOptional, maxSeqlenKvOptional, topKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, 
         maskModeOptional, winLeftOptional, winRightOptional, layoutQOptional, layoutKvOptional, socVersion, aicCoreNum, 
         aivCoreNum, metaData, uniqueExecutor.get());
