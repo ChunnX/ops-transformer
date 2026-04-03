@@ -104,7 +104,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
     <tr>
       <td>scaleOptional</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，perchannel量化参数。</td>
+      <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
@@ -519,7 +519,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       int64_t bsdp = 1;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffset = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -559,6 +559,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       aclTensor* logit = nullptr;
       aclTensor* rowIndex = nullptr;
       aclTensor* out = nullptr;
+      const aclTensor* antiquantScaleOptional = nullptr;
+      const aclTensor* antiquantOffsetOptional = nullptr;
 
       std::vector<int8_t> xHostData(GetShapeSize(xShape));
       std::vector<int32_t> wHostData(GetShapeSize(wShape));
@@ -570,7 +572,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
       std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
       std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-      std::vector<float> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+      std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值
       groupListHostData[0] = 8;
       // 创建x aclTensor
@@ -636,7 +638,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
 
       // 调用aclnnGroupedMatmulFinalizeRoutingV2第一段接口
       workspaceSize = 0;
-      ret = aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(x, w, scale, bias, offset, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(x, w, scale, bias, offset, antiquantScaleOptional, antiquantOffsetOptional, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
@@ -660,7 +662,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                 return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
