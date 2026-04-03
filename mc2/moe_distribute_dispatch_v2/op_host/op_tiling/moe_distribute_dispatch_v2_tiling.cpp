@@ -101,7 +101,6 @@ namespace {
     constexpr int64_t FULLMESH_BS_UPPER_BOUND = 256;
     constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
     constexpr uint32_t RANK_NUM_PER_NODE = 16U;
-    constexpr uint32_t AIV_NUM_93 = 48U;
 
     constexpr uint32_t SIZE_OF_UNQUANT = 2;
     constexpr uint32_t SIZE_OF_HALF = 2;
@@ -1713,7 +1712,10 @@ ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext 
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_TILING_CHECK((isLayered && (aivNum != AIV_NUM_93)), OP_LOGE(nodeName, "Layered must be fullCore."), return ge::GRAPH_FAILED);
+    uint32_t epWorldSize = tilingData->moeDistributeDispatchV2Info.epWorldSize;
+    uint32_t serverNum = epWorldSize / RANK_NUM_PER_NODE;
+    OP_TILING_CHECK((isLayered && ((aivNum < RANK_NUM_PER_NODE)||(aivNum <= 2 * serverNum))), OP_LOGE(nodeName,
+        "Layered should use aiv num greater than 16 and 2 * serverNum, now is %u", aivNum), return ge::GRAPH_FAILED);
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
