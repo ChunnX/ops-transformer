@@ -297,9 +297,9 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
         OP_LOGE(inputParams_.opName, "Dv should be greater than 0 and less than or equal to 512, but Dv is %ld.", tilingData_.dv),
             return ge::GRAPH_FAILED);
     // nv>=nk
-    OP_CHECK_IF(tilingData_.nv % keyShape.GetDim(DIM_1) != 0,
+    OP_CHECK_IF(tilingData_.nv % tilingData_.nk != 0,
         OP_LOGE(inputParams_.opName, "Nv should be an integer multiple of Nk, but Nv is %ld, Nk is %ld.",
-                tilingData_.nv, keyShape.GetDim(DIM_1)),
+                tilingData_.nv, tilingData_.nk),
             return ge::GRAPH_FAILED);
     // blockNum >= T
     OP_CHECK_IF(tilingData_.sBlockNum < tilingData_.t,

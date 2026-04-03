@@ -4053,7 +4053,7 @@ void PromptFlashAttentionPioneerTilingV2::PromptFlashAttentionPioneerSplitNBSeq(
     uint32_t curIndx = 0;
     ComputeSplitNBSeq(tilingData, batchSize, tilingElementArrayLen, actualSeqLengths, actualSeqLengthsKV, sOuterSize,
         sInnerSize, coreWightTarget, curIndx);
-
+    if (curIndx > curCoreNum -1) curIndx = curCoreNum - 1;
     uint32_t actualCoreNums = (splitCoreMode == SplitCoreMode::SPLIT_NBS_CUBE) ? (curIndx + 1) * CV_RATIO : curIndx + 1;
     singleCoreParams->set_actualCoreNums(actualCoreNums);
     int64_t sinnerBlocknum = (baseParams->get_seqInnerSize() + sInnerSize - 1) / sInnerSize;
