@@ -86,7 +86,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 请先确保编译环境的基础库依赖已安装，注意满足版本号要求。
 
-- python >= 3.7.0（建议版本 <= 3.10）
+- python >= 3.7.0
 - gcc >= 7.3.0
 - cmake >= 3.16.0
 - pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
