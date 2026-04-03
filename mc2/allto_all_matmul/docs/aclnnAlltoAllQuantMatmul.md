@@ -158,7 +158,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <td>x1ScaleOptional</td>
     <td>输入</td>
     <td>可选输入，左矩阵的量化系数。</td>
-    <td>在K-C量化、mx量化场景场景下需要配置。在K-C动态量化场景下，x1ScaleOptional可以作为smoothScale传入，此时类型需与x1一致。</td>
+    <td>在K-C量化、mx量化场景下需要配置。在K-C动态量化场景下，x1ScaleOptional可以作为smoothScale传入，此时类型需与x1一致。</td>
     <td>FLOAT32、FLOAT16、BFLOAT16、FLOAT8_E8M0</td>
     <td>ND</td>
     <td>1维/3维。K-C量化场景时shape为(BS)。K-C动态量化场景时，shape为(H*rankSize)。mx量化场景时shape为(BS, ceil(H/64), 2)</td>
@@ -346,7 +346,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     </tr>
     </tbody></table>
 
-  x1QuantMode、x2QuantMode、commQuantMode的枚举值跟[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
+  x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
   * 0: 不量化
   * 1: pertensor
   * 2: perchannel
@@ -809,7 +809,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
             args[rankId].hcclComm = comms[rankId];
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadAlltoAllQuantMatmul, std::ref(args  [rankId])));
+            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadAlltoAllQuantMatmul, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();
@@ -1047,7 +1047,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     args[rankId].hcclComm = comms[rankId];
     args[rankId].stream = stream[rankId];
     args[rankId].context = context[rankId];
-    threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadAlltoAllQuantMatmul, std::ref(args  [rankId])));
+    threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadAlltoAllQuantMatmul, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < ndev; rankId++) {
     threads[rankId]->join();
