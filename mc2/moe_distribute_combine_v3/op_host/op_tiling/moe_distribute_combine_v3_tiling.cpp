@@ -37,9 +37,12 @@
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
-#include "cann_version.h"
+#include "version/runtime_version.h"
+#include "version/metadef_version.h"
 
-#if CANN_VERSION_NUM >= 90000000
+#define CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER 90000000
+
+#if RUNTIME_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER && METADEF_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER
 #include "mc2_exception_dump.h"
 using namespace Mc2Exception;
 #endif
@@ -108,13 +111,30 @@ IMPL_OP_OPTILING(MoeDistributeCombineV3)
     .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
 } // namespace optiling
 
-#if CANN_VERSION_NUM >= 90000000
+#if RUNTIME_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER && METADEF_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER
 // Register exception func
 inline void MoeDistributeCombineV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
     Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV3");
 }
 
-IMPL_OP(MoeDistributeCombineV3)
-    .ExceptionDumpParseFunc(MoeDistributeCombineV3ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeCombineV3ExceptionFunc()
+{
+    int32_t RuntimeVersionNum = 0;
+    int32_t MetadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &RuntimeVersionNum) != ACL_SUCCESS) {
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &MetadefVersionNum) != ACL_SUCCESS) {
+        return;
+    }
+
+    if (RuntimeVersionNum < CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER && MetadefVersionNum < CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER) {
+       return;
+    }
+
+    IMPL_OP(MoeDistributeCombineV3)
+        .ExceptionDumpParseFunc(MoeDistributeCombineV3ExceptionImplWrapper);
+}
 #endif

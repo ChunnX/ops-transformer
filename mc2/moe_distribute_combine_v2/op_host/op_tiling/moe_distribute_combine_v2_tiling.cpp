@@ -39,9 +39,12 @@
 #include "../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h"
-#include "cann_version.h"
+#include "version/runtime_version.h"
+#include "version/metadef_version.h"
 
-#if CANN_VERSION_NUM >= 90000000
+#define CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER 90000000
+
+#if RUNTIME_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER && METADEF_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER
 #include "mc2_exception_dump.h"
 using namespace Mc2Exception;
 #endif
@@ -2248,7 +2251,7 @@ IMPL_OP_OPTILING(MoeDistributeCombineV2)
     .Tiling(MoeDistributeCombineV2TilingFunc)
     .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
-#if CANN_VERSION_NUM >= 90000000
+#if RUNTIME_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER && METADEF_VERSION_NUM >= CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER
 // Register exception func
 inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -2259,8 +2262,25 @@ inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args,
     Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
 }
 
-IMPL_OP(MoeDistributeCombineV2)
-    .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeCombineV2ExceptionFunc()
+{
+    int32_t RuntimeVersionNum = 0;
+    int32_t MetadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &RuntimeVersionNum) != ACL_SUCCESS) {
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &MetadefVersionNum) != ACL_SUCCESS) {
+        return;
+    }
+
+    if (RuntimeVersionNum < CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER && MetadefVersionNum < CUSTOM_EXCEPTION_CALL_BACK_SUPPORT_VER) {
+       return;
+    }
+
+    IMPL_OP(MoeDistributeCombineV2)
+        .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
+}
 #endif
 
 } // namespace optiling
