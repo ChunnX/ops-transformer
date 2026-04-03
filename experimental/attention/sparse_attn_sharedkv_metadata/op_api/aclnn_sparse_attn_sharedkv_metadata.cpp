@@ -107,7 +107,7 @@ int64_t GetKvBatchSizeSas(const aclTensor* sequsedKvOptional, const aclTensor* c
 }
 
 int64_t GetBSSizeSas(char* layoutQOptional, const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                      int64_t batchSizeOptional, int64_t maxSeqlenQOptional) 
+                     int64_t batchSizeOptional, int64_t maxSeqlenQOptional) 
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BSSize
     int64_t *viewDims = nullptr;
@@ -202,7 +202,7 @@ aclnnStatus CheckSingleParamSasN128(int64_t batchSizeOptional, int64_t maxSeqlen
 }
 
 aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                                  const aclTensor* sequsedKvOptional)
+                              const aclTensor* sequsedKvOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;

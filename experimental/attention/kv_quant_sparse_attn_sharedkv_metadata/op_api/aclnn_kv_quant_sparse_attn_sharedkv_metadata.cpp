@@ -303,11 +303,11 @@ aclnnStatus CheckFeatureQSas()
 }
 
 aclnnStatus ParamsCheckQSasN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
-                              const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, 
-                              const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
-                              int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
-                              int64_t maxSeqlenQOptional, int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, 
-                              char* layoutQOptional, char* layoutKvOptional) 
+                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, 
+                               const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
+                               int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
+                               int64_t maxSeqlenQOptional, int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, 
+                               char* layoutQOptional, char* layoutKvOptional) 
 {
     if (CheckSingleParamQSasN64(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, oriMaskModeOptional, 
                                 oriWinLeftOptional, layoutQOptional, layoutKvOptional) == ACLNN_SUCCESS && 
