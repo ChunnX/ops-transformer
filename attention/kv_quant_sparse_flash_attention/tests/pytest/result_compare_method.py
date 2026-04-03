@@ -11,21 +11,23 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-import random
-import logging
-import torch
 import datetime
 import os
 import sys
+import random
+import logging
+import torch
 import numpy as np
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
+
 def cal_relative_diff_np_isclose(real_data, expect_data, type_str='fp16'):
     diff = abs(float(real_data) - float(expect_data))
     result = diff / (np.abs(expect_data) + 10e-10)
     return result
+
 
 def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_data=None):
     def display_inner(idx):
@@ -71,10 +73,12 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
+
 def print_log(data=None, level='INFO'):
     print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
         "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
                                     str(sys._getframe().f_back.f_lineno).zfill(4), data))
+
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(
@@ -115,13 +119,15 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
             break
     print_log(
         '---------------------------------------------------------------------------------------')
+
+
 # fuzz 中 precision_method == 1的精度对比方式
 def check_result(expect, npu_result):
-    diff_thd=0.005
-    pct_thd=0.005
-    max_diff_hd=10
-    rtol=0.005
-    atol=0.000025
+    diff_thd = 0.005
+    pct_thd = 0.005
+    max_diff_hd = 10
+    rtol = 0.005
+    atol = 0.000025
     max_error_idx = 10000000
 
     real_data = npu_result.cpu().to(torch.float).numpy()
@@ -160,8 +166,8 @@ def check_result(expect, npu_result):
         has_nan_inf = True
 
     if npu_result.dtype == torch.bfloat16:
-        rtol=0.0078125
-        atol=0.0001
+        rtol = 0.0078125
+        atol = 0.0001
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
                                     equal_nan=True)
     elif npu_result.dtype == 'float8_e4m3fn':
@@ -232,5 +238,5 @@ def check_result(expect, npu_result):
     if result == "Failed":
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
-        # assert 1==0
+
     return result, fulfill_percent
