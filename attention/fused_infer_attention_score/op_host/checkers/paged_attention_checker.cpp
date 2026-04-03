@@ -411,8 +411,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                     OP_LOGE(fiaInfo.opName,
                         "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
                         "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.s1Size, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
-                        BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
+                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
                     return ge::GRAPH_FAILED);
             }
         } else {
@@ -448,8 +447,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                     OP_LOGE(fiaInfo.opName,
                         "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
                         "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.s1Size, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
-                        BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
+                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
                     return ge::GRAPH_FAILED);
             }
         }
