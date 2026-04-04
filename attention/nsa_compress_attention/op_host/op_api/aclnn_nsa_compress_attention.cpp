@@ -237,6 +237,14 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    Shape qShape = query->GetViewShape();
+    Shape kShape = key->GetViewShape();
+    Shape vShape = value->GetViewShape();
+    if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
+        qShape[0], kShape[0], qShape[1], kShape[1], qShape[2], vShape[2]);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     CHECK_RET(NsaCmpAttnContiguous(query, key, value, attenMaskOptional, topkMaskOptional, l0Executor) == ACLNN_SUCCESS,
