@@ -139,6 +139,7 @@ private:
     constexpr static uint32_t SCATTER_VECTOR_SYNC_FLAG = 8;
     bool isLastBlockSelected = false;
     bool isLastBlockSelectedScatter = false;
+    bool isValidBegin = false;
 
     RunInfo runInfo[2];
     RunInfo scatterRunInfo;
@@ -246,6 +247,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
                         runInfo[1 - mmPingPongIdx].noReload = false;
                         runInfo[1 - mmPingPongIdx].valid = false;
+                        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                        CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
                     }
                     CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
                     CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
@@ -253,7 +257,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                     changeS1 = false;
                 }
             }
-            if (likely(actualSelectedBlockCount != 0 || deterministic)) {
+            if (likely(actualSelectedBlockCount != 0)) {
                 changeS1 = true;
             }
         }
@@ -298,6 +302,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
+                    isValidBegin = true;
                     UpdateGmOffset(task, true);
                     VecCompute(vecOp, actual_seq_qlen, actual_seq_kvlen);
                     task++;
@@ -320,8 +325,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                         tmpScatterRunInfo.changeS1 = false;
                     }
                     UpdateGmOffset(task, false);
-                    tmpScatterRunInfo = runInfo[mmPingPongIdx];
-                    isCruS1Empty = true;
+
+                    if (!isValidBegin) {
+                        scatterRunInfo = runInfo[mmPingPongIdx];
+                        CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                        ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
+                    } else {
+                        tmpScatterRunInfo = runInfo[mmPingPongIdx];
+                        isCruS1Empty = true;
+                    }
                 }
             }
             if (likely(actualSelectedBlockCount != 0 || deterministic)) {
