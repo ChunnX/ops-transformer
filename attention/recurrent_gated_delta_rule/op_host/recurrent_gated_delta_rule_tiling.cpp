@@ -263,7 +263,6 @@ bool RecurrentGatedDeltaRuleTiling::CheckDim(const gert::Shape shape, const size
 ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
 {
     const auto &queryShape = context_->GetInputShape(QUERY_INDEX)->GetStorageShape();
-    const auto &keyShape = context_->GetInputShape(KEY_INDEX)->GetStorageShape();
     const auto &valueShape = context_->GetInputShape(VALUE_INDEX)->GetStorageShape();
     const auto &stateShape = context_->GetInputShape(STATE_INDEX)->GetStorageShape();
     const auto &actSeqlensShape = context_->GetInputShape(ACTUAL_SEQ_LENGTHS_INDEX)->GetStorageShape();
