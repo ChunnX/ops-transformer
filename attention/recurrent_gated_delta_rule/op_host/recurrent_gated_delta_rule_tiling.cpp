@@ -209,9 +209,13 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeDtype()
 
     auto betaDtype = context_->GetInputDesc(BETA_INDEX)->GetDataType();
     auto stateDtype = context_->GetInputDesc(STATE_INDEX)->GetDataType();
-    OP_CHECK_IF(betaDtype != ge::DT_BF16 || stateDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "beta dtype and state dtype should be bfloat16."),
+    OP_CHECK_IF(betaDtype != ge::DT_BF16,
+                OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16."),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32."),
+                return ge::GRAPH_FAILED);
+    tilingData_.stateIsFp32 = (stateDtype == ge::DT_FLOAT) ? 1 : 0;
 
     auto actSeqlensDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();
     auto ssmStateIndicesDtype = context_->GetInputDesc(SSM_STATE_INDICES_INDEX)->GetDataType();
@@ -547,6 +551,7 @@ void RecurrentGatedDeltaRuleTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "hasGama: [%u]", tilingData_.hasGama);
     OP_LOGD(context_->GetNodeName(), "hasGamaK: [%u]", tilingData_.hasGamaK);
     OP_LOGD(context_->GetNodeName(), "hasAcceptedTokens: [%u]", tilingData_.hasAcceptedTokens);
+    OP_LOGD(context_->GetNodeName(), "stateIsFp32: [%u]", tilingData_.stateIsFp32);
 }
 
 ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
@@ -566,8 +571,9 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
     usedUbBytes += MAX_MTP * 2 * aNv; // 2 for betaInQueue_
     tilingData_.ubRestBytes = ubSize - usedUbBytes;
     usedUbBytes += MAX_MTP * (8 * aDk + 4 * aDv + 4 * aNv); // 8 for qk in ub, 4 for v in ub, 4 for beta in ub
-    int64_t coeff = (2 + 2) * aDk + 4;                      // 2 for stateInQueue_, stateOutQueue_, 4 for attnOutQueue_
-    coeff += (4 + 4) * aDk + 4 + 4;                         // 4 for qInUb, kInUb, vInUb, deltaInUb, attnInUb
+    int64_t stateTypeSize = tilingData_.stateIsFp32 ? 4 : 2; // bytes per state element
+    int64_t coeff = (stateTypeSize + stateTypeSize) * aDk + 4; // stateInQueue_, stateOutQueue_, attnOutQueue_
+    coeff += (4 + 4) * aDk + 4 + 4;                           // 4 for qInUb, kInUb, vInUb, deltaInUb, attnInUb
     int64_t vStep = (ubSize - usedUbBytes) / coeff / 8 * 8; // 8 * sizeof(float) = 32
     if (vStep < 8) {                                        // vStep不小于8
         OP_LOGE(context_->GetNodeName(), "vStep should be bigger than 8, shape is too big.");
@@ -578,7 +584,7 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
                                  static_cast<uint32_t>(8)); // 8 * sizeof(float) = 32
     tilingData_.ubCalSize = compileInfo_.ubSize;
     tilingData_.vStep = vStep;
-    tilingData_.ubRestBytes -= ((2 + 2) * aDk + 4) * vStep; // 2 for stateInQueue_, stateOutQueue_, 4 for attnOutQueue_
+    tilingData_.ubRestBytes -= ((stateTypeSize + stateTypeSize) * aDk + 4) * vStep;
 
     return ge::GRAPH_SUCCESS;
 }
