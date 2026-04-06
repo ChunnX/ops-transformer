@@ -18,6 +18,7 @@
 
 #include <vector>
 #include "fia_tiling_base.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 const std::string ACTUAL_SEQ_KV_LEN_NAME = "the key/value's actual sequence lengths";
