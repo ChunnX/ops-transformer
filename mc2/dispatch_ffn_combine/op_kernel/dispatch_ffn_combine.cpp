@@ -14,11 +14,11 @@
 #include "kernel_operator.h"
 #endif
 
-#include "mega_moe_tiling.h"
+#include "dispatch_ffn_combine_tiling.h"
 
 using namespace AscendC;
 
-__global__ __aicore__ void mega_moe(
+__global__ __aicore__ void dispatch_ffn_combine(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
     GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -26,6 +26,6 @@ __global__ __aicore__ void mega_moe(
     GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(MegaMoeTilingData);
+    REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingData);
     TPipe pipe;
 }

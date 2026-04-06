@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mega_moe_tiling.cpp
+ * \file dispatch_ffn_combine_tiling.cpp
  * \brief
  */
 
@@ -46,7 +46,7 @@ using namespace ge;
 
 
 namespace optiling {
-static ge::graphStatus MegaMoeTilingFunc(gert::TilingContext* context)
+static ge::graphStatus DispatchFFNCombineTilingFunc(gert::TilingContext* context)
 {
     // Input indices: context=0, x=1, expert_ids=2, expert_scales=3, weight1=4(dynamic), weight2=5(dynamic),
     //                scales=6(optional), x_active_mask=7(optional), weight_scales1=8(dynamic), weight_scales2=9(dynamic)
@@ -55,31 +55,31 @@ static ge::graphStatus MegaMoeTilingFunc(gert::TilingContext* context)
     //               dispatch_quant_out_type=7, combine_quant_mode=8, comm_alg=9, global_bs=10
 
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "Enter MegaMoe tiling");
+    OP_LOGD(nodeName, "Enter DispatchFFNCombine tiling");
 
     // TODO: Implement tiling logic
 
     return ge::GRAPH_SUCCESS;
 }
 
-struct MegaMoeCompileInfo {};
-static ge::graphStatus TilingParseForMegaMoe(gert::TilingParseContext *context)
+struct DispatchFFNCombineCompileInfo {};
+static ge::graphStatus TilingParseForDispatchFFNCombine(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(MegaMoe)
-    .Tiling(MegaMoeTilingFunc)
-    .TilingParse<MegaMoeCompileInfo>(TilingParseForMegaMoe);
+IMPL_OP_OPTILING(DispatchFFNCombine)
+    .Tiling(DispatchFFNCombineTilingFunc)
+    .TilingParse<DispatchFFNCombineCompileInfo>(TilingParseForDispatchFFNCombine);
 
 #if CANN_VERSION_NUM >= 90000000
-inline void MegaMoeExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+inline void DispatchFFNCombineExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
-    Mc2ExceptionImpl(args, userdata, "MegaMoe");
+    Mc2ExceptionImpl(args, userdata, "DispatchFFNCombine");
 }
 
-IMPL_OP(MegaMoe)
-    .ExceptionDumpParseFunc(MegaMoeExceptionImplWrapper);
+IMPL_OP(DispatchFFNCombine)
+    .ExceptionDumpParseFunc(DispatchFFNCombineExceptionImplWrapper);
 #endif
 } // namespace optiling

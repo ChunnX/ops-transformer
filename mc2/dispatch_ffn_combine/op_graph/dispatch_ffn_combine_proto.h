@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mega_moe_proto.h
+ * \file dispatch_ffn_combine_proto.h
  * \brief
  */
 #ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
@@ -19,7 +19,7 @@
 namespace ge {
 
 /**
-* @brief MegaMoe operator interface implementation.
+* @brief DispatchFFNCombine operator interface implementation.
 
 * @par Inputs
 * Ten inputs, including:
@@ -53,7 +53,7 @@ namespace ge {
 * @li y: A tensor. Support dtype: float16,bfloat16. Shape supports (BS, H), support format: ND.
 * @li expert_token_nums: A tensor. Support dtype: int32. Shape supports (expertPerRank,), support format: ND.
 */
-REG_OP(MegaMoe)
+REG_OP(DispatchFFNCombine)
     .INPUT(context, TensorType({DT_INT32}))
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,
                 DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
@@ -78,7 +78,7 @@ REG_OP(MegaMoe)
     .ATTR(combine_quant_mode, Int, 0)
     .ATTR(comm_alg, String, "")
     .ATTR(global_bs, Int, 0)
-    .OP_END_FACTORY_REG(MegaMoe)
+    .OP_END_FACTORY_REG(DispatchFFNCombine)
 
 }  // namespace ge
 #endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_

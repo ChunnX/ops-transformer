@@ -25,7 +25,7 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMegaMoeGetWorkspaceSize(
+extern aclnnStatus aclnnInnerDispatchFFNCombineGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* topkIds,
     const aclTensor* topkWeights, const aclTensorList* weight1, const aclTensorList* weight2,
     const aclTensor* xActiveMask, const aclTensor* weightScales1, const aclTensor* weightScales2,
@@ -35,10 +35,10 @@ extern aclnnStatus aclnnInnerMegaMoeGetWorkspaceSize(
     int64_t combineQuantMode, const char* commAlg, int64_t globalBs,
     aclTensor* y, aclTensor* expertTokenNums, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-extern aclnnStatus aclnnInnerMegaMoe(void* workspace, uint64_t workspaceSize,
+extern aclnnStatus aclnnInnerDispatchFFNCombine(void* workspace, uint64_t workspaceSize,
                                      aclOpExecutor* executor, aclrtStream stream);
 
-aclnnStatus aclnnMegaMoeGetWorkspaceSize(
+aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* topkIds,
     const aclTensor* topkWeights, const aclTensorList* weight1, const aclTensorList* weight2,
     const aclTensor* xActiveMask, const aclTensor* weightScales1, const aclTensor* weightScales2,
@@ -48,7 +48,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     int64_t combineQuantMode, const char* commAlg, int64_t globalBs,
     aclTensor* y, aclTensor* expertTokenNums, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    OP_LOGD("aclnn_mega_moe WorkspaceSize start");
+    OP_LOGD("aclnn_dispatch_ffn_combine WorkspaceSize start");
 
     OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
@@ -59,7 +59,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     OP_CHECK_NULL(y, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertTokenNums, return ACLNN_ERR_PARAM_NULLPTR);
 
-    aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
+    aclnnStatus getWorkspaceSizesRes = aclnnInnerDispatchFFNCombineGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         xActiveMask, weightScales1, weightScales2, scales,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
@@ -69,10 +69,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     return getWorkspaceSizesRes;
 }
 
-aclnnStatus aclnnMegaMoe(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnDispatchFFNCombine(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    OP_LOGD("aclnn_mega_moe start");
-    return aclnnInnerMegaMoe(workspace, workspaceSize, executor, stream);
+    OP_LOGD("aclnn_dispatch_ffn_combine start");
+    return aclnnInnerDispatchFFNCombine(workspace, workspaceSize, executor, stream);
 }
 #ifdef __cplusplus
 }

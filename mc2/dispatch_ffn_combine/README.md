@@ -1,4 +1,4 @@
-# MegaMoe
+# DispatchFFNCombine
 
 ## 产品支持情况
 
@@ -233,4 +233,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | aclnnMegaMoeGetWorkspaceSize / aclnnMegaMoe | 通过aclnn接口方式调用MegaMoe算子。 |
+| aclnn接口 | aclnnDispatchFFNCombineGetWorkspaceSize / aclnnDispatchFFNCombine | 通过aclnn接口方式调用DispatchFFNCombine算子。 |

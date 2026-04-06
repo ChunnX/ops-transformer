@@ -11,9 +11,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MegaMoe : public OpDef {
+class DispatchFFNCombine : public OpDef {
 public:
-  explicit MegaMoe(const char* name) : OpDef(name) {
+  explicit DispatchFFNCombine(const char* name) : OpDef(name) {
     this->Input("context")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
@@ -107,6 +107,6 @@ public:
   }
 };
 
-OP_ADD(MegaMoe);
+OP_ADD(DispatchFFNCombine);
 
 } // namespace ops
