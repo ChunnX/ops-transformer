@@ -33,12 +33,6 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
-#include "cann_version.h"
-
-#if CANN_VERSION_NUM >= 90000000
-#include "mc2_exception_dump.h"
-using namespace Mc2Exception;
-#endif
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -73,13 +67,4 @@ IMPL_OP_OPTILING(DispatchFFNCombine)
     .Tiling(DispatchFFNCombineTilingFunc)
     .TilingParse<DispatchFFNCombineCompileInfo>(TilingParseForDispatchFFNCombine);
 
-#if CANN_VERSION_NUM >= 90000000
-inline void DispatchFFNCombineExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
-{
-    Mc2ExceptionImpl(args, userdata, "DispatchFFNCombine");
-}
-
-IMPL_OP(DispatchFFNCombine)
-    .ExceptionDumpParseFunc(DispatchFFNCombineExceptionImplWrapper);
-#endif
 } // namespace optiling

@@ -33,10 +33,10 @@ namespace ge {
   hifloat8,float4_e2m1,float4_e1m2, dimension must be 3. Shape supports (expertPerRank, H, N), support format: ND,NZ.
 * @li weight2: A dynamic input tensor list. Support dtype: float16,bfloat16,int8,int4,float8_e5m2,float8_e4m3,
   hifloat8,float4_e2m1,float4_e1m2, dimension must be 3. Shape supports (expertPerRank, N/2, H), support format: ND,NZ.
-* @li x_active_mask: An optional tensor. Support dtype: int8, support format: ND.
-* @li weight_scales1: An optional dynamic input tensor list. Support dtype: float32,float8_e8m0, support format: ND.
-* @li weight_scales2: An optional dynamic input tensor list. Support dtype: float32,float8_e8m0, support format: ND.
-* @li scales: An optional tensor. Support dtype: float32,float8_e8m0, dimension must be 2, support format: ND.
+ * @li weight_scales1: An optional dynamic input tensor list. Support dtype: float32,float8_e8m0, support format: ND.
+ * @li weight_scales2: An optional dynamic input tensor list. Support dtype: float32,float8_e8m0, support format: ND.
+ * @li x_active_mask: An optional tensor. Support dtype: int8, support format: ND.
+ * @li scales: An optional tensor. Support dtype: float32,float8_e8m0, dimension must be 2, support format: ND.
 
 * @par Attributes
 * @li moe_expert_num: Required. Input moe expert num, dtype: int64.
@@ -63,9 +63,9 @@ REG_OP(DispatchFFNCombine)
                 DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .DYNAMIC_INPUT(weight2, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
                 DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
-    .OPTIONAL_INPUT(x_active_mask, TensorType({DT_INT8}))
     .OPTIONAL_INPUT(weight_scales1, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OPTIONAL_INPUT(weight_scales2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(x_active_mask, TensorType({DT_INT8}))
     .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
     .OUTPUT(expert_token_nums, TensorType({DT_INT32}))
