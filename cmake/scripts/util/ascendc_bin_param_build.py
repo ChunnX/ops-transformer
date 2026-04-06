@@ -231,6 +231,10 @@ class BinParamBuilder(opdesc_parser.OpDesc):
         key_map = {}
         self.for_bin_list_match()
         if len(self.input_dtype) == 0:
+            if len(self.output_dtype) == 0:
+                # 跳过没有输入和输出的算子，避免空列表访问越界
+                print(f'WARNING: Op {self.op_type} has no input and output, skip generating input json')
+                return
             count = len(self.output_dtype[0].split(','))
         else:
             count = len(self.input_dtype[0].split(','))
