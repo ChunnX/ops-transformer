@@ -30,20 +30,6 @@ using namespace optiling::detail;
 using namespace SASKernel;
 
 #if (__CCE_AICORE__ == 310)
-#if defined(__DAV_C310_CUBE__)
-#define SAS_OP_IMPL(templateClass, tilingdataClass, ...)                                               \
-    do {                                                                                               \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                    \
-            SASKernel::SCFABlockCube<__VA_ARGS__>, SASKernel::SCFABlockCubeDummy<__VA_ARGS__>>::type;  \
-        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                     \
-            SASKernel::SCFABlockVecDummy<__VA_ARGS__>, SASKernel::SCFABlockVec<__VA_ARGS__>>::type;    \
-        templateClass<CubeBlockType, VecBlockType> op;                                                 \
-        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, \
-                cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedKV, oriTopkLength,        \
-                cmpTopkLength, sinks, metadata, attentionOut, user, nullptr, &tPipe);                  \
-        op.Process();                                                                                  \
-    } while (0)
-#else
 #define SAS_OP_IMPL(templateClass, tilingdataClass, ...)                                               \
     do {                                                                                               \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                    \
@@ -58,7 +44,6 @@ using namespace SASKernel;
                 cmpTopkLength, sinks, metadata, attentionOut, user, tilingData, &tPipe);               \
         op.Process();                                                                                  \
     } while (0)
-#endif
 #else
 #define SAS_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
     do {                                                                                                               \
