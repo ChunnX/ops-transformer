@@ -48,15 +48,15 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = constInfo.s2Size;
     } else {
-        if constexpr (IS_PA) {
-            if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+            if constexpr (IS_PA) {
                 actualS2Size = actualSeqKvlenAddr[bIdx];
             } else {
-                actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
-                    actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx];
+                actualS2Size = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
             }
         } else {
-            actualS2Size = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
+            actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
+                actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx];
         }
     }
 
