@@ -51,11 +51,6 @@ public:
                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-    this->Input("x_active_mask")
-        .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_INT8})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
     this->Input("weight_scales1")
         .ParamType(OPTIONAL)
         .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
@@ -64,6 +59,11 @@ public:
     this->Input("weight_scales2")
         .ParamType(OPTIONAL)
         .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("x_active_mask")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_INT8})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("scales")
