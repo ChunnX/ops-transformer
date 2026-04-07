@@ -363,7 +363,10 @@ struct RunInfo<false> {
     bool isPostQuantBF16; \
     bool isPostQuantOffsetExist; \
     float postQuantScaleValue; \
-    float postQuantOffsetValue
+    float postQuantOffsetValue; \
+    /* runtime mask flag — allows hasAtten template param to be fixed to true \
+       while skipping mask GM loads when no mask tensor is actually present */ \
+    bool hasAttenMaskRT
 
 #define CV_SHARED_PARAMS \
     /* base params */ \
