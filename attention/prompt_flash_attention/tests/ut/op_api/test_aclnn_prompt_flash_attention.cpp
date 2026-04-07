@@ -70,7 +70,6 @@ TEST_F(prompt_flash_attention_opapi_ut, prompt_flash_attention_aclnn_950_unsuppo
 }
 
 // BNSD layout, FP16, no mask, standard MHA (N_q == N_kv)
-// query/key/value: (B=2, N=8, S=64, D=128)  →  attentionOut: (B=2, N=8, S=64, D=128)
 TEST_F(prompt_flash_attention_opapi_ut, prompt_flash_attention_aclnn_0)
 {
     const int64_t numHeads = 8;
@@ -110,7 +109,6 @@ TEST_F(prompt_flash_attention_opapi_ut, prompt_flash_attention_aclnn_0)
 }
 
 // BSH layout, FP16, GQA (N_q=8, N_kv=1)
-// query: (B=2, S=64, H_q=1024)  key/value: (B=2, S=64, H_kv=128)  →  attentionOut: (B=2, S=64, H_q=1024)
 TEST_F(prompt_flash_attention_opapi_ut, prompt_flash_attention_aclnn_1)
 {
     const int64_t numHeads = 8;
