@@ -23,11 +23,7 @@
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
 #include "opdev/op_errno.h"
-
-
-// #ifdef BUILD_OPEN_PROJECT
-// #include "hccl/hccl_rank_graph.h"
-// #endif
+#include "acl/acl.h"
 
 static constexpr uint32_t COMM_ALG_DEFAULT = 0U;
 static constexpr uint32_t COMM_MESH = 0b1U;
