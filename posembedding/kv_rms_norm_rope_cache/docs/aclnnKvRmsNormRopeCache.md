@@ -81,16 +81,16 @@ aclnnStatus aclnnKvRmsNormRopeCacheGetWorkspaceSize(
   aclTensor*       kCacheRef, 
   aclTensor*       ckvCacheRef, 
   const aclTensor* kRopeScaleOptional, 
-  const aclTensor* ckvScaleOptional, 
+  const aclTensor* cKvScaleOptional, 
   const aclTensor* kRopeOffsetOptional, 
   const aclTensor* cKvOffsetOptional, 
   double           epsilon, 
   char*            cacheModeOptional, 
   bool             isOutputKv, 
-  aclTensor*       kRopeOut, 
-  aclTensor*       cKvOut,
-  uint64_t         workspaceSize, 
-  aclOpExecutor*   executor)
+  const aclTensor* kRopeOut, 
+  const aclTensor* cKvOut,
+  uint64_t*        workspaceSize, 
+  aclOpExecutor**  executor)
 ```
 
 ```Cpp
