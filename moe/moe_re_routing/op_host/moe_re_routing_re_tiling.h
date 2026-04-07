@@ -31,7 +31,7 @@ protected:
     ge::graphStatus PostTiling() override;
     bool IsCapable() override
     {
-        return (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) &&
+        return (false) &&
                (rankNums_ < MIN_RANK_NUM && expertNum_ != 1);
     }
 

@@ -132,13 +132,7 @@ ge::graphStatus RopeGradRegBaseTilingClassAB::PostTiling()
 
 bool RopeGradRegBaseTilingClassAB::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-
-    OP_LOGI(context_->GetNodeName(), "layout: %ld", static_cast<int64_t>(layout_));
-    // 1. qk:bsnd, cos:bs1d 2. qk:sbnd, cos:sb1d 3. qk:sbnd, cos:s11d
-    return layout_ == RopeLayout::SBND;
+    return false;
 }
 
 REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbeddingGrad, RopeGradRegBaseTilingClassAB, 25000);
