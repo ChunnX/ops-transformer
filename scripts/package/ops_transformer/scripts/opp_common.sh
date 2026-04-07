@@ -159,13 +159,17 @@ createOpapiSoftlink() {
   fi
 
   if [ -d $1/${architectureDir}/include/aclnnop/level2 ]; then
+    file_path="level2_ops_list"
+    mapfile -t level2_ops_headers < "$file_path"
     for file_level2 in $(ls -1 -F ${opapi_include_level2_path} | grep -v [/$] | sed 's/\*$//'); do
       arch_include_src_path="${opapi_include_level2_path}/${file_level2}"
       arch_include_dst_path="$1/${architectureDir}/include/aclnnop/level2/${file_level2}"
       if [ -f $arch_include_dst_path ] || [ -L $arch_include_dst_path ]; then
         rm -fr "$arch_include_dst_path"
       fi
-      createrelativelysoftlink ${arch_include_src_path} ${arch_include_dst_path}
+      if [[ " ${level2_ops_headers[*]} " =~ " $file_level2 " ]]; then
+        createrelativelysoftlink ${arch_include_src_path} ${arch_include_dst_path}
+      fi
 
       opp_include_src_path="${arch_include_dst_path}"
       opp_include_dst_path="$1/opp/include/aclnnop/level2/${file_level2}"
