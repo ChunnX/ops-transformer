@@ -18,55 +18,52 @@
 
 struct MaskedCausalConv1dTilingData {
     // ===== Shape =====
-    uint32_t S;                       // token sequence length
-    uint32_t B;                       // batch size
-    uint32_t H;                       // hidden dimension
+    int64_t S;                       // token sequence length
+    int64_t B;                       // batch size
+    int64_t H;                       // hidden dimension
 
     // ===== H-dimension inter-core split =====
-    uint32_t hCoreCnt;                // number of cores in H direction
-    uint32_t hMainCnt;                // first hMainCnt cores are "main" (larger)
-    uint32_t hBlockFactor;            // H elements per main core
-    uint32_t hBlockTailFactor;        // H elements per tail core
+    int64_t hCoreCnt;                // number of cores in H direction
+    int64_t hMainCnt;                // first hMainCnt cores are "main" (larger)
+    int64_t hBlockFactor;            // H elements per main core
+    int64_t hBlockTailFactor;        // H elements per tail core
 
     // ===== B-dimension inter-core split =====
-    uint32_t bCoreCnt;                // number of cores in B direction
-    uint32_t bMainCnt;                // first bMainCnt cores are "main"
-    uint32_t bBlockFactor;            // B elements per main core
-    uint32_t bBlockTailFactor;        // B elements per tail core
+    int64_t bCoreCnt;                // number of cores in B direction
+    int64_t bMainCnt;                // first bMainCnt cores are "main"
+    int64_t bBlockFactor;            // B elements per main core
+    int64_t bBlockTailFactor;        // B elements per tail core
 
     // ===== S-dimension inter-core split =====
-    uint32_t sCoreCnt;                // number of cores in S direction
-    uint32_t sMainCnt;                // first sMainCnt cores are "main"
-    uint32_t sBlockFactor;            // S elements per main core
-    uint32_t sBlockTailFactor;        // S elements per tail core
+    int64_t sCoreCnt;                // number of cores in S direction
+    int64_t sMainCnt;                // first sMainCnt cores are "main"
+    int64_t sBlockFactor;            // S elements per main core
+    int64_t sBlockTailFactor;        // S elements per tail core
 
     // ===== UB tile sizes =====
-    uint32_t hUb;                     // = H_REG = 64 (VF FP32 register width, fixed)
-    uint32_t ubFactorB;               // bUb: batch tile size
-    uint32_t ubFactorS;               // sUb: sequence tile size
+    int64_t ubFactorH;               // k×H_REG (variable, §6.2: starts at 64, expands when B+S fully loaded and UB<50%)
+    int64_t ubFactorB;               // bUb: batch tile size
+    int64_t ubFactorS;               // sUb: sequence tile size
 
     // ===== Main-core loop params =====
-    uint32_t loopNumH;                // H loop count for main H-core
-    uint32_t ubTailFactorH;           // H tail tile size for main H-core
-    uint32_t loopNumB;                // B loop count for main B-core
-    uint32_t ubTailFactorB;           // B tail tile for main B-core
-    uint32_t loopNumS;                // S loop count for main S-core
-    uint32_t ubTailFactorS;           // S tail tile for main S-core
+    int64_t loopNumH;                // H loop count for main H-core
+    int64_t ubTailFactorH;           // H tail tile size for main H-core
+    int64_t loopNumB;                // B loop count for main B-core
+    int64_t ubTailFactorB;           // B tail tile for main B-core
+    int64_t loopNumS;                // S loop count for main S-core
+    int64_t ubTailFactorS;           // S tail tile for main S-core
 
     // ===== Tail-core loop params =====
-    uint32_t tailBlockLoopNumH;
-    uint32_t tailBlockUbTailFactorH;
-    uint32_t tailBlockLoopNumB;
-    uint32_t tailBlockUbTailFactorB;
-    uint32_t tailBlockLoopNumS;
-    uint32_t tailBlockUbTailFactorS;
-
-    // ===== Non-contiguous input stride =====
-    uint32_t xSStride;               // x S-dim stride (elements); contiguous = B*H
-    uint32_t xBStride;               // x B-dim stride (elements); contiguous = H
+    int64_t tailBlockLoopNumH;
+    int64_t tailBlockUbTailFactorH;
+    int64_t tailBlockLoopNumB;
+    int64_t tailBlockUbTailFactorB;
+    int64_t tailBlockLoopNumS;
+    int64_t tailBlockUbTailFactorS;
 
     // ===== Meta =====
-    uint32_t realCoreNum;            // = hCoreCnt * bCoreCnt * sCoreCnt
+    int64_t realCoreNum;             // = hCoreCnt * bCoreCnt * sCoreCnt
+    int64_t isMaskNone;              // 1 = mask input is None (skip mask multiply); 0 = valid mask
 };
 
 #endif // MASKED_CAUSAL_CONV1D_STRUCT_H

@@ -12,11 +12,12 @@
  * \file masked_causal_conv1d.h
  * \brief MaskedCausalConv1d AIV kernel implementation
  *
- * Shape: input [S,B,H], weight [3,H], mask [B,S] -> output [S,B,H]
+ * Shape: input [S,B,H] contiguous, weight [3,H], mask [B,S] -> output [S,B,H]
  * Strategy: H×B×S 3D inter-core split, H outer loop, B middle, S inner;
- *           unified ioQueue layout [bUb][sUb+2][hUb]:
+ *           unified ioQueue layout [bUb][sUb+2][ubFactorH]:
  *             rows 0,1        = prefix x[s0-2], x[s0-1]  (loaded fresh from GM each tile)
  *             rows 2..sUb+1   = current x[s0..s0+sUb-1]
+ *             each row is ubFactorH elements wide (ubFactorH = k×H_REG, k >= 1)
  *           VF writes y[s] in-place to row s; CopyOut writes rows 0..sCur-1.
  */
 
@@ -31,7 +32,7 @@ namespace MaskedCausalConv1dNs {
 
 using namespace AscendC;
 
-constexpr int32_t BUFFER_NUM = 2;    // double buffer for ioQueue
+constexpr int32_t BUFFER_NUM = 2;    // double buffer for all queues
 constexpr uint32_t ALIGN_BYTES = 32; // DataCopy 32-byte alignment unit
 
 // ============================================================================
@@ -48,10 +49,12 @@ public:
 
 private:
     __aicore__ inline void ParseTilingData(const MaskedCausalConv1dTilingData* tiling);
-    __aicore__ inline void LoadMask(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur);
-    __aicore__ inline void CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0);
-    __aicore__ inline void Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur);
-    __aicore__ inline void CopyOut(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0);
+    __aicore__ inline void CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
+                                  uint32_t h0, uint32_t ubFactorHCur);
+    __aicore__ inline void Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
+                                   uint32_t ubFactorHCur, LocalTensor<T>& wBuf);
+    __aicore__ inline void CopyOut(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
+                                   uint32_t h0, uint32_t ubFactorHCur);
 
     // Helper: align up to align bytes
     static __aicore__ inline uint32_t AlignUp(uint32_t n, uint32_t align) {
@@ -72,7 +75,7 @@ private:
     uint32_t sCoreCnt_, sMainCnt_, sBlockFactor_, sBlockTailFactor_;
 
     // UB tile
-    uint32_t hUb_;        // = H_REG = 64
+    uint32_t ubFactorH_;  // = ubFactorH = k * H_REG
     uint32_t ubFactorB_;
     uint32_t ubFactorS_;
 
@@ -86,11 +89,9 @@ private:
     uint32_t tailBlockLoopNumB_,  tailBlockUbTailFactorB_;
     uint32_t tailBlockLoopNumS_,  tailBlockUbTailFactorS_;
 
-    // Stride for non-contiguous x
-    uint32_t xSStride_;  // S-dim stride (elements)
-    uint32_t xBStride_;  // B-dim stride (elements)
-
     uint32_t realCoreNum_;
+    uint32_t isMaskNone_;  // 1 = skip mask application; 0 = apply mask
+    uint32_t xSStride_;   // = B_ * H_, pre-computed to avoid repeated multiply in CopyIn/CopyOut
 
     // Core 3D index (decoded from blockIdx)
     uint32_t hCoreIdx_;
@@ -112,21 +113,20 @@ private:
     // -------------------------------------------------------------------------
     TPipe pipe_;
 
-    GlobalTensor<T>       xGM_;
-    GlobalTensor<T>       weightGM_;
-    GlobalTensor<uint8_t> maskGM_;   // [B][S] bool (uint8_t)
-    GlobalTensor<T>       yGM_;
+    GlobalTensor<T>       xGM_;       // [S][B][H] contiguous
+    GlobalTensor<T>       weightGM_;  // [3][H]
+    GlobalTensor<uint8_t> maskGM_;    // [B][S] bool (uint8_t)
+    GlobalTensor<T>       yGM_;       // [S][B][H] contiguous
 
     // -------------------------------------------------------------------------
     // UB buffers
-    // ioQueue   : [bUb][sUb+2][hUb] T, double buffer (ping-pong)
-    //             rows 0,1 = prefix x[s0-2], x[s0-1]; rows 2..sUb+1 = x[s0..]
-    // weightQueue: [3][hUb] T, single, loaded once per H-tile
-    // maskQueue  : [bUb][sUb] uint8_t, single, loaded per S-tile
+    // ioQueue    : [bUb][sUb+2][ubFactorH] T, double buffer (ping-pong)
+    //              rows 0,1 = prefix x[s0-2], x[s0-1]; rows 2..sUb+1 = x[s0..]
+    //              each row: ubFactorH elements wide (ubFactorH = k×H_REG)
+    // weightQueue: [3][ubFactorH] T, double buffer, loaded once per S-tile
     // -------------------------------------------------------------------------
     TQueBind<TPosition::VECIN, TPosition::VECOUT, BUFFER_NUM> ioQueue_;
-    TQue<QuePosition::VECIN, 1> weightQueue_;   // [3][hUb]
-    TQue<QuePosition::VECIN, 1> maskQueue_;     // [bUb][sUb] bytes
+    TQue<QuePosition::VECIN, 1> weightQueue_;  // [3][ubFactorH]
 };
 
 // ============================================================================
@@ -147,7 +147,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::ParseTilingData(
     sCoreCnt_ = tiling->sCoreCnt;  sMainCnt_ = tiling->sMainCnt;
     sBlockFactor_ = tiling->sBlockFactor;  sBlockTailFactor_ = tiling->sBlockTailFactor;
 
-    hUb_ = tiling->hUb;
+    ubFactorH_ = tiling->ubFactorH;  // k × H_REG, variable
     ubFactorB_ = tiling->ubFactorB;
     ubFactorS_ = tiling->ubFactorS;
 
@@ -162,9 +162,9 @@ __aicore__ inline void MaskedCausalConv1d<T>::ParseTilingData(
     tailBlockLoopNumS_ = tiling->tailBlockLoopNumS;
     tailBlockUbTailFactorS_ = tiling->tailBlockUbTailFactorS;
 
-    xSStride_ = tiling->xSStride;
-    xBStride_ = tiling->xBStride;
     realCoreNum_ = tiling->realCoreNum;
+    isMaskNone_  = tiling->isMaskNone;
+    xSStride_    = B_ * H_;  // pre-compute once
 }
 
 // ============================================================================
@@ -223,64 +223,53 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
     myLoopNumS_       = isSTail ? tailBlockLoopNumS_       : loopNumS_;
     myUbTailFactorS_  = isSTail ? tailBlockUbTailFactorS_  : ubTailFactorS_;
 
-    // Bind GM
-    xGM_.SetGlobalBuffer((__gm__ T*)x, (uint64_t)S_ * xSStride_);
+    // Bind GM — x and y are contiguous [S][B][H]
+    xGM_.SetGlobalBuffer((__gm__ T*)x, (uint64_t)S_ * B_ * H_);
     weightGM_.SetGlobalBuffer((__gm__ T*)weight, (uint64_t)3 * H_);
     maskGM_.SetGlobalBuffer((__gm__ uint8_t*)mask);
     yGM_.SetGlobalBuffer((__gm__ T*)y, (uint64_t)S_ * B_ * H_);
 
-    // ioQueue: [bUb][sUb+2][hUb] T — includes 2 prefix rows per batch
-    uint32_t ioBufBytes     = AlignUp(ubFactorB_ * (ubFactorS_ + 2) * hUb_ * sizeof(T), ALIGN_BYTES);
-    uint32_t weightBufBytes = AlignUp(3 * hUb_ * sizeof(T),                             ALIGN_BYTES);
-    uint32_t maskBufBytes   = AlignUp(ubFactorB_ * ubFactorS_ * sizeof(uint8_t),        ALIGN_BYTES);
+    // ioQueue: [bUb][sUb+2][ubFactorH] T — 2 prefix rows + sCur data rows, each row ubFactorH wide
+    uint32_t ioBufBytes     = AlignUp(ubFactorB_ * (ubFactorS_ + 2) * ubFactorH_ * sizeof(T), ALIGN_BYTES);
+    // weightQueue: [3][ubFactorH] T — tap-major layout
+    uint32_t weightBufBytes = AlignUp(3 * ubFactorH_ * sizeof(T), ALIGN_BYTES);
 
     pipe_.InitBuffer(ioQueue_,     BUFFER_NUM, ioBufBytes);
-    pipe_.InitBuffer(weightQueue_, 1,          weightBufBytes);
-    pipe_.InitBuffer(maskQueue_,   1,          maskBufBytes);
+    pipe_.InitBuffer(weightQueue_, 1, weightBufBytes);
 }
 
 // ============================================================================
-// LoadMask: load bUbCur × sCur mask values into maskQueue (per S-tile)
-// mask GM layout: [B][S] (contiguous, stride = S)
-// ============================================================================
-template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::LoadMask(
-    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur)
-{
-    LocalTensor<uint8_t> mBuf = maskQueue_.AllocTensor<uint8_t>();
-    maskQueue_.EnQue(mBuf);
-}
-
-// ============================================================================
-// CopyIn: load [bUb][sCur+2][hUb] into ioQueue
+// CopyIn: load [bUb][sCur+2][ubFactorHCur] into ioQueue
 //
-// Buffer layout per batch b (element offsets from ioBuf start):
-//   row 0:        x[s0-2]  (prefix-2)
-//   row 1:        x[s0-1]  (prefix-1)
-//   rows 2..sCur+1: x[s0..s0+sCur-1]
+// x GM layout: [S][B][H] contiguous; S-stride = B*H, B-stride = H.
+// UB layout per batch b:
+//   row 0:          x[s0-2, b0+b, h0..h0+ubFactorHCur-1]  (prefix-2)
+//   row 1:          x[s0-1, b0+b, h0..h0+ubFactorHCur-1]  (prefix-1)
+//   rows 2..sCur+1: x[s0..s0+sCur-1, b0+b, h0..h0+ubFactorHCur-1]
 //
 // Boundary (s0 < 2, only when sCoreIdx=0 && sIter=0):
-//   s0 == 0: rows 0,1 = 0; load sCur   rows starting at GM[0]
-//   s0 == 1: row 0   = 0; load sCur+1 rows starting at GM[0]
-//   s0 >= 2: load all sCur+2 rows starting at GM[s0-2]
+//   s0 == 0: rows 0,1 = 0; DataCopy sCur   rows from GM[0, b0+b, h0]
+//   s0 == 1: row 0   = 0; DataCopy sCur+1 rows from GM[0, b0+b, h0]
+//   s0 >= 2: DataCopy all sCur+2 rows from GM[s0-2, b0+b, h0]
 // ============================================================================
 template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
-    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0)
+    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0, uint32_t ubFactorHCur)
 {
     LocalTensor<T> ioBuf = ioQueue_.AllocTensor<T>();
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
-    uint32_t rowElems    = hUb_;
-    uint32_t bRowStride  = (sCur + 2) * rowElems;  // element stride per batch in ioQueue
-    uint32_t srcSkipBytes = (xSStride_ - hUb_) * static_cast<uint32_t>(sizeof(T));
+    // x is contiguous [S][B][H]: S-stride = xSStride_, B-stride = H_
+    uint32_t rowElems     = ubFactorHCur;
+    uint32_t bRowStride   = (sCur + 2) * rowElems;  // element stride per batch in ioQueue
+    uint32_t srcSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
 
     for (uint32_t b = 0; b < bUbCur; ++b) {
-        uint32_t dstBase = b * bRowStride;  // element offset for this batch in ioQueue
+        uint32_t dstBase = b * bRowStride;
 
         if (s0 >= 2) {
-            // Common case: load sCur+2 rows starting at x[s0-2]
-            uint64_t gmOff = (uint64_t)(s0 - 2) * xSStride_ + (uint64_t)(b0 + b) * xBStride_ + h0;
+            // Common case: load sCur+2 rows starting at x[s0-2, b0+b, h0]
+            uint64_t gmOff = (uint64_t)(s0 - 2) * xSStride_ + (uint64_t)(b0 + b) * H_ + h0;
             DataCopyExtParams xcp{
                 static_cast<uint16_t>(sCur + 2),
                 static_cast<uint16_t>(rowElems * sizeof(T)),
@@ -291,7 +280,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
         } else if (s0 == 0) {
             // Prefix rows 0,1 = zero; load sCur rows at rows 2..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), 2 * rowElems);
-            uint64_t gmOff = (uint64_t)0 * xSStride_ + (uint64_t)(b0 + b) * xBStride_ + h0;
+            uint64_t gmOff = (uint64_t)(b0 + b) * H_ + h0;
             DataCopyExtParams xcp{
                 static_cast<uint16_t>(sCur),
                 static_cast<uint16_t>(rowElems * sizeof(T)),
@@ -300,9 +289,9 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
             DataCopyPad(ioBuf[dstBase + 2 * rowElems], xGM_[gmOff], xcp, padParams);
             PipeBarrier<PIPE_ALL>();
         } else {
-            // s0 == 1: row 0 = zero; load sCur+1 rows starting at GM[0] into rows 1..sCur+1
+            // s0 == 1: row 0 = zero; load sCur+1 rows from GM[0, b0+b, h0] into rows 1..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), rowElems);
-            uint64_t gmOff = (uint64_t)0 * xSStride_ + (uint64_t)(b0 + b) * xBStride_ + h0;
+            uint64_t gmOff = (uint64_t)(b0 + b) * H_ + h0;
             DataCopyExtParams xcp{
                 static_cast<uint16_t>(sCur + 1),
                 static_cast<uint16_t>(rowElems * sizeof(T)),
@@ -317,63 +306,62 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
 }
 
 // ============================================================================
-// Compute: VF unified-buffer convolution, then apply mask at __aicore__ level
+// Compute: VF unified-buffer convolution, then apply mask (if isMaskNone_==0)
 //
-// After VF: y[s] is at ioBuf[b*(sCur+2)*hUb_ + s*hUb_]  (row s, in-place)
-// Mask zeroing: if mask[b0+b, s0+s] == 0, zero y[s] at that offset.
+// After VF: y[s] is at ioBuf[b*(sCur+2)*ubFactorHCur + s*ubFactorHCur] (row s, ubFactorHCur wide).
+// Mask (isMaskNone_==0): if mask[b0+b, s0+s]==0, zero ubFactorHCur elements at that row.
+// Mask (isMaskNone_==1): skip mask — result written directly to CopyOut.
 // ============================================================================
 template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur)
+__aicore__ inline void MaskedCausalConv1d<T>::Compute(
+    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t ubFactorHCur, LocalTensor<T>& wBuf)
 {
-    LocalTensor<T>       ioBuf = ioQueue_.DeQue<T>();
-    LocalTensor<T>       wBuf  = weightQueue_.DeQue<T>();
-    LocalTensor<uint8_t> mBuf  = maskQueue_.DeQue<uint8_t>();
+    LocalTensor<T> ioBuf = ioQueue_.DeQue<T>();
 
-    // VF convolution — no mask inside VF (avoid b8 SLD)
-    CallMaskedConv1dVF<T>(ioBuf, wBuf, sCur, bUbCur);
+    // VF convolution across all H_REG chunks (loop inside VF)
+    CallMaskedConv1dVF<T>(ioBuf, wBuf, sCur, bUbCur, ubFactorHCur);
     PipeBarrier<PIPE_ALL>();
-    // Apply mask at __aicore__ level: zero y[s] where mask == 0
-    // y[s] for batch b is at ioBuf[b*(sCur+2)*hUb_ + s*hUb_]
-    for (uint32_t b = 0; b < bUbCur; ++b) {
-        for (uint32_t s = 0; s < sCur; ++s) {
-            uint8_t maskVal = maskGM_.GetValue((uint64_t)(b0 + b) * S_ + s0 + s);
-            // uint8_t maskVal = mBuf.GetValue(b * sCur + s);  // UB read, ~1 cycle
-            if (maskVal == 0) {
-                uint32_t off = b * (sCur + 2) * hUb_ + s * hUb_;
-                Duplicate(ioBuf[off], static_cast<T>(0), hUb_);
+
+    if (isMaskNone_ == 0) {
+        // Apply mask: zero y[b,s] (ubFactorHCur elements) where mask[b0+b, s0+s]==0
+        for (uint32_t b = 0; b < bUbCur; ++b) {
+            for (uint32_t s = 0; s < sCur; ++s) {
+                uint8_t maskVal = maskGM_.GetValue((uint64_t)(b0 + b) * S_ + s0 + s);
+                if (maskVal == 0) {
+                    uint32_t off = b * (sCur + 2) * ubFactorHCur + s * ubFactorHCur;
+                    Duplicate(ioBuf[off], static_cast<T>(0), ubFactorHCur);
+                }
             }
         }
+        PipeBarrier<PIPE_ALL>();
     }
-    PipeBarrier<PIPE_ALL>();
-    maskQueue_.FreeTensor(mBuf);
-    weightQueue_.FreeTensor(wBuf);
     ioQueue_.EnQue(ioBuf);
 }
 
 // ============================================================================
 // CopyOut: write y[0..sCur-1] back to GM
 //
-// y[s] is at ioBuf[b*(sCur+2)*hUb_ + s*hUb_]  (rows 0..sCur-1 in unified buffer)
-// Output y GM layout: [S][B][H] contiguous (S-stride = B*H, B-stride = H).
-// Single DataCopyPad per batch writes sCur contiguous rows.
+// y[s] of batch b is at ioBuf[b*(sCur+2)*ubFactorHCur + s*ubFactorHCur] (ubFactorHCur elements wide).
+// Output y GM layout: [S][B][H] contiguous; S-stride = B*H, B-stride = H.
 // ============================================================================
 template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
-    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0)
+    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0, uint32_t ubFactorHCur)
 {
     LocalTensor<T> ioBuf = ioQueue_.DeQue<T>();
 
-    // Output is [S][B][H]: skip between consecutive S rows = (B_*H_ - hUb_) elements
-    uint32_t dstSkipBytes = (B_ * H_ - hUb_) * static_cast<uint32_t>(sizeof(T));
+    // dstJumpStride: bytes to skip in y GM between consecutive S rows
+    uint32_t dstSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
+    uint32_t bIoStride    = (sCur + 2) * ubFactorHCur;
 
     for (uint32_t b = 0; b < bUbCur; ++b) {
-        // y[0..sCur-1] start at row 0 of this batch's region in the unified buffer
-        uint32_t ioOff = b * (sCur + 2) * hUb_;
+        // y[0..sCur-1] are at rows 0..sCur-1 of this batch's region
+        uint32_t ioOff = b * bIoStride;
 
-        uint64_t dstOff = (uint64_t)s0 * B_ * H_ + (uint64_t)(b0 + b) * H_ + h0;
+        uint64_t dstOff = (uint64_t)s0 * xSStride_ + (uint64_t)(b0 + b) * H_ + h0;
         DataCopyExtParams ycp{
             static_cast<uint16_t>(sCur),
-            static_cast<uint16_t>(hUb_ * sizeof(T)),
+            static_cast<uint16_t>(ubFactorHCur * sizeof(T)),
             0, dstSkipBytes, 0
         };
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
@@ -384,6 +372,9 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
 
 // ============================================================================
 // Process: main compute loop  H(outer) -> B(middle) -> S(inner)
+//
+// Weight is loaded once per S-tile (same data reloaded; enables DMA-compute
+// overlap via double-buffered weightQueue_). Weight tile size = ubFactorHCur.
 // ============================================================================
 template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::Process()
@@ -394,21 +385,24 @@ __aicore__ inline void MaskedCausalConv1d<T>::Process()
     }
 
     // ---- H outer loop ----
-    for (uint32_t hIter = 0; hIter < myLoopNumH_; ++hIter) {
-        uint32_t hUbCur = (hIter < myLoopNumH_ - 1) ? hUb_ : myUbTailFactorH_;
-        uint32_t h0     = hStart_ + hIter * hUb_;
-        // Load weight for this H-tile: weight[0..2, h0:h0+hUbCur]
+    uint32_t h0 = hStart_;
+    for (uint32_t hIter = 0; hIter < myLoopNumH_; ++hIter, h0 += ubFactorH_) {
+        uint32_t ubFactorHCur = (hIter < myLoopNumH_ - 1) ? ubFactorH_ : myUbTailFactorH_;
+
+        // Load weight once per H-tile: [3][ubFactorHCur] from weightGM_[h0]
         {
-            LocalTensor<T> wBuf = weightQueue_.AllocTensor<T>();
+            LocalTensor<T> wBufTmp = weightQueue_.AllocTensor<T>();
             DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-            uint32_t wSkipBytes = (H_ - hUbCur) * static_cast<uint32_t>(sizeof(T));
+            uint32_t wSkipBytes = (H_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
             DataCopyExtParams wcp{3,
-                static_cast<uint16_t>(hUbCur * sizeof(T)),
+                static_cast<uint16_t>(ubFactorHCur * sizeof(T)),
                 wSkipBytes, 0, 0};
-            DataCopyPad(wBuf[0], weightGM_[h0], wcp, padParams);
-            weightQueue_.EnQue(wBuf);
+            DataCopyPad(wBufTmp[0], weightGM_[h0], wcp, padParams);
+            weightQueue_.EnQue(wBufTmp);
         }
-        PipeBarrier<PIPE_ALL>();
+        // DeQue once, hold across all B×S iterations
+        LocalTensor<T> wBuf = weightQueue_.DeQue<T>();
+
         // ---- B middle loop ----
         for (uint32_t bIter = 0; bIter < myLoopNumB_; ++bIter) {
             uint32_t bUbCur = (bIter < myLoopNumB_ - 1) ? ubFactorB_ : myUbTailFactorB_;
@@ -419,13 +413,14 @@ __aicore__ inline void MaskedCausalConv1d<T>::Process()
                 uint32_t sCur = (sIter < myLoopNumS_ - 1) ? ubFactorS_ : myUbTailFactorS_;
                 uint32_t s0   = sStart_ + sIter * ubFactorS_;
 
-                // CopyIn loads sCur+2 rows (rows 0,1 = prefix; rows 2..sCur+1 = x[s0..])
-                LoadMask(s0, sCur, b0, bUbCur);
-                CopyIn(s0, sCur, b0, bUbCur, h0);
-                Compute(s0, sCur, b0, bUbCur);
-                CopyOut(s0, sCur, b0, bUbCur, h0);
+                // CopyIn loads sCur+2 rows per batch (rows 0,1=prefix; rows 2..=x[s0..])
+                CopyIn(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
+                Compute(s0, sCur, b0, bUbCur, ubFactorHCur, wBuf);
+                CopyOut(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
             }
         }
+        // Free weight at end of H-tile
+        weightQueue_.FreeTensor(wBuf);
     }
 }
 
