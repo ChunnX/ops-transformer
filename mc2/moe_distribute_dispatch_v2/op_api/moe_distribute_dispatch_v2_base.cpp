@@ -20,12 +20,12 @@
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
-#include "common/op_api/mc2_moe_context_tensor.h"
+// #include "common/op_api/mc2_moe_context_tensor.h"
 #include "common/utils/mc2_hcom_topo_info.h"
 
 using namespace Ops::Transformer;
 using namespace op;
-using namespace Mc2Aclnn;
+// using namespace Mc2Aclnn;
 #ifdef __cplusplus
 extern "C" {
 #endif
