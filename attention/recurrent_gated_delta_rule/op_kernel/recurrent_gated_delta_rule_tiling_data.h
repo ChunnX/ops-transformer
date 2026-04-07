@@ -35,7 +35,6 @@ struct alignas(8) RecurrentGatedDeltaRuleTilingData { // alignas(8)确保8字节
     uint32_t hasGama;
     uint32_t hasGamaK;
     uint32_t hasAcceptedTokens;
-    uint32_t stateIsFp32;
 };
 #pragma pack(pop)
 } // RecurrentGatedDeltaRule

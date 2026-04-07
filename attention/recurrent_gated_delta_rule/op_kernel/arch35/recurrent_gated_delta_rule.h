@@ -142,11 +142,9 @@ public:
         hasAcceptedTokens_ = (tilingData->hasAcceptedTokens == 1);
         hasGama_ = (tilingData->hasGama == 1);
         hasGamaK_ = (tilingData->hasGamaK == 1);
-        stateIsFp32_ = (tilingData->stateIsFp32 == 1);
         alignDK_ = Ceil(tilingData->dk, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
         alignDV_ = Ceil(tilingData->dv, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
-        // For FP32 state, each element is 4 bytes; halve vStep_ to stay within fixed 16KB queue buffers
-        vStep_ = stateIsFp32_ ? (4096 / alignDK_) : (8192 / alignDK_);
+        vStep_ = 8192 / alignDK_;
         if (vStep_ > 256) {
             vStep_ = 255;
         }
@@ -185,8 +183,10 @@ public:
 
     __aicore__ inline void InitLocalBuffers()
     {
-        pipe_->InitBuffer(inputQueue1_, DOUBLE_BUFFER, BUFFER_SIZE_BYTE_16K);
-        pipe_->InitBuffer(stateOutQueue_, SINGLE_BUFFER, BUFFER_SIZE_BYTE_16K);
+        constexpr uint32_t stateQueueSize =
+            std::is_same_v<stateType, float> ? BUFFER_SIZE_BYTE_32K : BUFFER_SIZE_BYTE_16K;
+        pipe_->InitBuffer(inputQueue1_, DOUBLE_BUFFER, stateQueueSize);
+        pipe_->InitBuffer(stateOutQueue_, SINGLE_BUFFER, stateQueueSize);
         pipe_->InitBuffer(attnOutQueue_, SINGLE_BUFFER, BUFFER_SIZE_BYTE_16K);
         pipe_->InitBuffer(gamaBuff_, BUFFER_SIZE_BYTE_16K);
         pipe_->InitBuffer(stateBuff_, BUFFER_SIZE_BYTE_32K);
@@ -321,7 +321,11 @@ private:
         CopySingleMatrixNDToND(stateInUb, initStateGm_[stateGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
         inputQueue1_.EnQue<stateType>(stateInUb);
         inputQueue1_.DeQue<stateType>();
-        Cast(stateUb_, stateInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateUb_, stateInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        } else {
+            stateUb_ = stateInUb;
+        }
         inputQueue1_.FreeTensor(stateInUb);
     }
 
@@ -343,7 +347,11 @@ private:
     __aicore__ inline void CopyOutState(LocalTensor<float> &outStateFp32Ub, uint32_t tIdx, uint32_t head_i, uint32_t dvIdx, uint32_t curSingleV)
     {
         LocalTensor<stateType> stateOutLocal = stateOutQueue_.AllocTensor<stateType>();
-        Cast(stateOutLocal, outStateFp32Ub, AscendC::RoundMode::CAST_RINT, alignDK_ * curSingleV);
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateOutLocal, outStateFp32Ub, AscendC::RoundMode::CAST_RINT, alignDK_ * curSingleV);
+        } else {
+            stateOutLocal = outStateFp32Ub;
+        }
         stateOutQueue_.EnQue<stateType>(stateOutLocal);
         stateOutQueue_.DeQue<stateType>();
         DataCopyExtParams stateOutParams;
@@ -493,7 +501,6 @@ private:
     bool hasAcceptedTokens_;
     bool hasGama_;
     bool hasGamaK_;
-    bool stateIsFp32_;
     float scale_;
     uint64_t blockIdx;
 
