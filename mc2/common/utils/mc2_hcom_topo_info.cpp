@@ -9,7 +9,6 @@
  */
 
 #include <cstdlib>
-#include <string>
 #include <dlfcn.h>
 #include "log/log.h"
 #include "mc2_hcom_topo_info.h"
@@ -44,12 +43,15 @@ static const string GetLibPath()
     }
 #if defined(__x86_64__)
     std::string hcclPathPostfix = "/x86_64-linux/lib64/libhccl_fwk.so";
+    std::string createTensorLibPath = "/x86_64-linux/lib64/libnnopbase.so";
 #elif defined(__aarch64__)
     std::string hcclPathPostfix = "/aarch64-linux/lib64/libhccl_fwk.so";
+    std::string createTensorLibPath = "/aarch64-linux/lib64/libnnopbase.so";
 #else
     return nullptr;
 #endif
-    std::string fullPath = ascendPath + hcclPathPostfix;
+    CreateTensorLibPath_ = std::string(ascendPath) + createTensorLibPath;
+    std::string fullPath = std::string(ascendPath) + hcclPathPostfix;
     OP_LOGI("", "Loading lib in path %s.", fullPath.c_str());
     return fullPath;
 }
@@ -514,9 +516,42 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus MC2HcomTopology::GetaclCreateTensorSymbol()
+{
+    const char* libPath = CreateTensorLibPath_.c_str();
+    if (libPath == nullptr) {
+        OP_LOGE("", "Failed to get aclCreateTensor library path");
+        return ACLNN_ERR_INNER;
+    }
+
+    void* createHandle = dlopen(libPath, RTLD_NOW | RTLD_GLOBAL);
+    if (createHandle == nullptr){
+        OP_LOGE("", "dlopen aclCreateTensor library failed: %s, error: %s", libPath, dlerror());
+        return ACLNN_ERR_INNER;
+    }
+
+    aclCreateTensor = reinterpret_cast<decltype(aclCreateTensor)>(
+        GetHcclLibFunc<void*>(createHandle, "aclCreateTensor")
+    );
+
+    if (aclCreateTensor == nullptr){
+        OP_LOGE("", "Failed to load aclCreateTensor symbol");
+        dlclose(createHandle);
+        createHandle = nullptr;
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGI("", "Load aclCreateTensor symbol success");
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus MC2HcomTopology::CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context) {
     if (ctx == nullptr) {
         OP_LOGE("", "Context pointer is null");
+        return ACLNN_ERR_INNER;
+    }
+    auto ret = GetaclCreateTensorSymbol();
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE("", "Get aclCreateTensor symbol failed");
         return ACLNN_ERR_INNER;
     }
 
