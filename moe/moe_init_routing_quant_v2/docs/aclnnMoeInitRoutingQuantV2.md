@@ -43,7 +43,7 @@
     expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
     $$
 
-    4.在drop模式下，对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacityOutOptional：
+    4.在Drop模式下，对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacityOutOptional：
 
     $$
     expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
