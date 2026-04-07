@@ -718,21 +718,7 @@ bool MoeFinalizeRoutingV2Regbase::IsHFullLoad()
 
 bool MoeFinalizeRoutingV2Regbase::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-
-    rowKHFullLoad_ = IsRowKHFullLoad();
-    if (rowKHFullLoad_) {
-        return true;
-    }
-
-    kHFullLoad_ = IsKHFullLoad();
-    if (kHFullLoad_) {
-        return true;
-    }
-    hFullLoad_ = IsHFullLoad();
-    return true;
+    return false;
 }
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::CalcTilingKey()
