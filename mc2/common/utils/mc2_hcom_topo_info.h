@@ -81,7 +81,6 @@ private:
     void* hcclLibHandle_ = nullptr;
     HcclComm hcclHandle_ = nullptr;  // 实例变量存储HCCL句柄
     bool isNewHcclLib = true;
-    std::string CreateTensorLibPath_;
     
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
