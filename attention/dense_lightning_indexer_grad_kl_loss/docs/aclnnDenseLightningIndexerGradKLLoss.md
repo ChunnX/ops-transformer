@@ -358,7 +358,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>loss（aclTensor*）</td>
        <td>输出</td>
        <td>损失函数值</td>
-       <td>-</ul></td>
+       <td>-</td>
        <td>FLOAT32</td>
        <td>ND</td>
        <td>(1,)</td>

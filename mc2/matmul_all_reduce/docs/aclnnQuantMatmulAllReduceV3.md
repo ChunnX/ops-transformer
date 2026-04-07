@@ -316,6 +316,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>

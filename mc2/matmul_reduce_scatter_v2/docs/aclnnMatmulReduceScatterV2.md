@@ -337,6 +337,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     <col style="width：173px">
     <col style="width：133px">
     <col style="width：860px">
+    </colgroup>
     <thead>
     <tr>
     <th>参数名</th>

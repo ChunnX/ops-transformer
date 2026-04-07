@@ -283,7 +283,7 @@ aclnnStatus aclnnAttentionToFFN(
         <th>返回值</th>
         <th>错误码</th>
         <th>描述</th>
-      </tr><thead>
+      </tr></thead>
     <tbody>
       <tr>
         <td>ACLNN_ERR_PARAM_NULLPTR</td>
@@ -315,6 +315,7 @@ aclnnStatus aclnnAttentionToFFN(
     <col style="width: 150px">
     <col style="width: 100px">
     <col style="width: 900px"> 
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>

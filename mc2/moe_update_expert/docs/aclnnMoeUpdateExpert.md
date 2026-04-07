@@ -106,7 +106,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>eplbTable</td>
     <td>输入</td>
-    <td>逻辑专家到物理专家的映射表（外部需保证值正确）：<br><ul><li> 共world_size*place_per_rank个专家实例（world_size为卡数，place_per_rank为单卡部署路由专家实例数）。<br><li>每行第一列为对应逻辑专家的部署实例数（取值[1, world_size]），后[1, count]列为实例编号（取值[0, world_size*place_per_rank)，且不重复）。<br><li>要求为2D Tensor，shape为 (moeExperNum, F)；支持非连续的Tensor。</li></ul></td>
+    <td>逻辑专家到物理专家的映射表（外部需保证值正确）：<br><ul><li> 共world_size*place_per_rank个专家实例（world_size为卡数，place_per_rank为单卡部署路由专家实例数）。</li><li>每行第一列为对应逻辑专家的部署实例数（取值[1, world_size]），后[1, count]列为实例编号（取值[0, world_size*place_per_rank)，且不重复）。</li><li>要求为2D Tensor，shape为 (moeExperNum, F)；支持非连续的Tensor。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     </tr>

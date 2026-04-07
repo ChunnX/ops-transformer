@@ -138,6 +138,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>(B,)</td>
       <td>-</td>
      </tr>
+      <tr>
       <td>layoutOptional（char*）</td>
       <td>输入</td>
       <td>layout格式</td>

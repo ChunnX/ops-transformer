@@ -166,7 +166,7 @@
       <tr>
           <td>keyRope</td>
           <td>输入</td>
-          <td>MLA rope部分：Key位置编码的输出。</<td>
+          <td>MLA rope部分：Key位置编码的输出。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>

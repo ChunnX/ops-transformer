@@ -194,6 +194,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <td>-</td>
     <td>-</td>
     <td>-</td>
+    </tr>
     <tr>
     <td>x2OffsetOptional</td>
     <td>输入</td>
@@ -203,6 +204,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <td>-</td>
     <td>-</td>
     <td>-</td>
+    </tr>
     <tr>
     <td>alltoAllAxesOptional</td>
     <td>输入</td>
