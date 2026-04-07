@@ -91,4 +91,45 @@
 
   Documentation and commit messages in this repo are primarily in Chinese.
 
-  File write was denied by the current permission mode. You can create the file manually by copying the content above into `CLAUDE.md` at the project root.
+  ## Active Session Focus
+
+  **本会话聚焦：mla_prolog* kernels 的理论性能建模、瓶颈分析、优化方案验证。**
+
+  ### 关键工作目录
+
+  | 类别 | 路径 |
+  |------|------|
+  | Host (V1) | `attention/mla_prolog/op_host/` |
+  | Host (V3) | `attention/mla_prolog_v3/op_host/` |
+  | Kernel (V1, 共享) | `attention/mla_prolog/op_kernel/` |
+  | Kernel (V3) | `attention/mla_prolog_v3/op_kernel/` |
+  | **性能模型** | `attention/mla_prolog_v3/tests/perf/` ← 详见该目录的 CLAUDE.md |
+  | Pytest | `attention/mla_prolog_v3/tests/pytest/` |
+
+  ### 入口工具
+
+  ```bash
+  cd attention/mla_prolog_v3/tests/perf
+
+  # 完整分析（推荐起点）
+  python perf_analyzer.py --chip 950 --batch-size 1 --head-num 128 --mode full
+
+  # 跨 testcase 报告
+  python perf_analyzer.py --chip 950 --mode report
+  ```
+
+  ### 设计文档参考
+
+  - `attention/mla_prolog/docs/MlaProlog算子设计介绍.md` — V1 算子设计
+  - `attention/mla_prolog_v3/docs/MlaPrologV3算子设计介绍.md` — V3 增量
+  - `attention/mla_prolog/docs/MlaProlog_Host设计文档.md` — Host 侧完整设计（含校验、Tiling、TilingKey、V3 特性）
+  - `attention/mla_prolog_v3/tests/perf/methodology.md` — 性能建模方法学
+  - `attention/mla_prolog_v3/tests/perf/CLAUDE.md` — 性能模型子模块说明（核心假设、设计原型）
+
+  ### 重要约定
+
+  1. 性能模型的输出仅是 **理论值**，需与实际 profiling 数据对齐校准（误差通常 ±15%）
+  2. 任何对 kernel 的修改 **必须先通过 perf_analyzer 评估收益**，再决定是否实现
+  3. 修改 kernel/host 后，**必须同步** `tiling_sim.py` 中的 Python 复刻，否则模型与实现脱节
+  4. Split-K 引入累加非确定性，所有 K-split 实现 **必须保证 vector 侧顺序累加**（位重现性）
+  5. 任何"加速比"声明都必须在性能 report 中标注**对照基线**（split-N baseline / 多步 vs 单步等）
