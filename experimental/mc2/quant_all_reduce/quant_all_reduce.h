@@ -10,7 +10,7 @@
 #ifndef QUANT_ALL_REDUCE_H
 #define QUANT_ALL_REDUCE_H
 
-void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
+void mte_all_gather_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM);
 
 #endif //QUANT_ALL_REDUCE_H

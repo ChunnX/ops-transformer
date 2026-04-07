@@ -254,7 +254,7 @@ int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** w
     return ACL_SUCCESS;
 }
 
-int freeDeviceMemory(Args& args, void *xDeviceAddr, oid *workspaceAddr,
+int freeDeviceMemory(Args& args, void *xDeviceAddr, void *workspaceAddr,
                       void *tilingAddr, void *mc2ContextAddr, void *outputDeviceAddr, int64_t workSpaceSize)
 {
     if (xDeviceAddr != nullptr)  aclrtFree(xDeviceAddr);
