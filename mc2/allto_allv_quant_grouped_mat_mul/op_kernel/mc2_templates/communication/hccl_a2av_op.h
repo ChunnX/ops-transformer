@@ -230,7 +230,6 @@ private:
     {
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
-        // MXFP4：N1维度输出也需要除以2
         uint64_t axis = N1_;
         for (uint64_t i = 0UL; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
@@ -246,21 +245,21 @@ private:
                 expertOffset += static_cast<uint64_t>(sendCnt[i + j * e_]);
             }
         }
-        alltoAllvSendOffset[0] = expertOffset * axis;
+        alltoAllvSendOffset[0] = expertOffset * N1_;
         for (uint64_t i = 1UL; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1];
             for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[expertIdx + (i - 1) * e_]) * axis;
+                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[expertIdx + (i - 1) * e_]) * N1_;
             }
         }
         alltoAllvRecvOffset[0] = 0UL;
         for (uint64_t i = 0UL; i < startExpertIdx; i++) {
-            alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[i]) * axis;
+            alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[i]) * N1_;
         }
         for (uint64_t i = 1UL; i < rankDim_; i++) {
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
             for (uint64_t j = 0UL; j < e_; j++) {
-                alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCnt[startExpertIdx + (i - 1) * e_ + j]) * axis;
+                alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCnt[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
         alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
