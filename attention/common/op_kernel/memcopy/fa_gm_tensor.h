@@ -26,10 +26,10 @@
 
 using AscendC::GlobalTensor;
 
-template <typename Q_T, GmFormat FORMAT>
+template <typename Q_T, GmFormat FORMAT, typename ACTQ_T = uint64_t>
 struct FaGmTensor {
     GlobalTensor<Q_T> gmTensor;
-    OffsetCalculator<FORMAT> offsetCalculator;
+    OffsetCalculator<FORMAT, ACTQ_T> offsetCalculator;
 };
 
 #endif

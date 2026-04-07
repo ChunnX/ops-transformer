@@ -31,16 +31,16 @@ enum class ActualSeqLensMode
     ACCUM = 1,
 };
 
-template <ActualSeqLensMode MODE>
+template <ActualSeqLensMode MODE, typename T>
 class ActualSeqLensParser {
 };
 
-template <>
-class ActualSeqLensParser<ActualSeqLensMode::ACCUM> {
+template <typename T>
+class ActualSeqLensParser<ActualSeqLensMode::ACCUM, T> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal = 0)
+    __aicore__ inline void Init(GlobalTensor<T> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal = 0)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->actualLenDims = actualLenDims;
@@ -67,16 +67,16 @@ public:
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);
     }
 private:
-    GlobalTensor<uint64_t> actualSeqLengthsGm;
+    GlobalTensor<T> actualSeqLengthsGm;
     uint32_t actualLenDims;
 };
 
-template <>
-class ActualSeqLensParser<ActualSeqLensMode::BY_BATCH> {
+template <typename T>
+class ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, T> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
+    __aicore__ inline void Init(GlobalTensor<T> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->actualLenDims = actualLenDims;
@@ -99,7 +99,7 @@ public:
         return actualLenDims;
     }
 private:
-    GlobalTensor<uint64_t> actualSeqLengthsGm;
+    GlobalTensor<T> actualSeqLengthsGm;
     uint32_t actualLenDims;
     uint64_t defaultVal;
 };
