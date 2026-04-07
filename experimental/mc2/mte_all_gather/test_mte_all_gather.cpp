@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_quant_all_reduce.cpp
+ * \file test_mte_all_gather.cpp
  * \brief AllGather <<<>>>测试样例
  *        通过MTE通信拿到其它卡数据，按rank顺序拼接到output（不做Dequant和ReduceSum）
  */
@@ -28,8 +28,8 @@
 #include "hccl/hcom.h"
 #include "securec.h"
 #include "tiling/hccl/hccl_tiling.h"
-#include "./kernel/quant_all_reduce_tiling_data.h"
-#include "./quant_all_reduce.h"
+#include "./kernel/mte_all_gather_tiling_data.h"
+#include "./mte_all_gather.h"
 
 using namespace std;
 using namespace AscendC;
@@ -48,7 +48,7 @@ using namespace AscendC;
 
 constexpr int64_t BLOCK_NUM = 64;
 constexpr int64_t DEV_NUM = 4;
-constexpr const char* PATH_PREFIX = "./golden/quantallreduce_";
+constexpr const char* PATH_PREFIX = "./golden/mteallgather_";
 int streamWithTimeout = 10000;
 bool use_golden = false;
 
@@ -171,7 +171,7 @@ extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, 
 int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr,
                                int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize)
 {
-    QuantAllReduceTilingData *tilingData = new QuantAllReduceTilingData();
+    MteAllGatherTilingData *tilingData = new MteAllGatherTilingData();
     if (tilingData == nullptr) {
         LOG_PRINT("[ERROR] tilingData is nullptr\n");
         return -1;
@@ -180,10 +180,10 @@ int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **d
     Mc2CcTiling mc2CcTiling;
     tilingData->mc2InitTiling = mc2InitTiling;
     tilingData->mc2CcTiling = mc2CcTiling;
-    tilingData->quantAllReduceTilingInfo.bs = bs;
-    tilingData->quantAllReduceTilingInfo.hiddenSize = hiddenSize;
-    tilingData->quantAllReduceTilingInfo.aivNum = BLOCK_NUM;
-    tilingData->quantAllReduceTilingInfo.totalWinSize = hcclBufferSize;
+    tilingData->mteAllGatherTilingInfo.bs = bs;
+    tilingData->mteAllGatherTilingInfo.hiddenSize = hiddenSize;
+    tilingData->mteAllGatherTilingInfo.aivNum = BLOCK_NUM;
+    tilingData->mteAllGatherTilingInfo.totalWinSize = hcclBufferSize;
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(hcomName, 8, "AlltoAll=level0:fullmesh;level1:pairwise");
     mc2CcTilingConfig.SetCommEngine(3);
@@ -192,7 +192,7 @@ int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **d
     ret = mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GetTiling mc2CcTiling failed. ret = %d\n", ret); return ret);
 
-    int tilingSize = sizeof(struct QuantAllReduceTilingData);
+    int tilingSize = sizeof(struct MteAllGatherTilingData);
     ret = aclrtMalloc(deviceTilingAddr, tilingSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc TilingData failed. ret: %d\n", ret); return ret);
     ret = aclrtMemcpy(*deviceTilingAddr, tilingSize, tilingData, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE);
@@ -272,7 +272,7 @@ int freeDeviceMemory(Args& args, void *xDeviceAddr, void *workspaceAddr,
     return ACL_SUCCESS;
 }
 
-int LaunchOneThreadQuantAllReduce(Args &args)
+int LaunchOneThreadMteAllGather(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d\n", ret); return ret);
@@ -358,7 +358,7 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadQuantAllReduce, std::ref(args[rankId])));
+        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadMteAllGather, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();

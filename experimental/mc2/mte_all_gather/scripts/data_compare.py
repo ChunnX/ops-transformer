@@ -41,9 +41,9 @@ class AccuracyMetrics:
         self.cos_sim = round(self.cos_sim, decimals)
 
 
-class QuantAllReduceAccuracyChecker:
+class MteAllGatherAccuracyChecker:
     """
-    quant_all_reduce accuracy checker
+    mte_all_gather accuracy checker
     对比CPU Golden值与NPU计算值的精度指标, 输出结果并写入CSV
     """
     # 类常量：数据类型精度配置（所有实例共享）
@@ -69,7 +69,7 @@ class QuantAllReduceAccuracyChecker:
         self.output_type = args.output_type
         self.ranksize = args.ranksize
         # 初始化Golden目录
-        self.golden_dir = f"./golden/quantallreduce_{self.case_name}_{self.bs}_{self.hidden_size}"
+        self.golden_dir = f"./golden/mteallgather_{self.case_name}_{self.bs}_{self.hidden_size}"
         # 校验输出类型是否支持
         if self.output_type not in self.TYPE_CONFIG:
             raise ValueError(f"不支持的输出类型：{self.output_type}，支持类型：{list(self.TYPE_CONFIG.keys())}")
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         # 解析命令行参数
         args = parse_args()
         # 创建精度校验器实例
-        checker = QuantAllReduceAccuracyChecker(args)
+        checker = MteAllGatherAccuracyChecker(args)
         # 执行精度对比
         result = checker.compare()
         # 退出码：0=通过，1=失败

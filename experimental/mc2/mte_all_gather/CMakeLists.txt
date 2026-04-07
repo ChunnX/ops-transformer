@@ -27,7 +27,7 @@ if(NOT DEFINED ENV{CMAKE_PREFIX_PATH})
 endif()
 
 file(GLOB KERNEL_FILES 
-    ${CMAKE_CURRENT_SOURCE_DIR}/quant_all_reduce.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/mte_all_gather.cpp
 )
 
 if(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)

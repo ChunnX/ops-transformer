@@ -1,17 +1,17 @@
-## QuantAllGather <<<>>>直调示例
+## MteAllGather <<<>>>直调示例
 
 通过MTE通信拿到其它卡数据，仅完成AllGather功能（不做Dequant和ReduceSum），将各卡数据按rank顺序拼接到output GM。
 
 # 文件目录
 ```
 ├── kernel                                  # 算子核函数目录
-│    ├── quant_all_reduce_mte_one_shot.h    # AllGather核心逻辑
-│    ├── quant_all_reduce_tiling_data.h     # Tiling数据定义
+│    ├── mte_all_gather_mte_one_shot.h      # AllGather核心逻辑
+│    ├── mte_all_gather_tiling_data.h       # Tiling数据定义
 │    ├── mte_comm.h                         # MTE通信相关实现
 │    └── utils.h                            # 工具函数
-├── quant_all_reduce.cpp                    # <<<>>>核函数入口
-├── quant_all_reduce.h                      # <<<>>>核函数入口声明头文件
-├── test_quant_all_reduce.cpp               # <<<>>>直调示例代码
+├── mte_all_gather.cpp                      # <<<>>>核函数入口
+├── mte_all_gather.h                        # <<<>>>核函数入口声明头文件
+├── test_mte_all_gather.cpp                 # <<<>>>直调示例代码
 ├── generate_golden.py                      # Golden数据生成（AllGather）
 ├── run.sh                                  # 工程运行脚本
 └── README.md
@@ -19,9 +19,9 @@
 
 # 核函数签名
 ```cpp
-// <<<>>>调用函数，scales参数保留接口兼容但内部不使用
-void quant_all_reduce_demo(uint32_t blockDim, void* stream,
-    uint8_t* x, uint8_t* scales, uint8_t* output,
+// <<<>>>调用函数
+void mte_all_gather_demo(uint32_t blockDim, void* stream,
+    uint8_t* x, uint8_t* output,
     uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM);
 ```
 
@@ -32,7 +32,7 @@ void quant_all_reduce_demo(uint32_t blockDim, void* stream,
 
 # 测试用例参数
 
-当前示例硬编码了参数，在 `test_quant_all_reduce.cpp` 中定义：
+当前示例硬编码了参数，在 `test_mte_all_gather.cpp` 中定义：
 
 ```cpp
 int64_t bs = 16;
@@ -56,11 +56,11 @@ python3 generate_golden.py
 
 生成的文件：
 ```
-./golden/quantallreduce_input_x_0.bin
-./golden/quantallreduce_input_x_1.bin
-./golden/quantallreduce_input_x_2.bin
-./golden/quantallreduce_input_x_3.bin
-./golden/quantallreduce_output_cpu_0.bin  (AllGather golden: [rankDim*bs, hiddenSize] int8)
+./golden/mteallgather_input_x_0.bin
+./golden/mteallgather_input_x_1.bin
+./golden/mteallgather_input_x_2.bin
+./golden/mteallgather_input_x_3.bin
+./golden/mteallgather_output_cpu_0.bin  (AllGather golden: [rankDim*bs, hiddenSize] int8)
 ```
 
 # 工程运行
@@ -79,8 +79,8 @@ bash run.sh
 
 程序执行完成后，输出文件位于：
 ```
-./golden/quantallreduce_output_npu_0.bin
-./golden/quantallreduce_output_npu_1.bin
-./golden/quantallreduce_output_npu_2.bin
-./golden/quantallreduce_output_npu_3.bin
+./golden/mteallgather_output_npu_0.bin
+./golden/mteallgather_output_npu_1.bin
+./golden/mteallgather_output_npu_2.bin
+./golden/mteallgather_output_npu_3.bin
 ```

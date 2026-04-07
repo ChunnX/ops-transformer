@@ -24,9 +24,9 @@ MASTER_ADDR = '127.0.0.1'
 MASTER_PORT = '29500'
 
 
-class QuantAllReduceGoldenGenerator:
+class MteAllGatherGoldenGenerator:
     """
-    quant_all_reduce golden data generator
+    mte_all_gather golden data generator
     CPU计算逻辑实现：dequant(x*scale) → all_reduce → 保存结果
     """
     # 类常量：数据类型范围映射（所有实例共享）
@@ -74,7 +74,7 @@ class QuantAllReduceGoldenGenerator:
         self.input_len = self.bs * self.hidden_size
         self.scale_len = self._calc_scale_len()
         # 初始化Golden数据目录（对齐参考代码的output_path）
-        self.output_path = f"./golden/quantallreduce_{self.case_name}_{self.bs}_{self.hidden_size}"
+        self.output_path = f"./golden/mteallgather_{self.case_name}_{self.bs}_{self.hidden_size}"
         self._init_golden_dir()
         # 设置随机种子（保证结果可复现）
         np.random.seed(self.seed)
@@ -268,7 +268,7 @@ def parse_args() -> argparse.Namespace:
     解析命令行参数
     :return: 解析后的参数对象
     """
-    parser = argparse.ArgumentParser(description="quant_all_reduce golden generator (对齐指定CPU逻辑)")
+    parser = argparse.ArgumentParser(description="mte_all_gather golden generator (对齐指定CPU逻辑)")
     parser.add_argument('case_name', type=str, help="测试用例名称")
     parser.add_argument('bs', type=int, help="Batch Size")
     parser.add_argument('hidden_size', type=int, help="Hidden Size")
@@ -287,7 +287,7 @@ def parse_args() -> argparse.Namespace:
 def run_worker(rank: int, args: argparse.Namespace):
     """每个进程的执行函数"""
     try:
-        generator = QuantAllReduceGoldenGenerator(rank, args)
+        generator = MteAllGatherGoldenGenerator(rank, args)
         generator.run()
     except Exception as e:
         logging.error(f"Rank {rank}: 执行失败！错误：{e}")
@@ -317,4 +317,4 @@ if __name__ == '__main__':
             raise RuntimeError(f"进程 {p.pid} 执行失败，退出码：{p.exitcode}")
     # 5. 最终提示
     logging.info("\n===== 所有进程执行完成 =====")
-    logging.info(f"Golden数据保存目录：./golden/quantallreduce_{args.case_name}_{args.bs}_{args.hidden_size}")
+    logging.info(f"Golden数据保存目录：./golden/mteallgather_{args.case_name}_{args.bs}_{args.hidden_size}")

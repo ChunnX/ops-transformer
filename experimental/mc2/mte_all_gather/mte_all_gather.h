@@ -7,10 +7,10 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef QUANT_ALL_REDUCE_H
-#define QUANT_ALL_REDUCE_H
+#ifndef MTE_ALL_GATHER_H
+#define MTE_ALL_GATHER_H
 
 void mte_all_gather_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM);
 
-#endif //QUANT_ALL_REDUCE_H
+#endif //MTE_ALL_GATHER_H

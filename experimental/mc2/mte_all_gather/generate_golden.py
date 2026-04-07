@@ -25,14 +25,14 @@ def generate_golden():
     x_data_list = []
     for rank in range(ranksize):
         x_data = np.random.randint(-128, 127, size=(bs, hidden_size), dtype=np.int8)
-        x_file = os.path.join(output_dir, f"quantallreduce_input_x_{rank}.bin")
+        x_file = os.path.join(output_dir, f"mteallgather_input_x_{rank}.bin")
         x_data.tofile(x_file)
         x_data_list.append(x_data)
         print(f"Rank {rank}: generated input x -> {x_file}")
 
     allgather_output = np.concatenate(x_data_list, axis=0)
     for rank in range(ranksize):
-        output_file = os.path.join(output_dir, f"quantallreduce_output_cpu_{rank}.bin")
+        output_file = os.path.join(output_dir, f"mteallgather_output_cpu_{rank}.bin")
         allgather_output.tofile(output_file)
         print(f"Rank {rank}: generated AllGather golden output -> {output_file}")
 

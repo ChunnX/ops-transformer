@@ -9,21 +9,21 @@
  */
 
 /*!
- * \file quant_all_gather_mte_one_shot.h
- * \brief quant_all_gather mte_one_shot方式通信，通过1步allgather的kernel代码逻辑
+ * \file mte_all_gather_mte_one_shot.h
+ * \brief mte_all_gather mte_one_shot方式通信，通过1步allgather的kernel代码逻辑
  *        仅完成AllGather：将各卡Win区中的X数据按rank顺序拼接到output GM
  */
 
-#ifndef QUANT_ALL_REDUCE_MTE_ONE_SHOT_H
-#define QUANT_ALL_REDUCE_MTE_ONE_SHOT_H
+#ifndef MTE_ALL_GATHER_MTE_ONE_SHOT_H
+#define MTE_ALL_GATHER_MTE_ONE_SHOT_H
 
 #include "basic_api/kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "quant_all_reduce_tiling_data.h"
+#include "mte_all_gather_tiling_data.h"
 #include "utils.h"
 #include "mte_comm.h"
 
-namespace QuantAllGatherImpl {
+namespace MteAllGatherImpl {
 
 using namespace QuantMTECommImpl;
 using namespace AscendC;
@@ -31,11 +31,11 @@ using namespace AscendC;
 constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;
 
 template<TemplateTypeClass>
-class QuantAllGatherMteOneShot {
+class MteAllGatherMteOneShot {
 public:
-    __aicore__ inline QuantAllGatherMteOneShot() {};
+    __aicore__ inline MteAllGatherMteOneShot() {};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR output,
-                                TPipe *pipe, const QuantAllReduceTilingData *tilingData);
+                                TPipe *pipe, const MteAllGatherTilingData *tilingData);
     __aicore__ inline void InitWithMc2Context(GM_ADDR x, GM_ADDR output,
                                 GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *pipe);
     __aicore__ inline void Process();
@@ -48,7 +48,7 @@ private:
     uint64_t tailXNums_{0};
     uint32_t totalBlockNums_{0};
 
-    __gm__ QuantAllReduceTilingData* tilingDataOut;
+    __gm__ MteAllGatherTilingData* tilingDataOut;
     MTECommunication<TemplateType> mteComm_;
 
     GlobalTensor<XType> remoteWinXTensor_;
@@ -57,12 +57,12 @@ private:
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::Init(GM_ADDR x, GM_ADDR output,
-    TPipe *tPipe, const QuantAllReduceTilingData *tilingData)
+__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::Init(GM_ADDR x, GM_ADDR output,
+    TPipe *tPipe, const MteAllGatherTilingData *tilingData)
 {
     mteComm_.InitHcclContext();
 
-    auto&& tiliingDatainfo = tilingData->quantAllReduceTilingInfo;
+    auto&& tiliingDatainfo = tilingData->mteAllGatherTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize;
     xSize_ = xNums_ * sizeof(XType);
@@ -84,13 +84,13 @@ __aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::Init(GM_ADDR x, G
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
+__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
     GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *tPipe)
 {
     mteComm_.InitHcclContextByAddr(mc2Context);
-    tilingDataOut = (__gm__ QuantAllReduceTilingData*)tilingGM;
+    tilingDataOut = (__gm__ MteAllGatherTilingData*)tilingGM;
 
-    auto&& tiliingDatainfo = tilingDataOut->quantAllReduceTilingInfo;
+    auto&& tiliingDatainfo = tilingDataOut->mteAllGatherTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize;
     xSize_ = xNums_ * sizeof(XType);
@@ -112,7 +112,7 @@ __aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::InitWithMc2Contex
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::ExecuteAllGather()
+__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::ExecuteAllGather()
 {
     mteComm_.ReadStatus();
 
@@ -141,7 +141,7 @@ __aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::ExecuteAllGather(
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::Process()
+__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::Process()
 {
     if ASCEND_IS_AIC {
         return;
@@ -151,5 +151,5 @@ __aicore__ inline void QuantAllGatherMteOneShot<TemplateType>::Process()
     mteComm_.WriteStatusToWin();
     ExecuteAllGather();
 }
-} // QuantAllGatherImpl
-#endif  // QUANT_ALL_REDUCE_MTE_ONE_SHOT_H
+} // MteAllGatherImpl
+#endif  // MTE_ALL_GATHER_MTE_ONE_SHOT_H
