@@ -179,7 +179,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         // ret = LoadBuiltinOpApi(libPath);
         // CHECK_RET(ret == ACLNN_SUCCESS, ret);
         //ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        auto ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes =  aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
