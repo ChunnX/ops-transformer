@@ -434,13 +434,14 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                         BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
                     return ge::GRAPH_FAILED);
             } else {
-                // GQA D != 64/128, QS > 1 [128, 512]且128对齐
-                OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
+                // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
+                OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
                     OP_LOGE(fiaInfo.opName,
                         "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
                         "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX),
+                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128,
+                        BLOCK_SIZE_MAX_FOR_NO_QUANT),
                     return ge::GRAPH_FAILED);
                 // GQA D != 64/128, QS = 1 [16, 512]且16对齐
                 OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
