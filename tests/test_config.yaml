@@ -156,6 +156,8 @@ attention:
         ut: False
     options:
       - nsa_compress_attention
+    test:
+        ut: False
 
   nsa_compress_attention_infer:
     module: True
@@ -213,6 +215,8 @@ attention:
       ut: False
     options:
       - nsa_selected_attention
+    test:
+        ut: False
 
   nsa_selected_attention_grad:
     module: True

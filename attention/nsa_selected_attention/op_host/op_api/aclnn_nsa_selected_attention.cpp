@@ -118,6 +118,11 @@ aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const acl
             shapeInfo.axes.dv);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (qShape[0] == 0 || kShape[0] == 0 || shapeInfo.axes.n1 == 0 || shapeInfo.axes.n2 == 0 ||shapeInfo.axes.d == 0 || shapeInfo.axes.dv == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
+        qShape[0], kShape[0], shapeInfo.axes.n1, shapeInfo.axes.n2, shapeInfo.axes.d, shapeInfo.axes.dv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
