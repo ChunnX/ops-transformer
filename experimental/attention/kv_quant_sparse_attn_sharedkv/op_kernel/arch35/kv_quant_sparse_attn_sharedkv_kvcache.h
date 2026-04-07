@@ -230,10 +230,18 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
     runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
         runParam.s1RealSize, 0, runParam.actualS2Size);
     
-    runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(runParam.boIdx), constInfo.oriSparseBlockCount) :
-        constInfo.oriSparseBlockCount;
-    runParam.cmpSparseBlockCount = hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(runParam.boIdx), constInfo.cmpSparseBlockCount) :
-        constInfo.cmpSparseBlockCount;
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        uint64_t actualSeqQPrefixSum = cuSeqlensQAddr[runParam.boIdx];
+        runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+            constInfo.oriSparseBlockCount) : constInfo.oriSparseBlockCount;
+        runParam.cmpSparseBlockCount = hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+            constInfo.cmpSparseBlockCount) : constInfo.cmpSparseBlockCount;
+    } else {
+        runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(runParam.boIdx * constInfo.s1Size + runParam.s1oIdx),
+            constInfo.oriSparseBlockCount) : constInfo.oriSparseBlockCount;
+        runParam.cmpSparseBlockCount = hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(runParam.boIdx * constInfo.s1Size + runParam.s1oIdx),
+            constInfo.cmpSparseBlockCount) : constInfo.cmpSparseBlockCount;
+    }
 
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SWA_TEMPLATE_MODE || \
         TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE) {
