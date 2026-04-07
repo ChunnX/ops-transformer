@@ -631,7 +631,7 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
     ret = instance.GetCommEngine(engine, protocol);
     if (ret != ACLNN_SUCCESS) return ret;
 
-    HcclResult hcclRet = HcclEngineCtxGet(hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
+    HcclResult hcclRet = HcclEngineCtxGet(instance.hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
         ret = instance.CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
         if (ret != ACLNN_SUCCESS) return ret;
@@ -641,7 +641,7 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
         if (ret != ACLNN_SUCCESS) return ret;
     }
 
-    ret = instance.CreatMc2ContextTensor(ctx, mc2Context);
+    ret = CreatMc2ContextTensor(ctx, mc2Context);
     if (ret != ACLNN_SUCCESS) return ret;
 
     return ACLNN_SUCCESS;
