@@ -129,7 +129,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>要求为2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>(Bs, H)（Bs为batch size，H为隐藏层大小）</td>
+    <td>(BS, H)（BS为batch size，H为隐藏层大小）</td>
     <td>-</td>
     </tr>
     <tr>
@@ -139,7 +139,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>要求为2D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>(Bs, K)</td>
+    <td>(BS, K)</td>
     <td>-</td>
     </tr>
     <tr>
@@ -283,10 +283,10 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>-</td>
     </tr>
     <tr>
-    <td>globalBs</td>
+    <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</li></ul></td>
+    <td><ul><li>各rank Bs一致时，globalBs = BS * epWorldSize 或 0</li><li>各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>

@@ -72,7 +72,7 @@
 <td>x</td>
 <td>输入</td>
 <td>本卡发送的token数据。</td>
-<td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
+<td>FLOAT16、BFLOAT16</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -86,7 +86,7 @@
 <td>scales</td>
 <td>可选输入</td>
 <td>每个专家的平滑权重、融合量化平滑权重的量化系数或量化系数。</td>
-<td>FLOAT32、FLOAT8_E8M0</td>
+<td>FLOAT32</td>
 <td>ND</td>
 </tr>
 <tr>

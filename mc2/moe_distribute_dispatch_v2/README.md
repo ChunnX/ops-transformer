@@ -254,7 +254,7 @@ $$
   <tr>
    <td>quantMode</td>
    <td>可选属性</td>
-   <td><li>表示量化模式，支持0：非量化，1：静态量化，2：动态量化，3：pertile动态量化，4：mxfp8量化。</li><li>默认值为0。</li></td>
+   <td><li>表示量化模式。默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -310,7 +310,7 @@ $$
   <tr>
    <td>dynamicScalesOut</td>
    <td>输出</td>
-   <td>量化场景下，表示本卡输出Token的量化系数，仅quantMode=2时有该输出。</td>
+   <td>量化场景下，表示本卡输出Token的量化系数。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
