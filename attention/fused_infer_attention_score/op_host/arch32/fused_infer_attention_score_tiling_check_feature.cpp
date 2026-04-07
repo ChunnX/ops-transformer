@@ -84,7 +84,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
                     blockSize_, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
                 return ge::GRAPH_FAILED);
         } else if (qkHeadDim_ == NUM_64 || qkHeadDim_ == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
-            OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
+            OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                 blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
                 OP_LOGE(opName_,
                     "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
@@ -94,7 +94,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
                 return ge::GRAPH_FAILED);
         } else {
             // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
-            OP_CHECK_IF((s1Size_ > NUM1) && (blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
+            OP_CHECK_IF((s1Size_ > NUM1) && (blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                 blockSize_ < BLOCK_SIZE_ALIGN_SIZE_128 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
                 OP_LOGE(opName_,
                     "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
@@ -102,7 +102,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
                     blockSize_, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT),
                 return ge::GRAPH_FAILED);
             // GQA D != 64/128, QS = 1 [16, 512]且16对齐
-            OP_CHECK_IF((s1Size_ == NUM1) && (blockSize_ > BLOCK_SIZE_MAX || 
+            OP_CHECK_IF((s1Size_ == NUM1) && (blockSize_ > BLOCK_SIZE_MAX ||
                 blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
                 OP_LOGE(opName_,
                     "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
