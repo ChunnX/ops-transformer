@@ -227,7 +227,7 @@ struct Args {
     aclrtContext context;
 };
 
-int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** scalesDevice, void** workspace,
+int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** workspace,
                        void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
                        int64_t workSpaceSize, bool useGolden)
 {
@@ -251,11 +251,10 @@ int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** s
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
     }
 
-    *scalesDevice = nullptr;
     return ACL_SUCCESS;
 }
 
-int freeDeviceMemory(Args& args, void *xDeviceAddr, void *scalesDeviceAddr, void *workspaceAddr,
+int freeDeviceMemory(Args& args, void *xDeviceAddr, oid *workspaceAddr,
                       void *tilingAddr, void *mc2ContextAddr, void *outputDeviceAddr, int64_t workSpaceSize)
 {
     if (xDeviceAddr != nullptr)  aclrtFree(xDeviceAddr);
@@ -288,12 +287,11 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     int64_t workSpaceSize = 256 * 1024 * 1024;
 
     void *xDeviceAddr = nullptr;
-    void *scalesDeviceAddr = nullptr;
     void *workspaceAddr = nullptr;
     void *tilingAddr = nullptr;
     void *mc2ContextAddr = nullptr;
     void *outputDeviceAddr = nullptr;
-    ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &scalesDeviceAddr, &workspaceAddr,
+    ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &workspaceAddr,
                             &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize, use_golden);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] AllocDeviceMemory failed. ret = %d \n", ret); return ret);
 
@@ -302,7 +300,7 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     ret = aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc outputDevice failed. ret: %d\n", ret); return ret);
 
-    quant_all_reduce_demo(BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr, (uint8_t*)scalesDeviceAddr,
+    mte_all_gather_demo(BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr,
                             (uint8_t*)outputDeviceAddr, (uint8_t*)workspaceAddr, (uint8_t*)mc2ContextAddr, (uint8_t*)tilingAddr);
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); return ret);
@@ -317,7 +315,7 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] WriteFile output failed. ret: %d\n", ret); return ret);
     ret = aclrtFreeHost(output_host);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
-    ret = freeDeviceMemory(args, xDeviceAddr, scalesDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
+    ret = freeDeviceMemory(args, xDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] freeDeviceMemory failed. ret = %d\n", ret); return ret);
     return 0;
 }

@@ -87,5 +87,5 @@ export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/l
 echo "========== Generating Golden data =========="
 python3 ${CURRENT_DIR}/generate_golden.py
 echo "========== Running test =========="
-./out/bin/test_quant_all_reduce
+./out/bin/test_mte_all_gather
 echo "========== Done =========="

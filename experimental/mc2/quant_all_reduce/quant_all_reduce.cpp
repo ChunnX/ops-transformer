@@ -30,11 +30,9 @@ __attribute__((always_inline)) __aicore__ __inline__ void quant_all_gather_with_
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
-    if constexpr (commMode == MTE_ONE_SHOT) {
-        QuantAllGatherMteOneShot<DTYPE_X> op;
-        op.InitWithMc2Context(x, output, mc2Context, tilingGM, &pipe);
-        op.Process();
-    }
+    QuantAllGatherMteOneShot<DTYPE_X> op;
+    op.InitWithMc2Context(x, output, mc2Context, tilingGM, &pipe);
+    op.Process();
 }
 
 extern "C" __global__ __aicore__ void QuantAllGather_MTE_ONE_SHOT_Generic(
@@ -45,7 +43,7 @@ extern "C" __global__ __aicore__ void QuantAllGather_MTE_ONE_SHOT_Generic(
                 x, output, workspaceGM, mc2Context, tilingGM);
 }
 
-void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output,
+void mte_all_gather_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM) {
     QuantAllGather_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(
         x, output, workspaceGM, mc2Context, tilingGM
