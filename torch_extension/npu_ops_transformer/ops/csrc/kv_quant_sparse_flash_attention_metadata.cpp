@@ -32,21 +32,6 @@ at::Tensor npu_kv_quant_sparse_flash_attention_metadata(
     int64_t topk, int64_t tile_size, int64_t rope_head_dim, int64_t mask_mode, int64_t win_left, int64_t win_right,
     c10::string_view layout_q, c10::string_view layout_kv)
 {
-    //const c10::string_view device = "npu:0";
-    //at::Tensor output = at::empty({OUTPUT_SIZE}, at::TensorOptions().dtype(at::kInt32).
-    //                              device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    //if (cu_seqlens_q.has_value()) {
-    //    output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(cu_seqlens_q.value().device()));
-    //} else if (cu_seqlens_kv.has_value()) {
-    //    output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(cu_seqlens_kv.value().device()));
-    //} else if (seqused_q.has_value()) {
-    //    output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(seqused_q.value().device()));
-    //} else if (seqused_kv.has_value()) {
-    //    output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(seqused_kv.value().device()));
-    //} else if (topk_length.has_value()) {
-    //    output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(topk_length.value().device()));
-    //}
-
     at::Device output_device = c10::DeviceType::PrivateUse1;
     if (cu_seqlens_q.has_value()) {
         output_device = cu_seqlens_q.value().device();
