@@ -149,10 +149,9 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
     lossWorkspaceGm.SetGlobalBuffer((__gm__ float *)lossWorkspace);
     // [INFO][Deterministic] 初始化当前核的 workspace 槽位为 0
-    // subBlockIdx=1 的核不会在 ProcessVector5 中写入 loss，必须初始化避免脏数据
-    if constexpr (IS_DETER) {
-        lossWorkspaceGm.SetValue(constInfo.aivIdx, 0.0f);
-    }
+    // 使用 aicIdx 索引（与 FinalReduceLoss 中 GetBlockNum() 遍历范围一致）
+    // 同一 AIC 的两个 subBlock 都写 0，无竞争
+    lossWorkspaceGm.SetValue(constInfo.aicIdx, 0.0f);
     if (constInfo.aivIdx == 0) {
         lossGm.SetValue(0, 0.0F);
         AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);
@@ -599,20 +598,12 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector5(SLIGrad
         this->lossSumQue.template DeQue<T>();
         DataCopyExtParams dataCopyGmParams;
         dataCopyGmParams.blockCount = 1;
-        dataCopyGmParams.blockLen = sizeof(T);
+        dataCopyGmParams.blockLen = sizeof(float);
         dataCopyGmParams.srcStride = 0;
         dataCopyGmParams.dstStride = 0;
-        // [INFO][Deterministic] 条件编译：确定性模式使用 workspace，否则使用 atomic add
-        if constexpr (IS_DETER) {
-            // 确定性路径：写入当前核的 workspace 槽位（无竞争）
-            LocalTensor<float> lossTemp = lossSumUb.template ReinterpretCast<float>();
-            DataCopyPad(lossWorkspaceGm[constInfo.aivIdx], lossTemp, dataCopyGmParams);
-        } else {
-            // 非确定性路径：使用 SetAtomicAdd（原逻辑，多核竞争）
-            SetAtomicAdd<float>();
-            DataCopyPad(lossGm, lossSumUb, dataCopyGmParams);
-            SetAtomicNone();
-        }
+        // [INFO][Deterministic] 确定性写入：使用 aicIdx 索引，与 FinalReduceLoss 遍历范围 [0, GetBlockNum()) 一致
+        LocalTensor<float> lossTemp = lossSumUb.template ReinterpretCast<float>();
+        DataCopyPad(lossWorkspaceGm[constInfo.aicIdx], lossTemp, dataCopyGmParams);
     }
     this->mulsInQue.template FreeTensor(mulsInUb);
     this->mulsResQue.template FreeTensor(mulsResUb);
@@ -809,9 +800,6 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::FinalReduceLoss()
 {
     // [INFO][Deterministic] 最终loss确定性归约：由AIV核0将所有核的loss结果顺序累加
     // 使用标量 GM 读写，避免 lossSumQue buffer（仅32字节）无法容纳 totalCores 个元素的越界问题
-    if constexpr (!IS_DETER) {
-        return;
-    }
     if (constInfo.aivIdx != 0) {
         return;
     }

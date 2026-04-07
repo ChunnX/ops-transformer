@@ -276,12 +276,10 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     }
     SyncAll<false>();
 
-    // [INFO][Deterministic] 确定性模式：由核0执行最终loss归约
-    if constexpr (IS_DETER) {
-        vecBlock.FinalReduceLoss();
-        // 再次同步确保 lossGm 写入完成后所有核再继续
-        SyncAll<false>();
-    }
+    // [INFO][Deterministic] 由核0执行最终loss归约
+    vecBlock.FinalReduceLoss();
+    // 再次同步确保 lossGm 写入完成后所有核再继续
+    SyncAll<false>();
 
     if ASCEND_IS_AIV {
         vecBlock.ReInitBuffers(pipe);
