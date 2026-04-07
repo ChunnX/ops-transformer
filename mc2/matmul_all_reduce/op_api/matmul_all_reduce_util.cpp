@@ -66,17 +66,22 @@ bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* 
 {
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
-    // 当输入tensor的shape小于2或者大于6的时候，返回错误
-    if (x2->GetViewShape().GetDimNum() < 2 || x2->GetViewShape().GetDimNum() > 6) {
+
+    if (x2->GetViewShape().GetDimNum() < 2 || x2->GetViewShape().GetDimNum() > 4 ||
+        x1->GetViewShape().GetDimNum() < 2 || x2->GetViewShape().GetDimNum() > 3) {
         return false;
     }
+
+    // 取x1后两维（若x1为3D，x1(b, m, ka)）
     int64_t dim1 = x2->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = x2->GetViewShape().GetDimNum() - 2;
-    uint64_t m = x1->GetViewShape().GetDim(dim1);
-    uint64_t k = x2->GetViewShape().GetDim(dim1);
-    uint64_t n = x2->GetViewShape().GetDim(dim2);
+    uint64_t m = x1->GetViewShape().GetDim(dim2);
+    uint64_t ka = x2->GetViewShape().GetDim(dim1);
+    // 取x2前两维（若x2为4D，x2(kb/16, n/16, 16, 16)）
+    uint64_t kb = x2->GetViewShape().GetDim(0);
+    uint64_t n = x2->GetViewShape().GetDim(1);
     // 空tensor放行
-    if (m == 0 || k == 0 || n == 0) {
+    if (m == 0 || ka == 0 || kb == 0 || n == 0) {
         return true;
     }
     return false;
