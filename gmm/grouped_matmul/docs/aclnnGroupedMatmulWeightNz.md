@@ -348,7 +348,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>tuningConfigOptional</td>
     <td>可选输入</td>
     <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。</td>
-    <td>兼容历史版本，用户如不适用该参数，不传（即为nullptr）即可。</td>
+    <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -369,7 +369,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输出</td>
     <td>公式中的输出<code>y</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32、INT32</td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
