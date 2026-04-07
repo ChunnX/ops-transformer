@@ -494,11 +494,11 @@ void MlaPrologTiling::ComputeKnSplit(
     // while keeping singleN >= alignN (minimum useful N per core)
     uint32_t bestNg = totalCores;
     uint32_t bestKg = 1;
-    for (uint32_t kg = totalCores; kg >= 1; kg--) {
+    for (uint32_t kg = 1; kg <= totalCores; kg++) {
         if (totalCores % kg != 0) continue;
         uint32_t ng = totalCores / kg;
         uint32_t sn = CeilDiv(N, ng * alignN) * alignN;
-        if (sn >= alignN && ng * sn >= N) {
+        if (sn >= 128 && ng * sn >= N) {
             bestNg = ng;
             bestKg = kg;
             break;  // First valid with max kGroups

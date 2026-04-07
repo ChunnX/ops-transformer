@@ -21,6 +21,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "service_matmul.h"
 
 using namespace AscendC;
 
@@ -367,6 +368,7 @@ struct MMParams {
   uint32_t needSetOrgShape;
   uint32_t kL1StepSize;
   uint32_t kScale;
+  uint64_t kStart;
 };
 
 struct MMBufParams {

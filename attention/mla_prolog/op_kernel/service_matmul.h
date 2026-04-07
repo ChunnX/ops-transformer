@@ -477,7 +477,7 @@ __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTe
             LoadL1A(tensorAGm[kL1 * para.kL1StepSize], para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
         if constexpr (bLoadFormat == DataFormat::NZ) {
-            LoadL1B(tensorBGm[para.k * nL1Offset + kL1 * kOffesetUnit], nL1Size, para.n, para.kL1StepSize, para.k, bufParam);
+            LoadL1B(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>() + kL1 * kOffesetUnit], nL1Size, para.n, para.kL1StepSize, para.orgKb, bufParam);
         } else {
             LoadL1B<T, DataFormat::ND, false>(tensorBGm[kL1 * para.kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
                                        para.kL1StepSize, para.kL1StepSize, bufParam);
@@ -489,8 +489,8 @@ __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTe
             LoadL1A<T, true>(tensorAGm[(kL1 + 1) * para.kL1StepSize], para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
         if constexpr (bLoadFormat == DataFormat::NZ) {
-            LoadL1B<T, DataFormat::NZ, true>(tensorBGm[para.k * nL1Offset + (kL1 + 1) * kOffesetUnit], nL1Size, para.n,
-            para.kL1StepSize, para.k, bufParam);
+            LoadL1B<T, DataFormat::NZ, true>(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>() + (kL1 + 1) * kOffesetUnit], nL1Size, para.n,
+            para.kL1StepSize, para.orgKb, bufParam);
         } else {
             LoadL1B<T, DataFormat::ND, true>(tensorBGm[(kL1 + 1) * para.kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
                                        para.kL1StepSize, para.kL1StepSize, bufParam);

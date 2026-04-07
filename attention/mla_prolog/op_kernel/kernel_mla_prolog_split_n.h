@@ -861,25 +861,30 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 #if __CCE_AICORE__ == 310
     // Ascend 950: Split-KN for MM1 (MatmulCq)
     {
-        uint32_t kGroups1 = baseParams_->mm1KnKGroups;
-        uint32_t nGroup1 = blockIdx_ / kGroups1;
-        uint32_t kGroup1 = blockIdx_ % kGroups1;
-        uint32_t kStart1 = kGroup1 * baseParams_->mm1KnSingleK;
-        uint32_t nStart1 = nGroup1 * baseParams_->mm1KnSingleN;
-        uint32_t singleK1 = baseParams_->mm1KnSingleK;
-        uint32_t singleN1 = baseParams_->mm1KnSingleN;
+        uint32_t mm1KGroupSize = baseParams_->mm1KnKGroups;
+        uint32_t mm1KGroupIdx = blockIdx_ % mm1KGroupSize;
+        uint32_t mm1NGroupIdx = blockIdx_ / mm1KGroupSize;
+        uint32_t mm1SingleKSize = baseParams_->mm1KnSingleK;
+        uint32_t mm1SingleNSize = baseParams_->mm1KnSingleN;
+        uint64_t mm1KStartOffset = mm1KGroupIdx * mm1SingleKSize;
+        uint64_t mm1NStartOffset = mm1NGroupIdx * mm1SingleNSize;
 
         // Partial output offset: [kGroup][stepBS][Hcq] layout, write to [nStart] columns
-        int64_t partialOff = static_cast<int64_t>(kGroup1) * baseParams_->stepBatchSize * baseParams_->headSizeCq + nStart1;
+        uint64_t mm1OutputOffset = static_cast<int64_t>(mm1KGroupIdx) * baseParams_->stepBatchSize * baseParams_->headSizeCq + mm1NStartOffset;
 
         // Use existing MatmulSplitN with adjusted params for K-slice
         MMParams mmCqKn = mmCqParam_;
-        mmCqKn.n = singleN1;
-        mmCqKn.k = singleK1;
+        mmCqKn.k = mm1SingleKSize;
+        mmCqKn.n = mm1SingleNSize;
+        mmCqKn.kStart = mm1KStartOffset;
+        while (mm1SingleKSize % mmCqKn.kL1StepSize != 0) {
+            mmCqKn.kL1StepSize /= 2;
+        }
+        mmCqKn.stepK = mmCqKn.kL1StepSize / mmCqKn.baseK;
         MatmulSplitN<mmInputType, mmCqAccumType, dequantScaleType>(
-            cqPartialsGm_[partialOff],
-            tokenXGm_[tokenXOffset + kStart1],  // A: offset to K-slice start column
-            weightDqGm_[static_cast<int64_t>(kStart1) * baseParams_->headSizeCq + nStart1],
+            cqPartialsGm_[mm1OutputOffset],
+            tokenXGm_[tokenXOffset + mm1KStartOffset],  // A: offset to K-slice start column
+            weightDqGm_[mm1NStartOffset * baseParams_->headSizeX],
             mmCqKn, UsedBlockParams{static_cast<uint32_t>(blockIdx_), static_cast<uint32_t>(blockIdx_) + 1});
 
         // All-cube sync then signal AIV
@@ -904,25 +909,31 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 #if __CCE_AICORE__ == 310
     // Ascend 950: Split-KN for MM2 (MatmulCkvKr)
     {
-        uint32_t kGroups2 = baseParams_->mm2KnKGroups;
-        uint32_t nGroup2 = blockIdx_ / kGroups2;
-        uint32_t kGroup2 = blockIdx_ % kGroups2;
-        uint32_t kStart2 = kGroup2 * baseParams_->mm2KnSingleK;
-        uint32_t nStart2 = nGroup2 * baseParams_->mm2KnSingleN;
-        uint32_t singleK2 = baseParams_->mm2KnSingleK;
-        uint32_t singleN2 = baseParams_->mm2KnSingleN;
+
+        uint32_t mm2KGroupSize =  baseParams_->mm2KnKGroups;
+        uint32_t mm2KGroupIdx =  blockIdx_ / mm2KGroupSize;
+        uint32_t mm2NGroupIdx =  blockIdx_ % mm2KGroupSize;
+        uint32_t mm2SingleKSize = baseParams_->mm2KnSingleK;
+        uint32_t mm2SingleNSize = baseParams_->mm2KnSingleN;
+        uint64_t mm2KStartOffset = mm2KGroupIdx * mm2SingleKSize;
+        uint64_t mm2NStartOffset = mm2NGroupIdx * mm2SingleNSize;
 
         // Partial output offset: [kGroup][stepBS][Hckv+Dr] layout
-        int64_t partialOff2 = static_cast<int64_t>(kGroup2) * baseParams_->stepBatchSize
-                            * (baseParams_->headSizeCkv + baseParams_->dimHeadRope) + nStart2;
+        int64_t mm2OutputOffset = static_cast<int64_t>(mm2KGroupIdx) * baseParams_->stepBatchSize
+                            * (baseParams_->headSizeCkv + baseParams_->dimHeadRope) + mm2NStartOffset;
 
         MMParams mmCkvKrKn = mmCkvKrParam_;
-        mmCkvKrKn.n = singleN2;
-        mmCkvKrKn.k = singleK2;
+        mmCkvKrKn.k = mm2SingleKSize;
+        mmCkvKrKn.n = mm2SingleNSize;
+        mmCkvKrKn.kStart = mm2KStartOffset;
+        while (mm2SingleKSize % mmCkvKrKn.kL1StepSize != 0) {
+            mmCkvKrKn.kL1StepSize /= 2;
+        }
+        mmCkvKrKn.stepK = mmCkvKrKn.kL1StepSize / mmCkvKrKn.baseK;
         MatmulSplitN<mmInputType, mmCkvKrAccumType, dequantScaleType, true>(
-            ckvKrPartialsGm_[partialOff2],
-            tokenXGm_[tokenXOffset + kStart2],  // A: offset to K-slice start column
-            weightDkvKrGm_[static_cast<int64_t>(kStart2) * (baseParams_->headSizeCkv + baseParams_->dimHeadRope) + nStart2],
+            ckvKrPartialsGm_[mm2OutputOffset],
+            tokenXGm_[tokenXOffset + mm2KStartOffset],  // A: offset to K-slice start column
+            weightDkvKrGm_[mm2NStartOffset * baseParams_->headSizeX],
             mmCkvKrKn, UsedBlockParams{static_cast<uint32_t>(blockIdx_), static_cast<uint32_t>(blockIdx_) + 1});
 
         CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CKVKR_KN);
