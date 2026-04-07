@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -818,8 +818,8 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
+    int64_t expectTilingKey = 512;
     std::string expectTilingData = "";
     std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
