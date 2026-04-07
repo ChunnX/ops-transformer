@@ -32,14 +32,14 @@
     run_mode: 0
     ```
 
-    其中cu_seq_len为batch内所有变长序列拼接后的总长度，每个序列卷积前使用长度为K-1的缓存数据对序列头部进行padding，保证因果性。
+    其中cu_seq_len为batch内所有变长序列拼接后的总长度。
 
   - 场景二（decode场景 - 变长序列）：
 
     ```
     x: [cu_seq_len, dim]
     weight: [K, dim]，其中K=3
-    conv_states: [-1, K-1, dim]
+    conv_states: [-1, state_len, dim]
     query_start_loc: [batch+1]
     cache_indices: [batch]
     initial_state_mode: [batch]
@@ -49,12 +49,14 @@
     run_mode: 1
     ```
 
+    其中state_len必须大于所有batch中最大的token个数加1。
+
   - 场景三（decode场景 - 固定batch）：
   
     ```
     x: [batch, m+1, dim]
     weight: [K, dim]，其中K=3
-    conv_states: [-1, K-1, dim]
+    conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]（无作用）
     cache_indices: [batch]
     initial_state_mode: [batch]
@@ -217,10 +219,10 @@
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch。
     - cu_seq_len范围[batch, 65536]，dim范围[128, 16384]且是128的倍数，batch范围[1, 256]。
   - decode场景（固定batch）：
-    - x支持3维[batch, seq_len, dim]。
+    - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
-    - conv_states必须是3维[..., K-1+seq_len-1, dim]，第0维大小不固定且大于等于batch。
-    - seq_len范围[1, 6]，dim范围[128, 16384]且是128的倍数，batch范围[1, 256]。
+    - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch。
+    - m范围[0, 5]，dim范围[128, 16384]且是128的倍数，batch范围[1, 256]。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
