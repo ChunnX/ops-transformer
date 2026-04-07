@@ -246,7 +246,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
                     Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value){
+                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
                     Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
                 } else {
                     Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
@@ -426,7 +426,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
                     Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value){
+                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
                     Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
                 } else {
                     Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
