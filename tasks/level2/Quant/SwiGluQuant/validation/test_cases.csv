@@ -1,0 +1,16 @@
+case_id;input_shape;x_dtype;quant_mode;static_mode;activate_left;has_group;num_groups;group_list_type;dst_type
+0;[4,32];float16;dynamic;none;false;false;1;0;2
+1;[8,64];float16;static;per_channel;false;false;1;0;2
+2;[2,128];float16;static;per_tensor;true;false;1;0;2
+3;[4,32];bfloat16;dynamic;none;false;false;1;0;2
+4;[16,32];bfloat16;static;per_channel;true;false;1;0;2
+5;[8,64];bfloat16;static;per_tensor;false;false;1;0;2
+6;[2,16];float32;dynamic;none;true;false;1;0;2
+7;[4,48];float32;static;per_channel;false;false;1;0;2
+8;[2,32];float32;static;per_tensor;false;false;1;0;2
+9;[4,32];float16;dynamic;none;false;true;2;0;2
+10;[8,64];float16;static;per_channel;false;true;2;0;2
+11;[1,256];float16;dynamic;none;true;false;1;0;2
+12;[32,128];bfloat16;dynamic;none;false;false;1;0;2
+13;[8,64];float16;static;per_tensor;false;false;1;0;29
+14;[16,64];float32;dynamic;none;false;false;1;0;2
