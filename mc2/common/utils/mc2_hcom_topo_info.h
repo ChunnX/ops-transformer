@@ -17,6 +17,7 @@
 #define MC2_HCOM_TOPOLOGY_H
 
 #include <memory>
+#include <string>
 #include "hccl/hcom.h"
 #include "mc2_moe_context.h"
 #include "opdev/platform.h"
@@ -63,6 +64,7 @@ private:
     aclnnStatus CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context);
     aclnnStatus GetHcclBufferSize(uint64_t& hcclBuffSize);
     aclnnStatus GetCommEngine(CommEngine& engine, CommProtocol& protocol);
+    aclnnStatus GetaclCreateTensorSymbol();
 
     HcclResult CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle) const;
 #ifdef BUILD_OPEN_PROJECT
@@ -79,6 +81,7 @@ private:
     void* hcclLibHandle_ = nullptr;
     HcclComm hcclHandle_ = nullptr;  // 实例变量存储HCCL句柄
     bool isNewHcclLib = true;
+    std::string CreateTensorLibPath_;
     
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
@@ -95,6 +98,8 @@ private:
     HcclResult (*HcclEngineCtxCopy)(HcclComm, const CommEngine&, const char*, const void*, uint64_t, uint64_t) = nullptr;
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t*) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t*) = nullptr;
+    aclTensor* (*aclCreateTensor)(const int64_t *viewDims, uint64_t viewDimsNum, aclDataType dataType, const int64_t *stride,
+                               int64_t offset, aclFormat format, const int64_t *storageDims, uint64_t storageDimsNum, void *tensorData) = nullptr;
 
 #ifdef BUILD_OPEN_PROJECT
     using FuncGetRankSizeEx = HcclResult (*)(const char *group, uint32_t *rankSize, uint32_t flag);
