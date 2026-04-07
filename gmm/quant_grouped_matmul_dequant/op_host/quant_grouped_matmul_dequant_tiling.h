@@ -12,8 +12,8 @@
  * \file quant_grouped_matmul_dequant_tiling.h
  * \brief
  */
-#ifndef QUANT_GROUPED_MATMUL_DEQUANT_H
-#define QUANT_GROUPED_MATMUL_DEQUANT_H
+#ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_QUANT_MATMUL_DEQUANT_H
+#define OPS_BUILT_IN_OP_TILING_RUNTIME_QUANT_MATMUL_DEQUANT_H
 #include <cstdint>
 #include <vector>
 
@@ -79,7 +79,8 @@ struct QuantMatmulDequantParam {
   uint64_t L0ASize;
   uint64_t L0BSize;
   uint64_t L0CSize;
-  //
+
+  // shape
   bool perToken;
   bool dynamicQuant;
   bool smoothScale;
@@ -91,10 +92,12 @@ struct QuantMatmulDequantParam {
   uint64_t originKAligned512;
   uint64_t fracK;
   uint64_t fracN;
+
   // dynamic
   uint64_t dynamicBaseK;
   uint64_t dynamicIterK;
   uint64_t dynamicBaseKTail;
+
   // gemv
   uint64_t singleCoreFracN;
   uint64_t singleCoreFracNTail;
@@ -104,6 +107,7 @@ struct QuantMatmulDequantParam {
   uint64_t ubBaseK;
   uint64_t ubIterK;
   uint64_t ubBaseKTail;
+
   // normal
   uint64_t fracM;
   uint64_t tailM;
@@ -122,6 +126,7 @@ struct QuantMatmulDequantParam {
   uint64_t baseMNum;
   uint64_t baseNNum;
   uint64_t baseKNum;
+
   // swift
   uint64_t swiftGEMVThreshold;
   uint64_t baseNNum_2;
@@ -137,7 +142,8 @@ struct QuantMatmulDequantParam {
 
   uint32_t isXScaleHalf;
 };
-BEGIN_TILING_DATA_DEF(QuantGroupedMatmulDequantTilingData)
+
+BEGIN_TILING_DATA_DEF(QuantMatmulDequantTilingData)
 
 TILING_DATA_FIELD_DEF(uint32_t, CoreNum);
 TILING_DATA_FIELD_DEF(uint32_t, perToken);
@@ -196,9 +202,9 @@ TILING_DATA_FIELD_DEF(uint64_t, ubKMask);
 TILING_DATA_FIELD_DEF(uint32_t, isXScaleHalf);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(QuantGroupedMatmulDequant, QuantGroupedMatmulDequantTilingData)
+REGISTER_TILING_DATA_CLASS(QuantGroupedMatmulDequant, QuantMatmulDequantTilingData)
 
-class QuantGroupedMatmulDequantTiling {
+class QuantMatmulDequantTiling {
 public:
   ge::graphStatus runTiling(gert::TilingContext* context, bool is_grouped = false);
 private:
@@ -216,11 +222,11 @@ private:
 
   bool isGrouped;
   QuantMatmulDequantTilingKey tilingKey;
-  QuantGroupedMatmulDequantTilingData tilingData;
+  QuantMatmulDequantTilingData tilingData;
   QuantMatmulDequantParam _Params;
 };
 
 
 }  // namespace optiling
-#endif  // QUANT_GROUPED_MATMUL_DEQUANT_H
+#endif  // OPS_BUILT_IN_OP_TILING_RUNTIME_QUANT_MATMUL_DEQUANT_H
 
