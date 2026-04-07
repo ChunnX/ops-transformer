@@ -291,12 +291,6 @@ else()
     add_subdirectory(mhc)
 endif()
 
-# 编译AICPU算子
-if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler")
-     add_subdirectory(examples/add_example)
-     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})
-endif()
-
 # 编译examples目录下算子
 foreach(EXAMPLES_OP_NAME ${ASCEND_OP_NAME})
     set(EXAMPLES_DIR "${OPS_TRANSFORMER_DIR}/examples/${EXAMPLES_OP_NAME}")
@@ -694,12 +688,20 @@ target_link_libraries(
     PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
 )
 
-target_link_libraries(
-    cust_opmaster
-    PUBLIC ${OPHOST_NAME}_tiling_obj
-    PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
-    PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
-)
+if (NOT ENABLE_AICPU_KERNEL)
+    target_link_libraries(
+        cust_opmaster
+        PUBLIC ${OPHOST_NAME}_tiling_obj
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+        PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
+    )
+else()
+    target_link_libraries(
+        cust_opmaster
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+        PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
+    )
+endif()
 
 target_link_libraries(
     cust_proto
@@ -920,107 +922,111 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
 endif()
 
 # ------------------------------------------------ generate adapt py ------------------------------------------------
-add_custom_target(generate_transformer_adapt_py
-        COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
-        \"\"
-        \"\"
-        \"\"
-        \"\"
-        ${ASCEND_IMPL_OUT_DIR}
-        ${ASCEND_AUTOGEN_DIR}
-        --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
-)
+if (NOT ENABLE_AICPU_KERNEL)
+    add_custom_target(generate_transformer_adapt_py
+            COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
+            \"\"
+            \"\"
+            \"\"
+            \"\"
+            ${ASCEND_IMPL_OUT_DIR}
+            ${ASCEND_AUTOGEN_DIR}
+            --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
+    )
 
-add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
+    add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
-foreach (_op_name ${OP_LIST})
-    install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+    foreach (_op_name ${OP_LIST})
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
             DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
             OPTIONAL
+        )
+    endforeach ()
+
+    install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
-        DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
-        OPTIONAL
+
+    install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-endforeach ()
+    install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
 
-install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
+    file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
 foreach(_3rd_op_dir ${_3rd_op_dirs})
     if(IS_DIRECTORY "${_3rd_op_dir}")
         if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
             get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
             install(DIRECTORY ${_3rd_op_dir}/op_kernel
-                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
             )
         endif()
     endif()
-endforeach()
+endforeach(    )
 
-install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-foreach (op_dir ${OP_DIR_LIST})
-    get_filename_component(_op_name "${op_dir}" NAME)
-    set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
-    file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
-    filter_copy_files(SELECTED_FILES SELECTED_DIRS)
-    install(FILES ${SELECTED_FILES}
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
-        OPTIONAL
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${SELECTED_DIRS}
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
-        OPTIONAL
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
-    foreach (op_depend_dir ${${_op_name}_depends})
-        set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
+    foreach (op_dir ${OP_DIR_LIST})
+        get_filename_component(_op_name "${op_dir}" NAME)
+        set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
         file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
-        get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
-        filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
-        install(FILES ${SELECTED_DEPEND_FILES}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                OPTIONAL
+        filter_copy_files(SELECTED_FILES SELECTED_DIRS)
+        install(FILES ${SELECTED_FILES}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
         )
-        install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                OPTIONAL
+        install(DIRECTORY ${SELECTED_DIRS}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
         )
+
+        foreach (op_depend_dir ${${_op_name}_depends})
+            set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
+            file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
+            install(FILES ${SELECTED_DEPEND_FILES}
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                    OPTIONAL
+            )
+            install(DIRECTORY ${SELECTED_DEPEND_DIRS}
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                    OPTIONAL
+            )
+        endforeach ()
     endforeach ()
-endforeach ()
+endif()
 
 # ------------------------------------------------ generate compile cmd ------------------------------------------------
 if (BUILD_OPEN_PROJECT)
     add_custom_target(prepare_build ALL)
     add_custom_target(generate_compile_cmd ALL)
     add_custom_target(generate_ops_info ALL)
-    add_dependencies(prepare_build generate_transformer_adapt_py generate_compile_cmd)
+    if (NOT ENABLE_AICPU_KERNEL)
+        add_dependencies(prepare_build generate_transformer_adapt_py generate_compile_cmd)
 
-    foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
-        add_compile_cmd_target(
-                COMPUTE_UNIT ${compute_unit}
-        )
+        foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
+            add_compile_cmd_target(
+                    COMPUTE_UNIT ${compute_unit}
+            )
 
-        add_ops_info_target(
-                COMPUTE_UNIT ${compute_unit}
-        )
-    endforeach ()
-else()
+            add_ops_info_target(
+                    COMPUTE_UNIT ${compute_unit}
+            )
+        endforeach ()
+    endif()
+elseif(NOT ENBALE_AICPU_KERNEL)
     add_dependencies(tbe_ops_json_info generate_transformer_adapt_py)
 endif ()
 

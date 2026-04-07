@@ -77,6 +77,7 @@ else
     DEFAULT_INSTALL_DIR="/usr/local/Ascend/latest"
 fi
 BISHENG_FLAGS=""
+ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
 
@@ -1083,6 +1084,14 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN=FALSE
         shift
         ;;
+    --aicpu=*)
+        OPTARG=$1
+        shift
+        ;;
+    --aicpu_kernel)
+        ENABLE_AICPU_KERNEL=TRUE
+        shift
+        ;;
     --bisheng_flags=*)
         OPTARG=$1
         BISHENG_FLAGS=${OPTARG#*=}
@@ -1545,6 +1554,10 @@ CUSTOM_OPTION="${CUSTOM_OPTION} -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}"
 
 if [ -n "${BISHENG_FLAGS}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DBISHENG_FLAGS=${BISHENG_FLAGS}"
+fi
+
+if [ -n "${ENABLE_AICPU_KERNEL}" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}"
 fi
 
 if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
