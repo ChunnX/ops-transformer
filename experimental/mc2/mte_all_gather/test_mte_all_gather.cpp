@@ -34,13 +34,6 @@
 using namespace std;
 using namespace AscendC;
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
-    } while (0)
-
 #define LOG_PRINT(message, ...)         \
     do {                                \
         printf(message, ##__VA_ARGS__); \
@@ -64,10 +57,8 @@ template<typename T>
 int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
+    aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     return ACL_SUCCESS;
 }
 
@@ -78,7 +69,6 @@ int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **d
 {
     MteAllGatherTilingData *tilingData = new MteAllGatherTilingData();
     if (tilingData == nullptr) {
-        LOG_PRINT("[ERROR] tilingData is nullptr\n");
         return -1;
     }
     Mc2InitTiling mc2InitTiling;
@@ -92,33 +82,24 @@ int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **d
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(hcomName, 8, "AlltoAll=level0:fullmesh;level1:pairwise");
     mc2CcTilingConfig.SetCommEngine(3);
-    int ret = mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GetTiling mc2InitTiling failed. ret = %d\n", ret); return ret);
-    ret = mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GetTiling mc2CcTiling failed. ret = %d\n", ret); return ret);
+    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
 
     int tilingSize = sizeof(struct MteAllGatherTilingData);
-    ret = aclrtMalloc(deviceTilingAddr, tilingSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc TilingData failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceTilingAddr, tilingSize, tilingData, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy TilingData failed. ret: %d\n", ret); return ret);
+    aclrtMalloc(deviceTilingAddr, tilingSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    aclrtMemcpy(*deviceTilingAddr, tilingSize, tilingData, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE);
 
     HcclComm commHandle;
-    ret = HcomGetCommHandleByGroup(hcomName, &commHandle);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcomGetCommHandleByGroup failed. ret = %d\n", ret); return ret);
+    HcomGetCommHandleByGroup(hcomName, &commHandle);
     void *mc2Context = nullptr;
-    ret = HcclAllocComResourceByTiling(commHandle, stream, tilingData, &mc2Context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclAllocComResourceByTiling failed. ret = %d\n", ret); return ret);
+    HcclAllocComResourceByTiling(commHandle, stream, tilingData, &mc2Context);
     if (mc2Context == nullptr) {
-        LOG_PRINT("[ERROR] mc2Context is nullptr\n");
         return -1;
     }
 
     int64_t mc2ContextSize = 576;
-    ret = aclrtMalloc(deviceContextAddr, mc2ContextSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc Mc2Context failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceContextAddr, mc2ContextSize, mc2Context, mc2ContextSize, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy Mc2Context failed. ret: %d\n", ret); return ret);
+    aclrtMalloc(deviceContextAddr, mc2ContextSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    aclrtMemcpy(*deviceContextAddr, mc2ContextSize, mc2Context, mc2ContextSize, ACL_MEMCPY_HOST_TO_DEVICE);
 
     delete tilingData;
     return ACL_SUCCESS;
@@ -136,20 +117,17 @@ int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** w
                        void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
                        int64_t workSpaceSize)
 {
-    int ret = CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize, hcclBufferSize);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreatTilingDataAndContext failed. ret = %d\n", ret); return ret);
+    CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize, hcclBufferSize);
 
     std::vector<int64_t> xShape = {bs, hiddenSize};
 
     if (workSpaceSize > 0) {
-        ret = aclrtMalloc(workspace, workSpaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
+        aclrtMalloc(workspace, workSpaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     }
 
     long long xShapeSize = GetShapeSize(xShape);
     std::vector<int8_t> xHostData(xShapeSize, 0);
-    ret = CreateDeviceTensor(xHostData, xShape, xDevice);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
+    CreateDeviceTensor(xHostData, xShape, xDevice);
 
     return ACL_SUCCESS;
 }
@@ -161,24 +139,18 @@ int freeDeviceMemory(Args& args, void *xDeviceAddr, void *workspaceAddr,
     if (outputDeviceAddr != nullptr) aclrtFree(outputDeviceAddr);
     if (mc2ContextAddr != nullptr) aclrtFree(mc2ContextAddr);
     if (tilingAddr != nullptr) aclrtFree(tilingAddr);
-    int ret = HcclCommDestroy(args.hcclComm);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
-    ret = aclrtDestroyStream(args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyStream failed. ret = %d \n", ret); return ret);
-    ret = aclrtResetDevice(args.rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
-    ret = aclrtDestroyContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyContext failed. ret = %d \n", ret); return ret);
+    HcclCommDestroy(args.hcclComm);
+    aclrtDestroyStream(args.stream);
+    aclrtResetDevice(args.rankId);
+    aclrtDestroyContext(args.context);
     return ACL_SUCCESS;
 }
 
 int LaunchOneThreadMteAllGather(Args &args)
 {
-    int ret = aclrtSetCurrentContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d\n", ret); return ret);
+    aclrtSetCurrentContext(args.context);
     char hcomName[128] = {0};
-    ret = HcclGetCommName(args.hcclComm, hcomName);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d\n", ret); return ret);
+    HcclGetCommName(args.hcclComm, hcomName);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p\n", args.rankId, hcomName, args.stream);
 
     int64_t bs = 16;
@@ -191,36 +163,30 @@ int LaunchOneThreadMteAllGather(Args &args)
     void *tilingAddr = nullptr;
     void *mc2ContextAddr = nullptr;
     void *outputDeviceAddr = nullptr;
-    ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &workspaceAddr,
-                            &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] AllocDeviceMemory failed. ret = %d \n", ret); return ret);
+    AllocDeviceMemory(args, hcomName, &xDeviceAddr, &workspaceAddr,
+                      &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize);
 
     std::vector<int64_t> outputShape = {args.rankDim, bs, hiddenSize};
     long long outputShapeSize = GetShapeSize(outputShape) * sizeof(int8_t);
-    ret = aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc outputDevice failed. ret: %d\n", ret); return ret);
+    aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
 
     mte_all_gather_demo(BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr,
                             (uint8_t*)outputDeviceAddr, (uint8_t*)workspaceAddr, (uint8_t*)mc2ContextAddr, (uint8_t*)tilingAddr);
-    ret = aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); return ret);
+    aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
     LOG_PRINT("[INFO] device_%d quant_all_gather execute successfully.\n", args.rankId);
 
     int8_t *output_host;
-    ret = aclrtMallocHost(reinterpret_cast<void**>(&output_host), outputShapeSize);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMallocHost output failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    aclrtMallocHost(reinterpret_cast<void**>(&output_host), outputShapeSize);
+    aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
     std::string outputFile = std::string(PATH_PREFIX) + "output_npu_" + std::to_string(args.rankId) + ".bin";
-    ret = aclrtFreeHost(output_host);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
-    ret = freeDeviceMemory(args, xDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] freeDeviceMemory failed. ret = %d\n", ret); return ret);
+    aclrtFreeHost(output_host);
+    freeDeviceMemory(args, xDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    int ret = aclInit(nullptr);
+    aclInit(nullptr);
     aclrtStream stream[DEV_NUM];
     aclrtContext context[DEV_NUM];
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
@@ -233,7 +199,7 @@ int main(int argc, char *argv[])
         devices[i] = i;
     }
     HcclComm comms[DEV_NUM];
-    ret = HcclCommInitAll(DEV_NUM, devices, comms);
+    HcclCommInitAll(DEV_NUM, devices, comms);
 
     Args args[DEV_NUM];
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
