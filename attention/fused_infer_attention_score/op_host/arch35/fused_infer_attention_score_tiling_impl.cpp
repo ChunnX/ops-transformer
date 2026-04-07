@@ -1346,10 +1346,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
         if (fiaInfo.sysPrefixFlag) {
             tilingKeyInfo_.isFd = false;
         }
-        tilingKeyInfo_.hasAttenMask = fiaInfo.attenMaskFlag;
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-            tilingKeyInfo_.hasAttenMask = false;
-        }
+        // HasAttenMask is type-erased: always true in tiling key to reduce template instantiations.
+        // The kernel uses runtime flags (compressMode, attenMaskFlag) to skip mask operations when no mask exists.
+        tilingKeyInfo_.hasAttenMask = true;
         UpdateTilingKeyHasRope(fiaInfo);
         tilingKeyInfo_.isPa = fiaInfo.pageAttentionFlag;
         tilingKeyInfo_.emptyTensor = fiaInfo.emptyTensorFlag;
