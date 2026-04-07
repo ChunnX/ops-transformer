@@ -53,11 +53,11 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
 {
     // 校验keySharedPrefix和valueSharedPrefix的数据类型
     auto &keySharedPrefixDesc = fiaInfo.opParamInfo.keySharedPrefix.desc;
-    auto &valueSharedPredixDesc = fiaInfo.opParamInfo.valueSharedPrefix.desc;
-    if (keySharedPrefixDesc != nullptr && valueSharedPredixDesc != nullptr) {
+    auto &valueSharedPrefixDesc = fiaInfo.opParamInfo.valueSharedPrefix.desc;
+    if (keySharedPrefixDesc != nullptr && valueSharedPrefixDesc != nullptr) {
         // keySharedPrefix和valueSharedPrefix的数据类型与key/value相同
         auto keySharedPrefixType = keySharedPrefixDesc->GetDataType();
-        auto valueSharedPredixType = valueSharedPredixDesc->GetDataType();
+        auto valueSharedPrefixType = valueSharedPrefixDesc->GetDataType();
         OP_CHECK_IF((keySharedPrefixType != fiaInfo.inputKvType),
             OP_LOGE(fiaInfo.opName,
                 "The datatype of keySharedPrefix(%s) and key/value(%s) are different. The datatype of keySharedPrefix "
@@ -65,12 +65,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
                 DataTypeToSerialString(keySharedPrefixType).c_str(),
                 DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF((keySharedPrefixType != valueSharedPredixType),
+        OP_CHECK_IF((keySharedPrefixType != valueSharedPrefixType),
             OP_LOGE(fiaInfo.opName,
                 "The datatype of keySharedPrefix(%s) and valueSharedPrefix(%s) are different. The datatype "
                 "of keySharedPrefix and valueSharedPrefix must be the same.",
                 DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                DataTypeToSerialString(valueSharedPrefixType).c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -88,11 +88,11 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         // 第一维batch必须为1
         OP_CHECK_IF((keySharedPrefixShape.GetDim(DIM_NUM_0) != 1),
             OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of keySharedPredix is not 1.", keySharedPrefixShape.GetDim(DIM_NUM_0)),
+                "The first dim(%ld) of keySharedPrefix is not 1.", keySharedPrefixShape.GetDim(DIM_NUM_0)),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueSharedPrefixShape.GetDim(DIM_NUM_0) != 1),
             OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of valueSharedPredix is not 1.", valueSharedPrefixShape.GetDim(DIM_NUM_0)),
+                "The first dim(%ld) of valueSharedPrefix is not 1.", valueSharedPrefixShape.GetDim(DIM_NUM_0)),
             return ge::GRAPH_FAILED);
         // layout为BNSD和BSND情况下，N、D轴与key一致
         if (fiaInfo.kvLayout == FiaLayout::BNSD) {
