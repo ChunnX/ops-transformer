@@ -50,7 +50,7 @@ static const string GetLibPath()
 #else
     return nullptr;
 #endif
-    CreateTensorLibPath_ = std::string(ascendPath) + createTensorLibPath;
+    createTensorLibPath_ = std::string(ascendPath) + createTensorLibPath;
     std::string fullPath = std::string(ascendPath) + hcclPathPostfix;
     OP_LOGI("", "Loading lib in path %s.", fullPath.c_str());
     return fullPath;
