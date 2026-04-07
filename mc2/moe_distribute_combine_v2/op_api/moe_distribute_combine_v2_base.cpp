@@ -22,6 +22,7 @@
 #include "moe_distribute_combine_v2_base.h"
 #include "mc2_moe_context.h"
 #include "common/op_api/mc2_moe_context_tensor.h"
+#include "common/utils/mc2_hcom_topo_info.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -197,7 +198,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
         // CHECK_RET(ret == ACLNN_SUCCESS, ret);
         // ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         // CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        auto ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
             mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
