@@ -33,7 +33,7 @@ bool AddWorkspace(gert::TilingContext* context, const size_t workspace) {
 
 namespace optiling {
 
-bool QuantGroupedMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* context) {
+bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* context) {
   uint32_t idx = 0;
   auto x = context->GetInputShape(idx++);
   OP_CHECK_NULL_WITH_CONTEXT(context, x);
@@ -181,7 +181,7 @@ bool QuantGroupedMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* cont
   return true;
 }
 
-bool QuantGroupedMatmulDequantTiling::GetPlatformInfo(gert::TilingContext* context) {
+bool QuantMatmulDequantTiling::GetPlatformInfo(gert::TilingContext* context) {
   auto compileInfoPtr = reinterpret_cast<const QuantMatmulDequantCompileInfo*>(context->GetCompileInfo());
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
   _Params.CoreNum = compileInfoPtr->coreNum;
@@ -193,7 +193,7 @@ bool QuantGroupedMatmulDequantTiling::GetPlatformInfo(gert::TilingContext* conte
   return true;
 }
 
-bool QuantGroupedMatmulDequantTiling::GetTilingData(gert::TilingContext* context) {
+bool QuantMatmulDequantTiling::GetTilingData(gert::TilingContext* context) {
   _Params.originKAligned512 = (_Params.originK + L0_ADDR_ALIGN - 1) / L0_ADDR_ALIGN * L0_ADDR_ALIGN;
   _Params.originKAligned32 = (_Params.originK + K_FRACTAL_INT8 - 1) / K_FRACTAL_INT8 * K_FRACTAL_INT8;
   // 最低的 0 ~ kTailN 位被设置为 1，其余位保持为 0
@@ -446,7 +446,7 @@ bool QuantGroupedMatmulDequantTiling::GetTilingData(gert::TilingContext* context
   return true;
 }
 
-bool QuantGroupedMatmulDequantTiling::SetTilingData(gert::TilingContext* context) {
+bool QuantMatmulDequantTiling::SetTilingData(gert::TilingContext* context) {
   tilingData.set_CoreNum(_Params.CoreNum);
   tilingData.set_perToken(_Params.perToken);
   tilingData.set_dynamicQuant(_Params.dynamicQuant);
@@ -505,7 +505,7 @@ bool QuantGroupedMatmulDequantTiling::SetTilingData(gert::TilingContext* context
   return true;
 }
 
-bool QuantGroupedMatmulDequantTiling::SetLaunchInfo(gert::TilingContext* context) {
+bool QuantMatmulDequantTiling::SetLaunchInfo(gert::TilingContext* context) {
   context->SetBlockDim(_Params.CoreNum);
 
   context->SetTilingKey(static_cast<uint64_t>(tilingKey));
@@ -520,7 +520,7 @@ bool QuantGroupedMatmulDequantTiling::SetLaunchInfo(gert::TilingContext* context
   return true;
 }
 
-bool QuantGroupedMatmulDequantTiling::GetCheckAttr(gert::TilingContext* context) {
+bool QuantMatmulDequantTiling::GetCheckAttr(gert::TilingContext* context) {
   auto attrs = context->GetAttrs();
   OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
   //  optional
@@ -538,7 +538,7 @@ bool QuantGroupedMatmulDequantTiling::GetCheckAttr(gert::TilingContext* context)
   return true;
 }
 
-ge::graphStatus QuantGroupedMatmulDequantTiling::runTiling(gert::TilingContext* context, bool is_grouped) {
+ge::graphStatus QuantMatmulDequantTiling::runTiling(gert::TilingContext* context, bool is_grouped) {
   isGrouped = is_grouped;
   // 310P AscendC platformINFO
   OP_CHECK_IF(!GetPlatformInfo(context),
@@ -571,7 +571,7 @@ ge::graphStatus QuantGroupedMatmulDequantTiling::runTiling(gert::TilingContext* 
 }
 
 ge::graphStatus TilingForQuantGroupedMatmulDequant(gert::TilingContext* context) {
-  QuantGroupedMatmulDequantTiling tiling_handle;
+  QuantMatmulDequantTiling tiling_handle;
   context->SetScheduleMode(BATCH_MODE);
   return tiling_handle.runTiling(context, true);
 }

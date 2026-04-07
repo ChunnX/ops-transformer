@@ -137,7 +137,7 @@ struct QuantMatmulDequantParam {
 
   uint32_t isXScaleHalf;
 };
-BEGIN_TILING_DATA_DEF(QuantGroupedMatmulDequantTilingData)
+BEGIN_TILING_DATA_DEF(QuantMatmulDequantTilingData)
 
 TILING_DATA_FIELD_DEF(uint32_t, CoreNum);
 TILING_DATA_FIELD_DEF(uint32_t, perToken);
@@ -196,9 +196,9 @@ TILING_DATA_FIELD_DEF(uint64_t, ubKMask);
 TILING_DATA_FIELD_DEF(uint32_t, isXScaleHalf);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(QuantGroupedMatmulDequant, QuantGroupedMatmulDequantTilingData)
+REGISTER_TILING_DATA_CLASS(QuantGroupedMatmulDequant, QuantMatmulDequantTilingData)
 
-class QuantGroupedMatmulDequantTiling {
+class QuantMatmulDequantTiling {
 public:
   ge::graphStatus runTiling(gert::TilingContext* context, bool is_grouped = false);
 private:
@@ -216,7 +216,7 @@ private:
 
   bool isGrouped;
   QuantMatmulDequantTilingKey tilingKey;
-  QuantGroupedMatmulDequantTilingData tilingData;
+  QuantMatmulDequantTilingData tilingData;
   QuantMatmulDequantParam _Params;
 };
 
