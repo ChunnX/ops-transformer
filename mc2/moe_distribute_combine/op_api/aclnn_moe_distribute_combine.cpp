@@ -15,6 +15,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
+#include "aclnnInner_moe_distribute_combine.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -30,16 +31,6 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerMoeDistributeCombineGetWorkspaceSize(
-    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx, const aclTensor *epSendCounts,
-    const aclTensor *expertScales, const aclTensor *tpSendCounts, const aclTensor *xActiveMask,
-    const aclTensor *activationScale, const aclTensor *weightScale, const aclTensor *groupList,
-    const aclTensor *expandScales, const char *groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
-    const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
-    int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
-    aclTensor *x, uint64_t *workspaceSize, aclOpExecutor **executor);
-extern aclnnStatus aclnnInnerMoeDistributeCombine(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -103,9 +94,9 @@ aclnnStatus MoeDistributeCombineGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineGetWorkspaceSize(
         expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask, activationScale,
-        weightScale, groupList, expandScales, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize,
-        tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
-        groupListType, x, workspaceSize, executor);
+        weightScale, groupList, expandScales, const_cast<char*>(groupEp), epWorldSize, epRankId,
+        moeExpertNum, const_cast<char*>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, x, workspaceSize, executor);
     return ret;
 }
 

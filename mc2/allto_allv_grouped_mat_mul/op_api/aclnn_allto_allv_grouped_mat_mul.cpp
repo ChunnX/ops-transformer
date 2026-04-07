@@ -14,6 +14,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_allto_allv_grouped_mat_mul.h"
 
 using namespace op;
 
@@ -28,17 +29,6 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                                    const aclTensor* sendCountsTensorOptional,
-                                                                    const aclTensor* recvCountsTensorOptional,
-                                                                    const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-                                                                    const char* group, int64_t epWorldSize,
-                                                                    const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
-                                                                    bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-                                                                    aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -131,9 +121,10 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, 
-        mmXOptional, mmWeightOptional, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY,
-        mmYOptional, permuteOutOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
+        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
+        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
+        executor);
     return ret;
 }
 
