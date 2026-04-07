@@ -172,9 +172,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
             uint64_t s1gL1RealSize =
                 s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ? s1gProcessSize - s1gGmOffset : constInfo_.mBaseSize;
             uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
-            event_t FIX_S_EVENT_ID = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_S>());
-            SetFlag<HardEvent::FIX_S>(FIX_S_EVENT_ID);
-            WaitFlag<HardEvent::FIX_S>(FIX_S_EVENT_ID);
             if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                 queryL1Mte2BufIdx_++;
                 queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
