@@ -9026,7 +9026,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// mla 全量化 check QN仅支持 32/64/128
+// mla 全量化 check QN仅支持 1/2/4/8/16/32/64/128
 TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mlafullquant_QN)
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
@@ -9034,7 +9034,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
     gert::TilingContextPara tilingContextPara(
         "FusedInferAttentionScore",
         {
-            {{{4, 16, 16, 512}, {4, 16, 16, 512}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},     // query-input0
+            {{{4, 15, 16, 512}, {4, 15, 16, 512}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},     // query-input0
             {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND}, // key-input1
             {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND}, // value-input2
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
@@ -9058,19 +9058,19 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_shared_prefix-input19
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_shared_prefix-input20
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // actual_shared_prefix_len-空
-            {{{4,16,16,64}, {4,16,16,64}}, ge::DT_BF16, ge::FORMAT_ND},                             // query_rope-input21
+            {{{4,15,16,64}, {4,15,16,64}}, ge::DT_BF16, ge::FORMAT_ND},                             // query_rope-input21
             {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_BF16, ge::FORMAT_ND},                             // key_rope-input22
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
-            {{{4,16,16}, {4,16,16}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{4,15,16}, {4,15,16}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
         },
         {                                                                       // 输出Tensor
-         {{{4, 16, 16, 512}, {4, 16, 16, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // attentionOut
+         {{{4, 15, 16, 512}, {4, 15, 16, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // attentionOut
          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
         {
-            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(15)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666f)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5128)},
