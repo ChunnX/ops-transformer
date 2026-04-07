@@ -162,6 +162,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_LOGD("enter to the  aclnnMoeDistributeCombineBaseGetWorkspaceSize\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
@@ -189,15 +190,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     } else {
         uint64_t hcclBuffSize = 0;
-        // string libPath;
-        // auto ret = GetBuiltinLibPath(libPath);
-        // OP_CHECK(
-        // ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
-        // const char* opName = "moe_distribute_combine_v2";
-        // ret = LoadBuiltinOpApi(libPath);
-        // CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        // ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        // CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        const char* opName = "moe_distribute_combine_v2";
         auto ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(

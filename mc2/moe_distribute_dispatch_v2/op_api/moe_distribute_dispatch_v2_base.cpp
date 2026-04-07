@@ -144,6 +144,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     aclTensor* tpRecvCountsOut, aclTensor* expandScalesOut,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_LOGD("enter to the  aclnnMoeDistributeDispatchGetWorkspaceSizeBase\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = DispatchCheckParams(x, expertIds, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
@@ -172,13 +173,6 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     } else {
         uint64_t hcclBuffSize = 0;
         const char* opName = "moe_distribute_dispatch_v2";
-        //string libPath;
-        //auto ret = GetBuiltinLibPath(libPath);
-        //OP_CHECK(
-        //ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
-        // ret = LoadBuiltinOpApi(libPath);
-        // CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        //ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         auto ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes =  aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
