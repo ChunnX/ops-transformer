@@ -61,6 +61,14 @@ private:
         return (n + align - 1) / align * align;
     }
 
+    template <HardEvent event>
+    __aicore__ inline void SetWaitFlag(HardEvent evt)
+    {
+        event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
+        SetFlag<event>(eventId);
+        WaitFlag<event>(eventId);
+    }
+
 private:
     // -------------------------------------------------------------------------
     // Tiling parameters
@@ -126,7 +134,7 @@ private:
     // weightQueue: [3][ubFactorH] T, double buffer, loaded once per S-tile
     // -------------------------------------------------------------------------
     TQueBind<TPosition::VECIN, TPosition::VECOUT, BUFFER_NUM> ioQueue_;
-    TQue<QuePosition::VECIN, 1> weightQueue_;  // [3][ubFactorH]
+    TQue<QuePosition::VECIN, BUFFER_NUM> weightQueue_;  // [3][ubFactorH]
 };
 
 // ============================================================================
@@ -235,7 +243,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
     uint32_t weightBufBytes = AlignUp(3 * ubFactorH_ * sizeof(T), ALIGN_BYTES);
 
     pipe_.InitBuffer(ioQueue_,     BUFFER_NUM, ioBufBytes);
-    pipe_.InitBuffer(weightQueue_, 1, weightBufBytes);
+    pipe_.InitBuffer(weightQueue_, BUFFER_NUM, weightBufBytes);
 }
 
 // ============================================================================
@@ -276,7 +284,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
                 srcSkipBytes, 0, 0
             };
             DataCopyPad(ioBuf[dstBase], xGM_[gmOff], xcp, padParams);
-            PipeBarrier<PIPE_ALL>();
         } else if (s0 == 0) {
             // Prefix rows 0,1 = zero; load sCur rows at rows 2..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), 2 * rowElems);
@@ -287,7 +294,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
                 srcSkipBytes, 0, 0
             };
             DataCopyPad(ioBuf[dstBase + 2 * rowElems], xGM_[gmOff], xcp, padParams);
-            PipeBarrier<PIPE_ALL>();
         } else {
             // s0 == 1: row 0 = zero; load sCur+1 rows from GM[0, b0+b, h0] into rows 1..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), rowElems);
@@ -298,10 +304,9 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
                 srcSkipBytes, 0, 0
             };
             DataCopyPad(ioBuf[dstBase + rowElems], xGM_[gmOff], xcp, padParams);
-            PipeBarrier<PIPE_ALL>();
         }
     }
-
+    SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
     ioQueue_.EnQue(ioBuf);
 }
 
@@ -320,7 +325,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::Compute(
 
     // VF convolution across all H_REG chunks (loop inside VF)
     CallMaskedConv1dVF<T>(ioBuf, wBuf, sCur, bUbCur, ubFactorHCur);
-    PipeBarrier<PIPE_ALL>();
 
     if (isMaskNone_ == 0) {
         // Apply mask: zero y[b,s] (ubFactorHCur elements) where mask[b0+b, s0+s]==0
@@ -333,8 +337,8 @@ __aicore__ inline void MaskedCausalConv1d<T>::Compute(
                 }
             }
         }
-        PipeBarrier<PIPE_ALL>();
     }
+    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
     ioQueue_.EnQue(ioBuf);
 }
 
@@ -366,7 +370,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
         };
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
     }
-    PipeBarrier<PIPE_ALL>();
     ioQueue_.FreeTensor(ioBuf);
 }
 
