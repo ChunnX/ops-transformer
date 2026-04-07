@@ -66,7 +66,8 @@ public:
     // ==================== Functions ======================
     __aicore__ inline QSFAVectorService() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, 
+        __gm__ uint8_t *actualSeqLengths, ConstInfo &constInfo)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
@@ -77,7 +78,7 @@ public:
             if (actualSeqLengths != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths);
             }
-            this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
+            this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx, constInfo);
             this->GetExtremeValue(this->negativeFloatScalar);
         }
     }
@@ -127,7 +128,8 @@ private:
     __aicore__ inline void CopyOutAttentionOut(
         RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
+    __aicore__ inline void InitCubeVecSharedParams(
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, ConstInfo &constInfo);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
 
     TPipe *tPipe;
@@ -676,7 +678,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, ConstInfo &constInfo)
 {
     auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
@@ -696,9 +698,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
         sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
     }
-    
-    // actQ->TND, actKV pa场景任意layout均有
-    sharedParams.isActualSeqLengthsKVNull = 0U; // 均flase 
 
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
@@ -706,14 +705,22 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
             s2Size = bIdx == 0 ? actualSeqLengthsKVGm.GetValue(bIdx) : actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1);
         } else {
-            s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            if (constInfo.isActualLenDimsKVNull) {
+                s2Size = constInfo.s2Size;
+            } else {
+                s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            }
         }
         
         int64_t s1Size;
         if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
             s1Size = bIdx == 0 ? cuSeqlensQGm.GetValue(bIdx) : cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1);
         } else {
-            s1Size = sharedParams.s1Size;
+            if (constInfo.isActualLenDimsNull) {
+                s1Size = sharedParams.s1Size;
+            } else {
+                s1Size = cuSeqlensQGm.GetValue(bIdx);
+            }
         }
         if (s1Size > s2Size) {
             sharedParams.needInit = 1;
@@ -749,7 +756,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
         __gm__ uint8_t *blockTable) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
+        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths, ConstInfo &constInfo) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
