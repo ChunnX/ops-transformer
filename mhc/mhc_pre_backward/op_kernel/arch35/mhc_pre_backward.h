@@ -365,10 +365,10 @@ private:
     GlobalTensor<P> xRsGradMmGm_;  // C0输出 x_rs_grad_mm
     GlobalTensor<P> xRsFp32Gm_;    // V2输出 & C1输入 x_rs
 
-    LocalTensor<uint32_t> gatherOffsetBuf_;
+    // LocalTensor<uint32_t> gatherOffsetBuf_;
     LocalTensor<uint32_t> hPreGatherOffsetBuf_;
     LocalTensor<P> alphaBuf_;
-    LocalTensor<P> alphaTmpBuf_;
+    // LocalTensor<P> alphaTmpBuf_;
     TPipe *pipe_;
     OpRunInfo runInfo_;
     const MhcPreBackwardTilingData *tiling_;
@@ -474,36 +474,36 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
 
 
-        gatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(hFusionBufLen_, 0);
+        // gatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(hFusionBufLen_, 0);
         globalUbOffset_ = hFusionBufLen_ * sizeof(uint32_t);
         alphaBuf_ = fp32TBuf_.GetWithOffset<P>(hFusionBufLen_, globalUbOffset_);
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
-        alphaTmpBuf_ = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
+        // alphaTmpBuf_ = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
         globalUbOffset_ += fusionSize_ * sizeof(P);
 
-        uint32_t offset1 = 0;
-        uint32_t offset2 = 0;
-        for (uint32_t i = 0; i < vecDealChunk_; i++) {
-            for (uint32_t j = 0; j < N_; j++) {
-                gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P));
-                if (i == 0) {
-                    alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(0));
-                }
-            }
+        // uint32_t offset1 = 0;
+        // uint32_t offset2 = 0;
+        // for (uint32_t i = 0; i < vecDealChunk_; i++) {
+        //     for (uint32_t j = 0; j < N_; j++) {
+        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P));
+        //         if (i == 0) {
+        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(0));
+        //         }
+        //     }
 
-            for (uint32_t j = 0; j < N_; j++) {
-                gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P) + hPostOffset_);
-                if (i == 0) {
-                    alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(1));
-                }
-            }
-            for (uint32_t j = 0; j < (N_ * N_); j++) {
-                gatherOffsetBuf_.SetValue(offset1++, (i * N_ * N_ + j) * sizeof(P) + hMixOffset_);
-                if (i == 0) {
-                    alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(2));
-                }
-            }
-        }
+        //     for (uint32_t j = 0; j < N_; j++) {
+        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P) + hPostOffset_);
+        //         if (i == 0) {
+        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(1));
+        //         }
+        //     }
+        //     for (uint32_t j = 0; j < (N_ * N_); j++) {
+        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ * N_ + j) * sizeof(P) + hMixOffset_);
+        //         if (i == 0) {
+        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(2));
+        //         }
+        //     }
+        // }
 
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
