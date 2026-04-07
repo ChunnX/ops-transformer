@@ -626,11 +626,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 - 环境变量配置：
 
     ```bash
-    # 运行前需设置三个环境变量
-    ## FIRST_RANK_ID说明：以两机16卡为例，其中一机器设置为0，另一机器设置为8
-    ## 如export FIRST_RANK_ID=0
-    export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
-    export FIRST_RANK_ID=<设备的起始rank_id>
+    # 运行前需设置一个环境变量
     ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
     export ENV_DEV_NUM=16
 
@@ -660,16 +656,15 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+
+    运行前需要将示例代码中的IS_TEST_A3设置为true，确保执行A3分支。 
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
-
-    - 环境变量配置：
     
-        ```bash
-        # 运行前需设置RANK_TABLE_FILE环境变量
-        export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
-        ```
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+
+    运行前需要将示例代码中的IS_TEST_A5设置为true，确保执行A5分支。  
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -711,15 +706,15 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     };
 
     const uint32_t MACHINE_NUM = 1;
-    const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
-    const char* first_rank_id = std::getenv("FIRST_RANK_ID");
     const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-    const uint32_t EP_WORLD_SIZE = (!first_rank_id) ? 2 : 16;
-    const uint32_t TP_WORLD_SIZE = (!first_rank_id) ? 1 : 0;
-    const uint32_t DEV_NUM = (!first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
+    const uint32_t EP_WORLD_SIZE = 2;
+    const uint32_t TP_WORLD_SIZE = 1;
+    const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
     const bool IS_TEST_A2 = false;
+    const bool IS_TEST_A3 = false;
+    const bool IS_TEST_A5 = false;
     const uint32_t EP_WORLD_SIZE_A2 = 8;
     const uint32_t TP_WORLD_SIZE_A2 = 1;
     const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2 * TP_WORLD_SIZE_A2;
@@ -774,7 +769,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-        if (!rank_table_file && !first_rank_id) {
+        if (IS_TEST_A3) {
             ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
         }
@@ -790,10 +785,6 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         int64_t expertShardType = 0;
         int64_t sharedExpertNum = 0;
         int64_t sharedExpertRankNum = 0;
-        if (!rank_table_file && !first_rank_id) {
-            sharedExpertNum = 1;
-            sharedExpertRankNum = 1;
-        } 
         int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
         int64_t quantMode = 0;
         int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -1423,12 +1414,6 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
     int main(int argc, char *argv[])
     {
-        const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
-        if (IS_TEST_A2) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A2> will be executed!\n", env_var_name);
-            int ret = run_example_on_A2();
-            return 0;
-        }
         if (!env_dev_num) {
             LOG_PRINT("[ERROR] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
             LOG_PRINT("[WARNING] For details related to ENV_DEV_NUM, see aclnnMoeDistributeCombineV2.md.\n");
@@ -1439,16 +1424,17 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
             return 0;
         }
-        if (!rank_table_file && !first_rank_id) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
+        if (IS_TEST_A2) {
+            LOG_PRINT("Example on <Atlas A2> will be executed!\n");
+            int ret = run_example_on_A2();
+        }
+        else if (IS_TEST_A3) {
+            LOG_PRINT("Example on <Atlas A3> will be executed!\n");
             int ret = run_example_on_A3A5();
         }
-        else if (rank_table_file && !first_rank_id) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
+        else if (IS_TEST_A5) {
+            LOG_PRINT("Example on <Atlas A5> will be executed!\n");
             int ret = run_example_on_A3A5();
-        }
-        else {
-            LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
         }
 
         return 0;
