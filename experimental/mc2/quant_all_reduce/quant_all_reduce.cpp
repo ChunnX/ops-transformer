@@ -41,24 +41,8 @@ extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(
     GM_ADDR x, GM_ADDR scales, GM_ADDR output, 
     GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
-    // 根据不同的数据类型调用不同的模板
-    switch (type) {
-        case 1: 
-            quant_all_reduce_with_mc2context<MTE_ONE_SHOT, int8_t, float32_t, float16_t>(
+    quant_all_reduce_with_mc2context<MTE_ONE_SHOT, int8_t, float32_t, float16_t>(
                 x, scales, output, workspaceGM, mc2Context, tilingGM);
-            break;
-        case 2: 
-            quant_all_reduce_with_mc2context<MTE_ONE_SHOT, fp8_e5m2_t, fp8_e8m0_t, bfloat16_t>(
-                x, scales, output, workspaceGM, mc2Context, tilingGM);
-            break;
-        case 3: 
-            quant_all_reduce_with_mc2context<MTE_ONE_SHOT, fp8_e5m2_t, fp8_e8m0_t, float16_t>(
-                x, scales, output, workspaceGM, mc2Context, tilingGM);
-            break;
-        default:
-            AscendC::PRINTF("QuantAllReduce Error: invalid type = %d\n", type);
-            return;
-    }
 }
 // <<<>>>调用函数
 void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output, 
