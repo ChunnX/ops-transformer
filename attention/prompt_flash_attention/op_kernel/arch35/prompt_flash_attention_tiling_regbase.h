@@ -804,7 +804,7 @@ public:
 };
 
 
-class PromptFlashAttentionTilingDataV2 {
+class PromptFlashAttentionTilingData {
 public:
     TCubeTiling bmm1TilingDataRect;
     TCubeTiling bmm2TilingDataRect;
@@ -938,7 +938,7 @@ public:
         this->softmaxFlashTilingDataRect.tailReduceSize = softmaxFlashTilingDataRectVal.get_tailReduceSize();
     }
 
-    void MigrateFromLegacyFormat(PromptFlashAttentionTilingDataV2& tiling) {
+    void MigrateFromLegacyFormat(PromptFlashAttentionTilingData& tiling) {
         Bmm1TilingDataRectFromLegacyFormat(tiling.bmm1TilingDataRect);
         Bmm2TilingDataRectFromLegacyFormat(tiling.bmm2TilingDataRect);
         this->promptAttentionBaseParams = tiling.promptAttentionBaseParams;

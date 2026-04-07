@@ -34,7 +34,7 @@ __aicore__ inline void InitQueryLeftPaddingSize(RunParamStr<isInfer>& runParam, 
         runParam.queryLeftPaddingSize = 0;
     } else {
         int64_t qLeftPaddingSize = 0;
-        if (constInfo.isGqa) {
+        if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
             qLeftPaddingSize = constInfo.s1Size - actualS1Size / constInfo.gSize - constInfo.queryRightPaddingSize;
         } else {
             qLeftPaddingSize = constInfo.s1Size - actualS1Size - constInfo.queryRightPaddingSize;
@@ -153,38 +153,31 @@ TEMPLATE_INTF
 __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
     const ConstInfo<isInfer, hasRope>& constInfo)
 {
-    if constexpr (enableKVPrefix) {
-        runParam.actualS1Size = (runParam.actualS1Size >
-            runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch) ?
-            runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch :
-            runParam.actualS1Size;
-    } else {
-        if constexpr ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
-            layout != LayOutTypeEnum::LAYOUT_BNSD) {
+    if (!constInfo.isGqa) {
+        if constexpr (enableKVPrefix) {
             runParam.actualS1Size = (runParam.actualS1Size >
-                runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch) ?
-                runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch :
-                runParam.actualS1Size;
-        } else if (constInfo.isGqa && constInfo.s1Size == 1) {
-            runParam.actualS1Size = (runParam.actualS1Size >
-                (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize) ?
-                (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize :
+                runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch) ?
+                runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch :
                 runParam.actualS1Size;
         } else {
-            runParam.actualS1Size = (runParam.actualS1Size >
-                runParam.actualS2Size + runParam.preTokensPerBatch) ?
-                runParam.actualS2Size + runParam.preTokensPerBatch :
-                runParam.actualS1Size;
-        }
-    }
+            if constexpr ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
+                layout != LayOutTypeEnum::LAYOUT_BNSD) {
+                runParam.actualS1Size = (runParam.actualS1Size >
+                    runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch) ?
+                    runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch :
+                    runParam.actualS1Size;
+            } else {
+                runParam.actualS1Size = (runParam.actualS1Size >
+                    runParam.actualS2Size + runParam.preTokensPerBatch) ?
+                    runParam.actualS2Size + runParam.preTokensPerBatch :
+                    runParam.actualS1Size;
+            }
 
-    // 计算S1的尾块大小，非对齐
-    if (runParam.nextTokensPerBatch >= 0) {
-        runParam.actualS1Size = runParam.actualS1Size;
-    } else if (constInfo.isGqa && constInfo.s1Size == 1 && layout != LayOutTypeEnum::LAYOUT_BNSD) {
-        runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch * constInfo.gSize;
-    } else {
-        runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
+            // 计算S1的尾块大小，非对齐
+            if (runParam.nextTokensPerBatch < 0) {
+                runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
+            }
+        }
     }
 
     if (runParam.actualS1Size < 0) { // 修正preToken/nextToken导致全无效场景的qs值
@@ -409,7 +402,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const C
     bool lastBN, int64_t nextGs1Idx)
 {
     constexpr int32_t s1BaseSize = static_cast<int32_t>(s1TemplateType);
-    int32_t s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
+    int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
     } else {
@@ -557,8 +550,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
 
                 if (constInfo.subBlockIdx == 1) {
                     int64_t firstCurGIdx = curGIdx;
-                    curGIdx = (firstCurGIdx + runParam.halfS1RealSize) % constInfo.gSize;
-                    curS1Idx += (firstCurGIdx + runParam.halfS1RealSize) / constInfo.gSize;
+                    curGIdx = (firstCurGIdx + runParam.firstHalfS1RealSize) % constInfo.gSize;
+                    curS1Idx += (firstCurGIdx + runParam.firstHalfS1RealSize) / constInfo.gSize;
                 }
 
                 runParam.attentionOutOffset = attentionOutSeqOffset + // b
@@ -882,6 +875,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr<isInfer>& runParam, 
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
         runInfo.nextTokensOfMlaPerBatch = runParam.nextTokensOfMlaPerBatch;
         runInfo.preTokensOfMlaPerBatch = runParam.preTokensOfMlaPerBatch;
+        runInfo.actualSeqLengthOfMlaPerBatch = runParam.actualSeqLengthOfMlaPerBatch;
     }
 }
 

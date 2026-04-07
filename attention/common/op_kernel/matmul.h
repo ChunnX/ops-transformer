@@ -64,7 +64,7 @@ __aicore__ inline T AlignUp(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
 }
 
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
 template <typename T>
 __aicore__ inline uint32_t GetBlockNum(uint32_t size) {
     if constexpr (IsSameType<T, float>::value) {
