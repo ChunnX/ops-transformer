@@ -217,13 +217,6 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
     
   - 参数rotate当前支持BFLOAT16、FLOAT16、FLOAT32类型。
-  
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-
-    输入张量x共有四维，不支持辅助矩阵输入，各参数的shape约束可以描述如下：
-    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
 
 - **返回值：**
 
@@ -330,6 +323,12 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     - 当x为BSND时，cos、sin支持1S1D
     - 当x为SBND时，cos、sin支持S11D
 
+- <term>Ascend 950PR/Ascend 950DT</term>：
+
+  输入张量x仅支持四维，不支持辅助矩阵输入，各参数的shape约束可以描述下：
+  - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
+  - 输入张量x和输出张量y的shape必须完全相同。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
