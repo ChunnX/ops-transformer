@@ -57,8 +57,8 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
 {
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    return aclnnInnerDistributeBarrierGetWorkspaceSize(xRef, timeOut, elasticInfo,
-                                                       group, worldSize, workspaceSize, executor);
+    return aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef), timeOut, elasticInfo,
+                                                       const_cast<char*>(group), worldSize, workspaceSize, executor);
 }
 
 aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,

@@ -94,7 +94,7 @@ aclnnStatus MoeDistributeCombineGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineGetWorkspaceSize(
         expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask, activationScale,
-        weightScale, groupList, expandScales, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize,
+        weightScale, groupList, expandScales, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char*>(groupTp), tpWorldSize,
         tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
         groupListType, x, workspaceSize, executor);
     return ret;
