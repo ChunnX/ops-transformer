@@ -294,7 +294,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec0(const QLICommon::RunInfo &in
     AscendC::DataCopyPadExtParams<half> padParams{false, 0, 0, 0};
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
-    copyInParams.blockLen = cuProcEleNum * sizeof(half);
+    copyInParams.blockLen = cuS1ProcNum * gSize_ * sizeof(half);
     copyInParams.srcStride = 0;
     copyInParams.dstStride = 0;
     copyInParams.rsv = 0;
