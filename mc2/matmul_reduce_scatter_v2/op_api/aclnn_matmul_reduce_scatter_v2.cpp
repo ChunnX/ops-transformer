@@ -367,8 +367,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
         OP_LOGD("X2 dim0 is %ld, dim1 is %ld.", x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1));
     }
     ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
-        x1, transX2, bias, x1Scale, transX2Scale, quantScale, group, reduceOp, transposeX1, transposeX2, commTurn, 
-        rankSize, blockSize, groupSize, isAmaxOut, yDtype, commMode, output, amaxOutOptional, workspaceSize, executor);
+        x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, 
+        rankSize, blockSize, groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
     OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
