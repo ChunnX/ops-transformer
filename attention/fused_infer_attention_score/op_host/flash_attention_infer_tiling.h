@@ -90,7 +90,7 @@ namespace optiling{
     const uint32_t SIZE_OF_16BIT = 2;
     const uint32_t SIZE_OF_32BIT = 4;
     const uint32_t N_SPLIT_HELPER = 2;
-    const uint32_t MAX_KV_STACK_LEN = 512;
+    const uint32_t MAX_KV_STACK_LEN = 256;
     const uint32_t Q_TILE_CEIL = 128;
     const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     const uint32_t BASE_KV_SIZE = 128;

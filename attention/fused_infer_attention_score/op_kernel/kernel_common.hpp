@@ -43,7 +43,7 @@ namespace KernelCommon {
     constexpr uint32_t PV_READY_ID = 3;
     constexpr uint32_t PRE_LAUNCH = 2;
     constexpr uint32_t N_SPLIT_HELPER = 2;
-    constexpr uint32_t MAX_KV_STACK_LEN = 512;
+    constexpr uint32_t MAX_KV_STACK_LEN = 256;
     constexpr uint32_t Q_TILE_CEIL = 128;
     constexpr uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     constexpr uint32_t L1_MAX_SIZE = 524288;
