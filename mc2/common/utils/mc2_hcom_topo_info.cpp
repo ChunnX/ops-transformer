@@ -34,7 +34,7 @@ const std::string COMM_GET_SIZE_NAME = "CommGetInstSizeByNetLayer";
 #endif
 const std::string COMM_GET_CCL_BUFFER_SIZE_NAME = "CommGetCCLBufSizeCfg";
 
-static const string GetLibPath()
+static const string GetLibPath(std::string &createTensorLibPath_)
 {
     const char *ascendPath = std::getenv("ASCEND_HOME_PATH");
     if (ascendPath == nullptr) {
@@ -113,7 +113,8 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 
 MC2HcomTopology &MC2HcomTopology::GetInstance()
 {
-    static const char *libPath = GetLibPath().c_str();
+    std::string createTensorLibPath;
+    static const char *libPath = GetLibPath(createTensorLibPath).c_str();
     static MC2HcomTopology loader(libPath);
     return loader;
 }
@@ -518,7 +519,9 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
 
 aclnnStatus MC2HcomTopology::GetaclCreateTensorSymbol()
 {
-    const char* libPath = CreateTensorLibPath_.c_str();
+    std::string createTensorLibPath;
+    GetLibPath(createTensorLibPath);
+    const char* libPath = createTensorLibPath.c_str();
     if (libPath == nullptr) {
         OP_LOGE("", "Failed to get aclCreateTensor library path");
         return ACLNN_ERR_INNER;
