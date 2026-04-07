@@ -12,9 +12,10 @@
  * \file mc2_moe_context.h
  * \brief
  */
-
 #ifndef MC2_MOE_CONTEXT_H
 #define MC2_MOE_CONTEXT_H
+#include <cstdint>
+
 namespace Mc2Aclnn{
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 
