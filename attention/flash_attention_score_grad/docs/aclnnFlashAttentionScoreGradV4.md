@@ -468,9 +468,9 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     <tr>
       <td>softmaxInLayout</td>
       <td>输入</td>
-      <td>保留参数，暂未使用。</td>
-      <td>-</td>
-      <td>-</td>
+      <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
+      <td>TND时传"same_as_input"，NTD时传""</td>
+      <td>String</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -655,7 +655,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
+      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut、softmaxInLayout的数据类型不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -732,6 +732,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     - keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 - sinkInOptional维度为1，长度需要与query的headnum相同。
+- softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
 
 ## 调用示例
 
@@ -963,6 +964,7 @@ int main() {
   int64_t seed = 0;
   int64_t offset = 0;
   char inputlayOut[5] = {'S', 'B', 'H', 0};
+  char softmaxInLayoutArr[] = "";
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -972,7 +974,7 @@ int main() {
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
             attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, sinkInOptional, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
-            preTokens, nextTokens, headNum, inputlayOut, nullptr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
+            preTokens, nextTokens, headNum, inputlayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
             dq,dk,dv,dqRope,dkRope,dpse, dsink, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
