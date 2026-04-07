@@ -17,6 +17,7 @@
 #define FLASH_ATTN_METADATA_H
 
 #include <cstdint>
+#include <cassert>
 
 namespace optiling {
 
@@ -24,14 +25,13 @@ namespace optiling {
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
 constexpr uint32_t FA_META_SIZE = 1024;
-using FA_METADATA_T = int32_t;
+using FA_METADATA_T = uint32_t;
 
-constexpr uint32_t FA_METADATA_SIZE = 8;
-constexpr uint32_t FD_METADATA_SIZE = 8;
-constexpr uint32_t S1OUT_METADATA_SIZE = 4;
+constexpr uint32_t FA_METADATA_SIZE = 16;
+constexpr uint32_t FD_METADATA_SIZE = 16;
 
 // FA Metadata Index Definitions
-constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t FA_CORE_ENABLE_INDEX = 0; // todo ： 是否保留
 constexpr uint32_t FA_BN2_START_INDEX = 1;
 constexpr uint32_t FA_M_START_INDEX = 2;
 constexpr uint32_t FA_S2_START_INDEX = 3;
@@ -41,7 +41,7 @@ constexpr uint32_t FA_S2_END_INDEX = 6;
 constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
 
 // FD Metadata Index Definitions
-constexpr uint32_t FD_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t FD_CORE_ENABLE_INDEX = 0; // todo ： 是否保留
 constexpr uint32_t FD_BN2_IDX_INDEX = 1;
 constexpr uint32_t FD_M_IDX_INDEX = 2;
 constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 3;
@@ -49,36 +49,12 @@ constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 4;
 constexpr uint32_t FD_M_START_INDEX = 5;
 constexpr uint32_t FD_M_NUM_INDEX = 6;
 
-// // UNCONTINUOUS Metadata Index Definitions
-// constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
-// constexpr uint32_t FA_M_START_INDEX = 1;  // 当前核（this->aicIdx）与 第一个基本块被分配的核索引（firstIdx）的相对位置
-// constexpr uint32_t FA_M_STRIDE_INDEX = 2; // 步长，也就是coreNum
-// constexpr uint32_t FA_M_NUM_INDEX = 3; // 处理的行数
-// constexpr uint32_t FA_FIRST_FULL_LOAD_S1_OUTET_IDX_INDEX = 4; // 记录第一块全载的S1方向基本块的索引：firstFullLoadS1OuterIdx（非sparse场景填-1）
-// constexpr uint32_t FA_FIRST_AREA_DATA_WORKSPACE_IDX_INDEX = 5; // 当前计算区域的起始位置，在原始区域中的偏移量
-
-// UNCONTINUOUS Metadata Index Definitions
-constexpr uint32_t S1OUT_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t S1OUT_M_STRIDE_INDEX = 1; // 步长，也就是coreNum
-constexpr uint32_t S1OUT_M_NUM_INDEX = 2; // 表示该核需要计算的S1方向基本块的个数
-constexpr uint32_t S1OUT_FIRST_FULL_LOAD_S1_OUTET_IDX_INDEX = 3; // 记录第一块全载的S1方向基本块的索引：firstFullLoadS1OuterIdx（非sparse场景填-1）
-
-enum class SplitCoreMode {
-    SPLIT_NBS_VECTOR = 0,
-    SPLIT_NBS_CUBE, // a
-    SPLIT_ONEN_VECTOR,
-    SPLIT_ONEN_CUBE,
-    BALANCE_VECTOR,
-    BALANCE_CUBE,
-    SPLIT_S1OUT_CUBE, // b
-};
-
 #ifdef __CCE_AICORE__
 /**
- * @brief 获取分核Mode的绝对索引
- * @return 返回分核Mode的绝对索引
+ * @brief 获取sectionNum的绝对索引
+ * @return 返回sectionNum的绝对索引
  */
-__aicore__ inline uint32_t GetAttrSplitCoreModeIndex()
+__aicore__ inline uint32_t GetAttrTitleNumIndex()
 {
     return 0;
 }
@@ -88,42 +64,57 @@ __aicore__ inline uint32_t GetAttrSplitCoreModeIndex()
  * @param coreIdx 核索引
  * @param metaIdx 元数据索引
  * @param isAIV 是否为AIV数据，默认为false
- * @param splitCoreMode 分核Mode ，默认为SPLIT_NBS_CUBE
  * @return 返回属性的绝对索引
  */
-__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false, SplitCoreMode splitCoreMode = splitCoreMode::SPLIT_NBS_CUBE)
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t sectionIdx, uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionNum, bool isAIV = false)
 {
-    if (splitCoreMode == SplitCoreMode::SPLIT_S1OUT_CUBE) {
-        if (isAIV) {
-            return FA_METADATA_SIZE * AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx + 1;
-        } else {
-            return FA_METADATA_SIZE * coreIdx + metaIdx + 1;
-        }
+    if (isAIV) {
+        return sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE +
+               FD_METADATA_SIZE * AIV_CORE_NUM * sectionIdx + FD_METADATA_SIZE * coreIdx + metaIdx + 16;
     } else {
-        if (isAIV) {
-            return FA_METADATA_SIZE * AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx + 1;
-        } else {
-            return FA_METADATA_SIZE * coreIdx + metaIdx + 1;
-        }
+        return FA_METADATA_SIZE * AIC_CORE_NUM * sectionIdx + FA_METADATA_SIZE * coreIdx + metaIdx + 16;
     }
 }
 #endif
 
 namespace detail {
 struct FaMetaData {
-    SplitCoreMode splitCoreMode;
-    uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
-    uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
-};
-
-struct S1outFaMetaData {
-    SplitCoreMode splitCoreMode;
-    int32_t s1outMetadata[AIC_CORE_NUM][S1OUT_METADATA_SIZE];
+    uint32_t sectionNum;
+    uint32_t *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
+    uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
+    FaMetaData(void *metadataPtr, uint32_t sectionNum)
+        :sectionNum(sectionNum),
+        faMetadata(static_cast<uint32_t*>(metadataPtr) + 16),
+        fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16 + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE) {
+            static_cast<uint32_t*>(metadataPtr)[0] = sectionNum;
+        }
+    void setFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val) {
+        assert(sectionIdx < sectionNum);
+        assert(aicIdx < AIC_CORE_NUM);
+        assert(metaIdx < FA_METADATA_SIZE);
+        faMetadata[AIC_CORE_NUM * FA_METADATA_SIZE *sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx] = val;
+    }
+    uint32_t getFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx) {
+        assert(sectionIdx < sectionNum);
+        assert(aicIdx < AIC_CORE_NUM);
+        assert(metaIdx < FA_METADATA_SIZE);
+        return faMetadata[AIC_CORE_NUM * FA_METADATA_SIZE *sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx];
+    }
+    void setFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx, uint32_t val) {
+        assert(sectionIdx < sectionNum);
+        assert(aivIdx < AIV_CORE_NUM);
+        assert(metaIdx < FD_METADATA_SIZE);
+        fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE *sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx] = val;
+    }
+    uint32_t getFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx) {
+        assert(sectionIdx < sectionNum);
+        assert(aivIdx < AIV_CORE_NUM);
+        assert(metaIdx < FD_METADATA_SIZE);
+        return fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE *sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx];
+    }
 };
 } // namespace detail
 
-static_assert(FA_META_SIZE * sizeof(FA_METADATA_T) >= sizeof(detail::FaMetaData));
-static_assert(FA_META_SIZE * sizeof(FA_METADATA_T) >= sizeof(detail::S1outFaMetaData));
 } // namespace optiling
 
 #endif
