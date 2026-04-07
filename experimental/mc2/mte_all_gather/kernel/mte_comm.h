@@ -43,7 +43,6 @@ public:
     __aicore__ inline void CopyDataToWin();
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
-    __aicore__ inline void CopyXBlockToOutput(uint64_t outOffsetGM, uint64_t winXOffset, uint32_t count);
     __aicore__ inline void ComputeTailAivId(uint64_t totalAivCount);
     __aicore__ inline GM_ADDR GetWinAddrGm(uint32_t rankId, uint64_t offset = 0);
     __aicore__ inline GM_ADDR GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag);
@@ -215,13 +214,6 @@ __aicore__ inline void MTECommunication<XType>::ReadStatus()
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt);
-}
-
-template <typename XType>
-__aicore__ inline void MTECommunication<XType>::CopyXBlockToOutput(uint64_t outOffsetGM, uint64_t winXOffset, uint32_t count)
-{
-    DataCopy(outputTensor_[outOffsetGM], localWinXGMTensor_[winXOffset], count);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <typename XType>

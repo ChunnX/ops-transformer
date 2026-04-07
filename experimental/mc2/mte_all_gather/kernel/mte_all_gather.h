@@ -24,8 +24,6 @@ template<typename XType>
 class MteAllGather {
 public:
     __aicore__ inline MteAllGather() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR output,
-                                TPipe *pipe, const MteAllGatherTilingData *tilingData);
     __aicore__ inline void InitWithMc2Context(GM_ADDR x, GM_ADDR output,
                                 GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *pipe);
     __aicore__ inline void Process();

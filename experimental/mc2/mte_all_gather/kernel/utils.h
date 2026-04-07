@@ -33,13 +33,6 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)
     return (a + b - 1) / b;
 };
 
-// 向上对齐：将a向上对齐到b的倍数
-__aicore__ inline uint64_t CeilAlign(uint64_t a, uint32_t b)
-{
-    uint64_t bTemp = static_cast<uint64_t>(b);
-    return (bTemp == 0) ? a : CeilDiv(a, bTemp) * bTemp;
-};
-
 // 尾块模运算：计算a对b取模，模为0时返回b（用于数据块尾块的计算）
 __aicore__ inline uint64_t BlockAlignMod(uint64_t a, uint32_t b)
 {
