@@ -33,7 +33,7 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe,
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
+        const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
         BufferManager<BufferType::L1>* l1BuffMgr,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>* mm12Bmm2AL1BuffersPtr);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -44,7 +44,7 @@ public:
 private:
     __aicore__ inline void InitInput(TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        const FlashAttentionScoreSimplifiedTilingData *__restrict tiling);
+        const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling);
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1>* l1BuffMgr,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>* mm12Bmm2AL1BuffMgr);
     __aicore__ inline int64_t GetQueryRopeOffset(RunInfo<isInfer>& runInfo, ConstInfo<isInfer, hasRope>& constInfo);
@@ -59,7 +59,7 @@ public:
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 
 private:
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = nullptr;
+    const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = nullptr;
     TPipe *tPipe = nullptr;
 
     GlobalTensor<INPUT_T> queryGm;
@@ -103,7 +103,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitCubeBlock(
     TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
+    const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
     BufferManager<BufferType::L1>* l1BuffMgr,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>* mm12Bmm2AL1BuffMgr)
 {
@@ -115,7 +115,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitInput(
     TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling)
+    const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling)
 {
     this->tilingData = tiling;
     this->tPipe = pipe;

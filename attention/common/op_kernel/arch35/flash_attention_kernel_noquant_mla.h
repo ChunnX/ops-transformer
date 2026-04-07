@@ -33,7 +33,7 @@ public:
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
                                 __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
+                                const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -42,7 +42,7 @@ private:
                                      __gm__ uint8_t *blockTable, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
                                      __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                     const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
+                                     const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void SetFlag3Buffer();
     __aicore__ inline void InitBuffer();
@@ -54,7 +54,7 @@ private:
     __aicore__ inline bool IsLastBN(uint32_t bnStartIdx, uint32_t bnEndIdx);
 
 private:
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = nullptr;
+    const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = nullptr;
     TPipe *tPipe = nullptr;
 
     static constexpr uint32_t dTemplateAlign64 = CubeBlockType::dTemplateAlign64;
@@ -107,7 +107,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *blockTable, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
+    const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
     this->tilingData = tiling;
     constInfo.aivIdx = GetBlockIdx();
@@ -182,7 +182,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::InitInpu
     __gm__ uint8_t *blockTable, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
+    const __gm__ FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
     // init global buffer
     ListTensorDesc keyListTensorDescInit((__gm__ void*)key);
