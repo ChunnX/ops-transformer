@@ -1034,7 +1034,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
         constexpr int64_t D_ALIGN_32 = 32;
         constexpr int64_t D_ALIGN_16 = 16;
 
-        PromptFlashAttentionTilingData pfaTilingData;
+        PromptFlashAttentionTilingDataV2 pfaTilingData;
         PromptFlashAttentionTilingV2 pfa_tiling(context_);
         ContextParamsForPFATiling contextParamsForPFATiling;
         PromptFlashAttentionCompileInfo tempCompileInfoPtr;
