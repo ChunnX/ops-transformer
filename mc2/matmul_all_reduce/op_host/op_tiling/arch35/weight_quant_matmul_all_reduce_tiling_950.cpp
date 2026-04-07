@@ -212,8 +212,8 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
             SET_NOT_USE_WEIGHT_QUANT_MM_TILING);
         return tilingKey;
     }
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
-    bool isA2ARSAG = isStandardCard4P;
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    bool isA2ARSAG = isUseA2APath;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_WEIGHT_QUANT_MM,                     \
         WeightQuantTPLPatams_.transB,               \
@@ -270,7 +270,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
             OP_LOGD(opName_, "Empty tensor k is 0, set workspace size=%lu to context.", myWorkSpaceSize_);
         }
     } else {
-        if(mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)){
+        if(mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)){
             OP_TILING_CHECK(
                 GetWorkspaceSizeInStandardCard4P() != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeInStandardCard4P failed."),
@@ -462,8 +462,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
-    if (isStandardCard4P) {
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    if (isUseA2APath) {
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType) != ge::GRAPH_SUCCESS,
             OP_LOGE(opName_, "WeightQuantMatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
