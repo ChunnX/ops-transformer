@@ -88,8 +88,8 @@ struct Args {
 };
 
 void AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** workspace,
-                       void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize,
-                       int64_t workSpaceSize)
+                        void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize,
+                        int64_t workSpaceSize)
 {
     CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize);
 
@@ -100,7 +100,10 @@ void AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** 
     }
 
     long long xShapeSize = GetShapeSize(xShape);
-    std::vector<int8_t> xHostData(xShapeSize, 0);
+    std::vector<int8_t> xHostData(xShapeSize);
+    for (int64_t i = 0; i < xShapeSize; ++i) {
+        xHostData[i] = static_cast<int8_t>((args.rankId + 1) * 10 + (i % 100));
+    }
     CreateDeviceTensor(xHostData, xShape, xDevice);
 }
 
@@ -149,9 +152,36 @@ int LaunchOneThreadMteAllGather(Args &args)
     int8_t *output_host;
     aclrtMallocHost(reinterpret_cast<void**>(&output_host), outputShapeSize);
     aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
+
+    std::vector<int64_t> xShape = {bs, hiddenSize};
+    int64_t xShapeSize = GetShapeSize(xShape);
+    int64_t totalErrors = 0;
+    int64_t maxPrintErrors = 20;
+    for (uint32_t r = 0; r < args.rankDim; ++r) {
+        int8_t expectedBase = static_cast<int8_t>((r + 1) * 10);
+        for (int64_t i = 0; i < xShapeSize; ++i) {
+            int8_t expected = static_cast<int8_t>(expectedBase + (i % 100));
+            int8_t actual = output_host[r * xShapeSize + i];
+            if (actual != expected) {
+                if (totalErrors < maxPrintErrors) {
+                    LOG_PRINT("[ERROR] rank=%d output[rank=%d][%lld] expected=%d actual=%d\n",
+                              args.rankId, r, (long long)i, (int)expected, (int)actual);
+                }
+                ++totalErrors;
+            }
+        }
+    }
+    if (totalErrors > 0) {
+        LOG_PRINT("[RESULT] rank=%d FAIL, total errors: %lld / %lld\n",
+                  args.rankId, (long long)totalErrors, (long long)outputShapeSize);
+    } else {
+        LOG_PRINT("[RESULT] rank=%d PASS, all %lld elements correct\n",
+                  args.rankId, (long long)outputShapeSize);
+    }
+
     aclrtFreeHost(output_host);
     freeDeviceMemory(args, xDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
-    return 0;
+    return totalErrors > 0 ? 1 : 0;
 }
 
 int main(int argc, char *argv[])
@@ -173,17 +203,32 @@ int main(int argc, char *argv[])
 
     Args args[DEV_NUM];
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
+    int returnCodes[DEV_NUM] = {0};
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         args[rankId].rankId = rankId;
         args[rankId].rankDim = DEV_NUM;
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadMteAllGather, std::ref(args[rankId])));
+        threads[rankId].reset(new(std::nothrow) std::thread([&args, &returnCodes, rankId]() {
+            returnCodes[rankId] = LaunchOneThreadMteAllGather(args[rankId]);
+        }));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
     }
     aclFinalize();
-    return 0;
+
+    int finalRet = 0;
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        if (returnCodes[rankId] != 0) {
+            finalRet = 1;
+        }
+    }
+    if (finalRet == 0) {
+        printf("========== All ranks PASSED ==========\n");
+    } else {
+        printf("========== Some ranks FAILED ==========\n");
+    }
+    return finalRet;
 }
