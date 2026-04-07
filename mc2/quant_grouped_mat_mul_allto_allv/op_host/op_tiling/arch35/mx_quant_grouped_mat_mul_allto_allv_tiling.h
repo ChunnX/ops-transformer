@@ -21,10 +21,8 @@
 
 namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
-//=================新增 MXFP4 相关常量=============//
 constexpr uint64_t MX_SCALE_GROUP = 64;
 constexpr uint64_t EVEN_ALIGN = 2;
-bool isMxfp4_ = false;
 
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;

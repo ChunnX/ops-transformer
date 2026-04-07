@@ -33,7 +33,7 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-template <typename hcclDataType, bool commBeforeComputeFlag, bool isMxfp4Mode = false>
+template <typename hcclDataType, bool commBeforeComputeFlag>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
@@ -70,8 +70,6 @@ public:
             hcclDataType_ = HCCL_DATA_TYPE_FP8E5M2;
         } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
-        } else if constexpr (isMxfp4Mode) {
-            hcclDataType_ = HCCL_DATA_TYPE_INT8;
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_FP16;
         }
@@ -233,7 +231,7 @@ private:
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         // MXFP4：N1维度输出也需要除以2
-        uint64_t axis = isMxfp4Mode ? CeilDiv(N1_, static_cast<uint64_t>(MXFP4_PACK_FACTOR)) : N1_;
+        uint64_t axis = N1_;
         for (uint64_t i = 0UL; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
             alltoAllvRecvCnt[i] = 0UL;

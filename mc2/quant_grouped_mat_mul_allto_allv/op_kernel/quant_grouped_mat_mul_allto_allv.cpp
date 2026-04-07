@@ -85,7 +85,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR se
 
     // MXFP4 模式判断：IsSameType 判断数据类型
     constexpr bool isMxfp4Mode = AscendC::IsSameType<DTYPE_GMM_X, fp4x2_e2m1_t>::value;
-    using HcclOpType = HcclA2avOp<DTYPE_Y, false, isMxfp4Mode>;
+    using HcclOpType = HcclA2avOp<DTYPE_Y, false>;
     using GmmASWKernelType =
         Mc2GroupedMatmul::Mc2GmmASWKernel<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, float, DTYPE_GMMXSCALE, DTYPE_Y, W_FORMAT,
                                           TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
@@ -96,7 +96,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR se
                                                      DTYPE_GMM_WEIGHT, DTYPE_MMXSCALEOPTIONAL, DTYPE_Y, CubeFormat::ND,
                                                      false, TILINGKEY_MATMUL_TRANS, true, false, isMxfp4Mode>;
     using GmmA2avSchedulerType =
-        GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL, isMxfp4Mode>;
+        GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
     // hccl
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, workspaceGM, yGM);
