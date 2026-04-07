@@ -166,14 +166,6 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
-    } else {
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND || LAYOUT_T == QSFA_LAYOUT::BSND) {
-            runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
-        } else {
-            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gS1D +
-                runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSize;
-        }
     }
 }
 

@@ -31,7 +31,7 @@ enum class ActualSeqLensMode
     ACCUM = 1,
 };
 
-template <ActualSeqLensMode MODE, typename T>
+template <ActualSeqLensMode MODE, typename T = uint64_t>
 class ActualSeqLensParser {
 };
 
