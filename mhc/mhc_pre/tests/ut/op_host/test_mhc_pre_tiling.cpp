@@ -45,7 +45,7 @@ static string TilingData2Str(void* buf, size_t size) {
 /*
 * 测试用例1：B=1，S=1，n=4，d=1，x的数据类型为bf16
 * alpha的值为[0.1, 0.1, 0.1]，norm_eps值为0.000001，hc_eps值为0.000001
-* 预期结果：成功
+* 预期结果：失败
 */
 TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
 {
@@ -94,7 +94,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
 /*
 * 测试用例2：B=1，S=1，n=6，d=65535，x的数据类型为float16
 * alpha的值为[1.0, 1.0, 1.0]，norm_eps值为20.0，hc_eps值为200
-* 预期结果：成功
+* 预期结果：失败
 */
 TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
 {
@@ -143,7 +143,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
 /*
 * 测试用例3：B=65535，S=1，n=8，d=1，x的数据类型为bf16
 * alpha的值为[3.0, 0.3, 0.03]，norm_eps值为1024.0，hc_eps值为2
-* 预期结果：成功
+* 预期结果：失败
 */
 TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
 {
@@ -1112,7 +1112,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
 * alpha的值为[0.7, 0.7, 0.7]，norm_eps值为0.001，hc_eps值为600
 * 预期结果：成功
 */
-TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
+TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
 {
     uint32_t T = 1024;
     uint32_t n = 6;
