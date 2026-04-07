@@ -378,12 +378,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (isFp8 && hasAtten) {
-        AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,
-                                    runInfo, constInfo, *attenMaskInfoPtr,
-                                    (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
-                                    ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
-                                     (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
-        attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
+        if (constInfo.hasAttenMaskRT) {
+            AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,
+                                        runInfo, constInfo, *attenMaskInfoPtr,
+                                        (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
+                                        ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
+                                         (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
+            attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
+        }
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
@@ -796,61 +798,63 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        if constexpr (isMlaFullQuant || isMlaNoQuant) {
-            this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
-                this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
-            attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
-        } else if constexpr (isGqaNoQuant) {
-            if (constInfo.isPfaGS1Merge) {
-                MaskInfo maskInfo;
-                maskInfo.gs1StartIdx = (constInfo.subBlockIdx == 0) ? 0 : runInfo.firstHalfS1RealSize;
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
-                                layout == LayOutTypeEnum::LAYOUT_BSH ||
-                                layout == LayOutTypeEnum::LAYOUT_SBH) {
-                    maskInfo.gs1StartIdx += runInfo.s1oIdx * constInfo.gSize + runInfo.goIdx;
-                } else {
-                    maskInfo.gs1StartIdx += runInfo.goIdx * runInfo.actualS1Size + runInfo.s1oIdx;
-                }
-                maskInfo.gs1dealNum = runInfo.halfS1RealSize;
-                maskInfo.s1Size = runInfo.actualS1Size;
-                maskInfo.gSize = constInfo.gSize;
-                maskInfo.s2StartIdx = runInfo.s2LoopCount * s2BaseSize;
-                maskInfo.s2dealNum = s2BaseSize;
-                maskInfo.s2Size = runInfo.actualS2Size;
-                maskInfo.preToken = runInfo.preTokensPerBatch;
-                maskInfo.nextToken = runInfo.nextTokensPerBatch;
-                maskInfo.batchIdx = runInfo.boIdx;
-                maskInfo.attenMaskBatchStride = runInfo.boIdx * attenMaskInfoPtr->attenMaskS1Size * attenMaskInfoPtr->attenMaskS2Size;
-                maskInfo.attenMaskStride = attenMaskInfoPtr->attenMaskS2Size;
-                maskInfo.attenMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32;
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
-                    maskInfo.layout = LAYOUT_Q::SG;
-                } else {
-                    maskInfo.layout = LAYOUT_Q::GS;
-                }
-                maskInfo.attenMaskType = MaskDataType::MASK_BOOL;
-                uint8_t sparseMode = (attenMaskInfoPtr->compressMode == 0) ?            // sparseMode与compressMode定义不同
-                    attenMaskInfoPtr->compressMode : attenMaskInfoPtr->compressMode + 1;
-                maskInfo.sparseMode = static_cast<SparseMode>(sparseMode);
-                maskInfo.maskValue = negativeIntScalar;
-                maskInfo.s1LeftPaddingSize = runInfo.queryLeftPaddingSize;
-                maskInfo.s2LeftPaddingSize = runInfo.kvLeftPaddingSize;
+        if (constInfo.hasAttenMaskRT) {
+            if constexpr (isMlaFullQuant || isMlaNoQuant) {
+                this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+                    this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
+                attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+            } else if constexpr (isGqaNoQuant) {
+                if (constInfo.isPfaGS1Merge) {
+                    MaskInfo maskInfo;
+                    maskInfo.gs1StartIdx = (constInfo.subBlockIdx == 0) ? 0 : runInfo.firstHalfS1RealSize;
+                    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
+                                    layout == LayOutTypeEnum::LAYOUT_BSH ||
+                                    layout == LayOutTypeEnum::LAYOUT_SBH) {
+                        maskInfo.gs1StartIdx += runInfo.s1oIdx * constInfo.gSize + runInfo.goIdx;
+                    } else {
+                        maskInfo.gs1StartIdx += runInfo.goIdx * runInfo.actualS1Size + runInfo.s1oIdx;
+                    }
+                    maskInfo.gs1dealNum = runInfo.halfS1RealSize;
+                    maskInfo.s1Size = runInfo.actualS1Size;
+                    maskInfo.gSize = constInfo.gSize;
+                    maskInfo.s2StartIdx = runInfo.s2LoopCount * s2BaseSize;
+                    maskInfo.s2dealNum = s2BaseSize;
+                    maskInfo.s2Size = runInfo.actualS2Size;
+                    maskInfo.preToken = runInfo.preTokensPerBatch;
+                    maskInfo.nextToken = runInfo.nextTokensPerBatch;
+                    maskInfo.batchIdx = runInfo.boIdx;
+                    maskInfo.attenMaskBatchStride = runInfo.boIdx * attenMaskInfoPtr->attenMaskS1Size * attenMaskInfoPtr->attenMaskS2Size;
+                    maskInfo.attenMaskStride = attenMaskInfoPtr->attenMaskS2Size;
+                    maskInfo.attenMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32;
+                    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
+                        maskInfo.layout = LAYOUT_Q::SG;
+                    } else {
+                        maskInfo.layout = LAYOUT_Q::GS;
+                    }
+                    maskInfo.attenMaskType = MaskDataType::MASK_BOOL;
+                    uint8_t sparseMode = (attenMaskInfoPtr->compressMode == 0) ?            // sparseMode与compressMode定义不同
+                        attenMaskInfoPtr->compressMode : attenMaskInfoPtr->compressMode + 1;
+                    maskInfo.sparseMode = static_cast<SparseMode>(sparseMode);
+                    maskInfo.maskValue = negativeIntScalar;
+                    maskInfo.s1LeftPaddingSize = runInfo.queryLeftPaddingSize;
+                    maskInfo.s2LeftPaddingSize = runInfo.kvLeftPaddingSize;
 
-                attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                if (maskInfo.layout == LAYOUT_Q::SG) {
-                    AttentionmaskCopyInForSgLayout(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
-                } else if (maskInfo.layout == LAYOUT_Q::GS) {
-                    AttentionmaskCopyInForGsLayout(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                    attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
+                    if (maskInfo.layout == LAYOUT_Q::SG) {
+                        AttentionmaskCopyInForSgLayout(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                    } else if (maskInfo.layout == LAYOUT_Q::GS) {
+                        AttentionmaskCopyInForGsLayout(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                    }
+                } else {
+                    AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+                        this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
+                    attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 }
             } else {
                 AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                     this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
             }
-        } else {
-            AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
-                this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
-            attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         }
     }
     LocalTensor<uint8_t> dropMaskUb;
