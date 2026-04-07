@@ -543,6 +543,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetWorkspaceSize()
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = GmmConstant::SYS_WORKSPACE_SIZES;
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
+        workspaces[0] = 16777216; // 16M, 虽不用KFC，但需要用workspace存放中间结果时也需要16M
         optiling::GMMSwigluQuantParams &params = tilingData_.gmmSwigluQuantParams;
         uint32_t workSize = 1;
         if (params.get_dequantDtype() == 1 || params.get_dequantDtype() == GmmConstant::BF16_VALUE) {
