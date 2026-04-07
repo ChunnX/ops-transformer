@@ -2463,7 +2463,8 @@ bool PromptFlashAttentionTilingV2::CheckPATypeAndShape(ContextParamsForPFATiling
             return false);
         }else{
             if (queryShapeInfo.s > 1){
-                OP_CHECK_IF((*blockSize % BLOCK_SIZE_BASE != 0 || *blockSize < BLOCK_SIZE_BASE || *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT),
+                OP_CHECK_IF((*blockSize % BLOCK_SIZE_BASE != 0 || *blockSize < BLOCK_SIZE_BASE ||
+                    *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT),
                 OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
                     "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant with qs[%d] is greater than 1",
                     *blockSize, BLOCK_SIZE_BASE, BLOCK_SIZE_BASE, BLOCK_SIZE_MAX_FOR_NO_QUANT, queryShapeInfo.s),
