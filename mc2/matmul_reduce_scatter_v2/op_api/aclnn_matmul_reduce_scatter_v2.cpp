@@ -421,8 +421,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, group, reduceOp,
-        transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype, commMode, output, amaxOutOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char*>(group), const_cast<char*>(reduceOp),
+        transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
     OP_LOGD("MatmulReduceScatterV2AivMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
 }
