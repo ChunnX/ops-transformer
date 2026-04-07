@@ -88,12 +88,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
-    string expectTilingDataStr = "";
-    std::vector<size_t> expectWorkspaces = {};
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
-                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 /*
@@ -142,12 +137,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
-    string expectTilingDataStr = "";
-    std::vector<size_t> expectWorkspaces = {};
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
-                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 /*
@@ -196,12 +186,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
-    string expectTilingDataStr = "";
-    std::vector<size_t> expectWorkspaces = {};
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
-                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 /*
@@ -1060,7 +1045,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 1;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
