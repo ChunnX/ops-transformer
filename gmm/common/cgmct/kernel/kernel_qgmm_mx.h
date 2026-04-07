@@ -139,7 +139,8 @@ private:
     __aicore__ inline void UpdateMMGlobalAddr();
     __aicore__ inline void Iterate(int64_t singleCoreM, int64_t singleCoreN);
     __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs, uint32_t groupIdx);
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize, uint64_t curBaseM_, uint64_t baseN);
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize,
+                                                     uint64_t curBaseM_, uint64_t baseN);
 
 private:
     BlockMmad mmadOp_;
@@ -209,7 +210,8 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
         if (IsLastGroupAndNeedSplit(bs, loopIdx)) {
             bs.UpdateTailTile();
         } else {
-            SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_), curBaseM_, params.gmmParams.baseN);
+            SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_),
+                                      Get<MNK_K>(problemShape_), curBaseM_, params.gmmParams.baseN);
         }
         UpdateMMGlobalAddr();
         ProcessSingleGroup(params, bs, groupIdx);
@@ -247,8 +249,11 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize,
-                                                                                       uint64_t curBaseM, uint64_t baseN)
+__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int32_t mSize,
+                                                                                              int32_t nSize,
+                                                                                              int32_t kSize,
+                                                                                              uint64_t curBaseM,
+                                                                                              uint64_t baseN)
 {
     if constexpr(transB) {
         if (curBaseM >= mSize) {

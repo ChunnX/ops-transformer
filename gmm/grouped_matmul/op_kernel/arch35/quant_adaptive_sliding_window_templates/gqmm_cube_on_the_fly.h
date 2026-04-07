@@ -42,8 +42,8 @@ protected:
     __aicore__ inline void SetMNK(uint32_t loopIdx, uint32_t groupIdx, int32_t &mSize, int32_t &nSize, int32_t &kSize);
     __aicore__ inline void CalcTailTile(uint64_t mTail, uint64_t nTail);
     __aicore__ inline void SetMMParaAndCompute();
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize, uint64_t curBaseM_,
-                                              uint64_t baseN);
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize,
+                                                     uint64_t curBaseM_, uint64_t baseN);
     __aicore__ inline bool IsLastGroupAndNeedSplit(uint32_t groupIdx);
     __aicore__ inline bool IsLastGroupAndRound(uint32_t groupIdx, uint64_t roundIdx);
 
@@ -259,8 +259,10 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::CalcTailTile(ui
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
-__aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize,
-                                                                                    uint64_t curBaseM_, uint64_t baseN)
+__aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize,
+                                                                                           int32_t kSize,
+                                                                                           uint64_t curBaseM_,
+                                                                                           uint64_t baseN)
 {
     if constexpr (bTrans) {
         if (curBaseM_ >= static_cast<uint64_t>(mSize)) {
