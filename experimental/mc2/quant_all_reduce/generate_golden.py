@@ -14,30 +14,30 @@ import numpy as np
 def generate_golden():
     bs = 16
     hidden_size = 8192
-    ranksize = 2
+    ranksize = 4
     seed = 1185
-    
+
     np.random.seed(seed)
-    
-    output_dir = "./golden/quantallreduce_"
+
+    output_dir = "./golden"
     os.makedirs(output_dir, exist_ok=True)
-    
+
+    x_data_list = []
     for rank in range(ranksize):
         x_data = np.random.randint(-128, 127, size=(bs, hidden_size), dtype=np.int8)
-        x_file = os.path.join(output_dir, f"input_x_{rank}.bin")
+        x_file = os.path.join(output_dir, f"quantallreduce_input_x_{rank}.bin")
         x_data.tofile(x_file)
-        print(f"Rank {rank}: 生成输入x数据 -> {x_file}")
-    
-    scale_size = hidden_size // 128
+        x_data_list.append(x_data)
+        print(f"Rank {rank}: generated input x -> {x_file}")
+
+    allgather_output = np.concatenate(x_data_list, axis=0)
     for rank in range(ranksize):
-        scale_data = np.random.uniform(-3.0, 3.0, size=(bs, scale_size)).astype(np.float32)
-        scale_data = scale_data.view(np.int32)
-        scale_file = os.path.join(output_dir, f"input_scale_{rank}.bin")
-        scale_data.tofile(scale_file)
-        print(f"Rank {rank}: 生成scale数据 -> {scale_file}")
-    
-    print(f"\nGolden数据生成完成！")
-    print(f"目录：{output_dir}")
+        output_file = os.path.join(output_dir, f"quantallreduce_output_cpu_{rank}.bin")
+        allgather_output.tofile(output_file)
+        print(f"Rank {rank}: generated AllGather golden output -> {output_file}")
+
+    print(f"\nGolden data generation complete!")
+    print(f"Directory: {output_dir}")
 
 if __name__ == '__main__':
     generate_golden()

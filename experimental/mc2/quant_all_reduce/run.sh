@@ -84,8 +84,8 @@ fi
 
 # 运行
 export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
-echo "========== 生成Golden数据 =========="
+echo "========== Generating Golden data =========="
 python3 ${CURRENT_DIR}/generate_golden.py
-echo "========== 开始执行程序 =========="
+echo "========== Running test =========="
 ./out/bin/test_quant_all_reduce
-echo "========== 程序执行完成 =========="
+echo "========== Done =========="

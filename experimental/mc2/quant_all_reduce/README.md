@@ -1,59 +1,66 @@
-## QuantAllReduce <<<>>>直调示例
+## QuantAllGather <<<>>>直调示例
+
+通过MTE通信拿到其它卡数据，仅完成AllGather功能（不做Dequant和ReduceSum），将各卡数据按rank顺序拼接到output GM。
 
 # 文件目录
 ```
 ├── kernel                                  # 算子核函数目录
-│    ├── quant_all_reduce_mte_one_shot.h    
-│    ├── quant_all_reduce_tiling_data.h     
-│    ├── mte_comm.h                         
-│    ├── vec_comp.h                         
-│    └── utils.h                         
+│    ├── quant_all_reduce_mte_one_shot.h    # AllGather核心逻辑
+│    ├── quant_all_reduce_tiling_data.h     # Tiling数据定义
+│    ├── mte_comm.h                         # MTE通信相关实现
+│    └── utils.h                            # 工具函数
 ├── quant_all_reduce.cpp                    # <<<>>>核函数入口
 ├── quant_all_reduce.h                      # <<<>>>核函数入口声明头文件
 ├── test_quant_all_reduce.cpp               # <<<>>>直调示例代码
+├── generate_golden.py                      # Golden数据生成（AllGather）
 ├── run.sh                                  # 工程运行脚本
-└── README.md                              
+└── README.md
 ```
 
-# 文件改动
-新增接口：
-quant_all_reduce_mte_one_shot.h 
-外部创建mc2Context与tilingData，传入GM地址mc2Context，tilingGM
-__aicore__ inline void InitWithMc2Context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *pipe);
-mte_comm.h 
-__aicore__ inline void InitHcclContextByAddr(GM_ADDR mc2Context);
+# 核函数签名
+```cpp
+// <<<>>>调用函数，scales参数保留接口兼容但内部不使用
+void quant_all_reduce_demo(uint32_t blockDim, void* stream,
+    uint8_t* x, uint8_t* scales, uint8_t* output,
+    uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM);
+```
+
+# 数据布局
+- 输入 x: `[bs, hiddenSize]` int8_t，每张卡各自的量化数据
+- 输出 output: `[rankDim, bs, hiddenSize]` int8_t，按rank顺序拼接的AllGather结果
+  - output[rank_i] = rank_i 卡上的 x 数据
 
 # 测试用例参数
 
-当前示例硬编码了第一个 int8 用例的参数，直接在 `test_quant_all_reduce.cpp` 中定义：
+当前示例硬编码了参数，在 `test_quant_all_reduce.cpp` 中定义：
 
 ```cpp
 int64_t bs = 16;
 int64_t hiddenSize = 8192;
 int64_t hcclBufferSize = 200;
 int64_t workSpaceSize = 256 * 1024 * 1024;
-int run_type = 1;
 
 // 数据类型
 input_tensor_type = int8_t
-scales_type = float32_t
-output_type = float16_t
-mxfp = 0
-ranksize = 2
+output_type = int8_t (与输入类型一致)
+rankDim = 4
 ```
-
-如需修改参数，直接编辑 `test_quant_all_reduce.cpp` 中的 `LaunchOneThreadQuantAllReduce` 函数。
 
 # Golden 数据
 
 ## 生成 Golden 数据
 
+```shell
+python3 generate_golden.py
+```
+
 生成的文件：
 ```
 ./golden/quantallreduce_input_x_0.bin
 ./golden/quantallreduce_input_x_1.bin
-./golden/quantallreduce_input_scale_0.bin
-./golden/quantallreduce_input_scale_1.bin
+./golden/quantallreduce_input_x_2.bin
+./golden/quantallreduce_input_x_3.bin
+./golden/quantallreduce_output_cpu_0.bin  (AllGather golden: [rankDim*bs, hiddenSize] int8)
 ```
 
 # 工程运行
@@ -68,36 +75,12 @@ source /usr/local/Ascend/cann/set_env.sh
 bash run.sh
 ```
 
-3. 选项说明
-
-```
--c | --cmake-rebuild     编译开关（默认：ON）
-                        ON - 执行编译，OFF - 不执行编译
-
--v | --soc-version      芯片版本（默认：Ascend310P3）
-                        ascend950pr_9599
-
--i | --install-path     CANN安装路径（可选，source环境后自动检测）
-
--b | --build-type       编译类型（默认：Debug）
-                        Release / Debug
-
--p | --install-prefix   编译输出目录（默认：./out）
-
--r | --run-test         运行开关（默认：ON）
-                        ON - 运行测试，OFF - 仅编译
-```
-
-4. 常用命令示例
-
-```shell
-bash run.sh
-```
-
 # 输出结果
 
 程序执行完成后，输出文件位于：
 ```
 ./golden/quantallreduce_output_npu_0.bin
 ./golden/quantallreduce_output_npu_1.bin
+./golden/quantallreduce_output_npu_2.bin
+./golden/quantallreduce_output_npu_3.bin
 ```

@@ -10,8 +10,9 @@
 
 /*!
  * \file quant_all_reduce.cpp
- * \brief
+ * \brief AllGather核函数入口，通过MTE通信拿到其它卡数据，按rank顺序拼接到output
  */
+
 #include <cstdio>
 #include <cstring>
 #include "kernel_operator.h"
@@ -19,34 +20,34 @@
 #include "./kernel/quant_all_reduce_mte_one_shot.h"
 
 using namespace AscendC;
-using namespace QuantAllReduceImpl;
+using namespace QuantAllGatherImpl;
 
 #define MTE_ONE_SHOT 1
 
-template<uint32_t quantAllReduceCommMode, typename DTYPE_X, typename DTYPE_SCALES, typename DTYPE_OUT_PUT>
-__attribute__((always_inline)) __aicore__ __inline__ void quant_all_reduce_with_mc2context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM,
+template<uint32_t commMode, typename DTYPE_X>
+__attribute__((always_inline)) __aicore__ __inline__ void quant_all_gather_with_mc2context(GM_ADDR x, GM_ADDR output, GM_ADDR workspaceGM,
                                                         GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
-    if constexpr (quantAllReduceCommMode == MTE_ONE_SHOT) {
-        QuantAllReduceMteOneShot<DTYPE_X, DTYPE_SCALES, DTYPE_OUT_PUT> op;
-        op.InitWithMc2Context(x, scales, output, mc2Context, tilingGM, &pipe);
+    if constexpr (commMode == MTE_ONE_SHOT) {
+        QuantAllGatherMteOneShot<DTYPE_X> op;
+        op.InitWithMc2Context(x, output, mc2Context, tilingGM, &pipe);
         op.Process();
     }
 }
-// 核函数入口实现
-extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(
-    GM_ADDR x, GM_ADDR scales, GM_ADDR output, 
+
+extern "C" __global__ __aicore__ void QuantAllGather_MTE_ONE_SHOT_Generic(
+    GM_ADDR x, GM_ADDR output,
     GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
-    quant_all_reduce_with_mc2context<MTE_ONE_SHOT, int8_t, float32_t, float16_t>(
-                x, scales, output, workspaceGM, mc2Context, tilingGM);
+    quant_all_gather_with_mc2context<MTE_ONE_SHOT, int8_t>(
+                x, output, workspaceGM, mc2Context, tilingGM);
 }
-// <<<>>>调用函数
-void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output, 
+
+void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM) {
-    QuantAllReduce_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(
-        x, scales, output, workspaceGM, mc2Context, tilingGM
+    QuantAllGather_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(
+        x, output, workspaceGM, mc2Context, tilingGM
     );
 }

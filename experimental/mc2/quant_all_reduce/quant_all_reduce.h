@@ -9,8 +9,8 @@
  */
 #ifndef QUANT_ALL_REDUCE_H
 #define QUANT_ALL_REDUCE_H
-// <<<>>>调用函数声明
-void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output, 
+
+void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM);
 
 #endif //QUANT_ALL_REDUCE_H
