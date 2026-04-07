@@ -188,14 +188,16 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     } else {
         uint64_t hcclBuffSize = 0;
-        string libPath;
-        auto ret = GetBuiltinLibPath(libPath);
-        OP_CHECK(
-        ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
-        const char* opName = "moe_distribute_combine_v2";
-        ret = LoadBuiltinOpApi(libPath);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        // string libPath;
+        // auto ret = GetBuiltinLibPath(libPath);
+        // OP_CHECK(
+        // ret, OP_LOGI("Leaving func: LoadLibResource, ASCEND_Lib_PATH not config."), return ACLNN_ERR_PARAM_INVALID);
+        // const char* opName = "moe_distribute_combine_v2";
+        // ret = LoadBuiltinOpApi(libPath);
+        // CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        // ret = GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        // CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
             mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
@@ -216,9 +218,10 @@ aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSiz
 {
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
-        void *args = NnopbaseGetUserHandle(executor);
-        uint64_t handleVal = reinterpret_cast<uint64_t>(args);
-        if (handleVal == 0) {
+        void *arg = NnopbaseGetUserHandle(executor);
+        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+        CommType commType = static_cast<CommType>(handleVal);
+        if (commType == CommType::AIV) {
             OP_LOGD("aclnn_combine inner v3 start");
             return aclnnInnerMoeDistributeCombineV3(workspace, workspaceSize, executor, stream);
         }
