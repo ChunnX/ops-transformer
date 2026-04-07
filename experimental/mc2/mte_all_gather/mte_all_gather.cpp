@@ -22,9 +22,7 @@
 using namespace AscendC;
 using namespace MteAllGatherImpl;
 
-#define MTE_ONE_SHOT 1
-
-template<uint32_t commMode, typename DTYPE_X>
+template<typename DTYPE_X>
 __attribute__((always_inline)) __aicore__ __inline__ void mte_all_gather_with_mc2context(GM_ADDR x, GM_ADDR output, GM_ADDR workspaceGM,
                                                         GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
@@ -39,7 +37,7 @@ extern "C" __global__ __aicore__ void MteAllGather_Generic(
     GM_ADDR x, GM_ADDR output,
     GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
-    mte_all_gather_with_mc2context<MTE_ONE_SHOT, int8_t>(
+    mte_all_gather_with_mc2context<int8_t>(
                 x, output, workspaceGM, mc2Context, tilingGM);
 }
 
