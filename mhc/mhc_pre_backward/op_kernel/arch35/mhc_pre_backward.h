@@ -375,7 +375,7 @@ private:
     TQue<QuePosition::VECIN, 0> bf16InQueue_;
     TQue<QuePosition::VECOUT, 1> bf16OutQueue_;
     TQue<QuePosition::VECIN, 1> fp32InQueue_;
-    TQue<QuePosition::VECIN, 1> gradInQueue_;
+    TQue<QuePosition::VECIN, 1> tempInQueue_;
     TQue<QuePosition::VECOUT, 1> fp32OutQueue_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
@@ -464,7 +464,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + hCombBeforeGradBufLen_;
     onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
 
-    pipe_->InitBuffer(gradInQueue_, 1, INOUT_QUEUE_SIZE);
+    pipe_->InitBuffer(tempInQueue_, 1, INOUT_QUEUE_SIZE);
 
     if ASCEND_IS_AIV {
         pipe_->InitBuffer(bf16InQueue_, 1, INOUT_QUEUE_SIZE);
@@ -921,16 +921,16 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     // PipeBarrier<PIPE_MTE2>(); // ？这为什么需要插PIPE_MTE3同步
     DataCopyPad(fp32InputBuf, hPostGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
     fp32InQueue_.EnQue(fp32InputBuf);
-    AscendC::LocalTensor<P> fp32Buf = gradInQueue_.AllocTensor<P>();
+    AscendC::LocalTensor<P> fp32Buf = tempInQueue_.AllocTensor<P>();
     DataCopyPad(fp32Buf, hPostGradGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
-    gradInQueue_.EnQue(fp32Buf);
+    tempInQueue_.EnQue(fp32Buf);
 
     LocalTensor<P> hPost = fp32InQueue_.DeQue<P>();
-    LocalTensor<P> hPostGrad = gradInQueue_.DeQue<P>();
+    LocalTensor<P> hPostGrad = tempInQueue_.DeQue<P>();
     VFDoV0ProcessHPostGrad((__ubuf__ P *)hPost.GetPhyAddr(), (__ubuf__ P *)hPostGrad.GetPhyAddr(),
                            (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr(), buffers.stepLength);
     fp32InQueue_.FreeTensor(hPost);
-    gradInQueue_.FreeTensor(hPostGrad);
+    tempInQueue_.FreeTensor(hPostGrad);
 
     fp32InputBuf = fp32InQueue_.AllocTensor<P>();
     // PipeBarrier<PIPE_MTE2>();
@@ -2152,10 +2152,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         // nullptr，后续路径必须配合同一条件判断使用。
         __ubuf__ T *gradXPostUb = nullptr;
         if (withGradXPost_) {
-            bf16InQueue_.AllocTensor<T>(gradXPostInBuf);
+            gradXPostInBuf = tempInQueue_.AllocTensor<T>();
             DataCopyPad(gradXPostInBuf, gradXPostGm_[bsChunkStart * nD_ + offsetND], xCopyParams, xCopyPadParams);
-            bf16InQueue_.EnQue(gradXPostInBuf);
-            bf16InQueue_.DeQue<T>(gradXPostInBuf);
+            tempInQueue_.EnQue(gradXPostInBuf);
+            gradXPostInBuf = tempInQueue_.DeQue<T>();
             gradXPostUb = (__ubuf__ T *)gradXPostInBuf.GetPhyAddr();
         }
         // V2.0 Revision: 尾段融合, 将外积结果 xGradVec3Buf 与 xRsGradInvBackup、xRsGradMmUb 两路
@@ -2175,7 +2175,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         PipeBarrier<PIPE_V>();
         fp32InQueue_.FreeTensor(xRsGradInvBackup);
         if (withGradXPost_) {
-            bf16InQueue_.FreeTensor(gradXPostInBuf);
+            tempInQueue_.FreeTensor(gradXPostInBuf);
         }
         bf16OutQueue_.EnQue(bf16OutputBuf);
         bf16OutputBuf = bf16OutQueue_.DeQue<T>();
