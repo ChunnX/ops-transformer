@@ -37,17 +37,17 @@ aclnnStatus CheckSingleParamQsfaN128(int64_t batchSizeOptional, int64_t maxSeqle
                                      int64_t numHeadsKv, char* layoutQOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceQsfaN128(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckExistenceQsfa(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
                                    const aclTensor* sequsedKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQsfaN128(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckConsistencyQsfa(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
                                      char* layoutQOptional, const aclTensor* sequsedKvOptional, 
                                      const aclTensor* cuSeqLensKvOptional, char* layoutKvOptional, 
                                      int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureQsfaN128();
+aclnnStatus CheckFeatureQsfa();
 
 __attribute__((visibility("default"))) 
 aclnnStatus ParamsCheckQsfaN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKvOptional, 
@@ -60,19 +60,6 @@ __attribute__((visibility("default")))
 aclnnStatus CheckSingleParamQsfaN64(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                     int64_t numHeadsKv, int64_t oriMaskMode_, int64_t winLeft_, char* layoutQOptional, 
                                     char* layoutKvOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceQsfaN64(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                                  const aclTensor* sequsedKvOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQsfaN64(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                                    char* layoutQOptional, const aclTensor* sequsedKvOptional, 
-                                    const aclTensor* cuSeqLensKvOptional, char* layoutKvOptional, 
-                                    int64_t batchSizeOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureQsfaN64();
 
 __attribute__((visibility("default"))) 
 aclnnStatus aclnnKvQuantSparseFlashAttentionMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 
