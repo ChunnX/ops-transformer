@@ -95,6 +95,7 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
     outputType_ = context_->attenOut.desc->GetDataType();
     std::string layout(context_->layOut);
     // B S1 N2 K
+    
     uint32_t selectedBlockCountShapeRange = 0;
     if (layout == "TND") {
         batchSizeQ_ = batchSize_ = context_->actualQSeqLengths.tensor->GetShapeSize();
