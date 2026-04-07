@@ -284,7 +284,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
                 
     OP_CHECK_IF(dim_ % DIM_ALIGN_ELEMENT != 0,
             OP_LOGE(context_->GetNodeName(),
-                    "The dimension of x must be a multiple of 128, but got %ld",
+                    "X dim must be a multiple of 128, but got %ld",
                     dim_),
             return ge::GRAPH_FAILED);
 

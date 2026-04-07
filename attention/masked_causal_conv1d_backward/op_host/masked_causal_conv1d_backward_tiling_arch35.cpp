@@ -24,7 +24,6 @@ using MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDa
 
 bool MaskedCausalConv1dBackwardTiling::IsCapable()
 {
-    // 详细校验在 CheckInputParams 中完成，这里返回 true
     return true;
 }
 
@@ -65,7 +64,6 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
     B_ = static_cast<int64_t>(origin.GetDim(DIM_1));
     H_ = static_cast<int64_t>(origin.GetDim(DIM_2));
 
-    // 约束范围（来自需求文档）：S∈[1, 32K], B∈[1, 8], H∈[384, 24576]
     OP_CHECK_IF(S_ <= 0 || S_ > (1 << 15), OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(B_ <= 0 || B_ > 8, OP_LOGE(context_->GetNodeName(), "invalid B=%ld", B_), return ge::GRAPH_FAILED);
@@ -267,7 +265,6 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     OP_CHECK_IF(availableUbSize <= 0, OP_LOGE(context_->GetNodeName(), "available UB size <= 0, ubSize=%lu", ubSize_),
                 return ge::GRAPH_FAILED);
 
-    // 根据文档：保证H不小于64元素情况下，多载BS
     // UB先按H=64(128B)，全载核内BS
     int64_t minH = DIM_ALIGN_ELEMENT;  // 64
     int64_t perCoreH = (hMainCoreCnt_ > 0) ? hMainSize_ : hTailSize_;
@@ -275,39 +272,21 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     // Buffer占用估算函数
     // 参数 s_effective 是有效输出行数（不包含重叠部分）
     auto calculateBufferSize = [&](int64_t h, int64_t b, int64_t s_effective) -> int64_t {
-        // 根据文档第4节Buffer设计
-        // gradOutputQueue 和 maskQueue 需要加上重叠的2行（W-1）
         int64_t s_with_overlap = s_effective + (W_ - 1);
-
-        // gradOutputQueue: hUb * bUb * (sUb + W-1) * sizeof(DTYPE) - double buffer
         int64_t gradOutputSize = h * b * s_with_overlap * static_cast<int64_t>(dtypeSize_);
-
-        // inputQueue: hUb * bUb * sUb * sizeof(DTYPE) - double buffer
         int64_t inputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
-
-        // weightQueue: hUb * W * sizeof(DTYPE) - double buffer
         int64_t weightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
-
-        // maskQueue: bUb * (sUb + W-1) - double buffer (BOOL类型，每个元素1字节)
-        // 注意：maskQueue 始终分配，即使 mask=None 时 kernel 也会使用全1的mask
-        int64_t maskSize = b * s_with_overlap;
-
-        // gradInputQueue: hUb * bUb * sUb * sizeof(DTYPE) - double buffer
+        int64_t maskBytes = b * s_with_overlap;
+        int64_t maskSize = ((maskBytes + ALIGN_BYTES - 1) / ALIGN_BYTES) * ALIGN_BYTES;
         int64_t gradInputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
-
-        // gradWeightQueue: hUb * W * sizeof(DTYPE) - double buffer
         int64_t gradWeightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
-
-        // tempBuff: hUb * W * B * sizeof(float) - TBuf (单buffer，用于临时存储权重梯度，按B维分别累加)
         int64_t tempBuffSize = h * W_ * B_ * sizeof(float);
-
-        // 所有Queue都是double buffer，tempBuff是单buffer
         int64_t totalSize = BUFFER_NUM * (gradOutputSize + inputSize + weightSize + maskSize +
                                           gradInputSize + gradWeightSize) + tempBuffSize;
         return totalSize;
     };
 
-    // 新策略：B 维不在 UB 内切分，核内仅切 S（bUB 固定为 1）
+    // 核内仅切 S（bUB 固定为 1）
     // 注意：sUB_ 存储的是有效输出行数（不包含重叠部分）
     hUB_ = minH;
     bUB_ = 1;
@@ -375,10 +354,6 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         tailCoreUbTailFactorS_ = ubTailFactorS_;
     }
 
-    // 保留原有的兼容性变量（用于日志输出）
-    hUBTail_ = ubTailFactorH_;
-    bUBTail_ = ubTailFactorB_;
-    sUBTail_ = ubTailFactorS_;
     allUb_ = calculateBufferSize(ubMainFactorH_, ubMainFactorB_, ubMainFactorS_);
 
     return ge::GRAPH_SUCCESS;
@@ -393,7 +368,6 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
     OP_CHECK_IF(ComputeIntraCoreUbTiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTiling failed"), return ge::GRAPH_FAILED);
 
-    // 填充 tilingData_ - 按照文档3.3节的结构体定义
     // 核间切分参数
     tilingData_.hMainCoreCnt = hMainCoreCnt_;
     tilingData_.hTailCoreCnt = hTailCoreCnt_;
@@ -413,11 +387,16 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
     tilingData_.ubMainFactorS = ubMainFactorS_;
     tilingData_.ubTailFactorS = ubTailFactorS_;
 
-    // 尾核循环参数（B 不切分 -> 1）
-    tilingData_.tailBLoopCnt = 1;
-    // 尾核UB切块参数（B 相关为 1）
-    tilingData_.tailCoreUbMainFactorB = 1;
-    tilingData_.tailCoreUbTailFactorB = 1;
+    tilingData_.tailHLoopCnt = tailHLoopCnt_;
+    tilingData_.tailBLoopCnt = tailBLoopCnt_;
+    tilingData_.tailSLoopCnt = tailSLoopCnt_;
+
+    tilingData_.tailCoreUbMainFactorH = tailCoreUbMainFactorH_;
+    tilingData_.tailCoreUbTailFactorH = tailCoreUbTailFactorH_;
+    tilingData_.tailCoreUbMainFactorB = tailCoreUbMainFactorB_;
+    tilingData_.tailCoreUbTailFactorB = tailCoreUbTailFactorB_;
+    tilingData_.tailCoreUbMainFactorS = tailCoreUbMainFactorS_;
+    tilingData_.tailCoreUbTailFactorS = tailCoreUbTailFactorS_;
 
     // 全局参数
     tilingData_.hasMask = hasMask_;
@@ -487,7 +466,6 @@ void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "hMainSize=%ld hTailSize=%ld", hMainSize_, hTailSize_);
     OP_LOGI(context_->GetNodeName(), "hUB=%ld bUB=%ld sUB=%ld", hUB_, bUB_, sUB_);
     OP_LOGI(context_->GetNodeName(), "hLoopCnt=%ld bLoopCnt=%ld sLoopCnt=%ld", hLoopCnt_, bLoopCnt_, sLoopCnt_);
-    OP_LOGI(context_->GetNodeName(), "hUBTail=%ld bUBTail=%ld sUBTail=%ld", hUBTail_, bUBTail_, sUBTail_);
     OP_LOGI(context_->GetNodeName(), "allUb=%ld", allUb_);
 }
 
