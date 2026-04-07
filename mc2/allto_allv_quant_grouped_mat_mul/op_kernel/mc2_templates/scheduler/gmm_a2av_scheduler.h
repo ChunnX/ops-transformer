@@ -62,5 +62,5 @@ private:
     SharedComputationOpType shareComputeOp_;
     const TaskTilingInfo *taskTilingInfo_;
 };
-} // namespace MC2KernelTemplate
+}
 #endif
