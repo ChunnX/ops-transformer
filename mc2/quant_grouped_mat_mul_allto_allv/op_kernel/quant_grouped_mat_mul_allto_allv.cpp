@@ -83,7 +83,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR se
     constexpr bool IS_SHARED_EXPERT = true;
     constexpr bool IS_NOT_SHARED_EXPERT = false;
 
-    // MXFP4 模式判断：DT_FLOAT4_E2M1 表示 MXFP4 数据类型
+    // MXFP4 模式判断：IsSameType 判断数据类型
     constexpr bool isMxfp4Mode = AscendC::IsSameType<DTYPE_GMM_X, fp4x2_e2m1_t>::value;
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, isMxfp4Mode>;
     using GmmASWKernelType =
