@@ -10,7 +10,7 @@
 
 /*!
  * \file compute.h
- * \brief MicroAPI VF helpers for masked_causal_conv1d_backward (W=3)
+ * \brief MicroAPI VF helpers for masked_causal_conv1d_backward
  */
 
 #ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
@@ -39,19 +39,12 @@ constexpr MicroAPI::CastTrait castTraitB322B16 = {
 constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float); // 64 floats per vector reg
 
-// Assumption: dimLen (H-tile) is always a multiple of 64 floats, so dimTail == 0.
-// This holds because H is a multiple of 192 and hUB is 64 per tiling.
 
-// Compute grad_input for a tile:
+
 // gi[i] = go[i]*w2 + go[i+1]*w1 + go[i+2]*w0 (0-pad beyond sLen)
-// Layout assumptions:
-// - go rows are laid out as rows = bLen*sLen, row = b*sLen + s, row length dimLen along H
-// - w layout is [w0, w1, w2], each vector length dimLen (contiguous along H)
-// - gi has same layout as go
-
 template <typename T>
-__simd_vf__ void GradInputW3VF(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *giAddr, uint32_t bLen, uint32_t sEff,
-                               uint32_t sLen, uint32_t dimLen)
+__simd_vf__ void GradInputW3VF(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *giAddr, 
+                                uint32_t sEff, uint32_t sLen, uint32_t dimLen)
 {
     MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     uint32_t dimLoopNum = dimLen / B32_REP_SIZE;
@@ -68,8 +61,7 @@ __simd_vf__ void GradInputW3VF(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T
         MicroAPI::Cast<float, T, castTraitB162B32>(w1B32, w1B16, fullMask);
         MicroAPI::Cast<float, T, castTraitB162B32>(w2B32, w2B16, fullMask);
 
-        for (uint32_t s = 0; s < sLen; ++s) {
-            uint32_t row = s;
+        for (uint32_t row = 0; row < sLen; ++row) {
             __ubuf__ T *goRow = goAddr + row * dimLen + dimOff;
             __ubuf__ T *giRow = giAddr + row * dimLen + dimOff;
 
@@ -100,14 +92,12 @@ __simd_vf__ void GradInputW3VF(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T
     }
 }
 
-// Compute grad_weight and ACCUMULATE into fp32 accumulators in UB:
-// acc2 += sum(go[i]*in[i]), acc1 += sum(go[i+1]*in[i]), acc0 += sum(go[i+2]*in[i])
-// Assumption: dimLen % 64 == 0, so no tail handling.
 
+// acc2 += sum(go[i]*in[i]), acc1 += sum(go[i+1]*in[i]), acc0 += sum(go[i+2]*in[i])
 template <typename T>
-__simd_vf__ void GradWeightW3VFAcc(__ubuf__ T *goAddr, __ubuf__ T *inAddr, __ubuf__ float *acc0Addr,
-                                   __ubuf__ float *acc1Addr, __ubuf__ float *acc2Addr, uint32_t bLen, uint32_t sEff,
-                                   uint32_t sLen, uint32_t dimLen)
+__simd_vf__ void GradWeightW3VFAcc(__ubuf__ T *goAddr, __ubuf__ T *inAddr,
+                                    __ubuf__ float *acc0Addr, __ubuf__ float *acc1Addr, __ubuf__ float *acc2Addr,
+                                    uint32_t sEff, uint32_t sLen, uint32_t dimLen)
 {
     MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     uint32_t dimLoopNum = dimLen / B32_REP_SIZE;
@@ -115,13 +105,11 @@ __simd_vf__ void GradWeightW3VFAcc(__ubuf__ T *goAddr, __ubuf__ T *inAddr, __ubu
 
     for (uint32_t dl = 0; dl < dimLoopNum; ++dl) {
         MicroAPI::RegTensor<float> acc0, acc1, acc2, mulB32, goB32, goN1B32, goN2B32, inB32;
-        // Load existing accumulators
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(acc0, acc0Addr + dimOff);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(acc1, acc1Addr + dimOff);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(acc2, acc2Addr + dimOff);
 
-        for (uint32_t s = 0; s < sLen; ++s) {
-            uint32_t row = s;
+        for (uint32_t row = 0; row < sLen; ++row) {
             __ubuf__ T *goRow = goAddr + row * dimLen + dimOff;
             __ubuf__ T *inRow = inAddr + row * dimLen + dimOff;
             MicroAPI::RegTensor<T> goB16, inB16, goN1B16, goN2B16;
@@ -134,7 +122,7 @@ __simd_vf__ void GradWeightW3VFAcc(__ubuf__ T *goAddr, __ubuf__ T *inAddr, __ubu
             MicroAPI::Mul(mulB32, goB32, inB32, fullMask);
             MicroAPI::Add(acc2, acc2, mulB32, fullMask);
 
-            // acc1 += go[i+1] * in (guard using sLen so last S block safely handles boundary)
+            // acc1 += go[i+1] * in
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(goN1B16, goRow + dimLen);
             MicroAPI::Cast<float, T, castTraitB162B32>(goN1B32, goN1B16, fullMask);
             MicroAPI::Mul(mulB32, goN1B32, inB32, fullMask);
@@ -147,7 +135,6 @@ __simd_vf__ void GradWeightW3VFAcc(__ubuf__ T *goAddr, __ubuf__ T *inAddr, __ubu
             MicroAPI::Add(acc0, acc0, mulB32, fullMask);
 
         }
-        // Store back updated accumulators
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(acc0Addr + dimOff, acc0, fullMask);
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(acc1Addr + dimOff, acc1, fullMask);
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(acc2Addr + dimOff, acc2, fullMask);
@@ -157,11 +144,10 @@ __simd_vf__ void GradWeightW3VFAcc(__ubuf__ T *goAddr, __ubuf__ T *inAddr, __ubu
 
 // Reduce across B for accumulated fp32 buffers and cast to DT
 // accX layout: B slices, each of length dimLen (contiguous along H)
-// Writes casted results to outX (length dimLen)
 template <typename T>
 __simd_vf__ void ReduceBToHAndCast(__ubuf__ float *acc0Addr, __ubuf__ float *acc1Addr, __ubuf__ float *acc2Addr,
-                                   uint32_t B, uint32_t dimLen, __ubuf__ T *out0Addr, __ubuf__ T *out1Addr,
-                                   __ubuf__ T *out2Addr)
+                                   uint32_t B, uint32_t dimLen,
+                                   __ubuf__ T *out0Addr, __ubuf__ T *out1Addr, __ubuf__ T *out2Addr)
 {
     MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     uint32_t dimLoopNum = dimLen / B32_REP_SIZE;
@@ -210,20 +196,20 @@ __aicore__ inline void DoReduceBToHAndCast(LocalTensor<float> &acc0Ub, LocalTens
 }
 
 template <typename T>
-__aicore__ inline void DoGradInput(LocalTensor<T> &goUb, LocalTensor<T> &wUb, LocalTensor<T> &giUb, uint32_t bLen,
+__aicore__ inline void DoGradInput(LocalTensor<T> &goUb, LocalTensor<T> &wUb, LocalTensor<T> &giUb,
                                    uint32_t sEff, uint32_t sLen, uint32_t dimLen)
 {
     __ubuf__ T *goAddr = (__ubuf__ T *)goUb.GetPhyAddr();
     __ubuf__ T *wAddr = (__ubuf__ T *)wUb.GetPhyAddr();
     __ubuf__ T *giAddr = (__ubuf__ T *)giUb.GetPhyAddr();
-    GradInputW3VF<T>(goAddr, wAddr, giAddr, bLen, sEff, sLen, dimLen);
+    GradInputW3VF<T>(goAddr, wAddr, giAddr, sEff, sLen, dimLen);
 }
 
 
 
 template <typename T>
 __aicore__ inline void DoGradWeightAcc(LocalTensor<T> &goUb, LocalTensor<T> &inUb, LocalTensor<float> &acc0Ub,
-                                       LocalTensor<float> &acc1Ub, LocalTensor<float> &acc2Ub, uint32_t bLen,
+                                       LocalTensor<float> &acc1Ub, LocalTensor<float> &acc2Ub,
                                        uint32_t sEff, uint32_t sLen, uint32_t dimLen)
 {
     __ubuf__ T *goAddr = (__ubuf__ T *)goUb.GetPhyAddr();
@@ -231,7 +217,7 @@ __aicore__ inline void DoGradWeightAcc(LocalTensor<T> &goUb, LocalTensor<T> &inU
     __ubuf__ float *a0Addr = (__ubuf__ float *)acc0Ub.GetPhyAddr();
     __ubuf__ float *a1Addr = (__ubuf__ float *)acc1Ub.GetPhyAddr();
     __ubuf__ float *a2Addr = (__ubuf__ float *)acc2Ub.GetPhyAddr();
-    GradWeightW3VFAcc<T>(goAddr, inAddr, a0Addr, a1Addr, a2Addr, bLen, sEff, sLen, dimLen);
+    GradWeightW3VFAcc<T>(goAddr, inAddr, a0Addr, a1Addr, a2Addr, sEff, sLen, dimLen);
 }
 
 } // namespace AggHiddenGradVF
