@@ -1432,7 +1432,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             LOG_PRINT("Example on <Atlas A3> will be executed!\n");
             int ret = run_example_on_A3A5();
         }
-        else (IS_TEST_A5) {
+        else if (IS_TEST_A5) {
             LOG_PRINT("Example on <Atlas A5> will be executed!\n");
             int ret = run_example_on_A3A5();
         }
