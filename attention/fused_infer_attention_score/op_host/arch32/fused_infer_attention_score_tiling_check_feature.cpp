@@ -67,51 +67,25 @@ ge::graphStatus FiaTilingCheck::CheckFeatureNoQuantDtype() const
 
 ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
 {
-    constexpr uint16_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
-    constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
-    constexpr uint16_t NUM_64 = 64;
-    constexpr uint16_t NUM_128 = 128;
-    constexpr uint16_t NUM1 = 1;
-    constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
-    constexpr uint16_t BLOCK_SIZE_MAX = 512;
-    if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION) {
-        if (ropeMode_ != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
-            OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE(opName_,
-                    "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of "
-                    "%u, and should be in range of [%u, %u].",
-                    blockSize_, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                return ge::GRAPH_FAILED);
-        } else if (qkHeadDim_ == NUM_64 || qkHeadDim_ == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
-            OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE(opName_,
-                    "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                    "of %u, and should be in range of [%u, %u].",
-                    qkHeadDim_, blockSize_, BLOCK_SIZE_ALIGN_SIZE_16,
-                    BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                return ge::GRAPH_FAILED);
-        } else {
-            // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
-            OP_CHECK_IF((s1Size_ > NUM1) && (blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_128 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
-                OP_LOGE(opName_,
-                    "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                    "of %u, and should be in range of [%u, %u].",
-                    blockSize_, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                return ge::GRAPH_FAILED);
-            // GQA D != 64/128, QS = 1 [16, 512]且16对齐
-            OP_CHECK_IF((s1Size_ == NUM1) && (blockSize_ > BLOCK_SIZE_MAX ||
-                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
-                OP_LOGE(opName_,
-                    "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                    "of %u, and should be in range of [%u, %u].",
-                    blockSize_, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
-                return ge::GRAPH_FAILED);
-        }
+    constexpr int32_t BLOCK_SIZE_ALIGN_SIZE = 16;
+    constexpr int32_t BLOCK_SIZE_MAX_SIZE = 1024;
+    if (blockSize_ % BLOCK_SIZE_ALIGN_SIZE != 0) {
+        OP_LOGE(opName_, "In %s situation, %s should aligned to 16, but got %d.",
+            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str(), blockSize_);
+            return ge::GRAPH_FAILED;
     }
-    
+
+    if (blockSize_ > BLOCK_SIZE_MAX_SIZE) {
+        OP_LOGE(opName_, "In %s situation, %s should less equal than 1024, but got %d.",
+            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str(), blockSize_);
+            return ge::GRAPH_FAILED;
+    }
+
+    if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && blockSize_ == 0) {
+        OP_LOGE(opName_, "In %s and storage mode is page attention, %s should not be 0",
+            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str());
+            return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -164,8 +138,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMlaNoquant()
         ge::GRAPH_SUCCESS != CheckFeatureLayout() ||
         ge::GRAPH_SUCCESS != CheckFeatureAxisInfo() ||
         ge::GRAPH_SUCCESS != CheckFeatureLearnableSink() ||
-        ge::GRAPH_SUCCESS != CheckFeatureHeadDim() ||
-        ge::GRAPH_SUCCESS != CheckFeaturePostQuant()) {
+        ge::GRAPH_SUCCESS != CheckFeatureHeadDim()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -238,127 +211,83 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
     }
     return ge::GRAPH_SUCCESS;
 }
+
 ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
 {
     if (!fiaInfo_.isOutQuantEnable) {
         return ge::GRAPH_SUCCESS;
     }
-    if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
-        OP_LOGE(opName_, "postquant do not support qkHeadDim = vHeadDim and rope exist");
-        return ge::GRAPH_FAILED;
-    }
-    if (fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) {
-        OP_LOGE(opName_, "postquant do not support qkHeadDim != vHeadDim");
-        return ge::GRAPH_FAILED;
-    }
-    const std::vector<std::string> layoutSupportList = {
-        "BSND", "BNSD", "BSH", "BNSD_BSND",
-    };
-    std::string layout = opParamInfo_.layOut;
-    if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-        OP_LOGE(opName_,
-                "when enable postquant, input_layout only supports BSH, BSND, BNSD, "
-                "and BNSD_BSND, but got %s",
-                layout.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    if (fiaInfo_.isLegacyIfa) {
-        return ge::GRAPH_SUCCESS;
-    }
-    OP_CHECK_IF(
-        (fiaInfo_.sparseMode == SPARSE_MODE_BAND && (fiaInfo_.preToken < 0 || fiaInfo_.nextToken < 0)),
-        OP_LOGE(opName_,
-                "When output type is int8, sparse mode = 4, preTokens (%ld) or nextTokens (%ld) cannot be negative.",
-                fiaInfo_.preToken, fiaInfo_.nextToken),
-        return ge::GRAPH_FAILED);
-    bool checkPostQuantOffset =
-        (fiaInfo_.outputType == ge::DT_INT8) &&
-        (opParamInfo_.quantOffset2.tensor != nullptr && opParamInfo_.quantOffset2.desc != nullptr) &&
-        (opParamInfo_.quantOffset2.tensor->GetStorageShape().GetShapeSize() != 0);
+    if (fiaInfo_.s1Size > 1) {
+        bool checkPostQuantOffset =
+            (fiaInfo_.outputType == ge::DT_INT8) &&
+            (opParamInfo_.quantOffset2.tensor != nullptr && opParamInfo_.quantOffset2.desc != nullptr) &&
+            (opParamInfo_.quantOffset2.tensor->GetStorageShape().GetShapeSize() != 0);
+        if (!fiaInfo_.isMaxWorkspace) {
+            std::vector<int64_t> actualSeqLengthsKV{};
+            std::vector<int64_t> actualSeqLengths{};
+            actualSeqLengthsKV.resize(fiaInfo_.bSize);
+            actualSeqLengths.resize(fiaInfo_.bSize);
 
-    if (!fiaInfo_.isMaxWorkspace) {
-        std::vector<int64_t> actualSeqLengthsKV{};
-        std::vector<int64_t> actualSeqLengths{};
-        actualSeqLengthsKV.resize(fiaInfo_.bSize);
-        actualSeqLengths.resize(fiaInfo_.bSize);
-
-        const gert::Tensor *tempData = fiaInfo_.opParamInfo.actualSeqLengthsQ.tensor;
-        const gert::Tensor *tempDataKV = fiaInfo_.opParamInfo.actualSeqLengths.tensor;
-        const int64_t preTokens = fiaInfo_.opParamInfo.preToken == nullptr ? 0 : *opParamInfo_.preToken;
-        const int64_t nextTokens = fiaInfo_.opParamInfo.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
-        int64_t actualLenDims = (tempData != nullptr) ? tempData->GetShapeSize() : 0;
-        int64_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
-        for (uint32_t i = 0; i < fiaInfo_.bSize; i++) {
-            if ((actualLenDims == 0) || (tempData == nullptr) || (tempData->GetData<int64_t>() == nullptr)) {
-                actualSeqLengths[i] = fiaInfo_.s1Size;
-            } else {
-                if (!fiaInfo_.isAccumQSeq) {
+            const gert::Tensor *tempData = fiaInfo_.opParamInfo.actualSeqLengthsQ.tensor;
+            const gert::Tensor *tempDataKV = fiaInfo_.opParamInfo.actualSeqLengths.tensor;
+            const int64_t* preTokens = fiaInfo_.opParamInfo.preToken;
+            const int64_t* nextTokens = fiaInfo_.opParamInfo.nextToken;
+            uint32_t actualLenDims = (tempData != nullptr) ? tempData->GetShapeSize() : 0;
+            uint32_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
+            for (uint32_t i = 0; i < fiaInfo_.bSize; i++) {
+                if ((actualLenDims == 0) || (tempData == nullptr) || (tempData->GetData<int64_t>() == nullptr)) {
+                    actualSeqLengths[i] = fiaInfo_.s1Size;
+                } else {
                     actualSeqLengths[i] = (actualLenDims > 1) ? static_cast<uint32_t>(tempData->GetData<int64_t>()[i]) :
                                                                 static_cast<uint32_t>(tempData->GetData<int64_t>()[0]);
-                } else {
-                    if (i == 0) {
-                        actualSeqLengths[i] = static_cast<uint32_t>(tempData->GetData<int64_t>()[0]);
+                }
+                if ((actualLenDimsKV == 0) || (tempDataKV == nullptr) ||
+                    (tempDataKV->GetData<int64_t>() == nullptr)) { // The user did not input act_seq_kv
+                    if (fiaInfo_.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
+                        actualSeqLengthsKV[i] = fiaInfo_.s2Size;
                     } else {
-                        actualSeqLengths[i] = static_cast<uint32_t>(tempData->GetData<int64_t>()[i]) -
-                                              static_cast<uint32_t>(tempData->GetData<int64_t>()[i - 1]);
+                        actualSeqLengthsKV[i] = fiaInfo_.kvListSeqLens[i];
                     }
-                }
-            }
-            if ((actualLenDimsKV == 0) || (tempDataKV == nullptr) ||
-                (tempDataKV->GetData<int64_t>() == nullptr)) { // The user did not input act_seq_kv
-                if (fiaInfo_.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
-                    actualSeqLengthsKV[i] = fiaInfo_.s2Size;
                 } else {
-                    actualSeqLengthsKV[i] = fiaInfo_.kvListSeqLens[i];
-                }
-            } else {
-                if (!fiaInfo_.isAccumKVSeq) {
                     actualSeqLengthsKV[i] = (actualLenDimsKV > 1) ?
                                                 static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i]) :
                                                 static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[0]);
-                } else {
-                    if (i == 0) {
-                        actualSeqLengthsKV[i] = static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[0]);
-                    } else {
-                        actualSeqLengthsKV[i] = static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i]) -
-                                                static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i - 1]);
-                    }
                 }
+                int64_t preTokensPerbatch = 0;
+                int64_t nextTokensPerbatch = 0;
+                if (fiaInfo_.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
+                    preTokensPerbatch = static_cast<int64_t>(SPARSE_MODE_INT_MAX);
+                    nextTokensPerbatch =
+                        actualSeqLengthsKV[i] + static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i];
+                } else if (fiaInfo_.sparseMode == SPARSE_MODE_BAND) {
+                    preTokensPerbatch = fiaInfo_.preToken - actualSeqLengthsKV[i] -
+                                        static_cast<int64_t>(fiaInfo_.systemPrefixLen) + actualSeqLengths[i];
+                    nextTokensPerbatch = fiaInfo_.nextToken + actualSeqLengthsKV[i] +
+                                         static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i];
+                } else {
+                    preTokensPerbatch = fiaInfo_.preToken;
+                    nextTokensPerbatch = fiaInfo_.nextToken;
+                }
+                OP_CHECK_IF((checkPostQuantOffset &&
+                             ((preTokensPerbatch + actualSeqLengthsKV[i] +
+                                   static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i] <
+                               0) ||
+                              (nextTokensPerbatch < 0))),
+                            OPS_REPORT_VECTOR_INNER_ERR(
+                                opName_,
+                                "When sparse mode = %d, output dtype is int8, the output's dequant offset "
+                                "is not null or empty tensor, "
+                                "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
+                                "participate in the calculation, "
+                                "the accuracy of the final result will be incorrect. Please see the "
+                                "documentation for more details.",
+                                fiaInfo_.sparseMode, *preTokens, *nextTokens),
+                            return ge::GRAPH_FAILED);
             }
-            int64_t preTokensPerbatch = 0;
-            int64_t nextTokensPerbatch = 0;
-            if (fiaInfo_.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
-                preTokensPerbatch = static_cast<int64_t>(SPARSE_MODE_INT_MAX);
-                nextTokensPerbatch =
-                    actualSeqLengthsKV[i] + static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i];
-            } else if (fiaInfo_.sparseMode == SPARSE_MODE_BAND) {
-                preTokensPerbatch = fiaInfo_.preToken - actualSeqLengthsKV[i] -
-                                    static_cast<int64_t>(fiaInfo_.systemPrefixLen) + actualSeqLengths[i];
-                nextTokensPerbatch = fiaInfo_.nextToken + actualSeqLengthsKV[i] +
-                                     static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i];
-            } else {
-                preTokensPerbatch = fiaInfo_.preToken;
-                nextTokensPerbatch = fiaInfo_.nextToken;
-            }
-            OP_CHECK_IF(
-                (checkPostQuantOffset && ((preTokensPerbatch + actualSeqLengthsKV[i] +
-                                               static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i] <
-                                           0) ||
-                                          (nextTokensPerbatch < 0))),
-                OP_LOGE(opName_,
-                        "When sparse mode = %d, output dtype is int8, the output's dequant offset "
-                        "is not null or empty tensor, "
-                        "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
-                        "participate in the calculation, "
-                        "the accuracy of the final result will be incorrect. Please see the "
-                        "documentation for more details.",
-                        fiaInfo_.sparseMode, preTokens, nextTokens),
-                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
 }
-
 ge::graphStatus FiaTilingCheck::CheckFeatureLeftPadding() const
 {
     if (fiaInfo_.qPaddingSizeFlag || fiaInfo_.kvPaddingSizeFlag) {
@@ -696,8 +625,8 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
         QuantModeToSerialString(quantMode_).c_str(), vHeadDim_),
     return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF((fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT || fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) && ropeHeadDim_ != MAX_ROPE_DIM,
-    OP_LOGE(opName_, "In %s situation, headDim of Rope should be equal to 64, but got %u",
+    OP_CHECK_IF(ropeHeadDim_ > MAX_ROPE_DIM,
+    OP_LOGE(opName_, "In %s situation, headDim of Rope should be smaller or equal to 64, but got %u",
         QuantModeToSerialString(quantMode_).c_str(), ropeHeadDim_),
     return ge::GRAPH_FAILED);
 
@@ -768,8 +697,8 @@ ge::graphStatus FiaTilingCheck::CheckFeatureGqaNoquant()
         ge::GRAPH_SUCCESS != CheckFeatureAxisInfo() ||
         ge::GRAPH_SUCCESS != CheckFeatureLearnableSink() ||
         ge::GRAPH_SUCCESS != CheckFeatureGqaPrefix() ||
-        ge::GRAPH_SUCCESS != CheckFeaturePostQuant() ||
         ge::GRAPH_SUCCESS != CheckFeatureLeftPadding() ||
+        ge::GRAPH_SUCCESS != CheckFeaturePostQuant() ||
         ge::GRAPH_SUCCESS != CheckFeaturePSE() ||
         ge::GRAPH_SUCCESS != CheckFeatureHeadDim()) {
         return ge::GRAPH_FAILED;
