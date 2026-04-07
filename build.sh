@@ -64,6 +64,10 @@ ENABLE_GENOP_AICPU=FALSE
 GENOP_TYPE=""
 GENOP_NAME=""
 PR_CHANGED_FILES=""  # PR场景, 修改文件清单, 可用于标识是否PR场景
+UT_SOC_ARRAY=()
+UT_TEST_CNT=0
+PR_UT_FLAG=FALSE
+CI_MODE=FALSE
 
 if [ "${USER_ID}" != "0" ]; then
     DEFAULT_TOOLKIT_INSTALL_DIR="${HOME}/Ascend/ascend-toolkit/latest"
@@ -347,7 +351,7 @@ function set_env()
     export BISHENG_REAL_PATH=$(which bisheng || true)
 
     if [ -z "${BISHENG_REAL_PATH}" ];then
-        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then
+        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then 
             log "Warning: bisheng compilation tool not found, but --jit --noaicpu is enabled, so continue."
             return
         fi
@@ -396,6 +400,68 @@ function cmake_config()
     cmake ..  ${CUSTOM_OPTION} ${extra_option}
 }
 
+function ci_print_compile_failed_ops_info()
+{
+    local failed_files=$(find . -type f -name "failed_ops.log")
+    local success_files=$(find . -type f -name "success_ops.log")
+
+    declare -A failed_ops_map
+    declare -A success_ops_map
+
+    if [[ -n "$failed_files" ]]; then
+        while IFS= read -r file; do
+            [[ -s "$file" ]] || continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                local op_name=$(echo "$line" | awk '{print $1}')
+                local bin_name=$(echo "$line" | cut -d' ' -f2-)
+                if [[ -n "$op_name" && -n "$bin_name" ]]; then
+                    if [[ -z "${failed_ops_map[$op_name]}" ]]; then
+                        failed_ops_map["$op_name"]="$bin_name"
+                    else
+                        failed_ops_map["$op_name"]="${failed_ops_map[$op_name]}\\n$bin_name"
+                    fi
+                fi
+            done < "$file"
+        done <<< "$failed_files"
+    fi
+
+    if [[ -n "$success_files" ]]; then
+        while IFS= read -r file; do
+            [[ -s "$file" ]] || continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                local op_name=$(echo "$line" | awk '{print $1}')
+                local bin_name=$(echo "$line" | cut -d' ' -f2-)
+                if [[ -n "$op_name" && -n "$bin_name" ]]; then
+                    if [[ -z "${success_ops_map[$op_name]}" ]]; then
+                        success_ops_map["$op_name"]="$bin_name"
+                    else
+                        success_ops_map["$op_name"]="${success_ops_map[$op_name]}\\n$bin_name"
+                    fi
+                fi
+            done < "$file"
+        done <<< "$success_files"
+    fi
+
+    if [[ ${#success_ops_map[@]} -gt 0 ]]; then
+        echo "All CI compile success ops:"
+        for op_name in "${!success_ops_map[@]}"; do
+            local bin_list="${success_ops_map[$op_name]}"
+            echo "ops name: $op_name, success bin: $bin_list"
+        done
+    fi
+    if [[ ${#failed_ops_map[@]} -gt 0 ]]; then
+        echo "All CI compile failed ops:"
+        for op_name in "${!failed_ops_map[@]}"; do
+            local bin_list="${failed_ops_map[$op_name]}"
+            echo "ops name: $op_name, failed bin: $bin_list"
+        done
+        echo "[ERROR] build failed!"
+        exit 1
+    fi
+}
+
 function build()
 {
     local target="$1"
@@ -403,9 +469,15 @@ function build()
         local option="--verbose"
     fi
     export LD_LIBRARY_PATH=${BUILD_DIR}:$LD_LIBRARY_PATH
-    
-    cmake --build . --target ${target} ${JOB_NUM} ${option}
-    if [ $? -ne 0 ]; then echo "[ERROR] build failed!" && exit 1; fi
+    if [[ "$CI_MODE" == "TRUE" ]]; then
+        export CI_MODE=TRUE
+        set +e
+        cmake --build . --target ${target} ${JOB_NUM} ${option}
+        set -e
+    else
+        cmake --build . --target ${target} ${JOB_NUM} ${option}
+    fi
+    ci_print_compile_failed_ops_info
 }
 
 ARCH_INFO=$(uname -m)
@@ -1075,12 +1147,21 @@ while [[ $# -gt 0 ]]; do
         ENABLE_SMOKE=TRUE
         PKG_MODE="cust"
         vendor_name="custom"
+        CI_MODE=TRUE
         shift 2
         ;;
     --PR_UT)
         PR_CHANGED_FILES="$2"
         ENABLE_TEST=TRUE
-        process_soc_input "ascend310p,ascend910b,ascend950"
+        PR_UT_FLAG=TRUE
+        TEST_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_mc2)
+        TEST_EXCLUDE_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_exclude_mc2)
+        ut_soc_version=$(python3 "$CURRENT_DIR"/cmake/scripts/get_soc_version.py -c "$CURRENT_DIR"/tests/test_soc_config.yaml -f "$PR_CHANGED_FILES" get_related_soc)
+        ut_soc_version="ascend${ut_soc_version#*ascend}"
+        IFS=',' read -ra UT_SOC_ARRAY <<< "$ut_soc_version"
+        echo "UT_SOC_ARRAY = ${UT_SOC_ARRAY[@]}"
+
+        CI_MODE=TRUE
         shift 2
         ;;
     --PR_PKG)
@@ -1102,6 +1183,7 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILD_PKG=TRUE
         ENABLE_BUILT_CUSTOM=TRUE
         ENABLE_BUILT_IN=FALSE
+        CI_MODE=TRUE
         shift 2
         ;;
     --parent_job)
@@ -1149,6 +1231,15 @@ while [[ $# -gt 0 ]]; do
     --clang)
         CLANG="true"
         shift
+        ;;
+    --tiling-key|--tiling_key)	 
+        TILING_KEY="$2" 
+        shift 2 
+        ;; 
+    --tiling_key=*) 
+        OPTARG=$1	 
+        TILING_KEY=${OPTARG#*=}	 
+        shift	 
         ;;
     --kernel_template_input=*)
         OPTARG=$1
@@ -1314,7 +1405,6 @@ fi
 if [ -n "${op_build_tool}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_BUILD_TOOL=${op_build_tool}"
 fi
-
 if [ -n "${ascend_cmake_dir}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_CMAKE_DIR=${ascend_cmake_dir}"
 fi
@@ -1325,6 +1415,9 @@ if [[ "$ENABLE_TEST" == "TRUE" ]]; then
         TEST="$ascend_op_name"
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TEST=TRUE"
+fi
+if [[ $UT_TEST_CNT -eq 0 ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=TRUE"
 fi
 if [[ "$OP_HOST_UT" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_HOST_UT=TRUE"
@@ -1413,6 +1506,10 @@ if [ -n "${EXAMPLE}" ];then
     BUILD=ops_test_example
 fi
 
+if [ -n "${TILING_KEY}" ];then	 
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTILING_KEY=${TILING_KEY}"	 
+fi
+
 if [ -n "${KERNEL_TEMPLATE_INPUT}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DKERNEL_TEMPLATE_INPUT=${KERNEL_TEMPLATE_INPUT}"
 fi
@@ -1455,7 +1552,7 @@ if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
 fi
 
 if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
- 	CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
 fi
 
 if [ -n "${ascend_package_path}" ];then
@@ -1497,19 +1594,37 @@ fi
 
 # 非打包命令调用，打包模式会打进同一个包里
 function set_compute_unit_option() {
-    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组
-    local COMPUTE_UNIT_SHORT=""
-    for soc in "${SOC_ARRAY[@]}"; do
-      for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
-        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')
-        if [[ "$lowercase_word" == *"$support_unit"* ]]; then
-          COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;"
-          break
+    local IS_SUPPORT_SOC_INPUT=false
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
+        lowercase_word=$(echo "$ASCEND_SOC_UNITS" | tr '[:upper:]' '[:lower:]')
+        if [[ "$lowercase_word" == "$support_unit" ]]; then
+            IS_SUPPORT_SOC_INPUT=true
+            break
         fi
-      done
     done
-    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"
+    if [[ "${IS_SUPPORT_SOC_INPUT}" == "true" ]]; then
+        CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$ASCEND_SOC_UNITS"
+    else
+        echo "[ERROR] The input soc $ASCEND_SOC_UNITS is not supported."
+        exit 1
+    fi
 }
+
+# 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
+function set_compute_unit_option_ut() {	 
+    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组	 
+    local COMPUTE_UNIT_SHORT=""	 
+    for soc in "${SOC_ARRAY[@]}"; do	 
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do	 
+        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')	 
+        if [[ "$lowercase_word" == *"$support_unit"* ]]; then	 
+        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;" 
+        break 
+        fi	 
+    done 
+    done	 
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"	 
+ }
 
 CUSTOM_OPTION="${CUSTOM_OPTION} -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH} -DCHECK_COMPATIBLE=${CHECK_COMPATIBLE}"
 
@@ -1585,7 +1700,6 @@ build_ut() {
         fi
     fi
   fi
-  exit 0
 }
 
 function build_pkg_for_single_soc() {
@@ -1673,9 +1787,65 @@ if [[ "$ENABLE_RUN_EXAMPLE" == "TRUE" ]];then
     exit $example_result
 fi
 
-if [[ "$ENABLE_TEST" == "TRUE" ]]; then
-    set_compute_unit_option
+
+function build_pr_ut_mc2()
+{
+    echo "Operators mc2 that need to run UT: $TEST_MC2"
+    if [ -z "${TEST_MC2}" ];then
+            log "Info: This PR didn't trigger any mc2 UTest."
+            return
+    fi
+    if [ "$TEST_MC2" != "all" ];then
+            TEST_MC2="${TEST_MC2%;}"
+            TEST_MC2="${TEST_MC2//;/,}"
+            CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${TEST_MC2}"
+    fi
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_MC2}"
+    for element in "${UT_SOC_ARRAY[@]}"; do
+            if [ $UT_TEST_CNT -eq 0 ]; then
+                CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=TRUE"
+                CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_API_UT=TRUE"
+            else
+                CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=FALSE"
+                CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_API_UT=FALSE"
+            fi
+            echo "start to test $element"
+            process_soc_input "$element"
+            set_compute_unit_option_ut
+            build_ut ${BUILD}
+            UT_TEST_CNT=$((UT_TEST_CNT +1))
+    done
+}
+
+function build_pr_ut_exclude_mc2()
+{
+    echo "Operators exclude mc2 that need to run UT: $TEST_EXCLUDE_MC2"
+    if [ -z "${TEST_EXCLUDE_MC2}" ];then
+            log "Info: This PR didn't trigger any exclude mc2 UTest."
+            return
+    fi
+    if [ "$TEST_EXCLUDE_MC2" != "all" ];then
+            TEST_EXCLUDE_MC2="${TEST_EXCLUDE_MC2%;}"
+            TEST_EXCLUDE_MC2="${TEST_EXCLUDE_MC2//;/,}"
+            CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${TEST_EXCLUDE_MC2}"
+    fi
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_EXCLUDE_MC2}"
+    process_soc_input "ascend310p,ascend910b,ascend950"
+    set_compute_unit_option_ut
     build_ut ${BUILD}
+}
+
+if [[ "$ENABLE_TEST" == "TRUE" ]]; then
+    if [[ "$PR_UT_FLAG" == "TRUE" ]]; then
+        build_pr_ut_exclude_mc2
+        build_pr_ut_mc2
+    else
+        set_compute_unit_option_ut
+        build_ut ${BUILD}
+    fi
+    exit 0
 elif [[ "$ENABLE_CREATE_LIB" == "TRUE" ]]; then
     build_lib
 elif [[ "$ENABLE_STATIC" == "TRUE" ]]; then
