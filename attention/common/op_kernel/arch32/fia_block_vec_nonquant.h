@@ -1039,7 +1039,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
         }
     }
 
-    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
         return;
     }
 
