@@ -80,9 +80,9 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
 ge::graphStatus MatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    if (isStandardCard4P) {
+    if (isUseA2APath) {
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType) != ge::GRAPH_SUCCESS,
             OP_LOGE(opName_, "MatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
@@ -138,8 +138,8 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
     if (!matmulAllReduce910TilingData_.param.isAdd) {
         matmulWithAdd = false;
     }
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
-    bool isA2ARSAG = isStandardCard4P;
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    bool isA2ARSAG = isUseA2APath;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_FP_MM,                               \
         false,                                      \
@@ -197,7 +197,7 @@ ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSize()
         workspaceSize_);
     myWorkSpaceSize_ = std::max(myWorkSpaceSize_, workspaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    if(mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+    if(mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
         GetWorkspaceSizeInStandardCard4P();
     }
     workspaces[0] = myWorkSpaceSize_;
