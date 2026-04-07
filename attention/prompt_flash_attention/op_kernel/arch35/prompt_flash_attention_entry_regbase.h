@@ -38,8 +38,7 @@ using namespace regbaseutil;
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #define REGBASE_COPY_TILING_DATA_ASCEND950_KVSAME_BASEAPI(tiling)                                                    \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                           \
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn
+    const __gm__  FlashAttentionScoreSimplifiedTilingData* __restrict tilingData = (__gm__ FlashAttentionScoreSimplifiedTilingData*)tiling;
 
 #define INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(templateClass, ...)                                               \
     do {                                                                                                                \
