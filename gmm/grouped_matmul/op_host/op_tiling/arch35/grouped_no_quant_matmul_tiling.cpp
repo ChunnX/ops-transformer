@@ -598,7 +598,7 @@ void GroupedNoQuantMatmulTiling::PrintTilingResult(const gert::TilingContext *co
             tilingData_.mmTilingData.depthA1, tilingData_.mmTilingData.depthB1);
 }
 
-uint64_t TilingKeyBuilder::GenTilingKey()
+uint64_t TilingKeyBuilder::GenTilingKey() const
 {
     uint64_t transInfo = static_cast<uint64_t>(this->gmmTrans);
     bool atrans_ = (transInfo == static_cast<uint64_t>(GmmTrans::ATrans)) ||
