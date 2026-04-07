@@ -41,16 +41,16 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize(
     const aclTensor   *queryIndex,
     const aclTensor   *keyIndex,
     const aclTensor   *weight,
-    const aclIntArray *actualSeqLengthsQueryOptional,
-    const aclIntArray *actualSeqLengthsKeyOptional,
+    const aclTensor   *actualSeqLengthsQueryOptional,
+    const aclTensor   *actualSeqLengthsKeyOptional,
     char              *layoutOptional,
-    int64_t           sparseMode,
-    int64_t           preTokens,
-    int64_t           nextTokens,
-    const aclTensor  *softmaxMaxOut,
-    const aclTensor  *softmaxSumOut,
-    uint64_t         *workspaceSize,
-    aclOpExecutor   **executor);
+    int64_t            sparseMode,
+    int64_t            preTokens,
+    int64_t            nextTokens,
+    const aclTensor   *softmaxMaxOut,
+    const aclTensor   *softmaxSumOut,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor);
 ```
 
 ```c++
