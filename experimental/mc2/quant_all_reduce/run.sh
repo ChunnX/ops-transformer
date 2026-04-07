@@ -13,14 +13,11 @@ CURRENT_DIR=$(
     pwd
 )
 # 默认参数
-BUILD_TYPE="Debug"
 INSTALL_PREFIX="${CURRENT_DIR}/out"
-SOC_VERSION="Ascend310P3"
 CMAKE_REBUILD="ON"
-RUN_TEST="ON"
 
-SHORT=c:,v:,i:,b:,p:,r:
-LONG=cmake-rebuild:,soc-version:,install-path:,build-type:,install-prefix:,run-test:
+SHORT=c:,i:,p:,r:
+LONG=cmake-rebuild:,install-path:,install-prefix:,run-test:
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 
@@ -30,16 +27,8 @@ while :; do
         CMAKE_REBUILD="$2"
         shift 2
         ;;
-    -v | --soc-version)
-        SOC_VERSION="$2"
-        shift 2
-        ;;
     -i | --install-path)
         ASCEND_INSTALL_PATH="$2"
-        shift 2
-        ;;
-    -b | --build-type)
-        BUILD_TYPE="$2"
         shift 2
         ;;
     -p | --install-prefix)
@@ -85,8 +74,8 @@ if [[ "$CMAKE_REBUILD" == "ON" ]]; then
     rm -rf build
     mkdir -p build
     cmake -B build \
-        -DSOC_VERSION=${SOC_VERSION} \
-        -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+        -DSOC_VERSION=ascend950pr_9599 \
+        -DCMAKE_BUILD_TYPE=Debug \
         -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX} \
         -DASCEND_CANN_PACKAGE_PATH=${_ASCEND_INSTALL_PATH}
     cmake --build build -j
@@ -94,9 +83,7 @@ if [[ "$CMAKE_REBUILD" == "ON" ]]; then
 fi
 
 # 运行
-if [[ "$RUN_TEST" == "ON" ]]; then
-    export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
-    echo "========== 开始执行程序 =========="
-    ./out/bin/test_quant_all_reduce
-    echo "========== 程序执行完成 =========="
-fi
+export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
+echo "========== 开始执行程序 =========="
+./out/bin/test_quant_all_reduce
+echo "========== 程序执行完成 =========="

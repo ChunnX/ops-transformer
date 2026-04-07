@@ -46,7 +46,7 @@ using namespace AscendC;
     } while (0)
 
 constexpr int64_t BLOCK_NUM = 64;
-constexpr int64_t DEV_NUM = 2;
+constexpr int64_t DEV_NUM = 4;
 constexpr const char* PATH_PREFIX = "./golden/quantallreduce_";
 int streamWithTimeout = 10000;
 // 获取Shape对应的lengthSize
@@ -256,7 +256,6 @@ int freeDeviceMemory(Args& args, void *xDeviceAddr, void *scalesDeviceAddr, void
     if (outputDeviceAddr != nullptr) aclrtFree(outputDeviceAddr);
     if (mc2ContextAddr != nullptr) aclrtFree(mc2ContextAddr);
     if (tilingAddr != nullptr) aclrtFree(tilingAddr);   
-    if (gworkSpaceSize > 0) aclrtFree(workspaceAddr);
     int ret = HcclCommDestroy(args.hcclComm);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
     ret = aclrtDestroyStream(args.stream);
