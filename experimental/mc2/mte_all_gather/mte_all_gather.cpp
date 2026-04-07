@@ -17,7 +17,7 @@
 #include <cstring>
 #include "kernel_operator.h"
 #include "./kernel/mte_all_gather_tiling_data.h"
-#include "./kernel/mte_all_gather_mte_one_shot.h"
+#include "./kernel/mte_all_gather.h"
 
 using namespace AscendC;
 using namespace MteAllGatherImpl;
@@ -35,7 +35,7 @@ __attribute__((always_inline)) __aicore__ __inline__ void mte_all_gather_with_mc
     op.Process();
 }
 
-extern "C" __global__ __aicore__ void MteAllGather_MTE_ONE_SHOT_Generic(
+extern "C" __global__ __aicore__ void MteAllGather_Generic(
     GM_ADDR x, GM_ADDR output,
     GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
@@ -45,7 +45,7 @@ extern "C" __global__ __aicore__ void MteAllGather_MTE_ONE_SHOT_Generic(
 
 void mte_all_gather_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM) {
-    MteAllGather_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(
+    MteAllGather_Generic<<<blockDim, nullptr, stream>>>(
         x, output, workspaceGM, mc2Context, tilingGM
     );
 }
