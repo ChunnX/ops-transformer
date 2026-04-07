@@ -25,6 +25,7 @@
 #include "kv_quant_sparse_flash_attention_service_vector_mla.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
 #include "kv_quant_sparse_flash_attention_kvcache.h"
+#include "../kv_quant_sparse_attn_sharedkv_metadata.h"
 
 #if __has_include("../../common/op_kernel/matmul.h")
 #include "../../common/op_kernel/matmul.h"
@@ -43,6 +44,8 @@
 #endif
 
 using matmul::MatmulType;
+using namespace optiling;
+using namespace optiling::detail;
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -56,7 +59,7 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
                                 __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+                                __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
                                 const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
 				                TPipe *tPipe);
@@ -98,12 +101,13 @@ private:
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     CVSharedParams sharedParams;
     /* GM信息 */
+    GlobalTensor<uint32_t> metadataGm;
     __gm__ int32_t *actualSeqKvlenAddr = nullptr;
     __gm__ int32_t *actualSeqQlenAddr = nullptr;
 
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     uint32_t usedCoreNum = 0U;
-
+    bool metadataFlag = false;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -120,7 +124,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
     __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut, __gm__ uint8_t *metadata, __gm__ uint8_t *workspace,
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
     TPipe *tPipe)
 {
@@ -164,7 +168,14 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, sparseIndices, blockTable, actualSeqLengthsQ, actualSeqLengths,
         workspace, tiling, tPipe); // gm设置
-    this->InitCalcParamsEach();
+    // kernel分核实现函数
+    if (metadata != nullptr) {
+        this->metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
+        metadataFlag = true;
+    } else {
+        this->InitCalcParamsEach();
+        metadataFlag = false;
+    }
     this->InitLocalBuffer();
 }
 
@@ -437,15 +448,37 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         constInfo.bN2End = constInfo.bN2End + 1;
         constInfo.gS1End = 0;
     }
-
+    uint32_t hasLoad;
+    uint32_t bN2StartIdx;
+    uint32_t gS1StartIdx;
+    uint32_t s2StartIdx;
+    uint32_t bN2EndIdx;
+    uint32_t nextGs1Idx;
+    uint32_t s2EndIdx;
+    uint32_t s2LoopLimit;
     // 分核信息
-    uint32_t bN2StartIdx = constInfo.bN2Start;
-    uint32_t bN2EndIdx = constInfo.bN2End;
-    uint32_t gS1StartIdx = constInfo.gS1Start;
-    uint32_t nextGs1Idx = constInfo.gS1End;
-    uint32_t s2StartIdx = 0;
-    uint32_t s2EndIdx = 0;
-    uint32_t s2LoopLimit = 0;
+    if (metadta) {
+        hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
+        if (hasLoad == 0) {
+            return;
+        }
+        // 从meta data解析分核信息
+        bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
+        gS1StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_START_INDEX, false));
+        s2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_START_INDEX, false));
+        bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
+        nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
+        s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
+        s2LoopLimit = 0;
+    } else {
+        bN2StartIdx = constInfo.bN2Start;
+        bN2EndIdx = constInfo.bN2End;
+        gS1StartIdx = constInfo.gS1Start;
+        nextGs1Idx = constInfo.gS1End;
+        s2StartIdx = 0;
+        s2EndIdx = 0;
+        s2LoopLimit = 0;
+    }
 
     if (nextGs1Idx != 0) {
         bN2EndIdx++;

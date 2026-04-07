@@ -883,6 +883,20 @@ ge::graphStatus QSFATilingCheck::CheckAttenOut()
     return ge::GRAPH_SUCCESS;
 }
 
+// todo： .h加上函数注册
+ge::graphStatus QSFATilingCheck::CheckMetadata()
+{
+    if (isA5_ && opParamInfo_.metadata.tensor != nullptr) {
+        OP_CHECK_IF((opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT),
+                    OP_LOGE(opName_, "input metadata dim 0 must be %u.", METADATA_LIMIT),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.metadata.desc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(opName_, "metadata's dtype must be DT_INT32."),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFATilingCheck::CheckTopK()
 {
     if (ge::GRAPH_SUCCESS != CheckTopkShape()) {
@@ -1057,6 +1071,7 @@ ge::graphStatus QSFATilingCheck::CheckMultiParaConsistency()
     if (ge::GRAPH_SUCCESS != CheckKV() ||
         ge::GRAPH_SUCCESS != CheckTopK() ||
         ge::GRAPH_SUCCESS != CheckAttenOut() ||
+        ge::GRAPH_SUCCESS != CheckMetadata() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
@@ -1447,6 +1462,9 @@ void QSFAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_KV_INPUT_INDEX);
     opParamInfo_.keyDequantScale.tensor = context_->GetOptionalInputTensor(KEY_DEQUANT_SCALE_INPUT_INDEX);
     opParamInfo_.valueDequantScale.tensor = context_->GetOptionalInputTensor(VALUE_DEQUANT_SCALE_INPUT_INDEX);
+    // 
+    opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
+    opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
 }
 
 void QSFAInfoParser::GetInputParaInfo()
