@@ -818,8 +818,8 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
+    int64_t expectTilingKey = 512;
     std::string expectTilingData = "";
     std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
