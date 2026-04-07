@@ -21,7 +21,6 @@ public:
     ~AclnnGroupedMatmulNoQuantDAV3510Checker(){};
     aclnnStatus CheckGroupedMatmulGroupSizeNoQuantDAV3510();
 
-
 private:
     aclnnStatus CheckTensorListLength(const aclTensorList *tensorList) const;
 private:
