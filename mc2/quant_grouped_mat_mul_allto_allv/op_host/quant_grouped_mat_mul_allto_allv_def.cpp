@@ -34,7 +34,7 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E4M3
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E5M2
-                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})     // zsq
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
