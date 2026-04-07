@@ -715,14 +715,22 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
             s2Size = bIdx == 0 ? actualSeqLengthsKVGm.GetValue(bIdx) : actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1);
         } else {
-            s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            if (sharedParams.isActualSeqLengthsKVNull) {
+                s2Size = sharedParams.s2Size;
+            } else {
+                s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            }
         }
         
         int64_t s1Size;
         if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
             s1Size = bIdx == 0 ? cuSeqlensQGm.GetValue(bIdx) : cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1);
         } else {
-            s1Size = sharedParams.s1Size;
+            if (sharedParams.isActualSeqLengthsNull) {
+                s1Size = sharedParams.s1Size;
+            } else {
+                s1Size = cuSeqlensQGm.GetValue(bIdx);
+            }
         }
         if (s1Size > s2Size) {
             sharedParams.needInit = 1;

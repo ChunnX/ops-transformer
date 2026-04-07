@@ -344,6 +344,17 @@ void QSFAPMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockSize(sfaaInfo_->sparseBlockSize);
     tilingData_.baseParams.set_sparseBlockCount(sfaaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_dSizeVInput(sfaaInfo_->dSizeVInput);
+    if (qLayout_ == QSFALayout::BSND && opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
+        tilingData_.baseParams.set_isActualLenDimsNull(true);
+    } else {
+        tilingData_.baseParams.set_isActualLenDimsNull(false);
+    }
+
+    if (kvLayout_ == QSFALayout::BSND && opParamInfo_.actualSeqLengths.tensor == nullptr) {
+        tilingData_.baseParams.set_isActualLenDimsKVNull(true);
+    } else {
+        tilingData_.baseParams.set_isActualLenDimsKVNull(false);
+    }
 }
 
 // for flash decode
