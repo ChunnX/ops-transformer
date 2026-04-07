@@ -88,7 +88,8 @@ public:
     uint8_t needDropMaskOp;
     uint8_t dropMaskOuter;
     uint8_t pseEncodeType;
-    uint16_t remain;
+    uint8_t tndSoftmaxOut;
+    uint8_t remain;
     uint32_t attenMaskS2Size;
     uint32_t pseType;
     uint32_t rsv1;
@@ -284,6 +285,8 @@ public:
     void set_antiquantPerHeadFlag(uint16_t antiquantPerHeadFlagParam) {this->antiquantPerHeadFlag = antiquantPerHeadFlagParam;}
     uint32_t get_antiquantParaSeqSize() const {return antiquantParaSeqSize;}
     void set_antiquantParaSeqSize(uint32_t antiquantParaSeqSizeParam) {this->antiquantParaSeqSize = antiquantParaSeqSizeParam;}
+    uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}
+    void set_tndSoftmaxOut(uint8_t tndSoftmaxOutParam) {this->tndSoftmaxOut = tndSoftmaxOutParam;}
 };
 
 class MultiCoreParamsRegbase {
