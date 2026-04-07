@@ -14,6 +14,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 
@@ -21,11 +22,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale, const char* group,
-    const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn, int64_t antiquantGroupSize,
-    double epsilon, const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
 
 // 根据API定义，需要列出所能支持的所有dtype

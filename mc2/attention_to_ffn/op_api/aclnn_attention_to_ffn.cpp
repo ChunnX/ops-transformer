@@ -14,6 +14,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_attention_to_ffn.h"
  
 using namespace op;
  
@@ -27,13 +28,6 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAttentionToFFNGetWorkspaceSize(const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
-                                                            const aclTensor* layerId, const aclTensor* expertIds, const aclTensor* expertRankTable,
-                                                            const aclTensor* scales, const aclTensor* activeMask, const char* group, int64_t worldSize,
-                                                            const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape, 
-                                                            const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag, 
-                                                            int64_t ffnStartRankId,  uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerAttentionToFFN(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
  
 // check nullptr

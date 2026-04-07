@@ -27,6 +27,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnn_matmul_reduce_scatter_v2.h"
+#include "aclnnInner_matmul_reduce_scatter_v2.h"
 
 using namespace op;
 
@@ -57,13 +58,6 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x1Scale, const aclTensor* x2Scale,
-    const aclTensor* quantScale, const char* group, const char* reduce_op, bool transposeX1, bool transposeX2,
-    int64_t commTurn, int64_t rankSize, int64_t blockSize, int64_t groupSize, bool isAmaxOut, int64_t yDtype, const char* commMode,
-    const aclTensor* output, const aclTensor* amaxOut, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                   aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);

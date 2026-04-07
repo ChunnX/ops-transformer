@@ -28,6 +28,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
+#include "aclnnInner_matmul_reduce_scatter.h"
 
 using namespace op;
 
@@ -45,14 +46,6 @@ typedef struct {
   bool hasReg;
 } NnopbaseDfxId;
 
-extern aclnnStatus aclnnInnerMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                             const aclTensor *bias,
-                                                             const char *group, const char *reduce_op, bool transposeX1, bool transposeX2,
-                                                             int64_t commTurn, int64_t rankSize,
-                                                             const aclTensor *output, uint64_t *workspaceSize,
-                                                             aclOpExecutor **executor);
-extern aclnnStatus aclnnInnerMatmulReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                 aclrtStream stream);               
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 
