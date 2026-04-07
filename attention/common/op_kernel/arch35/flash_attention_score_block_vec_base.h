@@ -598,21 +598,11 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::MlaBoolCopyInRegbase(
         (constInfo.layoutType != static_cast<uint32_t>(LayOutTypeEnum::LAYOUT_BNSD))) {
         intriParams.blockCount = 1;
         if (isMlaNoQuant) {
-            if (constInfo.gSize % vec1HalfS1BaseSize == 0) {
-                DataCopyPad(dstTensor, srcTensor[srcOffset], intriParams, padParams);
-                SetFlag<HardEvent::MTE2_V>(mte2ToV);
-                WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-                for (int i = 1; i < s1Size; i++) { // ub拷ub 第一行不需要拷贝
-                    Copy(dstTensor[i * s2BaseSize], dstTensor, s2Size);
-                }
-                return;
-            } else {
-                for (int i = 0; i < s1Size; i++) {
-                    DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], intriParams, padParams);
-                    // 下一行出现跨 G 时
-                    if ((runInfo.sOuterOffset + i + 1) % constInfo.gSize == 0) {
-                        srcOffset += totalS2Size;
-                    }
+            for (int i = 0; i < s1Size; i++) {
+                DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], intriParams, padParams);
+                // 下一行出现跨 G 时
+                if ((runInfo.sOuterOffset + i + 1) % constInfo.gSize == 0) {
+                    srcOffset += totalS2Size;
                 }
             }
         } else {
@@ -1582,7 +1572,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe
     if constexpr (!bmm2Write2Ub) {
         tPipe->InitBuffer(mm2InBuf, 32768); // bmm2结果在Gm，vector2开启多层循环，每次处理32KB
     }
-    if constexpr (s2BaseSize == 256) { // s1BaseSize = 128
+    if constexpr (s2BaseSize == 256) {
         if constexpr (s1BaseSize == 128) { // s1BaseSize = 128 s2BaseSize = 256
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
             SoftmaxInitBuffer();

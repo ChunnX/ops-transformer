@@ -26,11 +26,6 @@
 #endif
 #include "unpad_flash_attention_common.h"
 
-#ifdef __CCE_KT_TEST__
-#define __aicore__
-#endif
-
-
 template <typename PFATypeNZ, PrecType prec_type>
 class PromptAttentionPrefill {
 public:
