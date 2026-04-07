@@ -46,32 +46,6 @@ private:
 };
 
 template <typename XType>
-__aicore__ inline void MteAllGather<XType>::Init(GM_ADDR x, GM_ADDR output,
-    TPipe *tPipe, const MteAllGatherTilingData *tilingData)
-{
-    mteComm_.InitHcclContext();
-
-    auto&& tiliingDatainfo = tilingData->mteAllGatherTilingInfo;
-    xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize;
-    xSize_ = xNums_ * sizeof(XType);
-    tailXNums_ = BlockAlignMod(xNums_, X_PRE_BLOCK_NUM);
-    totalBlockNums_ = CeilDiv(xSize_, X_BLOCK_BYTES);
-    mteComm_.round_ = totalBlockNums_ / tiliingDatainfo.aivNum;
-    mteComm_.tailBlockNums_ = totalBlockNums_ % tiliingDatainfo.aivNum;
-    mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum);
-    tPipe->Reset();
-    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, X_BLOCK_BYTES);
-
-    mteComm_.SetBlockSize(X_PRE_BLOCK_NUM, tiliingDatainfo.aivNum, tailXNums_);
-
-    mteComm_.InitParams();
-
-    mteComm_.InitBuffer(tPipe);
-
-    mteComm_.InitGMTensor(x, output, xNums_, xSize_);
-}
-
-template <typename XType>
 __aicore__ inline void MteAllGather<XType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
     GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *tPipe)
 {

@@ -35,7 +35,6 @@ template<typename XType>
 class MTECommunication {
 public:
     __aicore__ inline MTECommunication() {};
-    __aicore__ inline void InitHcclContext();
     __aicore__ inline void InitHcclContextByAddr(GM_ADDR mc2Context);
     __aicore__ inline void InitParams();
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t alignedXSize);
@@ -81,12 +80,6 @@ private:
     TBuf<> readStateBuf_;
     TBuf<> stateResetBuf_;
 };
-
-template <typename XType>
-__aicore__ inline void MTECommunication<XType>::InitHcclContext()
-{
-    hcclContext_ = (__gm__ HcclA5OpResParam*)GetHcclContext<HCCL_GROUP_ID_0>();
-}
 
 template <typename XType>
 __aicore__ inline void MTECommunication<XType>::InitHcclContextByAddr(GM_ADDR mc2Context)
