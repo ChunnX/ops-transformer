@@ -276,8 +276,20 @@ pfa@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_api.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_common.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention.cpp  
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host  
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel  
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/flash_attention_infer_tiling.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_info_parser.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_info_parser.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h 
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/attn_infra
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/flash_attention_interface.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/flash_attention_regular_decode.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/flash_attention_regular.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_apt.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tiling_key.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_tilingkey.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/kernel_common.hpp 
                 - ops/ops-transformer/attention/fused_infer_attention_score/examples/test_aclnn_fused_infer_attention_score.cpp  
             kernel_style: null  
         unrelease:
@@ -286,9 +298,6 @@ pfa@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch38
                 - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
                 - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/attn_infra/
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v2.cpp
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v2.h
                 - asl/ops/ops_adv/tests/ut/ops_test/src/transformer/prompt_flash_attention/
                 - asl/ops/ops_adv/tests/ut/ops_test/src/transformer/fused_infer_attention_score/
                 - asl/ops/cann/ops/built-in/tests/ut/op_tiling_test/test_fused_infer_attention_score_tiling.cpp
