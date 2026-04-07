@@ -46,7 +46,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::GetPlatformInfo()
                     return ge::GRAPH_FAILED);
         ubSize_ = static_cast<uint64_t>(ubSize);
     }
-
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -262,6 +262,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
 {
     // UB 预留系统空间
     int64_t availableUbSize = static_cast<int64_t>(ubSize_) - SYSTEM_RESERVED_UB_SIZE;
+    OP_LOGI(context_->GetNodeName(), "ubSize is %ld", ubSize_);
+    OP_LOGI(context_->GetNodeName(), "availableUbSize is %ld", availableUbSize);
     OP_CHECK_IF(availableUbSize <= 0, OP_LOGE(context_->GetNodeName(), "available UB size <= 0, ubSize=%lu", ubSize_),
                 return ge::GRAPH_FAILED);
 
@@ -276,13 +278,23 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         int64_t gradOutputSize = h * b * s_with_overlap * static_cast<int64_t>(dtypeSize_);
         int64_t inputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
         int64_t weightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
-        int64_t maskBytes = b * s_with_overlap;
-        int64_t maskSize = ((maskBytes + ALIGN_BYTES - 1) / ALIGN_BYTES) * ALIGN_BYTES;
+        int64_t maskSize = 0;
+        if (hasMask_) {
+            int64_t maskBytes = b * s_with_overlap;
+            maskSize = ((maskBytes + ALIGN_BYTES - 1) / ALIGN_BYTES) * ALIGN_BYTES;
+        }
         int64_t gradInputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
         int64_t gradWeightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
         int64_t tempBuffSize = h * W_ * B_ * sizeof(float);
         int64_t totalSize = BUFFER_NUM * (gradOutputSize + inputSize + weightSize + maskSize +
                                           gradInputSize + gradWeightSize) + tempBuffSize;
+        OP_LOGI(context_->GetNodeName(), "gradOutputSize is %ld", gradOutputSize);
+        OP_LOGI(context_->GetNodeName(), "inputSize is %ld", inputSize);
+        OP_LOGI(context_->GetNodeName(), "weightSize is %ld", weightSize);
+        OP_LOGI(context_->GetNodeName(), "maskSize is %ld", maskSize);
+        OP_LOGI(context_->GetNodeName(), "gradInputSize is %ld", gradInputSize);
+        OP_LOGI(context_->GetNodeName(), "gradWeightSize is %ld", gradWeightSize);
+        OP_LOGI(context_->GetNodeName(), "tempBuffSize is %ld", tempBuffSize);
         return totalSize;
     };
 
@@ -291,20 +303,22 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     hUB_ = minH;
     bUB_ = 1;
 
-    // 在 bUB_=1 下，按 UB 容量求最大的 sUB_
-    // Buffer总大小 = s * coeff_s + const_cost_s
-    // coeff_s = (3 input/output queues) * BUFFER_NUM * h * b * dtype + maskQueue * BUFFER_NUM * b
-    // const_cost_s = BUFFER_NUM * (gradOutput/mask的常数项 + weight相关) + tempBuff
-    int64_t coeff_s = 3 * hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                      bUB_ * BUFFER_NUM;
-    int64_t const_cost_s = 2 * hUB_ * bUB_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                           2 * hUB_ * W_ * static_cast<int64_t>(dtypeSize_) * BUFFER_NUM +
-                           2 * bUB_ * BUFFER_NUM +
-                           hUB_ * W_ * sizeof(float);
-
-    int64_t maxS = (availableUbSize - const_cost_s) / coeff_s;
-    int64_t min_s_effective = 1;
-    sUB_ = std::max(min_s_effective, std::min(S_, maxS));
+    // 在 bUB_=1 下，按 UB 容量求最大的 sUB_（考虑 mask 的32字节对齐）
+    // 用 calculateBufferSize 作为真实成本函数，执行二分搜索以找到最大 sUB_，避免线性近似误差
+    int64_t lowS = 1;
+    int64_t highS = std::max<int64_t>(1, S_);
+    while (lowS <= highS) {
+        int64_t midS = (lowS + highS) / 2;
+        int64_t need = calculateBufferSize(hUB_, bUB_, midS);
+        if (need <= availableUbSize) {
+            sUB_ = midS;        // 可行，尝试更大
+            lowS = midS + 1;
+        } else {
+            highS = midS - 1;  // 不可行，缩小范围
+        }
+    }
+    // 保护：不超过 S_
+    if (sUB_ > S_) sUB_ = S_;
 
     // 循环次数（B 不切分，bLoopCnt_=1，尾块同理）
     hLoopCnt_ = (perCoreH + hUB_ - 1) / hUB_;
@@ -355,7 +369,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     }
 
     allUb_ = calculateBufferSize(ubMainFactorH_, ubMainFactorB_, ubMainFactorS_);
-
+    OP_LOGI(context_->GetNodeName(), "allUb_ = %ld", allUb_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -459,14 +473,35 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::PostTiling()
 void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(), "=== MaskedCausalConv1dBackward DumpTilingInfo ===");
-    OP_LOGI(context_->GetNodeName(), "S=%ld B=%ld H=%ld W=%ld", S_, B_, H_, W_);
-    OP_LOGI(context_->GetNodeName(), "hasMask=%ld dtypeSize=%zu", hasMask_, dtypeSize_);
-    OP_LOGI(context_->GetNodeName(), "totalCoreNum=%lu usedCoreNum=%ld", totalCoreNum_, usedCoreNum_);
-    OP_LOGI(context_->GetNodeName(), "hMainCoreCnt=%ld hTailCoreCnt=%ld", hMainCoreCnt_, hTailCoreCnt_);
-    OP_LOGI(context_->GetNodeName(), "hMainSize=%ld hTailSize=%ld", hMainSize_, hTailSize_);
-    OP_LOGI(context_->GetNodeName(), "hUB=%ld bUB=%ld sUB=%ld", hUB_, bUB_, sUB_);
-    OP_LOGI(context_->GetNodeName(), "hLoopCnt=%ld bLoopCnt=%ld sLoopCnt=%ld", hLoopCnt_, bLoopCnt_, sLoopCnt_);
-    OP_LOGI(context_->GetNodeName(), "allUb=%ld", allUb_);
+
+    OP_LOGI(context_->GetNodeName(), "hMainCoreCnt = %ld", hMainCoreCnt_);
+    OP_LOGI(context_->GetNodeName(), "hTailCoreCnt = %ld", hTailCoreCnt_);
+    OP_LOGI(context_->GetNodeName(), "hMainSize = %ld", hMainSize_);
+    OP_LOGI(context_->GetNodeName(), "hTailSize = %ld", hTailSize_);
+    OP_LOGI(context_->GetNodeName(), "hLoopCnt = %ld", hLoopCnt_);
+    OP_LOGI(context_->GetNodeName(), "bLoopCnt = %ld", bLoopCnt_);
+    OP_LOGI(context_->GetNodeName(), "sLoopCnt = %ld", sLoopCnt_);
+    OP_LOGI(context_->GetNodeName(), "ubMainFactorH = %ld", ubMainFactorH_);
+    OP_LOGI(context_->GetNodeName(), "ubTailFactorH = %ld", ubTailFactorH_);
+    OP_LOGI(context_->GetNodeName(), "ubMainFactorB = %ld", ubMainFactorB_);
+    OP_LOGI(context_->GetNodeName(), "ubTailFactorB = %ld", ubTailFactorB_);
+    OP_LOGI(context_->GetNodeName(), "ubMainFactorS = %ld", ubMainFactorS_);
+    OP_LOGI(context_->GetNodeName(), "ubTailFactorS = %ld", ubTailFactorS_);
+    OP_LOGI(context_->GetNodeName(), "tailHLoopCnt = %ld", tailHLoopCnt_);
+    OP_LOGI(context_->GetNodeName(), "tailBLoopCnt = %ld", tailBLoopCnt_);
+    OP_LOGI(context_->GetNodeName(), "tailSLoopCnt = %ld", tailSLoopCnt_);
+    OP_LOGI(context_->GetNodeName(), "tailCoreUbMainFactorH = %ld", tailCoreUbMainFactorH_);
+    OP_LOGI(context_->GetNodeName(), "tailCoreUbTailFactorH = %ld", tailCoreUbTailFactorH_);
+    OP_LOGI(context_->GetNodeName(), "tailCoreUbMainFactorB = %ld", tailCoreUbMainFactorB_);
+    OP_LOGI(context_->GetNodeName(), "tailCoreUbTailFactorB = %ld", tailCoreUbTailFactorB_);
+    OP_LOGI(context_->GetNodeName(), "tailCoreUbMainFactorS = %ld", tailCoreUbMainFactorS_);
+    OP_LOGI(context_->GetNodeName(), "tailCoreUbTailFactorS = %ld", tailCoreUbTailFactorS_);
+    OP_LOGI(context_->GetNodeName(), "hasMask = %ld", hasMask_);
+    OP_LOGI(context_->GetNodeName(), "S = %ld", S_);
+    OP_LOGI(context_->GetNodeName(), "B = %ld", B_);
+    OP_LOGI(context_->GetNodeName(), "H = %ld", H_);
+    OP_LOGI(context_->GetNodeName(), "W = %ld", W_);
+
 }
 
 

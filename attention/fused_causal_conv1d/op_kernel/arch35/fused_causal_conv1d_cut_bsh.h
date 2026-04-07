@@ -18,63 +18,7 @@
 #include "kernel_operator.h"
 #include "./vf/compute.h"
 #include "fused_causal_conv1d_cut_bsh_struct.h"
-namespace {
-    using namespace AscendC;
-    #define _USE_DBG_PRINT 1
-    template<typename T>
-    __aicore__ inline void DisplayTensor(const LocalTensor<T>& tsr, const uint32_t count, const uint32_t type, const __gm__ char* note) {
-        printf("Current block: %d , display %d elements", GetBlockIdx(), count);
-        printf("%s:\n", (note ? note : "(null)"));  // 打印备注信息
-        const uint32_t elementsPerRow = 16;         // 每16个元素
 
-        for (uint32_t i = 0; i < count; ++i) {
-            // 根据类型打印元素（整数或浮点数）
-            if (type == 0) {
-                // 关键修改：%2u 表示占2个字符宽度，不足时左侧补空格
-                printf("[%u]: %d ", i, tsr.GetValue(i));  // 整数格式
-            } else {
-                // 关键修改：%2u 实现索引对齐
-                printf("[%u]: %f ", i, tsr.GetValue(i));  // 浮点数格式
-            }
-
-            // 每行满16个元素后换行（最后一行不足16个也会在结束时换行）
-            if ((i + 1) % elementsPerRow == 0) {
-                printf("");
-            }
-        }
-        // 如果总元素数不是16的倍数，最后一行末尾补充换行
-        if (count % elementsPerRow != 0) {
-            printf("\n");
-        }
-    }
-
-    template<typename T>
-    __aicore__ inline void DisplayTensor(const GlobalTensor<T>& tsr, const uint32_t count, const uint32_t type, const __gm__ char* note) {
-        printf("Current block: %d , display %d elements", GetBlockIdx(), count);
-        printf("%s:\n", (note ? note : "(null)"));  // 打印备注信息
-        const uint32_t elementsPerRow = 16;         // 每16个元素
-
-        for (uint32_t i = 0; i < count; ++i) {
-            // 根据类型打印元素（整数或浮点数）
-            if (type == 0) {
-                // 关键修改：%2u 表示占2个字符宽度，不足时左侧补空格
-                printf("[%u]: %d ", i, tsr.GetValue(i));  // 整数格式
-            } else {
-                // 关键修改：%2u 实现索引对齐
-                printf("[%u]: %f ", i, tsr.GetValue(i));  // 浮点数格式
-            }
-
-            // 每行满16个元素后换行（最后一行不足16个也会在结束时换行）
-            if ((i + 1) % elementsPerRow == 0) {
-                printf("");
-            }
-        }
-        // 如果总元素数不是16的倍数，最后一行末尾补充换行
-        if (count % elementsPerRow != 0) {
-            printf("\n");
-        }
-    }
-}
 namespace FusedCausalConv1dCutBSHNs {
 
 using namespace AscendC;
@@ -347,15 +291,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weigh
     pipe_.InitBuffer(indicesInQueue_,  1,           indicesBytes);
     pipe_.InitBuffer(hasInitInQueue_,  1,           hasInitBytes);
     pipe_.InitBuffer(xQueue_,          BUFFER_NUM,  xBufBytes);
-
-    if (blockIdx == 0) {
-        DisplayTensor(xGM_, tiling->cuSeqLen * dim_, 1, "xGM_");
-        DisplayTensor(weightGM_, 3 * dim_, 1, "weightGM_");
-        // DisplayTensor(cacheStatesGM_, batchSize_, 1, "cacheStatesGM_");
-        DisplayTensor(seqStartIndexGM_, batchSize_, 0, "queryStartLoc");
-        DisplayTensor(cacheIndicesGM_, batchSize_, 0, "cacheIndices");
-        DisplayTensor(hasInitialStateGM_, batchSize_, 0, "initialStateMode");
-    }
 }
 
 // ============================================================================
