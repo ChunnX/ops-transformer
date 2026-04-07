@@ -608,7 +608,8 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
 
 aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char* opName,
                                           uint64_t& hcclBuffSize, aclTensor*& mc2Context) {
-    aclnnStatus ret = LoadHcclSymbols();
+    auto instance = GetInstance();                                        
+    aclnnStatus ret = instance.LoadHcclSymbols();
     if (ret != ACLNN_SUCCESS) return ret;
 
     void* ctx = nullptr;
@@ -624,23 +625,23 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
         return ACLNN_ERR_INNER;
     }
 
-    ret = GetCommHandle(groupEp);
+    ret = instance.GetCommHandle(groupEp);
     if (ret != ACLNN_SUCCESS) return ret;
 
-    ret = GetCommEngine(engine, protocol);
+    ret = instance.GetCommEngine(engine, protocol);
     if (ret != ACLNN_SUCCESS) return ret;
 
     HcclResult hcclRet = HcclEngineCtxGet(hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
-        ret = CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
+        ret = instance.CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
         if (ret != ACLNN_SUCCESS) return ret;
         hcclBuffSize = contextStruct.winSize;
     } else {
-        ret = GetHcclBufferSize(hcclBuffSize);
+        ret = instance.GetHcclBufferSize(hcclBuffSize);
         if (ret != ACLNN_SUCCESS) return ret;
     }
 
-    ret = CreatMc2ContextTensor(ctx, mc2Context);
+    ret = instance.CreatMc2ContextTensor(ctx, mc2Context);
     if (ret != ACLNN_SUCCESS) return ret;
 
     return ACLNN_SUCCESS;
