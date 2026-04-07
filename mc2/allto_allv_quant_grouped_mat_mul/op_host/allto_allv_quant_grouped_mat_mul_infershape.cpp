@@ -52,6 +52,7 @@ static constexpr int64_t FIRST_ELE_SIZE = -1;
 static constexpr uint64_t MX_QUANT_MODE_NUM = 6;
 static constexpr uint64_t TT_QUANT_MODE_NUM = 1;
 static constexpr uint64_t SCALE_LAST_DIM = 2;
+static constexpr uint64_t MX_BASIC_FACTOR = 64;
 
 static graphStatus CheckDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
     const gert::Shape *gmmWeightShape, bool transGmmWeight)
@@ -181,9 +182,9 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     const int64_t* gmmWeightQuantModePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_GMM_WEIGHT_QUANT_MODE);
     const int64_t* mmXQuantModePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_X_QUANT_MODE);
     const int64_t* mmWeightQuantModePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_WEIGHT_QUANT_MODE);
+
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmXQuantModePtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmWeightQuantModePtr);
-
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, sendCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, transGmmWeightPtr);
@@ -193,7 +194,8 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmWeightScaleShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmYShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSizePtr);
-    OPS_CHECK(CheckOptionalInputMatchValid(context, mmXShape, mmWeightShape, mmXScaleShape, mmWeightScaleShape) != ge::GRAPH_SUCCESS,
+
+    OPS_CHECK(CheckOptionalInputMatchValid(context, mmXShape, mmWeightShape, mmXScaleShape, mmWeightScaleShape, mmXQuantModePtr, mmWeightQuantModePtr) != ge::GRAPH_SUCCESS,
               CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to optional input valid."),
               return ge::GRAPH_FAILED);
     OPS_ERR_IF(CheckDims(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr) != ge::GRAPH_SUCCESS,
@@ -209,23 +211,20 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     int64_t a = 0;
     int64_t h = gmmXShape->GetDim(DIM_1);
     int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
-    int64_t ScaleN1 = *transGmmWeightPtr ? gmmWeightScaleShape->GetDim(DIM_1) : gmmWeightScaleShape->GetDim(DIM_2);
-    OPS_CHECK(n1 != ScaleN1, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "gmmWeight axis-N1 should equal to gmmWeightScale axis-N1,
-                                                   but actual gmmWeight axis-N1 is:%lu, gmmWeightScale axis-N1 is:%lu.", n1, ScaleN1), return ge::GRAPH_FAILED);
     if (e != FIRST_ELE_SIZE) {
-        OPS_CHECK(CheckAxisKShapeForAlltoAllvQuantGroupedMatmul(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr, mmXShape,
-                  mmWeightShape, *transMmWeightPtr) != ge::GRAPH_SUCCESS,
+        // 对静态图进行校验
+        OPS_CHECK(CheckAxisKShape(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr, mmXShape, mmWeightShape, transMmWeightPtr) != ge::GRAPH_SUCCESS,
                   CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check k-axis."),
                   return ge::GRAPH_FAILED);
-        OPS_CHECK(CheckScaleShapeForAlltoAllvQuantGroupedMatmul(context, bsk, e, gmmXQuantModePtr, gmmWeightQuantModePtr, gmmXShape,
-                  gmmWeightShape) != ge::GRAPH_SUCCESS,
+        OPS_CHECK(CheckRequiredScaleShape(context, bsk, e, h, n1, gmmXQuantModePtr, gmmWeightQuantModePtr, gmmXShape, gmmWeightShape, transGmmWeightPtr) != ge::GRAPH_SUCCESS,
                   CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check gmmXScale and gmmWeightScale shape."),
                   return ge::GRAPH_FAILED);
         if ((mmXShape != nullptr) && (mmWeightShape != nullptr) && (mmXScaleShape != nullptr) && (mmWeightScaleShape != nullptr)
-        && (mmXQuantModePtr != nullptr) && (mmWeightQuantModePtr != nullptr)) {
+            && (mmXQuantModePtr != nullptr) && (mmWeightQuantModePtr != nullptr)) {
             int64_t bs = mmXShape->GetDim(DIM_0);
-            OPS_CHECK(CheckOptionalScaleShapeForAlltoAllvQuantGroupedMatmul(context, bs, mmXQuantModePtr, mmWeightQuantModePtr,
-                      mmXScaleShape, mmWeightScaleShape) != ge::GRAPH_SUCCESS,
+            int64_t h2 = mmXShape->GetDim(DIM_1);
+            int64_t n2 = *transMmWeightPtr ? mmWeightShape->GetDim(DIM_0) : mmWeightShape->GetDim(DIM_1);
+            OPS_CHECK(CheckOptionalScaleShape(context, bs, h2, n2, mmXQuantModePtr, mmWeightQuantModePtr, mmXScaleShape, mmWeightScaleShape, transMmWeightPtr) != ge::GRAPH_SUCCESS,
                       CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check mmXScale and mmWeightScale shape."),
                       return ge::GRAPH_FAILED);
         }
@@ -243,16 +242,19 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
 }
 
 static ge::graphStatus CheckOptionalInputMatchValid(const gert::InferShapeContext *context, const gert::Shape *mmXShape, const gert::Shape *mmWeightShape,
-                                               const gert::Shape *mmXScaleShape, const gert::Shape *mmWeightScaleShape)
+                                                    const gert::Shape *mmXScaleShape, const gert::Shape *mmWeightScaleShape, const bool mmXQuantMode,
+                                                    const bool mmWeightQuantMode)
 {
     if (mmXShape != nullptr) {
         OPS_CHECK_NULL_WITH_CONTEXT(context, mmXScaleShape);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, mmXQuantMode);
     }
     if (mmXScaleShape != nullptr) {
         OPS_CHECK_NULL_WITH_CONTEXT(context, mmXShape);
     }
     if (mmWeightShape != nullptr) {
         OPS_CHECK_NULL_WITH_CONTEXT(context, mmWeightScaleShape);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, mmWeightQuantMode);
     }
     if (mmWeightScaleShape != nullptr) {
         OPS_CHECK_NULL_WITH_CONTEXT(context, mmWeightShape);
@@ -260,9 +262,9 @@ static ge::graphStatus CheckOptionalInputMatchValid(const gert::InferShapeContex
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckAxisKShapeForAlltoAllvQuantGroupedMatmul(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
-    const gert::Shape *gmmWeightShape, const bool transGmmWeight, const gert::Shape *mmXShape, const gert::Shape *mmWeightShape,
-    const bool transMmWeightPtr)
+static ge::graphStatus CheckAxisKShape(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
+                                       const gert::Shape *gmmWeightShape, const bool transGmmWeight, const gert::Shape *mmXShape,
+                                       const gert::Shape *mmWeightShape, const bool transMmWeightPtr)
 {
     auto k1 = gmmXShape->GetDim(DIM_1);
     auto k2 = gmmWeightShape->GetDim(DIM_1);
@@ -289,11 +291,10 @@ static ge::graphStatus CheckAxisKShapeForAlltoAllvQuantGroupedMatmul(const gert:
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckScaleShapeForAlltoAllvQuantGroupedMatmul(const gert::InferShapeContext* context, const int64_t bsk, const int64_t e,
-                                                                     const bool gmmXQuantMode, const bool gmmWeightQuantMode,
-                                                                     const gert::Shape *gmmXScaleShape, const gert::Shape *gmmWeightScaleShape)
+static ge::graphStatus CheckRequiredScaleShape(const gert::InferShapeContext* context, const int64_t bsk, const int64_t e,
+                                               const int64_t h1, const int64_t n1, const bool gmmXQuantMode, const bool gmmWeightQuantMode,
+                                               const gert::Shape *gmmXScaleShape, const gert::Shape *gmmWeightScaleShape, const bool *transGmmWeightPtr)
 {
-    ////还有scale的H轴和N轴没有校验
     int64_t gmmXScaleDimNum = gmmXScaleShape->GetDimNum();
     int64_t gmmWeightScaleDimNum = gmmWeightScaleShape->GetDimNum();
     if (*gmmXQuantMode == MX_QUANT_MODE_NUM && *gmmWeightQuantMode == MX_QUANT_MODE_NUM) {
@@ -303,22 +304,27 @@ static ge::graphStatus CheckScaleShapeForAlltoAllvQuantGroupedMatmul(const gert:
         OPS_CHECK(gmmWeightScaleDimNum != DIM_NUM_4, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
                   "In MX quantization mode, gmmWeightScale dim num must be %ld, but actual value is: %ld",
                   DIM_NUM_4, gmmWeightScaleDimNum), return ge::GRAPH_FAILED);
-        OPS_CHECK(gmmXScaleDimNum->GetDim(gmmXScaleDimNum - 1) != SCALE_LAST_DIM,
-                  CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, gmmXScale last dim must be %ld, but actual value is: %ld",
-                  SCALE_LAST_DIM, gmmXScaleDimNum->GetDim(gmmXScaleDimNum - 1)), return ge::GRAPH_FAILED);
-        OPS_CHECK(gmmWeightScaleDimNum->GetDim(gmmWeightScaleDimNum - 1) != SCALE_LAST_DIM,
-                  CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, gmmWeightScale last dim must be %ld, but actual value is: %ld",
-                  SCALE_LAST_DIM, gmmWeightScaleDimNum->GetDim(gmmWeightScaleDimNum - 1)), return ge::GRAPH_FAILED); 
-        OPS_CHECK(gmmXScaleShape->GetDim(0) != bsk, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, gmmXScale dim0 must be the same with gmmX first dim, "
-                  "but actual gmmXScale dim0 is: %ld, gmmX first dim is: %ld",
-                  gmmXScaleShape->GetDim(0), bsk), return ge::GRAPH_FAILED);
-        OPS_CHECK(gmmWeightScaleShape->GetDim(0) != e, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, gmmWeightScale dim0 must be the same with gmmWeight first dim, "
-                  "but actual gmmWeightScale dim0 is: %ld, gmmWeight first dim is: %ld",
-                  gmmWeightScaleShape->GetDim(0), e), return ge::GRAPH_FAILED);
+        uint64_t gExpectH = Ops::Base::CeilDiv(h1, MX_BASIC_FACTOR);
+        OPS_CHECK((gmmXScaleShape->GetDim(DIM_NUM_0) != bsk) || (gmmXScaleShape->GetDim(DIM_NUM_1) != gExpectH)
+                    || (gmmXScaleShape->GetDim(DIM_NUM_2) != SCALE_LAST_DIM),
+                    CUBE_INNER_ERR_REPORT(context->GetNodeName(), "the expected shape of gmmXscale is {%lu, %lu, 2} but the actual is {%lu, %lu, %ld}",
+                    bsk, gExpectH, gmmXScaleShape->GetDim(DIM_NUM_0), gmmXScaleShape->GetDim(DIM_NUM_1), gmmXScaleShape->GetDim(DIM_NUM_2)),
+                    return ge::GRAPH_FAILED);
+        if (transGmmWeightPtr) {
+            OPS_CHECK((gmmWeightScaleShape->GetDim(DIM_NUM_0) != e) || (gmmWeightScaleShape->GetDim(DIM_NUM_1) != n1)
+                     || (gmmWeightScaleShape->GetDim(DIM_NUM_2) != gExpectH) || (gmmWeightScaleShape->GetDim(DIM_NUM_3) != SCALE_LAST_DIM),
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "When mx quant mode and trans gmmWeight, the expected "
+                      "shape of gmmWeightScaleShape is {%lu, %lu, %lu, 2} but the actual is {%lu, %lu, %lu, %lu}", e, n1, gExpectH, gmmWeightScaleShape->GetDim(DIM_NUM_0),
+                      gmmWeightScaleShape->GetDim(DIM_NUM_1), gmmWeightScaleShape->GetDim(DIM_NUM_2), gmmWeightScaleShape->GetDim(DIM_NUM_3)),
+                      return ge::GRAPH_FAILED);
+        } else {
+            OPS_CHECK((gmmWeightScaleShape->GetDim(DIM_NUM_0) != e) || (gmmWeightScaleShape->GetDim(DIM_NUM_1) != gExpectH)
+                     || (gmmWeightScaleShape->GetDim(DIM_NUM_2) != n1) || (gmmWeightScaleShape->GetDim(DIM_NUM_3) != SCALE_LAST_DIM),
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "When mx quant mode and not trans gmmWeight, the expected "
+                      "shape of gmmWeightScaleShape is {%lu, %lu, %lu, 2} but the actual is {%lu, %lu, %lu, %lu}", e, gExpectH, n1, gmmWeightScaleShape->GetDim(DIM_NUM_0),
+                      gmmWeightScaleShape->GetDim(DIM_NUM_1), gmmWeightScaleShape->GetDim(DIM_NUM_2), gmmWeightScaleShape->GetDim(DIM_NUM_3)),
+                      return ge::GRAPH_FAILED);
+        }
     } else if (*gmmXQuantMode == TT_QUANT_MODE_NUM && *gmmWeightQuantMode == TT_QUANT_MODE_NUM) {
         OPS_CHECK(gmmXScaleDimNum != DIM_NUM_1, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
                   "In TT quantization mode, gmmXScale dim num must be %ld, but actual value is: %ld",
@@ -338,9 +344,9 @@ static ge::graphStatus CheckScaleShapeForAlltoAllvQuantGroupedMatmul(const gert:
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckOptionalScaleShapeForAlltoAllvQuantGroupedMatmul(const gert::InferShapeContext* context, const int64_t bs,
-                                                                             const bool mmXQuantMode, const bool mmWeightQuantMode,
-                                                                             const gert::Shape *mmXScaleShape, const gert::Shape *mmWeightScaleShape)
+static ge::graphStatus CheckOptionalScaleShape(const gert::InferShapeContext* context, const int64_t bs, const int64_t h2, const int64_t n2,
+                                               const bool mmXQuantMode, const bool mmWeightQuantMode, const gert::Shape *mmXScaleShape,
+                                               const gert::Shape *mmWeightScaleShape, const bool *transMmWeightPtr)
 {
     //还有scale的H轴和N轴没有校验
     int64_t mmXScaleDimNum = mmXScaleShape->GetDimNum();
@@ -352,18 +358,27 @@ static ge::graphStatus CheckOptionalScaleShapeForAlltoAllvQuantGroupedMatmul(con
         OPS_CHECK(mmWeightScaleDimNum != DIM_NUM_3, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
                   "In MX quantization mode, mmWeightScale dim num must be %ld, but actual value is: %ld",
                   DIM_NUM_3, mmWeightScaleDimNum), return ge::GRAPH_FAILED);
-        OPS_CHECK(mmXScaleDimNum->GetDim(mmXScaleDimNum - 1) != SCALE_LAST_DIM,
-                  CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, mmXScale last dim must be %ld, but actual value is: %ld",
-                  SCALE_LAST_DIM, mmXScaleDimNum->GetDim(mmXScaleDimNum - 1)), return ge::GRAPH_FAILED);
-        OPS_CHECK(mmWeightScaleDimNum->GetDim(mmWeightScaleDimNum - 1) != SCALE_LAST_DIM,
-                  CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, mmWeightScale last dim must be %ld, but actual value is: %ld",
-                  SCALE_LAST_DIM, mmWeightScaleDimNum->GetDim(mmWeightScaleDimNum - 1)), return ge::GRAPH_FAILED);
-        OPS_CHECK(mmXScaleShape->GetDim(0) != bs, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In MX quantization mode, mmXScale dim0 must be the same with mmX first dim, "
-                  "but actual gmmXScale dim0 is: %ld, gmmX first dim is: %ld",
-                  mmXScaleShape->GetDim(0), bs), return ge::GRAPH_FAILED);
+        uint64_t ExpectH = Ops::Base::CeilDiv(h2, MX_BASIC_FACTOR);
+        OPS_CHECK((mmXScaleShape->GetDim(DIM_NUM_0) != bs) || (mmXScaleShape->GetDim(DIM_NUM_1) != ExpectH)
+                  || (mmXScaleShape->GetDim(DIM_NUM_2) != SCALE_LAST_DIM),
+                  CUBE_INNER_ERR_REPORT(context->GetNodeName(), "the expected shape of mmXscale is {%lu, %lu, 2}, but the actual is {%lu, %lu, %ld}",
+                  bs, ExpectH, gmmXScaleShape->GetDim(DIM_NUM_0), mmXScaleShape->GetDim(DIM_NUM_1), gmmXScaleShape->GetDim(DIM_NUM_2)),
+                  return ge::GRAPH_FAILED);
+        if (transMmWeightPtr) {
+            OPS_CHECK((mmWeightScaleShape->GetDim(DIM_NUM_0) != n2) || (mmWeightScaleShape->GetDim(DIM_NUM_1) != ExpectH)
+                      || (mmWeightScaleShape->GetDim(DIM_NUM_2) != SCALE_LAST_DIM),
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "When mx quant mode and trans mmWeight, the expected "
+                      "shape of mmWeightScaleShape is {%lu, %lu, 2} but the actual is {%lu, %lu, %ld}", n2, ExpectH, mmWeightScaleShape->GetDim(DIM_NUM_0),
+                      mmWeightScaleShape->GetDim(DIM_NUM_1), mmWeightScaleShape->GetDim(DIM_NUM_2)),
+                      return ge::GRAPH_FAILED);
+        } else {
+            OPS_CHECK((mmWeightScaleShape->GetDim(DIM_NUM_0) != ExpectH) || (mmWeightScaleShape->GetDim(DIM_NUM_1) != n2)
+                      || (mmWeightScaleShape->GetDim(DIM_NUM_2) != SCALE_LAST_DIM),
+                      CUBE_INNER_ERR_REPORT(context->GetNodeName(), "When mx quant mode and not trans mmWeight, the expected "
+                      "shape of mmWeightScaleShape is {%lu, %lu, 2} but the actual is {%lu, %lu, %ld}", ExpectH, n2, mmWeightScaleShape->GetDim(DIM_NUM_0),
+                      mmWeightScaleShape->GetDim(DIM_NUM_1), mmWeightScaleShape->GetDim(DIM_NUM_2)),
+                      return ge::GRAPH_FAILED);
+        }
     } else if (*mmXQuantMode == TT_QUANT_MODE_NUM && *mmWeightQuantMode == TT_QUANT_MODE_NUM) {
         OPS_CHECK(mmXScaleDimNum != DIM_NUM_1, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
                   "In TT quantization mode, gmmXScale dim num must be %ld, but actual value is: %ld",
