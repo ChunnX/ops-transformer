@@ -74,7 +74,7 @@ public:
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
-            .ExtendCfgInfo("opFile.value", "rotary_position_embedding_grad_apt");
+            .ExtendCfgInfo("opFile.value", "rotary_position_embedding_grad");
         this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };

@@ -90,13 +90,10 @@ private:
 
 bool MoeGatingTopKSoftmaxV2PerfTiling::IsCapable()
 {
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-    if ((col <= MAX_COL && col % CONSTANT_EIGHT == 0 && k <= CONSTANT_EIGHT) || (col < CONSTANT_EIGHT)) {
-        return true;
-    }
-    return false;
+     if ((col <= MAX_COL && col % CONSTANT_EIGHT == 0 && k <= CONSTANT_EIGHT) || (col < CONSTANT_EIGHT)) { 
+         return true; 
+     } 
+     return false;
 }
 
 ge::graphStatus MoeGatingTopKSoftmaxV2PerfTiling::DoOpTiling()

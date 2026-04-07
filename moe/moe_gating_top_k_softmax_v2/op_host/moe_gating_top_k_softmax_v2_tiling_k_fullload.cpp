@@ -149,26 +149,14 @@ ge::graphStatus MoeGatingTopKSoftmaxV2KFullLoadTiling::DoLibApiTiling()
     uint32_t ubFormerAlignLocal = CeilDiv(ubFormer, ALIGN_NUM) * ALIGN_NUM;
     uint32_t kAlign = CeilDiv(k, ALIGN_NUM) * ALIGN_NUM;
     auto softmaxShape = ge::Shape({tilingData.get_ubFormer()});
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        SoftMaxFlashV2TilingFunc(softmaxShape, dataTypeSize, dataTypeSize,
-                                 GetSoftMaxFlashV2MaxTmpSize(softmaxShape, dataTypeSize, true, true),
-                                 tilingData.ubFormerSoftmaxTilingData, true);
-    } else {
-        SoftMaxFlashV2TilingFunc(softmaxShape, dataTypeSize, dataTypeSize,
-                                 GetSoftMaxFlashV2MaxTmpSize(softmaxShape, dataTypeSize, dataTypeSize, true),
-                                 tilingData.ubFormerSoftmaxTilingData, true);
-    }
+    SoftMaxFlashV2TilingFunc(softmaxShape, dataTypeSize, dataTypeSize,
+                                GetSoftMaxFlashV2MaxTmpSize(softmaxShape, dataTypeSize, dataTypeSize, true),
+                                tilingData.ubFormerSoftmaxTilingData, true);
 
     softmaxShape = ge::Shape({tilingData.get_ubTail()});
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        SoftMaxFlashV2TilingFunc(softmaxShape, dataTypeSize, dataTypeSize,
-                                 GetSoftMaxFlashV2MaxTmpSize(softmaxShape, dataTypeSize, true, true),
-                                 tilingData.ubFormerSoftmaxTilingData, true);
-    } else {
-        SoftMaxFlashV2TilingFunc(softmaxShape, dataTypeSize, dataTypeSize,
-                                 GetSoftMaxFlashV2MaxTmpSize(softmaxShape, dataTypeSize, dataTypeSize, true),
-                                 tilingData.ubFormerSoftmaxTilingData, true);
-    }
+    SoftMaxFlashV2TilingFunc(softmaxShape, dataTypeSize, dataTypeSize,
+                                GetSoftMaxFlashV2MaxTmpSize(softmaxShape, dataTypeSize, dataTypeSize, true),
+                                tilingData.ubFormerSoftmaxTilingData, true);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
 

@@ -98,7 +98,8 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetPlatformInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm - SIMT_UB_SIZE_BYTE;
     mrgSortListMaxElement = 2048; // DAVID下，单词搬运最大元素个数2048
-    regBase = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+    // regBase = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+    regBase = false;
     is310P = (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P);
     CHECK_FAIL(context_, (is310P && dropPadMode != 0), "The dropPadMode only support 0 on 310p.");
     if (!regBase) {
@@ -251,7 +252,8 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
         expertTokensBeforeCapacityFlag = false;
     }
     size_t expertIdxDimNum = expertIdxShape.GetDimNum();
-    bool isRegbase = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+    // bool isRegbase = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+    bool isRegbase = false;
     if (isRegbase) {
         CHECK_FAIL(context_, expertIdxDimNum != DIM_ONE && expertIdxDimNum != DIM_TWO,
                    "The dim number of expertIdx should be 1 or 2.");

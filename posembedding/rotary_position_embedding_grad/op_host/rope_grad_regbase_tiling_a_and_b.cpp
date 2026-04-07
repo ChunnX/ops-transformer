@@ -56,7 +56,7 @@ private:
 bool RopeGradRegBaseTilingClassAAndB::IsCapable()
 {
     // 处理全boardcast和不boardcast的情况
-    return (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) &&
+    return (false) &&
            (layout_ == RopeLayout::NO_BROADCAST || layout_ == RopeLayout::BROADCAST_BSN);
 }
 
