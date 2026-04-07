@@ -47,9 +47,9 @@ aclnnStatus aclnnMoeDistributeDispatchV5GetWorkspaceSize(const aclTensor* contex
         context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
         elasticInfoOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum,
         cclBufferSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum,
-        constExpertNum, yDtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-        epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+        copyExpertNum, constExpertNum, yDtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

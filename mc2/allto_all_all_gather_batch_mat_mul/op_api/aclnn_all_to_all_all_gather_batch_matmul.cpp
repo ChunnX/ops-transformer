@@ -25,7 +25,6 @@ extern "C" {
 #endif
 
 
-
 // check nullptr
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
                          aclTensor* y1Out)
@@ -395,18 +394,14 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize(const aclTensor *x
     }
     if(transposeWeight){
         auto weightTrans = TransTensor(weight);
-        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weightTrans, biasOptional, const_cast<char *>(groupEp), const_cast<char *>(groupTp),
-                                                                             epWorldSize, tpWorldSize, xShardType,
-                                                                             actType, transposeWeight, isY2Out, isY3Out,
-                                                                             y1Out, y2OutOptional, y3OutOptional,
-                                                                             workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weightTrans, biasOptional,
+            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, xShardType, actType,
+            transposeWeight, isY2Out, isY3Out, y1Out, y2OutOptional, y3OutOptional, workspaceSize, executor);
         return ret;
     } else {
-        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weight, biasOptional, const_cast<char *>(groupEp), const_cast<char *>(groupTp),
-                                                                             epWorldSize, tpWorldSize, xShardType,
-                                                                             actType, transposeWeight, isY2Out, isY3Out,
-                                                                             y1Out, y2OutOptional, y3OutOptional,
-                                                                             workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weight, biasOptional,
+            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, xShardType, actType,
+            transposeWeight, isY2Out, isY3Out, y1Out, y2OutOptional, y3OutOptional, workspaceSize, executor);
         return ret;
     }
 }

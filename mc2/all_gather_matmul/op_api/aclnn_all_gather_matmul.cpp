@@ -206,9 +206,9 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
                                                   commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
                                                   const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);
   }
-  aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(x1, x2, bias, const_cast<char *>(group), transposeX1, transposeX2,
-                                                              gatherIndex, commTurn, rankSize, isGatherOut,
-                                                              output, gatherOut, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(x1, x2, bias, const_cast<char *>(group),
+        transposeX1, transposeX2, gatherIndex, commTurn, rankSize, isGatherOut, output, gatherOut, workspaceSize,
+        executor);
   OP_LOGD("AllGatherMatmul, aclnnInnerGetWorkspaceSize ret = %d.", ret);
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};
   NnopbaseReportApiInfo(timeStamp, dfxId);

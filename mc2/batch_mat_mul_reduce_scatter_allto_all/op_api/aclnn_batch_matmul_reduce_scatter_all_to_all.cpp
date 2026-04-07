@@ -328,16 +328,14 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTenso
             return ACLNN_ERR_INNER_NULLPTR;
         }
         auto weightTrans = TransTensor(weight);
-        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weightTrans, biasOptional, const_cast<char *>(groupEp),
-                                                                                 const_cast<char *>(groupTp), epWorldSize, tpWorldSize,
-                                                                                 yShardType, transposeWeight, out,
-                                                                                 workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weightTrans, biasOptional,
+            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, yShardType,
+            transposeWeight, out, workspaceSize, executor);
         return ret;
     } else {
-        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, biasOptional, const_cast<char *>(groupEp),
-                                                                                 const_cast<char *>(groupTp), epWorldSize, tpWorldSize,
-                                                                                 yShardType, transposeWeight, out,
-                                                                                 workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, biasOptional,
+            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, yShardType,
+            transposeWeight, out, workspaceSize, executor);
         return ret;
     }
 }

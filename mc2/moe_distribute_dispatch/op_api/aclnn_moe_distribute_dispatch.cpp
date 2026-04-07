@@ -101,11 +101,10 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,
-                                                                            const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
-                                                                            const_cast<char*>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-                                                                            shareExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-                                                                            expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
-                                                                            expandScales, workspaceSize, executor);
+        const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char*>(groupTp), tpWorldSize,
+        tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType,
+        expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales, workspaceSize,
+        executor);
     return ret;
 }
 

@@ -121,9 +121,10 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, 
-        mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY,
-        mmYOptional, permuteOutOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
+        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
+        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
+        executor);
     return ret;
 }
 

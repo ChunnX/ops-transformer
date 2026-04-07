@@ -456,15 +456,14 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const 
         return ACLNN_ERR_INNER_NULLPTR;
     }
     transX2 = TransX2Tensor(x2);
-  }
-  if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
-    transX2Scale = TransX2Tensor(x2Scale);
-  }
-  aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char *>(group),
-                                                                transposeX1, transposeX2, gatherIndex, commTurn,
-                                                                rankSize, blockSize, groupSize, isGatherOut, isAMaxOut,
-                                                                outDtype, const_cast<char *>(commMode), output, gatherOut, amaxOut, workspaceSize,
-                                                                executor);
+    }
+    if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
+        transX2Scale = TransX2Tensor(x2Scale);
+    }
+    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, transX2, bias, x1Scale, transX2Scale,
+        quantScale, const_cast<char *>(group), transposeX1, transposeX2, gatherIndex, commTurn,
+        rankSize, blockSize, groupSize, isGatherOut, isAMaxOut, outDtype, const_cast<char *>(commMode),
+        output, gatherOut, amaxOut, workspaceSize, executor);
   OP_LOGD("AllGatherMatmulV2, aclnnInnerGetWorkspaceSize ret = %d.", ret);
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};
   NnopbaseReportApiInfo(timeStamp, dfxId);
@@ -504,11 +503,10 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor* x1, const 
                 "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
         return ACLNN_ERR_PARAM_INVALID;});
     }
-    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, const_cast<char *>(group),
-                                                                transposeX1, transposeX2, gatherIndex, commTurn,
-                                                                rankSize, blockSize, groupSize, isGatherOut, isAmaxOut,
-                                                                yDtype, const_cast<char *>(commMode), output, gatherOut, amaxOut, workspaceSize,
-                                                                executor);
+    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale,
+        const_cast<char *>(group), transposeX1, transposeX2, gatherIndex, commTurn, rankSize, blockSize, groupSize,
+        isGatherOut, isAmaxOut, yDtype, const_cast<char *>(commMode), output, gatherOut, amaxOut, workspaceSize,
+        executor);
     OP_LOGD("allGatherMatmulV2AIVMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
 }

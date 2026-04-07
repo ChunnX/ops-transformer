@@ -99,12 +99,12 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     int64_t ydtype = expandXOut->GetDataType();
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
-        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-        elasticInfoOptional, performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+        performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
         const_cast<char*>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum,
-        constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-        epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+        copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 
     if (NnopbaseSetHcclServerType) {
         if (is910B) {
