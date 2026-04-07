@@ -231,7 +231,11 @@ private:
         DataCopyPad(stateLocal, initStateGm_[stateOffest], stateInParams, padParams);
         stateInQueue_.EnQue<stateType>(stateLocal);
         stateLocal = stateInQueue_.DeQue<stateType>();
-        Cast(stateInUb, stateLocal, AscendC::RoundMode::CAST_NONE, alignK_ * curSingleV);
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateInUb, stateLocal, AscendC::RoundMode::CAST_NONE, alignK_ * curSingleV);
+        } else {
+            stateInUb = stateLocal;
+        }
         stateInQueue_.FreeTensor(stateLocal);
     }
 
@@ -284,7 +288,11 @@ private:
         ReduceSum<float, Pattern::Reduce::AR, true>(attnInUb, broadTmpInUb, stateShape, true);
         LocalTensor<stateType> stateOutLocal = stateOutQueue_.AllocTensor<stateType>();
         LocalTensor<outType> attnOutLocal = attnOutQueue_.AllocTensor<outType>();
-        Cast(stateOutLocal, stateInUb, AscendC::RoundMode::CAST_RINT, alignK_ * curSingleV);
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateOutLocal, stateInUb, AscendC::RoundMode::CAST_RINT, alignK_ * curSingleV);
+        } else {
+            stateOutLocal = stateInUb;
+        }
         stateOutQueue_.EnQue<stateType>(stateOutLocal);
         AscendC::PipeBarrier<PIPE_V>();
         Cast(attnOutLocal, attnInUb, AscendC::RoundMode::CAST_RINT, curSingleV);
