@@ -49,6 +49,7 @@ constexpr int64_t BLOCK_NUM = 64;
 constexpr int64_t DEV_NUM = 4;
 constexpr const char* PATH_PREFIX = "./golden/quantallreduce_";
 int streamWithTimeout = 10000;
+bool use_golden = false;
 // 获取Shape对应的lengthSize
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -160,6 +161,32 @@ int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
     return ACL_SUCCESS;
 }
+
+template<typename T>
+int LoadDeviceTensorFromGolden(const std::string &fileName, const std::vector<int64_t> &shape, void **deviceAddr, int rankId)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
+    
+    uint8_t *hostData;
+    ret = aclrtMallocHost(reinterpret_cast<void**>(&hostData), size);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMallocHost failed. ret: %d\n", ret); return ret);
+    
+    std::string filePath = std::string(PATH_PREFIX) + fileName + "_" + std::to_string(rankId) + ".bin";
+    ret = ReadFile(filePath, hostData, size);
+    if (ret != ACL_SUCCESS) {
+        LOG_PRINT("[WARN] Failed to read golden file %s, using zeros\n", filePath.c_str());
+        memset(hostData, 0, size);
+    }
+    
+    ret = aclrtMemcpy(*deviceAddr, size, hostData, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
+    
+    ret = aclrtFreeHost(hostData);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
+    return ACL_SUCCESS;
+}
 extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, void *mc2Tiling, void **commContext);
 
 int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr,
@@ -222,7 +249,7 @@ struct Args {
 // 分配设备内存
 int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** scalesDevice, void** workspace,
                        void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
-                       int64_t workSpaceSize) 
+                       int64_t workSpaceSize, bool useGolden) 
 {
     int ret = CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize, hcclBufferSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreatTilingDataAndContext failed. ret = %d\n", ret); return ret);    
@@ -235,21 +262,29 @@ int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** s
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }           
     
-    long long xShapeSize = GetShapeSize(xShape);
-    long long scalesShapeSize = GetShapeSize(scalesShape);
-    std::vector<int8_t> xHostData(xShapeSize, 0);
-    std::vector<int32_t> scalesHostData(scalesShapeSize, 0);
-    
-    ret = CreateDeviceTensor(xHostData, xShape, xDevice);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
-    
-    ret = CreateDeviceTensor(scalesHostData, scalesShape, scalesDevice);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor scales failed. ret: %d\n", ret); return ret);
+    if (useGolden) {
+        ret = LoadDeviceTensorFromGolden<int8_t>("input_x", xShape, xDevice, args.rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LoadDeviceTensorFromGolden X failed. ret: %d\n", ret); return ret);
+        
+        ret = LoadDeviceTensorFromGolden<int32_t>("input_scale", scalesShape, scalesDevice, args.rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LoadDeviceTensorFromGolden scales failed. ret: %d\n", ret); return ret);
+    } else {
+        long long xShapeSize = GetShapeSize(xShape);
+        long long scalesShapeSize = GetShapeSize(scalesShape);
+        std::vector<int8_t> xHostData(xShapeSize, 0);
+        std::vector<int32_t> scalesHostData(scalesShapeSize, 0);
+        
+        ret = CreateDeviceTensor(xHostData, xShape, xDevice);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
+        
+        ret = CreateDeviceTensor(scalesHostData, scalesShape, scalesDevice);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor scales failed. ret: %d\n", ret); return ret);
+    }
     return ACL_SUCCESS;
 }
 
 int freeDeviceMemory(Args& args, void *xDeviceAddr, void *scalesDeviceAddr, void *workspaceAddr,
-                      void *tilingAddr, void *mc2ContextAddr, void *outputDeviceAddr) 
+                      void *tilingAddr, void *mc2ContextAddr, void *outputDeviceAddr, int64_t workSpaceSize) 
 {
     if (xDeviceAddr != nullptr)  aclrtFree(xDeviceAddr);
     if (scalesDeviceAddr != nullptr)  aclrtFree(scalesDeviceAddr);
@@ -289,7 +324,7 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     void *mc2ContextAddr = nullptr; 
     void *outputDeviceAddr = nullptr;
     ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &scalesDeviceAddr, &workspaceAddr,
-                            &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize);
+                            &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize, use_golden);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] AllocDeviceMemory failed. ret = %d \n", ret); return ret);
     
     std::vector<int64_t> outputShape = {bs, hiddenSize};
@@ -312,13 +347,21 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] WriteFile output failed. ret: %d\n", ret); return ret);
     ret = aclrtFreeHost(output_host);    
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
-    ret = freeDeviceMemory(args, xDeviceAddr, scalesDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr);
+    ret = freeDeviceMemory(args, xDeviceAddr, scalesDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] freeDeviceMemory failed. ret = %d\n", ret); return ret);
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
+    if (argc > 1 && std::string(argv[1]) == "--use-golden") {
+        use_golden = true;
+        LOG_PRINT("[INFO] Using golden data from files\n");
+    } else {
+        use_golden = false;
+        LOG_PRINT("[INFO] Using zero-initialized data\n");
+    }
+    
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[DEV_NUM];

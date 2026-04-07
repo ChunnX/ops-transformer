@@ -44,6 +44,18 @@ ranksize = 2
 
 如需修改参数，直接编辑 `test_quant_all_reduce.cpp` 中的 `LaunchOneThreadQuantAllReduce` 函数。
 
+# Golden 数据
+
+## 生成 Golden 数据
+
+生成的文件：
+```
+./golden/quantallreduce_input_x_0.bin
+./golden/quantallreduce_input_x_1.bin
+./golden/quantallreduce_input_scale_0.bin
+./golden/quantallreduce_input_scale_1.bin
+```
+
 # 工程运行
 
 1. 设置环境变量
@@ -79,17 +91,7 @@ bash run.sh
 4. 常用命令示例
 
 ```shell
-# 编译并运行（默认）
 bash run.sh
-
-# 仅编译
-bash run.sh -r OFF
-
-# 指定芯片版本编译运行
-bash run.sh -v ascend950pr_9599
-
-# Release 模式编译运行
-bash run.sh -b Release
 ```
 
 # 输出结果
