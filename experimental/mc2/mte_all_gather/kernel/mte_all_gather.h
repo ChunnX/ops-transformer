@@ -1,21 +1,11 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
 /*!
- * \file mte_all_gather_mte_one_shot.h
- * \brief mte_all_gather mte_one_shot方式通信，通过1步allgather的kernel代码逻辑
- *        仅完成AllGather：将各卡Win区中的X数据按rank顺序拼接到output GM
+ * \file mte_all_gather.h
+ * \brief mte_all_gather 通过1步allgather的kernel代码逻辑
+ *        完成AllGather：将各卡Win区中的X数据按rank顺序拼接到output GM
  */
 
-#ifndef MTE_ALL_GATHER_MTE_ONE_SHOT_H
-#define MTE_ALL_GATHER_MTE_ONE_SHOT_H
+#ifndef MTE_ALL_GATHER_H
+#define MTE_ALL_GATHER_H
 
 #include "basic_api/kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -149,4 +139,4 @@ __aicore__ inline void MteAllGather<TemplateType>::Process()
     ExecuteAllGather();
 }
 } // MteAllGatherImpl
-#endif  // MTE_ALL_GATHER_MTE_ONE_SHOT_H
+#endif  // MTE_ALL_GATHER_H
