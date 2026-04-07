@@ -114,7 +114,9 @@ __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
+                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+                  !IsSameType<INPUT_T, hifloat8_t>::value) {
         return false;
     }
     if (hasRope) {
