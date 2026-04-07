@@ -883,18 +883,19 @@ ge::graphStatus DequantChecker::CheckInputLayoutMLAFullquant(const FiaTilingInfo
     const std::vector<std::string> supportedLayoutListINT8 = {
         "BSH", "BSND", "TND", "BSH_NBSD", "BSND_NBSD", "TND_NTD"};
     
-    OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
+        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
         (std::find(supportedLayoutListFP8.begin(), supportedLayoutListFP8.end(), inputLayout) ==
                  supportedLayoutListFP8.end()),
-                OP_LOGE(fiaInfo.opName, 
-                        "In MLA full quant scenario, input layout(%s) must be BSH/BSND/BNSD/TND/BSH_NBSD/BSND_NBSD/BNSD_NBSD/TND_NTD "
+                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, "
+                        "input layout(%s) must be BSH/BSND/BNSD/TND/BSH_NBSD/BSND_NBSD/BNSD_NBSD/TND_NTD "
                         "When input datatype is float8_e4m3/hifloat8.", fiaInfo.opParamInfo.layOut),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
         (std::find(supportedLayoutListINT8.begin(), supportedLayoutListINT8.end(), inputLayout) ==
                  supportedLayoutListINT8.end()),
-                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, input layout(%s) must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD.",
+                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, "
+                        "input layout(%s) must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD.",
                         "when input datatype is int8.", fiaInfo.opParamInfo.layOut),
                 return ge::GRAPH_FAILED);
 
