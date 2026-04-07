@@ -13,8 +13,9 @@
 
 - 请先参考[环境部署](../../docs/zh/install/quick_install.md)完成基础环境搭建
 - gcc 9.4.0+
-- python 3.8+
-- torch>=2.6.0
+- python 3.9+
+- torch>=2.7.1
+- cann 9.0.0+
 - 对应版本的[torch_npu](https://gitcode.com/Ascend/pytorch/releases)
 
 ## 安装步骤 | Installation Steps
@@ -29,13 +30,19 @@
 
 3. 构建Wheel包 | Build the Wheel:
 
+    当前已经支持的算子平台为ascend910b、ascend910_93，默认构建环境为ascend910b，如果需要在ascend910_93构建环境下构建，请先执行命令：
+    ```sh
+    export NPU_ARCH=ascend910_93
+    ```
+
+    执行完成后，执行命令：
     ```sh
     # -n: non-isolated build (uses existing environment)
     python3 -m build --wheel -n
     ```
 
-    构建完成后，产物在当前目录的`dist`文件夹下，产物名`ascend_ops-1.0.0-${python_version}-abi3-${arch}.whl`，
-    `${python_version}`表示当前环境中的python版本(python3.8.3为cp38)，`${arch}`表示CPU架构。
+    构建完成后，产物在当前目录的`dist`文件夹下，产物名`ascend_ops-1.0.0-cp38-abi3-${arch}.whl`，
+    其中`${arch}`表示CPU架构。
 
 4. 安装Wheel包 | Install Package:
 
