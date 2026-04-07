@@ -14,19 +14,11 @@
  *        通过MTE通信拿到其它卡数据，按rank顺序拼接到output
  */
 #include <thread>
-#include <iostream>
 #include <vector>
-#include <string>
 #include <cstring>
-#include <getopt.h>
-#include <fstream>
-#include <unistd.h>
-#include <sys/file.h>
-#include <sys/stat.h>
 #include "hccl/hccl.h"
 #include "acl/acl.h"
 #include "hccl/hcom.h"
-#include "securec.h"
 #include "tiling/hccl/hccl_tiling.h"
 #include "./kernel/mte_all_gather_tiling_data.h"
 #include "./mte_all_gather.h"
@@ -41,7 +33,6 @@ using namespace AscendC;
 
 constexpr int64_t BLOCK_NUM = 64;
 constexpr int64_t DEV_NUM = 4;
-constexpr const char* PATH_PREFIX = "./golden/mteallgather_";
 int streamWithTimeout = 10000;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -64,45 +55,39 @@ int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t
 
 extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, void *mc2Tiling, void **commContext);
 
-int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr,
+void CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr,
                                int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize)
 {
-    MteAllGatherTilingData *tilingData = new MteAllGatherTilingData();
-    if (tilingData == nullptr) {
-        return -1;
-    }
+    MteAllGatherTilingData tilingData;
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-    tilingData->mc2InitTiling = mc2InitTiling;
-    tilingData->mc2CcTiling = mc2CcTiling;
-    tilingData->mteAllGatherTilingInfo.bs = bs;
-    tilingData->mteAllGatherTilingInfo.hiddenSize = hiddenSize;
-    tilingData->mteAllGatherTilingInfo.aivNum = BLOCK_NUM;
-    tilingData->mteAllGatherTilingInfo.totalWinSize = hcclBufferSize;
+    tilingData.mc2InitTiling = mc2InitTiling;
+    tilingData.mc2CcTiling = mc2CcTiling;
+    tilingData.mteAllGatherTilingInfo.bs = bs;
+    tilingData.mteAllGatherTilingInfo.hiddenSize = hiddenSize;
+    tilingData.mteAllGatherTilingInfo.aivNum = BLOCK_NUM;
+    tilingData.mteAllGatherTilingInfo.totalWinSize = hcclBufferSize;
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(hcomName, 8, "AlltoAll=level0:fullmesh;level1:pairwise");
     mc2CcTilingConfig.SetCommEngine(3);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    mc2CcTilingConfig.GetTiling(tilingData.mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(tilingData.mc2CcTiling);
 
-    int tilingSize = sizeof(struct MteAllGatherTilingData);
+    int tilingSize = sizeof(MteAllGatherTilingData);
     aclrtMalloc(deviceTilingAddr, tilingSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    aclrtMemcpy(*deviceTilingAddr, tilingSize, tilingData, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE);
+    aclrtMemcpy(*deviceTilingAddr, tilingSize, &tilingData, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE);
 
     HcclComm commHandle;
     HcomGetCommHandleByGroup(hcomName, &commHandle);
     void *mc2Context = nullptr;
-    HcclAllocComResourceByTiling(commHandle, stream, tilingData, &mc2Context);
+    HcclAllocComResourceByTiling(commHandle, stream, &tilingData, &mc2Context);
     if (mc2Context == nullptr) {
-        return -1;
+        return;
     }
 
     int64_t mc2ContextSize = 576;
     aclrtMalloc(deviceContextAddr, mc2ContextSize, ACL_MEM_MALLOC_HUGE_FIRST);
     aclrtMemcpy(*deviceContextAddr, mc2ContextSize, mc2Context, mc2ContextSize, ACL_MEMCPY_HOST_TO_DEVICE);
-
-    delete tilingData;
-    return ACL_SUCCESS;
 }
 
 struct Args {
@@ -113,7 +98,7 @@ struct Args {
     aclrtContext context;
 };
 
-int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** workspace,
+void AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** workspace,
                        void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
                        int64_t workSpaceSize)
 {
@@ -128,8 +113,6 @@ int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** w
     long long xShapeSize = GetShapeSize(xShape);
     std::vector<int8_t> xHostData(xShapeSize, 0);
     CreateDeviceTensor(xHostData, xShape, xDevice);
-
-    return ACL_SUCCESS;
 }
 
 int freeDeviceMemory(Args& args, void *xDeviceAddr, void *workspaceAddr,
