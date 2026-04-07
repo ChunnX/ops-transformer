@@ -99,7 +99,6 @@ __aicore__ inline void VectorCompute<TemplateType>::SetBlockSize(uint32_t elemen
  * @param xTensor 量化输入数据张量
  * @param scaleTensor 量化缩放系数张量
  * 
- * @note 针对fp8_e8m0缩放因子使用微指令（VF_CALL<CastVf>）进行转换
  */
 template <TemplateTypeClass>
 __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
@@ -135,30 +134,11 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
         PipeBarrier<PIPE_V>();
     }
 
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        // fp8_e8m0 -> bf16 -> fp32
-        // 当前Cast接口不支持fp8_e8m0_t类型转换只能使用微指令实现
-        tempBf16Scale_ = tempBf16ScaleBuf_.Get<bfloat16_t>();
-        Duplicate<bfloat16_t>(tempBf16Scale_, (bfloat16_t)0.0, MX_SIZE);
-        PipeBarrier<PIPE_V>();
-        __local_mem__ fp8_e8m0_t* srcPtr = (__local_mem__ fp8_e8m0_t*)scaleTensor.GetPhyAddr();
-        __local_mem__ bfloat16_t* tempBf16ScalePtr = (__local_mem__ bfloat16_t*)tempBf16Scale_.GetPhyAddr();
-        // 当前Cast接口不支持fp8_e8m0_t类型转换只能使用微指令实现
-        VF_CALL<CastVf>(tempBf16ScalePtr, srcPtr, MX_SIZE);
-        PipeBarrier<PIPE_V>();
-        Cast(castLocalScale, tempBf16Scale_, RoundMode::CAST_NONE, MX_SIZE);
-        PipeBarrier<PIPE_V>();
-        // MX量化将scale广播成32
-        const uint32_t broadcastDst[TWO_DIMS]{MX_SCALE_TRANS_NUM, MX_SIZE};
-        const uint32_t broadcastSrc[TWO_DIMS]{MX_SCALE_TRANS_NUM, 1};
-        BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
-    } else {
-        castLocalScale = scaleTensor.template ReinterpretCast<float>();
-        // PT量化将scale广播成128
-        const uint32_t broadcastDst[TWO_DIMS]{PT_SCALE_TRANS_NUM, PER_GROUP_SIZE};
-        const uint32_t broadcastSrc[TWO_DIMS]{PT_SCALE_TRANS_NUM, 1};
-        BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
-    }
+    castLocalScale = scaleTensor.template ReinterpretCast<float>();
+    // PT量化将scale广播成128
+    const uint32_t broadcastDst[TWO_DIMS]{PT_SCALE_TRANS_NUM, PER_GROUP_SIZE};
+    const uint32_t broadcastSrc[TWO_DIMS]{PT_SCALE_TRANS_NUM, 1};
+    BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
 }
 
 /**

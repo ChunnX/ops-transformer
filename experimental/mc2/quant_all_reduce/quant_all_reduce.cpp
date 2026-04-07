@@ -37,7 +37,6 @@ __attribute__((always_inline)) __aicore__ __inline__ void quant_all_reduce_with_
 }
 // 核函数入口实现
 extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(
-    int8_t type,
     GM_ADDR x, GM_ADDR scales, GM_ADDR output, 
     GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
@@ -45,10 +44,9 @@ extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(
                 x, scales, output, workspaceGM, mc2Context, tilingGM);
 }
 // <<<>>>调用函数
-void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output, 
+void quant_all_reduce_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output, 
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM) {
     QuantAllReduce_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(
-        type, 
         x, scales, output, workspaceGM, mc2Context, tilingGM
     );
 }

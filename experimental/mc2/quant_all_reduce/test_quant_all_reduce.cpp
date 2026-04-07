@@ -315,7 +315,6 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     int64_t hiddenSize = 8192;
     int64_t hcclBufferSize = 200;
     int64_t workSpaceSize = 256 * 1024 * 1024;
-    int run_type = 1;
     
     void *xDeviceAddr = nullptr;
     void *scalesDeviceAddr = nullptr;
@@ -332,7 +331,7 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     ret = aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc outputDevice failed. ret: %d\n", ret); return ret);    
     
-    quant_all_reduce_demo(run_type, BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr, (uint8_t*)scalesDeviceAddr, (uint8_t*)outputDeviceAddr,
+    quant_all_reduce_demo(BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr, (uint8_t*)scalesDeviceAddr, (uint8_t*)outputDeviceAddr,
                             (uint8_t*)workspaceAddr, (uint8_t*)mc2ContextAddr, (uint8_t*)tilingAddr);
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); return ret);
