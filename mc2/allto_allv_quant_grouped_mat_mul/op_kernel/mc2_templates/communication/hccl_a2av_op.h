@@ -233,7 +233,7 @@ private:
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         // MXFP4：N1维度输出也需要除以2
-        uint64_t axis = isMxfp4Mode ? (N1_ / MXFP4_PACK_FACTOR) : N1_;
+        uint64_t axis = isMxfp4Mode ? CeilDiv(N1_, static_cast<uint64_t>(MXFP4_PACK_FACTOR)) : N1_;
         for (uint64_t i = 0UL; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
             alltoAllvRecvCnt[i] = 0UL;

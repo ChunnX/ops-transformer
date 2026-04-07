@@ -59,7 +59,7 @@ public:
         a_ = tilingData_->taskTilingInfo.A;
 
         constexpr uint64_t packFactor = isMxfp4Mode ? 2U : 1U;
-        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * h1_ / packFactor);
+        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : Mc2QuantUtils::CeilDiv(a_ * h1_, packFactor);
         // 将 permuteOutSize 对齐到 512 字节
         permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
         uint64_t permuteXScaleSize =
@@ -130,8 +130,8 @@ protected:
     {
         // MXFP4:2个4-bit元素打包成1字节，偏移量需要除以2
         constexpr uint64_t packFactor = isMxfp4Mode ? 2U : 1U;
-        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_ / packFactor);
-        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_ / packFactor);
+        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(CeilDiv(expertTokenOffset_ * h1_, packFactor));
+        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(CeilDiv(expertIdx * h1_ * n1_, packFactor));
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
 
         // MX 模式：更新 scale 偏移
