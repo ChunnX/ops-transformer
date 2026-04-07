@@ -208,7 +208,7 @@ __aicore__ inline void PromptFlashAttentionNormalVector2<PFAT>::RowInvalid(Local
     for (uint32_t i = 0; i < taskParam.singleProcessSOuterSize; i++) {
         float maxValue = softmaxMaxTmp.GetValue(i);
         uint32_t checkValue = *(uint32_t*)&maxValue;
-        if (checkValue == PFA_NEGATIVE_MIN_VAULE_FP32) {
+        if (checkValue == PFA_NEGATIVE_MIN_VALUE_FP32) {
             isRowInvalidNeedUpdate = true;
             break;
         }
