@@ -373,6 +373,7 @@ namespace BSA {
             uint32_t count = 0;
             uint32_t pingpongFlag = 0;
             uint64_t gSOffset = coreIdx * WORKSPACE_BLOCK_SIZE_DB;
+            uint32_t mmadFlag = 0;
 
             SetFlag();
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -398,9 +399,9 @@ namespace BSA {
                             LayoutB1 layoutB1(headDim, curInfo.curCalKVSize);
                             LayoutC1 layoutC1(curInfo.curCalQSize, curInfo.curCalKVSize);
                             GemmCoord actualShape1{curInfo.curCalQSize, curInfo.curCalKVSize, headDim};
-                            blockMmad1(gQ[curInfo.qOffset], gK[curInfo.kvOffset], gS[curInfo.sOffset], layoutA1, layoutB1, layoutC1, actualShape1);
+                            blockMmad1(gQ[curInfo.qOffset], gK[curInfo.kvOffset], gS[curInfo.sOffset], layoutA1, layoutB1, layoutC1, actualShape1, mmadFlag);
     
-                            blockMmad1(gDout[curInfo.qOffset], gV[curInfo.kvOffset], gDp[curInfo.sOffset], layoutA1, layoutB1, layoutC1, actualShape1);
+                            blockMmad1(gDout[curInfo.qOffset], gV[curInfo.kvOffset], gDp[curInfo.sOffset], layoutA1, layoutB1, layoutC1, actualShape1, mmadFlag);
                             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2VEC);
                             if (count > 0) {
                                 AscendC::WaitEvent(VEC2CUBE);
@@ -409,16 +410,16 @@ namespace BSA {
                                 LayoutC2 layoutC2(preTaskInfo.curCalQSize, headDim);
                                 GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
 
-                                blockMmad2(gDs[preTaskInfo.sOffset], gK[preTaskInfo.kvOffset], gDq[preTaskInfo.qOffset], layoutA2, layoutB2, layoutC2, actualShape2);
+                                blockMmad2(gDs[preTaskInfo.sOffset], gK[preTaskInfo.kvOffset], gDq[preTaskInfo.qOffset], layoutA2, layoutB2, layoutC2, actualShape2, mmadFlag);
 
                                 LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
                                 LayoutB3 layoutB3(preTaskInfo.curCalQSize, headDim);
                                 LayoutC3 layoutC3(preTaskInfo.curCalKVSize, headDim);
                                 GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
-                                blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3);
+                                blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
 
-                                blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3);
+                                blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
                             }
                             preTaskInfo = curInfo;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
@@ -444,9 +445,9 @@ namespace BSA {
             LayoutC3 layoutC3(preTaskInfo.curCalKVSize, headDim);
             GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
-            blockMmad2(gDs[preTaskInfo.sOffset], gK[preTaskInfo.kvOffset], gDq[preTaskInfo.qOffset], layoutA2, layoutB2, layoutC2, actualShape2);
-            blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3);
-            blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3);
+            blockMmad2(gDs[preTaskInfo.sOffset], gK[preTaskInfo.kvOffset], gDq[preTaskInfo.qOffset], layoutA2, layoutB2, layoutC2, actualShape2, mmadFlag);
+            blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+            blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
 
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
