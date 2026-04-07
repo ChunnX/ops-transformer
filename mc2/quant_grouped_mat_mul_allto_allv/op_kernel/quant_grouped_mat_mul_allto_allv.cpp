@@ -96,7 +96,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR se
                                                      DTYPE_GMM_WEIGHT, DTYPE_MMXSCALEOPTIONAL, DTYPE_Y, CubeFormat::ND,
                                                      false, TILINGKEY_MATMUL_TRANS, true, false, isMxfp4Mode>;
     using GmmA2avSchedulerType =
-        GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL, isMxfp4Mode>;
+        GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
     // hccl
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, workspaceGM, yGM);
