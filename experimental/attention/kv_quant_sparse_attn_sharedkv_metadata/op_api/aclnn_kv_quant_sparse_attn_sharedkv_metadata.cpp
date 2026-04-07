@@ -220,7 +220,7 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* oriTopkLengthOptional, const a
             }
             // 校验 cmpTopkLength 的元素数量是否和q tensor相对应
             int64_t bsSize = batchSizeOptional * maxSeqlenQOptional;
-            int64_t oriTopkLengthDims = viewDims[0];
+            int64_t oriTopkLengthDims = viewDims[0] * viewDims[1];
             if (oriTopkLengthDims != bsSize) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is not TND, the size of ori_topk_length %ld should be "
                         "equal with the B*S size %ld", oriTopkLengthDims, bsSize);
@@ -228,7 +228,7 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* oriTopkLengthOptional, const a
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 当 cmpTopkLength 的维度为[B,S]时，校验 cmpTopkLength 第一维是否和 batchSize 相等
-            if (viewDimsNum == 2 && viewDims[0] != queryBatchSize) {
+            if (viewDims[0] != queryBatchSize) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When the shape of ori_topk_length is [B, S], the first dim of "
                         "ori_topk_length(B) should be equal with the batch size %ld, but got %ld",
                         queryBatchSize, viewDims[0]);
@@ -250,7 +250,7 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* oriTopkLengthOptional, const a
             }
             // 校验 cmpTopkLength 的元素数量是否和q tensor相对应
             int64_t bsSize = batchSizeOptional * maxSeqlenQOptional;
-            int64_t cmpTopkLengthDims = viewDims[0];
+            int64_t cmpTopkLengthDims = viewDims[0] * viewDims[1];
             if (cmpTopkLengthDims != bsSize) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is not TND, the size of cmp_topk_length %ld should be "
                         "equal with the B*S size %ld", cmpTopkLengthDims, bsSize);
@@ -258,7 +258,7 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* oriTopkLengthOptional, const a
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 当 cmpTopkLength 的维度为[B,S]时，校验 cmpTopkLength 第一维是否和 batchSize 相等
-            if (viewDimsNum == 2 && viewDims[0] != queryBatchSize) {
+            if (viewDims[0] != queryBatchSize) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When the shape of cmp_topk_length is [B, S], the first dim of "
                         "cmp_topk_length(B) should be equal with the batch size %ld, but got %ld",
                         queryBatchSize, viewDims[0]);
