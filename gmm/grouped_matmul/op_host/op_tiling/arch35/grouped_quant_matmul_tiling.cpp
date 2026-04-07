@@ -1003,7 +1003,7 @@ ge::graphStatus GroupedQmmTiling::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    workspaces[0] = SYS_WORKSPACE_SIZE;
+    workspaces[0] = GmmConstant::SYS_WORKSPACE_SIZES;
     return ge::GRAPH_SUCCESS;
 }
 

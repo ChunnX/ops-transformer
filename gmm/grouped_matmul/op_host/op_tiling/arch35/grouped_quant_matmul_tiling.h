@@ -71,7 +71,7 @@ constexpr uint8_t BF16_VALUE = 27;
 constexpr uint32_t BF16_WORKSIZE = 2;
 constexpr uint32_t FP32_WORKSIZE = 4;
 constexpr uint64_t DB_REQUIRED_BYTES_SIZE = 14UL;
-constexpr uint32_t SYS_WORKSPACE_SIZES = 16 * 1024 * 1024U;
+constexpr uint32_t SYS_WORKSPACE_SIZES = 0U; // A5没有高阶api RPC实现，可以设置为0
 constexpr uint32_t CORE_RATIO = 2U;
 } // namespace GmmConstant
 
