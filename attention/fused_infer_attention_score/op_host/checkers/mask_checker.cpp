@@ -94,7 +94,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
             };
             std::string layoutStr(fiaInfo.opParamInfo.layOut);
             std::string layout = layoutStr;
-            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 && 
+            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
                         !((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) &&
                         std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
                         OP_LOGE(fiaInfo.opName,
@@ -112,13 +112,13 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                                 fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
         }
-        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) && 
-                    !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) || 
-                    ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))), 
-                    OP_LOGE(fiaInfo.opName,	 
-                            "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and "	 
-                            "input datatype is FLOAT8_E4M3/HIFLOAT8, input sparse mode is %d and there has%smask",	 
-                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),	 
+        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
+                    !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
+                    ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and " 
+                            "input datatype is FLOAT8_E4M3/HIFLOAT8, input sparse mode is %d and there has%smask", 
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
