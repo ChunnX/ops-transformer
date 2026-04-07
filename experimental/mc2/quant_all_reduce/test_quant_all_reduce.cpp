@@ -46,84 +46,9 @@ using namespace AscendC;
     } while (0)
 
 constexpr int64_t BLOCK_NUM = 64;
+constexpr int64_t DEV_NUM = 2;
 constexpr const char* PATH_PREFIX = "./golden/quantallreduce_";
 int streamWithTimeout = 10000;
-// 外部输入默认值
-std::string input_tensor_type = "int8_t"; //输入数据类型
-std::string scales_type = "float32_t"; // scale数据类型
-std::string output_type = "float16_t"; // 输出数据类型
-std::string case_name = "int8_t_float32_t_float16_t_ID001"; // case名称  
-int rankId = 0; // 卡号
-int ranksize = 2; // 卡数                    
-int mxfp = 0; // 量化模式
-int run_type = 1;  // 运行类型
-// QuantAllReduceTilingInfo初始化全局变量
-int gbs = 16; // bs大小
-int ghiddenSize = 8192; // hiddensize大小
-int gscaleHiddenSize = 8192; // scalehiddensize大小
-int gmc2ContextSize = 576; // mc2context大小
-int64_t ghcclBufferSize = 200; // hcclbuffer大小
-int64_t gworkSpaceSize = 256*1024*1024; // workspace大小
-// longOptions数组
-static const struct option kLongOptions[] = {
-    {"rank_id",      1, 0, 'a'},
-    {"bs",           1, 0, 'b'},
-    {"hidden_size",  1, 0, 'c'},
-    {"run_type",     1, 0, 'd'},  
-    {"input_tensor_type", 1, 0, 'e'}, 
-    {"scales_type",  1, 0, 'f'}, 
-    {"output_type",  1, 0, 'g'},  
-    {"ranksize",     1, 0, 'h'},  
-    {"mxfp",         1, 0, 'i'},  
-    {"case_name",    1, 0, 'j'},
-    {0, 0, 0, 0}                  
-};
-// 函数声明
-// hccl获取mc2context接口
-extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, void *mc2Tiling, void **commContext);
-// 获取外部输入
-void GetOption(int argc, char **argv)
-{
-    int optionIndex = 0, c = 1;
-    while (c != -1) {
-        c = getopt_long(argc, argv, "a:b:c:d:e:f:g:h:i:j:", kLongOptions, &optionIndex);
-        switch (c) {
-            case 'a':
-                rankId = atoi(optarg);
-                break;
-            case 'b':
-                gbs = atoi(optarg);
-                break;
-            case 'c':
-                ghiddenSize = atoi(optarg);
-                break;
-            case 'd':
-                run_type = atoi(optarg);  
-                break;
-            case 'e':
-                input_tensor_type = optarg;
-                break;
-            case 'f':
-                scales_type = optarg;
-                break;
-            case 'g':
-                output_type = optarg;
-                break;
-            case 'h':
-                ranksize = atoi(optarg);
-                break;
-            case 'i':
-                mxfp = atoi(optarg);
-                break;
-            case 'j':
-                case_name = optarg;
-                break;
-            default:
-                LOG_PRINT("[WARN] Unknown option: %d\n", c);
-                break;
-        }
-    }
-}
 // 获取Shape对应的lengthSize
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -225,83 +150,64 @@ int WriteFile(const std::string &filePath, const void *buffer, size_t size, size
     close(fd);
     return ACL_SUCCESS;
 }
-// 创建DeviceInput
-// shape: 输入的形状 deviceAddr: 设备侧地址 dataName: 输入名称
 template<typename T>
-int CreatDeviceInput(const std::vector<int64_t> &shape, void **deviceAddr, std::string dataName)
+int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr)
 {
-    // 获取输入长度大小
     auto size = GetShapeSize(shape) * sizeof(T);
-    // 调用aclrtMalloc申请device内存
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-    uint8_t *input_host;
-    // 调用aclrtMallocHost申请host内存
-    aclrtMallocHost(reinterpret_cast<void**>(&input_host), size);
-    std::string inputFile = std::string(PATH_PREFIX) + std::string(case_name) + "_" + std::to_string(gbs) + "_" +
-                            std::to_string(ghiddenSize) + "/input_" + dataName + "_" + std::to_string(rankId) + ".bin";
-    // 调用ReadFile读取目录下文件到input_host地址
-    ret = ReadFile(inputFile, input_host, size); 
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] ReadFile failed. ret: %d\n", ret); return ret);
-    // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上                   
-    ret = aclrtMemcpy(*deviceAddr, size, input_host, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-    // 释放host侧资源
-    ret = aclrtFreeHost(input_host);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
     return ACL_SUCCESS;
 }
-// 初始化TilingData
-// QuantAllReduceTilingAddr: 待初始化的TilingData结构体 hcomName: 通信域名称
-int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr) 
+extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, void *mc2Tiling, void **commContext);
+
+int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr,
+                               int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize) 
 {
     QuantAllReduceTilingData *tilingData = new QuantAllReduceTilingData();
     if (tilingData == nullptr) {
         LOG_PRINT("[ERROR] tilingData is nullptr\n");
         return -1;
     } 
-    // 初始化TilingData结构体的成员变量
     Mc2InitTiling mc2InitTiling; 
     Mc2CcTiling mc2CcTiling;
     tilingData->mc2InitTiling = mc2InitTiling;
     tilingData->mc2CcTiling = mc2CcTiling;
-    tilingData->quantAllReduceTilingInfo.bs = gbs;
-    tilingData->quantAllReduceTilingInfo.hiddenSize = ghiddenSize;
-    tilingData->quantAllReduceTilingInfo.scaleHiddenSize = gscaleHiddenSize;
+    tilingData->quantAllReduceTilingInfo.bs = bs;
+    tilingData->quantAllReduceTilingInfo.hiddenSize = hiddenSize;
+    tilingData->quantAllReduceTilingInfo.scaleHiddenSize = hiddenSize;
     tilingData->quantAllReduceTilingInfo.aivNum = BLOCK_NUM;
-    tilingData->quantAllReduceTilingInfo.totalWinSize = ghcclBufferSize;
-    // 初始化通信域配置
+    tilingData->quantAllReduceTilingInfo.totalWinSize = hcclBufferSize;
+    
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(hcomName, 8, "AlltoAll=level0:fullmesh;level1:pairwise");
-    // SetCommEngine: 3 (MTE通信方式需要配置)
     mc2CcTilingConfig.SetCommEngine(3);
     int ret = mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GetTiling mc2InitTiling failed. ret = %d\n", ret); return ret);
     ret = mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GetTiling mc2CcTiling failed. ret = %d\n", ret); return ret);
-    // 申请tilingdata设备侧内存
+    
     int tilingSize = sizeof(struct QuantAllReduceTilingData);
     ret = aclrtMalloc(deviceTilingAddr, tilingSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc TilingData failed. ret: %d\n", ret); return ret);
-    // 拷贝TilingData到设备内存中
     ret = aclrtMemcpy(*deviceTilingAddr, tilingSize, tilingData, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy TilingData failed. ret: %d\n", ret); return ret);
-    // 创建通信域Context
+    
     HcclComm commHandle;
-    // 使用HcomGetCommHandleByGroup接口获取commhandle
     ret = HcomGetCommHandleByGroup(hcomName, &commHandle);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcomGetCommHandleByGroup failed. ret = %d\n", ret); return ret);    
     void *mc2Context = nullptr;
-    // 根据commhandle，stream，tilingData创建mc2Context
     ret = HcclAllocComResourceByTiling(commHandle, stream, tilingData, &mc2Context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclAllocComResourceByTiling failed. ret = %d\n", ret); return ret);
     if (mc2Context == nullptr) {
         LOG_PRINT("[ERROR] mc2Context is nullptr\n");
         return -1;
     }  
-    // Memcpy Mc2Context
-    ret = aclrtMalloc(deviceContextAddr, gmc2ContextSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    
+    int64_t mc2ContextSize = 576;
+    ret = aclrtMalloc(deviceContextAddr, mc2ContextSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc Mc2Context failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceContextAddr, gmc2ContextSize, mc2Context, gmc2ContextSize, ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceContextAddr, mc2ContextSize, mc2Context, mc2ContextSize, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy Mc2Context failed. ret: %d\n", ret); return ret);  
     return ACL_SUCCESS;
 }
@@ -315,31 +221,30 @@ struct Args {
 
 // 分配设备内存
 int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** scalesDevice, void** workspace,
-                      void** tiling, void** mc2Context) 
+                       void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
+                       int64_t workSpaceSize) 
 {
-    // 构建TilingData与context
-    int ret = CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context);
+    int ret = CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize, hcclBufferSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreatTilingDataAndContext failed. ret = %d\n", ret); return ret);    
-    // 设置Input Shape
-    std::vector<int64_t> xShape = {gbs, ghiddenSize};
-    std::vector<int64_t> scalesShape;
-    if (mxfp == 0) scalesShape = {gbs, ghiddenSize/128};
-    else scalesShape = {gbs, ghiddenSize/64, 2};
-    // 分配工作空间
-    if (gworkSpaceSize > 0) {
-        ret = aclrtMalloc(workspace, gworkSpaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    
+    std::vector<int64_t> xShape = {bs, hiddenSize};
+    std::vector<int64_t> scalesShape = {bs, hiddenSize/128};
+    
+    if (workSpaceSize > 0) {
+        ret = aclrtMalloc(workspace, workSpaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }           
-    // 分配输入内存
-    ret = CreatDeviceInput<int8_t>(xShape, xDevice, "x");
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreatDeviceInput X failed. ret: %d\n", ret); return ret);
     
-    if (scales_type == "float32_t") {
-        ret = CreatDeviceInput<int32_t>(scalesShape, scalesDevice, "scale");
-    } else {
-        ret = CreatDeviceInput<int8_t>(scalesShape, scalesDevice, "scale");
-    }
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreatDeviceInput scales failed. ret: %d\n", ret); return ret);
+    long long xShapeSize = GetShapeSize(xShape);
+    long long scalesShapeSize = GetShapeSize(scalesShape);
+    std::vector<int8_t> xHostData(xShapeSize, 0);
+    std::vector<int32_t> scalesHostData(scalesShapeSize, 0);
+    
+    ret = CreateDeviceTensor(xHostData, xShape, xDevice);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
+    
+    ret = CreateDeviceTensor(scalesHostData, scalesShape, scalesDevice);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor scales failed. ret: %d\n", ret); return ret);
     return ACL_SUCCESS;
 }
 
@@ -367,12 +272,17 @@ int LaunchOneThreadQuantAllReduce(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d\n", ret); return ret);
-    // 使用HcclGetCommName接口获取通信域名称
     char hcomName[128] = {0}; 
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d\n", ret); return ret);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p\n", args.rankId, hcomName, args.stream);
-    // 定义Device地址
+    
+    int64_t bs = 16;
+    int64_t hiddenSize = 8192;
+    int64_t hcclBufferSize = 200;
+    int64_t workSpaceSize = 256 * 1024 * 1024;
+    int run_type = 1;
+    
     void *xDeviceAddr = nullptr;
     void *scalesDeviceAddr = nullptr;
     void *workspaceAddr = nullptr;
@@ -380,82 +290,68 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     void *mc2ContextAddr = nullptr; 
     void *outputDeviceAddr = nullptr;
     ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &scalesDeviceAddr, &workspaceAddr,
-                            &tilingAddr, &mc2ContextAddr);
+                            &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] AllocDeviceMemory failed. ret = %d \n", ret); return ret);
-    // 分配输出内存
-    std::vector<int64_t> outputShape = {gbs, ghiddenSize};
+    
+    std::vector<int64_t> outputShape = {bs, hiddenSize};
     long long outputShapeSize = GetShapeSize(outputShape) * sizeof(int16_t);
-    if (output_type == "float32_t") {
-        outputShapeSize = GetShapeSize(outputShape) * sizeof(int32_t);
-    }
     ret = aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc outputDevice failed. ret: %d\n", ret); return ret);    
-    // <<<>>>调用入口
+    
     quant_all_reduce_demo(run_type, BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr, (uint8_t*)scalesDeviceAddr, (uint8_t*)outputDeviceAddr,
                             (uint8_t*)workspaceAddr, (uint8_t*)mc2ContextAddr, (uint8_t*)tilingAddr);
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); return ret);
     LOG_PRINT("[INFO] device_%d aclnnQuantAllReduce execute successfully.\n", args.rankId);
-    // 写出Output
+    
     int16_t *output_host;
     ret = aclrtMallocHost(reinterpret_cast<void**>(&output_host), outputShapeSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMallocHost output failed. ret: %d\n", ret); return ret);
     ret = aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
-    std::string outputFile = std::string(PATH_PREFIX) + std::string(case_name) + "_" + std::to_string(gbs) + "_" +
-                            std::to_string(ghiddenSize) + "/output_npu_" + std::to_string(rankId) + ".bin";
-    // 将文件写出到outputFile
+    std::string outputFile = std::string(PATH_PREFIX) + "output_npu_" + std::to_string(args.rankId) + ".bin";
     ret = WriteFile(outputFile, output_host, outputShapeSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] WriteFile output failed. ret: %d\n", ret); return ret);
     ret = aclrtFreeHost(output_host);    
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
     ret = freeDeviceMemory(args, xDeviceAddr, scalesDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] freeDeviceMemory failed. ret: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] freeDeviceMemory failed. ret = %d\n", ret); return ret);
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    GetOption(argc, argv);
-    // aclInit
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
-    aclrtStream stream;
-    aclrtContext context;
-    HcclComm comms;
-    // setDevice
-    ret = aclrtSetDevice(rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-    // createContext
-    ret = aclrtCreateContext(&context, rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
-    // createStream
-    ret = aclrtCreateStream(&stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
-    HcclCommConfig config;
-    HcclCommConfigInit(&config);
-    // 初始化集合通信域
-    config.hcclDeterministic = 1;
-    // 设置HCCLBUFFER大小
-    config.hcclBufferSize = ghcclBufferSize;
-    // 设置通信域名称
-    ret = strcpy_s(config.hcclCommName, COMM_NAME_MAX_LENGTH - 1, "hccl_comm_test");
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] hcclCommName strcpy failed. ret = %d \n", ret); return ret);    
-    // 从环境变量获取rankTableFile
-    const char* rankTableFile = getenv("RANK_TABLE_FILE");
-    CHECK_RET(rankTableFile != nullptr, LOG_PRINT("[ERROR] get rankTableFile failed.\n"); return -1);
-    // 使用HcclCommInitClusterInfoConfig接口初始化通信域
-    ret = HcclCommInitClusterInfoConfig(rankTableFile, rankId, &config, &comms);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitClusterInfoConfig failed. ret = %d \n", ret); return ret);
-    // 输入args
-    Args args;
-    args.rankId = rankId;
-    args.hcclComm = comms;
-    args.stream = stream;
-    args.context = context;
-    // launch kernel
-    ret = LaunchOneThreadQuantAllReduce(args);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LaunchOneThreadQuantAllReduce failed. ret = %d \n", ret); return ret);
-    // 释放资源
+    aclrtStream stream[DEV_NUM];
+    aclrtContext context[DEV_NUM];
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        ret = aclrtSetDevice(rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
+        ret = aclrtCreateContext(&context[rankId], rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
+        ret = aclrtCreateStream(&stream[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
+    }
+    int32_t devices[DEV_NUM];
+    for (int i = 0; i < DEV_NUM; i++) {
+        devices[i] = i;
+    }
+    HcclComm comms[DEV_NUM];
+    ret = HcclCommInitAll(DEV_NUM, devices, comms);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
+    
+    Args args[DEV_NUM];
+    std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        args[rankId].rankId = rankId;
+        args[rankId].hcclComm = comms[rankId];
+        args[rankId].context = context[rankId];
+        args[rankId].stream = stream[rankId];
+        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadQuantAllReduce, std::ref(args[rankId])));
+    }
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        threads[rankId]->join();
+    }
     aclFinalize();
     return 0;
 }
