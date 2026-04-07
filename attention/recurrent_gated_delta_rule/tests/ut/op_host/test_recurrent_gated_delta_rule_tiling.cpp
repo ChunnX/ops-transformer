@@ -137,7 +137,7 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, Test1)
         &compileinfo
     );
 
-    int64_t expectTilingKey = 0UL;
+    int64_t expectTilingKey = 1UL;
 
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);

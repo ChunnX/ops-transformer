@@ -570,9 +570,10 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
     usedUbBytes += MAX_MTP * 2 * aNv; // 2 for betaInQueue_
     tilingData_.ubRestBytes = ubSize - usedUbBytes;
     usedUbBytes += MAX_MTP * (8 * aDk + 4 * aDv + 4 * aNv); // 8 for qk in ub, 4 for v in ub, 4 for beta in ub
-    int64_t stateBytesPerElem = (stateDtype_ == ge::DT_FLOAT) ? 4 : 2; // bytes per state element
-    int64_t coeff = (stateBytesPerElem + stateBytesPerElem) * aDk + 4; // stateInQueue_, stateOutQueue_, attnOutQueue_
-    coeff += (4 + 4) * aDk + 4 + 4;                                    // 4 for qInUb, kInUb, vInUb, deltaInUb, attnInUb
+    int64_t stateInElemBytes = (stateDtype_ == ge::DT_FLOAT) ? sizeof(float) : sizeof(uint16_t);
+    int64_t stateOutElemBytes = stateInElemBytes; // stateOut has the same dtype as stateIn
+    int64_t coeff = (stateInElemBytes + stateOutElemBytes) * aDk + 4; // stateInQueue_, stateOutQueue_, attnOutQueue_
+    coeff += (4 + 4) * aDk + 4 + 4;                                   // 4 for qInUb, kInUb, vInUb, deltaInUb, attnInUb
     int64_t vStep = (ubSize - usedUbBytes) / coeff / 8 * 8; // 8 * sizeof(float) = 32
     if (vStep < 8) {                                        // vStep不小于8
         OP_LOGE(context_->GetNodeName(), "vStep should be bigger than 8, shape is too big.");
@@ -583,7 +584,7 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
                                  static_cast<uint32_t>(8)); // 8 * sizeof(float) = 32
     tilingData_.ubCalSize = compileInfo_.ubSize;
     tilingData_.vStep = vStep;
-    tilingData_.ubRestBytes -= ((stateBytesPerElem + stateBytesPerElem) * aDk + 4) * vStep;
+    tilingData_.ubRestBytes -= ((stateInElemBytes + stateOutElemBytes) * aDk + 4) * vStep;
 
     return ge::GRAPH_SUCCESS;
 }
