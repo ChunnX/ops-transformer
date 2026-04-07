@@ -24,6 +24,7 @@
 #include "moe_distribute_dispatch_v2_entry.h"
 #include "op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_torch.h"
+#include "moe_distribute_dispatch_v2_torch_validate.h"
 
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
@@ -186,6 +187,26 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     int64_t expert_token_nums_type, c10::string_view comm_alg,
     int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num)
 {
+    MoeDistributeDispatchV2ValidateParams validate_params;
+    validate_params.ep_world_size = ep_world_size;
+    validate_params.ep_rank_id = ep_rank_id;
+    validate_params.moe_expert_num = moe_expert_num;
+    validate_params.expert_shard_type = expert_shard_type;
+    validate_params.shared_expert_num = shared_expert_num;
+    validate_params.shared_expert_rank_num = shared_expert_rank_num;
+    validate_params.quant_mode = quant_mode;
+    validate_params.global_bs = global_bs;
+    validate_params.expert_token_nums_type = expert_token_nums_type;
+    validate_params.comm_alg = std::string(comm_alg);
+    validate_params.zero_expert_num = zero_expert_num;
+    validate_params.copy_expert_num = copy_expert_num;
+    validate_params.const_expert_num = const_expert_num;
+    
+    c10::optional<at::Tensor> elastic_info = c10::nullopt;
+    TORCH_CHECK(ValidateMoeDistributeDispatchV2Input(x, expert_ids, scales, x_active_mask, expert_scales, 
+                                                       elastic_info, performance_info, validate_params),
+                "Input validation failed for npu_moe_distribute_dispatch_v2");
+    
     TORCH_CHECK((x.dim() == DIM_TWO) && (expert_ids.dim() == DIM_TWO), "The x and expert_ids should be 2D");
     TORCH_CHECK(x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf,
                 "dtype of x should be BFloat16 or Half, but got " + std::string(c10::toString(x.scalar_type())));
