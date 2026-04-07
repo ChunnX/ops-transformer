@@ -19,6 +19,10 @@
 #include "hcom/hcom_topo_info.h"
 #endif
 
+static constexpr uint64_t CTX_DEFAULT_COPY_OFFSET = 0; // 默认从最开始拷贝
+static constexpr uint64_t CONTEXT_TAG_MAX_SIZE = 255; // 最大上下文标签大小
+static constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1; // 当走MTE或者CCU通信时， hccl获取的组网层数应该为1
+
 namespace Mc2Hcom {
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcomGetCommHandleByGroup";
 #ifdef BUILD_OPEN_PROJECT
