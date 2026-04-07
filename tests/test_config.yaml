@@ -330,6 +330,36 @@ attention:
       options:
         - mla_prolog_v3
 
+  lightning_indexer:
+    module: True
+    src:
+      - attention/lightning_indexer
+    exclude:
+      - attention/lightning_indexer/docs
+      - attention/lightning_indexer/README.md
+    ut_cov_exclude:
+      - attention/lightning_indexer/examples
+      - attention/lightning_indexer/tests
+    test:
+      examples: False
+    options:
+      - lightning_indexer
+
+  sparse_flash_attention:
+    module: True
+    src:
+      - attention/sparse_flash_attention
+    exclude:
+      - attention/sparse_flash_attention/docs
+      - attention/sparse_flash_attention/README.md
+    ut_cov_exclude:
+      - attention/sparse_flash_attention/examples
+      - attention/sparse_flash_attention/tests
+    test:
+      examples: False
+    options:
+      - sparse_flash_attention
+
 gmm:
   grouped_matmul:
     module: True
