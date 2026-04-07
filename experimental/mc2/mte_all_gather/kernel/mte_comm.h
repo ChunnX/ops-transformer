@@ -41,7 +41,7 @@ public:
     __aicore__ inline void InitHcclContext();
     __aicore__ inline void InitHcclContextByAddr(GM_ADDR mc2Context);
     __aicore__ inline void InitParams();
-    __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t alignedXSize, uint64_t dataSpaceGmSize);
+    __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t alignedXSize);
     __aicore__ inline void InitBuffer(TPipe *tPipe);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum);
     __aicore__ inline void CopyDataToWin();
@@ -107,17 +107,11 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t xSize, uint64_t winSpaceGmSize)
+__aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t xSize)
 {
     xNums_ = xNums;
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     outputTensor_.SetGlobalBuffer((__gm__ XType*)output);
-
-#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    for(uint64_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
-        OOMCheckAddrRange(GetWinAddrGm(curRank), winSpaceGmSize);
-    }
-#endif
 
     uint64_t currCoreFlagOffset = 2UL * SINGLE_STATE_REGION_SIZE + aivId_ * WIN_ADDR_ALIGN;
     selfWinFlagGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)GetWinAddrGm(hcclContext_->rankId, currCoreFlagOffset));

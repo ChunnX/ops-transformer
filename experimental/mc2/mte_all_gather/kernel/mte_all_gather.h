@@ -44,7 +44,6 @@ private:
 
     uint64_t xSize_{0};
     uint64_t xNums_{0};
-    uint64_t totalWinSize_{0};
     uint64_t tailXNums_{0};
     uint32_t totalBlockNums_{0};
 
@@ -63,7 +62,6 @@ __aicore__ inline void MteAllGather<TemplateType>::Init(GM_ADDR x, GM_ADDR outpu
     mteComm_.InitHcclContext();
 
     auto&& tiliingDatainfo = tilingData->mteAllGatherTilingInfo;
-    totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize;
     xSize_ = xNums_ * sizeof(XType);
     tailXNums_ = BlockAlignMod(xNums_, X_PRE_BLOCK_NUM);
@@ -80,7 +78,7 @@ __aicore__ inline void MteAllGather<TemplateType>::Init(GM_ADDR x, GM_ADDR outpu
 
     mteComm_.InitBuffer(tPipe);
 
-    mteComm_.InitGMTensor(x, output, xNums_, xSize_, totalWinSize_);
+    mteComm_.InitGMTensor(x, output, xNums_, xSize_);
 }
 
 template <TemplateTypeClass>
@@ -91,7 +89,6 @@ __aicore__ inline void MteAllGather<TemplateType>::InitWithMc2Context(GM_ADDR x,
     tilingDataOut = (__gm__ MteAllGatherTilingData*)tilingGM;
 
     auto&& tiliingDatainfo = tilingDataOut->mteAllGatherTilingInfo;
-    totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize;
     xSize_ = xNums_ * sizeof(XType);
     tailXNums_ = BlockAlignMod(xNums_, X_PRE_BLOCK_NUM);
@@ -108,7 +105,7 @@ __aicore__ inline void MteAllGather<TemplateType>::InitWithMc2Context(GM_ADDR x,
 
     mteComm_.InitBuffer(tPipe);
 
-    mteComm_.InitGMTensor(x, output, xNums_, xSize_, totalWinSize_);
+    mteComm_.InitGMTensor(x, output, xNums_, xSize_);
 }
 
 template <TemplateTypeClass>

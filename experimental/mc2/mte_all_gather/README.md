@@ -1,21 +1,7 @@
 ## MteAllGather <<<>>>直调示例
 
-通过MTE通信拿到其它卡数据，仅完成AllGather功能（不做Dequant和ReduceSum），将各卡数据按rank顺序拼接到output GM。
+通过MTE通信拿到其它卡数据，完成AllGather功能，将各卡数据按rank顺序拼接到output GM。
 
-# 文件目录
-```
-├── kernel                                  # 算子核函数目录
-│    ├── mte_all_gather_mte_one_shot.h      # AllGather核心逻辑
-│    ├── mte_all_gather_tiling_data.h       # Tiling数据定义
-│    ├── mte_comm.h                         # MTE通信相关实现
-│    └── utils.h                            # 工具函数
-├── mte_all_gather.cpp                      # <<<>>>核函数入口
-├── mte_all_gather.h                        # <<<>>>核函数入口声明头文件
-├── test_mte_all_gather.cpp                 # <<<>>>直调示例代码
-├── generate_golden.py                      # Golden数据生成（AllGather）
-├── run.sh                                  # 工程运行脚本
-└── README.md
-```
 
 # 核函数签名
 ```cpp
@@ -56,14 +42,4 @@ source /usr/local/Ascend/cann/set_env.sh
 2. 运行脚本
 ```shell
 bash run.sh
-```
-
-# 输出结果
-
-程序执行完成后，输出文件位于：
-```
-./golden/mteallgather_output_npu_0.bin
-./golden/mteallgather_output_npu_1.bin
-./golden/mteallgather_output_npu_2.bin
-./golden/mteallgather_output_npu_3.bin
 ```

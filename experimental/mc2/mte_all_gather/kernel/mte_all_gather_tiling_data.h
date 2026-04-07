@@ -22,7 +22,6 @@ struct MteAllGatherTilingInfo {
     uint64_t bs;
     uint64_t hiddenSize;
     uint64_t aivNum;
-    uint64_t totalWinSize;
 };
 
 struct MteAllGatherTilingData {

@@ -56,7 +56,7 @@ int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t
 extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, void *mc2Tiling, void **commContext);
 
 void CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **deviceTilingAddr, void **deviceContextAddr,
-                               int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize)
+                               int64_t bs, int64_t hiddenSize)
 {
     MteAllGatherTilingData tilingData;
     Mc2InitTiling mc2InitTiling;
@@ -66,7 +66,6 @@ void CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void **
     tilingData.mteAllGatherTilingInfo.bs = bs;
     tilingData.mteAllGatherTilingInfo.hiddenSize = hiddenSize;
     tilingData.mteAllGatherTilingInfo.aivNum = BLOCK_NUM;
-    tilingData.mteAllGatherTilingInfo.totalWinSize = hcclBufferSize;
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(hcomName, 8, "AlltoAll=level0:fullmesh;level1:pairwise");
     mc2CcTilingConfig.SetCommEngine(3);
@@ -99,10 +98,10 @@ struct Args {
 };
 
 void AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** workspace,
-                       void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
+                       void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize,
                        int64_t workSpaceSize)
 {
-    CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize, hcclBufferSize);
+    CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize);
 
     std::vector<int64_t> xShape = {bs, hiddenSize};
 
@@ -138,7 +137,6 @@ int LaunchOneThreadMteAllGather(Args &args)
 
     int64_t bs = 16;
     int64_t hiddenSize = 8192;
-    int64_t hcclBufferSize = 200;
     int64_t workSpaceSize = 256 * 1024 * 1024;
 
     void *xDeviceAddr = nullptr;
@@ -147,7 +145,7 @@ int LaunchOneThreadMteAllGather(Args &args)
     void *mc2ContextAddr = nullptr;
     void *outputDeviceAddr = nullptr;
     AllocDeviceMemory(args, hcomName, &xDeviceAddr, &workspaceAddr,
-                      &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize);
+                      &tilingAddr, &mc2ContextAddr, bs, hiddenSize, workSpaceSize);
 
     std::vector<int64_t> outputShape = {args.rankDim, bs, hiddenSize};
     long long outputShapeSize = GetShapeSize(outputShape) * sizeof(int8_t);
