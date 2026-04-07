@@ -19,7 +19,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
 
-namespace QuantMTECommImpl {
+namespace MTECommImpl {
 
 using namespace AscendC;
 constexpr static uint32_t UB_ALIGN_BYTES = 32U;
@@ -31,10 +31,7 @@ constexpr static uint32_t ZERONE_STATE_POS = 0U;
 constexpr static uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;
 
-#define TemplateTypeClass typename XType
-#define TemplateType XType
-
-template<TemplateTypeClass>
+template<typename XType>
 class MTECommunication {
 public:
     __aicore__ inline MTECommunication() {};
@@ -85,20 +82,20 @@ private:
     TBuf<> stateResetBuf_;
 };
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::InitHcclContext()
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::InitHcclContext()
 {
     hcclContext_ = (__gm__ HcclA5OpResParam*)GetHcclContext<HCCL_GROUP_ID_0>();
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::InitHcclContextByAddr(GM_ADDR mc2Context)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::InitHcclContextByAddr(GM_ADDR mc2Context)
 {
     hcclContext_ = (__gm__ HcclA5OpResParam*)(mc2Context);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::InitParams()
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::InitParams()
 {
     aivId_ = GetBlockIdx();
     assignedBlockNums_ = aivId_ < tailBlockNums_ ? round_ + 1 : round_;
@@ -106,8 +103,8 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
     xOffset_ = blockIdx * xNumPerBlock_;
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t xSize)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::InitGMTensor(GM_ADDR x, GM_ADDR output, uint64_t xNums, uint64_t xSize)
 {
     xNums_ = xNums;
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -127,8 +124,8 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
     localWinXGMTensor_.SetGlobalBuffer((__gm__ XType*)localDataSpaceGm);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::InitBuffer(TPipe *tPipe)
 {
     tPipe->InitBuffer(xQueue_, BUFFER_NUM, X_BLOCK_BYTES);
     tPipe->InitBuffer(winFlagsBuf_, UB_ALIGN_BYTES);
@@ -140,16 +137,16 @@ __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
     Duplicate<float>(stateResetTensor_, (float)0.0, static_cast<uint32_t>(hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM));
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum)
 {
     xNumPerBlock_ = elementsPerBlock;
     aivNum_ = aivNum;
     tailXNums_ = lastBlockNum;
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::ComputeTailAivId(uint64_t totalAivCount)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::ComputeTailAivId(uint64_t totalAivCount)
 {
     if (round_ == 0) {
         lastAivId_ = tailBlockNums_ - 1;
@@ -158,8 +155,8 @@ __aicore__ inline void MTECommunication<TemplateType>::ComputeTailAivId(uint64_t
     }
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t curXOffset, uint32_t count)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::CopyDataBlock(uint64_t curXOffset, uint32_t count)
 {
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
     DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
@@ -169,8 +166,8 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin()
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::CopyDataToWin()
 {
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;
@@ -183,8 +180,8 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin()
     PipeBarrier<PIPE_ALL>();
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::WriteStatusToWin()
 {
     uint32_t coreOffset = aivId_ * hcclContext_->rankDim;
     for (uint32_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
@@ -202,8 +199,8 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
     }
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::ReadStatus()
 {
     GM_ADDR stateGM = GetWinStatusAddrGm(hcclContext_->rankId, winBufferFlags_);
     GlobalTensor<float> selfStatusWinTensor;
@@ -227,21 +224,21 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::CopyXBlockToOutput(uint64_t outOffsetGM, uint64_t winXOffset, uint32_t count)
+template <typename XType>
+__aicore__ inline void MTECommunication<XType>::CopyXBlockToOutput(uint64_t outOffsetGM, uint64_t winXOffset, uint32_t count)
 {
     DataCopy(outputTensor_[outOffsetGM], localWinXGMTensor_[winXOffset], count);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
-template <TemplateTypeClass>
-__aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinAddrGm(uint32_t rankId, uint64_t offset)
+template <typename XType>
+__aicore__ inline GM_ADDR MTECommunication<XType>::GetWinAddrGm(uint32_t rankId, uint64_t offset)
 {
     return (GM_ADDR)(hcclContext_->windowsIn[rankId] + offset);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag)
+template <typename XType>
+__aicore__ inline GM_ADDR MTECommunication<XType>::GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag)
 {
     if (winFlag == 0U) {
         return GetWinAddrGm(rankId, STATE_WIN_SIZE);
@@ -251,8 +248,8 @@ __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinDataAddrGm(uint3
     }
 }
 
-template <TemplateTypeClass>
-__aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinStatusAddrGm(uint32_t rankId, uint32_t winFlag)
+template <typename XType>
+__aicore__ inline GM_ADDR MTECommunication<XType>::GetWinStatusAddrGm(uint32_t rankId, uint32_t winFlag)
 {
     if (winFlag == 0U) {
         return GetWinAddrGm(rankId);
@@ -261,5 +258,5 @@ __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinStatusAddrGm(uin
         return GetWinAddrGm(rankId, SINGLE_STATE_REGION_SIZE);
     }
 }
-} // QuantMTECommImpl
+}
 #endif  // MTE_COMMON_H

@@ -15,12 +15,12 @@
 
 namespace MteAllGatherImpl {
 
-using namespace QuantMTECommImpl;
+using namespace MTECommImpl;
 using namespace AscendC;
 
 constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;
 
-template<TemplateTypeClass>
+template<typename XType>
 class MteAllGather {
 public:
     __aicore__ inline MteAllGather() {};
@@ -38,15 +38,15 @@ private:
     uint32_t totalBlockNums_{0};
 
     __gm__ MteAllGatherTilingData* tilingDataOut;
-    MTECommunication<TemplateType> mteComm_;
+    MTECommunication<XType> mteComm_;
 
     GlobalTensor<XType> remoteWinXTensor_;
 
     TQue<QuePosition::VECIN, 1> xInQueue_;
 };
 
-template <TemplateTypeClass>
-__aicore__ inline void MteAllGather<TemplateType>::Init(GM_ADDR x, GM_ADDR output,
+template <typename XType>
+__aicore__ inline void MteAllGather<XType>::Init(GM_ADDR x, GM_ADDR output,
     TPipe *tPipe, const MteAllGatherTilingData *tilingData)
 {
     mteComm_.InitHcclContext();
@@ -71,8 +71,8 @@ __aicore__ inline void MteAllGather<TemplateType>::Init(GM_ADDR x, GM_ADDR outpu
     mteComm_.InitGMTensor(x, output, xNums_, xSize_);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MteAllGather<TemplateType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
+template <typename XType>
+__aicore__ inline void MteAllGather<XType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
     GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *tPipe)
 {
     mteComm_.InitHcclContextByAddr(mc2Context);
@@ -98,8 +98,8 @@ __aicore__ inline void MteAllGather<TemplateType>::InitWithMc2Context(GM_ADDR x,
     mteComm_.InitGMTensor(x, output, xNums_, xSize_);
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MteAllGather<TemplateType>::ExecuteAllGather()
+template <typename XType>
+__aicore__ inline void MteAllGather<XType>::ExecuteAllGather()
 {
     mteComm_.ReadStatus();
 
@@ -127,8 +127,8 @@ __aicore__ inline void MteAllGather<TemplateType>::ExecuteAllGather()
     }
 }
 
-template <TemplateTypeClass>
-__aicore__ inline void MteAllGather<TemplateType>::Process()
+template <typename XType>
+__aicore__ inline void MteAllGather<XType>::Process()
 {
     if ASCEND_IS_AIC {
         return;
