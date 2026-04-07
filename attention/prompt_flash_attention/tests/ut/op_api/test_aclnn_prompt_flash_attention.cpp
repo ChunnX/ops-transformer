@@ -37,6 +37,38 @@ protected:
     }
 };
 
+// dav3510 reject
+TEST_F(prompt_flash_attention_opapi_ut, prompt_flash_attention_aclnn_950_unsupported)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    char inputLayout[] = "BNSD";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    aclnnStatus aclRet = aclnnPromptFlashAttentionGetWorkspaceSize(
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        8,
+        0.08838834764831843,
+        INT64_MAX,
+        0,
+        inputLayout,
+        8,
+        nullptr,
+        &workspaceSize,
+        &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_RUNTIME_ERROR);
+    EXPECT_EQ(executor, nullptr);
+
+    aclRet = aclnnPromptFlashAttention(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(aclRet, ACLNN_ERR_RUNTIME_ERROR);
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+}
+
 // BNSD layout, FP16, no mask, standard MHA (N_q == N_kv)
 // query/key/value: (B=2, N=8, S=64, D=128)  →  attentionOut: (B=2, N=8, S=64, D=128)
 TEST_F(prompt_flash_attention_opapi_ut, prompt_flash_attention_aclnn_0)
