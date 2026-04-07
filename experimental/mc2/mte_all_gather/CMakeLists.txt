@@ -26,9 +26,7 @@ if(NOT DEFINED ENV{CMAKE_PREFIX_PATH})
     set(CMAKE_PREFIX_PATH ${ASCEND_CANN_PACKAGE_PATH}/tools/tikicpulib/lib/cmake)
 endif()
 
-file(GLOB KERNEL_FILES 
-    ${CMAKE_CURRENT_SOURCE_DIR}/mte_all_gather.cpp
-)
+set(KERNEL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/mte_all_gather.cpp)
 
 if(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
     set(ASCENDC_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
@@ -40,7 +38,7 @@ endif()
 include(${ASCENDC_CMAKE_DIR}/ascendc.cmake)
 
 # ascendc_library use to add kernel file to generate ascendc library
-ascendc_library(ascendc_kernels SHARED ${KERNEL_FILES})
+ascendc_library(ascendc_kernels SHARED ${KERNEL_FILE})
 
 add_executable(test_mte_all_gather 
     ${CMAKE_CURRENT_SOURCE_DIR}/test_mte_all_gather.cpp
@@ -70,7 +68,5 @@ target_link_libraries(test_mte_all_gather PRIVATE
 )
 
 install(TARGETS test_mte_all_gather
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

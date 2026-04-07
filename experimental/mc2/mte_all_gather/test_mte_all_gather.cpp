@@ -11,7 +11,7 @@
 /*!
  * \file test_mte_all_gather.cpp
  * \brief AllGather <<<>>>测试样例
- *        通过MTE通信拿到其它卡数据，按rank顺序拼接到output（不做Dequant和ReduceSum）
+ *        通过MTE通信拿到其它卡数据，按rank顺序拼接到output
  */
 #include <thread>
 #include <iostream>
