@@ -1,0 +1,109 @@
+/**
+* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+* CANN Open Software License Agreement Version 2.0 (the "License").
+* Please refer to the License for details. You may not use this file except in compliance with the License.
+* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+* See LICENSE in the root of the software repository for the full text of the License.
+*/
+
+/*!
+* \file mc2_profiling.h
+* \brief
+*/
+
+#ifndef MC2_PROFILING_H
+#define MC2_PROFILING_H
+
+struct aclprofTensor {
+    uint32_t type;         // tensor类型, 0: input, 1: output
+    uint32_t format;       // format类型： aclFormat
+    uint32_t dataType;     // dataType类型 aclDataType
+    uint32_t shapeDim;     // shape dim <= 8
+    uint32_t shape[8];     // shape
+};
+
+struct aclprofTensorInfo{
+    uint64_t opNameId;     // 通过uint64_t aclprofStr2Id(const char *message)转化
+    uint64_t opTypeId;     // 通过uint64_t aclprofStr2Id(const char *message)转化
+    uint32_t resv;
+    uint32_t tensorNum;
+    uint32_t kernelType;
+    uint32_t blockNums;
+    void *stream;          // stream信息, aclgraph
+    aclprofTensor *tensors;
+};
+
+struct aclprofEventAttributes {
+    uint16_t version;
+    uint16_t size;         // message size 
+    uint32_t messageType;  // 0: MESSAGE_TYPE_TENSOR_INFO
+    union message {
+        aclprofTensorInfo *tensorInfo;
+    } message;
+};
+
+static inline aclDataType ConvertType(const at::ScalarType& scalar_type) {
+    switch (scalar_type) {
+        case at::kFloat:      return ACL_FLOAT;
+        case at::kHalf:       return ACL_FLOAT16;
+        case at::kBFloat16:   return ACL_BF16; // 修正：使用 ACL_BF16 (值为27)
+        case at::kInt:        return ACL_INT32;
+        case at::kLong:       return ACL_INT64;
+        case at::kChar:       return ACL_INT8;
+        case at::kByte:       return ACL_UINT8;
+        case at::kBool:       return ACL_BOOL;
+        
+        // 其他可选支持的类型
+        // case at::kDouble:     return ACL_DOUBLE;
+        // case at::kShort:      return ACL_INT16;
+        
+        default:
+            return ACL_DT_UNDEFINED; // 处理未识别的类型
+    }
+}
+
+#define INIT_ACL_TENSOR_ARRAY(tensors1, ...) aclTensor* tensors1[] = {__VA_ARGS__}
+#define INPUT(x) aclprofTensor {                                                                            \
+    (uint32_t)0,                                                                                            \
+    static_cast<uint32_t>(ACL_FORMAT_ND),                  \
+    static_cast<uint32_t>(ConvertType(x.scalar_type())),                                                    \
+    static_cast<uint32_t>(x.sizes().size()),                                                                \
+    {                                                                                                       \
+        static_cast<uint32_t>(x.sizes().size() > 0 ? x.sizes().data()[0] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 1 ? x.sizes().data()[1] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 2 ? x.sizes().data()[2] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 3 ? x.sizes().data()[3] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 4 ? x.sizes().data()[4] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 5 ? x.sizes().data()[5] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 6 ? x.sizes().data()[6] : 0),                              \
+        static_cast<uint32_t>(x.sizes().size() > 7 ? x.sizes().data()[7] : 0)                               \
+    }                                                                                                       \
+}
+
+#define OUTPUT(z) aclprofTensor {                                                                           \
+    (uint32_t)1,                                                                                            \
+    static_cast<uint32_t>(ACL_FORMAT_ND),                  \
+    static_cast<uint32_t>(ConvertType(z.scalar_type())),                                                    \
+    static_cast<uint32_t>(z.sizes().size()),                                                                \
+    {                                                                                                       \
+        static_cast<uint32_t>(z.sizes().size() > 0 ? z.sizes().data()[0] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 1 ? z.sizes().data()[1] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 2 ? z.sizes().data()[2] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 3 ? z.sizes().data()[3] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 4 ? z.sizes().data()[4] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 5 ? z.sizes().data()[5] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 6 ? z.sizes().data()[6] : 0),                              \
+        static_cast<uint32_t>(z.sizes().size() > 7 ? z.sizes().data()[7] : 0)                               \
+    }                                                                                                       \
+}
+
+#define INIT_ACL_PROF_TENSOR_INFO(opName, opType, blockdim, kernelType, tensorInfo, stream, ...)            \
+    uint64_t opNameId = aclprofStr2Id(opName);                                                              \
+    uint64_t opTypeId = aclprofStr2Id(opType);                                                              \
+    struct aclprofTensor tensors[] = {__VA_ARGS__};                                                         \
+    tensorInfo = {opNameId, opTypeId, 0, sizeof(tensors)/sizeof(aclprofTensor), kernelType, blockdim, stream, tensors}
+
+
+#endif //MC2_PROFILING_H
