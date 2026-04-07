@@ -488,6 +488,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_10)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
+// kv layout mismatch
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_11)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -568,5 +569,257 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_12)
     int64_t expectTilingKey = 576;
     std::string expectTilingData = "";
     std::vector<size_t> expectWorkspaces = {214302720};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// sparse_mode invalid
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
+{
+    struct SparseFlashAttentionCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {1, 1, 1, 1};
+    int64_t actual_seq_kvlist[] = {65536, 65536, 65536, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 4294967295;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {35520512};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// sparse_block_size np2
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
+{
+    struct SparseFlashAttentionCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {1, 1, 1, 1};
+    int64_t actual_seq_kvlist[] = {65536, 65536, 65536, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 4294967295;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {35520512};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// pre_tokens invalid
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
+{
+    struct SparseFlashAttentionCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {1, 1, 1, 1};
+    int64_t actual_seq_kvlist[] = {65536, 65536, 65536, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 4294967295;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {35520512};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// lse pa_kv invalid
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
+{
+    struct SparseFlashAttentionCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {1, 1, 1, 1};
+    int64_t actual_seq_kvlist[] = {65536, 65536, 65536, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 4294967295;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {35520512};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// actual_seq_q mismatch
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
+{
+    struct SparseFlashAttentionCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {1, 1, 1};
+    int64_t actual_seq_kvlist[] = {65536, 65536, 65536, 65536};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 4294967295;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {35520512};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// block_size unaligned
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
+{
+    struct SparseFlashAttentionCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {1};
+    int64_t actual_seq_kvlist[] = {126};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{1, 1, 128, 512}, {1, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{7, 18, 1, 512}, {7, 18, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{7, 18, 1, 512}, {7, 18, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 1, 128, 63}, {1, 1, 128, 63}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 7}, {1, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{7, 18, 1, 64}, {7, 18, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {{{1, 1, 128, 512}, {1, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 4294967295;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {35520512};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
