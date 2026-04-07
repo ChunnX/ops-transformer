@@ -351,7 +351,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>commQuantMode</td>
     <td>输入</td>
     <td>通信量化类型。</td>
-    <td>取值范围0或2（0表示不量化，2表示int8量化）。</td>
+    <td>-</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -460,7 +460,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `commQuantMode`取值范围0或2（0表示不量化，2表示int8量化）。
+        - `commQuantMode`取值范围0、2、3或4（0表示不量化，2表示int8量化，3表示mxfp8量化e5m2，4表示mxfp8量化e4m3）。
 
 - **返回值**
 
@@ -497,7 +497,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>参数的取值不在支持的范围。</td>
+        <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -638,6 +638,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         ```
     
     - 机器数量设置：
+
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
 
         ```Cpp
@@ -651,7 +652,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
+
     - 环境变量配置：
+    
         ```bash
         # 运行前需设置RANK_TABLE_FILE环境变量
         export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
@@ -660,6 +663,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>

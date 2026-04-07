@@ -230,7 +230,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不指定序列长度可传入nullptr，表示和query的shape的S长度相同。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-        <ul>
+        </ul>
         </td>
         <td>INT64</td>
         <td>-</td>
@@ -611,7 +611,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>BFLOAT16</td>
         <td>ND</td>
-        <td>(Q_N)</a></td>
+        <td>(Q_N)</td>
         <td>×</td>
     </tr>
     <tr> 
@@ -1213,7 +1213,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>支持D轴小于等于512</li>
                         <li>非量化场景下，当query/key/value三组HeadDim均小于等于128且layout不为NTD/NTD_TND/BSH_BNSD/BSND_BNSD/BNSD_BSND时，支持参数query/key的HeadDim与value的HeadDim不相等
                         </li>
-                        <li>layout为NTD/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
+                        <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
                         <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时,HeadDim需要32对齐</li>
                     </ul>
@@ -1271,7 +1271,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                 <td>
                 - <term> Ascend 950PR/Ascend 950DT </term> 
                   - 不支持全量化、伪量化
-                - <term> Atlas A3 训练系列产品/Atlas A3 推理系列产品 </term> 和 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
+                - <term> Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 和 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
                   - 不支持全量化、伪量化、tensorlist、左padding
                 </td>
             </tr>
@@ -1289,6 +1289,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参 pseType 应满足以下条件：
       - pseType 必须为0, 2 或者 3
       - pseType 为 1 不支持 FA 推理场景，仅支持 FA 训练场景
+      - pseType 为 0 且 Q_S=1 时，P_S1 仅支持 1
     - 入参 pseShift 应满足以下条件：
       - tensor 的数据类型应满足以下条件：
         - pseType 为 2 或者 3 时，tensor 的数据类型必须为 FLOAT32
@@ -1449,10 +1450,10 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参 key 和 value 应满足以下条件：
       - 入参的数据类型应满足以下条件：
         - per-channel(per-tensor) 模式，其支持的数据类型为 INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
-        - per-token 模式，其支持的数据类型为 INT8、INT4(INT32)
+        - per-token 模式，其支持的数据类型为 INT8、INT4(INT32)、FLOAT8_E4M3FN
         - per-tensor 叠加 per-head 模式，其支持的数据类型为 INT8
         - per-token 叠加 per-head 模式，其支持的数据类型为 INT8、INT4(INT32)
-        - per-token 模式使用 page attenion 管理 scale/offset，其支持的数据类型为 INT8
+        - per-token 模式使用 page attenion 管理 scale/offset，其支持的数据类型为 INT8、FLOAT8_E4M3FN
         - key 支持 per-channel 叠加 value 支持 per-token，其支持的数据类型为 INT8、INT4(INT32)
         - per-token-group，其支持的数据类型为 FLOAT4_E2M1
   - 全量化场景
@@ -1462,6 +1463,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
     - per-block 全量化
       - 入参 queryQuantMode、keyAntiquantMode、valueAntiquantMode 为7
+      - 入参 quantScale1的shape为（1），dtype为FLOAT32
     - per-tensor 全量化
       - 入参 deqScale1、deqScale2 的dtype支持 UINT64、FLOAT32
       - 入参 quantScale1 的dtype支持FLOAT32
@@ -1486,8 +1488,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持传入 keyRopeAntiquantScale
     - per-block 全量化
       - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
+      - 可选传入 quantScale1
       - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
-      - 不支持传入 deqScale1、quantScale1、deqScale2
+      - 不支持传入 deqScale1、deqScale2
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
     - per-tensor 全量化
@@ -1534,6 +1537,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当inputLayout 为NTD_TND时，dequantScaleQuery 的shape为(Q_N, floor(Q_T, 128) + B, ceil(D, 256))，其他场景shape为(B, Q_N, ceil(Q_S, 128), 1)
       - innerPrecise 仅支持0、1
       - 不支持tensorlist场景、不支持左padding场景、不支持pse场景、不支持alibi场景、不支持Rope存在、不支持Mask场景、不支持PagedAttention场景、不支持SoftmaxLSE场景、不支持公共前缀场景
+      - query、key、value 的dtype为FLOAT8_E4M3FN时，quantScale1的取值范围满足值[1,448]；query、key、value 的dtype为HIFLOAT8时，quantScale1的取值范围满足值[1,32768]
     - per-tensor 全量化
       - query、key、value 的dtype为INT8
       - attentionOut 的dtype支持FLOAT16、BFLOAT16
@@ -1566,6 +1570,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - PostQuant 场景下，当存在 prefix 时，仅支持输出 attenOut 的数据类型为 INT8
   - 伪量化
     - PostQuant 场景下，输出 attenOut 的数据类型仅支持与输入 Key、Value 数据类型相同
+    - 当 keyAntiquantMode 和 valueAntiquantMode 为 per-token 或 per-token 使用 page attention 管理 scale/offset，query 数据类型为 FP16/BF16 且 key/value 数据类型为FLOAT8_E4M3FN 时，不支持叠加后量化
 
 #### Paged Attention参数组
 

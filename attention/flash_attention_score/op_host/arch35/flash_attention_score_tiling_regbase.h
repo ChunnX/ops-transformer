@@ -79,6 +79,7 @@ static const int64_t D_K_SCALE_INDEX = 13L;
 static const int64_t D_V_SCALE_INDEX = 14L;
 static const int64_t QUERY_ROPE_INDEX = 15L;
 static const int64_t KEY_ROPE_INDEX = 16L;
+static const int64_t SINK_INPUT_INDEX = 17L;
 static const int64_t D_SCALE_DIM_NUM_4 = 4L;
 static const int64_t D_SCALE_DIM_NUM_0 = 0L;
 static const int64_t D_SCALE_DIM_NUM_1 = 1L;
@@ -87,7 +88,7 @@ static const int64_t D_SCALE_DIM_NUM_3 = 3L;
 static const int64_t QUANT_BLOCK_SIZE = 128L;
 static const int64_t QUANT_K_BLOCK_SIZE = 256L;
 static const int64_t QUANT_V_BLOCK_SIZE = 512L;
-static const int64_t L2_CACHE_SIZE = 128L;
+static const int64_t COMPRESS_ATTEN_MASK_SIZE = 2048 * 2048;
 
 enum class LayoutType : uint8_t {
     NONE = 0,
@@ -387,6 +388,7 @@ protected:
     bool AnalyzeFp8OptionalInput();
     bool AnalyzeRopeOptionalInput();
     bool AnalyzeOptionalInput();
+    bool AnalyzeSinkOptionalInput();
     virtual void CalcS1S2BasicBlock() = 0;
     virtual void CalcDBasicBlock() = 0;
     virtual void CalcDVBasicBlock();
@@ -396,7 +398,7 @@ protected:
     virtual void SetOutputDtype();
     virtual void SetSplitCoreModeParam();
     virtual void CalcThresholdForS2Size();
-    virtual bool IsUseSpliteCoreMode(SparseMode inputSparseMode);
+    virtual bool IsUseSplitCoreMode(SparseMode inputSparseMode);
     virtual void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
     virtual void SetSparseParamsRegbase(int64_t maxCoreNum);
     virtual bool SetPseAlibiParamsRegbase();
@@ -473,9 +475,10 @@ protected:
     int64_t dVBasicBlock;
 
     int64_t maxValidS2Len;
-    int64_t thresholdS2Size = 0;        // S2最大长度，使得当前shape下，K和V能够占满L2Cache
+    int64_t thresholdS2Size = std::numeric_limits<int64_t>::max();
     int64_t firstFullLoadS1OuterIdx = -1;
     SplitCoreMode splitCoreMode = SplitCoreMode::SQ_SINGLE_CORE_FIRST;
+    uint64_t l2CacheSize = 134217728;    // 128M
 
     const char *templateName = "base";
     const char *opName;
@@ -490,6 +493,7 @@ protected:
     bool dropMaskOuter = false;
     bool regbase = false;
     bool hasRope = false;
+    bool hasSink = false;
 
     DTemplateType dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
     DTemplateType dVTemplateType = DTemplateType::DTEMPLATEBOTTOM;

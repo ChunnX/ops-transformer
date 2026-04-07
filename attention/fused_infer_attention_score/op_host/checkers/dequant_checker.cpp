@@ -510,7 +510,7 @@ ge::graphStatus DequantChecker::CheckFeatureMLAFullquant(const FiaTilingInfo &fi
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
                 OP_LOGE(fiaInfo.opName, "In MLA fullquant scenario, key/value tensorlist is not supported."),
                 return ge::GRAPH_FAILED);
-    // MLA int8全量化仅支持
+    // MLA int8全量化仅支持PA_NZ
     const uint32_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
         !(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && keyDim == DIM_NUM_5),
@@ -1077,20 +1077,29 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
         // per-tensor模式，仅当key/value的数类型为INT8时支持
         gert::Shape expectedShape1 = gert::Shape({1});
         auto keyAntiquantScaleShape = keyAntiquantScaleTensor->GetStorageShape();
-        OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1) && inputKvType != ge::DT_INT8,
-                    OP_LOGE(fiaInfo.opName,
-                            "datatype of key and value(%s) is not supported. "
-                            "datatype of key and value must be INT8 when "
-                            "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+        if (inputKvType == ge::DT_INT4) {
+            OP_CHECK_IF(keyAntiquantScaleShape == expectedShape1,
+                        OP_LOGE(fiaInfo.opName,
+                                "Datatype of key and value(INT4/INT32) is not supported. "
+                                "Datatype of key and value must be INT8 when "
+                                "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode."),
+                        return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1) && inputKvType != ge::DT_INT8,
+                        OP_LOGE(fiaInfo.opName,
+                                "Datatype of key and value(%s) is not supported. "
+                                "Datatype of key and value must be INT8 when "
+                                "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
+                                DataTypeToSerialString(inputKvType).c_str()),
+                        return ge::GRAPH_FAILED);
+        }
     }
     if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         // per-token模式，支持key/value的数据类型为INT8、INT4(INT32)
-        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
+        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_FLOAT8_E4M3FN),
                     OP_LOGE(fiaInfo.opName,
                             "datatype of key and value(%s) is not supported. "
-                            "datatype of key and value must be INT8 or INT4(INT32) when "
+                            "datatype of key and value must be INT8, INT4(INT32) or FLOAT8_E4M3FN when "
                             "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
                             DataTypeToSerialString(inputKvType).c_str()),
                     return ge::GRAPH_FAILED);
@@ -1119,10 +1128,10 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
     }
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         // per-token模式使用page attention管理scale/offset，支持key/value数据类型为INT8
-        OP_CHECK_IF((inputKvType != ge::DT_INT8),
+        OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_FLOAT8_E4M3FN),
                     OP_LOGE(fiaInfo.opName,
                             "datatype of key and value(%s) is not supported. "
-                            "datatype of key and value must be INT8 when "
+                            "datatype of key and value must be INT8 or FLOAT8_E4M3FN when "
                             "keyAntiquantMode is per-token-PA mode and "
                             "valueAntiquantMode is per-token-PA mode.",
                             DataTypeToSerialString(inputKvType).c_str()),

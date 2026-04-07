@@ -213,8 +213,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckOptionalAttrValue()
                     OP_LOGE(nodeName_, "commQuantMode only support 0, get %ld.", *commQuantModePtr),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (*commTypePtr < SDMA_COMM) || (*commTypePtr > URMA_COMM),
-        OP_LOGE(nodeName_, "commType only support [%lu, %lu], get [%lu]", SDMA_COMM, URMA_COMM, *commTypePtr),
+        (*commTypePtr != URMA_COMM),
+        OP_LOGE(nodeName_, "commType only support %lu, get [%lu]", URMA_COMM, *commTypePtr),
         return ge::GRAPH_FAILED);
     if (commAlgPtr != nullptr) {
         const std::string commAlg = std::string(commAlgPtr);
@@ -587,7 +587,7 @@ void MoeDistributeCombineSetupTilingBase::SetTilingKey()
 
 ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckHcclBuffSize()
 {
-    const uint64_t hcclBuffSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    const uint64_t hcclBuffSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() / 2;
     OP_TILING_CHECK(
         hcclBuffSize < MIN_AVAILABLE_BUFF_SIZE,
         OP_LOGE(nodeName_, "HCCL_BUFFSIZE too short, [%ld] < [%ld].", hcclBuffSize, MIN_AVAILABLE_BUFF_SIZE),

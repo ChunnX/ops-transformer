@@ -417,7 +417,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <td>commQuantMode</td>
     <td>输入</td>
     <td>通信量化类型。</td>
-    <td>取值范围0或者2，0表示通信时不进行量化，2表示通信时进行int8量化。</td>
+    <td>-</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -583,7 +583,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum 当前取值范围[0, 4]。
     - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-    - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可使能。
+    - commQuantMode 取值范围0、2、3或4（0表示不量化，2表示int8量化，3表示mxfp8量化e5m2，4表示mxfp8量化e4m3）。
     - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。
     - elasticInfoOptional 预留参数，当前版本不支持，传空指针即可。
     - constExpertAlpha1Optional 可选择传入有效数据或填空指针，当constExpertNum不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，shape为<code>(constExpertNum, H)</code>，数据类型需跟expandX保持一致。
@@ -630,7 +630,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>参数的取值不在支持的范围。</td>
+        <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -721,7 +721,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 - **通信域使用约束**：
   - 一个模型中的`aclnnMoeDistributeCombineV4`系列算子和`aclnnMoeDistributeDispatchV4`仅支持相同EP通信域，且该通信域中不允许有其他算子。
   - 一个模型中的`aclnnMoeDistributeCombineV4`系列算子和`aclnnMoeDistributeDispatchV4`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅在commAlg配置为"hierarchy"场景下通信域支持跨超节点，其余场景要求一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 - **组网约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。

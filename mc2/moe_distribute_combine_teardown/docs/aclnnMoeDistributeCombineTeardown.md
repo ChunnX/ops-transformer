@@ -165,7 +165,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>sharedExpertXOptional（aclTensor*）</td>
         <td>可选输入</td>
         <td>表示共享专家计算后的Token</td>
-        <td>不支持空Tensor。要求是一个2D或3D的Tensor，当Tesnor为2D时，shape为 (BS,H)；当Tensor为3D时，前两位的乘积需等于BS，第三维需等于H。数据类型需跟expandX保持一致。可选择传入有效数据或填空指针，传入有效数据时，sharedExpertNum需为0。</td>
+        <td>不支持空Tensor。要求是一个2D或3D的Tensor，当Tensor为2D时，shape为 (BS,H)；当Tensor为3D时，前两位的乘积需等于BS，第三维需等于H。数据类型需跟expandX保持一致。可选择传入有效数据或填空指针，传入有效数据时，sharedExpertNum需为0。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(BS, H)或(a, b, H)</td>
@@ -369,7 +369,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>参数的取值不在支持的范围。</td>
+        <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -438,7 +438,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 - HCCL_BUFFSIZE：
   调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
   - Ascend 950PR/Ascend 950DT：
-    - 要求 >= 2且满足>= 2 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
+    - 要求 >= 2且满足>= 4 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
   - Atlas A3 训练系列产品/Atlas A3 推理系列产品：
     - 要求 >= 2且满足>= 2 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
 - 通信域使用约束：

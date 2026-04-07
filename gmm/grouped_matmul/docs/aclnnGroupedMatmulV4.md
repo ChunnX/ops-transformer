@@ -548,7 +548,9 @@ aclnnStatus aclnnGroupedMatmulV4(
 ## 约束说明
 
 - 确定性计算：
+
   - aclnnGroupedMatmulV4默认确定性实现。
+  
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
 
@@ -665,6 +667,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         | 伪量化perchannel | weight多 | $[N_i]$|
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
+
     </details>
 
     <a id="a16w8场景约束"></a>
@@ -823,7 +826,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </details>
 
     <details>
-      <summary><term>动态量化（T-T && T-C && K-T && K-C量化）场景约束</term></summary>
+      <summary>动态量化（T-T && T-C && K-T && K-C量化）场景约束</summary>
         <a id="动态量化（T-T && T-C && K-T && K-C量化）场景约束"></a>
 
       - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、 activationInputOptional
@@ -852,7 +855,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </details>
 
     <details>
-      <summary><term>动态量化（mx量化）场景约束</term></summary>
+      <summary>动态量化（mx量化）场景约束</summary>
         <a id="动态量化（mx量化）场景约束"></a>
 
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、 activationInputOptional
@@ -878,11 +881,11 @@ aclnnStatus aclnnGroupedMatmulV4(
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
         |2|x单tensor|每个tensor 3维，shape为((K / 64) + g, M, 2), 起始地址偏移与scale 同理|
 
-    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight 非转置时还需满足N为偶数。
+    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight非转置时还需满足N为偶数。
     </details>
 
     <details>
-      <summary><term>动态量化（G-B量化）场景约束</term></summary>
+      <summary>动态量化（G-B量化）场景约束</summary>
         <a id="动态量化（G-B量化）场景约束"></a>
 
     - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional
@@ -918,7 +921,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </details>
 
     <details>
-      <summary><term>非量化场景约束</term></summary>
+      <summary>非量化场景约束</summary>
         <a id="非量化场景约束"></a>
 
     - 非量化场景支持的数据类型为：
@@ -934,7 +937,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </details>
 
     <details>
-      <summary><term>伪量化场景约束</term></summary>
+      <summary>伪量化场景约束</summary>
         <a id="伪量化场景约束"></a>
 
     - 伪量化场景支持的数据类型为：
@@ -960,7 +963,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </details>
 
     <details>
-      <summary><term>不同groupType约束</term></summary>
+      <summary>不同groupType约束</summary>
         <a id="不同groupType约束"></a>
 
     - 不同groupType支持场景:
@@ -976,6 +979,7 @@ aclnnStatus aclnnGroupedMatmulV4(
           | 2 | 单多多 |1）仅支持splitItem为0/1<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为2维, shape为（M, N）<br>3）groupListOptional可以传空，如果传groupListOptional，当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置，weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
 
     </details>
+
 </details>
 
 ## 调用示例
