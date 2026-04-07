@@ -15,17 +15,15 @@ CURRENT_DIR=$(
 
 set -e
 # 编译
-if [[ "$CMAKE_REBUILD" == "ON" ]]; then
-    rm -rf build
-    mkdir -p build
-    cmake -B build \
-        -DSOC_VERSION=ascend950pr_9599 \
-        -DCMAKE_BUILD_TYPE=Debug \
-        -DCMAKE_INSTALL_PREFIX=${CURRENT_DIR}/out \
-        -DASCEND_CANN_PACKAGE_PATH=${ASCEND_HOME_PATH}
-    cmake --build build -j
-    cmake --install build
-fi
+rm -rf build
+mkdir -p build
+cmake -B build \
+    -DSOC_VERSION=ascend950pr_9599 \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_INSTALL_PREFIX=${CURRENT_DIR}/out \
+    -DASCEND_CANN_PACKAGE_PATH=${ASCEND_HOME_PATH}
+cmake --build build -j
+cmake --install build
 
 # 运行
 export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${ASCEND_HOME_PATH}/lib64:$LD_LIBRARY_PATH
