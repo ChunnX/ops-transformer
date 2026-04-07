@@ -96,19 +96,19 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                 std::string layoutStr(fiaInfo.opParamInfo.layOut);
                 std::string layout = layoutStr;
                 OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) &&
-                        std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                        OP_LOGE(fiaInfo.opName,
-                                "Sparse 0 without mask is only supported when using IFA MLA full quantization, with Int8 input datatype and layout not being TND or TND_NTD, "
-                                "input sparse mode is %d and there has%smask",
-                                fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                        return ge::GRAPH_FAILED);
+                            std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
+                            OP_LOGE(fiaInfo.opName,
+                                    "Sparse 0 without mask is only supported when using IFA MLA full quantization, with Int8 input datatype and layout not being TND or TND_NTD, "
+                                    "input sparse mode is %d and there has%smask",
+                                    fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                            return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)),
-                    OP_LOGE(fiaInfo.opName,
-                            "Only support sparse 0 without mask when ifa mla and query's sequence length is 1, "
-                            "input sparse mode is %d and there has%smask",
-                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                    return ge::GRAPH_FAILED);
+                            OP_LOGE(fiaInfo.opName,
+                                    "Only support sparse 0 without mask when ifa mla and query's sequence length is 1, "
+                                    "input sparse mode is %d and there has%smask",
+                                    fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                            return ge::GRAPH_FAILED);
             }
         } else {
             OP_CHECK_IF(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN &&
