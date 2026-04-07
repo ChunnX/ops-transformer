@@ -1720,6 +1720,7 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, _
  * 所有分支完成融合后，统一将 fp32 结果 cast 为类型 T，并写入 xGradOut。
  */
 template <class T, class P>
+template <bool hasXPost>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2FuseXGradTail(__ubuf__ P *xGradAccum, __ubuf__ P *xRsGradInv,
                                                                        __ubuf__ P *xRsGradMm, __ubuf__ T *gradXPost,
                                                                        __ubuf__ T *xGradOut, uint32_t totalElem)
@@ -1748,7 +1749,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2FuseXGradTail(__ubuf__ 
 
             // 必须使用 `withGradXPost_` 作为条件，不能在 __VEC_SCOPE__ 中直接对地址入参做空指针判断,（例如 `if
             // (gradXPost != nullptr)`）。 Bisheng 后端会在空指针校验时触发 backend expand error。
-            if (withGradXPost_) {
+            if constexpr (hasXPost) {
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(gradXPostB16Reg, gradXPost + elemOffset);
                 MicroAPI::Cast<P, T, ctHalf2Fp32Zero>(gradXPostFp32Reg, gradXPostB16Reg, mask);
                 MicroAPI::Add(xGradAccumReg, xGradAccumReg, gradXPostFp32Reg, mask);
@@ -2160,9 +2161,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         // V2.0 Revision: 尾段融合, 将外积结果 xGradVec3Buf 与 xRsGradInvBackup、xRsGradMmUb 两路
         // 结果以 fp32 精度累加后，统一Cast转换写入 bf16OutputBuf。
         LocalTensor<T> bf16OutputBuf = bf16OutQueue_.AllocTensor<T>();
-        VFDoV2FuseXGradTail((__ubuf__ P *)xGradVec3Buf.GetPhyAddr(), (__ubuf__ P *)xRsGradInvBackup.GetPhyAddr(),
-                            (__ubuf__ P *)xRsGradMmUb.GetPhyAddr(), gradXPostUb,
-                            (__ubuf__ T *)bf16OutputBuf.GetPhyAddr(), chunkNDSize);
+        if (withGradXPost_) {
+            VFDoV2FuseXGradTail<true>((__ubuf__ P *)xGradVec3Buf.GetPhyAddr(),
+                                      (__ubuf__ P *)xRsGradInvBackup.GetPhyAddr(),
+                                      (__ubuf__ P *)xRsGradMmUb.GetPhyAddr(), gradXPostUb,
+                                      (__ubuf__ T *)bf16OutputBuf.GetPhyAddr(), chunkNDSize);
+        } else {
+            VFDoV2FuseXGradTail<false>((__ubuf__ P *)xGradVec3Buf.GetPhyAddr(),
+                                       (__ubuf__ P *)xRsGradInvBackup.GetPhyAddr(),
+                                       (__ubuf__ P *)xRsGradMmUb.GetPhyAddr(), gradXPostUb,
+                                       (__ubuf__ T *)bf16OutputBuf.GetPhyAddr(), chunkNDSize);
+        }
         PipeBarrier<PIPE_V>();
         fp32InQueue_.FreeTensor(xRsGradInvBackup);
         if (withGradXPost_) {
