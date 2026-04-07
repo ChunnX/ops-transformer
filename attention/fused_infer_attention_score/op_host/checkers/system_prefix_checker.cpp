@@ -289,10 +289,13 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
             "prefix is not supported when page attention is enabled."),
         return ge::GRAPH_FAILED);
     // 不支持tensorlist
-    OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when tensorlist is enabled."),
-        return ge::GRAPH_FAILED);
+    if ((fiaInfo.s1Size > 1U && fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) ||
+        fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
+            OP_LOGE(fiaInfo.opName,
+                "prefix is not supported when tensorlist is enabled."),
+            return ge::GRAPH_FAILED);
+    }
     // 不支持左padding场景
     OP_CHECK_IF((fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag),
         OP_LOGE(fiaInfo.opName,
