@@ -23,6 +23,8 @@
 #include "aclnnInner_distribute_barrier.h"
 using namespace op;
 #ifdef __cplusplus
+extern "C" {
+#endif
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
 
 // check nullptr
