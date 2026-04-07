@@ -112,12 +112,13 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                                 fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
         }
-        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
-                    !(fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN),
-                    OP_LOGE(fiaInfo.opName,
-                            "Only support sparse 0/3 when using IFA MLA full quantizationifa with float8_e4m3/hifloat8, "
-                            "input sparse mode is %d and there has%smask",
-                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) && 
+                    !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) || 
+                    ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))), 
+                    OP_LOGE(fiaInfo.opName,	 
+                            "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and "	 
+                            "input datatype is FLOAT8_E4M3/HIFLOAT8, input sparse mode is %d and there has%smask",	 
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),	 
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
