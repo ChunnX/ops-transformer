@@ -51,7 +51,7 @@ class DistributeBarrier {
  public:
   __aicore__ inline DistributeBarrier(){};
   __aicore__ inline void Init(GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM, TPipe *pipe,
-                              const DistributeBarrierTilingData *tilingData);
+                              const DistributeBarrierInfo *info);
   __aicore__ inline void TimeOutTest();
   __aicore__ inline void BarrierProcess();
   __aicore__ inline void Process();
@@ -205,17 +205,17 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Spl
 template <TemplateDistributeBarrierTypeClass>
 __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Init(
     GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM, TPipe *pipe,
-    const DistributeBarrierTilingData *tilingData) {
+    const DistributeBarrierInfo *info) {
   tpipe_ = pipe;
   aivId_ = GetBlockIdx();
   winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
   rankIdOriginal_ = Mc2Kernel::GetRankId(winContext_);
   rankId_ = Mc2Kernel::GetRankId(winContext_);
-  aivNum_ = tilingData->distributeBarrierInfo.aivNum;
-  worldSizeOriginal_ = tilingData->distributeBarrierInfo.worldSize;
-  worldSize_ = tilingData->distributeBarrierInfo.worldSize;
-  isInputTimeout_ = tilingData->distributeBarrierInfo.isInputTimeOut;
-  isInputElasticInfo_ = tilingData->distributeBarrierInfo.isInputElasticInfo;
+  aivNum_ = info->aivNum;
+  worldSizeOriginal_ = info->worldSize;
+  worldSize_ = info->worldSize;
+  isInputTimeout_ = info->isInputTimeOut;
+  isInputElasticInfo_ = info->isInputElasticInfo;
   if (isInputTimeout_) {
     GlobalTensor<int32_t> timeOutGMTensor;
     timeOutGMTensor.SetGlobalBuffer((__gm__ int32_t*)(timeOut));
