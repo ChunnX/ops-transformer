@@ -26,29 +26,23 @@ using Ops::Base::CeilDiv;
 namespace {
 
 // input tensor index
-enum All_TO_ALL_MATMUL_INPUT_IDX : size_t {
-    INDEX_IN_X1 = 0,
-    INDEX_IN_X2,
-    INDEX_IN_BIAS,
-    INDEX_IN_X1_SCALE,
-    INDEX_IN_X2_SCALE,
-};
+constexpr size_t INDEX_IN_X1 = 0;
+constexpr size_t INDEX_IN_X2 = 1;
+constexpr size_t INDEX_IN_BIAS = 2;
+constexpr size_t INDEX_IN_X1_SCALE = 3;
+constexpr size_t INDEX_IN_X2_SCALE = 4;
 // attr index
-enum All_TO_ALL_MATMUL_ATTR_IDX : size_t {
-    INDEX_ATTR_WORLD_SIZE = 1,
-    INDEX_ATTR_ALLTO_ALL_AXES,
-    INDEX_ATTR_Y_DTYPE,
-    INDEX_ATTR_X1_QUANT_MODE,
-    INDEX_ATTR_X2_QUANT_MODE,
-    INDEX_ATTR_TRANS_X1 = 9,
-    INDEX_ATTR_TRANS_X2,
-    INDEX_ATTR_ALLTOALL_OUT_FLAG,
-};
+constexpr size_t INDEX_ATTR_WORLD_SIZE = 1;
+constexpr size_t INDEX_ATTR_ALLTO_ALL_AXES = 2;
+constexpr size_t INDEX_ATTR_Y_DTYPE = 3;
+constexpr size_t INDEX_ATTR_X1_QUANT_MODE = 4;
+constexpr size_t INDEX_ATTR_X2_QUANT_MODE = 5;
+constexpr size_t INDEX_ATTR_TRANS_X1 = 9;
+constexpr size_t INDEX_ATTR_TRANS_X2 = 10;
+constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 12;
 // output tensor index
-enum All_TO_ALL_MATMUL_OUTPUT_IDX : size_t {
-    INDEX_OUT = 0,
-    INDEX_ALLTO_ALL_OUT,
-};
+constexpr size_t INDEX_OUT = 0;
+constexpr size_t INDEX_ALLTO_ALL_OUT = 1;
 
 // 维度信息
 constexpr uint64_t DIM_ONE = 1;
@@ -82,26 +76,6 @@ struct AlltoAllMatmulShapeInfo {
 } // namespace
 
 /**
- * @brief x1和x2合法性校验
- *
- * @param context
- */
-static ge::graphStatus CheckXShapeForAlltoAllMatmul(const gert::InferShapeContext* context)
-{
-    const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, x1Shape);
-    OPS_CHECK(x1Shape->GetDimNum() != DIM_TWO, CUBE_INNER_ERR_REPORT(INNER_DEBUG,
-              "In AlltoAllMatmul, x1 shape should be %ld, but the actual value is %ld.",
-              DIM_TWO, x1Shape->GetDimNum()), return ge::GRAPH_FAILED);
-    const auto x2Shape = context->GetInputShape(INDEX_IN_X2);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, x2Shape);
-    OPS_CHECK(x2Shape->GetDimNum() != DIM_TWO, CUBE_INNER_ERR_REPORT(INNER_DEBUG,
-              "In AlltoAllMatmul, x2 shape should be %ld, but the actual value is %ld.",
-              DIM_TWO, x2Shape->GetDimNum()), return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-/**
  * @brief allToAllAxes合法性校验
  *
  * @param context
@@ -120,91 +94,6 @@ static ge::graphStatus CheckAllToAllAxesShapeForAlltoAllMatmul(const gert::Infer
                   "In AlltoAllMatmul, the alltoAllAxes should be [-2, -1], but the actual value is [%ld, %ld].",
                   alltoAllAxes[0], alltoAllAxes[1]), return ge::GRAPH_FAILED);
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-/**
- * @brief 静态shape图bias合法性校验
- *
- * @param context
- * @param shape
- */
-static ge::graphStatus CheckBiasShapeForAlltoAllMatmul(const gert::InferShapeContext* context,
-                                                       AlltoAllMatmulShapeInfo& shape)
-{
-    const auto biasShape = context->GetInputShape(INDEX_IN_BIAS);
-    if (biasShape != nullptr) {
-        // bias一定为1维，且维度值和n轴一致
-        OPS_CHECK(biasShape->GetDimNum() != DIM_ONE, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In AlltoAllMatmul, bias shape must be %ld, but actual value is: %ld",
-                  DIM_ONE, biasShape->GetDimNum()), return ge::GRAPH_FAILED);
-        OPS_CHECK(biasShape->GetDim(0) != shape.n, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In AlltoAllMatmul, bias dim0 must be the same with matmul axis n, "
-                  "but actual bias dim0 is: %ld, axis n is: %ld",
-                  biasShape->GetDim(0), shape.n), return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-/**
- * @brief 静态shape图x1Scale和x2Scale合法性校验
- *
- * @param context
- * @param shape
- */
-static ge::graphStatus CheckXScaleShapeForAlltoAllMatmul(const gert::InferShapeContext* context,
-                                                         AlltoAllMatmulShapeInfo& shape)
-{
-    const auto attrs = context->GetAttrs();
-    const int64_t* x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
-    const int64_t* x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
-    const auto x1ShapeScale = context->GetInputShape(INDEX_IN_X1_SCALE);
-    if (x1ShapeScale != nullptr) {
-        int64_t x1ShapeScaleDimNum = x1ShapeScale->GetDimNum();
-        if (*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM) {
-            // 只有mxfp8量化模式下，x1Scale才是3维
-            OPS_CHECK(x1ShapeScaleDimNum != DIM_THREE, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                      "In AlltoAllMatmul, x1Scale dim num must be %ld, but actual value is: %ld",
-                      DIM_THREE, x1ShapeScaleDimNum), return ge::GRAPH_FAILED);
-            // x1Scale最后一维一定是2
-            OPS_CHECK(x1ShapeScale->GetDim(x1ShapeScaleDimNum - 1) != SCALE_LAST_DIM,
-                      CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                      "In AlltoAllMatmul, x1Scale last dim must be %ld, but actual value is: %ld",
-                      SCALE_LAST_DIM, x1ShapeScale->GetDim(x1ShapeScaleDimNum - 1)), return ge::GRAPH_FAILED);
-        } else {
-            OPS_CHECK(x1ShapeScaleDimNum != DIM_ONE, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                      "In AlltoAllMatmul, x1Scale shape must be %ld, but actual value is: %ld",
-                      DIM_ONE, x1ShapeScaleDimNum), return ge::GRAPH_FAILED);
-        }
-        // x1Scale第0维与m轴一致
-        OPS_CHECK(x1ShapeScale->GetDim(0) != shape.m, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In AlltoAllMatmul, x1Scale dim0 must be the same with matmul axis m, "
-                  "but actual x1Scale dim0 is: %ld, axis m is: %ld",
-                  x1ShapeScale->GetDim(0), shape.m), return ge::GRAPH_FAILED);
-    }
-    const auto x2ShapeScale = context->GetInputShape(INDEX_IN_X2_SCALE);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, x2ShapeScale);
-    int64_t x2ShapeScaleDimNum = x2ShapeScale->GetDimNum();
-    if (*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM) {
-        // 只有mxfp8量化模式下，x2Scale才是3维
-        OPS_CHECK(x2ShapeScaleDimNum != DIM_THREE, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In AlltoAllMatmul, x2Scale dim num must be %ld, but actual value is: %ld",
-                  DIM_THREE, x2ShapeScaleDimNum), return ge::GRAPH_FAILED);
-        // x2Scale最后一维一定是2
-        OPS_CHECK(x2ShapeScale->GetDim(x2ShapeScaleDimNum - 1) != SCALE_LAST_DIM,
-                  CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In AlltoAllMatmul, x2Scale last dim must be %ld, but actual value is: %ld",
-                  SCALE_LAST_DIM, x2ShapeScale->GetDim(x2ShapeScaleDimNum - 1)), return ge::GRAPH_FAILED);
-    } else {
-        OPS_CHECK(x2ShapeScaleDimNum != DIM_ONE, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                  "In AlltoAllMatmul, x2Scale shape must be %ld, but actual value is: %ld",
-                  DIM_ONE, x2ShapeScaleDimNum), return ge::GRAPH_FAILED);
-    }
-    // x2Scale第0维与n轴一致
-    OPS_CHECK(x2ShapeScale->GetDim(0) != shape.n, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-              "In AlltoAllMatmul, x2Scale dim0 must be the same with matmul axis n, "
-              "but actual x2Scale dim0 is: %ld, axis n is: %ld",
-              x2ShapeScale->GetDim(0), shape.n), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -254,6 +143,12 @@ static ge::graphStatus GetMatmulAxisInfoForAlltoAllMatmul(const gert::InferShape
     shape.k2 = transX2 ? x2Shape->GetDim(1U) : x2Shape->GetDim(0U);
     shape.outputDim = x1Shape->GetDimNum();
 
+    if (shape.m != NUM_MINUS_ONE) {
+        OPS_CHECK(CheckAxisKShapeForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+                  CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check axis k for allto all matmul."),
+                  return ge::GRAPH_FAILED);
+    }
+
     OP_LOGD(INNER_DEBUG, "Matmul m is: %ld, n is: %ld, k1 is: %ld, k2 is: %ld. transX2 is: %d",
             shape.m, shape.n, shape.k1, shape.k2, transX2);
     return ge::GRAPH_SUCCESS;
@@ -290,11 +185,12 @@ static ge::graphStatus CheckRankDimForAlltoAllMatmul(gert::InferShapeContext* co
 static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext* context)
 {
     OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, x1Shape);
+    const auto x2Shape = context->GetInputShape(INDEX_IN_X2);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, x2Shape);
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    // 动静态shape图都要进行校验
-    CheckXShapeForAlltoAllMatmul(context);
-    CheckAllToAllAxesShapeForAlltoAllMatmul(context);
     // 初始化shape结构体
     AlltoAllMatmulShapeInfo shape;
     OPS_CHECK(CheckRankDimForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
@@ -303,12 +199,9 @@ static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext* context
     OPS_CHECK(GetMatmulAxisInfoForAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
               CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check shape for allto all matmul"),
               return ge::GRAPH_FAILED);
-    if (shape.m != NUM_MINUS_ONE) {
-        // 静态shape图校验
-        CheckAxisKShapeForAlltoAllMatmul(context, shape);
-        CheckBiasShapeForAlltoAllMatmul(context, shape);
-        CheckXScaleShapeForAlltoAllMatmul(context, shape);
-    }
+    OPS_CHECK(CheckAllToAllAxesShapeForAlltoAllMatmul(context) != ge::GRAPH_SUCCESS,
+              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check allto_all_axes for allto all matmul."),
+              return ge::GRAPH_FAILED);
     // 推导output shape
     const bool* allToAllOutFlag = attrs->GetAttrPointer<bool>(INDEX_ATTR_ALLTOALL_OUT_FLAG);
     OPS_CHECK_NULL_WITH_CONTEXT(context, allToAllOutFlag);
