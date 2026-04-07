@@ -253,6 +253,98 @@ __aicore__ inline void FlashUpdateDivV510(const LocalTensor<T>& dstTensor, const
     // only support d=128 now, no tail
     FlashUpdateDivNoTailV510_VF<T, OUTPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor, m, d);
 }
+
+template <typename T, uint32_t srcD>
+__aicore__ inline void InvalidLineUpdate(const LocalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor,
+                                         const LocalTensor<T>& maxTensor, const uint16_t m, const uint16_t d,
+                                         const T minValue, const T invalidValue)
+{
+    __ubuf__ T * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
+
+    constexpr uint16_t floatRepSize = 64;
+    uint16_t dLoops = d >> 6;
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> vreg_invalid_value;
+        RegTensor<float> vreg_max;
+        RegTensor<float> vreg_input;
+        RegTensor<float> vreg_input_brc;
+
+        MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+        MaskReg preg_compare;
+
+        Duplicate(vreg_invalid_value, invalidValue);
+        for (uint16_t i = 0; i < m; ++i) {
+            DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUb + i);
+            CompareScalar<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
+            for (uint16_t j = 0; j < dLoops; ++j) {
+                DataCopy(vreg_input, srcUb + i * d + j * floatRepSize);
+                Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
+                DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                    (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_input_brc, preg_all);
+            }
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void RowInvalidUpdateVF(const LocalTensor<T>& finalTensor, const LocalTensor<float>& maxTensor,
+    const uint16_t m, const uint16_t d, int64_t dSize)
+{
+    __ubuf__ T * finalUb = (__ubuf__ T*)finalTensor.GetPhyAddr();
+    __ubuf__ float * maxUb = (__ubuf__ float*)maxTensor.GetPhyAddr();
+
+    constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
+    const uint16_t dLoops = d / floatRepSize;
+    const uint16_t tailD = d % floatRepSize;
+    uint32_t pltTailD = static_cast<uint32_t>(tailD);
+    uint16_t hasTail = 0;
+    if (tailD > 0) {
+        hasTail = 1;
+    }
+
+    constexpr uint32_t tmpZero = 0x00000000; // zero value of fp16 and fp32
+    const T zeroValue = *((T*)&tmpZero);
+    constexpr uint32_t tmpMin = 0xFF7FFFFF; // min value of float
+    const float minValue = *((float*)&tmpMin);
+
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<float> vregMinValue;
+        MicroAPI::RegTensor<T> vregZeroValue;
+        MicroAPI::RegTensor<float> vregMax;
+        MicroAPI::RegTensor<T> vregFinal;
+        MicroAPI::RegTensor<T> vregFinalNew;
+
+        MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg pregTailD = MicroAPI::UpdateMask<T>(pltTailD);
+        MicroAPI::MaskReg pregCompare;
+
+        MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
+        MicroAPI::Duplicate<T, T>(vregZeroValue, zeroValue);
+        for (uint16_t i = 0; i < m; ++i) {
+            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_BRC_B32>(vregMax, maxUb + i);
+            MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
+            for (uint16_t j = 0; j < dLoops; ++j) {
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
+                MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize,
+                    vregFinalNew, pregAll);
+            }
+            for (uint16_t t = 0; t < hasTail; ++t) {
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal,
+                                                                     finalUb + i * dSize + dLoops * floatRepSize);
+                MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize,
+                    vregFinalNew, pregTailD);
+            }
+        }
+    }
+}
+
 } // namespace
 
 #endif // MY_FLASH_UPDATE_NEW_REGBASE_V2_INTERFACE_H
