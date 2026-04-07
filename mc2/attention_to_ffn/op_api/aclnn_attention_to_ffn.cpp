@@ -75,10 +75,10 @@ aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(const aclTensor* x, const aclTen
 {
     auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
-                                                               scalesOptional, activeMaskOptional, const_cast<char*>(group), worldSize, ffnTokenInfoTableShape,
-                                                               ffnTokenDataShape, attnTokenInfoTableShape, moeExpertNum,
-                                                               quantMode, syncFlag, ffnStartRankId, workspaceSize, executor); 
+    aclnnStatus ret = aclnnInnerAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds,
+        expertRankTable, scalesOptional, activeMaskOptional, const_cast<char*>(group), worldSize,
+        ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape, moeExpertNum, quantMode, syncFlag,
+        ffnStartRankId, workspaceSize, executor); 
     return ret;
 }
  

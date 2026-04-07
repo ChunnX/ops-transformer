@@ -466,7 +466,8 @@ static aclnnStatus PreAndPostProcessForInner(
     CreateEmptyTensor(BIAS_DTYPE.at(gmmParams.xDtype), gmmParams.bias, emptyBiasList);
     aclnnStatus ret = aclnnInnerGroupedMatMulAllReduceGetWorkspaceSize(
         gmmParams.x, gmmParams.weight, gmmParams.bias, gmmParams.groupListOptional, gmmParams.splitItemOptional,
-        gmmParams.group, gmmParams.reduceOp, gmmParams.commTurn, gmmParams.y, workspaceSize, executor);
+        const_cast<char*>(gmmParams.group), const_cast<char*>(gmmParams.reduceOp), gmmParams.commTurn,
+        gmmParams.y, workspaceSize, executor);
 
     if (emptyBiasList != nullptr) { // destroy tensorList
         aclDestroyTensorList(emptyBiasList);
