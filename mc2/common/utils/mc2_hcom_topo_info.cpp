@@ -294,8 +294,8 @@ MC2HcomTopology::~MC2HcomTopology() {
 
 aclnnStatus MC2HcomTopology::LoadHcclSymbols() {
     if (hcclLibHandle_ != nullptr) return ACLNN_SUCCESS;
-
-    const char* libPath = GetLibPath().c_str();
+    std::string createTensorLibPath;
+    const char* libPath = GetLibPath(createTensorLibPath).c_str();
     if (libPath == nullptr) {
         OP_LOGE("", "Failed to get HCCL library path");
         return ACLNN_ERR_INNER;
