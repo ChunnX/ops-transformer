@@ -227,8 +227,7 @@ __aicore__ inline GM_ADDR MTECommunication<XType>::GetWinDataAddrGm(uint32_t ran
 {
     if (winFlag == 0U) {
         return GetWinAddrGm(rankId, STATE_WIN_SIZE);
-    }
-    else {
+    } else {
         return (GM_ADDR)(hcclContext_->windowsOut[rankId]);
     }
 }
@@ -238,8 +237,7 @@ __aicore__ inline GM_ADDR MTECommunication<XType>::GetWinStatusAddrGm(uint32_t r
 {
     if (winFlag == 0U) {
         return GetWinAddrGm(rankId);
-    }
-    else {
+    } else {
         return GetWinAddrGm(rankId, SINGLE_STATE_REGION_SIZE);
     }
 }
