@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,20 +10,21 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    set(mla_prolog_v2_depends attention/mla_prolog CACHE INTERNAL "Dependencies for mla_prolog_v2")
-    target_sources(op_host_aclnnInner PRIVATE
-        mla_prolog_v2_def.cpp
-    )
-
-    add_ops_compile_options(
-        OP_NAME MlaPrologV2
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-                -mllvm -cce-aicore-hoist-movemask=false
+    set(kvquant_sparse_attn_sharedkv_depends attention/common CACHE INTERNAL "Dependencies for kvquant_sparse_attn_sharedkv")
+    target_sources(op_host_aclnn PRIVATE
+        kvquant_sparse_attn_sharedkv_def.cpp
     )
 endif()
 
+add_ops_compile_options(
+    OP_NAME KvQuantSparseAttnSharedKv
+    OPTIONS --cce-auto-sync=off
+            -Wno-deprecated-declarations
+            -Werror
+            -mllvm -cce-vf-remove-membar=false
+            -mllvm -cce-aicore-hoist-movemask=false
+)
+
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE mla_prolog_v2 ACLNNTYPE aclnn_inner)
+    add_modules_sources(OPTYPE kvquant_sparse_attn_sharedkv ACLNNTYPE aclnn)
 endif()

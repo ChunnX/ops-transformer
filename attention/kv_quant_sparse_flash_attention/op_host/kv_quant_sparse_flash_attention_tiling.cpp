@@ -883,6 +883,20 @@ ge::graphStatus QSFATilingCheck::CheckAttenOut()
     return ge::GRAPH_SUCCESS;
 }
 
+// todo： .h加上函数注册
+ge::graphStatus QSFATilingCheck::CheckMetadata()
+{
+    if (isA5_ && opParamInfo_.metadata.tensor != nullptr) {
+        OP_CHECK_IF((opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT),
+                    OP_LOGE(opName_, "input metadata dim 0 must be %u.", METADATA_LIMIT),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.metadata.desc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(opName_, "metadata's dtype must be DT_INT32."),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFATilingCheck::CheckTopK()
 {
     if (ge::GRAPH_SUCCESS != CheckTopkShape()) {
@@ -1057,6 +1071,7 @@ ge::graphStatus QSFATilingCheck::CheckMultiParaConsistency()
     if (ge::GRAPH_SUCCESS != CheckKV() ||
         ge::GRAPH_SUCCESS != CheckTopK() ||
         ge::GRAPH_SUCCESS != CheckAttenOut() ||
+        ge::GRAPH_SUCCESS != CheckMetadata() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
@@ -1151,35 +1166,35 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
 
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
 {
-    OP_CHECK_IF(attentionMode_ != 2, // 2:MLA-absorb
-        OP_LOGE(opName_, "attention_mode should be 2(MLA-absorb), but got %d",
-        attentionMode_),
-        return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(attentionMode_ != 2, // 2:MLA-absorb
+    //     OP_LOGE(opName_, "attention_mode should be 2(MLA-absorb), but got %d",
+    //     attentionMode_),
+    //     return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(keyQuantMode_ != 2, // 2:per-tile
-        OP_LOGE(opName_, "key_quant_mode should be 2(per-tile), but got %d",
-        keyQuantMode_),
-        return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(keyQuantMode_ != 2, // 2:per-tile
+    //     OP_LOGE(opName_, "key_quant_mode should be 2(per-tile), but got %d",
+    //     keyQuantMode_),
+    //     return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(valueQuantMode_ != 2, // 2:per-tile
-        OP_LOGE(opName_, "value_quant_mode should be 2(per-tile), but got %d",
-        valueQuantMode_),
-        return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(valueQuantMode_ != 2, // 2:per-tile
+    //     OP_LOGE(opName_, "value_quant_mode should be 2(per-tile), but got %d",
+    //     valueQuantMode_),
+    //     return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(quantScaleRepoMode_ != 1, // 1:combine
-        OP_LOGE(opName_, "quant_scale_repo_mode should be 1(combine), but got %d",
-        quantScaleRepoMode_),
-        return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(quantScaleRepoMode_ != 1, // 1:combine
+    //     OP_LOGE(opName_, "quant_scale_repo_mode should be 1(combine), but got %d",
+    //     quantScaleRepoMode_),
+    //     return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(preTokens_ != INT64_MAX,
-        OP_LOGE(opName_, "preTokens_ should be INT64_MAX, but got %ld",
-        preTokens_),
-        return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(preTokens_ != INT64_MAX,
+    //     OP_LOGE(opName_, "preTokens_ should be INT64_MAX, but got %ld",
+    //     preTokens_),
+    //     return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(nextTokens_ != INT64_MAX,
-        OP_LOGE(opName_, "nextTokens_ should be INT64_MAX, but got %ld",
-        nextTokens_),
-        return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(nextTokens_ != INT64_MAX,
+    //     OP_LOGE(opName_, "nextTokens_ should be INT64_MAX, but got %ld",
+    //     nextTokens_),
+    //     return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(tileSize_ != 128, // 128:当前不泛化
         OP_LOGE(opName_, "tile_size should be 128, but got %ld",
@@ -1411,6 +1426,7 @@ ge::graphStatus QSFAInfoParser::GetOpName()
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
+    opType_ = context_->GetNodeType();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1440,32 +1456,66 @@ ge::graphStatus QSFAInfoParser::GetNpuInfo()
 
 void QSFAInfoParser::GetOptionalInputParaInfo()
 {
-    opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INPUT_INDEX);
-    opParamInfo_.actualSeqLengthsQ.tensor = context_->GetOptionalInputTensor(ACT_SEQ_LEN_Q_INPUT_INDEX);
-    opParamInfo_.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_Q_INPUT_INDEX);
-    opParamInfo_.actualSeqLengths.tensor = context_->GetOptionalInputTensor(ACT_SEQ_LEN_KV_INPUT_INDEX);
-    opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_KV_INPUT_INDEX);
-    opParamInfo_.keyDequantScale.tensor = context_->GetOptionalInputTensor(KEY_DEQUANT_SCALE_INPUT_INDEX);
-    opParamInfo_.valueDequantScale.tensor = context_->GetOptionalInputTensor(VALUE_DEQUANT_SCALE_INPUT_INDEX);
+    if (std::strncmp(context_->GetNodeType(), V2_OP_NAME, OP_NAME_LEN) == 0) {
+        opParamInfo_.key.desc = context_->GetInputDesc(QSAS_KV_INPUT_INDEX);
+        opParamInfo_.key.shape = context_->GetInputShape(QSAS_KV_INPUT_INDEX);
+        opParamInfo_.value.desc = context_->GetInputDesc(QSAS_KV_INPUT_INDEX);
+        opParamInfo_.value.shape = context_->GetInputShape(QSAS_KV_INPUT_INDEX);
+        opParamInfo_.sparseIndices.desc = context_->GetInputDesc(QSAS_SPARSE_INDICES_INPUT_INDEX);
+        opParamInfo_.sparseIndices.shape = context_->GetInputShape(QSAS_SPARSE_INDICES_INPUT_INDEX);
+        opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(QSAS_BLOCK_TABLE_INPUT_INDEX);
+        opParamInfo_.cuSeqlensQ.tensor = context_->GetOptionalInputTensor(QSAS_CU_SEQLENS_Q_INPUT_INDEX);
+        opParamInfo_.cuSeqlensQ.desc = context_->GetOptionalInputDesc(QSAS_CU_SEQLENS_Q_INPUT_INDEX);
+        opParamInfo_.cuSeqlensKv.tensor = context_->GetOptionalInputTensor(QSAS_KV_CU_SEQLENS_KV_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.cuSeqlensKv.desc = context_->GetOptionalInputDesc(QSAS_KV_CU_SEQLENS_KV_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.sequsedQ.tensor = context_->GetOptionalInputTensor(QSAS_SEQUSED_Q_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(QSAS_SEQUSED_Q_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(QSAS_SEQUSED_KV_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(QSAS_SEQUSED_KV_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(QSAS_METADATA_INPUT_INDEX);
+        opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(QSAS_METADATA_INPUT_INDEX);
+    } else {
+        opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INPUT_INDEX);
+        opParamInfo_.actualSeqLengthsQ.tensor = context_->GetOptionalInputTensor(ACT_SEQ_LEN_Q_INPUT_INDEX);
+        opParamInfo_.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_Q_INPUT_INDEX);
+        opParamInfo_.actualSeqLengths.tensor = context_->GetOptionalInputTensor(ACT_SEQ_LEN_KV_INPUT_INDEX);
+        opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_KV_INPUT_INDEX);
+        opParamInfo_.keyDequantScale.tensor = context_->GetOptionalInputTensor(KEY_DEQUANT_SCALE_INPUT_INDEX);
+        opParamInfo_.valueDequantScale.tensor = context_->GetOptionalInputTensor(VALUE_DEQUANT_SCALE_INPUT_INDEX);
+        opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
+        opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
+    }
 }
 
 void QSFAInfoParser::GetInputParaInfo()
 {
-    opParamInfo_.query.desc = context_->GetInputDesc(QUERY_INPUT_INDEX);
-    opParamInfo_.query.shape = context_->GetInputShape(QUERY_INPUT_INDEX);
-    opParamInfo_.key.desc = context_->GetInputDesc(KEY_INPUT_INDEX);
-    opParamInfo_.key.shape = context_->GetInputShape(KEY_INPUT_INDEX);
-    opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INPUT_INDEX);
-    opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
-    opParamInfo_.sparseIndices.desc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
-    opParamInfo_.sparseIndices.shape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
+    if (std::strncmp(context_->GetNodeType(), V2_OP_NAME, OP_NAME_LEN) == 0) {
+        opParamInfo_.query.desc = context_->GetInputDesc(QSAS_Q_INPUT_INDEX);
+        opParamInfo_.query.shape = context_->GetInputShape(QSAS_Q_INPUT_INDEX);
+    } else {
+        opParamInfo_.query.desc = context_->GetInputDesc(QUERY_INPUT_INDEX);
+        opParamInfo_.query.shape = context_->GetInputShape(QUERY_INPUT_INDEX);
+        opParamInfo_.key.desc = context_->GetInputDesc(KEY_INPUT_INDEX);
+        opParamInfo_.key.shape = context_->GetInputShape(KEY_INPUT_INDEX);
+        opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INPUT_INDEX);
+        opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
+        opParamInfo_.sparseIndices.desc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
+        opParamInfo_.sparseIndices.shape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
+    }
     GetOptionalInputParaInfo();
 }
 
 void QSFAInfoParser::GetOutputParaInfo()
 {
-    opParamInfo_.attenOut.desc = context_->GetOutputDesc(OUTPUT_INDEX);
-    opParamInfo_.attenOut.shape = context_->GetOutputShape(OUTPUT_INDEX);
+    if (std::strncmp(context_->GetNodeType(), V2_OP_NAME, OP_NAME_LEN) == 0) {
+        opParamInfo_.attenOut.desc = context_->GetOutputDesc(QSAS_ATTENOUT_INDEX);
+        opParamInfo_.attenOut.shape = context_->GetOutputShape(QSAS_ATTENOUT_INDEX);
+        opParamInfo_.softmaxLse.desc = context_->GetOutputDesc(QSAS_SOFTMAXLSE_INDEX);
+        opParamInfo_.softmaxLse.shape = context_->GetOutputShape(QSAS_SOFTMAXLSE_INDEX);
+    } else {
+        opParamInfo_.attenOut.desc = context_->GetOutputDesc(OUTPUT_INDEX);
+        opParamInfo_.attenOut.shape = context_->GetOutputShape(OUTPUT_INDEX);
+    }
 }
 
 ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
@@ -1473,20 +1523,32 @@ ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "attrs got from ge is nullptr"),
                return ge::GRAPH_FAILED);
-
-    opParamInfo_.layoutQuery = attrs->GetStr(LAYOUT_QUERY_ATTR_INDEX);
-    opParamInfo_.layoutKV = attrs->GetStr(LAYOUT_KV_ATTR_INDEX);
-    opParamInfo_.sparseBlockSize = attrs->GetAttrPointer<int64_t>(SPARSE_BLOCK_SIZE_ATTR_INDEX);
-    opParamInfo_.scaleValue = attrs->GetAttrPointer<float>(SCALE_VALUE_ATTR_INDEX);
-    opParamInfo_.sparseMode = attrs->GetAttrPointer<int64_t>(SPARSE_MODE_ATTR_INDEX);
-    opParamInfo_.keyQuantMode = attrs->GetAttrPointer<int64_t>(KEY_QUANT_MODE_ATTR_INDEX);
-    opParamInfo_.valueQuantMode = attrs->GetAttrPointer<int64_t>(VALUE_QUANT_MODE_ATTR_INDEX);
-    opParamInfo_.attentionMode = attrs->GetAttrPointer<int64_t>(ATTENTION_MODE_ATTR_INDEX);
-    opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(PRE_TOKENS_ATTR_INDEX);
-    opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(NEXT_TOKENS_ATTR_INDEX);
-    opParamInfo_.quantScaleRepoMode = attrs->GetAttrPointer<int64_t>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
-    opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
-    opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    if (std::strncmp(context_->GetNodeType(), V2_OP_NAME, OP_NAME_LEN) == 0) {
+        opParamInfo_.layoutQuery = attrs->GetStr(QSAS_LAYOUT_QUERY_ATTR_INDEX);
+        opParamInfo_.layoutKV = attrs->GetStr(QSAS_LAYOUT_KV_ATTR_INDEX);
+        opParamInfo_.scaleValue = attrs->GetAttrPointer<float>(QSAS_SCALE_VALUE_ATTR_INDEX);
+        opParamInfo_.sparseMode = attrs->GetAttrPointer<int64_t>(QSAS_SPARSE_MODE_ATTR_INDEX);
+        opParamInfo_.keyQuantMode = attrs->GetAttrPointer<int64_t>(QSAS_KEY_QUANT_MODE_ATTR_INDEX);
+        opParamInfo_.valueQuantMode = attrs->GetAttrPointer<int64_t>(QSAS_VALUE_QUANT_MODE_ATTR_INDEX);
+        opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(QSAS_TILE_SIZE_ATTR_INDEX);
+        opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(QSAS_ROPE_HEAD_DIM_ATTR_INDEX);
+        // static int64_t defaultSparseBlockSize = 1;
+        // opParamInfo_.sparseBlockSize = &defaultSparseBlockSize;
+    } else {
+        opParamInfo_.layoutQuery = attrs->GetStr(LAYOUT_QUERY_ATTR_INDEX);
+        opParamInfo_.layoutKV = attrs->GetStr(LAYOUT_KV_ATTR_INDEX);
+        opParamInfo_.sparseBlockSize = attrs->GetAttrPointer<int64_t>(SPARSE_BLOCK_SIZE_ATTR_INDEX);
+        opParamInfo_.scaleValue = attrs->GetAttrPointer<float>(SCALE_VALUE_ATTR_INDEX);
+        opParamInfo_.sparseMode = attrs->GetAttrPointer<int64_t>(SPARSE_MODE_ATTR_INDEX);
+        opParamInfo_.keyQuantMode = attrs->GetAttrPointer<int64_t>(KEY_QUANT_MODE_ATTR_INDEX);
+        opParamInfo_.valueQuantMode = attrs->GetAttrPointer<int64_t>(VALUE_QUANT_MODE_ATTR_INDEX);
+        opParamInfo_.attentionMode = attrs->GetAttrPointer<int64_t>(ATTENTION_MODE_ATTR_INDEX);
+        opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(PRE_TOKENS_ATTR_INDEX);
+        opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(NEXT_TOKENS_ATTR_INDEX);
+        opParamInfo_.quantScaleRepoMode = attrs->GetAttrPointer<int64_t>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
+        opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
+        opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    }
 
     return ge::GRAPH_SUCCESS;
 }

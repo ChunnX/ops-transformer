@@ -23,9 +23,10 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/soc_spec.h"
 
+
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
-// Inputs Index
+// A3 QSFA Inputs Index
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
 constexpr uint32_t VALUE_INPUT_INDEX = 2;
@@ -35,9 +36,25 @@ constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 6;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 7;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
+constexpr uint32_t METADATA_INDEX = 9;
+
+// A5 QSAS Inputs Index
+constexpr uint32_t QSAS_Q_INPUT_INDEX = 0;
+constexpr uint32_t QSAS_KV_INPUT_INDEX = 1;
+constexpr uint32_t QSAS_SPARSE_INDICES_INPUT_INDEX = 2;
+constexpr uint32_t QSAS_BLOCK_TABLE_INPUT_INDEX = 3;
+constexpr uint32_t QSAS_CU_SEQLENS_Q_INPUT_INDEX = 4;
+constexpr uint32_t QSAS_KV_INCU_SEQLENS_KV_INPUT_INDEXPUT_INDEX = 5;
+constexpr uint32_t QSAS_SEQUSED_Q_INPUT_INDEXPUT_INDEX = 6;
+constexpr uint32_t QSAS_SEQUSED_KV_INPUT_INDEXPUT_INDEX = 7;
+constexpr uint32_t QSAS_METADATA_INPUT_INDEX = 8;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
-// Attributes Index
+// A5 QSAS Outputs Index
+constexpr uint32_t QSAS_ATTENOUT_INDEX = 0;
+constexpr uint32_t QSAS_SOFTMAXLSE_INDEX = 1;
+
+// QSFA Attributes Index
 constexpr uint32_t SCALE_VALUE_ATTR_INDEX = 0;
 constexpr uint32_t KEY_QUANT_MODE_ATTR_INDEX = 1;
 constexpr uint32_t VALUE_QUANT_MODE_ATTR_INDEX = 2;
@@ -51,6 +68,16 @@ constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 9;
 constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 10;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
+// A5 QSAS Attributes Index
+constexpr uint32_t QSAS_KEY_QUANT_MODE_ATTR_INDEX = 0;
+constexpr uint32_t QSAS_VALUE_QUANT_MODE_ATTR_INDEX = 0;
+constexpr uint32_t QSAS_TILE_SIZE_ATTR_INDEX = 1;
+constexpr uint32_t QSAS_ROPE_HEAD_DIM_ATTR_INDEX = 2;
+constexpr uint32_t QSAS_SCALE_VALUE_ATTR_INDEX = 3;
+constexpr uint32_t QSAS_SPARSE_MODE_ATTR_INDEX = 4;
+constexpr uint32_t QSAS_LAYOUT_QUERY_ATTR_INDEX = 5;
+constexpr uint32_t QSAS_LAYOUT_KV_ATTR_INDEX = 6;
+
 // Dim Num
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
@@ -61,8 +88,15 @@ constexpr uint32_t COPYND2NZ_SRC_STRIDE_LIMITATION = 65535;
 constexpr uint32_t NUM_BYTES_FLOAT = 4;
 constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
+constexpr uint32_t METADATA_LIMIT = 1024;
 constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t QSFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
+
+constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
+constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
+
+constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+                                            sizeof(V2_OP_NAME)});
 
 // ------------------公共定义--------------------------
 enum class QSFALayout : uint32_t {
@@ -126,6 +160,7 @@ struct QSFAParaInfo {
     QSFAOptionalParaInfo keyRope = {nullptr, nullptr};
     QSFAOptionalParaInfo keyDequantScale = {nullptr, nullptr};
     QSFAOptionalParaInfo valueDequantScale = {nullptr, nullptr};
+    QSFAOptionalParaInfo metadata = {nullptr, nullptr};
     QSFARequiredParaInfo attenOut = {nullptr, nullptr};
 
     const char *layoutQuery = nullptr;
@@ -447,6 +482,7 @@ private:
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
     ge::graphStatus CheckActualSeqLensQ();
+    ge::graphStatus CheckMetadta();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();
     ge::graphStatus CheckActualSeqLens();
