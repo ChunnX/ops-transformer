@@ -379,10 +379,10 @@ private:
     GlobalTensor<P> xRsGradMmGm_;  // C0输出 x_rs_grad_mm
     GlobalTensor<P> xRsFp32Gm_;    // V2输出 & C1输入 x_rs
 
-    LocalTensor<uint32_t> gatherOffsetBuf_;
+    // LocalTensor<uint32_t> gatherOffsetBuf_;
     LocalTensor<uint32_t> hPreGatherOffsetBuf_;
     LocalTensor<P> alphaBuf_;
-    LocalTensor<P> alphaTmpBuf_;
+    // LocalTensor<P> alphaTmpBuf_;
     TPipe *pipe_;
     OpRunInfo runInfo_;
     const MhcPreBackwardTilingData *tiling_;
@@ -488,36 +488,36 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
 
 
-        gatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(hFusionBufLen_, 0);
+        // gatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(hFusionBufLen_, 0);
         globalUbOffset_ = hFusionBufLen_ * sizeof(uint32_t);
         alphaBuf_ = fp32TBuf_.GetWithOffset<P>(hFusionBufLen_, globalUbOffset_);
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
-        alphaTmpBuf_ = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
+        // alphaTmpBuf_ = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
         globalUbOffset_ += fusionSize_ * sizeof(P);
 
-        uint32_t offset1 = 0;
-        uint32_t offset2 = 0;
-        for (uint32_t i = 0; i < vecDealChunk_; i++) {
-            for (uint32_t j = 0; j < N_; j++) {
-                gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P));
-                if (i == 0) {
-                    alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(0));
-                }
-            }
+        // uint32_t offset1 = 0;
+        // uint32_t offset2 = 0;
+        // for (uint32_t i = 0; i < vecDealChunk_; i++) {
+        //     for (uint32_t j = 0; j < N_; j++) {
+        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P));
+        //         if (i == 0) {
+        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(0));
+        //         }
+        //     }
 
-            for (uint32_t j = 0; j < N_; j++) {
-                gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P) + hPostOffset_);
-                if (i == 0) {
-                    alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(1));
-                }
-            }
-            for (uint32_t j = 0; j < (N_ * N_); j++) {
-                gatherOffsetBuf_.SetValue(offset1++, (i * N_ * N_ + j) * sizeof(P) + hMixOffset_);
-                if (i == 0) {
-                    alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(2));
-                }
-            }
-        }
+        //     for (uint32_t j = 0; j < N_; j++) {
+        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P) + hPostOffset_);
+        //         if (i == 0) {
+        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(1));
+        //         }
+        //     }
+        //     for (uint32_t j = 0; j < (N_ * N_); j++) {
+        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ * N_ + j) * sizeof(P) + hMixOffset_);
+        //         if (i == 0) {
+        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(2));
+        //         }
+        //     }
+        // }
 
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
@@ -1026,8 +1026,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
     {
         MicroAPI::RegTensor<P> gatherReg;
         MicroAPI::RegTensor<P> h1gradReg;
-        MicroAPI::RegTensor<P> alphaReg;
+        MicroAPI::RegTensor<P> alphaPreReg;
+        MicroAPI::RegTensor<P> alphaPostReg;
+        MicroAPI::RegTensor<P> alphaCombReg;
         MicroAPI::MaskReg maskPre, maskPost, maskComb;
+
+        MicroAPI::Duplicate<P>(alphaPreReg, alphaPre, maskPre);
+        MicroAPI::Duplicate<P>(alphaPostReg, alphaPost, maskPost);
+        MicroAPI::Duplicate<P>(alphaCombReg, alphaComb, maskComb);
+
         for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(currentDealBsNum); bsIdx++) {
             uint32_t curLenPre = blockLenPre;
             uint32_t curLenPost = blockLenPost;
@@ -1039,8 +1046,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             maskPre = MicroAPI::UpdateMask<P>(curLenPre);
             MicroAPI::Load<P>(gatherReg, hPreBufAddr + srcOffset);
             MicroAPI::Store<P>(gatherFusionBufAddr + dstOffset, gatherReg);
-            MicroAPI::Duplicate<P>(alphaReg, alphaPre, maskPre);
-            MicroAPI::Mul(h1gradReg, gatherReg, alphaReg, maskPre);
+            // MicroAPI::Duplicate<P>(alphaReg, alphaPre, maskPre);
+            MicroAPI::Mul(h1gradReg, gatherReg, alphaPreReg, maskPre);
             MicroAPI::Store<P>(h1GradBufAddr + dstOffset, h1gradReg);
 
             uint32_t srcOffset1 = bsIdx * blockLenPre;
@@ -1048,8 +1055,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             maskPost = MicroAPI::UpdateMask<P>(curLenPost);
             MicroAPI::Load<P>(gatherReg, hPostBufAddr + srcOffset1);
             MicroAPI::Store<P>(gatherFusionBufAddr + dstOffset1 + blockLenPre, gatherReg);
-            MicroAPI::Duplicate<P>(alphaReg, alphaPost, maskPost);
-            MicroAPI::Mul(h1gradReg, gatherReg, alphaReg, maskPost);
+            // MicroAPI::Duplicate<P>(alphaReg, alphaPost, maskPost);
+            MicroAPI::Mul(h1gradReg, gatherReg, alphaPostReg, maskPost);
             MicroAPI::Store<P>(h1GradBufAddr + dstOffset1 + blockLenPre, h1gradReg);
 
             uint32_t srcOffset2 = bsIdx * blockLenComb;
@@ -1057,8 +1064,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             maskComb = MicroAPI::UpdateMask<P>(curLenComb);
             MicroAPI::Load<P>(gatherReg, hCombBufAddr + srcOffset2);
             MicroAPI::Store<P>(gatherFusionBufAddr + dstOffset2, gatherReg);
-            MicroAPI::Duplicate<P>(alphaReg, alphaComb, maskComb);
-            MicroAPI::Mul(h1gradReg, gatherReg, alphaReg, maskComb);
+            // MicroAPI::Duplicate<P>(alphaReg, alphaComb, maskComb);
+            MicroAPI::Mul(h1gradReg, gatherReg, alphaCombReg, maskComb);
             MicroAPI::Store<P>(h1GradBufAddr + dstOffset2, h1gradReg);
         }
     }
