@@ -35,3 +35,7 @@ target_link_libraries(test_mte_all_gather PRIVATE
     hccl
     hcomm
 )
+
+install(TARGETS test_mte_all_gather
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
