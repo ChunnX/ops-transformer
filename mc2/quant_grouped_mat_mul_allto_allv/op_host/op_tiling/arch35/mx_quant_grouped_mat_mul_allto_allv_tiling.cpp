@@ -596,9 +596,11 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstrain
             OP_LOGE(opName_, "In mxfp4 non-transposed weight scenario, N1 must be even, but N1=%lu", localParams_.N1),
             return ge::GRAPH_FAILED);
     }
-    // H1 must be even
-    OP_TILING_CHECK(localParams_.H1 % 2 != 0,
-                    OP_LOGE(opName_, "In mxfp4 scenario, the H1 of gmm_x requires to be even, but H1= %lu.", h1),
+    // H1 must be even and not equal to 2
+    OP_TILING_CHECK((localParams_.H1 % 2 != 0) || (localParams_.H1 == 2),
+                    OP_LOGE(opName_,
+                            "In mxfp4 scenario, the H1 of gmm_x requires to be even and not equal to 2, but H1= %lu.",
+                            localParams_.H1),
                     return ge::GRAPH_FAILED);
     // 如果有共享专家MM
     if (localParams_.hasSharedMm) {
@@ -618,10 +620,12 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstrain
                                     localParams_.N2),
                             return ge::GRAPH_FAILED);
         }
-        // H2 must be even
-        OP_TILING_CHECK(localParams_.H2 % 2 != 0,
-                        OP_LOGE(opName_, "In mxfp4 scenario, the H2 of mm_x requires to be even, but H2= %lu.", h2),
-                        return ge::GRAPH_FAILED);
+        // H2 must be even and not equal to 2
+        OP_TILING_CHECK(
+            (localParams_.H2 % 2 != 0) || (localParams_.H2 == 2),
+            OP_LOGE(opName_, "In mxfp4 scenario, the H2 of mm_x requires to be even and not equal to 2, but H2= %lu.",
+                    localParams_.H2),
+            return ge::GRAPH_FAILED);
     }
     OP_LOGD(opName_, "MXFP4 specific constraints check passed.");
     return ge::GRAPH_SUCCESS;
