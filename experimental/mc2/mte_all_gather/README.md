@@ -46,23 +46,6 @@ output_type = int8_t (与输入类型一致)
 rankDim = 4
 ```
 
-# Golden 数据
-
-## 生成 Golden 数据
-
-```shell
-python3 generate_golden.py
-```
-
-生成的文件：
-```
-./golden/mteallgather_input_x_0.bin
-./golden/mteallgather_input_x_1.bin
-./golden/mteallgather_input_x_2.bin
-./golden/mteallgather_input_x_3.bin
-./golden/mteallgather_output_cpu_0.bin  (AllGather golden: [rankDim*bs, hiddenSize] int8)
-```
-
 # 工程运行
 
 1. 设置环境变量

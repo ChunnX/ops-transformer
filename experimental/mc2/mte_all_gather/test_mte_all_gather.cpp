@@ -178,7 +178,6 @@ int LaunchOneThreadMteAllGather(Args &args)
     int8_t *output_host;
     aclrtMallocHost(reinterpret_cast<void**>(&output_host), outputShapeSize);
     aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
-    std::string outputFile = std::string(PATH_PREFIX) + "output_npu_" + std::to_string(args.rankId) + ".bin";
     aclrtFreeHost(output_host);
     freeDeviceMemory(args, xDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
     return 0;

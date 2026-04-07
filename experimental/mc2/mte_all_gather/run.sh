@@ -12,63 +12,8 @@ CURRENT_DIR=$(
     cd $(dirname ${BASH_SOURCE:-$0})
     pwd
 )
-# 默认参数
-INSTALL_PREFIX="${CURRENT_DIR}/out"
-CMAKE_REBUILD="ON"
-
-SHORT=c:,i:,p:,r:
-LONG=cmake-rebuild:,install-path:,install-prefix:,run-test:
-OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
-eval set -- "$OPTS"
-
-while :; do
-    case "$1" in
-    -c | --cmake-rebuild)
-        CMAKE_REBUILD="$2"
-        shift 2
-        ;;
-    -i | --install-path)
-        ASCEND_INSTALL_PATH="$2"
-        shift 2
-        ;;
-    -p | --install-prefix)
-        INSTALL_PREFIX="$2"
-        shift 2
-        ;;
-    -r | --run-test)
-        RUN_TEST="$2"
-        shift 2
-        ;;
-    --)
-        shift
-        break
-        ;;
-    *)
-        echo "[ERROR] Unexpected option: $1"
-        break
-        ;;
-    esac
-done
-
-# 获取环境变量ASCEND_HOME_PATH
-if [ -n "$ASCEND_INSTALL_PATH" ]; then
-    _ASCEND_INSTALL_PATH=$ASCEND_INSTALL_PATH
-elif [ -n "$ASCEND_HOME_PATH" ]; then
-    _ASCEND_INSTALL_PATH=$ASCEND_HOME_PATH
-else
-    if [ -d "$HOME/Ascend/ascend-toolkit/latest" ]; then
-        _ASCEND_INSTALL_PATH=$HOME/Ascend/ascend-toolkit/latest
-    else
-        _ASCEND_INSTALL_PATH=/usr/local/Ascend/ascend-toolkit/latest
-    fi
-fi
-
-# 设置环境变量
-export ASCEND_TOOLKIT_HOME=${_ASCEND_INSTALL_PATH}
-export ASCEND_HOME_PATH=${_ASCEND_INSTALL_PATH}
 
 set -e
-
 # 编译
 if [[ "$CMAKE_REBUILD" == "ON" ]]; then
     rm -rf build
@@ -76,16 +21,14 @@ if [[ "$CMAKE_REBUILD" == "ON" ]]; then
     cmake -B build \
         -DSOC_VERSION=ascend950pr_9599 \
         -DCMAKE_BUILD_TYPE=Debug \
-        -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX} \
-        -DASCEND_CANN_PACKAGE_PATH=${_ASCEND_INSTALL_PATH}
+        -DCMAKE_INSTALL_PREFIX=${CURRENT_DIR}/out \
+        -DASCEND_CANN_PACKAGE_PATH=${ASCEND_HOME_PATH}
     cmake --build build -j
     cmake --install build
 fi
 
 # 运行
-export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
-echo "========== Generating Golden data =========="
-python3 ${CURRENT_DIR}/generate_golden.py
+export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${ASCEND_HOME_PATH}/lib64:$LD_LIBRARY_PATH
 echo "========== Running test =========="
 ./out/bin/test_mte_all_gather
 echo "========== Done =========="
