@@ -13,7 +13,7 @@ using namespace AscendC;
 using namespace MteAllGatherImpl;
 
 template<typename DTYPE_X>
-__attribute__((always_inline)) __aicore__ __inline__ void mte_all_gather_with_mc2context(GM_ADDR x, GM_ADDR output, GM_ADDR workspaceGM,
+__attribute__((always_inline)) __aicore__ __inline__ void MteAllGatherDemoWitchMc2context(GM_ADDR x, GM_ADDR output, GM_ADDR workspaceGM,
                                                         GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
@@ -23,17 +23,17 @@ __attribute__((always_inline)) __aicore__ __inline__ void mte_all_gather_with_mc
     op.Process();
 }
 
-extern "C" __global__ __aicore__ void MteAllGather_Generic(
+extern "C" __global__ __aicore__ void MteAllGatherGeneric(
     GM_ADDR x, GM_ADDR output,
     GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
-    mte_all_gather_with_mc2context<int8_t>(
+    MteAllGatherDemoWitchMc2context<int8_t>(
                 x, output, workspaceGM, mc2Context, tilingGM);
 }
 
-void mte_all_gather_demo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
+void MteAllGatherDemo(uint32_t blockDim, void* stream, uint8_t* x, uint8_t* output,
                            uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM) {
-    MteAllGather_Generic<<<blockDim, nullptr, stream>>>(
+    MteAllGatherGeneric<<<blockDim, nullptr, stream>>>(
         x, output, workspaceGM, mc2Context, tilingGM
     );
 }

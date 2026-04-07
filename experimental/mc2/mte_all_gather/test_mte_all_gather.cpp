@@ -141,7 +141,7 @@ int LaunchOneThreadMteAllGather(Args &args)
     long long outputShapeSize = GetShapeSize(outputShape) * sizeof(int8_t);
     aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
 
-    mte_all_gather_demo(BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr,
+    MteAllGatherDemo(BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr,
                             (uint8_t*)outputDeviceAddr, (uint8_t*)workspaceAddr, (uint8_t*)mc2ContextAddr, (uint8_t*)tilingAddr);
     aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
     LOG_PRINT("[INFO] device_%d quant_all_gather execute successfully.\n", args.rankId);
