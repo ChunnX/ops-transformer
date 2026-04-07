@@ -203,7 +203,7 @@ function(add_compile_cmd_target)
         if(OP_DEBUG_CONFIG)
             set(OP_DEBUG_CONFIG_OPTION --op-debug-config ${OP_DEBUG_CONFIG})
         endif()
-        set(OP_TILING_KEY_OPTION --kernel_template_input ${ASCEND_CUSTOM_TILING_KEYS})
+        set(OP_TILING_KEY_OPTION --tiling-keys ${ASCEND_CUSTOM_TILING_KEYS})
     endif()
 
     set(_OUT_DIR           ${ASCEND_BINARY_OUT_DIR}/${CMD_COMPUTE_UNIT})
@@ -322,7 +322,7 @@ function(add_ops_tiling_keys)
         list(JOIN OP_COMPILE_TILING_KEYS "," STRING_TILING_KEYS)
         add_ops_compile_options(
                 OP_NAME ${OP_COMPILE_OP_NAME}
-                OPTIONS --kernel_template_input=${STRING_TILING_KEYS}
+                OPTIONS --tiling_key=${STRING_TILING_KEYS}
         )
     else()
         file(APPEND ${ASCEND_CUSTOM_TILING_KEYS}
@@ -396,9 +396,11 @@ function(add_ops_src_copy)
     set(MC2_OPS_LIST "matmul_reduce_scatter;"
         "matmul_reduce_scatter_v2;"
         "grouped_mat_mul_allto_allv;"
+        "quant_grouped_mat_mul_allto_allv;"
         "grouped_mat_mul_all_reduce;"
         "batch_mat_mul_reduce_scatter_allto_all;"
         "allto_allv_grouped_mat_mul;"
+        "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
         "moe_distribute_combine_add_rms_norm;"
