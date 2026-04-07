@@ -14,8 +14,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
-#include "aclnnInner_batch_matmul_reduce_scatter_allto_all.h"
-
+#include "aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h"
 using namespace op;
 
 #ifdef __cplusplus
