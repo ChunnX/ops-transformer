@@ -19,6 +19,53 @@
 using namespace NpuArch;
 
 namespace SplitFuse {
+    // Common type aliases shared between FAInfer and FAInferDecoding.
+    // Only the QK/PV dispatch policies and kernel type differ between the two paths.
+    template <typename InputDtypeQ, typename InputDtypeKv, typename IntermCalcPrec>
+    struct FATypeTraits {
+        using ArchTag = Arch::AtlasA2;
+        using ElementQ = InputDtypeQ;
+        using LayoutQ = layout::RowMajor;
+        using ElementK = InputDtypeKv;
+        using LayoutK = layout::ColumnMajor;
+        using ElementV = InputDtypeKv;
+        using LayoutV = layout::RowMajor;
+        using ElementS = IntermCalcPrec;
+        using LayoutS = layout::RowMajor;
+        using ElementSink = InputDtypeQ;
+        using LayoutSink = layout::RowMajor;
+        using ElementP = InputDtypeQ;
+        using LayoutP = layout::RowMajor;
+        using ElementO = InputDtypeQ;
+        using LayoutO = layout::RowMajor;
+        using ElementLse = float;
+        using LayoutLse = layout::RowMajor;
+        using ElementMask = int8_t;
+        using LayoutMask = layout::RowMajor;
+        using ElementOTmp = IntermCalcPrec;
+        using LayoutOTmp = layout::RowMajor;
+        using ElementUpdate = IntermCalcPrec;
+        using LayoutUpdate = layout::RowMajor;
+
+        using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
+        using L0TileShapeQK = GemmShape<128, 128, 128>;
+        using L1TileShapePV = GemmShape<128, 128, 256>;
+        using L0TileShapePV = GemmShape<128, 128, 128>;
+
+        using QType = Gemm::GemmType<ElementQ, LayoutQ>;
+        using KType = Gemm::GemmType<ElementK, LayoutK>;
+        using SType = Gemm::GemmType<ElementS, LayoutS>;
+        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
+        using PType = Gemm::GemmType<ElementP, LayoutP>;
+        using VType = Gemm::GemmType<ElementV, LayoutV>;
+        using OType = Gemm::GemmType<ElementO, LayoutO>;
+        using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
+        using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
+        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
+        using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
+        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
+    };
+
     template <
         typename InputDtypeQ = half,
         typename InputDtypeKv = half,
@@ -44,67 +91,29 @@ namespace SplitFuse {
         GM_ADDR tiling,
         GM_ADDR sink)
     {
-        using ArchTag = Arch::AtlasA2;
-        using ElementQ = InputDtypeQ;
-        using LayoutQ = layout::RowMajor;
-        using ElementK = InputDtypeKv;
-        using LayoutK = layout::ColumnMajor;
-        using ElementV = InputDtypeKv;
-        using LayoutV = layout::RowMajor;
-        using ElementS = IntermCalcPrec;
-        using LayoutS = layout::RowMajor;
-        using ElementSink = InputDtypeQ;
-        using LayoutSink = layout::RowMajor;
-        using ElementP = InputDtypeQ;
-        using LayoutP = layout::RowMajor;
-        using ElementO = InputDtypeQ;
-        using LayoutO = layout::RowMajor;
-        using ElementLse = float;
-        using LayoutLse = layout::RowMajor;
-        using ElementMask = int8_t;
-        using LayoutMask = layout::RowMajor;
-        using ElementOTmp = IntermCalcPrec;
-        using LayoutOTmp = layout::RowMajor;
-        using ElementUpdate = IntermCalcPrec;
-        using LayoutUpdate = layout::RowMajor;
+        using TT = FATypeTraits<InputDtypeQ, InputDtypeKv, IntermCalcPrec>;
 
-        using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
-        using L0TileShapeQK = GemmShape<128, 128, 128>;
         using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQK<PagedCacheFlag, false>;
-        using QType = Gemm::GemmType<ElementQ, LayoutQ>;
-        using KType = Gemm::GemmType<ElementK, LayoutK>;
-        using SType = Gemm::GemmType<ElementS, LayoutS>;
-        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
-        using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                                QType, KType, SType>;
+        using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, typename TT::L1TileShapeQK, typename TT::L0TileShapeQK,
+                                                typename TT::QType, typename TT::KType, typename TT::SType>;
 
         using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
-        using PType = Gemm::GemmType<ElementP, LayoutP>;
-        using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
-        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
         using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType, pseShiftType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, typename TT::PType, typename TT::SType, typename TT::maskType, typename TT::SinkType, typename TT::pseShiftType>;
 
-        using L1TileShapePV = GemmShape<128, 128, 256>;
-        using L0TileShapePV = GemmShape<128, 128, 128>;
         using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPV<PagedCacheFlag, false>;
-        using VType = Gemm::GemmType<ElementV, LayoutV>;
-        using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-        using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                                PType, VType, OTmpType>;
+        using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, typename TT::L1TileShapePV, typename TT::L0TileShapePV,
+                                                typename TT::PType, typename TT::VType, typename TT::OTmpType>;
 
         using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
-        using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
-        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
         using EpilogueRescaleO =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, typename TT::OType, typename TT::OTmpType, typename TT::OUpdateType, typename TT::LseType>;
 
         using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
         using EpilogueInitOut =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, typename TT::OType, typename TT::LseType>;
 
-        using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
+        using CombineScale = Epilogue::Block::CombineScale<typename TT::OType, typename TT::LseType>;
         using FAInferKernel_FD = FAInferKernel<BlockMmadQK, BlockMmadPV,
                                                 EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
                                                 PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
@@ -118,7 +127,7 @@ namespace SplitFuse {
         flashAttnInfer(params);
     }
 
-    // 新增：专门用于 pagedCacheFlag == true && qSeqlen == 1 的 Decoding 场景
+    // Specialized path for pagedCacheFlag == true && qSeqlen == 1 (Decoding)
     template <
         typename InputDtypeQ = half,
         typename InputDtypeKv = half,
@@ -143,67 +152,27 @@ namespace SplitFuse {
         GM_ADDR tiling,
         GM_ADDR sink)
     {
-        using ArchTag = Arch::AtlasA2;
-        using ElementQ = InputDtypeQ;
-        using LayoutQ = layout::RowMajor;
-        using ElementK = InputDtypeKv;
-        using LayoutK = layout::ColumnMajor;
-        using ElementV = InputDtypeKv;
-        using LayoutV = layout::RowMajor;
-        using ElementS = IntermCalcPrec;
-        using LayoutS = layout::RowMajor;
-        using ElementSink = InputDtypeQ;
-        using LayoutSink = layout::RowMajor;
-        using ElementP = InputDtypeQ;
-        using LayoutP = layout::RowMajor;
-        using ElementO = InputDtypeQ;
-        using LayoutO = layout::RowMajor;
-        using ElementLse = float;
-        using LayoutLse = layout::RowMajor;
-        using ElementMask = int8_t;
-        using LayoutMask = layout::RowMajor;
-        using ElementOTmp = IntermCalcPrec;
-        using LayoutOTmp = layout::RowMajor;
-        using ElementUpdate = IntermCalcPrec;
-        using LayoutUpdate = layout::RowMajor;
+        using TT = FATypeTraits<InputDtypeQ, InputDtypeKv, IntermCalcPrec>;
 
-        using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
-        using L0TileShapeQK = GemmShape<128, 128, 128>;
-        // Use MmadAtlasA2FAIQKDecode dispatch policy for decoding scenario
         using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQKDecode<PagedCacheFlag, false>;
-        using QType = Gemm::GemmType<ElementQ, LayoutQ>;
-        using KType = Gemm::GemmType<ElementK, LayoutK>;
-        using SType = Gemm::GemmType<ElementS, LayoutS>;
-        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
-        using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                                QType, KType, SType>;
+        using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, typename TT::L1TileShapeQK, typename TT::L0TileShapeQK,
+                                                typename TT::QType, typename TT::KType, typename TT::SType>;
 
         using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
-        using PType = Gemm::GemmType<ElementP, LayoutP>;
-        using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
-        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
         using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType, pseShiftType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, typename TT::PType, typename TT::SType, typename TT::maskType, typename TT::SinkType, typename TT::pseShiftType>;
 
-        using L1TileShapePV = GemmShape<128, 128, 256>;
-        using L0TileShapePV = GemmShape<128, 128, 128>;
-        // Use MmadAtlasA2FAIPVDecode dispatch policy for decoding scenario
         using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPVDecode<PagedCacheFlag, false>;
-        using VType = Gemm::GemmType<ElementV, LayoutV>;
-        using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-        using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                                PType, VType, OTmpType>;
+        using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, typename TT::L1TileShapePV, typename TT::L0TileShapePV,
+                                                typename TT::PType, typename TT::VType, typename TT::OTmpType>;
 
         using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
-        using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
-        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
         using EpilogueRescaleO =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, typename TT::OType, typename TT::OTmpType, typename TT::OUpdateType, typename TT::LseType>;
 
         using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
         using EpilogueInitOut =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, typename TT::OType, typename TT::LseType>;
 
         using FAInferKernelDecodingType = FAInferKernelDecoding<BlockMmadQK, BlockMmadPV,
                                                 EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
