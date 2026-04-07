@@ -379,6 +379,7 @@ aclnnStatus aclnnGroupedMatmulV2(
   - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
+
     <details>
     <summary>非量化场景约束</summary>
       <a id="非量化场景约束"></a>

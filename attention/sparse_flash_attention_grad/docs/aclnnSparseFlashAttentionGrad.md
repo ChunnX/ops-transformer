@@ -220,6 +220,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>注意力正向计算的中间输出。</td>
             <td>
             -
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
@@ -233,6 +234,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>注意力正向计算的中间输出。</td>
             <td>
             -
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)
@@ -304,7 +306,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
-            建议值：公式中d开根号的倒数。</li>
+            建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>

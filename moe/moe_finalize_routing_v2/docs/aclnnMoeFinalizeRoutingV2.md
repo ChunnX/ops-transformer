@@ -250,6 +250,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   <col style="width: 169px">
   <col style="width: 130px">
   <col style="width: 880px">
+  </colgroup>
   <thead>
   <tr>
     <th>参数名</th>

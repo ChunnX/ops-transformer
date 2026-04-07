@@ -157,8 +157,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>weight2（aclTensor*）</td> 
   <td>输入</td> 
   <td>专家的权重数据，公式中的W2。</td> 
-  <td>-</ul>
-  </td> 
+  <td>-</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8、INT4</li>
@@ -178,8 +177,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>expertTokens（aclIntArray*）</td> 
   <td>可选输入</td> 
   <td>各专家的token数。</td> 
-  <td>-</ul>
-  </td> 
+  <td>-</td> 
   <td>INT64</td> 
   <td>ND</td> 
   <td>

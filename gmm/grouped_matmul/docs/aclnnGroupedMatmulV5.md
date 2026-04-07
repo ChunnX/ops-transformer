@@ -862,7 +862,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
         |2|x单tensor|每个tensor 3维，shape为((K / 64) + g, M, 2), 起始地址偏移与scale 同理|
 
-    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight 非转置时还需满足N为偶数。
+    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight非转置时还需满足N为偶数。
     </details>
 
     <details>
