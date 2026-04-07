@@ -1,0 +1,17 @@
+case_id;input_shape;has_smooth;has_group_index;x_dtype;dst_type
+0;[8,32];false;false;float16;2
+1;[8,32];true;false;float16;2
+2;[16,64];false;false;float16;2
+3;[16,64];true;false;float16;2
+4;[2,16,31];false;false;float16;2
+5;[2,16,32];true;false;float16;2
+6;[4,8,128];false;false;float16;2
+7;[4,8,128];true;false;float16;2
+8;[1,512];false;false;float16;2
+9;[24,512];false;false;float16;2
+10;[32,128];true;false;bfloat16;2
+11;[8,256];false;false;bfloat16;2
+12;[2,4,64];true;false;float16;2
+13;[64,63];false;false;float16;2
+14;[128,32];true;false;float16;2
+15;[1,128];false;false;float16;2
