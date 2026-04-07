@@ -36,7 +36,7 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
         Registers Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @torch.library.register_fake("npu_ops_transformer::" + self.name)
         def npu_flash_attn_metadata_meta(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                                           num_heads_q, num_heads_kv, head_dim,
                                           batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
