@@ -20,9 +20,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(mega_moe_depends mc2/common mc2/3rd PARENT_SCOPE)
-    target_link_libraries(cust_opapi PRIVATE
-        ${ASCEND_CANN_PACKAGE_PATH}/lib64/libhcomm.so
-    )
+
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend910_93")

@@ -19,7 +19,7 @@
 
 using namespace Ops::Transformer;
 using namespace op;
-using namespace Mc2Aclnn;
+using namespace Mc2MoeDistributeContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,7 +52,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
                 const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
                 const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional, const aclTensor* weight1,
                 const aclTensor* weightscales1, const aclTensor* weight2,  const aclTensor* weightscales2,
-                const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
+                const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
                 int64_t maxRecvTokenNum, int64_t shareExpertNum, int64_t shareExpertRankNum, int64_t dispatchQuantMode,
                 int64_t dispatchQuantOutType, int64_t combineQuantMode, const char* commAlg,
                 int64_t globalBs, aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)
@@ -70,7 +70,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
                                         mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
                                         weight1, weightscales1, weight2, weightscales2, groupEp, epWorldSize, epRankId,
-                                        moeExpertNum, cclBufferSize, maxRecvTokenNum, shareExpertNum, shareExpertRankNum,
+                                        moeExpertNum, hcclBuffSize, maxRecvTokenNum, shareExpertNum, shareExpertRankNum,
                                         dispatchQuantMode, dispatchQuantOutType, combineQuantMode,
                                         commAlg, globalBs, y, workspaceSize, executor);
 

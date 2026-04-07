@@ -109,7 +109,6 @@ __aicore__ inline void MoeMrgsort::CopyIn()
     this->remainListNum = 0;
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
-
     for (int64_t i = 0, j = 0; i < listNum; i++) {
         lengths[i] = Min(param->oneLoopMaxElements, listRemainElements[i]);
         if (lengths[i] > 0) {
@@ -169,7 +168,6 @@ __aicore__ inline void MoeMrgsort::CopyOut()
     intriParams.blockLen = GetSortLen<float>(curLoopSortedNum) * sizeof(float);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID7);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID7);
-
     DataCopyPad(this->gmOutput[outOffset], this->ubOutput, intriParams);
     outOffset += GetSortLen<float>(curLoopSortedNum);
 }

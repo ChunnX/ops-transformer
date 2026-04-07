@@ -64,6 +64,7 @@ struct WorkspaceInfo{
     GM_ADDR ptrA2Scale;
     GM_ADDR ptrcumsumMM;
     GM_ADDR expandedRowIdx;
+    GM_ADDR expandedRowIdxGather;
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagList;
     GM_ADDR ptrFlagList2;
@@ -90,6 +91,7 @@ struct WorkspaceInfo{
         workspaceSize += tilingData->expertPerRank * INT_CACHELINE * MAX_AICORE_NUM * sizeof(int32_t);
         gmCtx = base + workspaceSize;
         workspaceSize += CeilAlign(sizeof(SchedulerContext), ALIGN_512);
+        expandedRowIdxGather = ptrA;    // 复用
     }
 };
 

@@ -56,6 +56,10 @@ constexpr uint32_t ALIGN_512 = 512;
 constexpr uint32_t ALIGN_128 = 128;
 constexpr int32_t INT_CACHELINE = 16;
 constexpr int32_t MAX_AICORE_NUM = 36;
+constexpr uint32_t NUM_128 = 128;
+constexpr uint32_t NUM_256 = 256;
+constexpr uint32_t NUM_384 = 384;
+constexpr uint32_t NUM_512 = 512;
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 constexpr int LCOC_MAX_RANK_SIZE = 128;
 #define CATLASS_DEVICE __forceinline__ [aicore]

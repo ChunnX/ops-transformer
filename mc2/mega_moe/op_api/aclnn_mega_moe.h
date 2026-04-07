@@ -36,7 +36,6 @@ extern "C" {
  * @param [in] epWorldSize: 计算输入，int。ep通信域size。
  * @param [in] epRankId: 计算输入，int。ep本卡Id。同一个EP通信域中各卡的epRankId不能重复
  * @param [in] moeExpertNum: 计算输入，int。MOE专家数量。
- * @param [in] cclBufferSize: 计算输入，int。windows内存大小。
  * @param [in] maxRecvTokenNum: 计算输入，int。Gmm算子输出shape的M轴最大值，用于申请workspace，超出则截断。
  * @param [in] dispatchQuantMode: 计算输入，int。dispatch阶段的量化模式。
  * @param [in] combineQuantMode: 计算输入，int。combine阶段的量化模式。
@@ -52,7 +51,7 @@ ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
                 const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
                 const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional, const aclTensor* weight1,
                 const aclTensor* weightscales1, const aclTensor* weight2,  const aclTensor* weightscales2,
-                const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
+                const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
                 int64_t maxRecvTokenNum, int64_t shareExpertNum, int64_t shareExpertRankNum, int64_t dispatchQuantMode,
                 int64_t dispatchQuantOutType, int64_t combineQuantMode, const char* commAlg,
                 int64_t globalBs, aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor);

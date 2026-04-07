@@ -35,6 +35,7 @@
 #include "mega_moe_tiling_def.h"
 #include "moe_init_routing_v3_apt.h"
 #include "moe_finalize_routing_v2_apt.h"
+#include "argsort_simt.h"
 using namespace Catlass;
 
 template <class BlockMmad_, class BlockMmad2_, class BlockEpilogue_, class BlockScheduler_>
@@ -822,6 +823,68 @@ public:
         }
     }
 
+    CATLASS_DEVICE void ArgSortExpandedRowIdx(const Params &params) {
+        auto &tilingData = params.tilingData;
+        int32_t coreLen, coreOffset;
+        TilingByCore(tilingData->m * tilingData->topK, coreLen, coreOffset, 1);
+        __gm__ int32_t *src = (__gm__ int32_t *)params.workspaceInfo.expandedRowIdx;
+        __gm__ int32_t *dst = (__gm__ int32_t *)params.workspaceInfo.expandedRowIdxGather;
+        Simt::VF_CALL<ArgsortSimt>(Simt::Dim3{MoeInitRoutingV3::SIMT_THREAD_NUM, 1, 1}, coreLen, coreOffset,
+                                   src, dst);
+    }
+
+    CATLASS_DEVICE void Unpermute(const Params &params) {
+        if constexpr(g_coreType == AscendC::AIC) {
+            return;
+        }
+        auto &tilingData = params.tilingData;
+        int32_t coreLen, coreOffset;
+        TilingByCore(tilingData->m, coreLen, coreOffset, 1);
+        AscendC::GlobalTensor<int32_t> expandedRowIdx;
+        expandedRowIdx.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.expandedRowIdxGather);
+        AscendC::GlobalTensor<bfloat16_t> probs;
+        probs.SetGlobalBuffer((__gm__ bfloat16_t*)params.probsGmAddr);
+        AscendC::GlobalTensor<bfloat16_t> expandedX;
+        expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params.peermemInfo.ptrD);
+        AscendC::GlobalTensor<bfloat16_t> output;
+        output.SetGlobalBuffer((__gm__ bfloat16_t*)params.y2GmAddr);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        for(int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::LocalTensor<bfloat16_t> dataRes{AscendC::TPosition::VECIN, 0, 0};
+            AscendC::LocalTensor<bfloat16_t> dataIn0 = dataRes[tilingData->k];
+            AscendC::LocalTensor<bfloat16_t> dataIn1 = dataRes[tilingData->k * 2];
+            for(int32_t expId = 0; expId < tilingData->topK; ++expId) {
+                int32_t rowIdx = expandedRowIdx(tokenIdx * tilingData->topK + expId);
+                bfloat16_t expScale = probs(tokenIdx * tilingData->topK + expId);
+                auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
+                auto dataIn = (expId % 2 == 0) ? dataIn0 : dataIn1;
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                AscendC::DataCopy(dataIn, expandedX[rowIdx * tilingData->k], tilingData->k);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                AscendC::SetFlag<AscendC::HardEvent::S_V>(event);
+                AscendC::WaitFlag<AscendC::HardEvent::S_V>(event);
+                if (expId == 0) {
+                    AscendC::Muls(dataRes, dataIn, expScale, tilingData->k);
+                } else {
+                    AscendC::Muls(dataIn, dataIn, expScale, tilingData->k);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Add(dataRes, dataRes, dataIn, tilingData->k);
+                    AscendC::PipeBarrier<PIPE_V>();
+                }
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(event);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::DataCopy(output[tokenIdx * tilingData->k], dataRes, tilingData->k);
+        }
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+    }
+
     CATLASS_DEVICE void operator()(const Params& params)
     {
         InitParamsAndTensor(params);
@@ -874,26 +937,14 @@ public:
 
         EndGMM2Sync(VecSetSyncCom2);
         AscendC::SyncAll<true>();
+        ArgSortExpandedRowIdx(params);
         if constexpr(g_coreType == AscendC::AIV) {
             ResetTokenPerExpert(params);
             params.shmem.CrossRankSync();
         }
-        AscendC::SyncAll<true>();
-
-        moe_finalize_routing_v2<bfloat16_t>(
-            params.peermemInfo.ptrD, // GM_ADDR expandedX,
-            params.workspaceInfo.expandedRowIdx, // GM_ADDR expandedRowIdx,
-            nullptr, // GM_ADDR x1,
-            nullptr, // GM_ADDR x2,
-            nullptr, // GM_ADDR bias,
-            params.probsGmAddr,// GM_ADDR scales,
-            params.expertIdxGmAddr,// GM_ADDR expertIdx,
-            params.y2GmAddr, // GM_ADDR y,
-            params.workspaceInfo.ptrA, // GM_ADDR workspace,
-            &params.tilingData->moeFinalizeRoutingTilingData, // const MoeFinalizeRoutingV2RegbaseTilingData* tilingData,
-            params.tilingData->moeFinalizeRoutingTilingKey // uint64_t tilingKey
-        );
+        
         // unpermute
+        Unpermute(params);
 
         #if (__NPU_ARCH__ == 3510)
             SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);

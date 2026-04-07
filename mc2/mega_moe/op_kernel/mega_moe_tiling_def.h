@@ -29,6 +29,9 @@ struct MegaMoeTilingData {
     uint32_t m;
     uint32_t k;
     uint32_t n;
+    uint32_t m0; // 目前在gmm1 tileShape中使用
+    uint32_t k0;
+    uint32_t n0;
     uint32_t EP;
     uint32_t blockNumPerEP; // 和dispatchRows相关，如果每个EP搬运的row小于dispatchRows，则dispatchRows失效
     uint32_t maxOutputSize;

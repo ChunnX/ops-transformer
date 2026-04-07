@@ -71,7 +71,7 @@ target_link_libraries(test_aclnn_mega_moe PRIVATE             # 替换实际算�
     ${ASCEND_PATH}/lib64/libascendcl.so
     ${ASCEND_PATH}/lib64/libnnopbase.so
     ${ASCEND_PATH}/lib64/libhccl.so
-    ${CMAKE_CURRENT_SOURCE_DIR}mega_moe/vendors/MEGA_transformer/op_api/lib/libcust_opapi.so   # 仅自定义算子需要
+    ${CMAKE_CURRENT_SOURCE_DIR}/mega_moe/vendors/MEGA_transformer/op_api/lib/libcust_opapi.so   # 仅自定义算子需要
     # ${ASCEND_PATH}/lib64/libopapi_transformer.so    # 仅内置算子需要
 )
 
