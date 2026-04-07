@@ -91,6 +91,9 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputShapes()
     auto maskShapePtr = context_->GetOptionalInputShape(INPUT_MASK_INDEX);
     if (maskShapePtr != nullptr) {
         maskShape_ = maskShapePtr->GetOriginShape();
+        isMaskNone_ = 0;
+    } else {
+        isMaskNone_ = 1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -105,26 +108,6 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputDtypes()
         return ge::GRAPH_FAILED;
     }
     xDtypeSize_ = GetSizeByDataType(xType_);
-    return ge::GRAPH_SUCCESS;
-}
-
-// ---- GetInputStrides ----
-ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputStrides()
-{
-    if (context_->InputIsView(INPUT_X_INDEX)) {
-        auto* xStride = context_->GetInputStride(INPUT_X_INDEX);
-        OP_CHECK_IF(xStride == nullptr || xStride->GetDimNum() == 0,
-                    OP_LOGE(context_->GetNodeName(), "x stride is invalid"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(xStride->GetDimNum() != xShape_.GetDimNum(),
-                    OP_LOGE(context_->GetNodeName(), "x stride dim mismatch"),
-                    return ge::GRAPH_FAILED);
-        xSStride_ = static_cast<uint32_t>(xStride->GetStride(DIM_0));
-        xBStride_ = static_cast<uint32_t>(xStride->GetStride(DIM_1));
-    } else {
-        xSStride_ = static_cast<uint32_t>(B_ * H_);
-        xBStride_ = static_cast<uint32_t>(H_);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -155,14 +138,13 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetShapeAttrsInfo()
                 return ge::GRAPH_FAILED);
     if (GetInputShapes()   != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
     if (GetInputDtypes()   != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
-    if (GetInputStrides()  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
     if (CheckInputParams() != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
     return ge::GRAPH_SUCCESS;
 }
 
 // ---- CalcLoopParams ----
 ge::graphStatus MaskedCausalConv1dTilingArch35::CalcLoopParams(
-    uint32_t len, uint32_t factor, uint32_t& loopNum, uint32_t& tailFactor)
+    int64_t len, int64_t factor, int64_t& loopNum, int64_t& tailFactor)
 {
     if (factor == 0) {
         OP_LOGE(context_->GetNodeName(), "CalcLoopParams: factor is 0");
@@ -269,47 +251,102 @@ done:
 }
 
 // ---- CalcUbTiling ----
-// UB budget: bUb*(257*sUb + 256) + 384 <= ubSize_
-// hUb = H_REG = 64 (fixed); maximize bUb*sUb.
+// UB budget (bytes, d = xDtypeSize_):
+//   ioQueue (BUF_NUM=2):        2d × bUb×(sUb+2)×ubFactorH
+//   weightQueue (BUF_NUM=2):    2×3d × ubFactorH = 6d × ubFactorH
+//   (maskQueue removed: mask read directly from GM)
+//   Total = 2d×bUb×(sUb+2)×ubFactorH + 6d×ubFactorH ≤ ubSize_
+//
+// sUb_max = ⌊(ubSize_ - d×ubFactorH×(4×bUb+6)) / (2×d×bUb×ubFactorH)⌋
+//
+// Strategy (§6.2):
+//   Step1: ubFactorH=H_REG=64, bUb=bLen; compute sUb_max.
+//     Situation A (sUb_max ≥ sLen): B+S fully loaded → Step2
+//     Situation B (0 < sUb_max < sLen): sUb=sUb_max, done.
+//     Situation C (sUb_max < 1): reduce bUb until sUb_max ≥ 1.
+//   Step2 (Situation A only): if UB utilization < 50%, expand ubFactorH by H_REG
+//     steps up to min(hBlockFactor_, hBlockTailFactor_).
 ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
 {
-    hUb_ = static_cast<uint32_t>(H_REG);
+    const int64_t d = static_cast<int64_t>(xDtypeSize_);
 
-    if (ubSize_ < 384) {
-        OP_LOGE(context_->GetNodeName(), "ubSize too small");
-        return ge::GRAPH_FAILED;
-    }
-    int64_t ubAvail = static_cast<int64_t>(ubSize_) - 384;
+    // sUb_max = ⌊(ubSize_ - d×h×(4×b+6)) / (2×d×b×h)⌋
+    auto calcSUbMax = [&](uint64_t h, uint64_t b) -> int64_t {
+        int64_t num = static_cast<int64_t>(ubSize_)
+                      - static_cast<int64_t>(h) * d * (4 * static_cast<int64_t>(b) + 6);
+        if (num <= 0) return 0;
+        int64_t den = 2 * d * static_cast<int64_t>(b) * static_cast<int64_t>(h);
+        return num / den;
+    };
 
-    uint64_t bestBUb = 1, bestSUb = 1;
-    for (uint64_t bUbTry = std::min(bBlockFactor_, (uint64_t)32); bUbTry >= 1; --bUbTry) {
-        int64_t sUbMax = (ubAvail / static_cast<int64_t>(bUbTry) - 256) / 257;
-        if (sUbMax < 1) continue;
-        uint64_t sUb = std::min(static_cast<uint64_t>(sUbMax), sBlockFactor_);
-        if (sUb < 1) continue;
-        if (bUbTry * sUb > bestBUb * bestSUb) {
-            bestBUb = bUbTry;
-            bestSUb = sUb;
+    // Total UB usage: 2d×b×(s+2)×h + 6d×h
+    auto calcUsedUb = [&](uint64_t h, uint64_t b, uint64_t s) -> uint64_t {
+        return 2 * static_cast<uint64_t>(d) * b * (s + 2) * h
+               + 6 * static_cast<uint64_t>(d) * h;
+    };
+
+    // Step1: fix ubFactorH = H_REG = 64, bUb = bLen (full B)
+    ubFactorH_ = static_cast<int64_t>(H_REG);
+    uint64_t bUb = bBlockFactor_;
+    uint64_t sLen = sBlockFactor_;
+
+    int64_t sUbMax = calcSUbMax(ubFactorH_, bUb);
+
+    if (sUbMax < 1) {
+        // Situation C: reduce bUb until sUb_max >= 1
+        while (bUb > 1 && sUbMax < 1) {
+            --bUb;
+            sUbMax = calcSUbMax(ubFactorH_, bUb);
+        }
+        if (sUbMax < 1) {
+            OP_LOGE(context_->GetNodeName(), "UB tiling failed: no valid (bUb, sUb) found");
+            return ge::GRAPH_FAILED;
         }
     }
 
-    ubFactorB_ = static_cast<uint32_t>(bestBUb);
-    ubFactorS_ = static_cast<uint32_t>(bestSUb);
+    uint64_t sUb;
+    if (static_cast<uint64_t>(sUbMax) >= sLen) {
+        // Situation A: B+S fully loaded
+        sUb = sLen;
+
+        // Step2: if UB utilization < 50%, expand ubFactorH to reduce H loop count
+        uint64_t usedUb = calcUsedUb(ubFactorH_, bUb, sLen);
+        if (usedUb * 2 < ubSize_) {
+            // Cap at min(hBlockFactor_, hBlockTailFactor_) so ubFactorH fits all cores
+            uint64_t hLenMin = (hMainCnt_ > 0)
+                               ? std::min(hBlockFactor_, hBlockTailFactor_)
+                               : hBlockFactor_;
+            for (uint64_t k = 2; k * H_REG <= hLenMin; ++k) {
+                uint64_t hTry = k * H_REG;
+                if (calcUsedUb(hTry, bUb, sLen) <= ubSize_) {
+                    ubFactorH_ = static_cast<int64_t>(hTry);
+                } else {
+                    break;
+                }
+            }
+        }
+    } else {
+        // Situation B: S cannot be fully loaded; keep ubFactorH=H_REG, sUb=sUb_max
+        sUb = static_cast<uint64_t>(sUbMax);
+    }
+
+    ubFactorB_ = static_cast<int64_t>(bUb);
+    ubFactorS_ = static_cast<int64_t>(sUb);
 
     if (ubFactorB_ == 0 || ubFactorS_ == 0) {
-        OP_LOGE(context_->GetNodeName(), "UB tiling failed: ubFactorB=%u ubFactorS=%u",
+        OP_LOGE(context_->GetNodeName(), "UB tiling failed: ubFactorB=%ld ubFactorS=%ld",
                 ubFactorB_, ubFactorS_);
         return ge::GRAPH_FAILED;
     }
 
     // Loop params — main core
-    if (CalcLoopParams(static_cast<uint32_t>(hBlockFactor_),    hUb_,       loopNumH_,  ubTailFactorH_)  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
-    if (CalcLoopParams(static_cast<uint32_t>(bBlockFactor_),    ubFactorB_, loopNumB_,  ubTailFactorB_)  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
-    if (CalcLoopParams(static_cast<uint32_t>(sBlockFactor_),    ubFactorS_, loopNumS_,  ubTailFactorS_)  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
+    if (CalcLoopParams(static_cast<int64_t>(hBlockFactor_),    ubFactorH_,       loopNumH_,  ubTailFactorH_)  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
+    if (CalcLoopParams(static_cast<int64_t>(bBlockFactor_),    ubFactorB_, loopNumB_,  ubTailFactorB_)  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
+    if (CalcLoopParams(static_cast<int64_t>(sBlockFactor_),    ubFactorS_, loopNumS_,  ubTailFactorS_)  != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
     // Loop params — tail core
-    if (CalcLoopParams(static_cast<uint32_t>(hBlockTailFactor_),hUb_,       tailBlockLoopNumH_, tailBlockUbTailFactorH_) != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
-    if (CalcLoopParams(static_cast<uint32_t>(bBlockTailFactor_),ubFactorB_, tailBlockLoopNumB_, tailBlockUbTailFactorB_) != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
-    if (CalcLoopParams(static_cast<uint32_t>(sBlockTailFactor_),ubFactorS_, tailBlockLoopNumS_, tailBlockUbTailFactorS_) != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
+    if (CalcLoopParams(static_cast<int64_t>(hBlockTailFactor_),ubFactorH_,       tailBlockLoopNumH_, tailBlockUbTailFactorH_) != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
+    if (CalcLoopParams(static_cast<int64_t>(bBlockTailFactor_),ubFactorB_, tailBlockLoopNumB_, tailBlockUbTailFactorB_) != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
+    if (CalcLoopParams(static_cast<int64_t>(sBlockTailFactor_),ubFactorS_, tailBlockLoopNumS_, tailBlockUbTailFactorS_) != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -345,26 +382,26 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::PostTiling()
     context_->SetBlockDim(static_cast<uint32_t>(realCoreNum_));
 
     MaskedCausalConv1dTilingData td;
-    td.S = static_cast<uint32_t>(S_);
-    td.B = static_cast<uint32_t>(B_);
-    td.H = static_cast<uint32_t>(H_);
+    td.S = static_cast<int64_t>(S_);
+    td.B = static_cast<int64_t>(B_);
+    td.H = static_cast<int64_t>(H_);
 
-    td.hCoreCnt         = static_cast<uint32_t>(hCoreCnt_);
-    td.hMainCnt         = static_cast<uint32_t>(hMainCnt_);
-    td.hBlockFactor     = static_cast<uint32_t>(hBlockFactor_);
-    td.hBlockTailFactor = static_cast<uint32_t>(hBlockTailFactor_);
+    td.hCoreCnt         = static_cast<int64_t>(hCoreCnt_);
+    td.hMainCnt         = static_cast<int64_t>(hMainCnt_);
+    td.hBlockFactor     = static_cast<int64_t>(hBlockFactor_);
+    td.hBlockTailFactor = static_cast<int64_t>(hBlockTailFactor_);
 
-    td.bCoreCnt         = static_cast<uint32_t>(bCoreCnt_);
-    td.bMainCnt         = static_cast<uint32_t>(bMainCnt_);
-    td.bBlockFactor     = static_cast<uint32_t>(bBlockFactor_);
-    td.bBlockTailFactor = static_cast<uint32_t>(bBlockTailFactor_);
+    td.bCoreCnt         = static_cast<int64_t>(bCoreCnt_);
+    td.bMainCnt         = static_cast<int64_t>(bMainCnt_);
+    td.bBlockFactor     = static_cast<int64_t>(bBlockFactor_);
+    td.bBlockTailFactor = static_cast<int64_t>(bBlockTailFactor_);
 
-    td.sCoreCnt         = static_cast<uint32_t>(sCoreCnt_);
-    td.sMainCnt         = static_cast<uint32_t>(sMainCnt_);
-    td.sBlockFactor     = static_cast<uint32_t>(sBlockFactor_);
-    td.sBlockTailFactor = static_cast<uint32_t>(sBlockTailFactor_);
+    td.sCoreCnt         = static_cast<int64_t>(sCoreCnt_);
+    td.sMainCnt         = static_cast<int64_t>(sMainCnt_);
+    td.sBlockFactor     = static_cast<int64_t>(sBlockFactor_);
+    td.sBlockTailFactor = static_cast<int64_t>(sBlockTailFactor_);
 
-    td.hUb       = hUb_;
+    td.ubFactorH = ubFactorH_;
     td.ubFactorB = ubFactorB_;
     td.ubFactorS = ubFactorS_;
 
@@ -382,9 +419,8 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::PostTiling()
     td.tailBlockLoopNumS        = tailBlockLoopNumS_;
     td.tailBlockUbTailFactorS   = tailBlockUbTailFactorS_;
 
-    td.xSStride    = xSStride_;
-    td.xBStride    = xBStride_;
-    td.realCoreNum = static_cast<uint32_t>(realCoreNum_);
+    td.realCoreNum = static_cast<int64_t>(realCoreNum_);
+    td.isMaskNone = isMaskNone_;
 
     auto tilingDataSize = sizeof(MaskedCausalConv1dTilingData);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
@@ -409,12 +445,12 @@ void MaskedCausalConv1dTilingArch35::DumpTilingInfo()
          << " bBlockFactor=" << bBlockFactor_ << " bBlockTailFactor=" << bBlockTailFactor_ << "\n";
     info << "sCoreCnt=" << sCoreCnt_ << " sMainCnt=" << sMainCnt_
          << " sBlockFactor=" << sBlockFactor_ << " sBlockTailFactor=" << sBlockTailFactor_ << "\n";
-    info << "hUb=" << hUb_ << " ubFactorB=" << ubFactorB_ << " ubFactorS=" << ubFactorS_ << "\n";
+    info << "ubFactorH=" << ubFactorH_ << " ubFactorB=" << ubFactorB_ << " ubFactorS=" << ubFactorS_ << "\n";
     info << "loopNumH=" << loopNumH_ << " ubTailFactorH=" << ubTailFactorH_ << "\n";
     info << "loopNumB=" << loopNumB_ << " ubTailFactorB=" << ubTailFactorB_ << "\n";
     info << "loopNumS=" << loopNumS_ << " ubTailFactorS=" << ubTailFactorS_ << "\n";
     info << "realCoreNum=" << realCoreNum_ << "\n";
-    info << "xSStride=" << xSStride_ << " xBStride=" << xBStride_ << "\n";
+    info << "isMaskNone=" << isMaskNone_ << "\n";
     OP_LOGI(context_->GetNodeName(), "%s", info.str().c_str());
 }
 

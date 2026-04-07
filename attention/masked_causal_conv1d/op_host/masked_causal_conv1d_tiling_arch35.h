@@ -48,11 +48,10 @@ protected:
 private:
     ge::graphStatus GetInputShapes();
     ge::graphStatus GetInputDtypes();
-    ge::graphStatus GetInputStrides();
     ge::graphStatus CheckInputParams();
     ge::graphStatus SearchBestCoreSplit();
     ge::graphStatus CalcUbTiling();
-    ge::graphStatus CalcLoopParams(uint32_t len, uint32_t factor, uint32_t& loopNum, uint32_t& tailFactor);
+    ge::graphStatus CalcLoopParams(int64_t len, int64_t factor, int64_t& loopNum, int64_t& tailFactor);
 
     // Hardware
     uint64_t ubSize_      = 0;
@@ -64,9 +63,8 @@ private:
     ge::DataType xType_;
     uint32_t xDtypeSize_ = 0;
 
-    // Stride (non-contiguous x support)
-    uint32_t xSStride_ = 0;
-    uint32_t xBStride_ = 0;
+    // Mask None flag
+    int64_t isMaskNone_ = 0;
 
     // Inter-core split result
     uint64_t hCoreCnt_ = 1, hMainCnt_ = 0, hBlockFactor_ = 0, hBlockTailFactor_ = 0;
@@ -75,19 +73,19 @@ private:
     uint64_t realCoreNum_ = 1;
 
     // UB tile sizes
-    uint32_t hUb_       = 64;
-    uint32_t ubFactorB_ = 1;
-    uint32_t ubFactorS_ = 1;
+    int64_t ubFactorH_     = 64;
+    int64_t ubFactorB_ = 1;
+    int64_t ubFactorS_ = 1;
 
     // Loop params — main core
-    uint32_t loopNumH_ = 1, ubTailFactorH_ = 64;
-    uint32_t loopNumB_ = 1, ubTailFactorB_ = 1;
-    uint32_t loopNumS_ = 1, ubTailFactorS_ = 1;
+    int64_t loopNumH_ = 1, ubTailFactorH_ = 64;
+    int64_t loopNumB_ = 1, ubTailFactorB_ = 1;
+    int64_t loopNumS_ = 1, ubTailFactorS_ = 1;
 
     // Loop params — tail core
-    uint32_t tailBlockLoopNumH_ = 1, tailBlockUbTailFactorH_ = 64;
-    uint32_t tailBlockLoopNumB_ = 1, tailBlockUbTailFactorB_ = 1;
-    uint32_t tailBlockLoopNumS_ = 1, tailBlockUbTailFactorS_ = 1;
+    int64_t tailBlockLoopNumH_ = 1, tailBlockUbTailFactorH_ = 64;
+    int64_t tailBlockLoopNumB_ = 1, tailBlockUbTailFactorB_ = 1;
+    int64_t tailBlockLoopNumS_ = 1, tailBlockUbTailFactorS_ = 1;
 
     uint64_t workspaceSize_ = 0;
 
