@@ -50,7 +50,6 @@ constexpr int64_t BLOCK_NUM = 64;
 constexpr int64_t DEV_NUM = 4;
 constexpr const char* PATH_PREFIX = "./golden/mteallgather_";
 int streamWithTimeout = 10000;
-bool use_golden = false;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -61,74 +60,6 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 
-int ReadFile(const std::string &filePath, void *buffer, size_t bufferSize)
-{
-    struct stat sBuf;
-    int fileStatus = stat(filePath.data(), &sBuf);
-    if (fileStatus == -1) {
-        printf("Failed to get file\n");
-        return -1;
-    }
-    if (S_ISREG(sBuf.st_mode) == 0) {
-        printf("%s is not a file, please enter a file.\n", filePath.c_str());
-        return -1;
-    }
-    std::ifstream file;
-    file.open(filePath, std::ios::binary);
-    if (!file.is_open()) {
-        printf("Open file failed. path = %s.\n", filePath.c_str());
-        return -1;
-    }
-    std::filebuf *buf = file.rdbuf();
-    size_t size = buf->pubseekoff(0, std::ios::end, std::ios::in);
-    if (size == 0) {
-        printf("File size is 0\n");
-        file.close();
-        return -1;
-    }
-    if (size > bufferSize) {
-        printf("File size is larger than buffer size.\n");
-        file.close();
-        return -1;
-    }
-    buf->pubseekpos(0, std::ios::in);
-    buf->sgetn(static_cast<char *>(buffer), size);
-    file.close();
-    return ACL_SUCCESS;
-}
-
-int WriteFile(const std::string &filePath, const void *buffer, size_t size, size_t offset = 0)
-{
-    if (buffer == nullptr) {
-        printf("Write file failed. Buffer is nullptr.\n");
-        return -1;
-    }
-    int fd = open(filePath.c_str(), O_RDWR | O_CREAT, 0666);
-    if (!fd) {
-        printf("Open file failed. path = %s\n", filePath.c_str());
-        return -1;
-    }
-    if (flock(fd, LOCK_EX) == -1) {
-        std::cerr << "Failed to acquire lock: " << std::system_error(errno, std::generic_category()).what()
-                 << std::endl;
-        close(fd);
-        return -1;
-    }
-    if (lseek(fd, offset, SEEK_SET) == -1) {
-        std::cerr << "Failed to seek in file: " << std::system_error(errno, std::generic_category()).what()
-                << std::endl;
-        close(fd);
-        return -1;
-    }
-    if (write(fd, static_cast<const char *>(buffer), size) != static_cast<ssize_t>(size)) {
-        std::cerr << "Failed to write to file: " << std::system_error(errno, std::generic_category()).what()
-                 << std::endl;
-    }
-    flock(fd, LOCK_UN);
-    close(fd);
-    return ACL_SUCCESS;
-}
-
 template<typename T>
 int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr)
 {
@@ -137,32 +68,6 @@ int CreateDeviceTensor(const std::vector<T> &hostData, const std::vector<int64_t
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-    return ACL_SUCCESS;
-}
-
-template<typename T>
-int LoadDeviceTensorFromGolden(const std::string &fileName, const std::vector<int64_t> &shape, void **deviceAddr, int rankId)
-{
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-
-    uint8_t *hostData;
-    ret = aclrtMallocHost(reinterpret_cast<void**>(&hostData), size);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMallocHost failed. ret: %d\n", ret); return ret);
-
-    std::string filePath = std::string(PATH_PREFIX) + fileName + "_" + std::to_string(rankId) + ".bin";
-    ret = ReadFile(filePath, hostData, size);
-    if (ret != ACL_SUCCESS) {
-        LOG_PRINT("[WARN] Failed to read golden file %s, using zeros\n", filePath.c_str());
-        memset(hostData, 0, size);
-    }
-
-    ret = aclrtMemcpy(*deviceAddr, size, hostData, size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-
-    ret = aclrtFreeHost(hostData);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
     return ACL_SUCCESS;
 }
 
@@ -229,7 +134,7 @@ struct Args {
 
 int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** workspace,
                        void** tiling, void** mc2Context, int64_t bs, int64_t hiddenSize, int64_t hcclBufferSize,
-                       int64_t workSpaceSize, bool useGolden)
+                       int64_t workSpaceSize)
 {
     int ret = CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context, bs, hiddenSize, hcclBufferSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreatTilingDataAndContext failed. ret = %d\n", ret); return ret);
@@ -241,15 +146,10 @@ int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** w
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
 
-    if (useGolden) {
-        ret = LoadDeviceTensorFromGolden<int8_t>("input_x", xShape, xDevice, args.rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LoadDeviceTensorFromGolden X failed. ret: %d\n", ret); return ret);
-    } else {
-        long long xShapeSize = GetShapeSize(xShape);
-        std::vector<int8_t> xHostData(xShapeSize, 0);
-        ret = CreateDeviceTensor(xHostData, xShape, xDevice);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
-    }
+    long long xShapeSize = GetShapeSize(xShape);
+    std::vector<int8_t> xHostData(xShapeSize, 0);
+    ret = CreateDeviceTensor(xHostData, xShape, xDevice);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] CreateDeviceTensor X failed. ret: %d\n", ret); return ret);
 
     return ACL_SUCCESS;
 }
@@ -292,7 +192,7 @@ int LaunchOneThreadMteAllGather(Args &args)
     void *mc2ContextAddr = nullptr;
     void *outputDeviceAddr = nullptr;
     ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &workspaceAddr,
-                            &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize, use_golden);
+                            &tilingAddr, &mc2ContextAddr, bs, hiddenSize, hcclBufferSize, workSpaceSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] AllocDeviceMemory failed. ret = %d \n", ret); return ret);
 
     std::vector<int64_t> outputShape = {args.rankDim, bs, hiddenSize};
@@ -311,8 +211,6 @@ int LaunchOneThreadMteAllGather(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMallocHost output failed. ret: %d\n", ret); return ret);
     ret = aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
     std::string outputFile = std::string(PATH_PREFIX) + "output_npu_" + std::to_string(args.rankId) + ".bin";
-    ret = WriteFile(outputFile, output_host, outputShapeSize);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] WriteFile output failed. ret: %d\n", ret); return ret);
     ret = aclrtFreeHost(output_host);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtFreeHost failed. ret: %d\n", ret); return ret);
     ret = freeDeviceMemory(args, xDeviceAddr, workspaceAddr, tilingAddr, mc2ContextAddr, outputDeviceAddr, workSpaceSize);
@@ -322,25 +220,13 @@ int LaunchOneThreadMteAllGather(Args &args)
 
 int main(int argc, char *argv[])
 {
-    if (argc > 1 && std::string(argv[1]) == "--use-golden") {
-        use_golden = true;
-        LOG_PRINT("[INFO] Using golden data from files\n");
-    } else {
-        use_golden = false;
-        LOG_PRINT("[INFO] Using zero-initialized data\n");
-    }
-
     int ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[DEV_NUM];
     aclrtContext context[DEV_NUM];
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        ret = aclrtSetDevice(rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateContext(&context[rankId], rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateStream(&stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
+        aclrtSetDevice(rankId);
+        aclrtCreateContext(&context[rankId], rankId);
+        aclrtCreateStream(&stream[rankId]);
     }
     int32_t devices[DEV_NUM];
     for (int i = 0; i < DEV_NUM; i++) {
@@ -348,7 +234,6 @@ int main(int argc, char *argv[])
     }
     HcclComm comms[DEV_NUM];
     ret = HcclCommInitAll(DEV_NUM, devices, comms);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
 
     Args args[DEV_NUM];
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
