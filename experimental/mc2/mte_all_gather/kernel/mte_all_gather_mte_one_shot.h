@@ -31,9 +31,9 @@ using namespace AscendC;
 constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;
 
 template<TemplateTypeClass>
-class MteAllGatherMteOneShot {
+class MteAllGather {
 public:
-    __aicore__ inline MteAllGatherMteOneShot() {};
+    __aicore__ inline MteAllGather() {};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR output,
                                 TPipe *pipe, const MteAllGatherTilingData *tilingData);
     __aicore__ inline void InitWithMc2Context(GM_ADDR x, GM_ADDR output,
@@ -57,7 +57,7 @@ private:
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::Init(GM_ADDR x, GM_ADDR output,
+__aicore__ inline void MteAllGather<TemplateType>::Init(GM_ADDR x, GM_ADDR output,
     TPipe *tPipe, const MteAllGatherTilingData *tilingData)
 {
     mteComm_.InitHcclContext();
@@ -84,7 +84,7 @@ __aicore__ inline void MteAllGatherMteOneShot<TemplateType>::Init(GM_ADDR x, GM_
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
+__aicore__ inline void MteAllGather<TemplateType>::InitWithMc2Context(GM_ADDR x, GM_ADDR output,
     GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *tPipe)
 {
     mteComm_.InitHcclContextByAddr(mc2Context);
@@ -112,7 +112,7 @@ __aicore__ inline void MteAllGatherMteOneShot<TemplateType>::InitWithMc2Context(
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::ExecuteAllGather()
+__aicore__ inline void MteAllGather<TemplateType>::ExecuteAllGather()
 {
     mteComm_.ReadStatus();
 
@@ -141,7 +141,7 @@ __aicore__ inline void MteAllGatherMteOneShot<TemplateType>::ExecuteAllGather()
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void MteAllGatherMteOneShot<TemplateType>::Process()
+__aicore__ inline void MteAllGather<TemplateType>::Process()
 {
     if ASCEND_IS_AIC {
         return;

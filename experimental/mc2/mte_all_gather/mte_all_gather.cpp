@@ -30,7 +30,7 @@ __attribute__((always_inline)) __aicore__ __inline__ void mte_all_gather_with_mc
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
-    MteAllGatherMteOneShot<DTYPE_X> op;
+    MteAllGather<DTYPE_X> op;
     op.InitWithMc2Context(x, output, mc2Context, tilingGM, &pipe);
     op.Process();
 }

@@ -16,8 +16,6 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include "basic_api/reg_compute/kernel_reg_compute_intf.h"
-
 namespace AscendC {
 constexpr static int64_t MAX_RANK_NUM = 64;  // 支持的最大卡数
 struct HcclA5OpResParam {
