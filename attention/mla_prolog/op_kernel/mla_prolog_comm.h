@@ -21,7 +21,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "service_matmul.h"
 
 using namespace AscendC;
 
@@ -339,6 +338,8 @@ struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     using kvCacheType = C_T;           // kvcache的类型
     using krCacheType = bfloat16_t;        // krcache的类型
     using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
+    using mmCqAccumType = float;
+    using mmCkvKrAccumType = float;
     using dequantScaleQNormType = float;      // dequantScaleQNormType的类型
     using dequantScaleType = float;
 

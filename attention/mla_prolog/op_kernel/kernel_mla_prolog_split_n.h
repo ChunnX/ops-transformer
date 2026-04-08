@@ -894,7 +894,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     }
 #else
     // Other chips: existing Split-N
-    if constexpr (std::is_same<mmInputType, FP8E4M3>::value) {
+    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
         MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
             mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum}, dequantScaleXGm_[dequantScaleXOffset], dequantScaleWDqGm_[aicOffset.dequantScaleWDqOffset]);
     } else {
@@ -942,7 +942,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     }
 #else
     // Other chips: existing Split-N
-    if constexpr (std::is_same<mmInputType, FP8E4M3>::value) {
+    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
         MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(mmCkvKrResGm_[aicOffset.ckvKrResOffset],
             tokenXGm_[tokenXOffset], weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_,
             UsedBlockParams{0, baseParams_->mm2BlockNum}, dequantScaleXGm_[dequantScaleXOffset],
