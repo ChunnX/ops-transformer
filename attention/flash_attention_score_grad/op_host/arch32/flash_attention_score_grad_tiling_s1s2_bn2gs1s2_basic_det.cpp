@@ -335,7 +335,7 @@ bool FlashAttentionScoreGraTilingBasicDet::IsShapeCapable()
     if (fBaseParams.d != fBaseParams.dv || fBaseParams.d > SPECIAL_HEADDIM_128 || fBaseParams.d % C0_SIZE != 0) {
         return false;
     }
-    if (strcmp(fBaseParams.inputLayout, TND_STR) != 0 && fBaseParams.s1 != fBaseParams.s2){
+    if (strcmp(fBaseParams.inputLayout, TND_STR) != 0 && fBaseParams.s1 != fBaseParams.s2) {
         return false;
     }
     
