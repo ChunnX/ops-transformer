@@ -151,7 +151,6 @@ private:
     int64_t slotmappingOffset = 0;
     int64_t perCoreKeySize = 0;
     int64_t perCoreValueSize = 0;
-
 };
 } // namespace ScatterPaKvCache
 #endif
