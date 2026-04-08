@@ -61,9 +61,11 @@ using namespace AscendC;
 
 constexpr uint32_t BUFFER_NUM = 2;
 constexpr uint64_t SYNC_MAX_NUM = 15;
-constexpr uint32_t INOUT_QUEUE_SIZE = 16 * 1024;          // 16KB
-constexpr uint32_t FP32_BUF_SIZE = (248 - 16 * 5) * 1024; // 128KB
-constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 64;            // ProcessV2函数使用的chunk大小
+constexpr uint32_t INOUT_QUEUE_SIZE = 28 * 1024;          // 28KB
+constexpr uint32_t TEMP_QUEUE_SIZE = 16 * 1024;          // 16KB
+constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;          // 16KB
+constexpr uint32_t FP32_BUF_SIZE = (248 - 28 * 3 - 16 - 1) * 1024; // 147KB
+constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 112;            // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
@@ -458,13 +460,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + hCombBeforeGradBufLen_;
     onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
 
-    pipe_->InitBuffer(tempInQueue_, 1, INOUT_QUEUE_SIZE);
+    pipe_->InitBuffer(tempInQueue_, 1, TEMP_QUEUE_SIZE);
 
     if ASCEND_IS_AIV {
         pipe_->InitBuffer(bf16InQueue_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(bf16OutQueue_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(fp32InQueue_, 1, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(fp32OutQueue_, 1, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(fp32OutQueue_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
 
 
@@ -1553,7 +1555,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
     LocalTensor<P> hPreUb = fp32TBuf_.GetWithOffset<P>(currentBsSize * N_, ubOffset); // 1024 * 4 = 16k
     ubOffset = CeilAlign(uint32_t(ubOffset + currentBsSize * N_ * sizeof(P)), uint32_t(32));
-    LocalTensor<uint8_t> sharedTmpBuf = fp32TBuf_.GetWithOffset<uint8_t>(5 * 1024, ubOffset);
+    LocalTensor<uint8_t> sharedTmpBuf = fp32TBuf_.GetWithOffset<uint8_t>(5 * 1024, ubOffset); // FIXME: 没人用就删除
 
     // ==========================================================
     // 参数初始化
