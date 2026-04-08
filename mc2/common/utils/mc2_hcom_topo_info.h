@@ -20,6 +20,7 @@
 #include <string>
 #include "hccl/hcom.h"
 #include "mc2_moe_context.h"
+#include "opdev/platform.h"
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
 #include "opdev/op_errno.h"
