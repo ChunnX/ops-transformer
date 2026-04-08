@@ -177,7 +177,7 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
                                                    TPipe *tPipe)
 {
     this->pipe = tPipe;
-    this->blockIdx = GetBlockIdx();
+    this->blockIdx = blockIdx.x;
     this->gatherOutTilingData = &(tilingData->gatherOutComputeParamsOp);
 
     this->needCoreNum = this->gatherOutTilingData->needCoreNum;
