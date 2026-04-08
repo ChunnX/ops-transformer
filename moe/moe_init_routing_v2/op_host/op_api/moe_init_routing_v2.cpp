@@ -73,7 +73,8 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
         OP_ATTR(active_num, expert_capacity, expert_num, drop_pad_mode,
             expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag));
 
-    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return {nullptr, nullptr, nullptr, nullptr},
+    const std::array<const aclTensor *, 4> errorReturn = {nullptr, nullptr, nullptr, nullptr};
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return errorReturn,
                                          "MoeInitRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
 
     return {expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum, expert_tokens_before_capacity};

@@ -44,7 +44,8 @@ const std::array<const aclTensor *, 2> MoeFinalizeRoutingV2Grad(
         OP_OUTPUT(grad_expanded_x, grad_scales),
         OP_ATTR(drop_pad_mode, active_num, expert_num, expert_capacity));
 
-    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return {nullptr, nullptr},
+    const std::array<const aclTensor *, 2> errorReturn = {nullptr, nullptr};
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return errorReturn,
                                          "MoeFinalizeRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
 
     return std::array<const aclTensor*, 2>{grad_expanded_x, grad_scales};

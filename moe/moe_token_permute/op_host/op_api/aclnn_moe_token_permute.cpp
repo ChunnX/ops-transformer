@@ -71,7 +71,9 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
         numOutTokens, 0, 0, 0, 0, false,
         permuteTokensOut, sortedIndicesOut,
         nullptr, nullptr, uniqueExecutor.get());
-    auto [expandedXOut_, expandedRowIdxOut_, [[maybe_unused]] expertTokensCountOrCumsumOut_, [[maybe_unused]] expertTokensBeforeCapacityOut_] = result;
+
+    auto expandedXOut_ = std::get<0>(result);
+    auto expandedRowIdxOut_ = std::get<1>(result);
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
 

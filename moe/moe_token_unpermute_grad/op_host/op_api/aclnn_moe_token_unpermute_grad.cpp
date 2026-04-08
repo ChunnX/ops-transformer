@@ -73,10 +73,9 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
     CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());;
+    const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());
     CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     
-
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
