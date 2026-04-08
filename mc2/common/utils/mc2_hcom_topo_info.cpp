@@ -13,7 +13,7 @@
 #include "log/log.h"
 #include "mc2_hcom_topo_info.h"
 #include "ops_legacy/op_tiling/hcom_topo_info.h"
-#include "mc2_tiling_utils.h"
+#include "mc2_get_hccl_buffer_size.h"
 #ifndef BUILD_OPEN_PROJECT
 #include "hcom/hcom_topo_info.h"
 #endif
@@ -209,7 +209,7 @@ HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize(const char *group, uint6
 {
     if (ge::HcomTopoInfo::Instance().GetGroupLocalWindowSize(group, *cclBufferSize) != ge::GRAPH_SUCCESS) {
         OP_LOGD("", "Get winSize from GetGroupLocalWindowSize=%lu", *cclBufferSize);
-        *cclBufferSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+        *cclBufferSize = mc2tiling::GetHcclBufferMaxSize();
         return HCCL_SUCCESS;
     }
     OP_LOGD("", "Get winSize from GetMaxWindowSize=%lu", *cclBufferSize);

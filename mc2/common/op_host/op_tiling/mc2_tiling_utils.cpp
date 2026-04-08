@@ -15,6 +15,7 @@
 
 #include <cstdlib>
 
+#include "mc2_get_hccl_buffer_size.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
@@ -345,22 +346,7 @@ mc2tiling::HcclDataType Mc2TilingUtils::GetDataType(ge::DataType type) {
 }
 
 uint64_t Mc2TilingUtils::GetMaxWindowSize() {
-  uint16_t defaultWindowSize = 200;
-  if (getenv(HCCL_BUFFSIZE) == nullptr) {
-    OP_LOGD("", "Env HCCL_BUFFSIZE don't set");
-  } else {
-    try {
-      std::string envStr(getenv(HCCL_BUFFSIZE));
-      defaultWindowSize = std::stoi(envStr);
-    } catch (...) {
-      OP_LOGE("",
-              "Unknown Exception encountered when parser env HCCL_BUFFERSIZE");
-    }
-  }
-  const uint64_t maxWindowSize =
-      static_cast<uint64_t>(defaultWindowSize) * 1024UL * 1024UL;
-  OP_LOGI("", "Get maxWindowSize is %lu", maxWindowSize);
-  return maxWindowSize;
+  return GetHcclBufferMaxSize();
 }
 
 bool GetRankSize(const std::string &opName, const char *group, int64_t &rankSize) {
