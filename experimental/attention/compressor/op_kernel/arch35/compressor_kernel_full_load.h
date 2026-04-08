@@ -458,12 +458,12 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Process()
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0);
         } else {
-            ComputeVec1(vec1Info);
-            UpdateVec2Info(vec2Info, i, vec1Info);
-            SyncAll();
-            if (IsNeedExcuteV2(vec2Info)) {
-                ComputeVec2(vec2Info);
-            }
+            // ComputeVec1(vec1Info);
+            // UpdateVec2Info(vec2Info, i, vec1Info);
+            // SyncAll();
+            // if (IsNeedExcuteV2(vec2Info)) {
+            //     ComputeVec2(vec2Info);
+            // }
         }
     }
     FreeEventID();
