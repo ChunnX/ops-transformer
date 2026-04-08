@@ -41,7 +41,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("state")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("actual_seq_lengths")
@@ -76,7 +76,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("state")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
