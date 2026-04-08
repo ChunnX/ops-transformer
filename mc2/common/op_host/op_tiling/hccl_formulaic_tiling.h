@@ -35,7 +35,7 @@ constexpr double ALIGN_RATIO_CALC_BOUND = 0.5;
 constexpr double ALIGN_RATIO_COMM_BOUND = 0.75;
 constexpr uint64_t SMALL_SHAPE_BAR = 2048;
 // OneCalcOneCommBase参数
-constexpr uint64_t MAX_TILE_CNT = 63;
+constexpr uint64_t MAX_TILE_CNT = 16;
 constexpr double commGrowRatio = 1.15;
 constexpr double ALLGATHERMM_COMMTIME_FACTOR = 2;
 constexpr double ALLREDUCE_COMMTIME_FACTOR = 2.0517;
