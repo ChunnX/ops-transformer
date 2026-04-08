@@ -336,8 +336,8 @@ bool FlashAttentionScoreGraTilingBasicDet::IsShapeCapable()
         return false;
     }
     if (strcmp(fBaseParams.inputLayout, TND_STR) != 0 && fBaseParams.s1 != fBaseParams.s2) {
- 	    return false;
- 	}
+        return false;
+    }
     return true;
 }
 
