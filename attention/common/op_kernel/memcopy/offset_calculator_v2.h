@@ -321,8 +321,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
         gmLayout.MakeLayout(b, n2, s2, d);
     }
 
-    __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGm,
-                                uint32_t actualLenKvDims, bool isKvPaddingFlag = false, uint64_t kvPaddingSize = 0)
+    __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
+                                GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenKvDims,
+                                bool isKvPaddingFlag = false, uint64_t kvPaddingSize = 0)
     {
         this->isKvPaddingFlag = isKvPaddingFlag;
         this->kvPaddingSize = kvPaddingSize;
