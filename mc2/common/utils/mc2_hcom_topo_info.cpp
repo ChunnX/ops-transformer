@@ -503,7 +503,7 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
         OP_LOGE("", "MC2 context function pointer is null");
         return ACLNN_ERR_INNER;
     }
-
+    OP_LOGD("", "hcclHandle_ is: %p", hcclHandle_);
     uint64_t ctxSize = sizeof(Mc2MoeContext);
     HcclResult hcclRet = HcclEngineCtxCreate(hcclHandle_, mc2ContextTag.c_str(), engine, ctxSize, &ctx);
     if (hcclRet != HCCL_SUCCESS) {
