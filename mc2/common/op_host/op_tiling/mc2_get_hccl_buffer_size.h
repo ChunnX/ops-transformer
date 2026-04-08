@@ -10,7 +10,7 @@ constexpr char HCCL_BUFFSIZE[] = "HCCL_BUFFSIZE";
 }
 
 
-uint64_t GetHcclBufferMaxSize()
+inline uint64_t GetHcclBufferMaxSize()
 {
     uint16_t defaultWindowSize = 200;
     if (getenv(HCCL_BUFFSIZE) == nullptr) {
