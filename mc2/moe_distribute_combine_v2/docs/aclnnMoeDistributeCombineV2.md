@@ -1436,6 +1436,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             LOG_PRINT("Example on <Atlas A5> will be executed!\n");
             int ret = run_example_on_A3A5();
         }
+        else {
+            LOG_PRINT("[ERROR] No valid test mode is enabled! Please set one of IS_TEST_A2, IS_TEST_A3, or IS_TEST_A5 to true.\n");
+        }
 
         return 0;
     }
