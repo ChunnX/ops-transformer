@@ -38,6 +38,7 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
+    OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Begin to do Tiling GroupedMatmulSwigluQuantV2.");
     OP_CHECK_IF(context == nullptr,
             OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
             return ge::GRAPH_FAILED);
@@ -51,6 +52,8 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the int8");
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
     }
+    OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "End Tiling GroupedMatmulSwigluQuantV2.");
+
 }
 
 ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseContext *context)
