@@ -497,6 +497,7 @@ aclnnStatus MC2HcomTopology::GetHcclCommResource(const CommEngine& engine,
 aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
                                const CommEngine& engine, const CommProtocol& protocol, void*& ctx, Mc2MoeContext* mc2ContextStruct)
 {
+    OP_LOGD("", "111start CreatMc2Context engine is : %d, protocol is: %d", engine, protocol);
     OP_LOGD("", "start to create HCCL context");
     if (HcclEngineCtxCreate == nullptr || HcclGetRankId == nullptr ||
         HcclGetRankSize == nullptr || HcclEngineCtxCopy == nullptr) {
@@ -505,6 +506,7 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
     }
     OP_LOGD("", "hcclHandle_ is: %p", hcclHandle_);
     uint64_t ctxSize = sizeof(Mc2MoeContext);
+    OP_LOGD("", "222start CreatMc2Context engine is : %d, protocol is: %d", engine, protocol);
     HcclResult hcclRet = HcclEngineCtxCreate(hcclHandle_, mc2ContextTag.c_str(), engine, ctxSize, &ctx);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Create HCCL context memory failed");
@@ -710,6 +712,7 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
     HcclResult hcclRet = instance.HcclEngineCtxGet(instance.hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGD("", "Get HCCL engine context failed start to create context");
+        OP_LOGD("", "start CreatMc2Context engine is: %d, protocol is: %d", engine, protocol);
         ret = instance.CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
         if (ret != ACLNN_SUCCESS) return ret;
         hcclBuffSize = contextStruct.winSize;
