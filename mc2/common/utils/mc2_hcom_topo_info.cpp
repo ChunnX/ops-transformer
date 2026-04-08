@@ -632,8 +632,8 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        engine = COMM_ENGINE_AIV;
-        protocol = COMM_PROTOCOL_UB_MEM;
+        engine = CommEngine::COMM_ENGINE_AIV;
+        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return ACLNN_SUCCESS;
     } else {
         if (HcclRankGraphGetLinks == nullptr) {
@@ -664,8 +664,8 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
             }
         }
         if (foundUbMemProtocol) {
-            engine = COMM_ENGINE_AIV;
-            protocol = COMM_PROTOCOL_UB_MEM;
+            engine = CommEngine::COMM_ENGINE_AIV;
+            protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
             OP_LOGD("", "Get HCCL communication engine success, engine is: %d, protocol is: %d", engine, protocol);
             return ACLNN_SUCCESS;
         }
