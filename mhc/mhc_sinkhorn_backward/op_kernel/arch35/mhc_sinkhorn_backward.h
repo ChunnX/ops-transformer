@@ -67,6 +67,11 @@ private:
                                            __local_mem__ float *sumAddr, __local_mem__ float *gradInputAddr,
                                            __local_mem__ uint32_t *maskAddr, __local_mem__ float *maxAddr,
                                            uint32_t dataLen, uint32_t n);
+    
+    template <HardEvent EVENT>
+    __aicore__ inline void SetWaitEvent(HardEvent event);
+
+    __aicore__ inline void CopyInNormAndSum(const uint64_t normOffset, const uint32_t normProcessNum, const uint64_t sumOffset, const uint32_t sumProcessNum);
 
     GlobalTensor<float> gradY_;
     GlobalTensor<float> norm_;
@@ -288,6 +293,22 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(__local_mem_
     }
 }
 
+__aicore__ inline void MhcSinkhornBackwardSimd::CopyInNormAndSum(const uint64_t normOffset, const uint32_t normProcessNum, const uint64_t sumOffset, const uint32_t sumProcessNum)
+{
+    LocalTensor<float> normLocal = inputNormQue_.AllocTensor<float>();
+    LocalTensor<float> sumLocal = inputSumQue_.AllocTensor<float>();
+    DataCopyPadExtParams<float> dataCopyPadExtParams{false, 0, 0, 0};
+
+    DataCopyExtParams dataCopyExtParamsNorm{1, static_cast<uint32_t>(normProcessNum * sizeof(float)), 0, 0, 0};
+    DataCopyExtParams dataCopyExtParamsSum{1, static_cast<uint32_t>(sumProcessNum  * sizeof(float)), 0, 0, 0};
+
+    DataCopyPad(normLocal, norm_[normOffset], dataCopyExtParamsNorm, dataCopyPadExtParams);
+    DataCopyPad(sumLocal, sum_[sumOffset], dataCopyExtParamsSum, dataCopyPadExtParams);
+
+    inputNormQue_.EnQue(normLocal);
+    inputSumQue_.EnQue(sumLocal);
+}
+
 __aicore__ inline void MhcSinkhornBackwardSimd::Process()
 {
     if (blockIdx_ >= tilingData_.needCoreNum) {
@@ -309,8 +330,6 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
 
     for (int64_t i = 0; i < loop_; i++) {
         LocalTensor<float> gradYLocal = inputGradYQue_.AllocTensor<float>();
-        LocalTensor<float> normLocal = inputNormQue_.AllocTensor<float>();
-        LocalTensor<float> sumLocal = inputSumQue_.AllocTensor<float>();
         LocalTensor<float> gradInputLocal = outputQue_.AllocTensor<float>();
 
         // 计算grad_y起始偏移地址
@@ -325,9 +344,14 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         DataCopyExtParams dataCopyExtParamsGradY{1, static_cast<uint32_t>(copyInGradYSize * sizeof(float)), 0, 0, 0}; //n=4和8时，搬运天然32字节对齐，如果n=6时,可能会多搬4个脏数据，搬出搬同样数据量大小即可
         DataCopyPad(gradYLocal, gradY_[inputOffsetGradY], dataCopyExtParamsGradY, dataCopyPadExtParams);
 
-        auto MTE2ToVEventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(MTE2ToVEventID);
-        WaitFlag<HardEvent::MTE2_V>(MTE2ToVEventID);
+        // inputGradYQue_.EnQue(gradYLocal);
+
+        SetWaitEvent<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+        
+        __local_mem__ float *gradYAddr = (__local_mem__ float *)gradYLocal.GetPhyAddr();
+        __local_mem__ float *gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
+        __local_mem__ uint32_t *maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
+        __local_mem__ float *maxAddr = (__local_mem__ float *)maxLocal.GetPhyAddr();
 
         // 计算UB -> reg 循环次数
         uint32_t perLoopT = Ops::Base::GetVRegSize() / sizeof(float) / tilingData_.nSize / tilingData_.nAlignSize ; //计算一次可以搬运多少个矩阵到Register:256/4/8/4=2
@@ -353,23 +377,18 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             // norm_out、sum_out搬运数据量：GM -> UB
             uint32_t copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
             uint32_t copyInSumSize = 2* loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*5*8
-            DataCopyExtParams dataCopyExtParamsNorm{1, static_cast<uint32_t>(copyInNormSize * sizeof(float)), 0, 0, 0};
-            DataCopyExtParams dataCopyExtParamsSum{1, static_cast<uint32_t>(copyInSumSize  * sizeof(float)), 0, 0, 0};
-            DataCopyPad(normLocal, norm_[inputOffsetNorm], dataCopyExtParamsNorm, dataCopyPadExtParams);
-            DataCopyPad(sumLocal, sum_[inputOffsetSum], dataCopyExtParamsSum, dataCopyPadExtParams);    
+            CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize);
 
-            __local_mem__ float *gradYAddr = (__local_mem__ float *)gradYLocal.GetPhyAddr();
+            LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
+            LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
             __local_mem__ float *normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
             __local_mem__ float *sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();
-            __local_mem__ float *gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
-            __local_mem__ uint32_t *maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
-            __local_mem__ float *maxAddr = (__local_mem__ float *)maxLocal.GetPhyAddr();
 
-            for (uint16_t i = 0; i < repeatTimes; i++) {
-                auto curGradYAddr = gradYAddr + i * repeatSize;
-                auto curNormAddr = normAddr + i * repeatSize;
-                auto curSumAddr = sumAddr + i * repeatSize;
-                auto curGradInputAddr = gradInputAddr + i * repeatSize;
+            for (uint16_t j = 0; j < repeatTimes; j++) {
+                auto curGradYAddr = gradYAddr + j * repeatSize;
+                auto curNormAddr = normAddr + j * repeatSize;
+                auto curSumAddr = sumAddr + j * repeatSize;
+                auto curGradInputAddr = gradInputAddr + j * repeatSize;
                 uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
                 CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
                                 static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
@@ -378,6 +397,9 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
                 }
             }
+
+            inputNormQue_.FreeTensor<float>(normLocal);
+            inputSumQue_.FreeTensor<float>(sumLocal);
 
             // 行归一
             // Norm_out、Sum_out的偏移
@@ -390,25 +412,20 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             // norm_out、sum_out搬运数据量：GM -> UB
             copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
             copyInSumSize = 2* loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*5*8
-            dataCopyExtParamsNorm = {1, static_cast<uint32_t>(copyInNormSize * sizeof(float)), 0, 0, 0};
-            dataCopyExtParamsSum = {1, static_cast<uint32_t>(copyInSumSize  * sizeof(float)), 0, 0, 0};
-            DataCopyPad(normLocal, norm_[inputOffsetNorm], dataCopyExtParamsNorm, dataCopyPadExtParams);
-            DataCopyPad(sumLocal, sum_[inputOffsetSum], dataCopyExtParamsSum, dataCopyPadExtParams);    
+            CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize);
 
-            gradYAddr = (__local_mem__ float *)gradYLocal.GetPhyAddr();
+            LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
+            LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
             normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
-            sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();
-            gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
-            maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
-            maxAddr = (__local_mem__ float *)maxLocal.GetPhyAddr();
+            sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();   
 
-            for (uint16_t i = 0; i < repeatTimes; i++) {
+            for (uint16_t j = 0; j < repeatTimes; j++) {
                 // 行归一
                 // 计算偏移
-                auto curGradYAddr = gradYAddr + i * repeatSize;
-                auto curNormAddr = normAddr + i * repeatSize;
-                auto curSumAddr = sumAddr + i * repeatSize;
-                auto curGradInputAddr = gradInputAddr + i * repeatSize;
+                auto curGradYAddr = gradYAddr + j * repeatSize;
+                auto curNormAddr = normAddr + j * repeatSize;
+                auto curSumAddr = sumAddr + j * repeatSize;
+                auto curGradInputAddr = gradInputAddr + j * repeatSize;
                 uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
                 CalcRowBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
                                 static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
@@ -417,6 +434,8 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
                 }
             }
+            inputNormQue_.FreeTensor<float>(normLocal);
+            inputSumQue_.FreeTensor<float>(sumLocal);
         }
 
         // 最后一次迭归一
@@ -431,17 +450,12 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         // norm_out、sum_out搬运数据量：GM -> UB
         uint32_t copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
         uint32_t copyInSumSize = 2* loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*5*8
-        DataCopyExtParams dataCopyExtParamsNorm{1, static_cast<uint32_t>(copyInNormSize * sizeof(float)), 0, 0, 0};
-        DataCopyExtParams dataCopyExtParamsSum{1, static_cast<uint32_t>(copyInSumSize  * sizeof(float)), 0, 0, 0};
-        DataCopyPad(normLocal, norm_[inputOffsetNorm], dataCopyExtParamsNorm, dataCopyPadExtParams);
-        DataCopyPad(sumLocal, sum_[inputOffsetSum], dataCopyExtParamsSum, dataCopyPadExtParams);    
+        CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize);
 
-        __local_mem__ float *gradYAddr = (__local_mem__ float *)gradYLocal.GetPhyAddr();
-        __local_mem__ float *normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
-        __local_mem__ float *sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();
-        __local_mem__ float *gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
-        __local_mem__ uint32_t *maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
-        __local_mem__ float *maxAddr = (__local_mem__ float *)maxLocal.GetPhyAddr();
+        LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
+        LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
+        normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
+        sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();   
 
         for (uint16_t i = 0; i < repeatTimes; i++) {
             auto curGradYAddr = gradYAddr + i * repeatSize;
@@ -456,6 +470,8 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                 MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
             }
         }
+        inputNormQue_.FreeTensor<float>(normLocal);
+        inputSumQue_.FreeTensor<float>(sumLocal);
 
         // 最后一次迭代Softmax
         inputOffsetNorm = 0 * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
@@ -466,18 +482,12 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         dataCopyExtParamsNorm = {1, static_cast<uint32_t>(copyInNormSize * sizeof(float)), 0, 0, 0};
         DataCopyPad(normLocal, norm_[inputOffsetNorm], dataCopyExtParamsNorm, dataCopyPadExtParams);
 
-        gradYAddr = (__local_mem__ float *)gradYLocal.GetPhyAddr();
-        normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
-        gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
-        maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
-        maxAddr = (__local_mem__ float *)maxLocal.GetPhyAddr();
-
-        for (uint16_t i = 0; i < repeatTimes; i++) {
+        for (uint16_t j = 0; j < repeatTimes; j++) {
             // 计算偏移
-            auto curGradYAddr = gradYAddr + i * repeatSize;
-            auto curNormAddr = normAddr + i * repeatSize;
-            auto curSumAddr = sumAddr + i * repeatSize;
-            auto curGradInputAddr = gradInputAddr + i * repeatSize;
+            auto curGradYAddr = gradYAddr + j * repeatSize;
+            auto curNormAddr = normAddr + j * repeatSize;
+            auto curSumAddr = sumAddr + j * repeatSize;
+            auto curGradInputAddr = gradInputAddr + j * repeatSize;
 
             uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
             CalcSoftmaxBackward(curGradYAddr, curNormAddr, curGradInputAddr, maskAddr, maxAddr, static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
@@ -495,9 +505,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         }
 
-        auto VToMTE3EventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-        SetFlag<HardEvent::V_MTE3>(VToMTE3EventID);
-        WaitFlag<HardEvent::V_MTE3>(VToMTE3EventID);
+        SetWaitEvent<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
         // CopyOut
         // 计算 grad_input 的地址偏移
@@ -514,6 +522,15 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         outputQue_.FreeTensor<float>(gradInputLocal);
     }
 }
+
+template <HardEvent EVENT>
+__aicore__ inline void MhcSinkhornBackwardSimd::SetWaitEvent(HardEvent event)
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(event));
+    SetFlag<EVENT>(eventId);
+    WaitFlag<EVENT>(eventId);
+}
+
 } // namespace MhcSinkhornBackward
 
 #endif // ASCENDC_MHC_SINKHORN_BACKWARD_H
