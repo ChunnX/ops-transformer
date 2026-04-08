@@ -286,16 +286,16 @@ private:
 
     __aicore__ inline void RunStage3(ChunkGroup& cg)
     {
-        // Stage3 stageThreeOp;
-        // StageThreeParams initStageThreeParams{
-        //     qkt_, gCumExp_, attnInter_, vInner_,
-        //     stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
-        //     stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
-        //     &stage3MT_, pipe_, &cg, tiling_->scale,
-        //     tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
-        // stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
-        // stageThreeOp.Process();
-        // pipe_->Reset();
+        Stage3 stageThreeOp;
+        StageThreeParams initStageThreeParams{
+            qkt_, gCumExp_, attnInter_, vInner_,
+            stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
+            stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
+            &stage3MT_, pipe_, &cg, tiling_->scale,
+            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
+        stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
+        stageThreeOp.Process();
+        pipe_->Reset();
     }
 
     __aicore__ inline void initHighState()
