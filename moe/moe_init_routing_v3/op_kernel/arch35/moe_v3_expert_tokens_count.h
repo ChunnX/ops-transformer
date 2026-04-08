@@ -16,6 +16,7 @@
 #define MOE_V3_EXPERT_TOKENS_COUNT_H_REGBASE
 
 #include "moe_v3_common.h"
+#include "simt_api/asc_simt.h"
 #include "kernel_operator.h"
 
 namespace MoeInitRoutingV3 {
@@ -75,9 +76,9 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeExpertFi
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __gm__ int32_t *sortedExpertIdGmAddr,
     __local_mem__ int32_t *expertFirstIndexLocalAddr)
 {
-    auto threadIdx = static_cast<int32_t>(Simt::GetThreadIdx());
-    auto threadNum = static_cast<int32_t>(Simt::GetThreadNum());
-    for (auto i = threadIdx; i < elementNum; i += threadNum) {
+    auto tid = static_cast<int32_t>(threadIdx.x);
+    auto threadNum = static_cast<int32_t>(blockDim.x);
+    for (auto i = tid; i < elementNum; i += threadNum) {
         auto currExpertId = sortedExpertIdGmAddr[i];
         if (currExpertId >= expertEnd) {
             break;
@@ -93,9 +94,9 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeExpertCo
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __gm__ int32_t *sortedExpertIdGmAddr,
     __local_mem__ int32_t *expertFirstIndexLocalAddr, __local_mem__ int32_t *expertCountOutLocalAddr)
 {
-    auto threadIdx = static_cast<int32_t>(Simt::GetThreadIdx());
-    auto threadNum = static_cast<int32_t>(Simt::GetThreadNum());
-    for (auto i = threadIdx; i < elementNum; i += threadNum) {
+    auto tid = static_cast<int32_t>(threadIdx.x);
+    auto threadNum = static_cast<int32_t>(blockDim.x);
+    for (auto i = tid; i < elementNum; i += threadNum) {
         auto currExpertId = sortedExpertIdGmAddr[i];
         if (currExpertId >= expertEnd) {
             break;
@@ -172,9 +173,9 @@ __aicore__ inline void ExpertTokensCount::Process()
         __gm__ int32_t *sortedExpertIdxGmAddr = (__gm__ int32_t *)sortedExpertIdxGm_.GetPhyAddr();
         __local_mem__ int32_t *expertCountOutLocalAddr = (__local_mem__ int32_t *)expertCountOutLocal.GetPhyAddr();
 
-        Simt::VF_CALL<ComputeExpertFirstIndexSimt>(Simt::Dim3{SIMT_THREAD_NUM, 1, 1}, curCoreElements_, expertStart_,
+        asc_vf_call<ComputeExpertFirstIndexSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, curCoreElements_, expertStart_,
                                                    expertEnd_, sortedExpertIdxGmAddr, expertCountOutLocalAddr);
-        Simt::VF_CALL<ComputeExpertCountOutSimt>(Simt::Dim3{SIMT_THREAD_NUM, 1, 1}, curCoreElements_, expertStart_,
+        asc_vf_call<ComputeExpertCountOutSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, curCoreElements_, expertStart_,
                                                  expertEnd_, sortedExpertIdxGmAddr, expertCountOutLocalAddr,
                                                  expertCountOutLocalAddr);
 

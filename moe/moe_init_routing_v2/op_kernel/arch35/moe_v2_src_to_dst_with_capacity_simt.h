@@ -58,7 +58,7 @@ __aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::SyncAll()
         return;
     }
 #ifndef __CCE_KT_TEST__
-    AscendC::SyncAll();
+    asc_syncthreads();
 #endif
 }
 
@@ -67,7 +67,7 @@ __aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::Init(GM_ADD
                                                                           GM_ADDR workspace,
                                                                           const TilingData *tilingData)
 {
-    this->blockIdx_ = GetBlockIdx();
+    this->blockIdx_ = blockIdx.x;
     this->coreNum_ = tilingData->coreNum;
     this->totalLength_ = tilingData->n * tilingData->k;
     this->srcToDstTilingData_ = &(tilingData->srcToDstCapacityComputeParamsOp);
@@ -95,8 +95,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeCapacitySimt(
     __gm__ int32_t *sortedExpertIdIndexGm, __gm__ volatile int32_t *expertFirstIndexGm,
     __gm__ int32_t *expandedRowIdxGm, __gm__ int32_t *expandedRowIdxIndexGm)
 {
-    for (int32_t index = static_cast<int32_t>(Simt::GetThreadIdx()); index < static_cast<int32_t>(coreRows);
-         index += static_cast<int32_t>(Simt::GetThreadNum())) {
+    for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
+         index += static_cast<int32_t>(blockDim.x)) {
         int32_t curIndex = index + startIndex;
         int32_t expertId = sortedExpertIdGm[curIndex];
         int32_t expertIdFirstIndex = expertFirstIndexGm[expertId];
@@ -117,8 +117,8 @@ template <typename T, typename TilingData>
 __aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::Process()
 {
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
-        Simt::VF_CALL<ComputeCapacitySimt<T, TilingData>>(
-            Simt::Dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_, this->startIndex_,
+        asc_vf_call<ComputeCapacitySimt<T, TilingData>>(
+            dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_, this->startIndex_,
             this->expertCapacity_, sortedExpertIdGm_, sortedExpertIdIndexGm_, expertFirstIndexGm_, expandedRowIdxGm_,
             expandedRowIdxIndexGm_);
     }
