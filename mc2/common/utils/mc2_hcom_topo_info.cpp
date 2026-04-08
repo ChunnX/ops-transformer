@@ -431,9 +431,9 @@ aclnnStatus MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRa
     OP_LOGD("", "HCCL channel init success");
 
     for (uint32_t i = 0; i < rankDim; ++i) {
-        if (i == srcRankId)
+        if (i == srcRankId) {
             continue;
-
+        }
         uint32_t dstRank = i;
         uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
         aclnnStatus ret = GetHcclCommLink(netLayers, srcRankId, dstRank, protocol, links);
@@ -684,9 +684,9 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char
     OP_LOGD("", "start to get MC2 context tensor, groupEp: %s, opName: %s", groupEp, opName);
     auto instance = GetInstance();
     aclnnStatus ret = instance.LoadHcclSymbols();
-    if (ret != ACLNN_SUCCESS)
+    if (ret != ACLNN_SUCCESS) {
         return ret;
-
+    }
     void *ctx = nullptr;
     uint64_t ctxSize = 0;
     CommEngine engine;
@@ -715,8 +715,9 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGD("", "Get HCCL engine context failed start to create context");
         ret = instance.CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
-        if (ret != ACLNN_SUCCESS)
+        if (ret != ACLNN_SUCCESS) {
             return ret;
+        }
         hcclBuffSize = contextStruct.winSize;
     } else {
         OP_LOGD("", "Get HCCL engine context success");
