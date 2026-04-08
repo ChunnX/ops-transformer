@@ -299,6 +299,7 @@ function help_info() {
     echo "    -j[n] Compile thread nums, default is 8, eg: -j8"
     echo "    -v Cmake compile verbose"
     echo "    --ninja Use Ninja as CMake generator instead of Make"
+    echo "    --build-dir=<PATH> Set build output directory (default: ./build)"
     echo "    -O[n] Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
     echo "    -u Compile all ut"
     echo $dotted_line
@@ -1241,6 +1242,12 @@ while [[ $# -gt 0 ]]; do
         ;;
     --ninja)
         NINJA="true"
+        shift
+        ;;
+    --build-dir=*|--build_dir=*)
+        OPTARG=$1
+        BUILD_DIR=${OPTARG#*=}
+        BUILD_OUT_DIR=${BUILD_DIR}_out
         shift
         ;;
     --tiling-key|--tiling_key)	 
