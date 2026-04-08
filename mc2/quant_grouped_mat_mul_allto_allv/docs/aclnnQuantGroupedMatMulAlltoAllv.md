@@ -109,7 +109,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmX</td>
                 <td>输入</td>
                 <td>公式中的输入 gmmX。</td>
-                <td>支持的 shape 包括 (A, H)。</td>
+                <td>shape (A, H)。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmWeight</td>
                 <td>输入</td>
                 <td>公式中的输入 gmmWeight。</td>
-                <td>支持的 shape 包括 (e, H, N1)。e 为每卡部署的专家数，H 为 hidden size，N1 为 MoE FFN 中间维度。</td>
+                <td>shape (e, H, N1)。e 为每卡部署的专家数，H 为 hidden size，N1 为 MoE FFN 中间维度。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>3</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmXScale</td>
                 <td>输入</td>
                 <td>gmmX 的量化系数。</td>
-                <td><li>默认为空。支持的 shape 包括 (1, )。</li><li>Mx量化时shape：(M, ceil(K/64), 2)</li></td>
+                <td><li>TT量化：shape (1, )。</li><li>Mx量化：shape (A, ceil(H1/64), 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
                 <td>1</td>
@@ -142,7 +142,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmWeightScale</td>
                 <td>输入</td>
                 <td>gmmWeight 的量化系数。</td>
-                <td><li>默认为空。支持的 shape 包括 (1, )。</li><li>Mx量化时shape：(e, ceil(K/64), N, 2)，weight转置时为(e, N, ceil(K/64), 2)</li></td>
+                <td><li>TT量化：shape (1, )。</li><li>Mx量化：shape (e, N1, ceil(H1/64), 2)，weight转置时为(e, ceil(H1/64), N1, 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
                 <td>1</td>
@@ -153,7 +153,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>sendCountsTensorOptional</td>
                 <td>输入</td>
                 <td>AlltoAllv 使用的 send count。</td>
-                <td>当前仅支持空。支持的 shape 包括 (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
+                <td>当前仅支持空。shape (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
                 <td>INT32、INT64</td>
                 <td>ND</td>
                 <td>1</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>recvCountsTensorOptional</td>
                 <td>输入</td>
                 <td>AlltoAllv 使用的 recv count。</td>
-                <td>默认为空 Tensor。支持的 shape 包括 (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
+                <td>当前仅支持空。shape (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
                 <td>INT32、INT64</td>
                 <td>ND</td>
                 <td>1</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmXOptional</td>
                 <td>输入</td>
                 <td>公式中的输入 mmX。</td>
-                <td>支持的 shape 包括 (bs, H)。bs 为每卡部署的专家个数，H 为 hidden size。</td>
+                <td>shape (bs, H)。bs 为每卡部署的专家个数，H 为 hidden size。</td>
                 <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmWeightOptional</td>
                 <td>输入</td>
                 <td>公式中的输入 mmWeight。</td>
-                <td>不支持空。支持的 shape 包括 (H, N1)。H 为 hidden size，N1 为共享专家 FFN 的中间层维度。</td>
+                <td>shape (H, N1)。H 为 hidden size，N1 为共享专家 FFN 的中间层维度。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmXScaleOptional</td>
                 <td>输入</td>
                 <td>mmX 的量化系数。</td>
-                <td>支持的 shape 包括 (1, )。</td>
+                <td><li>TT量化：shape (1, )。</li><li>Mx量化：shape (BS, ceil(H2/64), 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
                 <td>1</td>
@@ -208,7 +208,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmWeightScaleOptional</td>
                 <td>输入</td>
                 <td>mmWeight 的量化系数。</td>
-                <td>支持的 shape 包括 (1, )。</td>
+                <td><li>TT量化：shape(1, )。</li><li>Mx量化: shape (N2, ceil(H2/64), 2)，weight转置时为(ceil(H2/64), N2, 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
                 <td>1</td>
@@ -373,7 +373,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>y</td>
                 <td>输出</td>
                 <td>grouped matmul 计算输出。</td>
-                <td>不支持空 Tensor。支持的 shape 包括 (BSK, N1)。</td>
+                <td>不支持空 Tensor。shape (BSK, N1)。</td>
                 <td>FLOAT16、BFLOAT16</td>
                 <td>ND</td>
                 <td>2</td>
@@ -384,7 +384,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmYOptional</td>
                 <td>输出</td>
                 <td>matmul 计算输出。</td>
-                <td>不支持空 Tensor。支持的 shape 包括 (bs, N1)。</td>
+                <td>shape (bs, N1)。</td>
                 <td>FLOAT16、BFLOAT16</td>
                 <td>ND</td>
                 <td>2</td>
