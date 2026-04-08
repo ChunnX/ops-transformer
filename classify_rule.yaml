@@ -208,8 +208,24 @@ transformer-5@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/memory_copy.h
                 - ops/ops-transformer/attention/common/op_kernel/CopyInL1.h
                 - ops/ops-transformer/attention/common/op_kernel/FixpipeOut.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/base_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/base_checker.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/dequant_checker.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/dequant_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/mask_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/mask_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/paged_attention_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/paged_attention_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/post_quant_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/post_quant_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/rope_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/rope_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/softmax_lse_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/softmax_lse_checker.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch32/incre_flash_attention_preload_mla.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch32/ifa_service_matmul_full_quant.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch35/service/antiquant_preprocessor_q.h
