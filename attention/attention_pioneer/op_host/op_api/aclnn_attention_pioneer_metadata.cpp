@@ -44,7 +44,6 @@ static aclnnStatus ParamsCheck(const aclTensor *actualSeqLengthsOptional,
                             int64_t nextTokensOptional,
                             char *inputLayoutOptional,
                             char *inputLayoutKvOptional,
-                            int64_t sinkNumOptional,
                             int64_t kSinkNumOptional,
                             int64_t ropeHeadDimOptional,
                             int64_t blockSizeOptional,
@@ -67,7 +66,6 @@ aclnnStatus aclnnAttentionPioneerMetadataGetWorkspaceSize(
     int64_t nextTokensOptional,
     char *inputLayoutOptional,
     char *inputLayoutKvOptional,
-    int64_t sinkNumOptional,
     int64_t kSinkNumOptional,
     int64_t ropeHeadDimOptional,
     int64_t blockSizeOptional,
@@ -79,7 +77,7 @@ aclnnStatus aclnnAttentionPioneerMetadataGetWorkspaceSize(
     L2_DFX_PHASE_1(aclnnAttentionPioneerMetadata,
                    DFX_IN(actualSeqLengthsOptional, actualSeqLengthsKvOptional, numHeadsQ, numHeadsKv,
                           headDimQk, headDimV, batchSizeOptional, sparseModeOptional, preTokensOptional,
-                          nextTokensOptional, inputLayoutOptional, inputLayoutKvOptional, sinkNumOptional,
+                          nextTokensOptional, inputLayoutOptional, inputLayoutKvOptional,
                           kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
                           aicCoreNumOptional, aivCoreNumOptional),
                    DFX_OUT(metaData));
@@ -90,7 +88,7 @@ aclnnStatus aclnnAttentionPioneerMetadataGetWorkspaceSize(
     auto ret = ParamsCheck(
         actualSeqLengthsOptional, actualSeqLengthsKvOptional, numHeadsQ, numHeadsKv, headDimQk, headDimV,
         batchSizeOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, inputLayoutOptional,
-        inputLayoutKvOptional, sinkNumOptional, kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
+        inputLayoutKvOptional, kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
         aicCoreNumOptional, aivCoreNumOptional, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
@@ -99,7 +97,7 @@ aclnnStatus aclnnAttentionPioneerMetadataGetWorkspaceSize(
     auto output = l0op::AttentionPioneerMetadata(
         actualSeqLengthsOptional, actualSeqLengthsKvOptional, numHeadsQ, numHeadsKv, headDimQk, headDimV,
         batchSizeOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, inputLayoutOptional,
-        inputLayoutKvOptional, sinkNumOptional, kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
+        inputLayoutKvOptional, kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
         socVersion, aicCoreNumOptional, aivCoreNumOptional, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

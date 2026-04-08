@@ -31,78 +31,42 @@ uint32_t AttentionPioneerMetadataKernel::Compute(CpuKernelContext &ctx) {
     if (s2Size == 0) {
         s2Size = 1024;
     }
-    APBaseInfo baseInfo {};
-    APSplitParam splitParam {};
     if (isMlaSink) {
         CalcInnerSizeMla(static_cast<uint32_t>(s2Size));
-        CreateSplitInputMla(baseInfo, splitParam);
     } else {
         CalcInnerSizeGqa(static_cast<uint32_t>(s2Size));
-        CreateSplitInputGqa(baseInfo, splitParam);
     }
-    APSplitResult res {aicCoreNum_, cvRatio_};
-    SplitCore(aicCoreNum_, baseInfo, splitParam, res);
-    if (res.numOfFdHead > aicCoreNum_ || res.usedCoreNum > aicCoreNum_ || res.maxS2SplitNum > aicCoreNum_ + 1) {
-        KERNEL_LOG_ERROR("used_core_num: %u, num_of_fd_head: %u, max_s2_split_num: %u, aic_num: %u",
-            res.usedCoreNum, res.numOfFdHead, res.maxS2SplitNum, aicCoreNum_);
+    ComputeSplitNBSeq();
+    if (splitUsedCoreNum_ > aicCoreNum_) {
+        KERNEL_LOG_ERROR("used_core_num %u exceeds aic_num %u", splitUsedCoreNum_, aicCoreNum_);
     }
-    success = GenMetaData(res);
+    success = GenMetaData();
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool AttentionPioneerMetadataKernel::GenMetaData(const APSplitResult &res) {
-    optiling::detail::APMetaData* metaDataPtr = (optiling::detail::APMetaData*)metaData_->GetData();
-    // aic Metadata Generate
-    for (uint32_t i = 0; i < aicCoreNum_; ++i) {
-        if (i >= res.usedCoreNum) {
-            metaDataPtr->aicMetadata[i][AP_AIC_CORE_ENABLE_INDEX] = 0;
-            continue;
-        }
-        metaDataPtr->aicMetadata[i][AP_AIC_CORE_ENABLE_INDEX] = 1;
-        metaDataPtr->aicMetadata[i][AP_BN2_END_PTR_INDEX] = res.bN2End[i];
-        metaDataPtr->aicMetadata[i][AP_GS1_END_PTR_INDEX] = res.gS1End[i];
-        metaDataPtr->aicMetadata[i][AP_S2_END_PTR_INDEX] = res.s2End[i];
-        metaDataPtr->aicMetadata[i][AP_BN2_IDX_OF_FD_HEAD_INDEX] = res.fdRes.bN2IdxOfFdHead[i];
-        metaDataPtr->aicMetadata[i][AP_GS1_IDX_OF_FD_HEAD_INDEX] = res.fdRes.gS1IdxOfFdHead[i];
-        metaDataPtr->aicMetadata[i][AP_S2_SPLIT_NUM_OF_FD_HEAD_INDEX] = res.fdRes.s2SplitNumOfFdHead[i];
-        metaDataPtr->aicMetadata[i][AP_S2_SPLIT_START_IDX_OF_CORE_INDEX] = res.fdRes.s2SplitStartIdxOfCore[i];
-        metaDataPtr->aicMetadata[i][AP_GS1_SPLIT_NUM_OF_FD_HEAD_INDEX] = res.fdRes.gS1SplitNumOfFdHead[i];
-        metaDataPtr->aicMetadata[i][AP_GS1_LAST_PART_SIZE_OF_FD_HEAD_INDEX] = res.fdRes.gS1LastPartSizeOfFdHead[i];
+bool AttentionPioneerMetadataKernel::GenMetaData() {
+    optiling::detail::APMetaData* metaDataPtr =
+        reinterpret_cast<optiling::detail::APMetaData*>(metaData_->GetData());
+    // Per-core split arrays
+    for (uint32_t i = 0; i < AP_SPLIT_ARRAY_LEN; ++i) {
+        metaDataPtr->bnStartIdx[i] = splitBnStartIdx_[i];
+        metaDataPtr->gS1StartIdx[i] = splitGS1StartIdx_[i];
     }
-
-    // aiv Metadata Generate
-    for (uint32_t i = 0; i < aicCoreNum_ * cvRatio_; ++i) {
-        if (i >= (res.usedCoreNum * cvRatio_)) {
-            metaDataPtr->aivMetadata[i][AP_AIV_CORE_ENABLE_INDEX] = 0;
-            continue;
-        }
-        metaDataPtr->aivMetadata[i][AP_AIV_CORE_ENABLE_INDEX] = 1;
-        metaDataPtr->aivMetadata[i][AP_GS1_IDX_END_OF_FD_HEAD_INDEX] = res.fdRes.gS1IdxEndOfFdHead[i];
-        metaDataPtr->aivMetadata[i][AP_GS1_IDX_END_OF_FD_HEAD_SPLIT_INDEX] = res.fdRes.gS1IdxEndOfFdHeadSplit[i];
-    }
-
-    // base Metadata Generate
-    metaDataPtr->baseMetadata[AP_M_BASE_SIZE_INDEX] = mBaseSize_;
-    metaDataPtr->baseMetadata[AP_S_INNER_SIZE_INDEX] = sInnerSize_;
-    metaDataPtr->baseMetadata[AP_M_FD_BASE_SIZE_INDEX] = mFdBaseSize_;
-    metaDataPtr->baseMetadata[AP_NUM_OF_FD_INDEX] = res.numOfFdHead;
-    metaDataPtr->baseMetadata[AP_USED_CORE_NUM_INDEX] = res.usedCoreNum;
-    metaDataPtr->baseMetadata[AP_USED_VEC_NUM_OF_FD_INDEX] = res.usedVecNumOfFd;
-    metaDataPtr->baseMetadata[AP_S1_SIZE_INDEX] = s1Size;
-    metaDataPtr->baseMetadata[AP_S2_SIZE_INDEX] = s2Size;
-    metaDataPtr->baseMetadata[AP_ACTUAL_LEN_Q_DIM_INDEX] = actualLenQDims;
-    metaDataPtr->baseMetadata[AP_ACTUAL_LEN_KV_DIM_INDEX] = actualLenKvDims;
+    // Base metadata
+    metaDataPtr->baseMetadata[AP_USED_CORE_NUM_INDEX] = static_cast<int32_t>(splitUsedCoreNum_);
+    metaDataPtr->baseMetadata[AP_M_BASE_SIZE_INDEX] = static_cast<int32_t>(mBaseSize_);
+    metaDataPtr->baseMetadata[AP_S_INNER_SIZE_INDEX] = static_cast<int32_t>(sInnerSize_);
+    metaDataPtr->baseMetadata[AP_S1_OUTER_SIZE_INDEX] = static_cast<int32_t>(splitS1OuterSize_);
+    metaDataPtr->baseMetadata[AP_S1_SIZE_INDEX] = static_cast<int32_t>(s1Size);
+    metaDataPtr->baseMetadata[AP_S2_SIZE_INDEX] = static_cast<int32_t>(s2Size);
+    metaDataPtr->baseMetadata[AP_ACTUAL_LEN_Q_DIM_INDEX] = static_cast<int32_t>(actualLenQDims);
+    metaDataPtr->baseMetadata[AP_ACTUAL_LEN_KV_DIM_INDEX] = static_cast<int32_t>(actualLenKvDims);
     return true;
 }
 
 void AttentionPioneerMetadataKernel::CalcInnerSizeMla(uint32_t seqSize)
 {
     sInnerSize_ = 512U;
-    uint32_t s1G = s1Size * gSize;
-    if (sinkNum_ > 0 && sinkNum_ <= 256 && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND) && s1G >= 128) {
-        sInnerSize_ = 256;
-    }
-
     if (kSinkNum_ > 0 && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND) && bSize <= 6 &&
         (preToken + nextToken < 512)) {
         sInnerSize_ = 256;
@@ -162,64 +126,12 @@ void AttentionPioneerMetadataKernel::CalcMBaseSizeMla()
     mBaseSize_ = mBaseSizeTmp;
 }
 
-void AttentionPioneerMetadataKernel::CreateSplitInputMla(APBaseInfo &baseInfo, APSplitParam &splitParam) const
-{
-    baseInfo.bSize = bSize;
-    baseInfo.n2Size = n2Size;
-    baseInfo.gSize = gSize;
-    baseInfo.s2Size = static_cast<uint32_t>(s2Size);
-    baseInfo.s1Size = s1Size;
-    baseInfo.actualLenQDims = actualLenQDims;
-    baseInfo.actualLenKvDims = actualLenKvDims;
-    baseInfo.preToken = preToken;
-    baseInfo.nextToken = nextToken;
-    baseInfo.isS1G = inputLayout_ == "TND" || inputLayout_ == "BSH_BSND";
-    baseInfo.sparseMode = sparseMode_;
-    baseInfo.attenMaskFlag = attenMaskFlag;
-    baseInfo.sinkNumber = sinkNum_;
-    baseInfo.keySinkNumber = kSinkNum_;
-    baseInfo.supportFD = true;
-    if (actualSeqLengths_ != nullptr) {
-        baseInfo.isAccumSeqS1 = isAccumQSeq;
-        baseInfo.actualSeqS1Size.reserve(bSize);
-        const int64_t *s1Ptr = static_cast<const int64_t*>(actualSeqLengths_->GetData());
-        for (uint32_t i = 0; i < bSize; ++i) {
-            baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
-        }
-    }
-    if (actualSeqLengthsKv_ != nullptr) {
-        baseInfo.isAccumSeqS2 = isAccumKVSeq;
-        baseInfo.actualSeqS2Size.reserve(bSize);
-        const int64_t *s2Ptr = static_cast<const int64_t*>(actualSeqLengthsKv_->GetData());
-        for (uint32_t i = 0; i < bSize; ++i) {
-            baseInfo.actualSeqS2Size.emplace_back(s2Ptr[i]);
-        }
-    }
-    splitParam.mBaseSize = mBaseSize_;
-    splitParam.s2BaseSize = sInnerSize_;
-    splitParam.gS1BaseSizeOfFd = mFdBaseSize_;
-}
-
-bool AttentionPioneerMetadataKernel::DealSameSeqEachBatch()
-{
-    batchContinuousFlag = blockSize_ == 0 ? true : false;
-    if (batchContinuousFlag) {
-        if (actualSeqLenFlag) {
-            return isSameActualseq;
-        } else {
-            return isSameSeqAllKVTensor;
-        }
-    } else {
-        return isSameActualseq;
-    }
-}
 
 void AttentionPioneerMetadataKernel::CalcInnerSizeGqa(uint32_t s2SizeVal)
 {
     if (inputLayout_ == "TND" || inputLayout_ == "NTD") {
         sInnerSize_ = AP_S_INNER_SIZE_512;
-        if ((sinkNum_ > 0 && sinkNum_ <= 256 && s1Size > AP_S1_SIZE_16
-            && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND)) || (kSinkNum_ > 0)) {
+        if (kSinkNum_ > 0) {
             sInnerSize_ = 256;
         }
     } else {
@@ -257,11 +169,6 @@ void AttentionPioneerMetadataKernel::CalcMBaseSizeGqa()
 {
     if (inputLayout_ == "TND" || inputLayout_ == "NTD") {
         mBaseSize_ = AP_M_BASE_SIZE_512;
-        if (sinkNum_ > 0 && sinkNum_ <= 256 && s1Size > AP_S1_SIZE_16
-            && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND) && nextToken == 0
-            && preToken % 512 >= sinkNum_) {
-            mBaseSize_ = AP_M_BASE_SIZE_256;
-        }
     } else {
         if (s1Size <= AP_S1_SIZE_16) {
             if (sInnerSizeAlign_ <= AP_S_INNER_SIZE_ALIGN_512) {
@@ -282,41 +189,13 @@ void AttentionPioneerMetadataKernel::CalcMBaseSizeGqa()
     softmaxWithBrcbFlag_ = (mBaseSize_ <= AP_M_BASE_SIZE_128);
 }
 
-void AttentionPioneerMetadataKernel::CreateSplitInputGqa(APBaseInfo &baseInfo, APSplitParam &splitParam) const
+bool AttentionPioneerMetadataKernel::DealSameSeqEachBatch()
 {
-    baseInfo.bSize = bSize;
-    baseInfo.n2Size = n2Size;
-    baseInfo.gSize = gSize;
-    baseInfo.s2Size = s2Size;
-    baseInfo.s1Size = s1Size;
-    baseInfo.actualLenQDims = actualLenQDims;
-    baseInfo.actualLenKvDims = actualLenKvDims;
-    baseInfo.preToken = preToken;
-    baseInfo.nextToken = nextToken;
-    baseInfo.isS1G = inputLayout_ == "TND" || inputLayout_ == "BSH_BSND";
-    baseInfo.sparseMode = sparseMode_;
-    baseInfo.attenMaskFlag = attenMaskFlag;
-    baseInfo.sinkNumber = sinkNum_;
-    baseInfo.keySinkNumber = kSinkNum_;
-    baseInfo.supportFD = baseInfo.keySinkNumber ? false : true;
-    if (actualSeqLengths_ != nullptr) {
-        baseInfo.isAccumSeqS1 = isAccumQSeq;
-        baseInfo.actualSeqS1Size.reserve(bSize);
-        const int64_t *s1Ptr = static_cast<const int64_t*>(actualSeqLengths_->GetData());
-        for (uint32_t i = 0; i < bSize; ++i) {
-            baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
-        }
+    batchContinuousFlag = blockSize_ == 0 ? true : false;
+    if (batchContinuousFlag) {
+        return actualSeqLenFlag ? isSameActualseq : isSameSeqAllKVTensor;
     }
-    if (actualSeqLengthsKv_ != nullptr) {
-        baseInfo.isAccumSeqS2 = isAccumKVSeq;
-        const int64_t *s2Ptr = static_cast<const int64_t*>(actualSeqLengthsKv_->GetData());
-        for (uint32_t i = 0; i < bSize; ++i) {
-            baseInfo.actualSeqS2Size.emplace_back(s2Ptr[i]);
-        }
-    }
-    splitParam.mBaseSize = mBaseSize_;
-    splitParam.s2BaseSize = sInnerSize_;
-    splitParam.gS1BaseSizeOfFd = mFdBaseSize_;
+    return isSameActualseq;
 }
 
 bool AttentionPioneerMetadataKernel::Prepare(CpuKernelContext &ctx) {
@@ -342,7 +221,6 @@ bool AttentionPioneerMetadataKernel::Prepare(CpuKernelContext &ctx) {
     GetAttrValueOpt(ctx, "next_tokens", nextTokens_);
     GetAttrValueOpt(ctx, "input_layout", inputLayout_);
     GetAttrValueOpt(ctx, "input_layout_kv", inputLayoutKv_);
-    GetAttrValueOpt(ctx, "sink_num", sinkNum_);
     GetAttrValueOpt(ctx, "k_sink_num", kSinkNum_);
     GetAttrValueOpt(ctx, "block_size", blockSize_);
 
@@ -766,78 +644,7 @@ bool AttentionPioneerMetadataKernel::CheckFeatureActualSeqLensKvData()
 
 bool AttentionPioneerMetadataKernel::CheckMultiParaConsistency()
 {
-    return (CheckActualSeqLensQ() && CheckActualSeqLensKv() && CheckSinkNumber());
-}
-
-bool AttentionPioneerMetadataKernel::CheckSinkNumber()
-{
-    if(sinkNum_ > 0 && kSinkNum_ > 0) {
-        KERNEL_LOG_ERROR("sinkNum and kSinkNum cannot coexist");
-        return false;
-    }
-    int64_t maxSinkNumber = 512;
-    if (sinkNum_ == 0) {
-        return true;
-    }
-    if (sinkNum_ < 0 || sinkNum_ > maxSinkNumber || sinkNum_ % 2 == 1) {
-        KERNEL_LOG_ERROR("invalid Parameter sinkNumber");
-        return false;
-    }
-    if (sinkNum_ > 0 && inputLayout_ != "TND") {
-        KERNEL_LOG_ERROR("when sinkNumber > 0, qLayout should TND");
-        return false;
-    }
-    uint64_t minActualKvSeqLen = 1000000000000;
-    const int64_t *actualKvLenData = static_cast<const int64_t*>(actualSeqLengthsKv_->GetData());
-    if (actualKvLenData != nullptr) {
-        uint32_t loop = actualSeqLengthsKv_->GetTensorShape()->GetDimSize(0);
-        for (uint32_t i = 0; i < loop; i++) {
-            int64_t tmpS = 0;
-            if (blockSize_ != 0) {
-                tmpS = actualKvLenData[i];
-            } else {
-                tmpS = (i == 0U) ? actualKvLenData[0] : (actualKvLenData[i] - actualKvLenData[i - 1U]);
-            }
-            minActualKvSeqLen = minActualKvSeqLen < static_cast<uint64_t>(tmpS) ? minActualKvSeqLen : static_cast<uint64_t>(tmpS);
-        }
-    }
-    if (minActualKvSeqLen < static_cast<uint64_t>(sinkNum_)) {
-        KERNEL_LOG_ERROR("when sinkNumber > 0, sinknumber(%ld) should <= minActualKvSeqLen(%lu)",
-                sinkNum_, minActualKvSeqLen);
-        return false;
-    }
-    return CheckMlaSinkNumber();
-}
-
-bool AttentionPioneerMetadataKernel::CheckMlaSinkNumber()
-{
-    if (ropeHeadDim_ == 0U || headDimV_ != 512U) {
-        return true;
-    }
-    if (sparseMode_ != static_cast<uint32_t>(APSparseMode::BAND)) {
-        KERNEL_LOG_ERROR("sparseMode only support 4 when sinkNumber(%ld) exist and D is 512", sinkNum_);
-        return false;
-    }
-    const int64_t *actualSeqLensDataQ = static_cast<const int64_t*>(actualSeqLengths_->GetData());
-    const int64_t *actualSeqLensData = static_cast<const int64_t*>(actualSeqLengthsKv_->GetData());
-    int64_t tmpS1Size = 0;
-    int64_t tmpS2Size = 0;
-    for (uint32_t i = 0; i < actualSeqLengthsQSize_; i++) {
-        tmpS1Size = (i == 0U) ? actualSeqLensDataQ[0] : (actualSeqLensDataQ[i] - actualSeqLensDataQ[i - 1U]);
-        if (blockSize_ != 0) {
-            tmpS2Size = actualSeqLensData[i];
-        } else {
-            tmpS2Size = (i == 0U) ? actualSeqLensData[0] : (actualSeqLensData[i] - actualSeqLensData[i - 1U]);
-        }
-        if (tmpS2Size == sinkNum_) {
-            continue;
-        }
-        if (preToken < 0 || (nextToken < (tmpS1Size - tmpS2Size + sinkNum_))) {
-            KERNEL_LOG_ERROR("preToken < 0 or nextToken < (s1 - s2 + sinkNumber) is not supported when sinkNumber(%ld) exist and D is 512", sinkNum_);
-            return false;
-        }
-    }
-    return true;
+    return (CheckActualSeqLensQ() && CheckActualSeqLensKv());
 }
 
 bool AttentionPioneerMetadataKernel::CheckActualSeqLensQ() const
@@ -884,601 +691,280 @@ bool AttentionPioneerMetadataKernel::CheckActualSeqLensKv() const
     return true;
 }
 
-// ============================= Split Core Functions ===========================
+// ============================= A5 Greedy Split Core Algorithm ===========================
 
-uint32_t AttentionPioneerMetadataKernel::GetS1SeqSize(uint32_t bIdx, const APBaseInfo &baseInfo)
+// Get per-batch Q sequence length
+uint32_t AttentionPioneerMetadataKernel::GetQSeqSize(uint32_t bIdx) const
 {
-    if (baseInfo.actualSeqS1Size.empty()) return baseInfo.s1Size;
-    if (baseInfo.actualLenQDims == 1U) return static_cast<uint32_t>(baseInfo.actualSeqS1Size[0]);
-    if (!baseInfo.isAccumSeqS1) return static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx]);
-    return (bIdx == 0) ? static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx]) :
-           static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx] - baseInfo.actualSeqS1Size[bIdx - 1U]);
+    if (qSize.empty()) return s1Size;
+    if (qSize.size() == 1U) return qSize[0];
+    return qSize[bIdx];
 }
 
-uint32_t AttentionPioneerMetadataKernel::GetS2SeqSize(uint32_t bIdx, const APBaseInfo &baseInfo)
+// Get per-batch KV sequence length
+uint32_t AttentionPioneerMetadataKernel::GetKVSeqSize(uint32_t bIdx) const
 {
-    uint32_t prefix = static_cast<uint32_t>(baseInfo.actualSeqPrefixSize);
-    if (baseInfo.actualSeqS2Size.empty()) return prefix + baseInfo.s2Size;
-    if (baseInfo.actualLenKvDims == 1U) return prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[0]);
-    if (!baseInfo.isAccumSeqS2) return prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]);
-    return (bIdx == 0) ? prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]) :
-           prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx] - baseInfo.actualSeqS2Size[bIdx - 1U]);
+    if (kvSize.empty()) return static_cast<uint32_t>(s2Size);
+    if (kvSize.size() == 1U) return kvSize[0];
+    return kvSize[bIdx];
 }
 
-int64_t AttentionPioneerMetadataKernel::CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const APBaseInfo &baseInfo)
+// Ported from A5: GetPreNextTokensLeftUp
+void AttentionPioneerMetadataKernel::GetPreNextTokensLeftUp(
+    int64_t actualSeqLength, int64_t actualSeqLengthKV,
+    int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp) const
 {
-    if (static_cast<APSparseMode>(baseInfo.sparseMode) == APSparseMode::BAND) {
-        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + baseInfo.preToken;
-    }
-    return baseInfo.preToken;
-}
-
-int64_t AttentionPioneerMetadataKernel::CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const APBaseInfo &baseInfo)
-{
-    auto mode = static_cast<APSparseMode>(baseInfo.sparseMode);
-    switch (mode) {
-        case APSparseMode::DEFAULT_MASK:
-        case APSparseMode::ALL_MASK:
-        case APSparseMode::LEFT_UP_CAUSAL:
-            return baseInfo.nextToken;
-        case APSparseMode::RIGHT_DOWN_CAUSAL:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
-        case APSparseMode::BAND:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + baseInfo.nextToken;
-        default:
-            return baseInfo.nextToken;
-    }
-}
-
-int64_t AttentionPioneerMetadataKernel::CalcCost(uint32_t basicM, uint32_t basicS2)
-{
-    uint32_t alignBasicM = (basicM + 15U) >> 4U;
-    uint32_t alignBasicS2 = (basicS2 + 63U) >> 6U;
-    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
-}
-
-APBlockCost<int64_t> AttentionPioneerMetadataKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
-{
-    APBlockCost<int64_t> typeCost {};
-    typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK] = CalcCost(s1NormalSize, s2NormalSize);
-    typeCost[AP_TAIL_BLOCK][AP_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2NormalSize);
-    typeCost[AP_NORMAL_BLOCK][AP_TAIL_BLOCK] = (s2TailSize == 0U) ? 0U : CalcCost(s1NormalSize, s2TailSize);
-    typeCost[AP_TAIL_BLOCK][AP_TAIL_BLOCK] = (s1GTailSize == 0U || s2TailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2TailSize);
-    return typeCost;
-}
-
-APRange<uint32_t> AttentionPioneerMetadataKernel::CalcS2Range(uint32_t s1GIdx, const APBaseInfo &baseInfo, const APSplitParam &splitParam, const APBatchCache &batchCache)
-{
-    uint32_t s2Start = 0U;
-    uint32_t s2End = 0U;
-    if (batchCache.s1Size == 0U || batchCache.s2Size == 0U) {
-        return std::make_pair(s2Start, s2End);
-    }
-    if (!baseInfo.attenMaskFlag) {
-        s2Start = 0U;
-        s2End = (batchCache.s2Size + splitParam.s2BaseSize - 1U) / splitParam.s2BaseSize;
-        return std::make_pair(s2Start, s2End);
-    }
-    int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(splitParam.mBaseSize);
-    int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(splitParam.mBaseSize),
-        static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.gSize)) - 1;
-    int64_t s1FirstToken = 0;
-    int64_t s1LastToken = 0;
-    if (baseInfo.isS1G) {
-        s1FirstToken = s1GFirstToken / static_cast<int64_t>(baseInfo.gSize);
-        s1LastToken = s1GLastToken / static_cast<int64_t>(baseInfo.gSize);
-    } else {
-        if (s1GFirstToken / batchCache.s1Size == s1GLastToken / batchCache.s1Size) {
-            s1FirstToken = s1GFirstToken % static_cast<int64_t>(batchCache.s1Size);
-            s1LastToken = s1GLastToken % static_cast<int64_t>(batchCache.s1Size);
+    auto mode = static_cast<APSparseMode>(sparseMode_);
+    bool isS1G = (inputLayout_ == "TND" || inputLayout_ == "BSH" || inputLayout_ == "BSND");
+    if (mode == APSparseMode::RIGHT_DOWN_CAUSAL) {
+        preTokensLeftUp = SPARSE_MODE_INT_MAX;
+        if (isMlaSink && isS1G) {
+            nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
         } else {
-            s1FirstToken = 0;
-            s1LastToken = batchCache.s1Size;
+            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
-    }
-    int64_t s2FirstToken = s1FirstToken - batchCache.preTokenLeftUp;
-    int64_t s2LastToken = s1LastToken + batchCache.nextTokenLeftUp;
-    if (s2FirstToken >= batchCache.s2Size || s2LastToken < 0 || s2LastToken < s2FirstToken) {
-        return std::make_pair(0U, 0U);
-    }
-    s2FirstToken = APClip(s2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-    s2LastToken = APClip(s2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-    s2Start = static_cast<uint32_t>(s2FirstToken) / splitParam.s2BaseSize;
-    s2End = static_cast<uint32_t>(s2LastToken) / splitParam.s2BaseSize + 1U;
-    return std::make_pair(s2Start, s2End);
-}
-
-void AttentionPioneerMetadataKernel::CalcSplitInfo(APSplitContext &splitContext)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitParam &splitParam = splitContext.splitParam;
-    APSplitInfo &splitInfo = splitContext.splitInfo;
-    for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
-        uint32_t s1Val = GetS1SeqSize(bIdx, baseInfo);
-        uint32_t s2Val;
-        if (baseInfo.keySinkNumber && baseInfo.supportFD) {
-            s2Val = baseInfo.keySinkNumber + GetS2SeqSize(bIdx, baseInfo);
+    } else if (mode == APSparseMode::BAND) {
+        if (isMlaSink && isS1G) {
+            preTokensLeftUp = preToken * gSize - actualSeqLengthKV * gSize + actualSeqLength;
+            nextTokensLeftUp = nextToken * gSize + actualSeqLengthKV * gSize - actualSeqLength;
         } else {
-            s2Val = GetS2SeqSize(bIdx, baseInfo);
+            preTokensLeftUp = preToken - actualSeqLengthKV + actualSeqLength;
+            nextTokensLeftUp = nextToken + actualSeqLengthKV - actualSeqLength;
         }
-        splitInfo.s1GBaseNum[bIdx] = (s1Val * baseInfo.gSize + (splitParam.mBaseSize - 1U)) / splitParam.mBaseSize;
-        splitInfo.s1GTailSize[bIdx] = (s1Val * baseInfo.gSize) % splitParam.mBaseSize;
-        splitInfo.s2BaseNum[bIdx] = (s2Val + splitParam.s2BaseSize - 1U) / splitParam.s2BaseSize;
-        splitInfo.s2TailSize[bIdx] = s2Val % splitParam.s2BaseSize;
-        if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
-            splitInfo.isKvSeqAllZero = false;
-        }
-    }
-}
-
-void AttentionPioneerMetadataKernel::CalcBatchCache(uint32_t bIdx, const APSplitContext &splitContext, APBatchCache &batchCache)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitParam &splitParam = splitContext.splitParam;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    batchCache.bIdx = bIdx;
-    batchCache.s1Size = GetS1SeqSize(bIdx, baseInfo);
-    if (baseInfo.keySinkNumber && baseInfo.supportFD) {
-        batchCache.s2Size = GetS2SeqSize(bIdx, baseInfo) + baseInfo.keySinkNumber;
     } else {
-        batchCache.s2Size = GetS2SeqSize(bIdx, baseInfo);
-    }
-    batchCache.preTokenLeftUp = CalcPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size, baseInfo);
-    batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size, baseInfo);
-    batchCache.typeCost = CalcCostTable(splitParam.mBaseSize, splitParam.s2BaseSize, splitInfo.s1GTailSize[bIdx], splitInfo.s2TailSize[bIdx]);
-}
-
-void AttentionPioneerMetadataKernel::CalcS1GCacheWithSinkNumber(uint32_t s1GIdx, const APSplitContext &splitContext, const APBatchCache &batchCache, APS1GCache &s1GCache, uint32_t sinkNumber)
-{
-    s1GCache.s2Start = 0;
-    if (s1GCache.s2End == 0) return;
-    if (s1GCache.firstTokenWithSinkNumber == 0) return;
-    const APSplitParam &splitParam = splitContext.splitParam;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    uint32_t sinkBlockLastIndex = (static_cast<uint32_t>(sinkNumber) + splitParam.s2BaseSize - 1) / splitParam.s2BaseSize - 1;
-    if (s1GCache.firstTokenWithSinkNumber > sinkBlockLastIndex) {
-        s1GCache.s1GBlock += sinkBlockLastIndex + 1;
-        if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) && splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
-            s1GCache.s1GCost += batchCache.typeCost[AP_TAIL_BLOCK][AP_NORMAL_BLOCK] * (sinkBlockLastIndex + 1);
+        if (isMlaSink && isS1G) {
+            preTokensLeftUp = preToken * gSize;
+            nextTokensLeftUp = nextToken * gSize;
         } else {
-            s1GCache.s1GCost += batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK] * (sinkBlockLastIndex + 1);
+            preTokensLeftUp = preToken;
+            nextTokensLeftUp = nextToken;
         }
+    }
+}
+
+// Ported from A5: FixParamWithRowInvalid
+void AttentionPioneerMetadataKernel::FixParamWithRowInvalid(
+    int64_t &actualSeqLength, int64_t actualSeqLengthKV,
+    int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp) const
+{
+    int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
+    nextTokensError = std::min(nextTokensError, actualSeqLength);
+    int64_t preTokensError = 0;
+    if (isMlaSink) {
+        preTokensError = (actualSeqLength > actualSeqLengthKV * gSize + preTokensLeftUp) ?
+            (actualSeqLength - actualSeqLengthKV * gSize - preTokensLeftUp) : 0;
     } else {
-        s1GCache.s1GBlock += s1GCache.firstTokenWithSinkNumber;
-        if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) && splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
-            s1GCache.s1GCost += batchCache.typeCost[AP_TAIL_BLOCK][AP_NORMAL_BLOCK] * s1GCache.firstTokenWithSinkNumber;
-        } else {
-            s1GCache.s1GCost += batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK] * s1GCache.firstTokenWithSinkNumber;
+        preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
+            (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) : 0;
+    }
+    preTokensError = std::min(preTokensError, actualSeqLength);
+    nextTokensLeftUp += nextTokensError;
+    preTokensLeftUp -= nextTokensError;
+    actualSeqLength -= nextTokensError;
+    actualSeqLength -= preTokensError;
+}
+
+int64_t AttentionPioneerMetadataKernel::ClipSInnerToken(int64_t val, int64_t lo, int64_t hi)
+{
+    return (val < lo) ? lo : ((val > hi) ? hi : val);
+}
+
+int64_t AttentionPioneerMetadataKernel::GetActualInnerBlockNums(
+    int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const
+{
+    if (sInnerIndexEnd < 0) return 0;
+    if (sInnerIndexEnd < innerBlockNums) {
+        return (sInnerIndexStart < 0) ? (sInnerIndexEnd + 1) : (sInnerIndexEnd - sInnerIndexStart + 1);
+    }
+    return (sInnerIndexStart < 0) ? innerBlockNums : (innerBlockNums - sInnerIndexStart);
+}
+
+// MLA-specific block count for one head
+int64_t AttentionPioneerMetadataKernel::GetCalcBlockNumsForS1G(
+    int64_t actualSeqLength, int64_t actualSeqLengthKV,
+    uint32_t sOuterSize, uint32_t sInnerSize,
+    int64_t preTokensLeftUp, int64_t nextTokensLeftUp) const
+{
+    int64_t s2BlockNum = 0;
+    int64_t outerBlockNums = CeilDiv(actualSeqLength, static_cast<int64_t>(sOuterSize));
+    for (int64_t i = 0; i < outerBlockNums; i++) {
+        int64_t cubeSOuterOffset = i * static_cast<int64_t>(sOuterSize);
+        int64_t sInnerFirstToken = ClipSInnerToken(
+            (cubeSOuterOffset - preTokensLeftUp) / gSize, 0, actualSeqLengthKV);
+        int64_t sInnerLastToken = ClipSInnerToken(
+            CeilDiv(cubeSOuterOffset + nextTokensLeftUp + sInnerSize,
+                    static_cast<int64_t>(gSize)),
+            0, actualSeqLengthKV);
+        s2BlockNum += CeilDiv(sInnerLastToken, static_cast<int64_t>(sInnerSize)) -
+                      sInnerFirstToken / static_cast<int64_t>(sInnerSize);
+    }
+    return s2BlockNum;
+}
+
+// Total blocks for one head across all sOuter blocks
+int64_t AttentionPioneerMetadataKernel::GetCalcBlockNumsOneHead(
+    int64_t actualSeqLength, int64_t actualSeqLengthKV,
+    uint32_t sOuterSize, uint32_t sInnerSize,
+    int64_t preTokensLeftUp, int64_t nextTokensLeftUp) const
+{
+    if (!attenMaskFlag) {
+        int64_t outerBlockNums = CeilDiv(actualSeqLength, static_cast<int64_t>(sOuterSize));
+        int64_t innerBlockNums = CeilDiv(actualSeqLengthKV, static_cast<int64_t>(sInnerSize));
+        return innerBlockNums * outerBlockNums;
+    }
+    if (isMlaSink) {
+        return GetCalcBlockNumsForS1G(actualSeqLength, actualSeqLengthKV,
+            sOuterSize, sInnerSize, preTokensLeftUp, nextTokensLeftUp);
+    }
+    // Non-MLA with mask: full rectangle minus triangles (simplified)
+    int64_t outerBlockNums = CeilDiv(actualSeqLength, static_cast<int64_t>(sOuterSize));
+    int64_t innerBlockNums = CeilDiv(actualSeqLengthKV, static_cast<int64_t>(sInnerSize));
+    return innerBlockNums * outerBlockNums;
+}
+
+int64_t AttentionPioneerMetadataKernel::SinkBlockCount(
+    int64_t actualSeqLength, uint32_t sOuterSize, uint32_t sInnerSize) const
+{
+    int64_t outerBlockNums = CeilDiv(actualSeqLength, static_cast<int64_t>(sOuterSize));
+    int64_t sinkBlockPerS1g = CeilDiv(kSinkNum_, static_cast<int64_t>(sInnerSize));
+    return sinkBlockPerS1g * outerBlockNums;
+}
+
+// Main A5 greedy split-core algorithm
+// Ported from: PromptFlashAttentionPioneerTilingV2::ComputeSplitNBSeq + PromptFlashAttentionPioneerSplitNBSeq
+void AttentionPioneerMetadataKernel::ComputeSplitNBSeq()
+{
+    uint32_t sOuterSize = mBaseSize_;
+    uint32_t sInnerSize = sInnerSize_;
+    uint32_t headNumSize = n2Size;
+    uint32_t curCoreNum = aicCoreNum_;
+
+    // Build per-batch actual seq lengths
+    std::vector<int64_t> actualSeqLengths(bSize, static_cast<int64_t>(s1Size));
+    std::vector<int64_t> actualSeqLengthsKV(bSize, s2Size);
+    for (uint32_t i = 0; i < bSize; i++) {
+        actualSeqLengths[i] = static_cast<int64_t>(GetQSeqSize(i));
+        actualSeqLengthsKV[i] = static_cast<int64_t>(GetKVSeqSize(i));
+    }
+
+    // Phase 1: compute totalBlockNumsOneHead (total work across all batches for one head)
+    int64_t totalBlockNumsOneHead = 0;
+    int64_t sinkBlockNumberPerS1g = 0;
+    if (kSinkNum_ > 0) {
+        sinkBlockNumberPerS1g = CeilDiv(kSinkNum_, static_cast<int64_t>(sInnerSize));
+    }
+
+    for (uint32_t sIdx = 0; sIdx < bSize; sIdx++) {
+        int64_t actualSeqLengthsTmp = actualSeqLengths[sIdx];
+        int64_t preTokensLeftUp = 0;
+        int64_t nextTokensLeftUp = 0;
+        GetPreNextTokensLeftUp(actualSeqLengths[sIdx], actualSeqLengthsKV[sIdx],
+            preTokensLeftUp, nextTokensLeftUp);
+        FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV[sIdx],
+            preTokensLeftUp, nextTokensLeftUp);
+
+        totalBlockNumsOneHead += GetCalcBlockNumsOneHead(actualSeqLengthsTmp, actualSeqLengthsKV[sIdx],
+            sOuterSize, sInnerSize, preTokensLeftUp, nextTokensLeftUp);
+        if (kSinkNum_ > 0) {
+            totalBlockNumsOneHead += SinkBlockCount(actualSeqLengthsTmp, sOuterSize, sInnerSize);
         }
     }
-}
 
-void AttentionPioneerMetadataKernel::CalcS1GCache(uint32_t s1GIdx, const APSplitContext &splitContext, const APBatchCache &batchCache, APS1GCache &s1GCache)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitParam &splitParam = splitContext.splitParam;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    s1GCache.bIdx = batchCache.bIdx;
-    s1GCache.s1GIdx = s1GIdx;
-    auto s2Range = CalcS2Range(s1GIdx, baseInfo, splitParam, batchCache);
-    s1GCache.s2Start = s2Range.first;
-    s1GCache.s2End = s2Range.second;
-    s1GCache.firstTokenWithSinkNumber = s2Range.first;
-    if (s1GCache.s2Start >= s1GCache.s2End) {
-        s1GCache.s1GBlock = 0;
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.s1GNormalBlockCost = 0;
-        return;
-    }
-    s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
-    uint32_t curTailS2Num = (splitInfo.s2TailSize[batchCache.bIdx] != 0U &&
-        s1GCache.s2End == splitInfo.s2BaseNum[batchCache.bIdx]) ? 1U : 0U;
-    uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
-    if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.s1GNormalBlockCost = 0;
-    } else if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) && splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
-        s1GCache.s1GCost = batchCache.typeCost[AP_TAIL_BLOCK][AP_NORMAL_BLOCK] * curNormalS2Num +
-            batchCache.typeCost[AP_TAIL_BLOCK][AP_TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[AP_TAIL_BLOCK][AP_TAIL_BLOCK] :
-                                 batchCache.typeCost[AP_TAIL_BLOCK][AP_NORMAL_BLOCK];
-        s1GCache.s1GNormalBlockCost = batchCache.typeCost[AP_TAIL_BLOCK][AP_NORMAL_BLOCK];
-    } else {
-        s1GCache.s1GCost = batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK] * curNormalS2Num +
-            batchCache.typeCost[AP_NORMAL_BLOCK][AP_TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[AP_NORMAL_BLOCK][AP_TAIL_BLOCK] :
-                                 batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK];
-        s1GCache.s1GNormalBlockCost = batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK];
-    }
-    uint32_t sinkNumber = (baseInfo.keySinkNumber && baseInfo.supportFD) ? baseInfo.keySinkNumber : baseInfo.sinkNumber;
-    if (sinkNumber > 0 && baseInfo.sparseMode == 4U) {
-        CalcS1GCacheWithSinkNumber(s1GIdx, splitContext, batchCache, s1GCache, sinkNumber);
-    }
-}
+    // coreWightTarget: average work per core
+    double coreWightTarget = static_cast<double>(totalBlockNumsOneHead * headNumSize) /
+                             static_cast<double>(curCoreNum);
 
-void AttentionPioneerMetadataKernel::CopyTmpResult(APSplitResult &tmpRes, APSplitResult &splitRes)
-{
-    uint64_t len = tmpRes.bN2End.size();
-    splitRes.usedCoreNum = tmpRes.usedCoreNum;
-    splitRes.maxCost = tmpRes.maxCost;
-    splitRes.numOfFdHead = tmpRes.numOfFdHead;
-    splitRes.maxS2SplitNum = tmpRes.maxS2SplitNum;
-    for (size_t i = 0; i < len; ++i) {
-        splitRes.bN2End[i] = tmpRes.bN2End[i];
-        splitRes.gS1End[i] = tmpRes.gS1End[i];
-        splitRes.s2End[i] = tmpRes.s2End[i];
-        splitRes.fdRes.bN2IdxOfFdHead[i] = tmpRes.fdRes.bN2IdxOfFdHead[i];
-        splitRes.fdRes.gS1IdxOfFdHead[i] = tmpRes.fdRes.gS1IdxOfFdHead[i];
-        splitRes.fdRes.s2SplitNumOfFdHead[i] = tmpRes.fdRes.s2SplitNumOfFdHead[i];
-        splitRes.fdRes.s2SplitStartIdxOfCore[i] = tmpRes.fdRes.s2SplitStartIdxOfCore[i];
-        splitRes.fdRes.gS1SplitNumOfFdHead[i] = tmpRes.fdRes.gS1SplitNumOfFdHead[i];
-        splitRes.fdRes.gS1LastPartSizeOfFdHead[i] = tmpRes.fdRes.gS1LastPartSizeOfFdHead[i];
-    }
-}
+    splitS1OuterSize_ = static_cast<uint32_t>(CeilDiv(static_cast<int64_t>(s1Size),
+                                                       static_cast<int64_t>(sOuterSize)));
 
-void AttentionPioneerMetadataKernel::ClearTmpResult(APSplitResult &tmpResult)
-{
-    uint64_t len = tmpResult.bN2End.size();
-    tmpResult.usedCoreNum = 0U;
-    tmpResult.maxCost = 0;
-    tmpResult.numOfFdHead = 0U;
-    tmpResult.maxS2SplitNum = 0U;
-    tmpResult.usedVecNumOfFd = 0U;
-    for (size_t i = 0; i < len; ++i) {
-        tmpResult.bN2End[i] = 0U;
-        tmpResult.gS1End[i] = 0U;
-        tmpResult.s2End[i] = 0U;
-        tmpResult.fdRes.bN2IdxOfFdHead[i] = 0U;
-        tmpResult.fdRes.gS1IdxOfFdHead[i] = 0U;
-        tmpResult.fdRes.s2SplitNumOfFdHead[i] = 0U;
-        tmpResult.fdRes.s2SplitStartIdxOfCore[i] = 0U;
-        tmpResult.fdRes.gS1SplitNumOfFdHead[i] = 0U;
-        tmpResult.fdRes.gS1LastPartSizeOfFdHead[i] = 0U;
-    }
-}
+    // Phase 2: greedy allocation across batch x head x sOuter
+    const uint32_t arrayLen = curCoreNum + 1;
+    splitBnStartIdx_.assign(arrayLen, 0);
+    splitGS1StartIdx_.assign(arrayLen, 0);
 
-void AttentionPioneerMetadataKernel::CalcBatchCost(uint32_t bIdx, const APSplitContext &splitContext, APCostInfo &costInfo)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    costInfo.bN2CostOfEachBatch[bIdx] = 0;
-    costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
-    costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0U;
-    if (GetS1SeqSize(bIdx, baseInfo) == 0U || GetS2SeqSize(bIdx, baseInfo) == 0U) return;
-    APBatchCache bCache;
-    APS1GCache s1GCacheLocal;
-    CalcBatchCache(bIdx, splitContext, bCache);
-    for (uint32_t s1GIdx = 0; s1GIdx < splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
-        CalcS1GCache(s1GIdx, splitContext, bCache, s1GCacheLocal);
-        costInfo.bN2CostOfEachBatch[bIdx] += s1GCacheLocal.s1GCost;
-        costInfo.bN2BlockOfEachBatch[bIdx] += s1GCacheLocal.s1GBlock;
-        if (s1GCacheLocal.s1GBlock > 0) {
-            costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCacheLocal.s1GLastBlockCost;
-        }
-    }
-}
+    int64_t curWight = 0;
+    uint32_t curCore = 0;
+    uint32_t tmpCoreNidEnd = 0;
+    uint32_t tmpCoreSidEnd = 0;
+    uint32_t tmpCoreSposEnd = 0;
 
-void AttentionPioneerMetadataKernel::CalcCostInfo(APSplitContext &splitContext)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    APCostInfo &costInfo = splitContext.costInfo;
-    if (splitInfo.isKvSeqAllZero) {
-        costInfo.totalCost = 0;
-        costInfo.totalBlockNum = 0U;
-        return;
-    }
-    for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
-        CalcBatchCost(bIdx, splitContext, costInfo);
-        costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * baseInfo.n2Size;
-        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * baseInfo.n2Size;
-    }
-}
+    for (uint32_t sIdx = 0; sIdx < bSize; sIdx++) {
+        for (uint32_t headNum = 0; headNum < headNumSize; headNum++) {
+            int64_t preTokensLeftUp = 0;
+            int64_t nextTokensLeftUp = 0;
+            GetPreNextTokensLeftUp(actualSeqLengths[sIdx], actualSeqLengthsKV[sIdx],
+                preTokensLeftUp, nextTokensLeftUp);
+            int64_t actualSeqLength = actualSeqLengths[sIdx];
+            int64_t actualSeqLengthKV = actualSeqLengthsKV[sIdx];
+            FixParamWithRowInvalid(actualSeqLength, actualSeqLengthKV,
+                preTokensLeftUp, nextTokensLeftUp);
 
-void AttentionPioneerMetadataKernel::UpdateCursor(const APSplitContext &splitContext, APAssignContext &assignContext)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    const APCostInfo &costInfo = splitContext.costInfo;
-    bool updateS1G = false;
-    bool updateBatch = false;
-    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) {
-        assignContext.curS2Idx = 0U;
-        assignContext.curS1GIdx++;
-        updateS1G = true;
-    }
-    if (assignContext.curS1GIdx >= splitInfo.s1GBaseNum[assignContext.curBIdx]) {
-        assignContext.curS1GIdx = 0U;
-        assignContext.curBN2Idx++;
-    }
-    if (assignContext.curBN2Idx == baseInfo.bSize * baseInfo.n2Size) {
-        assignContext.curS1GIdx = 0U;
-        assignContext.curS2Idx = 0U;
-        assignContext.isFinished = true;
-        return;
-    }
-    if (assignContext.curBN2Idx / baseInfo.n2Size != assignContext.curBIdx) {
-        assignContext.curBIdx = assignContext.curBN2Idx / baseInfo.n2Size;
-        assignContext.curS1GIdx = 0U;
-        updateBatch = true;
-        updateS1G = true;
-    }
-    if (updateBatch) {
-        CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-        assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-        assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-    }
-    if (updateS1G) {
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    }
-}
+            int64_t outerBlockNums = CeilDiv(actualSeqLength, static_cast<int64_t>(sOuterSize));
+            int64_t innerBlockNums = CeilDiv(actualSeqLengthKV, static_cast<int64_t>(sInnerSize));
 
-void AttentionPioneerMetadataKernel::AssignByBatch(const APSplitContext &splitContext, APAssignContext &assignContext)
-{
-    if (assignContext.isFinished) return;
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APCostInfo &costInfo = splitContext.costInfo;
-    while (assignContext.bN2Cost == 0 || APIsWithinTolerance(assignContext.coreCache.costLimit,
-        costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / AP_FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.bN2Cost)) {
-        assignContext.coreCache.cost += assignContext.bN2Cost;
-        assignContext.coreCache.block += assignContext.bN2Block;
-        assignContext.curBN2Idx++;
-        if (assignContext.curBN2Idx == baseInfo.bSize * baseInfo.n2Size) {
-            assignContext.curS1GIdx = 0U;
-            assignContext.curS2Idx = 0U;
-            assignContext.isFinished = true;
-            return;
-        }
-        if (assignContext.curBN2Idx / baseInfo.n2Size != assignContext.curBIdx) {
-            assignContext.curBIdx = assignContext.curBN2Idx / baseInfo.n2Size;
-            CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-        }
-        assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-        assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-        assignContext.curS1GIdx = 0U;
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    }
-}
+            for (int64_t sOuterIndex = 0; sOuterIndex < outerBlockNums; sOuterIndex++) {
+                int64_t dif = static_cast<int64_t>(coreWightTarget * static_cast<double>(curCore + 1)) - curWight;
 
-void AttentionPioneerMetadataKernel::AssignByRow(const APSplitContext &splitContext, APAssignContext &assignContext)
-{
-    if (assignContext.isFinished) return;
-    while (APIsWithinTolerance(assignContext.coreCache.costLimit,
-        assignContext.s1GCache.s1GLastBlockCost / AP_FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
-        assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
-        assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
-        assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
-                                assignContext.bN2Cost - assignContext.s1GCache.s1GCost : 0;
-        assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
-                                 assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
-        do {
-            assignContext.curS1GIdx++;
-            CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while (assignContext.s1GCache.s1GBlock == 0);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    }
-}
+                // Compute actualInnerBlockNums for this sOuter row
+                int64_t actualInnerBlockNums = 0;
+                if (isMlaSink) {
+                    int64_t sInnerFirstToken = ClipSInnerToken(
+                        (sOuterIndex * sInnerSize - preTokensLeftUp) / gSize, 0, actualSeqLengthKV)
+                        / static_cast<int64_t>(sInnerSize);
+                    int64_t sInnerLastToken = ClipSInnerToken(
+                        CeilDiv(sOuterIndex * static_cast<int64_t>(sInnerSize) + nextTokensLeftUp + sInnerSize,
+                                static_cast<int64_t>(gSize)),
+                        0, actualSeqLengthKV);
+                    actualInnerBlockNums = CeilDiv(sInnerLastToken, static_cast<int64_t>(sInnerSize)) - sInnerFirstToken;
+                    if (kSinkNum_ > 0) {
+                        actualInnerBlockNums += sinkBlockNumberPerS1g;
+                    }
+                } else {
+                    int64_t preTokensNoPrefix = preTokensLeftUp;
+                    int64_t nextTokensNoPrefix = nextTokensLeftUp;
+                    int64_t sInnerIndexStart = -(preTokensNoPrefix > 0 ?
+                        CeilDiv(preTokensNoPrefix, static_cast<int64_t>(sInnerSize)) :
+                        preTokensNoPrefix / static_cast<int64_t>(sInnerSize));
+                    int64_t sInnerIndexEnd = nextTokensNoPrefix > 0 ?
+                        CeilDiv(nextTokensNoPrefix, static_cast<int64_t>(sInnerSize)) :
+                        nextTokensNoPrefix / static_cast<int64_t>(sInnerSize);
+                    actualInnerBlockNums = GetActualInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums);
+                    if (kSinkNum_ > 0) {
+                        actualInnerBlockNums += sinkBlockNumberPerS1g;
+                    }
+                }
 
-void AttentionPioneerMetadataKernel::UpdateCurS2IdxWithSinkNumber(const APSplitContext &splitContext, APAssignContext &assignContext, uint32_t sinkNumber)
-{
-    const APSplitParam &splitParam = splitContext.splitParam;
-    if (assignContext.s1GCache.s2End == 0) return;
-    if (assignContext.s1GCache.firstTokenWithSinkNumber == 0) {
-        assignContext.curS2Idx++;
-        return;
-    }
-    uint32_t sinkBlockLastIndex = (static_cast<uint32_t>(sinkNumber) + splitParam.s2BaseSize - 1) / splitParam.s2BaseSize - 1;
-    if (assignContext.curS2Idx < sinkBlockLastIndex || assignContext.curS2Idx >= assignContext.s1GCache.firstTokenWithSinkNumber) {
-        assignContext.curS2Idx++;
-        return;
-    }
-    if (assignContext.s1GCache.firstTokenWithSinkNumber <= sinkBlockLastIndex) {
-        assignContext.curS2Idx++;
-    } else {
-        assignContext.curS2Idx = assignContext.s1GCache.firstTokenWithSinkNumber;
-    }
-}
+                // Greedy: if adding this block exceeds target more than not adding, start new core
+                if (actualInnerBlockNums - dif > dif &&
+                    !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
+                    curCore += 1;
+                    if (curCore < curCoreNum) {
+                        splitBnStartIdx_[curCore] = static_cast<int32_t>(sIdx * headNumSize + headNum);
+                        splitGS1StartIdx_[curCore] = static_cast<int32_t>(sOuterIndex);
+                    }
+                }
+                tmpCoreNidEnd = headNum + 1;
+                tmpCoreSidEnd = sIdx + 1;
+                tmpCoreSposEnd = static_cast<uint32_t>(sOuterIndex + 1);
 
-void AttentionPioneerMetadataKernel::AssignByBlock(const APSplitContext &splitContext, APAssignContext &assignContext)
-{
-    if (assignContext.isFinished) return;
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
-    }
-    uint32_t sinkNumber = (splitContext.baseInfo.keySinkNumber && splitContext.baseInfo.supportFD) ? splitContext.baseInfo.keySinkNumber : splitContext.baseInfo.sinkNumber;
-    while (APIsWithinTolerance(assignContext.coreCache.costLimit, curCost / AP_FA_TOLERANCE_RATIO,
-            assignContext.coreCache.cost + curCost)) {
-        assignContext.coreCache.cost += curCost;
-        assignContext.coreCache.block++;
-        if (sinkNumber > 0 && splitContext.baseInfo.sparseMode == 4U) {
-            UpdateCurS2IdxWithSinkNumber(splitContext, assignContext, sinkNumber);
-        } else {
-            assignContext.curS2Idx++;
-        }
-        assignContext.bN2Cost = assignContext.bN2Cost - curCost;
-        assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
-        assignContext.bN2Block--;
-        assignContext.s1GCache.s1GBlock--;
-    }
-}
-
-void AttentionPioneerMetadataKernel::ForceAssign(const APSplitContext &splitContext, APAssignContext &assignContext)
-{
-    if (assignContext.isFinished) return;
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
-    }
-    assignContext.coreCache.cost += curCost;
-    assignContext.coreCache.block++;
-    uint32_t sinkNumber = (splitContext.baseInfo.keySinkNumber && splitContext.baseInfo.supportFD) ? splitContext.baseInfo.keySinkNumber : splitContext.baseInfo.sinkNumber;
-    if (sinkNumber > 0 && splitContext.baseInfo.sparseMode == 4U) {
-        UpdateCurS2IdxWithSinkNumber(splitContext, assignContext, sinkNumber);
-    } else {
-        assignContext.curS2Idx++;
-    }
-    assignContext.bN2Cost = assignContext.bN2Cost - curCost;
-    assignContext.bN2Block--;
-    assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
-    assignContext.s1GCache.s1GBlock--;
-    UpdateCursor(splitContext, assignContext);
-}
-
-bool AttentionPioneerMetadataKernel::IsNeedRecordFDInfo(const APAssignContext &assignContext, const APSplitResult &splitRes)
-{
-    if (assignContext.curCoreIdx == 0U) return false;
-    if (assignContext.curKvSplitPart <= 1U) return false;
-    if (assignContext.curBN2Idx == splitRes.bN2End[assignContext.curCoreIdx - 1U] &&
-        assignContext.curS1GIdx == splitRes.gS1End[assignContext.curCoreIdx - 1U]) {
-        return false;
-    }
-    return true;
-}
-
-void AttentionPioneerMetadataKernel::RecordFDInfo(const APSplitContext &splitContext, const APAssignContext &assignContext, APSplitResult &result)
-{
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    const APSplitParam &splitParam = splitContext.splitParam;
-    const APSplitInfo &splitInfo = splitContext.splitInfo;
-    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / baseInfo.n2Size;
-    uint32_t splitS1GIdx = result.gS1End[assignContext.curCoreIdx - 1U];
-    uint32_t s1Val = GetS1SeqSize(splitBIdx, baseInfo);
-    uint32_t curFdS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                            (s1Val * baseInfo.gSize - splitS1GIdx * splitParam.mBaseSize) : splitParam.mBaseSize;
-    uint32_t curFdS1gSplitPart = (curFdS1gSize + splitParam.gS1BaseSizeOfFd - 1U) / splitParam.gS1BaseSizeOfFd;
-    uint32_t curFdS1gLastPartSize = curFdS1gSize - (splitParam.gS1BaseSizeOfFd * (curFdS1gSplitPart - 1U));
-    result.maxS2SplitNum = std::max(result.maxS2SplitNum, assignContext.curKvSplitPart);
-    result.fdRes.bN2IdxOfFdHead[result.numOfFdHead] = result.bN2End[assignContext.curCoreIdx - 1U];
-    result.fdRes.gS1IdxOfFdHead[result.numOfFdHead] = result.gS1End[assignContext.curCoreIdx - 1U];
-    result.fdRes.s2SplitNumOfFdHead[result.numOfFdHead] = assignContext.curKvSplitPart;
-    result.fdRes.gS1SplitNumOfFdHead[result.numOfFdHead] = curFdS1gSplitPart;
-    result.fdRes.gS1LastPartSizeOfFdHead[result.numOfFdHead] = curFdS1gLastPartSize;
-    result.numOfFdHead++;
-}
-
-void AttentionPioneerMetadataKernel::CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const APSplitContext &splitContext, APSplitResult &result)
-{
-    const APCostInfo &costInfo = splitContext.costInfo;
-    const APBaseInfo &baseInfo = splitContext.baseInfo;
-    if (coreNum == 0U) return;
-    result.maxCost = 0U;
-    result.usedCoreNum = 0U;
-    APAssignContext assignContext {};
-    assignContext.curBIdx = 0U;
-    assignContext.curS1GIdx = 0U;
-    assignContext.unassignedCost = costInfo.totalCost;
-    assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-    assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-    CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-    CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-    assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    for (uint32_t i = 0; i < coreNum; ++i) {
-        if (result.maxCost > costLimit) return;
-        if (assignContext.isFinished || assignContext.unassignedCost <= 0) break;
-        assignContext.curCoreIdx = i;
-        result.fdRes.s2SplitStartIdxOfCore[assignContext.curCoreIdx] = assignContext.curKvSplitPart - 1U;
-        assignContext.coreCache = {};
-        assignContext.coreCache.costLimit = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
-        AssignByBatch(splitContext, assignContext);
-        AssignByRow(splitContext, assignContext);
-        if (baseInfo.supportFD) {
-            AssignByBlock(splitContext, assignContext);
-            if (assignContext.coreCache.block == 0) {
-                ForceAssign(splitContext, assignContext);
-            }
-        }
-        result.bN2End[i] = assignContext.curBN2Idx;
-        result.gS1End[i] = assignContext.curS1GIdx;
-        result.s2End[i] = assignContext.curS2Idx;
-        result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
-        assignContext.unassignedCost -= assignContext.coreCache.cost;
-        if (baseInfo.supportFD) {
-            if (IsNeedRecordFDInfo(assignContext, result)) {
-                RecordFDInfo(splitContext, assignContext, result);
-                assignContext.curKvSplitPart = 1U;
-            }
-            if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
-                assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
-                assignContext.curKvSplitPart++;
+                curWight += actualInnerBlockNums;
+                preTokensLeftUp -= static_cast<int64_t>(sOuterSize);
+                nextTokensLeftUp += static_cast<int64_t>(sOuterSize);
             }
         }
     }
-    result.usedCoreNum = assignContext.curCoreIdx + 1;
-}
 
-void AttentionPioneerMetadataKernel::SplitFD(APSplitResult &result)
-{
-    uint32_t totalFDLoad = 0;
-    uint32_t totalFDHeadSplit = 0;
-    for (uint32_t i = 0; i < result.numOfFdHead; i++) {
-        totalFDLoad += result.fdRes.s2SplitNumOfFdHead[i] * result.fdRes.gS1SplitNumOfFdHead[i];
-        totalFDHeadSplit += result.fdRes.gS1SplitNumOfFdHead[i];
-    }
-    uint32_t maxVectorNum = std::min(totalFDHeadSplit, result.usedCoreNum * result.vecCubeRatio);
-    double loadThrOfVector = static_cast<double>(totalFDLoad) / static_cast<double>(maxVectorNum);
-    int64_t loadOfCurVector = 0;
-    uint32_t curCoreIndex = 0;
-    uint32_t preTmpFDIndexEndOfFdHead = 0;
-    uint32_t preTmpFDIndexEndOfFdHeadSplit = 0;
-    for (uint32_t i = 0; i < result.numOfFdHead; i++) {
-        uint32_t fDKVSplitNum = result.fdRes.s2SplitNumOfFdHead[i];
-        for (uint32_t gS1SplitIdx = 0; gS1SplitIdx < result.fdRes.gS1SplitNumOfFdHead[i]; gS1SplitIdx++) {
-            double remainSpace = loadThrOfVector - static_cast<double>(loadOfCurVector);
-            if (fDKVSplitNum > remainSpace * AP_FD_TOLERANCE_RATIO) {
-                result.fdRes.gS1IdxEndOfFdHead[curCoreIndex] = preTmpFDIndexEndOfFdHead;
-                result.fdRes.gS1IdxEndOfFdHeadSplit[curCoreIndex] = preTmpFDIndexEndOfFdHeadSplit;
-                curCoreIndex += 1U;
-                totalFDLoad -= static_cast<uint32_t>(loadOfCurVector);
-                loadThrOfVector = static_cast<double>(totalFDLoad) / static_cast<double>(maxVectorNum - curCoreIndex);
-                loadOfCurVector = 0;
-            }
-            loadOfCurVector += fDKVSplitNum;
-            preTmpFDIndexEndOfFdHead = i;
-            preTmpFDIndexEndOfFdHeadSplit = gS1SplitIdx;
-        }
-    }
-    result.fdRes.gS1IdxEndOfFdHead[curCoreIndex] = preTmpFDIndexEndOfFdHead;
-    result.fdRes.gS1IdxEndOfFdHeadSplit[curCoreIndex] = preTmpFDIndexEndOfFdHeadSplit;
-    result.usedVecNumOfFd = curCoreIndex + 1;
-}
+    // Sentinel values for the last core + 1
+    uint32_t lastIdx = std::min(curCore + 1, curCoreNum);
+    splitBnStartIdx_[lastIdx] = static_cast<int32_t>(bSize * headNumSize);
+    splitGS1StartIdx_[lastIdx] = static_cast<int32_t>(tmpCoreSposEnd);
 
-void AttentionPioneerMetadataKernel::SplitCore(uint32_t coreNum, const APBaseInfo &baseInfo, const APSplitParam &param, APSplitResult &result)
-{
-    APSplitContext splitContext(baseInfo, param);
-    CalcSplitInfo(splitContext);
-    if (splitContext.splitInfo.isKvSeqAllZero) {
-        result.usedCoreNum = 1U;
-        result.bN2End[0] = baseInfo.bSize * baseInfo.n2Size;
-        result.gS1End[0] = 0U;
-        result.s2End[0] = 0U;
-        return;
-    }
-    CalcCostInfo(splitContext);
-    uint32_t maxCore = std::min(coreNum, splitContext.costInfo.totalBlockNum);
-    uint32_t minCore = static_cast<uint32_t>(
-        std::sqrt(static_cast<float>(splitContext.costInfo.totalBlockNum) + 0.25f) + 0.5f);
-    minCore = std::min(minCore, maxCore);
-    result.maxCost = INT64_MAX;
-    result.usedCoreNum = 1U;
-    APSplitResult tmpResult {coreNum, result.vecCubeRatio};
-    for (uint32_t i = minCore; i <= maxCore; ++i) {
-        CalcSplitPlan(i, result.maxCost, splitContext, tmpResult);
-        if (tmpResult.maxCost < result.maxCost) {
-            CopyTmpResult(tmpResult, result);
-        }
-        ClearTmpResult(tmpResult);
-    }
-    if (result.numOfFdHead > 0U) {
-        SplitFD(result);
-    }
-    result.usedCoreNum = std::max(result.usedCoreNum, 1U);
+    // Actual cube cores used (capped at aicCoreNum_)
+    splitUsedCoreNum_ = std::min(curCore + 1, curCoreNum);
+
+    // Pad remaining entries to arrayLen
+    splitBnStartIdx_.resize(AP_SPLIT_ARRAY_LEN, splitBnStartIdx_.back());
+    splitGS1StartIdx_.resize(AP_SPLIT_ARRAY_LEN, splitGS1StartIdx_.back());
 }
 
 REGISTER_CPU_KERNEL(kAttentionPioneerMetadata, AttentionPioneerMetadataKernel);
