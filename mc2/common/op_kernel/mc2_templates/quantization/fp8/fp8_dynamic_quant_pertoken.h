@@ -108,7 +108,6 @@ protected:
     TQue<QuePosition::VECOUT, 1> quantOutputQue_; // 存放量化后的 fp8 数据
     TQue<QuePosition::VECOUT, 1> transOutQue_;    // 存放转置后的原始 float16 数据
 
-    TBuf<TPosition::VECCALC> scaleWorkBuf_;
     TBuf<TPosition::VECOUT> quantScaleBuf_;
     TBuf<TPosition::VECCALC> maxValueBuf_;
 
@@ -230,14 +229,12 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     constexpr uint8_t tempRShiftAmountOut = sizeof(quantOutputDataType) / 2;
     uint64_t perBlockQuantDataOffsetInUB = outputSizePerBlock >> tempRShiftAmountOut;
 
-    tPipe_->InitBuffer(scaleWorkBuf_, UB_DATABLOCK);
     tPipe_->InitBuffer(maxValueBuf_, UB_DATABLOCK);
     tPipe_->InitBuffer(quantScaleBuf_,
                        Ceil(static_cast<uint32_t>(this->rowsThisCore_ * sizeof(float)), UB_DATABLOCK) * UB_DATABLOCK);
     tPipe_->InitBuffer(rawInputQue_, ONE_FACTOR, inputSize);
     tPipe_->InitBuffer(quantOutputQue_, ONE_FACTOR, outputSize);
 
-    LocalTensor<float> scaleWorkData = scaleWorkBuf_.Get<float>();
     LocalTensor<float> maxValueData = maxValueBuf_.Get<float>();
     LocalTensor<float> coreQuantScales = quantScaleBuf_.Get<float>();
     LocalTensor<quantInputDataType> rawInputTensor = rawInputQue_.AllocTensor<quantInputDataType>();
@@ -301,10 +298,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         transOutQue_.EnQue(rawInputTensor);
 
         // 计算量化系数
-        __local_mem__ float *scaleAddr = (__local_mem__ float *)scaleWorkData.GetPhyAddr();
-        CalculateScale(scaleAddr, maxValue);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        scale = scaleWorkData.GetValue(0);
+        scale = maxValue * this->recipFP8MaxLimit_;
         coreQuantScales.SetValue(r, scale);
         SyncFunc<AscendC::HardEvent::S_V>();
 
