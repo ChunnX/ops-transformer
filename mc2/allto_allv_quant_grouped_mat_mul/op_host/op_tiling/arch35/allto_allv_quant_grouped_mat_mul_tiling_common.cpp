@@ -99,12 +99,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
-    uint64_t permuteOutSize = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
-    // 将 permuteOutSize 对齐到 512 字节
-    permuteOutSize = Ops::Base::CeilAlign(permuteOutSize, tensorListSize);
     uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
     // tensorListSize为kernel侧tensorlist开辟的空间
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize_ + groupListSize + tensorListSize;
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + groupListSize + tensorListSize;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -231,10 +228,16 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
     std::string alltoAllvConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
 
     const uint32_t alltoAllvReduceType = 0u;
-    mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
+    mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED;
+    // mxfp4 场景使用int8类型通信
+    if (gmmXDataType_  == ge::DataType::DT_FLOAT4_E2M1) {
+        alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_INT8;
+    } else {
+        alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
+    }
     OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED, OP_LOGE(context_->GetNodeName(), "Ge datatype gmmXDataType(%s) "
         "is not found in HCCL_DATA_TYPE.", ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str()), return ge::GRAPH_FAILED);
-    auto alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
+    uint8_t alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
