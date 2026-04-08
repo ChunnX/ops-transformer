@@ -502,6 +502,11 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("metadata")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("key_sink")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT16, ge::DT_BF16})
@@ -1938,6 +1943,11 @@ public:
         aicore_config_95.Input("dequant_scale_query")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_95.Input("metadata")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("key_sink")
