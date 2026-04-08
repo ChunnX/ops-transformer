@@ -67,6 +67,8 @@ constexpr uint32_t WEIGHTNZ_K0_16 = 16U;
 constexpr uint32_t WEIGHTNZ_N0_16 = 16U;
 constexpr uint32_t WEIGHTNZ_K0_32 = 32U;
 constexpr uint32_t WEIGHTNZ_N0_32 = 32U;
+// NZ weight 第 5 轴：8bit 为 32，4bit（INT4/FLOAT4）为 64
+constexpr uint32_t WEIGHTNZ_N0_64 = 64U;
 constexpr uint8_t BF16_VALUE = 27;
 constexpr uint32_t BF16_WORKSIZE = 2;
 constexpr uint32_t FP32_WORKSIZE = 4;
