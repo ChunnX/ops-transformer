@@ -1,0 +1,32 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=4, T=4, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=4, vectorBlocks=4
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=False
+workspace=553472 bytes
+
+======================================================================
+  ROOFLINE ANALYSIS
+======================================================================
+
+Roofline Analysis (Ascend950, freq=1.65GHz)
+
+Matmul       Block(M*N*K)     stepK Cores |     Cube  MTE2_L0  FixPipe   HBM>L1    Total |     AI     Peak     Achv    Eff Bound   
+-----------------------------------------------------------------------------------------------------------------------------------
+MM1_Cq       32x128x128          12    24 |    2.33    2.33    0.05   17.89   17.89 |   3.8 13516.8   205.1  1.5% HBM     
+MM2_CkvKr    32x128x128          20     9 |    2.33    2.33    0.03   17.89   17.89 |   3.8 13516.8   205.1  1.5% HBM     
+MM3_QcQr     32x256x64            2    32 |    5.59    5.59    1.40   47.19   47.19 |   4.0 13516.8   200.0  1.5% HBM     
+MM4_Qn       32x128x128           1    32 |    0.01    0.08    0.00    0.02    0.68 |   3.1 13516.8    24.2  0.2% HBM     
+
+Ridge point (HBM, 32 cores): BF16=270.3 FLOPs/B, FP8=540.7 FLOPs/B
+Per-core HBM BW: 50.0 GB/s, L2 BW: 162.5 GB/s

@@ -1,0 +1,40 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=256, T=256, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=128, vectorBlocks=64
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=False
+workspace=17711104 bytes
+
+======================================================================
+  PREFILL K-OUTER — B Pinned in L1, Cube-Bound Target
+======================================================================
+
+  Parameters: T=256, He=7168, N=128, AIC=32
+  Split-N baseline: 88.29 us/step × 2 steps = 176.58 us total
+    MM1=17.89 MM2=17.89 MM3=47.19(HBM) MM4=1.31
+
+  Rank Config             |  Total(us)      MM1      MM2      MM3      MM4     Vec | MM3 Bound   vs Base
+  ------------------------------------------------------------------------------------------------------
+     1 KO_bm64+KN         |     75.30   16.70    4.77   47.19    1.31   3.90 | HBM_B      +101.28 <--
+     2 KO_bm32+KN         |     76.19   17.89    4.47   47.19    1.31   3.90 | HBM_B      +100.39
+     3 KO_bm128+KN        |     77.24   17.89    5.52   47.19    1.31   3.90 | HBM_B       +99.34
+     4 KO_bm256+KN        |     77.24   17.89    5.52   47.19    1.31   3.90 | HBM_B       +99.34
+     5 KO_bm192+KN        |     96.03   17.89    4.47   67.03    1.31   3.90 | CUBE        +80.55
+     6 KO_bm128           |    155.06   78.64   22.58   47.19    1.31   3.82 | HBM_B       +21.52
+     7 KO_bm256           |    155.06   78.64   22.58   47.19    1.31   3.82 | HBM_B       +21.52
+     8 KO_bm32            |    156.67   78.64   24.20   47.19    1.31   3.82 | HBM_B       +19.91
+     9 KO_bm64            |    160.60   82.58   24.20   47.19    1.31   3.82 | HBM_B       +15.98
+    10 KO_bm192           |    181.65   82.58   25.41   67.03    1.31   3.82 | CUBE         -5.07
+
+  Best: KO_bm64+KN -> 75.30 us (saves 101.28 us / 57.4% vs split-N 176.58 us)
+  Cube utilization: 92.9% (AIC=69.97 AIV=4.40)

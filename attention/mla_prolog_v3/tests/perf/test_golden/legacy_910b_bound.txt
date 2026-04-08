@@ -1,0 +1,38 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=4, T=4, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend910B, AIC=24, AIV=48
+
+Tiling:
+  stepBatchSize=4, vectorBlocks=4
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=24, singleN=1024
+MM4: cores=22, singleBatch=6
+groupComputeOpt=False, dequantOpt=False
+workspace=553472 bytes
+
+======================================================================
+  BOUND ANALYSIS — Per-Stage Resource Breakdown
+======================================================================
+
+Parameters: T=4, He=7168, N=128, Hcq=1536, Hckv=512, D=128, Dr=64
+Quant: weight=0, kv_cache=0, query=0
+Tiling: stepBatch=4
+
+Stage                M      K       N Cores |     MTE1     Cube  FixPipe    Total | Bound    A src
+--------------------------------------------------------------------------------------------------
+MM1_Cq               4   7168    1536    24 |   18.35    0.28    0.01   18.35 | HBM      HBM  
+MM2_CkvKr            4   7168     576     9 |    6.88    0.28    0.00    6.88 | HBM      L2   
+MM3_QcQr             4   1536   24576    24 |   62.91    0.94    0.16   62.91 | HBM      HBM  
+MM4_Qn               4    128     512    22 |    0.11    0.00    0.00    0.11 | HBM      HBM  
+
+Stage            |     MTE2   Vector     MTE3    Total | Bound   
+-----------------------------------------------------------------
+RmsNormCq        |    0.01    0.02    0.01    0.02 | VECTOR  
+RmsNormCkvKr     |    0.00    0.01    0.00    0.01 | VECTOR  
+RopeKr           |    0.00    0.00    0.00    0.00 | VECTOR  
+ScatterCkvKr     |    0.00    0.00    0.01    0.01 | MTE3    
+RopeQr           |    0.06    0.16    0.05    0.16 | VECTOR  

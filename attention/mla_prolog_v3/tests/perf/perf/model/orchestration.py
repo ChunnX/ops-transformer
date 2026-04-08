@@ -1,0 +1,539 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Orchestration: per-stage timing for MM1-4 plus all vector operations.
+
+Provides three top-level entry points:
+- estimate_all_stages: standard split-N path used by most analysis modes
+- estimate_all_stages_split_m: M-axis split (prefill optimization)
+- estimate_all_stages_k_outer: K-outer loop (cube-bound prefill)
+
+All three return a dict mapping stage name -> MatMulTiming or VectorOpTiming.
+"""
+
+import math
+
+from .block_spec import MatmulBlockSpec, derive_stepK
+from .hardware import AscendHWSpec
+from .matmul_detailed import estimate_matmul_detailed
+from .matmul_k_outer import estimate_matmul_k_outer
+from .matmul_legacy import estimate_matmul
+from .matmul_split_kn import (
+    SplitKNSpec, estimate_matmul_split_kn, estimate_mm2_split_k_cross_core,
+)
+from .matmul_split_m import SplitMSpec, estimate_matmul_split_m
+from .operator_params import OperatorParams
+from .quant import is_full_quant, is_int8_quant, is_mxfp8
+from .vector_ops import estimate_vector_op
+
+
+def get_default_block_specs(params: 'OperatorParams', hw: AscendHWSpec):
+    """Return default MatmulBlockSpec for each matmul based on quant mode."""
+    qm = params.quant_mode
+    act_size = params.activation_dtype_size
+    wt_size = params.weight_dtype_size
+    out_size = params.mm_output_dtype_size
+
+    is_fp8 = is_mxfp8(qm)
+    is_quant = is_full_quant(qm) or is_int8_quant(qm) or is_fp8
+
+    # MM3 weight dtype
+    mm3_wt_size = 1 if is_quant else 2
+    mm3_act_size = 2  # Cq is always BF16 after RMSNorm
+
+    if is_fp8 or is_quant:
+        mm1_baseK = 256
+        mm2_baseK = 256
+        mm3_baseK = 128
+    else:
+        mm1_baseK = 128
+        mm2_baseK = 128
+        mm3_baseK = 64
+
+    mm1_baseN = 64 if is_fp8 else 128
+    mm2_baseN = 128
+    mm3_baseN = 128 if (is_fp8 or is_quant) else 256
+
+    specs = {}
+    specs["MM1_Cq"] = MatmulBlockSpec(
+        "MM1_Cq", baseM=32, baseN=mm1_baseN, baseK=mm1_baseK, stepK=4,
+        mode="split_k", dtype_a_size=act_size, dtype_b_size=wt_size, dtype_c_size=out_size,
+    )
+    specs["MM2_CkvKr"] = MatmulBlockSpec(
+        "MM2_CkvKr", baseM=32, baseN=mm2_baseN, baseK=mm2_baseK, stepK=4,
+        mode="split_k", dtype_a_size=act_size, dtype_b_size=wt_size, dtype_c_size=out_size,
+    )
+    specs["MM3_QcQr"] = MatmulBlockSpec(
+        "MM3_QcQr", baseM=32, baseN=mm3_baseN, baseK=mm3_baseK, stepK=4,
+        mode="split_k", dtype_a_size=mm3_act_size, dtype_b_size=mm3_wt_size, dtype_c_size=out_size,
+    )
+    specs["MM4_Qn"] = MatmulBlockSpec(
+        "MM4_Qn", baseM=32, baseN=128, baseK=128, stepK=1,
+        mode="full_load", dtype_a_size=2, dtype_b_size=wt_size, dtype_c_size=2,
+    )
+
+    # Derive stepK from L1 constraint for each spec
+    mm_dims = {
+        "MM1_Cq": (params.He, params.Hcq),
+        "MM2_CkvKr": (params.He, params.Hckv + params.Dr),
+        "MM3_QcQr": (params.Hcq, params.N * (params.D + params.Dr)),
+        "MM4_Qn": (params.D, params.Hckv),
+    }
+    T = params.T
+    for mm_name, (K, N_total) in mm_dims.items():
+        spec = specs[mm_name]
+        if spec.mode == "full_load":
+            continue
+        n_per_core = math.ceil(N_total / hw.aic_num)
+        derived = derive_stepK(spec, K, hw, n_per_core, M=T)
+        if derived > 0:
+            spec.stepK = derived
+
+    return specs
+
+
+def estimate_all_stages(params: OperatorParams, tiling, hw: AscendHWSpec,
+                        block_specs=None, mm2_split_k_cores: int = 0,
+                        mm1_split_kn: 'SplitKNSpec' = None,
+                        mm2_split_kn: 'SplitKNSpec' = None):
+    """Estimate timing for all matmul and vector stages.
+
+    When hw.has_cycle_spec is True, uses the detailed inner-loop model.
+    Otherwise falls back to the chip-total estimate_matmul().
+
+    Args:
+        mm2_split_k_cores: If > 0, use pure K-split for MM2 (legacy).
+        mm1_split_kn: If set, use 2D N×K split for MM1.
+        mm2_split_kn: If set, use 2D N×K split for MM2 (overrides mm2_split_k_cores).
+    """
+    T = tiling.step_batch_size
+    He = params.He
+    Hcq = params.Hcq
+    Hckv = params.Hckv
+    D = params.D
+    Dr = params.Dr
+    N = params.N
+    qm = params.quant_mode
+
+    act_size = params.activation_dtype_size
+    wt_size = params.weight_dtype_size
+    out_size = params.mm_output_dtype_size
+
+    use_detailed = hw.has_cycle_spec
+    if use_detailed and block_specs is None:
+        block_specs = get_default_block_specs(params, hw)
+
+    stages = {}
+
+    if use_detailed:
+        # MM1: tokenX[T, He] x weightDq[He, Hcq] -> Cq[T, Hcq]
+        if mm1_split_kn and hw.has_cycle_spec:
+            cube_t, accum_t = estimate_matmul_split_kn(
+                "MM1_Cq", T, He, Hcq, mm1_split_kn,
+                hw=hw, block=block_specs["MM1_Cq"], a_reused=False,
+                vec_cores=tiling.vector_block_num, out_size=out_size,
+            )
+            stages["MM1_Cq"] = cube_t
+            if accum_t.total_us > 0:
+                stages["AccumCq"] = accum_t
+        else:
+            stages["MM1_Cq"] = estimate_matmul_detailed(
+                "MM1_Cq", T, He, Hcq,
+                active_cores=tiling.mm1_block_num,
+                hw=hw, block=block_specs["MM1_Cq"], a_reused=False,
+            )
+        # MM2: tokenX reused from MM1 (L2 warm)
+        if mm2_split_kn and hw.has_cycle_spec:
+            cube_t, accum_t = estimate_matmul_split_kn(
+                "MM2_CkvKr", T, He, Hckv + Dr, mm2_split_kn,
+                hw=hw, block=block_specs["MM2_CkvKr"], a_reused=True,
+                vec_cores=tiling.vector_block_num, out_size=out_size,
+            )
+            stages["MM2_CkvKr"] = cube_t
+            if accum_t.total_us > 0:
+                stages["AccumCkvKr"] = accum_t
+        elif mm2_split_k_cores > 0 and hw.has_cycle_spec:
+            cube_t, accum_t = estimate_mm2_split_k_cross_core(
+                T, He, Hckv + Dr, mm2_split_k_cores,
+                hw=hw, block=block_specs["MM2_CkvKr"], a_reused=True,
+                vec_cores=tiling.vector_block_num, out_size=out_size,
+            )
+            stages["MM2_CkvKr"] = cube_t
+            stages["AccumCkvKr"] = accum_t
+        else:
+            stages["MM2_CkvKr"] = estimate_matmul_detailed(
+                "MM2_CkvKr", T, He, Hckv + Dr,
+                active_cores=tiling.mm2_block_num,
+                hw=hw, block=block_specs["MM2_CkvKr"], a_reused=True,
+            )
+        # MM3: Cq[T, Hcq] x weightUqQr[Hcq, N*(D+Dr)] -> QcQr
+        stages["MM3_QcQr"] = estimate_matmul_detailed(
+            "MM3_QcQr", T, Hcq, N * (D + Dr),
+            active_cores=tiling.mm3_block_num,
+            hw=hw, block=block_specs["MM3_QcQr"], a_reused=False,
+        )
+        # MM4: Qc[T, D] x Uk[D, Hckv] -> Qn
+        stages["MM4_Qn"] = estimate_matmul_detailed(
+            "MM4_Qn", T, D, Hckv,
+            active_cores=tiling.mm4_block_num,
+            hw=hw, block=block_specs["MM4_Qn"], a_reused=False,
+        )
+    else:
+        # Legacy chip-total path
+        stages["MM1_Cq"] = estimate_matmul(
+            "MM1_Cq", T, He, Hcq,
+            active_cores=tiling.mm1_block_num, hw=hw,
+            dtype_a_size=act_size, dtype_b_size=wt_size, dtype_c_size=out_size,
+            a_reused=False,
+        )
+        stages["MM2_CkvKr"] = estimate_matmul(
+            "MM2_CkvKr", T, He, Hckv + Dr,
+            active_cores=tiling.mm2_block_num, hw=hw,
+            dtype_a_size=act_size, dtype_b_size=wt_size, dtype_c_size=out_size,
+            a_reused=True,
+        )
+        mm3_wt_size = 1 if (is_full_quant(qm) or is_mxfp8(qm) or is_int8_quant(qm)) else 2
+        stages["MM3_QcQr"] = estimate_matmul(
+            "MM3_QcQr", T, Hcq, N * (D + Dr),
+            active_cores=tiling.mm3_block_num, hw=hw,
+            dtype_a_size=2, dtype_b_size=mm3_wt_size, dtype_c_size=out_size,
+            a_reused=False,
+        )
+        stages["MM4_Qn"] = estimate_matmul(
+            "MM4_Qn", T, D, Hckv,
+            active_cores=tiling.mm4_block_num, hw=hw,
+            dtype_a_size=2, dtype_b_size=wt_size, dtype_c_size=2,
+            a_reused=False,
+        )
+
+    vec_cores = tiling.vector_block_num
+
+    # RMSNorm Cq
+    rmsnorm_cq_load = T * Hcq * out_size
+    rmsnorm_cq_compute = T * Hcq * 3
+    rmsnorm_cq_store = T * Hcq * 2
+    stages["RmsNormCq"] = estimate_vector_op(
+        "RmsNormCq", rmsnorm_cq_load, rmsnorm_cq_compute, rmsnorm_cq_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # RMSNorm CkvKr
+    ckv_kr_size = Hckv + Dr
+    rmsnorm_ckvkr_load = T * ckv_kr_size * out_size
+    rmsnorm_ckvkr_compute = T * Hckv * 3
+    rmsnorm_ckvkr_store = T * Hckv * 2
+    stages["RmsNormCkvKr"] = estimate_vector_op(
+        "RmsNormCkvKr", rmsnorm_ckvkr_load, rmsnorm_ckvkr_compute, rmsnorm_ckvkr_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # RoPE Kr
+    rope_kr_load = T * Dr * 2 + T * Dr * 2
+    rope_kr_compute = T * Dr * 4
+    rope_kr_store = T * Dr * 2
+    stages["RopeKr"] = estimate_vector_op(
+        "RopeKr", rope_kr_load, rope_kr_compute, rope_kr_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # Scatter CkvKr
+    scatter_store = T * (Hckv + Dr) * 2
+    stages["ScatterCkvKr"] = estimate_vector_op(
+        "ScatterCkvKr", T * (Hckv + Dr) * 2, T * (Hckv + Dr), scatter_store,
+        hw, active_cores=vec_cores, is_scatter=True,
+    )
+
+    # DequantQc
+    if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
+        dequant_load = T * N * D * out_size
+        dequant_compute = T * N * D * 2
+        dequant_store = T * N * D * 2
+        stages["DequantQc"] = estimate_vector_op(
+            "DequantQc", dequant_load, dequant_compute, dequant_store,
+            hw, active_cores=vec_cores,
+        )
+
+    # RoPE Qr
+    rope_qr_load = T * N * Dr * 2 + T * Dr * 2
+    rope_qr_compute = T * N * Dr * 4
+    rope_qr_store = T * N * Dr * 2
+    stages["RopeQr"] = estimate_vector_op(
+        "RopeQr", rope_qr_load, rope_qr_compute, rope_qr_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # DynamicQuant Qn
+    if params.query_quant_mode == 1:
+        dyn_quant_load = T * N * Hckv * 2
+        dyn_quant_compute = T * N * Hckv * 3
+        dyn_quant_store = T * N * Hckv * 1
+        stages["DynamicQuantQn"] = estimate_vector_op(
+            "DynamicQuantQn", dyn_quant_load, dyn_quant_compute, dyn_quant_store,
+            hw, active_cores=vec_cores,
+        )
+
+    # MulQr
+    if params.query_quant_mode == 1:
+        mul_qr_load = T * N * Dr * 2
+        mul_qr_compute = T * N * Dr * 1
+        mul_qr_store = T * N * Dr * 2
+        stages["MulQr"] = estimate_vector_op(
+            "MulQr", mul_qr_load, mul_qr_compute, mul_qr_store,
+            hw, active_cores=vec_cores,
+        )
+
+    return stages
+
+
+def estimate_all_stages_k_outer(
+    params,
+    tiling,
+    hw: AscendHWSpec,
+    block_specs=None,
+    mm1_split_kn: 'SplitKNSpec' = None,
+    mm2_split_kn: 'SplitKNSpec' = None,
+):
+    """Estimate all stages with K-outer loop for prefill.
+
+    Uses estimate_matmul_k_outer for each MM (or split-KN for MM1/MM2).
+    Vector ops use full T tokens (single launch processes all tokens).
+    """
+    T = params.T  # All tokens in single launch
+    He = params.He
+    Hcq = params.Hcq
+    Hckv = params.Hckv
+    D = params.D
+    Dr = params.Dr
+    N = params.N
+    qm = params.quant_mode
+
+    act_size = params.activation_dtype_size
+    wt_size = params.weight_dtype_size
+    out_size = params.mm_output_dtype_size
+
+    if block_specs is None:
+        block_specs = get_default_block_specs(params, hw)
+
+    stages = {}
+
+    # MM1: tokenX[T, He] x weightDq[He, Hcq] -> Cq
+    if mm1_split_kn:
+        cube_t, accum_t = estimate_matmul_split_kn(
+            "MM1_Cq", T, He, Hcq, mm1_split_kn,
+            hw=hw, block=block_specs["MM1_Cq"], a_reused=False,
+            vec_cores=hw.aiv_num, out_size=out_size,
+        )
+        stages["MM1_Cq"] = cube_t
+        if accum_t.total_us > 0:
+            stages["AccumCq"] = accum_t
+    else:
+        stages["MM1_Cq"] = estimate_matmul_k_outer(
+            "MM1_Cq", T, He, Hcq,
+            active_cores=hw.aic_num, hw=hw,
+            block=block_specs["MM1_Cq"], a_reused=False,
+        )
+
+    # MM2: tokenX[T, He] x weightCkvKr[He, Hckv+Dr] (A reused from MM1)
+    if mm2_split_kn:
+        cube_t, accum_t = estimate_matmul_split_kn(
+            "MM2_CkvKr", T, He, Hckv + Dr, mm2_split_kn,
+            hw=hw, block=block_specs["MM2_CkvKr"], a_reused=True,
+            vec_cores=hw.aiv_num, out_size=out_size,
+        )
+        stages["MM2_CkvKr"] = cube_t
+        if accum_t.total_us > 0:
+            stages["AccumCkvKr"] = accum_t
+    else:
+        stages["MM2_CkvKr"] = estimate_matmul_k_outer(
+            "MM2_CkvKr", T, He, Hckv + Dr,
+            active_cores=hw.aic_num, hw=hw,
+            block=block_specs["MM2_CkvKr"], a_reused=True,
+        )
+
+    # MM3: Cq[T, Hcq] x weightUqQr[Hcq, N*(D+Dr)] -> QcQr
+    stages["MM3_QcQr"] = estimate_matmul_k_outer(
+        "MM3_QcQr", T, Hcq, N * (D + Dr),
+        active_cores=hw.aic_num, hw=hw,
+        block=block_specs["MM3_QcQr"], a_reused=False,
+    )
+
+    # MM4: Qc[T, D] x Uk[D, Hckv] -> Qn
+    stages["MM4_Qn"] = estimate_matmul_k_outer(
+        "MM4_Qn", T, D, Hckv,
+        active_cores=hw.aic_num, hw=hw,
+        block=block_specs["MM4_Qn"], a_reused=False,
+    )
+
+    vec_cores = hw.aiv_num
+
+    # Vector ops use full T (single launch)
+    stages["RmsNormCq"] = estimate_vector_op(
+        "RmsNormCq", T * Hcq * out_size, T * Hcq * 3, T * Hcq * 2,
+        hw, active_cores=vec_cores)
+
+    ckv_kr_size = Hckv + Dr
+    stages["RmsNormCkvKr"] = estimate_vector_op(
+        "RmsNormCkvKr", T * ckv_kr_size * out_size, T * Hckv * 3, T * Hckv * 2,
+        hw, active_cores=vec_cores)
+
+    stages["RopeKr"] = estimate_vector_op(
+        "RopeKr", T * Dr * 4, T * Dr * 4, T * Dr * 2,
+        hw, active_cores=vec_cores)
+
+    stages["ScatterCkvKr"] = estimate_vector_op(
+        "ScatterCkvKr", T * ckv_kr_size * 2, T * ckv_kr_size, T * ckv_kr_size * 2,
+        hw, active_cores=vec_cores, is_scatter=True)
+
+    if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
+        stages["DequantQc"] = estimate_vector_op(
+            "DequantQc", T * N * D * out_size, T * N * D * 2, T * N * D * 2,
+            hw, active_cores=vec_cores)
+
+    stages["RopeQr"] = estimate_vector_op(
+        "RopeQr", T * N * Dr * 2 + T * Dr * 2, T * N * Dr * 4, T * N * Dr * 2,
+        hw, active_cores=vec_cores)
+
+    if params.query_quant_mode == 1:
+        stages["DynamicQuantQn"] = estimate_vector_op(
+            "DynamicQuantQn", T * N * Hckv * 2, T * N * Hckv * 3, T * N * Hckv,
+            hw, active_cores=vec_cores)
+        stages["MulQr"] = estimate_vector_op(
+            "MulQr", T * N * Dr * 2, T * N * Dr, T * N * Dr * 2,
+            hw, active_cores=vec_cores)
+
+    return stages
+
+
+def estimate_all_stages_split_m(
+    params: OperatorParams,
+    tiling,
+    hw: AscendHWSpec,
+    spec: SplitMSpec,
+    block_specs=None,
+):
+    """Estimate timing for all stages under M-axis split (prefill mode).
+
+    Each core handles M_per_core tokens with full N.
+    Vector ops use per-AIC vector cores (aiv_num // aic_num) instead of full pool.
+    """
+    M_per_core = spec.single_m
+    He = params.He
+    Hcq = params.Hcq
+    Hckv = params.Hckv
+    D = params.D
+    Dr = params.Dr
+    N = params.N
+    qm = params.quant_mode
+
+    act_size = params.activation_dtype_size
+    wt_size = params.weight_dtype_size
+    out_size = params.mm_output_dtype_size
+
+    if block_specs is None:
+        block_specs = get_default_block_specs(params, hw)
+
+    stages = {}
+
+    # MM1: tokenX[M_per_core, He] x weightDq[He, Hcq] -> Cq
+    stages["MM1_Cq"] = estimate_matmul_split_m(
+        "MM1_Cq", params.T, He, Hcq, spec,
+        hw=hw, block=block_specs["MM1_Cq"], a_reused=False,
+    )
+
+    # MM2: tokenX[M_per_core, He] x weightCkvKr[He, Hckv+Dr] -> CkvKr
+    # tokenX reused from MM1 (L2 warm)
+    stages["MM2_CkvKr"] = estimate_matmul_split_m(
+        "MM2_CkvKr", params.T, He, Hckv + Dr, spec,
+        hw=hw, block=block_specs["MM2_CkvKr"], a_reused=True,
+    )
+
+    # MM3: Cq[M_per_core, Hcq] x weightUqQr[Hcq, N*(D+Dr)] -> QcQr
+    stages["MM3_QcQr"] = estimate_matmul_split_m(
+        "MM3_QcQr", params.T, Hcq, N * (D + Dr), spec,
+        hw=hw, block=block_specs["MM3_QcQr"], a_reused=False,
+    )
+
+    # MM4: Qc[M_per_core, D] x Uk[D, Hckv] -> Qn
+    stages["MM4_Qn"] = estimate_matmul_split_m(
+        "MM4_Qn", params.T, D, Hckv, spec,
+        hw=hw, block=block_specs["MM4_Qn"], a_reused=False,
+    )
+
+    # Vector ops: each AIC core gets aiv_num // aic_num vector cores
+    vec_cores = max(hw.aiv_num // hw.aic_num, 1)
+
+    # RMSNorm Cq (per core: M_per_core tokens)
+    rmsnorm_cq_load = M_per_core * Hcq * out_size
+    rmsnorm_cq_compute = M_per_core * Hcq * 3
+    rmsnorm_cq_store = M_per_core * Hcq * 2
+    stages["RmsNormCq"] = estimate_vector_op(
+        "RmsNormCq", rmsnorm_cq_load, rmsnorm_cq_compute, rmsnorm_cq_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # RMSNorm CkvKr
+    ckv_kr_size = Hckv + Dr
+    rmsnorm_ckvkr_load = M_per_core * ckv_kr_size * out_size
+    rmsnorm_ckvkr_compute = M_per_core * Hckv * 3
+    rmsnorm_ckvkr_store = M_per_core * Hckv * 2
+    stages["RmsNormCkvKr"] = estimate_vector_op(
+        "RmsNormCkvKr", rmsnorm_ckvkr_load, rmsnorm_ckvkr_compute, rmsnorm_ckvkr_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # RoPE Kr
+    rope_kr_load = M_per_core * Dr * 2 + M_per_core * Dr * 2
+    rope_kr_compute = M_per_core * Dr * 4
+    rope_kr_store = M_per_core * Dr * 2
+    stages["RopeKr"] = estimate_vector_op(
+        "RopeKr", rope_kr_load, rope_kr_compute, rope_kr_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # Scatter CkvKr
+    scatter_load = M_per_core * (Hckv + Dr) * 2
+    scatter_store = M_per_core * (Hckv + Dr) * 2
+    stages["ScatterCkvKr"] = estimate_vector_op(
+        "ScatterCkvKr", scatter_load, M_per_core * (Hckv + Dr), scatter_store,
+        hw, active_cores=vec_cores, is_scatter=True,
+    )
+
+    # DequantQc
+    if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
+        dequant_load = M_per_core * N * D * out_size
+        dequant_compute = M_per_core * N * D * 2
+        dequant_store = M_per_core * N * D * 2
+        stages["DequantQc"] = estimate_vector_op(
+            "DequantQc", dequant_load, dequant_compute, dequant_store,
+            hw, active_cores=vec_cores,
+        )
+
+    # RoPE Qr
+    rope_qr_load = M_per_core * N * Dr * 2 + M_per_core * Dr * 2
+    rope_qr_compute = M_per_core * N * Dr * 4
+    rope_qr_store = M_per_core * N * Dr * 2
+    stages["RopeQr"] = estimate_vector_op(
+        "RopeQr", rope_qr_load, rope_qr_compute, rope_qr_store,
+        hw, active_cores=vec_cores,
+    )
+
+    # DynamicQuant Qn
+    if params.query_quant_mode == 1:
+        dyn_quant_load = M_per_core * N * Hckv * 2
+        dyn_quant_compute = M_per_core * N * Hckv * 3
+        dyn_quant_store = M_per_core * N * Hckv * 1
+        stages["DynamicQuantQn"] = estimate_vector_op(
+            "DynamicQuantQn", dyn_quant_load, dyn_quant_compute, dyn_quant_store,
+            hw, active_cores=vec_cores,
+        )
+
+    # MulQr
+    if params.query_quant_mode == 1:
+        mul_qr_load = M_per_core * N * Dr * 2
+        mul_qr_compute = M_per_core * N * Dr * 1
+        mul_qr_store = M_per_core * N * Dr * 2
+        stages["MulQr"] = estimate_vector_op(
+            "MulQr", mul_qr_load, mul_qr_compute, mul_qr_store,
+            hw, active_cores=vec_cores,
+        )
+
+    return stages

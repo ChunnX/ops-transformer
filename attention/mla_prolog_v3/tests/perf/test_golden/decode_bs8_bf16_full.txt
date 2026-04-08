@@ -1,0 +1,256 @@
+MLA Prolog V3 Performance Analysis
+  B=8, S=4, T=32, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=32, vectorBlocks=32
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=False
+workspace=4427776 bytes
+
+======================================================================
+  BOUND ANALYSIS — Per-Stage Resource Breakdown
+======================================================================
+
+Parameters: T=32, He=7168, N=128, Hcq=1536, Hckv=512, D=128, Dr=64
+Quant: weight=0, kv_cache=0, query=0
+Tiling: stepBatch=32
+
+Stage             M      K       N   C |    MTE1     L0A     L0B    MMAD  FxPipe   Total | kL1 Bound    A src
+-------------------------------------------------------------------------------------------------------------
+MM1_Cq           32   7168    1536  24 |   3.58   0.02   0.04   0.04   0.05  17.89 |   5 HBM      HBM 
+MM2_CkvKr        32   7168     576   9 |   5.96   0.02   0.04   0.04   0.03  17.89 |   3 HBM      L2  
+MM3_QcQr         32   1536   24576  32 |   3.93   0.01   0.23   0.23   1.40  47.19 |  12 HBM      HBM 
+MM4_Qn           32    128     512  32 |   0.16   0.02   0.08   0.08   0.02   0.82 |   1 HBM      HBM 
+
+Stage            |     MTE2   Vector     MTE3    Total | Bound   
+-----------------------------------------------------------------
+RmsNormCq        |    0.06    0.01    0.06    0.06 | MTE2    
+RmsNormCkvKr     |    0.02    0.00    0.02    0.02 | MTE2    
+RopeKr           |    0.01    0.00    0.00    0.01 | MTE2    
+ScatterCkvKr     |    0.02    0.00    0.06    0.06 | MTE3    
+RopeQr           |    0.33    0.10    0.33    0.33 | MTE2    
+
+======================================================================
+  PIPELINE TIMELINE — AIC/AIV Execution Overlap
+======================================================================
+
+Total: 87.79 us
+AIC busy: 83.79 us | AIV busy: 0.98 us | Sync: 7.20 us
+
+                  |               |               |              |                |               |
+                  0            17.6            35.1           52.7             70.2            87.8 us
+
+  AIC:
+  * MM1_Cq         [==============] 17.89us
+  * MM2_CkvKr                       [==============] 17.89us
+  * MM3_QcQr                                         [=========================================] 47.19us
+  * MM4_Qn                                                                                        [] 0.82us
+
+  AIV:
+    CopyInSinCos   [] 0.50us
+    RmsNormCq                       [] 0.06us
+    RmsNormCkvKr                                     [] 0.02us
+    RopeKr                                           [] 0.01us
+    ScatterCkvKr                                     [] 0.06us
+    RopeQr                                                                                        [] 0.33us
+
+Critical path:
+  MM1_Cq(17.9) -> MM2_CkvKr(17.9) -> MM3_QcQr(47.2) -> MM4_Qn(0.8)
+
+======================================================================
+  KERNEL DURATION ESTIMATE
+======================================================================
+
+Parameters: T=32, He=7168, N=128
+stepBatchSize=32, num_steps=1
+
+Estimated kernel time: 87.79 us (0.088 ms)
+
+======================================================================
+  PERFORMANCE ADVICE
+======================================================================
+
+  1. [MM1_Cq] MTE1-bound (HBM): consider INT8/FP8 quantization to halve weight load (3.58 us MTE1 vs 2.33 us Cube)
+
+  2. [MM2_CkvKr] MTE1-bound (HBM): consider INT8/FP8 quantization to halve weight load (5.96 us MTE1 vs 2.33 us Cube)
+
+  3. [MM3_QcQr] MTE1-bound (HBM): consider INT8/FP8 quantization to halve weight load (3.93 us MTE1 vs 5.59 us Cube)
+
+  4. [MM4_Qn] MTE1-bound (HBM): consider INT8/FP8 quantization to halve weight load (0.66 us MTE1 vs 0.08 us Cube)
+
+  5. [MM2] Low core utilization: 9/32 AIC cores active. Consider rebalancing N-split to use more cores.
+
+  6. AIV largely idle (0.98 vs AIC 83.79 us). Vector pipeline is underutilized — consider fusing more post-MM vector ops.
+
+  7. [ScatterCkvKr] Scatter store is the bottleneck (0.06 us). Indexed writes have 40% efficiency. Consider contiguous cache layout if possible.
+
+
+======================================================================
+  TILING SEARCH — Best Configuration
+======================================================================
+
+Parameters: T=32, He=7168, N=128
+Searching stepBatchSize in [8, 16, 32, 64, 128]...
+
+Rank   Step  MM1c  MM2c  MM3c  MM4c    Est(us) GroupOpt  DeqOpt
+---------------------------------------------------------------
+   1     32    24     9    32    32      87.79        N       N <-- best
+   2     16    24     9    32    32     171.03        N       N
+   3      8    24     9    32    32     337.51        N       N
+
+Best: stepBatchSize=32, estimated 87.79 us
+
+Tiling details:
+stepBatchSize=32, vectorBlocks=32
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=False
+workspace=4427776 bytes
+
+======================================================================
+  ROOFLINE ANALYSIS
+======================================================================
+
+Roofline Analysis (Ascend950, freq=1.65GHz)
+
+Matmul       Block(M*N*K)     stepK Cores |     Cube  MTE2_L0  FixPipe   HBM>L1    Total |     AI     Peak     Achv    Eff Bound   
+-----------------------------------------------------------------------------------------------------------------------------------
+MM1_Cq       32x128x128          12    24 |    2.33    2.33    0.05   17.89   17.89 |  21.3 13516.8  1641.0 12.1% HBM     
+MM2_CkvKr    32x128x128          20     9 |    2.33    2.33    0.03   17.89   17.89 |  21.3 13516.8  1641.0 12.1% HBM     
+MM3_QcQr     32x256x64            2    32 |    5.59    5.59    1.40   47.19   47.19 |  30.1 13516.8  1600.0 11.8% HBM     
+MM4_Qn       32x128x128           1    32 |    0.08    0.08    0.02    0.16    0.82 |   9.8 13516.8   160.0  1.2% HBM     
+
+Ridge point (HBM, 32 cores): BF16=270.3 FLOPs/B, FP8=540.7 FLOPs/B
+Per-core HBM BW: 50.0 GB/s, L2 BW: 162.5 GB/s
+
+======================================================================
+  BLOCK SIZE SEARCH — Optimal baseM/baseN/baseK
+======================================================================
+
+Parameters: T=32, He=7168, N=128
+Cache: L0A=64KB, L0B=256KB, L0C=256KB, L1=512KB
+
+  MM1_Cq (top 5 of 8 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1    32    64   512     2 |     16.70 HBM      MTE1_B     <-- best
+       2    16    64   128    12 |     17.89 HBM      MTE1_B    
+       3    16    64   256     6 |     17.89 HBM      MTE1_B    
+       4    16    64   512     3 |     17.89 HBM      MTE1_B    
+       5    32    64   128    10 |     17.89 HBM      MTE1_B    
+    Optimal: baseM=32, baseN=64, baseK=512, stepK=2 -> HBM-bound, 16.70 us
+
+  MM2_CkvKr (top 5 of 8 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1    32    64   512     2 |     16.70 HBM      MTE1_B     <-- best
+       2    16    64   128    12 |     17.89 HBM      MTE1_B    
+       3    16    64   256     6 |     17.89 HBM      MTE1_B    
+       4    16    64   512     3 |     17.89 HBM      MTE1_B    
+       5    32    64   128    10 |     17.89 HBM      MTE1_B    
+    Optimal: baseM=32, baseN=64, baseK=512, stepK=2 -> HBM-bound, 16.70 us
+
+  MM3_QcQr (top 5 of 22 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1    16    64    64     2 |     47.19 HBM      MTE1_B     <-- best
+       2    16    64   128     1 |     47.19 HBM      MTE1_B    
+       3    16   128    64     2 |     47.19 HBM      MTE1_B    
+       4    16   128   128     1 |     47.19 HBM      MTE1_B    
+       5    16   192    64     2 |     47.19 HBM      MTE1_B    
+    Optimal: baseM=16, baseN=64, baseK=64, stepK=2 -> HBM-bound, 47.19 us
+
+  MM4_Qn (top 5 of 5 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1    32    16   128     1 |      0.25 HBM      HBM        <-- best
+       2    32    16   128     1 |      0.25 HBM      HBM       
+       3    32    16   128     1 |      0.25 HBM      HBM       
+       4    32    16   128     1 |      0.25 HBM      HBM       
+       5    32    16   128     1 |      0.25 HBM      HBM       
+    Optimal: baseM=32, baseN=16, baseK=128, stepK=1 -> HBM-bound, 0.25 us
+
+  MM2_CkvKr split-N vs split-K comparison:
+    Rank Mode     K-cores |  Cube(us) Accum(us)  Total(us) Bound   
+    ---------------------------------------------------------------
+       1 split_k       16 |     0.67     0.74      1.41 HBM      <-- best
+       2 split_k       18 |     0.60     0.83      1.43 HBM     
+       3 split_k       24 |     0.34     1.11      1.44 HBM     
+       4 split_k       32 |     0.18     1.47      1.66 HBM     
+       5 split_k       12 |     1.12     0.55      1.67 HBM     
+       6 split_k        9 |     2.09     0.41      2.50 HBM     
+       7 split_n        9 |    17.89     0.00     17.89 HBM     
+    -> split-K (16 cores) saves 16.48 us vs split-N (9 cores)
+
+Fitting formulas (for tiling code):
+  MM1_Cq (NO_QUANT@Ascend950): baseM=32, baseN=64, baseK=512, stepK=2
+  MM2_CkvKr (NO_QUANT@Ascend950): baseM=32, baseN=64, baseK=512, stepK=2
+  MM3_QcQr (NO_QUANT@Ascend950): baseM=16, baseN=64, baseK=64, stepK=2
+  MM4_Qn (NO_QUANT@Ascend950): baseM=32, baseN=16, baseK=128, stepK=1
+
+======================================================================
+  2D SPLIT (N×K) SEARCH — Full Pipeline Evaluation
+======================================================================
+
+  Parameters: T=32, He=7168, N=128
+  Baseline pipeline: 87.79 us (MM1=17.89 MM2=17.89 MM3=47.19 MM4=0.82)
+
+  Rank Config                       | Pipeline     MM1     MM2     MM3     MM4   Accum | CubeUtil     AIC     AIV
+  ---------------------------------------------------------------------------------------------------------------
+     1 MM1:N1xK28+MM2:N3xK8         |   56.82   0.51   0.78  47.19   0.82   3.56 |   86.8%  49.30   4.54 <--
+     2 MM1:N1xK28                   |   70.41   0.51  17.89  47.19   0.82   3.44 |   94.3%  66.41   4.42
+     3 MM2:N3xK8                    |   70.76  17.89   0.78  47.19   0.82   0.12 |   94.2%  66.68   1.10
+     4 MM2:N1xK28                   |   70.76  17.89   0.20  47.19   0.82   1.29 |   93.4%  66.09   2.27
+     5 MM2:N1xK14                   |   70.76  17.89   0.78  47.19   0.82   0.65 |   94.2%  66.68   1.62
+     6 MM1:N2xK14                   |   70.92   1.03  17.89  47.19   0.82   0.86 |   94.4%  66.92   1.84
+     7 MM2:N3xK7                    |   70.94  17.89   1.04  47.19   0.82   0.11 |   94.4%  66.94   1.08
+     8 MM1:N4xK8                    |   71.86   1.97  17.89  47.19   0.82   0.25 |   94.4%  67.86   1.22
+     9 MM1:N4xK7                    |   71.95   2.05  17.89  47.19   0.82   0.22 |   94.4%  67.95   1.19
+    10 MM1:N1xK14                   |   71.95   2.05  17.89  47.19   0.82   1.72 |   94.4%  67.95   2.70
+    11 MM1:N3xK8                    |   71.98   2.09  17.89  47.19   0.82   0.33 |   94.4%  67.98   1.31
+    12 MM2:N1xK8                    |   72.24  17.89   2.35  47.19   0.82   0.37 |   94.5%  68.24   1.35
+    13 MM1:N3xK7                    |   72.65   2.76  17.89  47.19   0.82   0.29 |   94.5%  68.65   1.26
+    14 MM2:N1xK7                    |   72.99  17.89   3.09  47.19   0.82   0.32 |   94.5%  68.99   1.30
+    15 MM1:N2xK8                    |   73.03   3.13  17.89  47.19   0.82   0.49 |   94.5%  69.03   1.47
+
+  Best: MM1:N1xK28+MM2:N3xK8 -> 56.82 us (saves 30.97 us / 35.3% vs baseline)
+
+======================================================================
+  SPLIT-M SEARCH — M-axis Parallelism for Prefill
+======================================================================
+
+  No valid configurations found.
+
+======================================================================
+  PREFILL K-OUTER — B Pinned in L1, Cube-Bound Target
+======================================================================
+
+  Parameters: T=32, He=7168, N=128, AIC=32
+  Split-N baseline: 87.79 us/step × 1 steps = 87.79 us total
+    MM1=17.89 MM2=17.89 MM3=47.19(HBM) MM4=0.82
+
+  Rank Config             |  Total(us)      MM1      MM2      MM3      MM4     Vec | MM3 Bound   vs Base
+  ------------------------------------------------------------------------------------------------------
+     1 KO_bm32            |     71.79   14.75    5.53   47.19    0.16   0.48 | HBM_B       +16.00 <--
+     2 KO_bm64+KN         |     72.99   16.70    4.77   47.19    0.16   0.49 | HBM_B       +14.80
+     3 KO_bm32+KN         |     73.88   17.89    4.47   47.19    0.16   0.49 | HBM_B       +13.91
+     4 KO_bm192+KN        |     73.88   17.89    4.47   47.19    0.16   0.49 | HBM_B       +13.91
+     5 KO_bm128+KN        |     74.92   17.89    5.52   47.19    0.16   0.49 | HBM_B       +12.86
+     6 KO_bm256+KN        |     74.92   17.89    5.52   47.19    0.16   0.49 | HBM_B       +12.86
+     7 KO_bm64            |     78.21   20.64    6.05   47.19    0.16   0.48 | HBM_B        +9.58
+     8 KO_bm192           |     87.51   27.53    8.47   47.19    0.16   0.48 | HBM_B        +0.28
+     9 KO_bm128           |    102.13   39.32   11.29   47.19    0.16   0.48 | HBM_B       -14.34
+    10 KO_bm256           |    102.13   39.32   11.29   47.19    0.16   0.48 | HBM_B       -14.34
+
+  Best: KO_bm32 -> 71.79 us (saves 16.00 us / 18.2% vs split-N 87.79 us)
+  Cube utilization: 94.2% (AIC=67.62 AIV=0.98)

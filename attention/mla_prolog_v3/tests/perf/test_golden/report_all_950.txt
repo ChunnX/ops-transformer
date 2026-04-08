@@ -1,0 +1,28 @@
+MLA Prolog V3 Performance Analysis
+  HW: Ascend950, AIC=32, AIV=64
+
+======================================================================
+  PERFORMANCE REPORT — All Perf Test Cases (Ascend950)
+======================================================================
+
+Case                           B    S     T    N    He Quant        Step Steps     MM1     MM2     MM3     MM4     Total Bound     
+-----------------------------------------------------------------------------------------------------------------------------------
+perf_decode_bs1                1    1     1  128  7168 BF16            1     1   17.89   17.89   47.19    0.66    87.63u MM3:HBM   
+perf_decode_bs8                8    1     8  128  7168 BF16            8     1   17.89   17.89   47.19    0.70    87.66u MM3:HBM   
+perf_decode_bs32              32    1    32  128  7168 BF16           32     1   17.89   17.89   47.19    0.82    87.79u MM3:HBM   
+perf_prefill_s128              1  128   128  128  7168 BF16          128     1   17.89   17.89   47.19    1.31    88.29u MM3:HBM   
+perf_prefill_s512              1  512   512  128  7168 BF16          128     4   17.89   17.89   47.19    1.31   339.91u MM3:HBM   
+perf_decode_int8               1    1     1  128  7168 INT8-FT         1     1   10.73   10.73   23.59    0.33    51.10u MM3:HBM   
+perf_decode_mxfp8              1    1     1  128  7168 FP8             1     1   10.73    8.35   23.59    0.33    48.71u MM3:HBM   
+perf_prefill_int8_s128         1  128   128  128  7168 INT8-FT       128     1   10.73   10.73   23.59    0.98    56.89u MM3:HBM   
+perf_small_model               1    1     1   16  2048 BF16            1     1    4.77    4.77    5.90    0.60    20.04u MM3:HBM   
+
+                                                            — Summary —                                                            
+  Fastest: perf_small_model (20.04 us)
+  Slowest: perf_prefill_s512 (339.91 us)
+  Bottleneck distribution: HBM: 9
+
+  Decode BS=1 quant comparison:
+    perf_decode_bs1                 87.63 us
+    perf_decode_int8                51.10 us (1.71x vs BF16)
+    perf_decode_mxfp8               48.71 us (1.80x vs BF16)

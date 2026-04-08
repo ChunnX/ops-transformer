@@ -1,0 +1,44 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=256, T=256, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=128, vectorBlocks=64
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=False
+workspace=17711104 bytes
+
+======================================================================
+  SPLIT-M SEARCH — M-axis Parallelism for Prefill
+======================================================================
+
+  Parameters: T=256, He=7168, N=128, AIC=32
+  Split-N baseline: 88.29 us/step × 2 steps = 176.58 us total
+    Per step (128 tokens): MM1=17.89 MM2=17.89 MM3=47.19 MM4=1.31 Vec=1.91
+
+  Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
+  ---------------------------------------------------------------------------------------------------
+     1 M8_bm32       32 |    878.71  169.52   70.63  632.88    0.94   2.06 |   99.5%  -702.13 <--
+     2 M4_bm64       64 |    961.37  206.65   86.10  661.26    2.30   4.13 |   99.5%  -784.79
+     3 M2_bm128     128 |   1318.43  262.17  109.24  936.31    6.24   8.25 |   99.7% -1141.85
+
+  Split-N baseline (176.58 us for 256 tokens) is better than all split-M configs
+
+  Best split-M stage details (m_groups=8, M_per_core=32):
+    MM1_Cq: 169.52 us, bound=L2, inner=L2
+    MM2_CkvKr: 70.63 us, bound=L2, inner=L2
+    MM3_QcQr: 632.88 us, bound=L2, inner=L2
+    MM4_Qn: 0.94 us, bound=L2, inner=L2
+    Vector (per core, 2 vec cores):
+      RmsNormCq: 0.236 us, bound=VECTOR
+      RmsNormCkvKr: 0.079 us, bound=VECTOR
+      RopeKr: 0.013 us, bound=VECTOR
+      ScatterCkvKr: 0.058 us, bound=MTE3
+      RopeQr: 1.678 us, bound=VECTOR

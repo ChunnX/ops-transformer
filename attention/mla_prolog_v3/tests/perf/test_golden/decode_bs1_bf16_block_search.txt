@@ -1,0 +1,79 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=4, T=4, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=4, vectorBlocks=4
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=False
+workspace=553472 bytes
+
+======================================================================
+  BLOCK SIZE SEARCH — Optimal baseM/baseN/baseK
+======================================================================
+
+Parameters: T=4, He=7168, N=128
+Cache: L0A=64KB, L0B=256KB, L0C=256KB, L1=512KB
+
+  MM1_Cq (top 5 of 4 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1     4    64   256     7 |     16.70 HBM      MTE1_B     <-- best
+       2     4    64    64    30 |     17.89 HBM      MTE1_B    
+       3     4    64   128    15 |     17.89 HBM      MTE1_B    
+       4     4    64   512     3 |     17.89 HBM      MTE1_B    
+    Optimal: baseM=4, baseN=64, baseK=256, stepK=7 -> HBM-bound, 16.70 us
+
+  MM2_CkvKr (top 5 of 4 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1     4    64   256     7 |     16.70 HBM      MTE1_B     <-- best
+       2     4    64    64    30 |     17.89 HBM      MTE1_B    
+       3     4    64   128    15 |     17.89 HBM      MTE1_B    
+       4     4    64   512     3 |     17.89 HBM      MTE1_B    
+    Optimal: baseM=4, baseN=64, baseK=256, stepK=7 -> HBM-bound, 16.70 us
+
+  MM3_QcQr (top 5 of 11 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1     4    64    64     2 |     47.19 HBM      MTE1_B     <-- best
+       2     4    64   128     1 |     47.19 HBM      MTE1_B    
+       3     4   128    64     2 |     47.19 HBM      MTE1_B    
+       4     4   128   128     1 |     47.19 HBM      MTE1_B    
+       5     4   192    64     2 |     47.19 HBM      MTE1_B    
+    Optimal: baseM=4, baseN=64, baseK=64, stepK=2 -> HBM-bound, 47.19 us
+
+  MM4_Qn (top 5 of 5 valid configs):
+    Rank baseM baseN baseK stepK |  Total(us) Bound    InnerBound
+    -------------------------------------------------------------
+       1     4    16   128     1 |      0.10 HBM      HBM        <-- best
+       2     4    16   128     1 |      0.10 HBM      HBM       
+       3     4    16   128     1 |      0.10 HBM      HBM       
+       4     4    16   128     1 |      0.10 HBM      HBM       
+       5     4    16   128     1 |      0.10 HBM      HBM       
+    Optimal: baseM=4, baseN=16, baseK=128, stepK=1 -> HBM-bound, 0.10 us
+
+  MM2_CkvKr split-N vs split-K comparison:
+    Rank Mode     K-cores |  Cube(us) Accum(us)  Total(us) Bound   
+    ---------------------------------------------------------------
+       1 split_k       32 |     0.18     0.18      0.37 HBM      <-- best
+       2 split_k       24 |     0.34     0.14      0.47 HBM     
+       3 split_k       18 |     0.60     0.10      0.70 HBM     
+       4 split_k       16 |     0.67     0.09      0.76 HBM     
+       5 split_k       12 |     1.12     0.07      1.19 HBM     
+       6 split_k        9 |     2.09     0.05      2.14 HBM     
+       7 split_n        9 |    17.89     0.00     17.89 HBM     
+    -> split-K (32 cores) saves 17.52 us vs split-N (9 cores)
+
+Fitting formulas (for tiling code):
+  MM1_Cq (NO_QUANT@Ascend950): baseM=4, baseN=64, baseK=256, stepK=7
+  MM2_CkvKr (NO_QUANT@Ascend950): baseM=4, baseN=64, baseK=256, stepK=7
+  MM3_QcQr (NO_QUANT@Ascend950): baseM=4, baseN=64, baseK=64, stepK=2
+  MM4_Qn (NO_QUANT@Ascend950): baseM=4, baseN=16, baseK=128, stepK=1
