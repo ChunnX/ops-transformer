@@ -223,6 +223,7 @@ struct FagRunInfo {
     int64_t t1Index = 0;
     int64_t t2Index = 0;
     int64_t n2Index = 0;
+    int64_t s1Index = 0;
     int64_t actualSelectedBlockCount = 0;
     int64_t blkCntOffset = 0;
     int64_t actualSelCntOffset = 0;
@@ -234,6 +235,12 @@ struct FagRunInfo {
     int64_t firstHalfGRealSize = 0;
     bool isS1IdxNoChange; // s1Idx是否变化
     bool isNextS1IdxNoChange; // 下一个基本块的s1Idx是否变化（是否切换了行）
+
+    // Deter 使用
+    int64_t sTaskId = 0;
+    int64_t sTaskIdMod2 = 0;
+    int64_t accumS1Idx = 0;
+    int64_t accumS2Idx = 0;
 
     int8_t taskStep = TASK_INIT;
 };

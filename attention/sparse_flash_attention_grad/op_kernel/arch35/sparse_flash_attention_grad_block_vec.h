@@ -29,7 +29,11 @@ constexpr uint32_t BIT_MASK_NUM = 8;
 TEMPLATES_DEF
 class FAGBlockVec {
 private:
- 
+    __aicore__ inline bool GetBS1Index(int64_t bS1Index, int64_t &bIdx, int64_t &s1Idx, int32_t idx, int64_t taskId, FagConstInfo &constInfo);
+    __aicore__ inline int32_t GetActualSeqCount(FagRunInfo &runInfo, FagConstInfo &constInfo);
+    __aicore__ inline void GetRunInfo(int64_t sTaskId, int64_t bIdx, int54_t s1Idx, FagRunInfo &runInfo, FagConstInfo &constInfo,
+        int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
+    __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, int32_t defaultLens, GlobalTensor<int32_t> &actualSeqLensGm, int64_t &accumLen, FagConstInfo &constInfo);
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -37,8 +41,8 @@ public:
                                                                      PseInfo &pseInfo);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR dy, GM_ADDR y, GM_ADDR sparseIndices, 
                                             GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR keyRope,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, 
-                                            GM_ADDR workspace);
+                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR actualSeqQLen,
+                                            GM_ADDR actualSeqKvlen, GM_ADDR workspace);
     __aicore__ inline void InitUbBuffer();
     __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs);
     __aicore__ inline void GatherKV(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm, FagConstInfo &constInfo, FagRunInfo &runInfo);
@@ -51,6 +55,9 @@ public:
     __aicore__ inline void ProcessVec4(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm2ResTensor,
                                        FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
+                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
+                                      FagConstInfo &constInfo, FagRunInfo &runInfo);
+    __aicore__ inline void ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                       const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
                                       FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t taskId);
@@ -89,6 +96,8 @@ public:
     GlobalTensor<float> dsAmaxWorkSpaceGm;
     GlobalTensor<int32_t> topkIndicesGm;
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
+    GlobalTensor<int32_t> actualSeqLengthsQueryGm;
+    GlobalTensor<int32_t> actualSeqLengthsKeyGm;
  
     // ub buffer
     TQue<QuePosition::VECIN, 1> attenMaskOrYInQue;
@@ -158,8 +167,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::SetVecBlockParams(TPipe *pipe
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key, GM_ADDR dy, GM_ADDR y, GM_ADDR sparseIndices, 
                                                                     GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR keyRope,
-                                                                    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, 
-                                                                    GM_ADDR workspace)
+                                                                    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR actualSeqQLen,
+                                                                    GM_ADDR actualSeqKvlen, GM_ADDR workspace)
 {
     keyGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)key);
     keyRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)keyRope);
@@ -173,6 +182,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key,
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
     dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    actualSeqLengthsQueryGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlen);
+    actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqKvlen);
 }
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -523,6 +534,194 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
     SetAtomicNone();
     WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
 }
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
+                                                              const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
+                                                              const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
+                                                              LocalTensor<CALC_TYPE> &dkInTensor,
+                                                              LocalTensor<CALC_TYPE> &dvInTensor,
+                                                              FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
+    int64_t UB_ROW_SIZE = 8;
+    int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
+    int64_t coreNum = GetBlockNum();
+    int64_t totalVec = coreNum * 2;
+    int64_t bS1Index = -1;
+    int64_t bIdx, s1Idx;
+    int64_t preBIdx = -1;
+    int64_t accumS1Len = 0;
+    int64_t accumS2Len = 0;
+    int32_t actualSeqLensQ = 0;
+    int32_t actualSeqLensK = 0;
+
+    event_t eventIDMTE3ToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+
+    for (int32_t idx = 0; idx < usedCoreNum; idx++) {
+        CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+        
+        bS1Index = runInfo.sTaskId * usedCoreNum + idx;
+        if (bS1Index >= tilingData->baseParams.totalSize) {
+            return;
+        }
+        if (!GetBS1Index(bS1Index, bIdx, s1Idx, idx, runInfo.commonRunInfo.taskId, constInfo)) {
+            continue;
+        }
+        if (bIdx != preBIdx) {
+            actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.commonConstInfo.s1Size, this->actualSeqLengthsQueryGm, accumS1Len, constInfo);
+            actualSeqLensK = GetActualSeqLens(bIdx, constInfo.commonConstInfo.s2Size, this->actualSeqLengthsKeyGm, accumS2Len, constInfo);
+            preBIdx = bIdx;
+        }
+        if constexpr (!IS_TND) {
+            accumS1Len = bIdx * constInfo.commonConstInfo.s1Size;
+            accumS2Len = bIdx * constInfo.commonConstInfo.s2Size;
+        }
+        GetRunInfo(runInfo.sTaskId, bIdx, s1Idx, runInfo, constInfo, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK);
+
+        int64_t s2RealSize = runInfo.actualSelectedBlockCount;
+        int64_t firstCoreKSize = s2RealSize / totalVec;
+        int64_t currentCoreKSize = (this->vBlockIdx == totalVec - 1) ? (s2RealSize % totalVec + firstCoreKSize) : firstCoreKSize;
+        if (currentCoreKSize == 0) {
+            continue;
+        }
+
+        SetAtomicAdd<CALC_TYPE>();
+        int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
+        int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
+
+        GlobalTensor<float> dkOutGm = dkWorkSpaceGm[runInfo.keyOffsetWithRope];
+        int64_t currentMm4SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * HEAD_DIM_ALIGN * coreNum + idx * constInfo.selectedBlockCount * HEAD_DIM_ALIGN +
+        vBlockIdx * firstCoreKSize * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
+        int64_t currentMm5SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV * coreNum + idx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV +
+        vBlockIdx * firstCoreKSize * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
+
+        // 1 - main loop
+        SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
+        uint64_t gmOffset = bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + vBlockIdx * firstCoreKSize;
+        for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
+            WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
+            DataCopy(dkInTensor,
+                    mm4ResWorkSpaceGm[currentMm4SrcOffset + loop * UB_ROW_SIZE * HEAD_DIM_ALIGN], UB_ROW_SIZE * HEAD_DIM_ALIGN);
+            SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+            Muls(dkInTensor, dkInTensor, (float)constInfo.scaleValue, UB_ROW_SIZE * HEAD_DIM_ALIGN);
+            DataCopy(dvInTensor,
+                    mm5ResWorkSpaceGm[currentMm5SrcOffset + loop * UB_ROW_SIZE * 512], UB_ROW_SIZE * 512);
+            SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+                int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+                if (s2Idx >= 0) {
+                    Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], dvInTensor[row * 512], 512);
+                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
+                }
+            }
+            SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
+        }
+
+        WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
+        // 2 - tail loop
+        DataCopy(dkInTensor,
+                    mm4ResWorkSpaceGm[currentMm4SrcOffset + (maxLoops - 1) * UB_ROW_SIZE * HEAD_DIM_ALIGN], tailRows * HEAD_DIM_ALIGN);
+        SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+        Muls(dkInTensor, dkInTensor, (float)constInfo.scaleValue, tailRows * HEAD_DIM_ALIGN);
+        DataCopy(dvInTensor,
+                    mm5ResWorkSpaceGm[currentMm5SrcOffset + (maxLoops - 1) * UB_ROW_SIZE * 512], tailRows * 512);
+        SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+        for (int64_t row = 0; row < tailRows; row++) {
+            int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+            if (s2Idx >= 0) {
+                Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], dvInTensor[row * 512], 512);
+                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
+            }
+        }
+        SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
+        SetAtomicNone();
+        WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t bS1Index, int64_t &bIdx, int64_t &s1Idx, int32_t idx, int64_t taskId, FagConstInfo &constInfo)
+{
+    if(bS1Index >= tilingData->baseParams.totalSize) {
+        return false;
+    }
+    if constexpr (IS_TND) {
+        int64_t actualSum = 0;
+        for (int index = 0; index < constInfo.bSize; index++) {
+            int64_t actualLen = this->actualSeqLengthsQueryGm.GetValue(index);
+            if (bS1Index < actualLen) {
+                bIdx = index;
+                break;
+            }
+            actualSum = actualLen;
+        }
+        s1Idx = bS1Index - actualSum;
+    } else {
+        bIdx = bS1Index / constInfo.commonConstInfo.s1Size;
+        s1Idx = bS1Index - bIdx * constInfo.commonConstInfo.s1Size;
+    }
+    return true;
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetActualSeqLens(int64_t bIdx, int32_t defaultLens, GlobalTensor<int32_t> &actualSeqLensGm, int64_t &accumLen, FagConstInfo &constInfo)
+{
+    if constexpr (IS_TND) {
+        if (bIdx == 0) {
+            accumLen = 0;
+            return actualSeqLensGm.GetValue(0);
+        } else {
+            accumLen = actualSeqLensGm.GetValue(bIdx - 1);
+            return actualSeqLensGm.GetValue(bIdx) - accumLen;
+        }
+    } else {
+        return 0;
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t sTaskId, int64_t bIdx, int54_t s1Idx, 
+        FagRunInfo &runInfo, FagConstInfo &constInfo, int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK)
+{
+    runInfo.sTaskId = sTaskId;
+    runInfo.sTaskIdMod2 = sTaskId & 1;
+    runInfo.commonRunInfo.boIdx = bIdx;
+    runInfo.s1Index = s1Idx;
+    if constexpr (IS_TND) {
+        runInfo.commonRunInfo.actualS1Size = actualSeqLensQ;
+        runInfo.commonRunInfo.actualS2Size = actualSeqLensK;
+        runInfo.accumS1Idx = accumS1Len + s1Idx;
+        runInfo.accumS2Idx = accumS2Len;
+    } else {
+        runInfo.commonRunInfo.actualS1Size = constInfo.commonConstInfo.s1Size;
+        runInfo.commonRunInfo.actualS2Size = constInfo.commonConstInfo.s2Size;
+        runInfo.accumS1Idx = bIdx * constInfo.commonConstInfo.s1Size + s1Idx;
+        runInfo.accumS2Idx = bIdx * constInfo.commonConstInfo.s2Size;
+    }
+    runInfo.keyOffsetWithRope = runInfo.accumS2Idx * constInfo.n2Size * constInfo.dTotalSize;
+    runInfo.actualSelectedBlockCount = GetActualSeqCount(runInfo, constInfo);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetActualSelCount(FagRunInfo &runInfo, FagConstInfo &constInfo)
+{
+    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
+        return Min(Max(runInfo.commonRunInfo.actualS2Size - runInfo.commonRunInfo.actualS1Size + runInfo.s1Index + 1, 0), constInfo.selectedBlockCount);
+    } else {
+        return 0;
+    }
+}
  
 TEMPLATES_DEF
 class FAGBlockVecDummy {
@@ -530,8 +729,8 @@ public:
     __aicore__ inline void InitUbBuffer(){};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR dy, GM_ADDR y, GM_ADDR sparseIndices, 
                                             GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR keyRope,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, 
-                                            GM_ADDR workspace){};
+                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR actualSeqQLen,
+                                            GM_ADDR actualSeqKvLen, GM_ADDR workspace){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, FagConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
                                                                      PseInfo &pseInfo){};
@@ -539,6 +738,9 @@ public:
     __aicore__ inline void ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                       const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
                                       FagConstInfo &constInfo, FagRunInfo &runInfo){};
+    __aicore__ inline void ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
+                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
+                                      FagConstInfo &constInfo, FagRunInfo &runInfo){};                                  
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo){};
