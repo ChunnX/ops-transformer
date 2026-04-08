@@ -315,7 +315,6 @@ aclnnStatus MC2HcomTopology::LoadHcclSymbols()
     };
     
     SymbolInfo symbols[] = {
-        {reinterpret_cast<void**>(&HcomGetCommHandleByGroup), "HcomGetCommHandleByGroup"},
         {reinterpret_cast<void**>(&HcclRankGraphGetLinks), "HcclRankGraphGetLinks"},
         {reinterpret_cast<void**>(&HcclRankGraphGetLayers), "HcclRankGraphGetLayers"},
         {reinterpret_cast<void**>(&HcclChannelAcquire), "HcclChannelAcquire"},
@@ -344,12 +343,7 @@ aclnnStatus MC2HcomTopology::LoadHcclSymbols()
 aclnnStatus MC2HcomTopology::GetCommHandle(const char* groupEp)
 {
     OP_LOGD("", "start to get HCCL communication handle, groupEp: %s", groupEp);
-    if (HcomGetCommHandleByGroup == nullptr) {
-        OP_LOGE("", "HcomGetCommHandleByGroup is null");
-        return ACLNN_ERR_INNER;
-    }
-
-    HcclResult ret = HcomGetCommHandleByGroup(groupEp, &hcclHandle_);
+    HcclResult ret = getCommHandle_(groupEp, &hcclHandle_);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE("", "Get HCCL handle failed, groupEp: %s", groupEp);
         return ACLNN_ERR_INNER;
