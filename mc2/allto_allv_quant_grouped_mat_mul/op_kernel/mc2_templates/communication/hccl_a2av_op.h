@@ -11,6 +11,7 @@
 #ifndef MC2_HCCL_IMPL_H
 #define MC2_HCCL_IMPL_H
 
+#include "../a2av_gmm_utils.h"
 #include "kernel_operator.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -23,22 +24,13 @@
 using namespace AscendC;
 
 namespace MC2KernelTemplate {
-
-template <typename T1, typename T2>
-__aicore__ inline T1 CeilDiv(T1 a, T2 b)
-{
-    if (b == 0) {
-        return 0;
-    }
-    return (a + b - 1) / b;
-}
-
 template <typename hcclDataType, bool commBeforeComputeFlag>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer)
     {
+        // init member var
         taskTilingInfo_ = taskTilingInfo;
         GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
         hccl_.InitV2(hcclContextGm, hcclInitTiling);
@@ -48,6 +40,7 @@ public:
         e_ = taskTilingInfo_->e;
         H1_ = taskTilingInfo_->H1;
         N1_ = taskTilingInfo_->N1;
+        // set gmmx comm buffer
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
     }
@@ -62,6 +55,7 @@ public:
                 return;
             }
         }
+        // comm hccl datatype
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
         } else if constexpr (AscendC::IsSameType<hcclDataType, hifloat8_t>::value) {
@@ -71,19 +65,20 @@ public:
         } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
         } else {
-            hcclDataType_ = HCCL_DATA_TYPE_FP16;
+            hcclDataType_ = HCCL_DATA_TYPE_INT8;
         }
+        // comm and compute order
         if constexpr (commBeforeComputeFlag) {
             LaunchCommBeforeCompute(startExpertIdx, expertNum);
         } else {
             LaunchCommAfterCompute(startExpertIdx, expertNum);
         }
     }
-
+    
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR recvBuffer)
     {
-        sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
-        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
+        sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
+        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)recvBuffer);
     }
 
     __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
@@ -192,7 +187,8 @@ private:
     {
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
-        uint64_t axis = H1_;
+        // mxfp4 半字节需要除以2向上取整 (安全编码)
+        uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         for (uint64_t i = 0UL; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
             alltoAllvRecvCnt[i] = 0UL;
@@ -203,12 +199,12 @@ private:
         }
         alltoAllvSendOffset[0] = 0UL;
         for (uint32_t j = 0U; j < startExpertIdx; j++) {
-            alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * H1_;
+            alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * axis;
         }
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U];
             for (uint32_t j = 0U; j < e_; j++) {
-                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * H1_;
+                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * axis;
             }
         }
 
@@ -288,8 +284,8 @@ private:
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
 
-    GlobalTensor<hcclDataType> sendScaleGlobalBuffer_;
-    GlobalTensor<hcclDataType> recvScaleGlobalBuffer_;
+    GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
+    GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
 
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
