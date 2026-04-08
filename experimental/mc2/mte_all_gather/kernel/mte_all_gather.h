@@ -40,7 +40,7 @@ private:
 
     GlobalTensor<XType> remoteWinXTensor_;
 
-    TQue<QuePosition::VECIN, 1> xInQueue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xInQueue_;
 };
 
 template <typename XType>
