@@ -1,0 +1,12 @@
+case_id;var_shape;indices_rank;indices_dtype;updates_dtype;has_smooth;reduce;axis
+0;[2,3,1,32];1;int32;float16;false;update;-2
+1;[2,3,1,32];1;int32;float16;true;update;-2
+2;[1,8,1,32];1;int64;bfloat16;false;none;-2
+3;[4,2,1,64];1;int32;float16;false;update;-2
+4;[2,3,1,32];2;int32;float16;false;update;-2
+5;[2,5,1,128];1;int32;float16;false;update;-2
+6;[6,2,1,32];1;int32;bfloat16;true;update;-2
+7;[1,1,1,32];1;int32;float16;false;update;-2
+8;[2,16,1,32];1;int32;float16;false;update;-2
+9;[2,16,1,64];1;int32;float16;true;update;-2
+10;[2,4,2,32];2;int32;float16;false;update;-2
