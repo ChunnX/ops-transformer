@@ -602,7 +602,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaBoolCopyI
     if ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
         (constInfo.layoutType != static_cast<uint32_t>(LayOutTypeEnum::LAYOUT_BNSD))) {
         intriParams.blockCount = 1;
-        if (isInt8 && isMlaFullQuant) {
+        if (isMlaFullQuant) {
             for (int i = 0; i < s1Size; i++) {
                 DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], intriParams, padParams);
                 // 下一行出现跨 G 时
@@ -1549,8 +1549,10 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::Bmm2DataCopy
     }
 
     if constexpr (isInfer) {
-        if (isMlaFullQuant && isInt8) {
-            if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
+        if (isMlaFullQuant) {
+            if (isFp8 && constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD)) {
+                MlaTranspose2DataCopyOut(runInfo, constInfo, attenOut);
+            } else if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
                 constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD) ||
                 constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::TND_NTD)) {
                 MlaTransposeDataCopyOut(runInfo, constInfo, attenOut);

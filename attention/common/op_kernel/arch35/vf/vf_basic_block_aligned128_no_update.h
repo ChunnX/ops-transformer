@@ -224,10 +224,14 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
                 // INT8: × 127
                 Muls(vreg_exp_even, vreg_exp_even, int8MaxValue, preg_all);
                 Muls(vreg_exp_odd, vreg_exp_odd, int8MaxValue, preg_all);
-            } else {
+            } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
                 // FP8: × 448
                 Muls(vreg_exp_even, vreg_exp_even, fp8e4m3MaxValue, preg_all);
                 Muls(vreg_exp_odd, vreg_exp_odd, fp8e4m3MaxValue, preg_all);
+            } else {
+                // HIFP8: × 32768
+                Muls(vreg_exp_even, vreg_exp_even, hifp8MaxValue, preg_all);
+                Muls(vreg_exp_odd, vreg_exp_odd, hifp8MaxValue, preg_all);
             }
         }
 
