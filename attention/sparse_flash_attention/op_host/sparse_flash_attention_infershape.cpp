@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_flash_attention_proto.cpp
+ * \file sparse_flash_attention_proto.cpp 
  * \brief
  */
 
