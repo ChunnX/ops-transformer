@@ -105,12 +105,14 @@ __aicore__ inline void MTECommunication<XType>::InitGMTensor(GM_ADDR x, GM_ADDR 
     uint64_t currCoreFlagOffset = 2UL * SINGLE_STATE_REGION_SIZE + aivId_ * WIN_ADDR_ALIGN;
     selfWinFlagGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)GetWinAddrGm(hcclContext_->rankId, currCoreFlagOffset));
     LocalTensor<uint32_t> winFlagLocalTensor = winFlagsBuf_.Get<uint32_t>();
-    DataCopy(winFlagLocalTensor, selfWinFlagGMTensor_, UB_ALIGN_BYTES / sizeof(uint32_t));
+    DataCopyPad(winFlagLocalTensor, selfWinFlagGMTensor_, 
+        {1, UB_ALIGN_BYTES, 0, 0, 0}, {false, 0, 0, 0});
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     winBufferFlags_ = winFlagLocalTensor.GetValue(ZERONE_STATE_POS);
     winFlagLocalTensor.SetValue(ZERONE_STATE_POS, 1 - winBufferFlags_);
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy(selfWinFlagGMTensor_, winFlagLocalTensor, UB_ALIGN_BYTES / sizeof(uint32_t));
+    DataCopyPad(selfWinFlagGMTensor_, winFlagLocalTensor, 
+        {1, UB_ALIGN_BYTES, 0, 0, 0});
 
     GM_ADDR localDataSpaceGm = GetWinDataAddrGm(hcclContext_->rankId, winBufferFlags_);
     localWinXGMTensor_.SetGlobalBuffer((__gm__ XType*)localDataSpaceGm);
@@ -151,10 +153,13 @@ template <typename XType>
 __aicore__ inline void MTECommunication<XType>::CopyDataBlock(uint64_t curXOffset, uint32_t count)
 {
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
+    DataCopyPad(xTmpTensor_, xGMTensor_[curXOffset], 
+        {1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0}, 
+        {false, 0, 0, 0});
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
-    DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
+    DataCopyPad(localWinXGMTensor_[curXOffset], xTmpTensor_, 
+        {1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0});
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 }
 
@@ -186,7 +191,8 @@ __aicore__ inline void MTECommunication<XType>::WriteStatusToWin()
         stateGMTensor.SetGlobalBuffer((__gm__ float*)remoteWinStateGM);
         uint64_t curOffset = (coreOffset + hcclContext_->rankId) * FLOAT_UB_ALIGN_NUM;
         SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM);
+        DataCopyPad(stateGMTensor[curOffset], statusTensor, 
+            {1, FLOAT_UB_ALIGN_NUM * sizeof(float), 0, 0, 0});
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 }
@@ -206,14 +212,16 @@ __aicore__ inline void MTECommunication<XType>::ReadStatus()
     float maxTarget = hcclContext_->rankDim + (float)0.5;
     while ((flag < minTarget) || (flag > maxTarget)) {
         SyncFunc<AscendC::HardEvent::S_MTE2>();
-        DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
+        DataCopyPad<float>(statusTensor, selfStatusWinTensor[offset], 
+            {1, static_cast<uint32_t>(statusCnt * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt);
+    DataCopyPad<float>(selfStatusWinTensor[offset], stateResetTensor_, 
+        {1, static_cast<uint32_t>(statusCnt * sizeof(float)), 0, 0, 0});
 }
 
 template <typename XType>

@@ -90,10 +90,13 @@ __aicore__ inline void MteAllGather<XType>::ExecuteAllGather()
             uint64_t outOffset = remoteRankId * xNums_ + curXOffset;
 
             LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
-            DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], copyBlockNum);
+            DataCopyPad(xTmpTensor, remoteWinXTensor_[curXOffset], 
+                {1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0}, 
+                {false, 0, 0, 0});
             xInQueue_.EnQue(xTmpTensor);
             xTmpTensor = xInQueue_.DeQue<XType>();
-            DataCopy(mteComm_.outputTensor_[outOffset], xTmpTensor, copyBlockNum);
+            DataCopyPad(mteComm_.outputTensor_[outOffset], xTmpTensor, 
+                {1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0});
             xInQueue_.FreeTensor(xTmpTensor);
         }
     }
