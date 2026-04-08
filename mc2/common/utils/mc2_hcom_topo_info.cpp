@@ -709,7 +709,7 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
 
     HcclResult hcclRet = instance.HcclEngineCtxGet(instance.hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL engine context failed start to create context");
+        OP_LOGD("", "Get HCCL engine context failed start to create context");
         ret = instance.CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
         if (ret != ACLNN_SUCCESS) return ret;
         hcclBuffSize = contextStruct.winSize;
