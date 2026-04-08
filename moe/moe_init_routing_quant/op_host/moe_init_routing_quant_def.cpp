@@ -58,6 +58,7 @@ public:
         this->Attr("offset").Float();
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend950");
     }
 };
 
