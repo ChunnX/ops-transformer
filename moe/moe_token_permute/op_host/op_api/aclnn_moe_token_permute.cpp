@@ -26,14 +26,6 @@ using namespace op;
 extern "C" {
 #endif
 
-#define CHECK_LOG_RET(cond, log_func, return_expr) \
-    do {                                           \
-        if (cond) {                                \
-            log_func;                              \
-        }                                          \
-        return_expr;                               \
-    } while (0)
-
 extern aclnnStatus aclnnInnerMoeTokenPermuteGetWorkspaceSize(
     const aclTensor* tokens, const aclTensor* indices, int64_t numOutTokens, bool paddedMode,
     const aclTensor* permuteTokensOut, const aclTensor* sortedIndicesOut, uint64_t* workspaceSize,
@@ -46,6 +38,7 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     const aclTensor* permuteTokensOut, const aclTensor* sortedIndicesOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenPermute,
         DFX_IN(tokens, indices, numOutTokens, paddedMode),
         DFX_OUT(permuteTokensOut, sortedIndicesOut));
@@ -69,16 +62,16 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto tokensContiguous = l0op::Contiguous(tokens, uniqueExecutor.get());
-    CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto indicesContiguous = l0op::Contiguous(indices, uniqueExecutor.get());
-    CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 调用l0接口进行计算
     auto result = l0op::MoeInitRoutingV2(tokensContiguous, indicesContiguous,
         numOutTokens, 0, 0, 0, 0, false,
         permuteTokensOut, sortedIndicesOut,
         nullptr, nullptr, uniqueExecutor.get());
-    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expertTokensBeforeCapacityOut_] = result;
+    auto [expandedXOut_, expandedRowIdxOut_, [[maybe_unused]] expertTokensCountOrCumsumOut_, [[maybe_unused]] expertTokensBeforeCapacityOut_] = result;
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
 
