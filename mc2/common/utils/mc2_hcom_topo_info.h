@@ -89,16 +89,15 @@ private:
     HcclResult (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
     HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t**, uint32_t*) = nullptr;
-    HcclResult (*HcclChannelAcquire)(HcclComm, const CommEngine&, const HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
+    HcclResult (*HcclChannelAcquire)(HcclComm, const CommEngine, const HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
     HcclResult (*HcclGetHcclBuffer)(HcclComm, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, const ChannelHandle&, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char*, const CommEngine&, uint64_t, void**) = nullptr;
-    HcclResult (*HcclEngineCtxGet)(HcclComm, const char*, const CommEngine&, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclEngineCtxCopy)(HcclComm, const CommEngine&, const char*, const void*, uint64_t, uint64_t) = nullptr;
+    HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void**, uint64_t*) = nullptr;
+    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char*, CommEngine, uint64_t, void**) = nullptr;
+    HcclResult (*HcclEngineCtxGet)(HcclComm, const char*, CommEngine, void**, uint64_t*) = nullptr;
+    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char*, const void*, uint64_t, uint64_t) = nullptr;
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t*) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t*) = nullptr;
-    aclTensor* (*aclCreateTensor)(const int64_t *viewDims, uint64_t viewDimsNum, aclDataType dataType, const int64_t *stride,
-                               int64_t offset, aclFormat format, const int64_t *storageDims, uint64_t storageDimsNum, void *tensorData) = nullptr;
+    aclTensor* (*aclCreateTensor)(const int64_t *, uint64_t , aclDataType , const int64_t *, int64_t , aclFormat , const int64_t *, uint64_t , void *) = nullptr;
 
 #ifdef BUILD_OPEN_PROJECT
     using FuncGetRankSizeEx = HcclResult (*)(const char *group, uint32_t *rankSize, uint32_t flag);
