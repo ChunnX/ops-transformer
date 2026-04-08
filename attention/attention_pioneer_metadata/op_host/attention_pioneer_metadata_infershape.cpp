@@ -13,7 +13,7 @@
  * \brief InferShape and InferDataType for AttentionPioneerMetadata AICPU operator.
  */
 #include "register/op_impl_registry.h"
-#include "../common/attention_pioneer_metadata.h"
+#include "../../attention_pioneer/op_host/common/attention_pioneer_metadata.h"
 
 using namespace ge;
 

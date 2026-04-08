@@ -41,7 +41,6 @@ public:
         this->Attr("next_tokens").Int(2147483647);
         this->Attr("input_layout").String("TND");
         this->Attr("input_layout_kv").String("TND");
-        this->Attr("sink_num").Int(0);
         this->Attr("k_sink_num").Int(0);
         this->Attr("rope_head_dim").Int(0);
         this->Attr("block_size").Int(0);

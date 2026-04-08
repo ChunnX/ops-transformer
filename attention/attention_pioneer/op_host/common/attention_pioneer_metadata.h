@@ -20,77 +20,69 @@
 
 namespace optiling {
 
-// A5 platform (V100) core numbers
+// A5 platform core numbers
 constexpr uint32_t AP_AIC_CORE_NUM = 32;
 constexpr uint32_t AP_AIV_CORE_NUM = 64;
+constexpr uint32_t AP_CV_RATIO = AP_AIV_CORE_NUM / AP_AIC_CORE_NUM;
 constexpr uint32_t AP_METADATA_SIZE = 1024;
 using AP_METADATA_T = int32_t;
 
-constexpr uint32_t AP_AIC_METADATA_SIZE = 10;
-constexpr uint32_t AP_AIV_METADATA_SIZE = 3;
-constexpr uint32_t AP_BASE_METADATA_SIZE = 10;
+// Per-core split result: bnStartIdx and gS1StartIdx arrays
+// Size = AP_AIC_CORE_NUM + 1 (extra sentinel entry for end boundary)
+constexpr uint32_t AP_SPLIT_ARRAY_LEN = AP_AIC_CORE_NUM + 1;
 
-// AIC Metadata Index Definitions
-constexpr uint32_t AP_AIC_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t AP_BN2_END_PTR_INDEX = 1;
-constexpr uint32_t AP_GS1_END_PTR_INDEX = 2;
-constexpr uint32_t AP_S2_END_PTR_INDEX = 3;
-constexpr uint32_t AP_BN2_IDX_OF_FD_HEAD_INDEX = 4;
-constexpr uint32_t AP_GS1_IDX_OF_FD_HEAD_INDEX = 5;
-constexpr uint32_t AP_S2_SPLIT_NUM_OF_FD_HEAD_INDEX = 6;
-constexpr uint32_t AP_S2_SPLIT_START_IDX_OF_CORE_INDEX = 7;
-constexpr uint32_t AP_GS1_SPLIT_NUM_OF_FD_HEAD_INDEX = 8;
-constexpr uint32_t AP_GS1_LAST_PART_SIZE_OF_FD_HEAD_INDEX = 9;
+// Base metadata field count
+constexpr uint32_t AP_BASE_METADATA_SIZE = 8;
 
-// AIV Metadata Index Definitions
-constexpr uint32_t AP_AIV_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t AP_GS1_IDX_END_OF_FD_HEAD_INDEX = 1;
-constexpr uint32_t AP_GS1_IDX_END_OF_FD_HEAD_SPLIT_INDEX = 2;
-
-// BASE Metadata Index Definitions
-constexpr uint32_t AP_M_BASE_SIZE_INDEX = 0;
-constexpr uint32_t AP_S_INNER_SIZE_INDEX = 1;
-constexpr uint32_t AP_M_FD_BASE_SIZE_INDEX = 2;
-constexpr uint32_t AP_NUM_OF_FD_INDEX = 3;
-constexpr uint32_t AP_USED_CORE_NUM_INDEX = 4;
-constexpr uint32_t AP_USED_VEC_NUM_OF_FD_INDEX = 5;
-constexpr uint32_t AP_S1_SIZE_INDEX = 6;
-constexpr uint32_t AP_S2_SIZE_INDEX = 7;
-constexpr uint32_t AP_ACTUAL_LEN_Q_DIM_INDEX = 8;
-constexpr uint32_t AP_ACTUAL_LEN_KV_DIM_INDEX = 9;
+// Base metadata field indices (within baseMetadata array)
+constexpr uint32_t AP_USED_CORE_NUM_INDEX = 0;    // cube cores actually used (before CV_RATIO)
+constexpr uint32_t AP_M_BASE_SIZE_INDEX = 1;       // sOuterSize (M dimension tile size)
+constexpr uint32_t AP_S_INNER_SIZE_INDEX = 2;      // sInnerSize (KV dimension tile size)
+constexpr uint32_t AP_S1_OUTER_SIZE_INDEX = 3;     // total sOuter blocks
+constexpr uint32_t AP_S1_SIZE_INDEX = 4;           // max Q sequence length
+constexpr uint32_t AP_S2_SIZE_INDEX = 5;           // max KV sequence length
+constexpr uint32_t AP_ACTUAL_LEN_Q_DIM_INDEX = 6;  // actualSeqLengths Q dim count
+constexpr uint32_t AP_ACTUAL_LEN_KV_DIM_INDEX = 7; // actualSeqLengths KV dim count
 
 /**
- * @brief Get absolute index for AIC metadata
+ * Metadata layout (flat int32_t[1024]):
+ *   [0..32]   bnStartIdx[33]    - per-core batch*head start index
+ *   [33..65]  gS1StartIdx[33]   - per-core sOuter block start index
+ *   [66..73]  baseMetadata[8]   - scalar parameters
  */
-#ifdef __CCE_AICORE__
-__aicore__ inline uint32_t GetAPAICMetaAbsIndex(uint32_t coreIdx, uint32_t metaIdx)
-{
-    return coreIdx * AP_AIC_METADATA_SIZE + metaIdx;
-}
-
-__aicore__ inline uint32_t GetAPAIVMetaAbsIndex(uint32_t coreIdx, uint32_t metaIdx)
-{
-    const uint32_t aicTotalSize = AP_AIC_CORE_NUM * AP_AIC_METADATA_SIZE;
-    return aicTotalSize + coreIdx * AP_AIV_METADATA_SIZE + metaIdx;
-}
-
-__aicore__ inline uint32_t GetAPBaseMetaAbsIndex(uint32_t metaIdx)
-{
-    const uint32_t aicTotalSize = AP_AIC_CORE_NUM * AP_AIC_METADATA_SIZE;
-    const uint32_t aivTotalSize = AP_AIV_CORE_NUM * AP_AIV_METADATA_SIZE;
-    return aicTotalSize + aivTotalSize + metaIdx;
-}
-#endif
-
 namespace detail {
 struct APMetaData {
-    uint32_t aicMetadata[AP_AIC_CORE_NUM][AP_AIC_METADATA_SIZE];
-    uint32_t aivMetadata[AP_AIV_CORE_NUM][AP_AIV_METADATA_SIZE];
-    uint32_t baseMetadata[AP_BASE_METADATA_SIZE];
+    int32_t bnStartIdx[AP_SPLIT_ARRAY_LEN];
+    int32_t gS1StartIdx[AP_SPLIT_ARRAY_LEN];
+    int32_t baseMetadata[AP_BASE_METADATA_SIZE];
 };
 } // namespace detail
 
-static_assert(AP_METADATA_SIZE * sizeof(AP_METADATA_T) >= sizeof(detail::APMetaData));
+static_assert(AP_METADATA_SIZE * sizeof(AP_METADATA_T) >= sizeof(detail::APMetaData),
+    "APMetaData must fit within AP_METADATA_SIZE int32_t elements");
+
+// Offset constants for flat access
+constexpr uint32_t AP_BN_START_IDX_OFFSET = 0;
+constexpr uint32_t AP_GS1_START_IDX_OFFSET = AP_SPLIT_ARRAY_LEN;
+constexpr uint32_t AP_BASE_OFFSET = AP_SPLIT_ARRAY_LEN * 2;
+
+#ifdef __CCE_AICORE__
+__aicore__ inline uint32_t GetAPBnStartIdx(uint32_t coreIdx)
+{
+    return AP_BN_START_IDX_OFFSET + coreIdx;
+}
+
+__aicore__ inline uint32_t GetAPGS1StartIdx(uint32_t coreIdx)
+{
+    return AP_GS1_START_IDX_OFFSET + coreIdx;
+}
+
+__aicore__ inline uint32_t GetAPBaseMetaIndex(uint32_t fieldIdx)
+{
+    return AP_BASE_OFFSET + fieldIdx;
+}
+#endif
+
 } // namespace optiling
 
 #endif // ATTENTION_PIONEER_METADATA_H

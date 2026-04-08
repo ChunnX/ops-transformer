@@ -39,7 +39,6 @@ const aclTensor* AttentionPioneerMetadata(
     int64_t nextTokensOptional,
     char *inputLayoutOptional,
     char *inputLayoutKvOptional,
-    int64_t sinkNumOptional,
     int64_t kSinkNumOptional,
     int64_t ropeHeadDimOptional,
     int64_t blockSizeOptional,
@@ -51,7 +50,7 @@ const aclTensor* AttentionPioneerMetadata(
     L0_DFX(AttentionPioneerMetadata, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
             numHeadsQ, numHeadsKv, headDimQk, headDimV,
             batchSizeOptional, sparseModeOptional, preTokensOptional, nextTokensOptional,
-            inputLayoutOptional, inputLayoutKvOptional, sinkNumOptional, kSinkNumOptional,
+            inputLayoutOptional, inputLayoutKvOptional, kSinkNumOptional,
             ropeHeadDimOptional, blockSizeOptional, socVersion, aicCoreNum, aivCoreNum, metaData);
 
     static internal::AicpuTaskSpace space("AttentionPioneerMetadata");
@@ -59,13 +58,13 @@ const aclTensor* AttentionPioneerMetadata(
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         AttentionPioneerMetadata,
         OP_ATTR_NAMES({"num_heads_q", "num_heads_kv", "head_dim_qk", "head_dim_v", "batch_size", "sparse_mode",
-                    "pre_tokens", "next_tokens", "input_layout", "input_layout_kv", "sink_num", "k_sink_num",
+                    "pre_tokens", "next_tokens", "input_layout", "input_layout_kv", "k_sink_num",
                     "rope_head_dim", "block_size", "soc_version", "aic_core_num", "aiv_core_num"}),
         OP_INPUT(actualSeqLengthsOptional, actualSeqLengthsKvOptional),
         OP_OUTPUT(metaData),
         OP_ATTR(numHeadsQ, numHeadsKv, headDimQk, headDimV, batchSizeOptional, sparseModeOptional,
                 preTokensOptional, nextTokensOptional, inputLayoutOptional, inputLayoutKvOptional,
-                sinkNumOptional, kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
+                kSinkNumOptional, ropeHeadDimOptional, blockSizeOptional,
                 socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
