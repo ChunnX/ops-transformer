@@ -1334,11 +1334,29 @@ ge::graphStatus DequantChecker::CheckFeatureForAntiquant(const FiaTilingInfo &fi
 
 ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingInfo &fiaInfo)
 {
+    // 伪量化场景校验支持的inputLayout
+    const std::string inputLayout = fiaInfo.opParamInfo.layOut;
+    const std::vector<std::string> supportedLayoutList = {
+        "BSH", "BSND", "BNSD", "BNSD_BSND", "TND"};
+
     OP_CHECK_IF(
-        (fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.qLayout == FiaLayout::TND),
-        OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                                "the layout of input does not support TND."),
+        (std::find(supportedLayoutList.begin(), supportedLayoutList.end(), inputLayout) == supportedLayoutList.end()),
+        OP_LOGE(fiaInfo.opName, "In antiquant scenario, inputLayout only supports (BSH, BNSD, BSND, BNSD_BSND, TND), "
+                                "but got %s.", inputLayout.c_str()),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        (fiaInfo.inputKvType == ge::DT_INT8 && inputLayout == "TND"),
+        OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                                "the inputLayout of input does not support TND."),
+        return ge::GRAPH_FAILED);
+
+    if (fiaInfo.s1Size == 1) {
+        OP_CHECK_IF(
+            inputLayout == "BNSD_BSND",
+            OP_LOGE(fiaInfo.opName, "In antiquant scenario, BNSD_BSND inputLayout is not supported when Q_S is 1."),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
