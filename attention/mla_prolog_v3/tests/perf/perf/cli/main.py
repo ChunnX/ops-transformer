@@ -10,7 +10,7 @@ from ..model.operator_params import OperatorParams
 from ..tiling.config import compute_tiling
 from .formatting import params_from_testcase
 from .modes import (
-    advice, block_search, bound, estimate, pipeline, prefill,
+    advice, block_search, bound, dequant_opt, estimate, pipeline, prefill,
     report, roofline, search, split_kn, split_m,
 )
 
@@ -72,7 +72,8 @@ def main():
     parser.add_argument("--mode", type=str, default="full",
                         choices=["bound", "pipeline", "estimate", "advice",
                                  "search", "report", "roofline", "block-search",
-                                 "split-kn", "split-m", "prefill", "full"],
+                                 "split-kn", "split-m", "prefill", "dequant-opt",
+                                 "full"],
                         help="Analysis mode (default: full = all modes)")
 
     # Hardware
@@ -153,6 +154,7 @@ def main():
         "split-kn": split_kn.run,
         "split-m": split_m.run,
         "prefill": prefill.run,
+        "dequant-opt": dequant_opt.run,
     }
 
     if args.mode == "full":
@@ -165,6 +167,10 @@ def main():
             split_kn.run(params, tiling, hw)
             split_m.run(params, tiling, hw)
             prefill.run(params, tiling, hw)
+            # Note: dequant_opt is intentionally NOT in `full` mode — adding it
+            # would change every existing `--mode full` golden snapshot, breaking
+            # the bit-identical regression invariant. Run it explicitly via
+            # `--mode dequant-opt`.
     else:
         modes[args.mode](params, tiling, hw)
 

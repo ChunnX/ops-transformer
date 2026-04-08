@@ -134,9 +134,20 @@ Not beneficial for decode (T=1). Requires `--chip 950`.
 python perf_analyzer.py --chip 950 --batch-size 512 --head-num 128 --mode split-m
 ```
 
+### `dequant-opt` — UB-Pipelined Dequant+RoPE Analysis
+
+Estimates the savings from running the dequant+RoPE pipeline directly through the L0C → UB → L1 path on a single AI core (intra-core HardEvent sync), instead of round-tripping through GM with cross-core CrossCoreSetFlag/WaitFlag pairs. Reports a stage-by-stage comparison vs the baseline pipeline, the DequantRopeUB sub-stage breakdown (L0C→UB, UB compute, UB→L1), and the per-core UB / L1 budget.
+
+Applicable when the configuration uses byte-quantized weights (FP8 / INT8 / MXFP8) and `head_num >= 8`. Requires `--chip 950` because the model relies on the per-cycle UB↔L1 bandwidth path. Reference iterators: `attention/mla_preprocess/op_kernel/l0c_to_ub_iterator.h` and `l1_to_ub_iterator.h`.
+
+```bash
+python perf_analyzer.py --chip 950 --batch-size 1 --head-num 128 \
+    --weight-quant-mode 3 --mode dequant-opt
+```
+
 ### `full` — All Modes Combined
 
-Runs bound + pipeline + estimate + advice + search. On Ascend 950, also runs roofline + block-search + split-kn + split-m.
+Runs bound + pipeline + estimate + advice + search. On Ascend 950, also runs roofline + block-search + split-kn + split-m. Note: `dequant-opt` is intentionally **not** in `full` mode, run it explicitly.
 
 ## Architecture
 

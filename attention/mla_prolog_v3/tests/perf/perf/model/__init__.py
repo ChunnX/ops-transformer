@@ -22,6 +22,10 @@ from .matmul_split_kn import (
 from .matmul_split_m import SplitMSpec, estimate_matmul_split_m
 from .matmul_k_outer import estimate_matmul_k_outer
 from .vector_ops import estimate_vector_op
+from .dequant_opt import (
+    DequantOptStageTiming, DequantOptBudget,
+    estimate_dequant_opt_pipeline, is_dequant_opt_applicable, compute_budget,
+)
 from .orchestration import (
     get_default_block_specs,
     estimate_all_stages,

@@ -1,0 +1,52 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=1, T=1, N=128, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=2, kv_quant=1, query_quant=0
+  Resolved quant_mode: FULL_QUANT_KV_QUANT_PER_TENSOR
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=1, vectorBlocks=1
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=768
+MM4: cores=32, singleBatch=4
+groupComputeOpt=False, dequantOpt=True
+workspace=273696 bytes
+
+======================================================================
+  DEQUANT-OPT — UB-Pipelined Dequant+RoPE Analysis
+======================================================================
+
+
+MM3 → DequantRope → MM4 segment comparison
+Stage                    Baseline (us)     dequantOpt (us)             Δ
+  ----------------------------------------------------------------------
+  MM3_QcQr                      23.593              23.593         0.000
+  sync→AIV                       0.800               0.000        -0.800
+  DequantQc                      0.105               0.000        -0.105
+  RopeQr                         0.105               0.000        -0.105
+  sync→AIC                       0.800               0.000        -0.800
+  DequantRopeUB                  0.000               0.019         0.019
+  MM4_Qn                         0.333               0.333         0.000
+  ----------------------------------------------------------------------
+  Segment total                 27.335              23.945        -3.390  (-12.4%)
+
+Whole pipeline (DAG critical path)
+  Baseline       : 51.100 us
+  dequantOpt     : 47.815 us
+  Δ              : -3.286 us  (-6.4%)
+
+DequantRopeUB stage breakdown (per AI core, per stepBatchSize=1)
+  L0C → UB         : 0.007 us
+  UB compute       : 0.008 us
+  UB → L1          : 0.004 us
+  intra-core sync  : 0.000 us  (assumed 0 per H6)
+  total            : 0.019 us
+  bound            : UBCOMPUTE
+  per-core N       : 768  (active cores: 32)
+
+Resource budget (per AI core)
+  UB used          :   17280 / 262144 bytes  (6.6%)
+  L1 used          :    3072 / 524288 bytes  (0.6%)

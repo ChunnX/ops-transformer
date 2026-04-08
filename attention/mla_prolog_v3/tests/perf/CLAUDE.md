@@ -214,7 +214,8 @@ python perf_analyzer.py --chip 950 --batch-size 32 --head-num 128 --mode block-s
 | `split-kn` | 2D N×K 切分搜索 | ✓ |
 | `split-m` | M 轴切分搜索 | ✓ |
 | `prefill` | K-outer + cube-bound 优化 | ✓ |
-| `full` | 上面全部 | |
+| `dequant-opt` | UB-pipelined dequant+RoPE (L0C→UB→L1, intra-core sync) | ✓ |
+| `full` | 上面全部（不含 `dequant-opt`，避免破坏 regression goldens） | |
 
 ### 程序化调用
 
@@ -275,6 +276,7 @@ print(f"Critical path: {' → '.join(result.critical_path)}")
 6. **MM3/MM4 的 Split-KN**：仅建模 MM1/MM2 的 Split-KN，MM3/MM4 始终用 Split-N（因为 MM4 矩阵小、MM3 N 已经够大）
 7. **kNopeClipAlpha**：作为标量参数，对性能影响可忽略，未纳入模型
 8. **变长序列 (PA_BLK_BSND/PA_BLK_NZ)**：cacheIndex 间接寻址成本未单独建模
+9. **dequant-opt intra-core HardEvent 延迟**：`build_pipeline_dag_dequant_opt` 假设 `FIX_V`、`V_MTE3`、`MTE3_M` 等核内 HardEvent 同步开销为 0，与 H6 相符。实际硬件可能有 1–2 cycle stalls，需 profiling 校准。
 
 ---
 

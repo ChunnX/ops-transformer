@@ -88,6 +88,23 @@ GOLDEN_CASES = [
     ("prefill_t256_prefill_mode",
         ["--chip", "950", "--batch-size", "1", "--seq-len", "256",
          "--head-num", "128", "--mode", "prefill"]),
+
+    # dequantOpt UB-pipelined dequant+rope (Phase 2 of perf-modeling refactor)
+    ("decode_bs1_fp8_dequant_opt",
+        ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
+         "--head-num", "128", "--weight-quant-mode", "3",
+         "--mode", "dequant-opt"]),
+    ("decode_bs8_int8_dequant_opt",
+        ["--chip", "950", "--batch-size", "8", "--seq-len", "1",
+         "--head-num", "128", "--weight-quant-mode", "2",
+         "--kv-cache-quant-mode", "1", "--mode", "dequant-opt"]),
+    ("decode_bs1_int8_dequant_opt",
+        ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
+         "--head-num", "128", "--weight-quant-mode", "2",
+         "--kv-cache-quant-mode", "1", "--mode", "dequant-opt"]),
+    ("decode_bs1_bf16_dequant_opt",
+        ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
+         "--head-num", "128", "--mode", "dequant-opt"]),
 ]
 
 

@@ -6,10 +6,10 @@ The dispatcher in perf.cli.main maps `--mode` strings to these `run` callables.
 
 from . import (
     bound, pipeline, estimate, advice, search, report,
-    roofline, block_search, split_kn, split_m, prefill,
+    roofline, block_search, split_kn, split_m, prefill, dequant_opt,
 )
 
 __all__ = [
     "bound", "pipeline", "estimate", "advice", "search", "report",
-    "roofline", "block_search", "split_kn", "split_m", "prefill",
+    "roofline", "block_search", "split_kn", "split_m", "prefill", "dequant_opt",
 ]

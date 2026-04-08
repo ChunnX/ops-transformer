@@ -15,6 +15,10 @@ import unittest
 from perf.model.block_spec import (
     MatmulBlockSpec, check_cache_fit, derive_stepK,
 )
+from perf.model.dequant_opt import (
+    compute_budget, estimate_dequant_opt_pipeline,
+    is_dequant_opt_applicable,
+)
 from perf.model.hardware import ASCEND_910B, ASCEND_950
 from perf.model.matmul_detailed import estimate_matmul_detailed
 from perf.model.matmul_k_outer import estimate_matmul_k_outer
@@ -32,7 +36,7 @@ from perf.model.quant import (
     resolve_quant_mode,
 )
 from perf.model.vector_ops import estimate_vector_op
-from perf.pipeline.dag import build_pipeline_dag
+from perf.pipeline.dag import build_pipeline_dag, build_pipeline_dag_dequant_opt
 from perf.pipeline.kernel_time import estimate_kernel_time
 from perf.pipeline.roofline import roofline_analysis
 from perf.tiling.config import TilingConfig, compute_tiling
@@ -256,6 +260,90 @@ class TestRoofline(unittest.TestCase):
             self.assertIn(mm, results)
             self.assertGreater(results[mm].arithmetic_intensity, 0)
             self.assertGreater(results[mm].peak_gflops, 0)
+
+
+class TestDequantOptPipeline(unittest.TestCase):
+    """Pin the dequantOpt UB pipeline numerical model."""
+
+    def _make_fp8_decode_bs1(self):
+        params = OperatorParams(
+            batch_size=1, seq_len=1, head_num=128, weight_quant_mode=3)
+        tiling = compute_tiling(params, ASCEND_950)
+        return params, tiling
+
+    def test_estimate_decode_bs1_fp8(self):
+        params, tiling = self._make_fp8_decode_bs1()
+        timing = estimate_dequant_opt_pipeline(params, tiling, ASCEND_950)
+        # Sanity: positive total, sensible breakdown, bound classified.
+        self.assertGreater(timing.total_us, 0.0)
+        self.assertGreater(timing.l0c_to_ub_us, 0.0)
+        self.assertGreater(timing.ub_compute_us, 0.0)
+        self.assertGreater(timing.ub_to_l1_us, 0.0)
+        self.assertEqual(timing.intra_core_sync_us, 0.0)
+        self.assertIn(timing.bound, ("L0C2UB", "UBCOMPUTE", "UB2L1"))
+        # Pipeline should sum to 3 components (no internal pingpong assumption).
+        expected_total = (timing.l0c_to_ub_us + timing.ub_compute_us
+                          + timing.ub_to_l1_us)
+        self.assertAlmostEqual(timing.total_us, expected_total, places=9)
+        # Active cores must match the tiling.
+        self.assertEqual(timing.active_cores, tiling.mm3_block_num)
+
+    def test_dag_eliminates_cross_core_sync(self):
+        """The dequantOpt DAG must drop the post-MM3 cross-core sync edges."""
+        params, tiling = self._make_fp8_decode_bs1()
+        baseline = build_pipeline_dag(params, tiling, ASCEND_950)
+        optimized = build_pipeline_dag_dequant_opt(params, tiling, ASCEND_950)
+        # Baseline has these explicit cross-core sync stages around MM3 → MM4.
+        for sync_name in ("sync_signal_QCQR", "aic_wait_DEQUANT_QC",
+                          "sync_signal_DEQUANT_QC", "aiv_wait_QCQR"):
+            self.assertIn(sync_name, baseline.stages,
+                          f"baseline missing expected sync {sync_name}")
+            self.assertNotIn(sync_name, optimized.stages,
+                             f"optimized DAG should drop {sync_name}")
+        # Optimized DAG must contain the new fused stage.
+        self.assertIn("DequantRopeUB", optimized.stages)
+
+    def test_total_le_baseline(self):
+        """Optimized pipeline should never be slower than baseline."""
+        params, tiling = self._make_fp8_decode_bs1()
+        baseline = build_pipeline_dag(params, tiling, ASCEND_950)
+        optimized = build_pipeline_dag_dequant_opt(params, tiling, ASCEND_950)
+        self.assertLessEqual(optimized.total_us, baseline.total_us)
+
+    def test_ub_budget_under_cap(self):
+        """UB usage must fit within hardware capacity for the four golden configs."""
+        configs = [
+            OperatorParams(batch_size=1, seq_len=1, head_num=128, weight_quant_mode=3),
+            OperatorParams(batch_size=8, seq_len=1, head_num=128,
+                           weight_quant_mode=2, kv_cache_quant_mode=1),
+            OperatorParams(batch_size=1, seq_len=1, head_num=128,
+                           weight_quant_mode=2, kv_cache_quant_mode=1),
+            OperatorParams(batch_size=1, seq_len=1, head_num=128),  # BF16
+        ]
+        for params in configs:
+            tiling = compute_tiling(params, ASCEND_950)
+            timing = estimate_dequant_opt_pipeline(params, tiling, ASCEND_950)
+            budget = compute_budget(timing, ASCEND_950)
+            self.assertTrue(
+                budget.fits,
+                f"UB/L1 budget exceeded for {params.quant_mode.name}: "
+                f"UB {budget.ub_used_bytes}/{budget.ub_total_bytes}, "
+                f"L1 {budget.l1_used_bytes}/{budget.l1_total_bytes}")
+
+    def test_applicability_gate(self):
+        """is_dequant_opt_applicable must mirror the host-side gate."""
+        # FP8 with 128 heads — applicable
+        p = OperatorParams(batch_size=1, head_num=128, weight_quant_mode=3)
+        t = compute_tiling(p, ASCEND_950)
+        self.assertTrue(is_dequant_opt_applicable(p, t))
+        # BF16 — not applicable (no byte-quant weight)
+        p = OperatorParams(batch_size=1, head_num=128)
+        t = compute_tiling(p, ASCEND_950)
+        self.assertFalse(is_dequant_opt_applicable(p, t))
+        # FP8 with 4 heads — not applicable (N < 8)
+        p = OperatorParams(batch_size=1, head_num=4, weight_quant_mode=3)
+        t = compute_tiling(p, ASCEND_950)
+        self.assertFalse(is_dequant_opt_applicable(p, t))
 
 
 class TestBackwardCompat(unittest.TestCase):
