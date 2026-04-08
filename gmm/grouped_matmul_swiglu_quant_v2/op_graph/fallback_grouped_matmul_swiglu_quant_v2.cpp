@@ -206,7 +206,7 @@ static graphStatus PrepareOutputTensor(const OpExecuteContext *host_api_ctx,
 
 static graphStatus GroupedMatmulSwigluQuantV2ExecuteFunc(OpExecuteContext* host_api_ctx)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do InferShape GroupedMatmulSwigluQuantV2.");
+    OP_LOGD("GroupedMatmulSwigluQuantV2 aclnnfallback", "Begin to do InferShape GroupedMatmulSwigluQuantV2.");
     OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "The host_api_ctx is null"), return GRAPH_FAILED);
     auto attrs = host_api_ctx->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "The attrs is null"), return GRAPH_FAILED);
@@ -265,7 +265,7 @@ static graphStatus GroupedMatmulSwigluQuantV2ExecuteFunc(OpExecuteContext* host_
                                   geTensorY, geTensorYScale);
     OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "The api_ret failed:%u", api_ret),
               return GRAPH_FAILED);
-    OP_LOGD(context->GetNodeName(), "End InferShape GroupedMatmulSwigluQuantV2.");
+    OP_LOGD("GroupedMatmulSwigluQuantV2 aclnnfallback", "End InferShape GroupedMatmulSwigluQuantV2.");
     return GRAPH_SUCCESS;
 }
 
