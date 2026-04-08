@@ -89,6 +89,7 @@ enum KernelBranch {
 
 bool FlashAttentionScoreGradTilingS1s2Bn2::IsCapable()
 {
+    return true;
     auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
     if (sinkShape != nullptr && sinkShape->GetStorageShape().GetDimNum() == 1 ) {
         return false;
@@ -153,6 +154,7 @@ bool FlashAttentionScoreGradTilingS1s2Bn2::IsCapable()
 
 bool FlashAttentionScoreGradTilingDeterministic::IsCapable()
 {
+    return false;
     auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
     if (sinkShape != nullptr && sinkShape->GetStorageShape().GetDimNum() == 1 ) {
         return false;
