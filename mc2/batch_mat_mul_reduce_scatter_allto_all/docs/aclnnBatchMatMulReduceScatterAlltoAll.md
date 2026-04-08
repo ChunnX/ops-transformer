@@ -37,10 +37,10 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBatchMatMulReduceScatterAlltoAll”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnBatchMatMulReduceScatterAllToAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBatchMatMulReduceScatterAlltoAll”接口执行计算。
 
 ```cpp
-aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(
+aclnnStatus aclnnBatchMatMulReduceScatterAllToAllGetWorkspaceSize(
     const aclTensor* x,
     const aclTensor* weight,
     const aclTensor* biasOptional,
@@ -62,7 +62,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
     aclrtStream     stream)
 ```
 
-## aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize
+## aclnnBatchMatMulReduceScatterAllToAllGetWorkspaceSize
 
 - **参数说明**
 
@@ -266,7 +266,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
     <tr>
     <td>workspaceSize</td>
     <td>输入</td>
-    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize</code>获取。</td>
+    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnBatchMatMulReduceScatterAllToAllGetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
     <td>executor</td>
@@ -298,7 +298,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
       - y：(E, C, H/tp)
 
    - 按C轴进行ReduceScatter场景，即yShardType为1场景：
-     - x: (E/ep, ep*tp\*C/tp, M/tp)
+     - x: (E/ep, ep*tp*C/tp, M/tp)
      - weight：(E/ep, M/tp, H)
      - biasOptional：非空指针情况下，三维时为(E/ep, 1, H)，两维时为(E/ep, H)
      - y：(E, C/tp, H)
@@ -339,7 +339,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
     #define LOG_PRINT(message, ...)         \
         do {                                \
-            printf(message, ##__VA_ARGS__); \
+            f(message, ##__VA_ARGS__); \
         } while(0)
 
     constexpr int EP_WORLD_SIZE = 4;
@@ -420,7 +420,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
             return -1;
         }
 
-        printf("x_shape: %d %d %d\n", xShape[0], xShape[1], xShape[2]);
+        printf("x_shape: %ld %ld %ld\n", xShape[0], xShape[1], xShape[2]);
         printf("weight_shape: %d %d %d\n", weightShape[0], weightShape[1], weightShape[2]);
         printf("bias_shape: %d %d %d\n", biasShape[0], biasShape[1], biasShape[2]);
         printf("y_shape: %d %d %d\n", yOutShape[0], yOutShape[1], yOutShape[2]);
@@ -456,10 +456,10 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
 
         // 调用第一阶段接口
-        ret = aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, bias, hcomEpName, hcomTpName, EP_WORLD_SIZE,
+        ret = aclnnBatchMatMulReduceScatterAllToAllGetWorkspaceSize(x, weight, bias, hcomEpName, hcomTpName, EP_WORLD_SIZE,
             TP_WORLD_SIZE, xShardType, yOut, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+            LOG_PRINT("[ERROR] aclnnBatchMatMulReduceScatterAllToAllGetWorkspaceSize failed. ret = %d \n", ret); return ret);
         // 根据第一阶段接口计算出的workspaceSize申请device内存
         if (workspaceSize > 0) {
             ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);

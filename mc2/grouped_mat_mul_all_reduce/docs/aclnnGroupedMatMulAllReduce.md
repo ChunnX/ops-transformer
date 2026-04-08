@@ -551,7 +551,7 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
 
   // 调用aclrtMemcpy将Host侧数据拷贝到Device侧内存上
-  uint8_t* hostData = new (std::nothrow) uint8_t[size];
+  int64_t* hostData = new (std::nothrow) int64_t[size];
   if (int_array) {
     tensor = (void*)aclCreateIntArray((int64_t*)hostData, size / sizeof(int64_t));
     delete[] hostData;
@@ -932,8 +932,8 @@ int main(int argc, char *argv[])
     ACL_CHECK(aclInit(NULL));
     for (int i = 0; i < 1; i++) {
         // 初始化集合通信域
-        for (int i = 0; i < input_args.ndev; i++) {
-            ACL_CHECK(aclrtSetDevice(devices[i]));
+        for (int j = 0; j < input_args.ndev; j++) {
+            ACL_CHECK(aclrtSetDevice(devices[j]));
         }
         ret = HcclCommInitAll(input_args.ndev, devices, comms);
         if (ret != 0) {

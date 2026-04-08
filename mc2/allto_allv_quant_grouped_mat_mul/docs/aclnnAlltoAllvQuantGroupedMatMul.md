@@ -734,7 +734,7 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
     if (mmWScaleDeviceAddr != nullptr) aclrtFree(mmWScaleDeviceAddr);
     if (workspaceSize > 0) aclrtFree(workspaceAddr);
     
-    HcclCommDestroy(args.hcclComm);
+    HcclDestroyComm(args.hcclComm);
     aclrtDestroyStream(args.stream);
     aclrtDestroyContext(args.context);
     aclrtResetDevice(args.rankId);
