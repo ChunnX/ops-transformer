@@ -1,3 +1,263 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file masked_causal_conv1d_backward_arch35.cpp
+ * \brief MaskedCausalConv1dBackward tiling implementation
+ */
+
+#include "masked_causal_conv1d_backward_tiling_arch35.h"
+#include <algorithm>
+#include "securec.h"
+
+namespace optiling {
+
+
+using MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35;
+
+bool MaskedCausalConv1dBackwardTiling::IsCapable()
+{
+    return true;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::GetPlatformInfo()
+{
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        auto compileInfoPtr =
+            reinterpret_cast<const MaskedCausalConv1dBackwardArch35CompileInfo *>(context_->GetCompileInfo());
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
+        totalCoreNum_ = compileInfoPtr->coreNum;
+        ubSize_ = compileInfoPtr->ubSize;
+    } else {
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
+        OP_CHECK_IF(totalCoreNum_ == 0UL, OP_LOGE(context_->GetNodeName(), "coreNum is 0"), return ge::GRAPH_FAILED);
+        uint64_t ubSize = 0;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+        OP_CHECK_IF(ubSize == static_cast<uint64_t>(0), OP_LOGE(context_->GetNodeName(), "ubSize is 0"),
+                    return ge::GRAPH_FAILED);
+        ubSize_ = static_cast<uint64_t>(ubSize);
+    }
+    
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
+{
+    auto shape = context_->GetInputShape(GRAD_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shape);
+    auto origin = shape->GetOriginShape();
+
+    OP_CHECK_IF(origin.GetDimNum() != 3,
+                OP_LOGE(context_->GetNodeName(), "grad_output dim num must be 3, but got %lu", origin.GetDimNum()),
+                return ge::GRAPH_FAILED);
+
+    S_ = static_cast<int64_t>(origin.GetDim(DIM_0));
+    B_ = static_cast<int64_t>(origin.GetDim(DIM_1));
+    H_ = static_cast<int64_t>(origin.GetDim(DIM_2));
+
+    OP_CHECK_IF(S_ <= 0 || S_ > (1 << 15), OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(B_ <= 0 || B_ > 8, OP_LOGE(context_->GetNodeName(), "invalid B=%ld", B_), return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(H_ < 384 || H_ > (192 * 128), OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
+    //             return ge::GRAPH_FAILED);
+
+    // H 必须按 64 对齐以便 H 方向切分
+    OP_CHECK_IF((H_ % DIM_ALIGN_ELEMENT) != 0,
+                OP_LOGE(context_->GetNodeName(), "H must be multiple of %ld, got %ld", DIM_ALIGN_ELEMENT, H_),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateInputShape()
+{
+    auto goShape = context_->GetInputShape(GRAD_OUTPUT_INDEX)->GetOriginShape();
+
+    auto inShape = context_->GetInputShape(INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, inShape);
+    auto inOrigin = inShape->GetOriginShape();
+
+    OP_CHECK_IF(inOrigin.GetDimNum() != 3,
+                OP_LOGE(context_->GetNodeName(), "input dim num must be 3, but got %lu", inOrigin.GetDimNum()),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(goShape.GetDim(DIM_0) != inOrigin.GetDim(DIM_0) || goShape.GetDim(DIM_1) != inOrigin.GetDim(DIM_1) ||
+                    goShape.GetDim(DIM_2) != inOrigin.GetDim(DIM_2),
+                OP_LOGE(context_->GetNodeName(), "input shape mismatch with grad_output"), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateWeightShape()
+{
+    auto wShape = context_->GetInputShape(WEIGHT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
+    auto wOrigin = wShape->GetOriginShape();
+
+    OP_CHECK_IF(wOrigin.GetDimNum() != 2,
+                OP_LOGE(context_->GetNodeName(), "weight dim num must be 2, but got %lu", wOrigin.GetDimNum()),
+                return ge::GRAPH_FAILED);
+
+    W_ = static_cast<int64_t>(wOrigin.GetDim(DIM_0));
+    auto wH = static_cast<int64_t>(wOrigin.GetDim(DIM_1));
+
+    OP_CHECK_IF(W_ != 3, OP_LOGE(context_->GetNodeName(), "weight[0]=W must be 3, but got %ld", W_),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(wH != H_, OP_LOGE(context_->GetNodeName(), "weight dim1 %ld must match H %ld", wH, H_),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskShape()
+{
+    auto maskShape = context_->GetOptionalInputShape(MASK_INDEX);
+    if (maskShape == nullptr) {
+        hasMask_ = 0;
+        return ge::GRAPH_SUCCESS;
+    }
+    hasMask_ = 1;
+    auto mOrigin = maskShape->GetOriginShape();
+
+    OP_CHECK_IF(mOrigin.GetDimNum() != 2,
+                OP_LOGE(context_->GetNodeName(), "mask dim num must be 2, but got %lu", mOrigin.GetDimNum()),
+                return ge::GRAPH_FAILED);
+
+    auto mB = static_cast<int64_t>(mOrigin.GetDim(DIM_0));
+    auto mS = static_cast<int64_t>(mOrigin.GetDim(DIM_1));
+
+    OP_CHECK_IF(mB != B_ || mS != S_,
+                OP_LOGE(context_->GetNodeName(), "mask shape must be [B,S]=[%ld,%ld], got [%ld,%ld]", B_, S_, mB, mS),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputType()
+{
+    dataType_ = context_->GetInputDesc(GRAD_OUTPUT_INDEX)->GetDataType();
+    OP_CHECK_IF(dataType_ != ge::DataType::DT_FLOAT16 && dataType_ != ge::DataType::DT_BF16,
+                OP_LOGE(context_->GetNodeName(), "grad_output dtype must be FLOAT16 or BF16, but got %s",
+                        Ops::Base::ToString(dataType_).c_str()),
+                return ge::GRAPH_FAILED);
+    dtypeSize_ = DTYPE_SIZE;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateInputType()
+{
+    auto t = context_->GetInputDesc(INPUT_INDEX)->GetDataType();
+    OP_CHECK_IF(t != dataType_,
+                OP_LOGE(context_->GetNodeName(), "input dtype %s must match grad_output dtype %s",
+                        Ops::Base::ToString(t).c_str(), Ops::Base::ToString(dataType_).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateWeightType()
+{
+    auto t = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
+    OP_CHECK_IF(t != dataType_,
+                OP_LOGE(context_->GetNodeName(), "weight dtype %s must match grad_output dtype %s",
+                        Ops::Base::ToString(t).c_str(), Ops::Base::ToString(dataType_).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskType()
+{
+    auto desc = context_->GetOptionalInputDesc(MASK_INDEX);
+    if (desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    auto t = desc->GetDataType();
+    OP_CHECK_IF(
+        t != ge::DataType::DT_UINT8,
+        OP_LOGE(context_->GetNodeName(), "mask dtype must be UINT8, but got %s", Ops::Base::ToString(t).c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::CheckInputParams()
+{
+    // Shapes
+    OP_CHECK_IF(ValidateGradOutputShape() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "grad_output shape validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateInputShape() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "input shape validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateWeightShape() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "weight shape validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateMaskShape() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "mask shape validation failed"), return ge::GRAPH_FAILED);
+
+    // Types
+    OP_CHECK_IF(ValidateGradOutputType() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "grad_output type validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateInputType() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "input type validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateWeightType() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "weight type validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateMaskType() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "mask type validation failed"), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::GetShapeAttrsInfo()
+{
+    OP_CHECK_IF(context_ == nullptr, OP_LOGE("MaskedCausalConv1dBackward", "context is null"), return ge::GRAPH_FAILED);
+
+    // 收集形状和类型，并做完整校验
+    OP_CHECK_IF(CheckInputParams() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "MaskedCausalConv1dBackward CheckInputParams FAILED."),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeInterCoreSplit()
+{
+    // 仅沿 H 方向按 64 切分
+    // 根据文档：主核处理的H会比尾核多64(hMainSize = hTailSize + 64)
+    int64_t tiles = H_ / DIM_ALIGN_ELEMENT;
+    OP_CHECK_IF(tiles <= 0, OP_LOGE(context_->GetNodeName(), "H(%ld) < %ld", H_, DIM_ALIGN_ELEMENT),
+                return ge::GRAPH_FAILED);
+
+    int64_t maxCores = static_cast<int64_t>(totalCoreNum_);
+    usedCoreNum_ = std::min<int64_t>(tiles, std::max<int64_t>(1, maxCores));
+
+    if (H_ % usedCoreNum_ == 0) {
+        // H能均分，则认为没有尾核
+        hMainCoreCnt_ = usedCoreNum_;
+        hTailCoreCnt_ = 0;
+        hMainSize_ = H_ / usedCoreNum_;
+        hTailSize_ = hMainSize_;  // 文档要求：hTailSize仍等于hMainSize
+    } else {
+        // 计算主核和尾核的分配
+        int64_t baseTiles = H_ / (usedCoreNum_ * DIM_ALIGN_ELEMENT);
+        hTailSize_ = baseTiles * DIM_ALIGN_ELEMENT;
+        hMainSize_ = hTailSize_ + DIM_ALIGN_ELEMENT;  // 主核比尾核多64
+
+        // 计算需要多少主核
+        int64_t totalWithMain = hMainSize_ * usedCoreNum_;
+        int64_t excess = totalWithMain - H_;
+        hTailCoreCnt_ = excess / DIM_ALIGN_ELEMENT;
+        hMainCoreCnt_ = usedCoreNum_ - hTailCoreCnt_;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
 {
     // UB 预留系统空间
@@ -251,3 +511,6 @@ void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "W = %ld", W_);
 
 }
+
+
+} // namespace optiling
