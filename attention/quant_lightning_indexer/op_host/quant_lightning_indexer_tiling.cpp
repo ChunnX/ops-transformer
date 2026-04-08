@@ -89,6 +89,7 @@ ge::graphStatus QLIInfoParser::GetOpName()
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
+    opType_ = context_->GetNodeType();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -124,6 +125,10 @@ void QLIInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengthsK.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
     opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
+    if (std::strncmp(context_->GetNodeType(), V2_OP_NAME, OP_NAME_LEN) == 0) {
+        opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
+        opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
+    }
 }
 
 void QLIInfoParser::GetInputParaInfo()
@@ -696,6 +701,13 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
                OP_LOGE(opName_, "output sparse_indices shape last dim must be same as attr sparse_count."),
                return ge::GRAPH_FAILED);
+    // -----------------------check metadata-------------------
+    if ((npuArch_ == NpuArch::DAV_3510) && (std::strncmp(context_->GetNodeType(), V2_OP_NAME, OP_NAME_LEN) == 0)) {
+        OP_CHECK_IF(((opParamInfo_.metadata.tensor != nullptr) &&
+                    (opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT)),
+                OP_LOGE(opName_, "input metadata dim 0 must be %u.", METADATA_LIMIT),
+                return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -739,6 +751,7 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
 void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
 {
     QLIInfo.opName = opName_;
+    QLIInfo.opType = opType_;
     QLIInfo.platformInfo = platformInfo_;
     QLIInfo.opParamInfo = opParamInfo_;
     QLIInfo.npuArch = npuArch_;
@@ -809,7 +822,7 @@ ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo &QLIInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext * /* context */)
+ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext * /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
