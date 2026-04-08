@@ -240,6 +240,15 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     Shape qShape = query->GetViewShape();
     Shape kShape = key->GetViewShape();
     Shape vShape = value->GetViewShape();
+    auto qDim = qShape.GetDimNum();
+    auto kDim = kShape.GetDimNum();
+    auto vDim = vShape.GetDimNum();
+    if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld",
+                DIM_NUM_3, qDim, kDim, vDim);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
         qShape[0], kShape[0], qShape[1], kShape[1], qShape[2], vShape[2]);
