@@ -52,6 +52,7 @@ constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
 constexpr uint32_t BLOCK_TABLE_INDEX = 7;
+constexpr uint32_t METADATA_INDEX = 8;
 constexpr uint32_t quant_lightning_indexer = 0;
 // Attributes Index
 constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
@@ -83,6 +84,7 @@ constexpr uint32_t G_SIZE_LIMIT_16_950 = 16; // ascend950只支持 G = 16/24/32/
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
+constexpr uint32_t METADATA_LIMIT = 1024;
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLITilingData)
@@ -114,6 +116,7 @@ struct QLIParaInfo {
     TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
 
     const int32_t *queryQuantMode = nullptr;
