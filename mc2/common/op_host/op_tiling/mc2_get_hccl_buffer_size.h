@@ -5,6 +5,10 @@
 #include <string>
 #include "log/log.h"
 namespace mc2tiling {
+namespace {
+constexpr char HCCL_BUFFSIZE[] = "HCCL_BUFFSIZE";
+}
+
 
 uint64_t GetHcclBufferMaxSize()
 {
