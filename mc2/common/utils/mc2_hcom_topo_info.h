@@ -20,11 +20,11 @@
 #include <string>
 #include "hccl/hcom.h"
 #include "mc2_moe_context.h"
-#include "opdev/platform.h"
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
-#include "opdev/op_errno.h"
 #include "acl/acl.h"
+#include "opdev/op_errno.h"
+#include "opdev/platform.h"
 
 static constexpr uint32_t COMM_ALG_DEFAULT = 0U;
 static constexpr uint32_t COMM_MESH = 0b1U;
