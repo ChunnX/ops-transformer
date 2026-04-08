@@ -25,9 +25,9 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_flash_attn_metadata(Tensor? cu_seqlens_q, Tensor? cu_seqlens_kv, Tensor? seqused_q, Tensor? seqused_kv, " \
-            "int num_heads_q, int num_heads_kv, int head_dim, " \
-            "*, int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, " \
+        return "npu_flash_attn_metadata( int num_heads_q, int num_heads_kv, int head_dim, *, " \
+            "Tensor? cu_seqlens_q, Tensor? cu_seqlens_kv, Tensor? seqused_q, Tensor? seqused_kv," \
+            "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, " \
             "int? mask_mode=None, int? win_left=None, int? win_right=None, " \
             "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor"
 
@@ -37,15 +37,23 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @torch.library.register_fake("npu_ops_transformer::" + self.name)
-        def npu_flash_attn_metadata_meta(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                                          num_heads_q, num_heads_kv, head_dim,
+        def npu_flash_attn_metadata_meta( num_heads_q, num_heads_kv, head_dim,
+                                          cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                                           batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
                                           max_seqlen_kv: Optional[int] = None,
                                           mask_mode: Optional[int] = None, win_left: Optional[int] = None,
                                           win_right: Optional[int] = None, layout_q: Optional[str] = None,
                                           layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
-            # todo: metadata shape
-            return torch.empty((4096,), dtype=torch.int32, device="meta")
+            batchSize = 1
+            if batch_size != None:
+                batchSize = batch_size
+            elif cu_seqlens_q != None:
+                batchSize = cu_seqlens_q.size() - 1
+            elif seqused_q != None:
+                batchSize = seqused_q.size()
+            metadataSize = ((36 + 72) * batchSize * num_heads_kv + 1) * 16
+            alignedSize = ((metadataSize + 4095) // 4096) * 4096
+            return torch.empty((alignedSize,), dtype=torch.int32, device="meta")
 
 # Instantiate the builder
 flash_attn_metadata_op_builder = FlashAttnMetadataOpBuilder()
@@ -53,13 +61,13 @@ op_module = flash_attn_metadata_op_builder.load()
 
 
 @impl(AS_LIBRARY, flash_attn_metadata_op_builder.name, "PrivateUse1")
-def npu_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                            num_heads_q, num_heads_kv, head_dim, *,
+def npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
+                            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                             batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
-                            max_seqlen_kv: Optional[int] = None, mask_mode: Optional[int] = None,
-                            win_left: Optional[int] = None, win_right: Optional[int] = None,
-                            layout_q: Optional[str] = None, layout_kv: Optional[str] = None,
-                            layout_out: Optional[str] = None):
+                            max_seqlen_kv: Optional[int] = None,
+                            mask_mode: Optional[int] = None, win_left: Optional[int] = None,
+                            win_right: Optional[int] = None, layout_q: Optional[str] = None,
+                            layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
@@ -81,13 +89,13 @@ def npu_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
 
 
 @torch.library.register_kernel("npu_ops_transformer::npu_flash_attn_metadata", None)                                                                                          
-def npu_flash_attn_metadata_fallback(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,                                                                                      
-                                    num_heads_q, num_heads_kv, head_dim, *,                                                                                                  
-                                    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,                                                                    
-                                    max_seqlen_kv: Optional[int] = None, mask_mode: Optional[int] = None,                                                                    
-                                    win_left: Optional[int] = None, win_right: Optional[int] = None,                                                                         
-                                    layout_q: Optional[str] = None, layout_kv: Optional[str] = None,                                                                         
-                                    layout_out: Optional[str] = None):                                                                                                                                    
+def npu_flash_attn_metadata_fallback(num_heads_q, num_heads_kv, head_dim,
+                                    cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                                    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
+                                    max_seqlen_kv: Optional[int] = None,
+                                    mask_mode: Optional[int] = None, win_left: Optional[int] = None,
+                                    win_right: Optional[int] = None, layout_q: Optional[str] = None,
+                                    layout_kv: Optional[str] = None, layout_out: Optional[str] = None):                                                                                                                                    
     # 处理所有 tensor 都为 None 的情况                                                                                                                                        
     # 可以在这里创建一个 NPU tensor 来触发 PrivateUse1 backend                                                                                                              
     if all(t is None for t in [cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv]):                                                                                          
