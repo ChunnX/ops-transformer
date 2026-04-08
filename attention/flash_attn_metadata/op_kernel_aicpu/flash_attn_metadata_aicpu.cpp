@@ -75,13 +75,23 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     coreNum_ = aicCoreNum_;
     actualSeqLengths.resize(batchSize_, maxSeqlenQ_);
     actualSeqLengthsKV.resize(batchSize_, maxSeqlenKv_);
-    if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        auto sequsedQ = (int32_t *)sequsedQ_->GetData();
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            actualSeqLengths[i] = sequsedQ[i];
+        }
+    } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         auto cuSeqlensQ = (int32_t *)cuSeqlensQ_->GetData();
         for (uint32_t i = 0; i < batchSize_; ++i) {
             actualSeqLengths[i] = cuSeqlensQ[i+1] - cuSeqlensQ[i];
         }
     }
-    if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+        auto sequsedKv = (int32_t *)sequsedKv_->GetData();
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            actualSeqLengths[i] = sequsedKv[i];
+        }
+    } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         auto cuSeqlensKv = (int32_t *)cuSeqlensKv_->GetData();
         for (uint32_t i = 0; i < batchSize_; ++i) {
             actualSeqLengthsKV[i] = cuSeqlensKv[i+1] - cuSeqlensKv[i];
