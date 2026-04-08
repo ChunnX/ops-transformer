@@ -75,11 +75,13 @@ public:
         if (hasX1) {
             pipe->InitBuffer(x1Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
         }
-        if (hasX2) {
-            pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
-        }
+
         if (hasScales) {
             pipe->InitBuffer(scalesQue, DOUBLE_BUFFER, rowFactorKAlignedT * sizeof(S));
+        }
+
+        if (hasX2) {
+            pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
         }
     }
 
@@ -216,7 +218,8 @@ private:
         for (int64_t kIdx = 0; kIdx < tilingData->k; kIdx += 1) {
             SetExpandedRowIdxOffset(rowOuterIdx, rowInnerIdx, kIdx);
             int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
-            if constexpr (dropPadMode == DROP_PAD_COLUMN || dropPadMode == DROP_PAD_ROW) {
+
+            if constexpr (dropPadMode == DROP_PAD_ROW || dropPadMode == DROP_PAD_COLUMN) {
                 if (expandedRowIdxGmValue == INVALID_IDX) {
                     continue;
                 }
