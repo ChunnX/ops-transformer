@@ -32,7 +32,7 @@ const static int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // UB要给SIMT预留64k的
 const static int64_t SORT_API_MAX_ELEM = 32 * 255LL; // AscendC::Sort全排序模式最多支持一次排序(32*255rep)个元素
 const static int64_t MRG_SORT_API_MAX_ELEM = 1024LL;
 const static int64_t MX_QUANT_BLOCK_SIZE = 32LL;
-const static int64_t MXFP8_SCALE_BlOCK_SIZE = 64LL;
+const static int64_t MXFP8_SCALE_BLOCK_SIZE = 64LL;
 const static int64_t SCALE_FACTOR_WITH_X = 32LL;
 
 const static int64_t MAX_QUEUE_BUFFER_NUM = 6LL;
@@ -295,7 +295,7 @@ private:
     int64_t k_ = 0LL;
     int64_t cols_ = 0LL;
     int64_t inputXDtypeSize_;
-    int64_t inputScaleDTypeSize_;
+    int64_t inputScaleDTypeSize_ = 0LL;
     int64_t isInputScale_ = 0LL;
     int64_t isInputOffset_ = 0LL;
     int64_t sortMode_ = 0LL;
@@ -497,7 +497,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetInputTensorsInfo()
     // 可选输入scale
     MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(scaleShape_, scaleDtype_, isInputScale_, INPUT_SCALE_INDEX));
     tilingDataPtr_->isInputScale = isInputScale_;
-    inputScaleDTypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(scaleDtype_));
+    if (isInputScale_) {
+        inputScaleDTypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(scaleDtype_));
+    }
     // 可选输入offset
     MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(offsetShape_, offsetDtype_, isInputOffset_, INPUT_OFFSET_INDEX));
     tilingDataPtr_->isInputOffset = isInputOffset_;
@@ -735,7 +737,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
         if (scaleDtype_ == ge::DataType::DT_FLOAT8_E8M0) {
             expectedRankScale = RANK_THREE;
             expectedDim0 = expertIdxShape_.GetDim(0);
-            expectedDim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFP8_SCALE_BlOCK_SIZE);
+            expectedDim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFP8_SCALE_BLOCK_SIZE);
             expectedDim2 = NUM_TWO;
         } else {
             expectedRankScale = RANK_ONE;
@@ -777,8 +779,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
     if (quantMode_ == QUANT_MODE_UNQUANT && (xDtype_ == ge::DataType::DT_FLOAT8_E5M2 ||
         xDtype_ == ge::DataType::DT_FLOAT8_E4M3FN)) {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT8_E8M0,
-            OP_LOGE(context_, "Unsupported dtype of input %d and input scale: %d in quant mode %ld, should be: DT_FLOAT(%d).", xDtype_, 
-            scaleDtype_, QUANT_MODE_UNQUANT, ge::DataType::DT_FLOAT),
+            OP_LOGE(context_, "Unsupported dtype of input %d and input scale: %d in quant mode %ld, "
+                    "should be: DT_FLOAT8_E8M0 (%d).", xDtype_, scaleDtype_, QUANT_MODE_UNQUANT, ge::DataType::DT_FLOAT8_E8M0),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT,
@@ -951,13 +953,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
         return ge::GRAPH_SUCCESS;
     }
 
-    int64_t expectedRank{-1}, expectedDim0{-1}, expectedDim1{-1}, expectedDim2{-1};
+    int64_t expectedRank{-1};
+    int64_t expectedDim0{-1};
+    int64_t expectedDim1{-1};
+    int64_t expectedDim2{-1};
     if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
         if (quantMode_ == QUANT_MODE_UNQUANT && (xDtype_ == ge::DataType::DT_FLOAT8_E5M2 ||
             xDtype_ == ge::DataType::DT_FLOAT8_E4M3FN)) {
             expectedRank = RANK_THREE;
             expectedDim0 = expertIdxShape_.GetDim(0) * expertIdxShape_.GetDim(1);
-            expectedDim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFP8_SCALE_BlOCK_SIZE);
+            expectedDim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFP8_SCALE_BLOCK_SIZE);
             expectedDim2 = NUM_TWO;
         } else {
             expectedRank = RANK_ONE;
@@ -1314,14 +1319,14 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
     } else if (quantMode_ == QUANT_MODE_UNQUANT && (xDtype_ == ge::DataType::DT_FLOAT8_E5M2 ||
         xDtype_ == ge::DataType::DT_FLOAT8_E4M3FN)) {
-        perLoopParams.perLoopCols = Ops::Base::CeilAlign(perLoopParams.perLoopCols, MXFP8_SCALE_BlOCK_SIZE);
+        perLoopParams.perLoopCols = Ops::Base::CeilAlign(perLoopParams.perLoopCols, MXFP8_SCALE_BLOCK_SIZE);
         perLoopParams.perLoopMaxIndicesElements =
             (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
             Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
             NUM_TWO) / multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
         while (perLoopParams.perLoopMaxIndicesElements <= 0) {
             perLoopParams.perLoopCols = Ops::Base::CeilAlign(Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO),
-                                                             MXFP8_SCALE_BlOCK_SIZE);
+                                                             MXFP8_SCALE_BLOCK_SIZE);
             perLoopParams.perLoopMaxIndicesElements =
                 (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
                 Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *

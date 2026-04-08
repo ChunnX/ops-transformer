@@ -29,11 +29,12 @@ constexpr int64_t SCALE_THIRD_DIM_SIZE = 2LL;
 constexpr int64_t SCALE_FACTOR_WITH_X = 32LL;
 
 template <typename T>
-class MoeGatherOutMxfp8 {
+class MoeV3GatherOutMxfp8 {
 public:
-    __aicore__ inline MoeGatherOutMxfp8(){};
+    __aicore__ inline MoeV3GatherOutMxfp8(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                GM_ADDR expandedScale, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
+                                GM_ADDR expandedScale, const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyExpertIn(int64_t curExpertLoopOffset, int64_t curLoopElements);
     __aicore__ inline void CopyXIn(int64_t xSrcOffset, int64_t curLoopCols);
@@ -84,7 +85,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
                                             GM_ADDR expandedX, GM_ADDR expandedScale,
                                             const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
@@ -127,17 +128,18 @@ __aicore__ inline void MoeGatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM_A
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
 
     xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x, n_ * cols_);
-    uint64_t alginSclaeCols = Ops::Base::CeilDiv(cols_, SCALE_BLOCK_SIZE) * SCALE_THIRD_DIM_SIZE;
-    xGscaleGm_.SetGlobalBuffer((__gm__ uint8_t *)scale, n_ * alginSclaeCols);
+    uint64_t alginScaleCols = Ops::Base::CeilDiv(cols_, SCALE_BLOCK_SIZE) * SCALE_THIRD_DIM_SIZE;
+    xGscaleGm_.SetGlobalBuffer((__gm__ uint8_t *)scale, n_ * alginScaleCols);
     expandedXGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
                                 curCoreIndicesElements_ * cols_);
-    expandedScaleGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScale + blockIdx_ * perCoreIndicesElements_ * alginSclaeCols,
-                                    curCoreIndicesElements_ * alginSclaeCols);
+    expandedScaleGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScale + blockIdx_ * perCoreIndicesElements_ *
+                                     alginScaleCols, curCoreIndicesElements_ * alginScaleCols);
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
                     AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
     pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(uint8_t)));
-    pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_ / SCALE_FACTOR_WITH_X, sizeof(uint8_t)));
+    pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_ / SCALE_FACTOR_WITH_X,
+                      sizeof(uint8_t)));
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
                                     Align(curCoreIndicesElements_, sizeof(int32_t)));
@@ -153,7 +155,7 @@ __aicore__ inline void MoeGatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM_A
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::CopyExpertIn(int64_t curExpertLoopOffset, int64_t curLoopElements)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::CopyExpertIn(int64_t curExpertLoopOffset, int64_t curLoopElements)
 {
     LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.AllocTensor<int32_t>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(curLoopElements * sizeof(int32_t)), 0, 0, 0};
@@ -163,17 +165,18 @@ __aicore__ inline void MoeGatherOutMxfp8<T>::CopyExpertIn(int64_t curExpertLoopO
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::CopyXIn(int64_t xSrcOffset, int64_t curLoopCols)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::CopyXIn(int64_t xSrcOffset, int64_t curLoopCols)
 {
     LocalTensor<uint8_t> xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
-    DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
+    DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)),
+                                  0, 0, 0};
     DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
     DataCopyPad(xLocal, xUint8tGm_[xSrcOffset], copyParams0, padParams0);
     xCopyInQueue_.EnQue(xLocal);
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
 {
     LocalTensor<uint8_t> xLocal = xCopyInQueue_.DeQue<uint8_t>();
     DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
@@ -182,17 +185,18 @@ __aicore__ inline void MoeGatherOutMxfp8<T>::CopyXOut(int64_t xDstOffset, int64_
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::CopyScaleIn(int64_t scaleSrcOffset, int64_t curLoopCols)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::CopyScaleIn(int64_t scaleSrcOffset, int64_t curLoopCols)
 {
     LocalTensor<uint8_t> scaleLocal = scaleCopyInQueue_.AllocTensor<uint8_t>();
-    DataCopyExtParams copyParams1{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
+    DataCopyExtParams copyParams1{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)),
+                                  0, 0, 0};
     DataCopyPadExtParams<uint8_t> padParams1{false, 0, 0, 0};
     DataCopyPad(scaleLocal, xGscaleGm_[scaleSrcOffset], copyParams1, padParams1);
     scaleCopyInQueue_.EnQue(scaleLocal);
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::CopyScaleOut(int64_t scaleDstOffset, int64_t curLoopCols)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::CopyScaleOut(int64_t scaleDstOffset, int64_t curLoopCols)
 {
     LocalTensor<uint8_t> scaleLocal = scaleCopyInQueue_.DeQue<uint8_t>();
     DataCopyExtParams copyParams3{1, static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
@@ -201,7 +205,7 @@ __aicore__ inline void MoeGatherOutMxfp8<T>::CopyScaleOut(int64_t scaleDstOffset
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutMxfp8<T>::Process()
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         int64_t curLoopElements = curCorePerLoopIndicesElements_;
@@ -230,7 +234,8 @@ __aicore__ inline void MoeGatherOutMxfp8<T>::Process()
                 for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
                     if (colsLoop == colsLoops_ - 1) {
                         curLoopCols = lastLoopCols_;
-                        curLoopScaleHCols = Ops::Base::CeilDiv<int64_t>(curLoopCols, SCALE_BLOCK_SIZE) * SCALE_THIRD_DIM_SIZE;
+                        curLoopScaleHCols = Ops::Base::CeilDiv<int64_t>(curLoopCols, SCALE_BLOCK_SIZE) *
+                                            SCALE_THIRD_DIM_SIZE;
                     }
                     if (isInputScale_ == 1) {
                         CopyScaleIn(scaleSrcOffset + colsLoop * perLoopScaleHCols, curLoopScaleHCols);
