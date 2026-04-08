@@ -334,14 +334,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-        <td>-</td>
     </tr>
     <tr>
         <td>antiquantOffsetOptional</td>
         <td>输入</td>
         <td>伪量化偏移</td>
         <td>不支持</td>
-        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -776,7 +774,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>输入</td>
         <td>伪量化的方式</td>
         <td>不支持</td>
-        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
