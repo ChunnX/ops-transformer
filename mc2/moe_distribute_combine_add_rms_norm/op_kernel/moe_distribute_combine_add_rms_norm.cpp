@@ -41,12 +41,12 @@ __aicore__ inline void ExecMoeDistributeCombineAddRmsNorm(
     GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR YOut,
     GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe* pipePtr)
 {
-    GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
+    GET_TILING_DATA_MEMBER(MoeDistributeCombineV2TilingData, moeDistributeCombineV2Info, info, tilingGM);
     MoeDistributeCombineV2<CombineMC2TypeFunc> op;
     op.Init(
         nullptr, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
         sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr, YOut, dynamicScaleOut,
-        XOut, workspaceGM, pipePtr, &tilingData);
+        XOut, workspaceGM, pipePtr, &info);
     op.Process();
     }
 }
