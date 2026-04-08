@@ -246,7 +246,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeGradX1Simt(__
 
     for (int32_t i = tid * 4; i < n * taskCount * c; i += THREAD_NUM * 4) {
         int32_t taskIdx = i / (n * c);
-        VECTOR_DTYPE xVec = xGlobal[i / 4];
+        VECTOR_DTYPE xVec = xGlobal  [i / 4];
         T factor = gradRsqrtLocal[taskIdx];
 
         Simt::AtomicAdd(gradX1Global + i, xVec.x * factor);

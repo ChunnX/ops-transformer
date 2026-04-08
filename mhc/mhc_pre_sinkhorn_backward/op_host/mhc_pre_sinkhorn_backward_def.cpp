@@ -79,11 +79,6 @@ public:
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("hc_eps")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_DOUBLE})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("grad_x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})

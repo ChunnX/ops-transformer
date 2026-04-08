@@ -2,8 +2,8 @@
 #define MHC_PRE_GRAD_H
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_grad_simd_vf.h"
-#include "mhc_pre_grad_simt_vf.h"
+#include "mhc_pre_sinkhorn_backward_simd_vf.h"
+#include "mhc_pre_sinkhorn_backward_simt_vf.h"
 
 using namespace AscendC;
 using namespace MicroAPI;
@@ -26,7 +26,7 @@ public:
     using CType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
 
     matmul::MatmulImpl<A0Type, BType, CType, CType, MHC_PRE_GRAD_MM1_CFG> mm1_;
-    matmul::MatmulImpl<A1Type, BType, CType, CType, MHC_PRE_GRAD_MM2_CFG> mm2_;
+    matmul::MatmulImpl<A1Type, BType, CType, CType, MHC_PRE_GRAD_MM2_CFG> mm2_;// grad 
 
     __aicore__ inline MhcPreGradKernel() = default;
 

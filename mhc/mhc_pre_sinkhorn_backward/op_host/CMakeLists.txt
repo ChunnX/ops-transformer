@@ -9,19 +9,19 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnExc PRIVATE
-        mhc_pre_def.cpp
+    target_sources(op_host_aclnn PRIVATE
+        mhc_pre_sinkhorn_backward_def.cpp
     )
 
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
-            OP_NAME MhcPre
+            OP_NAME MhcPreSinkhornBackward
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     else()
         add_ops_compile_options(
-            OP_NAME MhcPre
+            OP_NAME MhcPreSinkhornBackward
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
@@ -31,5 +31,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
-    add_modules_sources(OPTYPE mhc_pre ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE mhc_pre_sinkhorn_backward ACLNNTYPE aclnn)
 endif()
