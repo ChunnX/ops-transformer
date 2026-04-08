@@ -27,7 +27,7 @@ protected:
         std::cout << "FusedInferAttentionScoreTiling TearDown" << std::endl;
     }
 };
-#if 0
+
 TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScore_950_tiling_0)     // learnableSink
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
@@ -13321,4 +13321,3 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_SoftmaxLSE
         &compileInfo, "Ascend950", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
-#endif
