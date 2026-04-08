@@ -233,6 +233,16 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
     const BlockCoord &baseOffset)
 {
     if ASCEND_IS_AIV {
+        if (AscendC::GetBlockIdx() == 0 && subBlockIdx_ == 0) {
+            AscendC::printf(
+                "zzzlog [GMMFR][epilogue UpdateGlobalAddr] base(logit)=%ld base(x1)=%ld base(x2)=%ld base(bias)=%ld "
+                "row_index_gm=0x%llx logit_gm=0x%llx y_gm=0x%llx\n",
+                static_cast<long>(Get<LOGIT_INDEXS>(baseOffset)), static_cast<long>(Get<X1SCALE_IDXS>(baseOffset)),
+                static_cast<long>(Get<X2SCALE_IDXS>(baseOffset)), static_cast<long>(Get<BIAS_IDXS>(baseOffset)),
+                static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(params_->rowIndexGmAddr)),
+                static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(params_->logitGmAddr)),
+                static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(params_->yGMAddr)));
+        }
         logitGlobal_.SetGlobalBuffer((__gm__ float *)params_->logitGmAddr + Get<LOGIT_INDEXS>(baseOffset));
         rowIndexGlobal_.SetGlobalBuffer((__gm__ DataTypeRowIndex *)params_->rowIndexGmAddr +
                                         Get<LOGIT_INDEXS>(baseOffset));
@@ -266,7 +276,22 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
     SetAtomicAdd<float>();
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        auto outRow = static_cast<uint64_t>(rowIndexGlobal_.GetValue(offsetM + i));
+        auto outRowRaw = static_cast<long long>(rowIndexGlobal_.GetValue(offsetM + i));
+        auto outRow = static_cast<uint64_t>(outRowRaw);
+        if (AscendC::GetBlockIdx() == 0 && subBlockIdx_ == 0 && i < 8) {
+            AscendC::printf(
+                "zzzlog [GMMFR][epilogue VectorAtomicProcess] i=%u offsetM=%llu raw_row=%lld outRow=%llu "
+                "n=%lld yOffset=%llu curBaseN=%u alignN=%llu singleM=%llu singleN=%llu\n",
+                i, static_cast<unsigned long long>(offsetM), outRowRaw, static_cast<unsigned long long>(outRow),
+                static_cast<long long>(n_), static_cast<unsigned long long>(yOffset), curBaseN,
+                static_cast<unsigned long long>(alignN_), static_cast<unsigned long long>(singleM_),
+                static_cast<unsigned long long>(singleN_));
+            if (outRowRaw < 0) {
+                AscendC::printf(
+                    "zzzlog [GMMFR][epilogue potential_oob] negative row_index detected: i=%u raw_row=%lld\n",
+                    i, outRowRaw);
+            }
+        }
         DataCopyPad(yGlobal_[outRow * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 
