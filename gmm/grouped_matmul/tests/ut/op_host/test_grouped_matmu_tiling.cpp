@@ -5780,7 +5780,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4_950_aic_aiv_invalid_ratio)
         {
             // input info
             {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},                                     // x
-            {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},         // weight
+            {{{E, K, N}, {E, N/64, K/16, 16, 64}}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},         // weight NZ: 4bit 第5轴为64
             {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                                    // bias
             {{{E, N}, {E, N}}, ge::DT_UINT64, ge::FORMAT_ND},                                   // scale  
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                            // offset
