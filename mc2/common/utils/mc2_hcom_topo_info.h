@@ -39,31 +39,31 @@ public:
     static HcclResult CommGetInstSizeByGroup(const char *group, uint32_t *rankNum);
     static HcclResult TryGetGroupTopoType(const char *group, uint32_t *topoType);
     static HcclResult CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm);
-    static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t* cclBufferSize);
-    
+    static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t *cclBufferSize);
+
     // 新增的静态接口，通过实例内部的hcclHandle_获取数据
-    static aclnnStatus GetMc2ContextTensor(const char* groupEp, const char* opName,
-                                         uint64_t& hcclBuffSize, aclTensor*& mc2Context);
+    static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
+                                           aclTensor *&mc2Context);
 
 private:
     static MC2HcomTopology &GetInstance();
     explicit MC2HcomTopology(const char *libPath);
     ~MC2HcomTopology();
-    
+
     // 内部辅助方法
     aclnnStatus LoadHcclSymbols();
-    aclnnStatus GetCommHandle(const char* groupEp);
-    aclnnStatus GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId,
-                              uint32_t dstRankId, const CommProtocol& protocol, CommLink*& links);
-    aclnnStatus GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId,
-                                 const CommProtocol& protocol, const CommEngine& engine, std::vector<ChannelHandle>& channels);
-    aclnnStatus GetHcclCommResource(const CommEngine& engine,
-                                  const CommProtocol& protocol, Mc2MoeContext* mc2ContextStruct);
-    aclnnStatus CreatMc2Context(const std::string& mc2ContextTag,
-                              const CommEngine& engine, const CommProtocol& protocol, void*& ctx, Mc2MoeContext* mc2ContextStruct);
-    aclnnStatus CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context);
-    aclnnStatus GetHcclBufferSize(uint64_t& hcclBuffSize);
-    aclnnStatus GetCommEngine(CommEngine& engine, CommProtocol& protocol);
+    aclnnStatus GetCommHandle(const char *groupEp);
+    aclnnStatus GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId, uint32_t dstRankId,
+                                const CommProtocol &protocol, CommLink *&links);
+    aclnnStatus GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
+                                   const CommEngine &engine, std::vector<ChannelHandle> &channels);
+    aclnnStatus GetHcclCommResource(const CommEngine &engine, const CommProtocol &protocol,
+                                    Mc2MoeContext *mc2ContextStruct);
+    aclnnStatus CreatMc2Context(const std::string &mc2ContextTag, const CommEngine &engine,
+                                const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
+    aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
+    aclnnStatus GetHcclBufferSize(uint64_t &hcclBuffSize);
+    aclnnStatus GetCommEngine(CommEngine &engine, CommProtocol &protocol);
     aclnnStatus GetaclCreateTensorSymbol();
 
     HcclResult CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle) const;
@@ -78,25 +78,27 @@ private:
     HcclResult CallCommGetCCLBufSizeCfg(HcclComm comm, uint64_t *cclBufferSize) const;
 
     void *handle_ = nullptr;
-    void* hcclLibHandle_ = nullptr;
-    HcclComm hcclHandle_ = nullptr;  // 实例变量存储HCCL句柄
+    void *hcclLibHandle_ = nullptr;
+    HcclComm hcclHandle_ = nullptr; // 实例变量存储HCCL句柄
     bool isNewHcclLib = true;
-    
+
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
-    
+
     // HCCL新API函数指针
-    HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
-    HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t**, uint32_t*) = nullptr;
-    HcclResult (*HcclChannelAcquire)(HcclComm, const CommEngine, const HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
-    HcclResult (*HcclGetHcclBuffer)(HcclComm, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char*, CommEngine, uint64_t, void**) = nullptr;
-    HcclResult (*HcclEngineCtxGet)(HcclComm, const char*, CommEngine, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char*, const void*, uint64_t, uint64_t) = nullptr;
-    HcclResult (*HcclGetRankId)(HcclComm, uint32_t*) = nullptr;
-    HcclResult (*HcclGetRankSize)(HcclComm, uint32_t*) = nullptr;
-    aclTensor* (*aclCreateTensor)(const int64_t *, uint64_t , aclDataType , const int64_t *, int64_t , aclFormat , const int64_t *, uint64_t , void *) = nullptr;
+    HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink **, uint32_t *) = nullptr;
+    HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t **, uint32_t *) = nullptr;
+    HcclResult (*HcclChannelAcquire)(HcclComm, const CommEngine, const HcclChannelDesc *, uint32_t,
+                                     ChannelHandle *) = nullptr;
+    HcclResult (*HcclGetHcclBuffer)(HcclComm, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char *, CommEngine, uint64_t, void **) = nullptr;
+    HcclResult (*HcclEngineCtxGet)(HcclComm, const char *, CommEngine, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char *, const void *, uint64_t, uint64_t) = nullptr;
+    HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
+    HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
+    aclTensor *(*aclCreateTensor)(const int64_t *, uint64_t, aclDataType, const int64_t *, int64_t, aclFormat,
+                                  const int64_t *, uint64_t, void *) = nullptr;
 
 #ifdef BUILD_OPEN_PROJECT
     using FuncGetRankSizeEx = HcclResult (*)(const char *group, uint32_t *rankSize, uint32_t flag);
@@ -106,7 +108,7 @@ private:
     using FuncGetTopoType = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
     using FuncGetInstSize = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 #endif
-    
+
     FuncGetHandle getCommHandle_ = nullptr;
 #ifdef BUILD_OPEN_PROJECT
     FuncGetRankSizeEx getRankSizeEx_ = nullptr;
@@ -118,5 +120,5 @@ private:
 #endif
     FuncGetCclBufferSize getCclBufferSize_ = nullptr;
 };
-}  // namespace Mc2Hcom
+} // namespace Mc2Hcom
 #endif
