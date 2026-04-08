@@ -52,6 +52,7 @@ constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
 constexpr uint32_t BLOCK_TABLE_INDEX = 7;
+constexpr uint32_t METADATA_INDEX = 8;
 constexpr uint32_t quant_lightning_indexer = 0;
 // Attributes Index
 constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
@@ -83,6 +84,13 @@ constexpr uint32_t G_SIZE_LIMIT_16_950 = 16; // ascend950只支持 G = 16/24/32/
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
+constexpr uint32_t METADATA_LIMIT = 1024;
+
+constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
+constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
+
+constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+                                            sizeof(V2_OP_NAME)});
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLITilingData)
@@ -100,6 +108,7 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
+REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLITilingData)
 
 // -----------算子CompileInfo定义-------------------
 struct QLICompileInfo {};
@@ -114,6 +123,7 @@ struct QLIParaInfo {
     TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
 
     const int32_t *queryQuantMode = nullptr;
@@ -133,6 +143,7 @@ struct QLIParaInfo {
 class QLITilingInfo {
 public:
     const char *opName = nullptr;
+    const char *opType = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
     QLIParaInfo opParamInfo;
     // Base Param
@@ -210,6 +221,7 @@ public:
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
+    const char *opType_;
     fe::PlatFormInfos *platformInfo_;
     QLIParaInfo opParamInfo_;
 
@@ -249,5 +261,7 @@ private:
     QLITilingData tilingData_;
 };
 
+ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext *context);
+ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext *context);
 }  // namespace optiling
 #endif  // quant_lightning_indexer_TILING_H_
