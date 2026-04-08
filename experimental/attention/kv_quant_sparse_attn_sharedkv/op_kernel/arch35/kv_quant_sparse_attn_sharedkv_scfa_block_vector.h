@@ -301,13 +301,16 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
         padParams.rightPadding = combineDimAlign - combineDim;
         padParams.paddingValue = 0;
         DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], intriParams, padParams);
-        // 获取scale部分
-        GlobalTensor<uint64_t> keyTmpGm = keyGm.template ReinterpretCast<uint64_t>();
-        uint64_t scaleData = keyTmpGm.GetValue(scaleOffset / uint64Touint8);
 
-        // 将scale写入ub对应位置
-        LocalTensor<uint64_t> kvInTmpUb = kvInUb.template ReinterpretCast<uint64_t>();
-        kvInTmpUb.SetValue((startRow * combineDimAlign + dCombineBytes) / uint64Touint8, scaleData);
+        DataCopyExtParams scaleParams;
+        DataCopyPadExtParams<KV_T> scalePadParams;
+        scaleParams.blockCount = 1;
+        scaleParams.blockLen = 8;
+        scaleParams.srcStride = 0;
+        scaleParams.dstStride = 0;
+
+        DataCopyPad(kvInUb[startRow *  combineDimAlign + dCombineBytes], keyGm[scaleOffset],
+            scaleParams, scalePadParams);
     }
 }
 
@@ -325,7 +328,7 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
             return dealRow;
         }
         uint32_t combineBytes;
-        int64_t keySrcStride;
+        int64_t keySrcStride, scaleSrcStride;
         if constexpr (KV_QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             combineBytes = constInfo.dSizeVInput * sizeof(KV_T); 
             keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :	 
@@ -333,6 +336,8 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
         } else {
             keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
                 (keyOffset1 - keyOffset0)) - dCombineBytes;
+            scaleSrcStride = (scaleOffset0 > scaleOffset1 ? (scaleOffset0 - scaleOffset1) :
+                (scaleOffset1 - scaleOffset0)) - scaleBytes;
         }
         if (unlikely(keyOffset1 < 0)) {
             CopyInSingleKv(kvInUb, startRow, keyOffset0, scaleOffset0);
@@ -376,17 +381,19 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
             padParams.paddingValue = 0;
             DataCopyPad(kvInUb[startRow *  combineDimAlign], keyGm[keyOffset], intriParams, padParams);
             if constexpr (KV_QUANT_MODE == SCALE_CONTIGUOUS_MODE::NONCONTIGUOUS) {
-                // 获取scale部分
-                GlobalTensor<uint64_t> keyTmpGm = keyGm.template ReinterpretCast<uint64_t>();
                 uint64_t scaleOffsetMax = scaleOffset0 > scaleOffset1 ? scaleOffset0 : scaleOffset1;
                 uint64_t scaleOffsetMin = scaleOffset0 < scaleOffset1 ? scaleOffset0 : scaleOffset1;
-                uint64_t scaleData0 = keyTmpGm.GetValue(scaleOffsetMin / uint64Touint8);
-                uint64_t scaleData1 = keyTmpGm.GetValue(scaleOffsetMax / uint64Touint8);
+                DataCopyExtParams scaleParams;
+                DataCopyPadExtParams<KV_T> scalePadParams;
+                scaleParams.blockCount = 1;
+                scaleParams.blockLen = 8;
+                scaleParams.srcStride = 0;
+                scaleParams.dstStride = 0;
 
-                // 将scale写入ub对应位置
-                LocalTensor<uint64_t> kvInTmpUb = kvInUb.template ReinterpretCast<uint64_t>();
-                kvInTmpUb.SetValue((startRow * combineDimAlign + dCombineBytes) / uint64Touint8, scaleData0);
-                kvInTmpUb.SetValue(((startRow + 1) * combineDimAlign + dCombineBytes) / uint64Touint8, scaleData1);
+                DataCopyPad(kvInUb[startRow *  combineDimAlign + dCombineBytes], keyGm[scaleOffsetMin],
+                    scaleParams, scalePadParams);
+                DataCopyPad(kvInUb[(startRow + 1) *  combineDimAlign + dCombineBytes], keyGm[scaleOffsetMax],
+                    scaleParams, scalePadParams);
             }
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
