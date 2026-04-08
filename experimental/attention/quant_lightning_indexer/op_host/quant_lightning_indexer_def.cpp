@@ -60,6 +60,11 @@ public:
             .DataType({ge::DT_INT32})
             .Format({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("output_idx_offset")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32})
@@ -79,6 +84,7 @@ public:
         this->Attr("return_values").AttrType(OPTIONAL).Bool(false); // 是否返回sparse_values
         this->Attr("key_stride").AttrType(OPTIONAL).Int(0);
         this->Attr("key_scale_stride").AttrType(OPTIONAL).Int(0);
+        this->Attr("topk_score_precision").AttrType(OPTIONAL).Int(1);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

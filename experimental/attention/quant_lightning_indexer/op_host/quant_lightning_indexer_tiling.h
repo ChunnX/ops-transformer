@@ -52,7 +52,8 @@ constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
 constexpr uint32_t BLOCK_TABLE_INDEX = 7;
-constexpr uint32_t METADATA_INDEX = 8;
+constexpr uint32_t OUTPUT_IDX_OFFSET_INDEX = 8;
+constexpr uint32_t METADATA_INDEX = 9;
 constexpr uint32_t quant_lightning_indexer = 0;
 // Attributes Index
 constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
@@ -67,6 +68,7 @@ constexpr uint32_t ATTR_CMP_RATIO_INDEX = 8;
 constexpr uint32_t ATTR_RETURN_VALUES_INDEX = 9;
 constexpr uint32_t ATTR_KEY_STRIDE_INDEX = 10;
 constexpr uint32_t ATTR_KEY_SCALE_STRIDE_INDEX = 11;
+constexpr uint32_t ATTR_TOPK_SCORE_PRECISION_INDEX = 12;
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -102,6 +104,7 @@ TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValues)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride)
 TILING_DATA_FIELD_DEF(uint32_t, keyScaleStride)
+TILING_DATA_FIELD_DEF(uint32_t, topkScorePrecision)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
 
@@ -117,6 +120,7 @@ struct QLIParaInfo {
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
+    TilingOptionalParaInfo outputIdxOffset = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
@@ -135,7 +139,7 @@ struct QLIParaInfo {
     const bool *returnValues = nullptr;
     const int64_t *keyStride = nullptr;
     const int64_t *keyScaleStride = nullptr;
-
+    const int64_t *topkScorePrecision = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -168,6 +172,7 @@ public:
     bool returnValues = false;
     uint32_t keyStride = 1;
     uint32_t keyScaleStride = 1;
+    uint32_t topkScorePrecision = 1;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;

@@ -126,6 +126,8 @@ void QLIInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengthsK.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
     opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
+    opParamInfo_.outputIdxOffset.tensor = context_->GetOptionalInputTensor(OUTPUT_IDX_OFFSET_INDEX);
+    opParamInfo_.outputIdxOffset.desc = context_->GetOptionalInputDesc(OUTPUT_IDX_OFFSET_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
@@ -173,6 +175,7 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     opParamInfo_.returnValues = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUES_INDEX);
     opParamInfo_.keyStride = attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE_INDEX);
     opParamInfo_.keyScaleStride = attrs->GetAttrPointer<int64_t>(ATTR_KEY_SCALE_STRIDE_INDEX);
+    opParamInfo_.topkScorePrecision = attrs->GetAttrPointer<int64_t>(ATTR_TOPK_SCORE_PRECISION_INDEX);
 
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
@@ -806,6 +809,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.returnValues = *opParamInfo_.returnValues;
     QLIInfo.keyStride = *opParamInfo_.keyStride;
     QLIInfo.keyScaleStride = *opParamInfo_.keyScaleStride;
+    QLIInfo.topkScorePrecision = *opParamInfo_.topkScorePrecision;
 
     QLIInfo.inputQLayout = qLayout_;
     QLIInfo.inputKLayout = kLayout_;
@@ -894,6 +898,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_returnValues(tilingInfo->returnValues);
     tilingData_.set_keyStride(tilingInfo->keyStride);
     tilingData_.set_keyScaleStride(tilingInfo->keyScaleStride);
+    tilingData_.set_topkScorePrecision(tilingInfo->topkScorePrecision);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -907,8 +912,9 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     uint32_t pageAttentionFlag = static_cast<uint32_t>(tilingInfo->pageAttentionFlag);
     uint32_t inputQLayout = static_cast<uint32_t>(tilingInfo->inputQLayout);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
-    uint32_t tilingKey =
-        GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout);
+    uint32_t topkScorePrecision = static_cast<uint32_t>(tilingInfo->topkScorePrecision - 1);
+    uint64_t tilingKey =
+        GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout, topkScorePrecision);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 

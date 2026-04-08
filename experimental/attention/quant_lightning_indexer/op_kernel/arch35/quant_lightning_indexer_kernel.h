@@ -59,7 +59,7 @@ public:
     __aicore__ inline QLIPreload(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengthsQ,
-                                __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset, 
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
                                 __gm__ uint8_t *workspace, const QLITilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -100,7 +100,9 @@ protected:
     uint64_t keyScaleCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
+    uint64_t outputIdxCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
+    bool isOutputIdxOffsetValid = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
@@ -111,6 +113,7 @@ protected:
 
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<int32_t> blockTableGm;
+    GlobalTensor<int32_t> outputIdxOffsetGm;
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
@@ -374,7 +377,7 @@ template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                               __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale,
                                               __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK,
-                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *metadata,
+                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
                                               __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
                                               const QLITilingData *__restrict tiling, TPipe *tPipe)
 {
@@ -409,7 +412,11 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
+        if (outputIdxOffset != nullptr) {
+            isOutputIdxOffsetValid = true;
+        }
+        outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
+        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm, outputIdxOffsetGm);
         vectorService.InitVecWorkspaceTensor(scoreGm);
     } else {
         matmulService.InitParams(constInfo);
@@ -509,6 +516,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.isAllLoopEnd = (runInfo.bN2Idx == splitCoreInfo.bN2End) && (runInfo.gS1Idx == splitCoreInfo.gS1End) &&
                            (runInfo.s2Idx == splitCoreInfo.s2End);
 
+    runInfo.isOutputIdxOffsetValid = isOutputIdxOffsetValid;
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
@@ -525,6 +533,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
         // B,S1,N2,k/T,N2,k
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
+        outputIdxCoreOffset = (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
@@ -541,6 +550,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
+    runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
 }
 
 template <typename QLIT>
