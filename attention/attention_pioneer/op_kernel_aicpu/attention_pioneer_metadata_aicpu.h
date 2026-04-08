@@ -147,7 +147,6 @@ struct APBaseInfo {
     int64_t preToken { 0 };
     int64_t nextToken { 0 };
     int64_t actualSeqPrefixSize { 0 };
-    int64_t sinkNumber { 0 };
     int64_t keySinkNumber { 0 };
     bool supportFD { false };
 };
@@ -287,9 +286,6 @@ private:
     bool CheckMultiParaConsistency();
     bool CheckActualSeqLensQ() const;
     bool CheckActualSeqLensKv() const;
-    bool CheckSinkNumber();
-    bool CheckMlaSinkNumber();
-    bool BalanceSchedule(APSplitResult &splitRes);
     bool GenMetaData(const APSplitResult &splitRes);
 
     // util
@@ -362,7 +358,6 @@ private:
     int64_t blockSize_ = 0;
     std::string inputLayout_ = "TND";
     std::string inputLayoutKv_ = "TND";
-    int64_t sinkNum_ = 0;
     int64_t kSinkNum_ = 0;
     std::string socVersion_ = "ascend950";
     uint32_t aicCoreNum_ = 32U;

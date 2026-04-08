@@ -27,7 +27,6 @@ const aclTensor* AttentionPioneerMetadata(
     int64_t nextTokensOptional,
     char *inputLayoutOptional,
     char *inputLayoutKvOptional,
-    int64_t sinkNumOptional,
     int64_t kSinkNumOptional,
     int64_t ropeHeadDimOptional,
     int64_t blockSizeOptional,

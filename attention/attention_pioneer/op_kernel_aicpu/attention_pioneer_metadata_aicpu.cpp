@@ -98,11 +98,6 @@ bool AttentionPioneerMetadataKernel::GenMetaData(const APSplitResult &res) {
 void AttentionPioneerMetadataKernel::CalcInnerSizeMla(uint32_t seqSize)
 {
     sInnerSize_ = 512U;
-    uint32_t s1G = s1Size * gSize;
-    if (sinkNum_ > 0 && sinkNum_ <= 256 && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND) && s1G >= 128) {
-        sInnerSize_ = 256;
-    }
-
     if (kSinkNum_ > 0 && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND) && bSize <= 6 &&
         (preToken + nextToken < 512)) {
         sInnerSize_ = 256;
@@ -176,7 +171,6 @@ void AttentionPioneerMetadataKernel::CreateSplitInputMla(APBaseInfo &baseInfo, A
     baseInfo.isS1G = inputLayout_ == "TND" || inputLayout_ == "BSH_BSND";
     baseInfo.sparseMode = sparseMode_;
     baseInfo.attenMaskFlag = attenMaskFlag;
-    baseInfo.sinkNumber = sinkNum_;
     baseInfo.keySinkNumber = kSinkNum_;
     baseInfo.supportFD = true;
     if (actualSeqLengths_ != nullptr) {
@@ -218,8 +212,7 @@ void AttentionPioneerMetadataKernel::CalcInnerSizeGqa(uint32_t s2SizeVal)
 {
     if (inputLayout_ == "TND" || inputLayout_ == "NTD") {
         sInnerSize_ = AP_S_INNER_SIZE_512;
-        if ((sinkNum_ > 0 && sinkNum_ <= 256 && s1Size > AP_S1_SIZE_16
-            && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND)) || (kSinkNum_ > 0)) {
+        if (kSinkNum_ > 0) {
             sInnerSize_ = 256;
         }
     } else {
@@ -257,11 +250,6 @@ void AttentionPioneerMetadataKernel::CalcMBaseSizeGqa()
 {
     if (inputLayout_ == "TND" || inputLayout_ == "NTD") {
         mBaseSize_ = AP_M_BASE_SIZE_512;
-        if (sinkNum_ > 0 && sinkNum_ <= 256 && s1Size > AP_S1_SIZE_16
-            && sparseMode_ == static_cast<uint32_t>(APSparseMode::BAND) && nextToken == 0
-            && preToken % 512 >= sinkNum_) {
-            mBaseSize_ = AP_M_BASE_SIZE_256;
-        }
     } else {
         if (s1Size <= AP_S1_SIZE_16) {
             if (sInnerSizeAlign_ <= AP_S_INNER_SIZE_ALIGN_512) {
@@ -296,7 +284,6 @@ void AttentionPioneerMetadataKernel::CreateSplitInputGqa(APBaseInfo &baseInfo, A
     baseInfo.isS1G = inputLayout_ == "TND" || inputLayout_ == "BSH_BSND";
     baseInfo.sparseMode = sparseMode_;
     baseInfo.attenMaskFlag = attenMaskFlag;
-    baseInfo.sinkNumber = sinkNum_;
     baseInfo.keySinkNumber = kSinkNum_;
     baseInfo.supportFD = baseInfo.keySinkNumber ? false : true;
     if (actualSeqLengths_ != nullptr) {
@@ -342,7 +329,6 @@ bool AttentionPioneerMetadataKernel::Prepare(CpuKernelContext &ctx) {
     GetAttrValueOpt(ctx, "next_tokens", nextTokens_);
     GetAttrValueOpt(ctx, "input_layout", inputLayout_);
     GetAttrValueOpt(ctx, "input_layout_kv", inputLayoutKv_);
-    GetAttrValueOpt(ctx, "sink_num", sinkNum_);
     GetAttrValueOpt(ctx, "k_sink_num", kSinkNum_);
     GetAttrValueOpt(ctx, "block_size", blockSize_);
 
@@ -766,78 +752,7 @@ bool AttentionPioneerMetadataKernel::CheckFeatureActualSeqLensKvData()
 
 bool AttentionPioneerMetadataKernel::CheckMultiParaConsistency()
 {
-    return (CheckActualSeqLensQ() && CheckActualSeqLensKv() && CheckSinkNumber());
-}
-
-bool AttentionPioneerMetadataKernel::CheckSinkNumber()
-{
-    if(sinkNum_ > 0 && kSinkNum_ > 0) {
-        KERNEL_LOG_ERROR("sinkNum and kSinkNum cannot coexist");
-        return false;
-    }
-    int64_t maxSinkNumber = 512;
-    if (sinkNum_ == 0) {
-        return true;
-    }
-    if (sinkNum_ < 0 || sinkNum_ > maxSinkNumber || sinkNum_ % 2 == 1) {
-        KERNEL_LOG_ERROR("invalid Parameter sinkNumber");
-        return false;
-    }
-    if (sinkNum_ > 0 && inputLayout_ != "TND") {
-        KERNEL_LOG_ERROR("when sinkNumber > 0, qLayout should TND");
-        return false;
-    }
-    uint64_t minActualKvSeqLen = 1000000000000;
-    const int64_t *actualKvLenData = static_cast<const int64_t*>(actualSeqLengthsKv_->GetData());
-    if (actualKvLenData != nullptr) {
-        uint32_t loop = actualSeqLengthsKv_->GetTensorShape()->GetDimSize(0);
-        for (uint32_t i = 0; i < loop; i++) {
-            int64_t tmpS = 0;
-            if (blockSize_ != 0) {
-                tmpS = actualKvLenData[i];
-            } else {
-                tmpS = (i == 0U) ? actualKvLenData[0] : (actualKvLenData[i] - actualKvLenData[i - 1U]);
-            }
-            minActualKvSeqLen = minActualKvSeqLen < static_cast<uint64_t>(tmpS) ? minActualKvSeqLen : static_cast<uint64_t>(tmpS);
-        }
-    }
-    if (minActualKvSeqLen < static_cast<uint64_t>(sinkNum_)) {
-        KERNEL_LOG_ERROR("when sinkNumber > 0, sinknumber(%ld) should <= minActualKvSeqLen(%lu)",
-                sinkNum_, minActualKvSeqLen);
-        return false;
-    }
-    return CheckMlaSinkNumber();
-}
-
-bool AttentionPioneerMetadataKernel::CheckMlaSinkNumber()
-{
-    if (ropeHeadDim_ == 0U || headDimV_ != 512U) {
-        return true;
-    }
-    if (sparseMode_ != static_cast<uint32_t>(APSparseMode::BAND)) {
-        KERNEL_LOG_ERROR("sparseMode only support 4 when sinkNumber(%ld) exist and D is 512", sinkNum_);
-        return false;
-    }
-    const int64_t *actualSeqLensDataQ = static_cast<const int64_t*>(actualSeqLengths_->GetData());
-    const int64_t *actualSeqLensData = static_cast<const int64_t*>(actualSeqLengthsKv_->GetData());
-    int64_t tmpS1Size = 0;
-    int64_t tmpS2Size = 0;
-    for (uint32_t i = 0; i < actualSeqLengthsQSize_; i++) {
-        tmpS1Size = (i == 0U) ? actualSeqLensDataQ[0] : (actualSeqLensDataQ[i] - actualSeqLensDataQ[i - 1U]);
-        if (blockSize_ != 0) {
-            tmpS2Size = actualSeqLensData[i];
-        } else {
-            tmpS2Size = (i == 0U) ? actualSeqLensData[0] : (actualSeqLensData[i] - actualSeqLensData[i - 1U]);
-        }
-        if (tmpS2Size == sinkNum_) {
-            continue;
-        }
-        if (preToken < 0 || (nextToken < (tmpS1Size - tmpS2Size + sinkNum_))) {
-            KERNEL_LOG_ERROR("preToken < 0 or nextToken < (s1 - s2 + sinkNumber) is not supported when sinkNumber(%ld) exist and D is 512", sinkNum_);
-            return false;
-        }
-    }
-    return true;
+    return (CheckActualSeqLensQ() && CheckActualSeqLensKv());
 }
 
 bool AttentionPioneerMetadataKernel::CheckActualSeqLensQ() const
@@ -1092,7 +1007,7 @@ void AttentionPioneerMetadataKernel::CalcS1GCache(uint32_t s1GIdx, const APSplit
                                  batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK];
         s1GCache.s1GNormalBlockCost = batchCache.typeCost[AP_NORMAL_BLOCK][AP_NORMAL_BLOCK];
     }
-    uint32_t sinkNumber = (baseInfo.keySinkNumber && baseInfo.supportFD) ? baseInfo.keySinkNumber : baseInfo.sinkNumber;
+    uint32_t sinkNumber = (baseInfo.keySinkNumber > 0 && baseInfo.supportFD) ? baseInfo.keySinkNumber : 0;
     if (sinkNumber > 0 && baseInfo.sparseMode == 4U) {
         CalcS1GCacheWithSinkNumber(s1GIdx, splitContext, batchCache, s1GCache, sinkNumber);
     }
@@ -1292,7 +1207,7 @@ void AttentionPioneerMetadataKernel::AssignByBlock(const APSplitContext &splitCo
     if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
         curCost = assignContext.s1GCache.s1GLastBlockCost;
     }
-    uint32_t sinkNumber = (splitContext.baseInfo.keySinkNumber && splitContext.baseInfo.supportFD) ? splitContext.baseInfo.keySinkNumber : splitContext.baseInfo.sinkNumber;
+    uint32_t sinkNumber = (splitContext.baseInfo.keySinkNumber > 0 && splitContext.baseInfo.supportFD) ? splitContext.baseInfo.keySinkNumber : 0;
     while (APIsWithinTolerance(assignContext.coreCache.costLimit, curCost / AP_FA_TOLERANCE_RATIO,
             assignContext.coreCache.cost + curCost)) {
         assignContext.coreCache.cost += curCost;
@@ -1318,7 +1233,7 @@ void AttentionPioneerMetadataKernel::ForceAssign(const APSplitContext &splitCont
     }
     assignContext.coreCache.cost += curCost;
     assignContext.coreCache.block++;
-    uint32_t sinkNumber = (splitContext.baseInfo.keySinkNumber && splitContext.baseInfo.supportFD) ? splitContext.baseInfo.keySinkNumber : splitContext.baseInfo.sinkNumber;
+    uint32_t sinkNumber = (splitContext.baseInfo.keySinkNumber > 0 && splitContext.baseInfo.supportFD) ? splitContext.baseInfo.keySinkNumber : 0;
     if (sinkNumber > 0 && splitContext.baseInfo.sparseMode == 4U) {
         UpdateCurS2IdxWithSinkNumber(splitContext, assignContext, sinkNumber);
     } else {
