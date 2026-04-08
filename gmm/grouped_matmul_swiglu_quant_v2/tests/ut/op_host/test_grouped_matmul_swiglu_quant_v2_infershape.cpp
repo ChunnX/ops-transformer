@@ -343,9 +343,14 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2Infe
 } // namespace
 
 namespace GroupedMatmulSwigluQuantV2InfershapeUT {
-const vector<GroupedMatmulSwigluQuantV2InfershapeCase> &GetAscend950Cases()
+const vector<GroupedMatmulSwigluQuantV2InfershapeCase> &GetSwigluQuantV2InfershapeCsvCases()
 {
-    static const vector<GroupedMatmulSwigluQuantV2InfershapeCase> cases = LoadCases("Ascend950");
+    static const vector<GroupedMatmulSwigluQuantV2InfershapeCase> cases = [] {
+        vector<GroupedMatmulSwigluQuantV2InfershapeCase> merged = LoadCases("Ascend950");
+        vector<GroupedMatmulSwigluQuantV2InfershapeCase> ascend910b = LoadCases("Ascend910B");
+        merged.insert(merged.end(), ascend910b.begin(), ascend910b.end());
+        return merged;
+    }();
     return cases;
 }
 
@@ -361,6 +366,6 @@ TEST_P(TestGroupedMatmulSwigluQuantV2Infershape, csvDrivenCase)
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_INFERSHAPE_950, TestGroupedMatmulSwigluQuantV2Infershape,
-                         testing::ValuesIn(GetAscend950Cases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_INFERSHAPE_CSV, TestGroupedMatmulSwigluQuantV2Infershape,
+                         testing::ValuesIn(GetSwigluQuantV2InfershapeCsvCases()), MakeParamName);
 } // namespace GroupedMatmulSwigluQuantV2InfershapeUT
