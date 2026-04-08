@@ -378,6 +378,7 @@ aclnnStatus aclnnGroupedMatmul(
         |:-------:|:-------:| :------      |:------ |
         |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
         |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+        |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
     </details>
 

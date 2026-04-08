@@ -188,7 +188,8 @@ public:
         return listTensorDesc.GetDataPtr<T>(groupIdx);
     }
 
-    __aicore__ inline void GetTensorShape(uint64_t groupIdx, GM_ADDR tensorPtr, uint64_t *shape, GM_ADDR weightTensorPtr)
+    __aicore__ inline void GetTensorShape(uint64_t groupIdx, GM_ADDR tensorPtr, uint64_t *shape,
+                                          GM_ADDR weightTensorPtr)
     {
         AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void *>(tensorPtr));
         AscendC::TensorDesc<int32_t> desc;
@@ -196,8 +197,10 @@ public:
         listTensorDesc.GetDesc(desc, groupIdx);
         uint64_t dim = desc.GetDim();
         if (weightNzFlag_ && tensorPtr == weightTensorPtr && dim > NUM_THREE) {
-            uint64_t val_k = transB ? desc.GetShape(dim - NUM_FOUR) * NUM_SIXTEEN : desc.GetShape(dim - NUM_THREE) * NUM_SIXTEEN;
-            uint64_t val_n = transB ? desc.GetShape(dim - NUM_THREE) * NUM_SIXTEEN : desc.GetShape(dim - NUM_FOUR) * NUM_SIXTEEN;
+            uint64_t val_k =
+                transB ? desc.GetShape(dim - NUM_FOUR) * NUM_SIXTEEN : desc.GetShape(dim - NUM_THREE) * NUM_SIXTEEN;
+            uint64_t val_n =
+                transB ? desc.GetShape(dim - NUM_THREE) * NUM_SIXTEEN : desc.GetShape(dim - NUM_FOUR) * NUM_SIXTEEN;
             shape[NUM_ZERO] = transB ? val_n : val_k;
             shape[NUM_ONE] = transB ? val_k : val_n;
         } else {
@@ -215,11 +218,14 @@ public:
         uint64_t xShape[DIM_NUM] = {0UL};
         uint64_t wShape[DIM_NUM] = {0UL};
         GM_ADDR weightTensorPtr = params.mmadParams.bGmAddr;
-        GetTensorShape(params.gmmParams.singleX == 0 ? groupIdx : 0, params.mmadParams.aGmAddr, xShape, weightTensorPtr);
-        GetTensorShape(params.gmmParams.singleWeight == 0 ? groupIdx : 0, weightTensorPtr, wShape, weightTensorPtr);
-        Get<M_VALUE>(problemShape_) = transA ? xShape[DIM_NUM - 1] : xShape[DIM_NUM - 2];
-        Get<K_VALUE>(problemShape_) = transB ? wShape[DIM_NUM - 1] : wShape[DIM_NUM - 2];
-        Get<N_VALUE>(problemShape_) = transB ? wShape[DIM_NUM - 2] : wShape[DIM_NUM - 1];
+        if (groupIdx == 0U || !params.gmmParams.singleTensor) {
+            GetTensorShape(params.gmmParams.singleX == 0 ? groupIdx : 0, params.mmadParams.aGmAddr, xShape,
+                           weightTensorPtr);
+            GetTensorShape(params.gmmParams.singleWeight == 0 ? groupIdx : 0, weightTensorPtr, wShape, weightTensorPtr);
+            Get<M_VALUE>(problemShape_) = transA ? xShape[DIM_NUM - 1] : xShape[DIM_NUM - 2];
+            Get<K_VALUE>(problemShape_) = transB ? wShape[DIM_NUM - 1] : wShape[DIM_NUM - 2];
+            Get<N_VALUE>(problemShape_) = transB ? wShape[DIM_NUM - 2] : wShape[DIM_NUM - 1];
+        }
         if (params.gmmParams.groupType == SPLIT_M) {
             Get<M_VALUE>(problemShape_) = splitValue;
         }
