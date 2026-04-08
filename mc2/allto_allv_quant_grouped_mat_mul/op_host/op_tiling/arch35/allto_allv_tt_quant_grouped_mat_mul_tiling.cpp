@@ -58,6 +58,8 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
         SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
         PrintGMMQuantTilingData(mmQuantTilingData);
     }
+    // permute out
+    GetPermuteOutSize();
     OP_LOGD(context_->GetNodeName(), "end DoGmmTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -322,6 +324,13 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     }
     OP_LOGD(context_->GetNodeName(), "end CheckScaleShape.");
     return ge::GRAPH_SUCCESS;
+}
+
+void AlltoAllvTTQuantGmmTiling::GetPermuteOutSize()
+{
+    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
+    // 将 permuteOutSize 对齐到 512 字节
+    permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
 REGISTER_OPS_TILING_TEMPLATE(AlltoAllvQuantGroupedMatMul, AlltoAllvTTQuantGmmTiling, 1);
