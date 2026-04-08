@@ -20,8 +20,13 @@
 namespace MC2Tiling {
 class AlltoAllMatmulFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
-    explicit AlltoAllMatmulFitBalanceTiling(const mc2tiling::TilingArgs &args, SocVersion socVersion = SocVersion::SOC950)
-        : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, TopoType::STANDARD_CARD, socVersion)
+    enum class QuantType {
+        FP_QUANT, KC_QUANT, MXFP8_QUANT, MXFP4_QUANT
+    };
+    explicit AlltoAllMatmulFitBalanceTiling(QuantType matmulQuantType, const mc2tiling::TilingArgs &args,
+                                            SocVersion socVersion = SocVersion::SOC950)
+        : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, TopoType::STANDARD_CARD, socVersion),
+          matmulQuantType_(matmulQuantType)
     {
         // AlltoAllMatmul: communication shape is K-axis (comm-first pattern, same as AllGatherMatmul)
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
@@ -34,6 +39,16 @@ public:
     void SetShortTileLen() override;
     void SetLongTileLen() override;
     void AdjustLongShortTileLen() override;
+
+protected:
+    QuantType matmulQuantType_ = QuantType::FP_QUANT;
+    double CalcMatmulTime(uint64_t tileM);
+    uint64_t CalcMByTime(double time);
+    uint64_t CalcMWhenT1EqualT2();
+    void FitTileLengthDiscrete();
+    uint64_t primeMinFactor(uint64_t num);
+    void ReTilingByFactor();
+    uint64_t CalcLongTileLen(uint64_t shortTileLen);
 };
 } // namespace MC2Tiling
 #endif // ALLTO_ALL_FIT_BALANCE_TILING_H
