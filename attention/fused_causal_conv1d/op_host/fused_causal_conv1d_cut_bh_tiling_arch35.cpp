@@ -284,7 +284,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
                 
     OP_CHECK_IF(dim_ % DIM_ALIGN_ELEMENT != 0,
             OP_LOGE(context_->GetNodeName(),
-                    "The dimension of x must be a multiple of 128, but got %ld",
+                    "X dim must be a multiple of 128, but got %ld",
                     dim_),
             return ge::GRAPH_FAILED);
 
@@ -689,7 +689,7 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
     if (xInputMode_ == X_INPUT_2D) {
         seqLen_ = MAX_M + 1;
     }
-    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + stateLen_) * DTYPE_SIZE;
+    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + 2 * stateLen_) * DTYPE_SIZE;
     int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE;
     int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
     int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;

@@ -125,12 +125,12 @@ private:
 
     // ========== UB队列（Unified Buffer中的数据缓存） ==========
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> xQueue;       // 输入x队列（双Buffer）
+    TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> cacheQueue;
     TQue<QuePosition::VECIN, 1> weightQueue;            // 卷积核队列（单Buffer）
-    TQue<QuePosition::VECIN, 1> cacheQueue;             // cache state队列（单Buffer）
+    // TQue<QuePosition::VECIN, 1> cacheQueue;             // cache state队列（单Buffer）
     TQue<QuePosition::VECIN, 1> indicesQueue;           // cache索引队列（单Buffer）
     TQue<QuePosition::VECIN, 1> acceptTokenQueue;       // accept token队列（单Buffer）
     TQue<QuePosition::VECIN, 1> queryStartLocQueue;     // query起始位置队列（单Buffer）
-    TQue<QuePosition::VECOUT, BUFFER_NUM> fQueue; 
 
     TPipe* pipe_;                             // Pipeline管理对象
 
@@ -287,7 +287,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
     
     // cacheQueue: 存储cache state
     int32_t cacheQueueSize = cacheLen_ * ubMainFactorDim_ * sizeof(T);
-    pipe_->InitBuffer(cacheQueue, 1, cacheQueueSize);
+    pipe_->InitBuffer(cacheQueue, BUFFER_NUM, cacheQueueSize);
 
     // weightQueue: 存储卷积核 [K, ubDimSize]
     int32_t weightQueueSize = kernelSize_ * ubMainFactorDim_ * sizeof(T);
@@ -410,7 +410,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
 {
     LocalTensor<T> xLocal = xQueue.DeQue<T>();
     LocalTensor<T> weightLocal = weightQueue.DeQue<T>();
-    LocalTensor<T> convStatesLocal = cacheQueue.AllocTensor<T>();
 
     int32_t perLoopBatch = batchLoop * ubMainFactorBS_;
     uint16_t blockLen = dimSizeInLoop_ * sizeof(T);
@@ -418,6 +417,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
     uint16_t yStride = (dim_ - dimSizeInLoop_) * sizeof(T);
     DataCopyPadParams padParams{false, 0, 0, 0};
     for (int32_t b = 0; b < batchNumInLoop_; b++) {
+        LocalTensor<T> convStatesLocal = cacheQueue.AllocTensor<T>();
+
         int32_t curBatchIdx = firstBatchIdx_ + perLoopBatch + b;
         int64_t convStatesIdx = static_cast<int64_t>(indicesLocal.GetValue(curBatchIdx));
         if(convStatesIdx == padSlotId_) {
@@ -433,7 +434,12 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         cacheCopyParams.srcStride = convStride;
         cacheCopyParams.dstStride = 0;
         DataCopyPad(convStatesLocal, convStatesGm[convStatesGmOffset], cacheCopyParams, padParams); //convStates GM->UB
-        SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+
+        cacheQueue.EnQue<T>(convStatesLocal);
+        convStatesLocal = cacheQueue.DeQue<T>();
+        // cacheQueue.EnQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN, T>(convStatesLocal);
+        // convStatesLocal = cacheQueue.DeQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN,T>();
+        // SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
 
         //=== 更新cachestate ===
         int32_t curBatchSeq = seqLen_;
@@ -446,23 +452,24 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         }
 
         UpdateconvStates(xLocal, convStatesLocal, acceptToken, curBatchUbOffset, convStatesIdx, curBatchSeq);
-        SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
 
         // 情况A：序列位置 j ∈ [0, K-2]，需要使用cache state
-        for (int32_t j = 0; j < kernelSize_ - 1 && j < curBatchSeq; j++) {
-            uint8_t stateSLen = static_cast<uint8_t>(kernelSize_ - 1 - j);
-            uint8_t xSLen = static_cast<uint8_t>(j + 1);
-            LocalTensor<T> xSlice = xLocal[curBatchUbOffset];
-            LocalTensor<T> stateSlice = convStatesLocal[(acceptToken-1+j)*dimSizeInLoop_];
-            Conv1dNeedState(xSlice, weightLocal, stateSlice, stateSlice, stateSLen, xSLen, dimSizeInLoop_, isResidualConnection_);
-        }
-        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+        cacheQueue.EnQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN, T>(convStatesLocal);
+        convStatesLocal = cacheQueue.DeQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN,T>();
+        LocalTensor<T> xSlice = xLocal[curBatchUbOffset];
+        LocalTensor<T> stateSlice = convStatesLocal[(acceptToken-1)*dimSizeInLoop_];
+        Conv1dNeedStateBH(xSlice, weightLocal, stateSlice, stateSlice, kernelSize_ - 1, dimSizeInLoop_, isResidualConnection_);
+        // SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
+        cacheQueue.EnQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>(convStatesLocal);
+        convStatesLocal = cacheQueue.DeQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>();
         DataCopyParams yGMParams;
         yGMParams.blockCount = ((kernelSize_ - 1) < curBatchSeq) ? kernelSize_ - 1 : curBatchSeq;
         yGMParams.blockLen = blockLen;
         yGMParams.srcStride = 0;
         yGMParams.dstStride = yStride;
         DataCopyPad(yGm[yOffset], convStatesLocal[(acceptToken-1) *dimSizeInLoop_], yGMParams);
+        cacheQueue.FreeTensor<T>(convStatesLocal);
 
         // 情况B：序列位置 j ∈ [K-1, curBatchSeq-1]，只使用x数据
         int16_t blockCount = curBatchSeq - kernelSize_+1;
@@ -470,7 +477,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             uint8_t xSLen = static_cast<uint8_t>(blockCount);
             LocalTensor<T> InLocal = xLocal[curBatchUbOffset];
             Conv1dNoNeedState(InLocal, weightLocal, InLocal, xSLen, static_cast<uint32_t>(dimSizeInLoop_), isResidualConnection_);
-            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);  
+            xQueue.EnQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>(xLocal);
+            xLocal = xQueue.DeQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>();
             DataCopyParams xToCacheCopyParams2;
             xToCacheCopyParams2.blockCount = blockCount;
             xToCacheCopyParams2.blockLen = blockLen;
@@ -478,12 +486,12 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             xToCacheCopyParams2.dstStride = yStride;
             DataCopyPad(yGm[yOffset + (kernelSize_ - 1)* dim_], xLocal[curBatchUbOffset], xToCacheCopyParams2);
         }
-        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+
     }
     // === 6. 释放输入tensors ===
     xQueue.FreeTensor(xLocal);
     weightQueue.FreeTensor(weightLocal);
-    cacheQueue.FreeTensor(convStatesLocal);
+    // cacheQueue.FreeTensor(convStatesLocal);
 }
 
 template <typename T>
