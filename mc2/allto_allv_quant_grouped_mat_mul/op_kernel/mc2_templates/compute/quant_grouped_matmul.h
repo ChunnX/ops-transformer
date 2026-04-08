@@ -16,6 +16,7 @@
 #ifndef MC2_QUANT_GROUPED_MATMUL_H
 #define MC2_QUANT_GROUPED_MATMUL_H
 
+#include "../a2av_gmm_utils.h"
 #include "kernel_operator.h"
 
 #if __has_include("../../../3rd/grouped_matmul/op_kernel/gqmm_cube_on_the_fly.h")
@@ -60,7 +61,7 @@ public:
 
         uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * h1_);
         // 将 permuteOutSize 对齐到 512 字节
-        permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
+        permuteOutSize = CeilDiv(Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE), PACK_FACTOR);
         uint64_t permuteXScaleSize =
             a_ * Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
             Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
@@ -127,8 +128,8 @@ public:
 protected:
     __aicore__ inline void UpdateAddr(uint32_t expertIdx)
     {
-        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_);
-        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
+        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(CeilDiv(expertTokenOffset_ * h1_, PACK_FACTOR));
+        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(CeilDiv(expertIdx * h1_ * n1_, PACK_FACTOR));
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
 
         // MX 模式：更新 scale 偏移
