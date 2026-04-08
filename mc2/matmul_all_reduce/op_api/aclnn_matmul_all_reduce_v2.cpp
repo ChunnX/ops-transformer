@@ -14,6 +14,7 @@
  */
 #include "aclnn_matmul_all_reduce_v2.h"
 
+#include "aclnnInner_matmul_all_reduce.h"
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"
 #include "matmul_all_reduce_util.h"
@@ -24,15 +25,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
-    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
-    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
-    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
@@ -54,7 +46,8 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
     int64_t antiquantGroupSize = 0;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
-        x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2, group, reduceOp,
+        x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
+        const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 

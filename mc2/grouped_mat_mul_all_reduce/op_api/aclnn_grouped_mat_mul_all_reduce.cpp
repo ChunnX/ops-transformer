@@ -29,6 +29,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "common/utils/hccl_util.h"
+#include "aclnnInner_grouped_mat_mul_all_reduce.h"
 
 static constexpr int64_t MAX_GROUP_LIST_SIZE = 64; // tiling data size only support 8192 bytes.
 
@@ -55,14 +56,6 @@ struct NnopbaseDfxId {
     const char* funcName;
     bool hasReg;
 };
-
-extern aclnnStatus aclnnInnerGroupedMatMulAllReduceGetWorkspaceSize(
-    const aclTensorList* x, const aclTensorList* weight, const aclTensorList* bias,
-    const aclIntArray* groupListOptional, int64_t splitItem, const char* group, const char* reduceOp, int64_t commTurn,
-    const aclTensorList* out, uint64_t* workspaceSize, aclOpExecutor** executor);
-
-extern aclnnStatus aclnnInnerGroupedMatMulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 extern uint64_t NnopbaseMsprofSysTime();
 extern void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
@@ -473,7 +466,8 @@ static aclnnStatus PreAndPostProcessForInner(
     CreateEmptyTensor(BIAS_DTYPE.at(gmmParams.xDtype), gmmParams.bias, emptyBiasList);
     aclnnStatus ret = aclnnInnerGroupedMatMulAllReduceGetWorkspaceSize(
         gmmParams.x, gmmParams.weight, gmmParams.bias, gmmParams.groupListOptional, gmmParams.splitItemOptional,
-        gmmParams.group, gmmParams.reduceOp, gmmParams.commTurn, gmmParams.y, workspaceSize, executor);
+        const_cast<char*>(gmmParams.group), const_cast<char*>(gmmParams.reduceOp), gmmParams.commTurn,
+        gmmParams.y, workspaceSize, executor);
 
     if (emptyBiasList != nullptr) { // destroy tensorList
         aclDestroyTensorList(emptyBiasList);

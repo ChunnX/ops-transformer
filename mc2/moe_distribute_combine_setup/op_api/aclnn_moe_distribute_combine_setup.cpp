@@ -152,9 +152,9 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclnnStatus retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
-        expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
-        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, quantExpandXOut,
-        commCmdInfoOut, workspaceSize, executor);
+        expandX, expertIds, assistInfoForCombine, const_cast<char*>(groupEp), epWorldSize, epRankId,
+        moeExpertNum, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
+        commType, const_cast<char*>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
     return retStatus;
 }
 
