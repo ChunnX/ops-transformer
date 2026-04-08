@@ -3662,8 +3662,8 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapA(int64_t curIdx, int64_
     LocalTensor<T1> pseUbT1 = unifiedBuffer.GetWithOffset<T1>(16 * 1024 / sizeof(T1), ubBufferOffset + T1Begin);
     LocalTensor<half> pseUb = pseUbT1.template ReinterpretCast<half>();
     if constexpr (IS_PSE == ENABLE) {
-        pseInfo.bSSOffset = dbParam.bIdx * s1 * s2;
-        pseInfo.s2SizeAcc = dbParam.bIdx * s2;
+        // pseInfo.bSSOffset = dbParam.bIdx * s1 * s2;
+        // pseInfo.s2SizeAcc = dbParam.bIdx * s2;
         pseInfo.boIdx = dbParam.bIdx;
         pseInfo.n2oIdx = dbParam.n2Idx;
         pseInfo.goIdx = dbParam.gIdx;
@@ -4172,9 +4172,11 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeV
     if constexpr (INPUT_LAYOUT == TND) {
         UpdateToken(dbParam.bIdx);
         GetSeqQlenKvlenByBidx(dbParam.bIdx, dbParam.actualS1Len, dbParam.actualS2Len);
+        // 这里拿的是当前batch的s2Len
         dropMaskInfo.s2TotalSize = dbParam.actualS2Len;
         int64_t bSSOffset = 0;
         int64_t s2Accu = 0;
+        // 下面算的是前面所有batch的s2Len的累加和
         for (int64_t bidx = 0; bidx < dbParam.bIdx; bidx++) {
             GetSeqQlenKvlenByBidx(bidx, actualS1Len, actualS2Len);
             bSSOffset += actualS1Len * actualS2Len;
@@ -4183,6 +4185,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeV
         dropMaskInfo.bSSOffset = bSSOffset;
         dropMaskInfo.s1Size = dbParam.actualS1Len;
         dropMaskInfo.s2Size = dbParam.actualS2Len;
+        // 但是这里好像有点问题？ 如果传入的是BN1S的话这里算的好像还是 S*S的计算啊？
         pseInfo.bSSOffset = bSSOffset;
         pseInfo.s2SizeAcc = s2Accu;
         pseInfo.s1Size = dropMaskInfo.s1Size;
