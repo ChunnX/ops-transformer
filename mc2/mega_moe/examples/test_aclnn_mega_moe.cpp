@@ -121,6 +121,35 @@ bool loadBinaryFile(const std::string& filename, std::vector<T>& data) {
     return true;
 }
 
+std::string GetCurrentPath()
+{
+    std::filesystem::path current_path = std::filesystem::current_path();
+    return current_path.string() + "/";
+}
+
+std::string GetOutPutDataPath(int32_t rank)
+{
+    return GetCurrentPath() + "/data/" + std::to_string(rank) + "/";
+}
+
+template<typename OutputDtype>
+void WriteResultToBin(int32_t rank, std::string actualResultFile, void *buf, int64_t len)
+{
+    int size = sizeof(OutputDtype) * len;
+    std::string dataPath = GetOutPutDataPath(rank);
+    std::string path = dataPath + actualResultFile;
+    std::vector<char> actualResult(size, 0);
+    auto error = aclrtMemcpy(actualResult.data(), size, buf, size, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (error != 0) {
+        printf("Memcpy device to host failed!, file:%s\n", actualResultFile.c_str());
+        return;
+    }
+    std::ofstream outfile(path, std::ifstream::binary);
+    outfile.write(actualResult.data(), size);
+    outfile.close();
+    printf("Write result to file %s finished!\n", path.c_str());
+}
+
 int launchOneThread_MegaMoe(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
@@ -161,19 +190,19 @@ int launchOneThread_MegaMoe(Args &args)
     long long scalesOptionalShapeSize = GetShapeSize(scalesOptionalShape);
 
     // 构造输入数据
-    std::vector<int16_t> xHostData(xShapeSize, 15360);
+    std::vector<int16_t> xHostData(xShapeSize, 15377);
     std::vector<int32_t> expertIdxHostData(expertIdxShapeSize, 60);
     std::vector<int8_t> weightHostData(weightShapeSize, 60);
     std::vector<int8_t> weightScaleHostData(weightScaleShapeSize, 110);
     std::vector<int8_t> weight2HostData(weight2ShapeSize, 60);
-    std::vector<int8_t> weight2ScaleHostData(weight2ScaleShapeSize, 126);
+    std::vector<int8_t> weight2ScaleHostData(weight2ScaleShapeSize, 116);
     std::vector<float> probsHostData(probsHostDataShapeSize, 60);
     std::vector<int16_t> output2HostData(output2ShapeSize, 0);
     std::vector<float> expertScalesOptionalHostData(expertScalesOptionalShapeSize, 0);
     std::vector<float> scalesOptionalHostData(scalesOptionalShapeSize, 0);
 
     // 读取bin文件数据
-    std::string inputPrefix = "/home/c00588804/0326_v2/data/input_";;
+    std::string inputPrefix = "/home/c00588804/0330/a5_dev/dispatch_ffn_combine-a5_dev/gmmsq_com/data/input_";;
     loadBinaryFile(inputPrefix + std::to_string(args.rankId) + "/input_tokens.bin", xHostData);
     loadBinaryFile(inputPrefix + std::to_string(args.rankId) + "/expert_id.bin", expertIdxHostData);
     loadBinaryFile(inputPrefix + std::to_string(args.rankId) + "/b_8.bin", weightHostData);
@@ -247,7 +276,6 @@ int launchOneThread_MegaMoe(Args &args)
     uint64_t workspaceSize = 0;
     int64_t epRankId = args.rankId;
     int64_t moeExpertNum = E;
-    int64_t cclBufferSize = 200;
     int64_t maxRecvTokenNum = M * topK * rankSize;
     int64_t dispatchQuantMode = 0;
     int64_t combineQuantMode = 0;
@@ -261,7 +289,7 @@ int launchOneThread_MegaMoe(Args &args)
     // 调用第一阶段接口
     ret = aclnnMegaMoeGetWorkspaceSize(
         x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, weight1, weightscales1, weight2, weightscales2, hcomName, epWorldSize, epRankId, moeExpertNum,
-        cclBufferSize, maxRecvTokenNum, shareExpertNum, shareExpertRankNum, dispatchQuantMode, dispatchQuantOutType, combineQuantMode, commAlg.c_str(), globalBs, y, &workspaceSize, &executor);
+        maxRecvTokenNum, shareExpertNum, shareExpertRankNum, dispatchQuantMode, dispatchQuantOutType, combineQuantMode, commAlg.c_str(), globalBs, y, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMegaMoeGetWorkspaceSize failed. ret = %d \n", ret); return ret);
 
     printf("aclnnMegaMoeGetWorkspaceSize success \n");
@@ -280,6 +308,11 @@ int launchOneThread_MegaMoe(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); return ret);
     LOG_PRINT("[INFO] device_%d aclnnMegaMoe execute successfully.\n", args.rankId);
+
+    // 拷贝workspace数据
+    WriteResultToBin<int8_t>(args.rankId, "workspace.bin",  workspaceAddr, workspaceSize);
+    WriteResultToBin<int16_t>(args.rankId, "output2.bin",  yDeviceAddr, output2ShapeSize);
+    printf("Get workspace content done. \n");
 
     // 释放device资源，需要根据具体API的接口定义修改
     if (x != nullptr) {

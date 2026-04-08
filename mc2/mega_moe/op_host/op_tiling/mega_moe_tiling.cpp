@@ -240,6 +240,9 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->transW = true;
     tilingData->transW2 = true;
     tilingData->topK = topK;
+    tilingData->m0 = M < NUM_256 ? NUM_128 : NUM_256;
+    tilingData->k0 = M < NUM_256 ? NUM_512 : NUM_384;
+    tilingData->n0 = NUM_256;
     auto attrs = context->GetAttrs();
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((ATTR_EP_WORLD_SIZE_INDEX));
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSize is null."), return ge::GRAPH_FAILED);
@@ -275,10 +278,14 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         tilingData->moeFinalizeRoutingTilingKey    // uint64_t &tilingKey)
     );
 
+    int32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *workspace = context->GetWorkspaceSizes(1);
     WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
-    int64_t workspaceSize = workspaceInfo.workspaceSize + 1024 * 1024 * 100;
+    int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + 1024 * 1024 * 50;
     workspace[0] = workspaceSize;
+
+    printf("sysWorkspaceSize: %u \n", sysWorkspaceSize);
+    printf("mega_moe_tiling workspaceSize: %ld \n", workspaceSize);
 
     PrintMegaMoeTilingData(tilingData);
     printWorkspaceInfo(&workspaceInfo);
