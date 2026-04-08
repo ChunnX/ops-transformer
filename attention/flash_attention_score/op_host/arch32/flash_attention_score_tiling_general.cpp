@@ -846,13 +846,14 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
         }
         return true;
     }
-    if (pseShape->GetStorageShape().GetDimNum() < 2) {  // 2 is min dim num of legal pse
+    if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
         OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                   pseShape->GetStorageShape().GetDimNum(), pseType);
         return false;
     }
     auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
     auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
+    std::cout << "zad:: SetPseAlibiParams pseS1Size: " << pseS1Size << ", pseS2Size: " << pseS2Size << std::endl;
     if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE && pseS2Size == s2Size) {
         if (s1Size != s2Size) {
             OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
@@ -1532,9 +1533,12 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
             for (int64_t i = 0; i < bSize; i++) {
                 accumS1S2 += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
+            // TND的一维处理，满足这俩应该就算走到一维的处理里面了
             if (pseBSize == accumS2 * n1Size) {
+                std::cout << "zad:: pseBSize == accumS2 * n1Size PSE_B_N2_G_1_S2 mode" << std::endl;
                 pseShapeType = PSE_B_N2_G_1_S2;
             } else if (pseBSize == accumS1S2 * n1Size) {
+                std::cout << "zad:: pseBSize == accumS1S2 * n1Size PSE_B_N2_G_S1_S2 mode" << std::endl;
                 pseShapeType = PSE_B_N2_G_S1_S2;
             } else if (pseDimNum == PSE_DIM_NUM && (pseShapeDims.GetDim(0) == 1 || pseShapeDims.GetDim(0) == bSize) &&
                        pseShapeDims.GetDim(1) == n1Size && pseShapeDims.GetDim(2) == PSE_ALIBI_S_SIZE &&
@@ -3431,13 +3435,14 @@ protected:
             return true;
         }
         // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 2) {  // 2 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
         }
         auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
+        std::cout << "zad:: S1s2Bn2gs1::SetPseAlibiParams pseS1Size: " << pseS1Size << ", pseS2Size: " << pseS2Size << std::endl;
 
         PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
         if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
@@ -3711,14 +3716,15 @@ protected:
             }
             return true;
         }
-        // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 2) {  // 2 is min dim num of legal pse
+        // 1: pre last axiss
+        if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
         }
         auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
+        std::cout << "zad:: S1s2Bn2gs1SameAB::SetPseAlibiParams pseS1Size: " << pseS1Size << ", pseS2Size: " << pseS2Size << std::endl;
 
         PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
         if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
@@ -3891,13 +3897,14 @@ protected:
             return true;
         }
         // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 2) {  // 2 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
         }
         auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
+        std::cout << "zad:: VarLenScore::SetPseAlibiParams pseS1Size: " << pseS1Size << ", pseS2Size: " << pseS2Size << std::endl;
 
         PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
         OP_LOGD(context_, "[%s] pseS1Size:%ld, pseS2Size:%ld.", templateName, pseS1Size, pseS2Size);
