@@ -329,7 +329,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckShareExpScaleShape() const
         OP_TILING_CHECK((wtSDimN != n2_) || (wtSDimH != expectH) || (wtSDim2 != 2),
                         OP_LOGE(context_->GetNodeName(),
                                 "When mx quant mode and trans mmWeight, the expected shape of "
-                                "mmWeightscale is (%lu, %lu, 2) but the actual is (%lu, %lu, 2)",
+                                "mmWeightscale is (%lu, %lu, 2) but the actual is (%lu, %lu, %lu)",
                                 n2_, expectH, wtSDimN, wtSDimH, wtSDim2),
                         return ge::GRAPH_FAILED);
     } else {
@@ -337,7 +337,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckShareExpScaleShape() const
                         OP_LOGE(context_->GetNodeName(),
                                 "When mx quant mode and not trans mmWeight, "
                                 "the expected shape of mmWeightscale is (%lu, %lu, 2) but the actual "
-                                "is (%lu, %lu, 2)",
+                                "is (%lu, %lu, %lu)",
                                 expectH, n2_, wtSDimH, wtSDimN, wtSDim2),
                         return ge::GRAPH_FAILED);
     }
