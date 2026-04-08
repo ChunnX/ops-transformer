@@ -110,7 +110,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>输入</td>
                 <td>公式中的输入 gmmX。</td>
                 <td>支持的 shape 包括 (A, H)。</td>
-                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
                 <td>x</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>输入</td>
                 <td>公式中的输入 gmmWeight。</td>
                 <td>支持的 shape 包括 (e, H, N1)。e 为每卡部署的专家数，H 为 hidden size，N1 为 MoE FFN 中间维度。</td>
-                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>3</td>
                 <td>x</td>
@@ -176,7 +176,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>输入</td>
                 <td>公式中的输入 mmX。</td>
                 <td>支持的 shape 包括 (bs, H)。bs 为每卡部署的专家个数，H 为 hidden size。</td>
-                <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+                <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
                 <td>x</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>输入</td>
                 <td>公式中的输入 mmWeight。</td>
                 <td>不支持空。支持的 shape 包括 (H, N1)。H 为 hidden size，N1 为共享专家 FFN 的中间层维度。</td>
-                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
                 <td>x</td>
@@ -373,7 +373,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>y</td>
                 <td>输出</td>
                 <td>grouped matmul 计算输出。</td>
-                <td>不支持空 Tensor。支持的 shape 包括 (A, N1)。A 为本 rank 处理的 token 数。</td>
+                <td>不支持空 Tensor。支持的 shape 包括 (BSK, N1)。</td>
                 <td>FLOAT16、BFLOAT16</td>
                 <td>ND</td>
                 <td>2</td>
@@ -515,7 +515,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
   - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
   - H2：表示共享专家hidden size隐藏层大小，取值范围(0, 12288]。
-  - e：表示单卡上专家个数，e<=32，e * epWorldSize最大支持256。
+  - e：表示单卡上专家个数，0<e<=32，e * epWorldSize最大支持256。
   - N1：表示路由专家的head_num，取值范围(0, 65536)。
   - N2：表示共享专家的head_num，取值范围(0, 65536)。
   - BS：batch sequence size。
