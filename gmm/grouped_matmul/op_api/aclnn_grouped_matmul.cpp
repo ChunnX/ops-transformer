@@ -81,6 +81,7 @@ namespace {
   static constexpr size_t PER_CHANNEL_SCALE_DIM = 2UL;
   static constexpr size_t PER_GROUP_SCALE_DIM = 3UL;
   static constexpr size_t DIMS_THREE_FOR_GMM = 3UL;
+  static constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
 
   static bool IsFormatNZWithC0(const aclTensor* tensor) {
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
@@ -451,8 +452,11 @@ static aclnnStatus CheckGroupListCommonTensor(const gmm::GroupedMatmulParams &gm
     int64_t groupListSize = gmmParams.groupTensorOptional->GetViewShape().GetDim(0);
     size_t groupListDimNum = gmmParams.groupTensorOptional->GetViewShape().GetDimNum();
     if (gmmParams.groupListType == gmm::GROUP_LIST_SPARSE_M) {
-      CHECK_COND(groupListDimNum == 2, ACLNN_ERR_PARAM_INVALID,  // sparse, group list shape [e, 2]
+      CHECK_COND(groupListDimNum == GROUP_LIST_SPARSE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,  // sparse, group list shape [e, 2]
         "When groupList type is 2, dim num of groupList should be 2, but now is %zu.", groupListDimNum);
+      CHECK_COND(gmmParams.groupTensorOptional->GetViewShape().GetDim(1) == GROUP_LIST_SPARSE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+        "When groupList type is 2, the 2nd dim of groupList should be 2, but now is %ld.",
+        gmmParams.groupTensorOptional->GetViewShape().GetDim(1));
     }
     CHECK_COND(groupListSize <= MAX_GROUP_LIST_SIZE_TENSOR, ACLNN_ERR_PARAM_INVALID,
                "When groupList type is tenosr, size of groupList %ld should be less than or equal to %ld.",
