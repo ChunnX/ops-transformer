@@ -1,0 +1,41 @@
+{
+  "check_time": "2026-04-08T15:50:09.397918",
+  "operator": "mte_alltoall",
+  "environment": {
+    "ascend_home_path": "",
+    "ascend_home_path_valid": false,
+    "cann_dir_exists": false,
+    "cann_version": "",
+    "arch_dir": "",
+    "aarch64_dir_exists": false,
+    "bisheng_path": "",
+    "bisheng_exists": false,
+    "bisheng_executable": false,
+    "kernel_operator_h": "",
+    "header_exists": false,
+    "libregister_so": "",
+    "libascendcl_so": "",
+    "all_libs_exist": false,
+    "asc_devkit_path": "asc-devkit",
+    "asc_devkit_exists": true,
+    "api_docs_exist": true,
+    "cmake_config_exists": true,
+    "examples_count": 0,
+    "npu_available": false,
+    "npu_device_count": 0
+  },
+  "mc2": {
+    "hccl_so": "",
+    "hcom_so": "",
+    "hccl_available": false,
+    "headers_available": false,
+    "multi_card_available": false,
+    "npu_device_count": 0
+  },
+  "validation": {
+    "all_passed": true,
+    "error_count": 0,
+    "warning_count": 5,
+    "note": "Local macOS development environment. CANN/NPU not available locally. Code will be compiled and tested on remote NPU server with 4+ cards."
+  }
+}
