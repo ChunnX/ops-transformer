@@ -36,7 +36,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
         ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
+        // totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
+        totalCoreNum_ = 56;
         if (totalCoreNum_ == 0UL) {
             OP_LOGE(context_->GetNodeName(), "coreNum is 0");
             return ge::GRAPH_FAILED;
@@ -282,7 +283,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
                         MIN_DIM, MAX_DIM, dim_),
                 return ge::GRAPH_FAILED);
                 
-    OP_CHECK_IF(dim_ % DIM_ALIGN_ELEMENT != 0,
+    OP_CHECK_IF(dim_ % MIN_DIM != 0,
             OP_LOGE(context_->GetNodeName(),
                     "The dimension of x must be a multiple of 128, but got %ld",
                     dim_),
@@ -621,6 +622,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
     int64_t bestBSCores = 1;
     int64_t bestUsed = 1; // dc=1 initially
 
+
     for (int64_t dc = N; dc >= 1; --dc) {
         int64_t maxAllowedBSByCore = maxCoresAvailable / dc;
         if (maxAllowedBSByCore == 0) continue;
@@ -689,8 +691,8 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
     if (xInputMode_ == X_INPUT_2D) {
         seqLen_ = MAX_M + 1;
     }
-    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + stateLen_) * DTYPE_SIZE;
-    int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE;
+    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + 4 * stateLen_) * DTYPE_SIZE;
+    int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE * 2;
     int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
     int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
     maxUbDim = (maxUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
@@ -703,7 +705,7 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
         outUbDim = DIM_ALIGN_ELEMENT;
         int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
         int64_t availableForX = availableUbSize - weightConvStatesSize;
-        int64_t xSizePerBatch = BUFFER_NUM * seqLen_ * outUbDim * DTYPE_SIZE;
+        int64_t xSizePerBatch = BUFFER_NUM * seqLen_ * outUbDim * DTYPE_SIZE * 2;
         outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0;
         outUbBS = std::max<int64_t>(outUbBS, 1);
         outUbBS = std::min(outUbBS, coreBS);
@@ -847,7 +849,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
 
 void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
 {
-    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo ===");
+    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo1 ===");
 
     // Core distribution parameters
     OP_LOGI(context_->GetNodeName(), "usedCoreNum: %ld", tilingData_.usedCoreNum);
