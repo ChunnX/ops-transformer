@@ -109,7 +109,8 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
 }
 
 // 根据API定义，列出输入的所能支持的所有dtype
-static const std::initializer_list<op::DataType> IN_DTYPE_SUPPORT_LIST = {op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2};
+static const std::initializer_list<op::DataType> IN_DTYPE_SUPPORT_LIST = {op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT8_E4M3FN,
+                                                                          op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
 // 根据API定义，列出输入Scale所能支持的所有dtype
 static const std::initializer_list<op::DataType> SCALE_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT, op::DataType::DT_FLOAT8_E8M0};
 // 根据API定义，列出输出output所能支持的所有dtype
@@ -123,6 +124,13 @@ static bool CheckDtypesValid(const aclTensor *gmmX, const aclTensor *gmmWeight, 
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(gmmX, IN_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(gmmWeight, IN_DTYPE_SUPPORT_LIST, return false);
+    if ((gmmX->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || gmmWeight->GetDataType() == op::DataType::DT_FLOAT4_E2M1) &&
+        (gmmX->GetDataType() != gmmWeight->GetDataType())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In mxquant scenario, gmmX and gmmWeight must have same dtype when one is fp4_e2m1, but found gmmX: %s, gmmWeight: %s.",
+            op::ToString(gmmX->GetDataType()).GetString(), op::ToString(gmmWeight->GetDataType()).GetString());
+        return false;
+    }
     OP_CHECK_DTYPE_NOT_SUPPORT(gmmY, OUT_DTYPE_SUPPORT_LIST, return false);
 
     OP_CHECK_DTYPE_NOT_SUPPORT(gmmXScale, SCALE_DTYPE_SUPPORT_LIST, return false);
