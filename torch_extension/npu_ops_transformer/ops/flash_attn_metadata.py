@@ -26,7 +26,7 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature."""
         return "npu_flash_attn_metadata( int num_heads_q, int num_heads_kv, int head_dim, *, " \
-            "Tensor? cu_seqlens_q, Tensor? cu_seqlens_kv, Tensor? seqused_q, Tensor? seqused_kv," \
+            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None," \
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, " \
             "int? mask_mode=None, int? win_left=None, int? win_right=None, " \
             "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor"
@@ -38,7 +38,7 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
         """
         @torch.library.register_fake("npu_ops_transformer::" + self.name)
         def npu_flash_attn_metadata_meta( num_heads_q, num_heads_kv, head_dim,
-                                          cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                                          cu_seqlens_q = None, cu_seqlens_kv = None, seqused_q = None, seqused_kv = None,
                                           batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
                                           max_seqlen_kv: Optional[int] = None,
                                           mask_mode: Optional[int] = None, win_left: Optional[int] = None,
@@ -62,7 +62,7 @@ op_module = flash_attn_metadata_op_builder.load()
 
 @impl(AS_LIBRARY, flash_attn_metadata_op_builder.name, "PrivateUse1")
 def npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
-                            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                            cu_seqlens_q = None, cu_seqlens_kv = None, seqused_q = None, seqused_kv = None,
                             batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
                             max_seqlen_kv: Optional[int] = None,
                             mask_mode: Optional[int] = None, win_left: Optional[int] = None,
@@ -90,7 +90,7 @@ def npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
 
 @torch.library.register_kernel("npu_ops_transformer::npu_flash_attn_metadata", None)                                                                                          
 def npu_flash_attn_metadata_fallback(num_heads_q, num_heads_kv, head_dim,
-                                    cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                                    cu_seqlens_q = None, cu_seqlens_kv = None, seqused_q = None, seqused_kv = None,
                                     batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
                                     max_seqlen_kv: Optional[int] = None,
                                     mask_mode: Optional[int] = None, win_left: Optional[int] = None,
