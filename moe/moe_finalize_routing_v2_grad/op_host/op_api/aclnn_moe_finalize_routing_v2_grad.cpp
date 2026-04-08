@@ -32,6 +32,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
     const aclTensor* gradExpandedXOut, const aclTensor* gradScalesOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2Grad,
         DFX_IN(gradY, expandedRowIdx, expandedXOptional, scalesOptional,
             expertIdxOptional, biasOptional, dropPadMode, activeNum, expertNum, expertCapacity),
@@ -49,32 +50,32 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto gradYContiguous = l0op::Contiguous(gradY, uniqueExecutor.get());
-    CHECK_RET(gradYContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(gradYContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto expandedRowIdxContiguous = l0op::Contiguous(expandedRowIdx, uniqueExecutor.get());
-    CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor* expandedXContiguous = nullptr;
     if (expandedXOptional != nullptr) {
         expandedXContiguous = l0op::Contiguous(expandedXOptional, uniqueExecutor.get());
-        CHECK_RET(expandedXContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        CHECK_RET(expandedXContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     const aclTensor* scalesContiguous = nullptr;
     if (scalesOptional != nullptr) {
         scalesContiguous = l0op::Contiguous(scalesOptional, uniqueExecutor.get());
-        CHECK_RET(scalesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        CHECK_RET(scalesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     const aclTensor* expertIdxContiguous = nullptr;
     if (expertIdxOptional != nullptr) {
         expertIdxContiguous = l0op::Contiguous(expertIdxOptional, uniqueExecutor.get());
-        CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     const aclTensor* biasContiguous = nullptr;
     if (biasOptional != nullptr) {
         biasContiguous = l0op::Contiguous(biasOptional, uniqueExecutor.get());
-        CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     // 调用l0接口进行计算，传入输出参数

@@ -18,6 +18,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
+#include "aclnn_kernels/common/op_error_check.h"
 
 using namespace op;
 
@@ -71,10 +72,10 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
             expert_tokens_before_capacity),
         OP_ATTR(active_num, expert_capacity, expert_num, drop_pad_mode,
             expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag));
-    if (ret != ACL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MoeInitRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
-        return {nullptr, nullptr, nullptr, nullptr};
-    }
+
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return {nullptr, nullptr, nullptr, nullptr},
+                                         "MoeInitRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+
     return {expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum, expert_tokens_before_capacity};
 }
 }  // namespace l0op

@@ -42,6 +42,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
     aclTensor* permutedTokensGradOut, aclTensor* probsGradOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermuteGrad,
         DFX_IN(permuteTokens, unpermutedTokensGrad, sortedIndices,
             probsOptional, paddedMode, restoreShapeOptional),
@@ -56,6 +57,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
     // 参数检查
+    OP_CHECK_NULL(permuteTokens, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(unpermutedTokensGrad, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(permutedTokensGradOut, return ACLNN_ERR_PARAM_NULLPTR);
@@ -67,24 +69,21 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto unpermutedTokensGradContiguous = l0op::Contiguous(unpermutedTokensGrad, uniqueExecutor.get());
-    CHECK_RET(unpermutedTokensGradContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(unpermutedTokensGradContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
-    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor* permuteTokensContiguous = nullptr;
-    if (permuteTokens != nullptr) {
-        permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());
-        CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    }
+    const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());;
+    CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    
 
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
-        CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     // 获取activeNum
-    OP_CHECK_NULL(permuteTokens, return ACLNN_ERR_PARAM_NULLPTR);
     auto permuteTokensShape = permuteTokens->GetViewShape();
     CHECK_RET(permuteTokensShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
     int64_t activeNum = permuteTokensShape.GetDim(0);

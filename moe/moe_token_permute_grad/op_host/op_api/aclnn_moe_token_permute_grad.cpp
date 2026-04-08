@@ -26,14 +26,6 @@ using namespace op;
 extern "C" {
 #endif
 
-#define CHECK_LOG_RET(cond, log_func, return_expr) \
-    do {                                           \
-        if (cond) {                                \
-            log_func;                              \
-        }                                          \
-        return_expr;                               \
-    } while (0)
-
 extern aclnnStatus aclnnInnerMoeTokenPermuteGradGetWorkspaceSize(
     const aclTensor* permutedOutputGrad, const aclTensor* sortedIndices, int64_t numTopk, bool paddedMode,
     aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor);
@@ -44,6 +36,7 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
     const aclTensor* permutedOutputGrad, const aclTensor* sortedIndices, int64_t numTopk, bool paddedMode,
     aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenPermuteGrad,
         DFX_IN(permutedOutputGrad, sortedIndices, numTopk, paddedMode),
         DFX_OUT(out));
@@ -66,9 +59,9 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto permutedOutputGradContiguous = l0op::Contiguous(permutedOutputGrad, uniqueExecutor.get());
-    CHECK_RET(permutedOutputGradContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(permutedOutputGradContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
-    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 获取activeNum
     auto permutedOutputGradShape = permutedOutputGrad->GetViewShape();

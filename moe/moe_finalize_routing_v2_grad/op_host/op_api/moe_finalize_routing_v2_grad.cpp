@@ -18,6 +18,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
+#include "aclnn_kernels/common/op_error_check.h"
 
 using namespace op;
 
@@ -42,10 +43,10 @@ const std::array<const aclTensor *, 2> MoeFinalizeRoutingV2Grad(
         OP_INPUT(grad_y, expanded_row_idx, expanded_x, scales, expert_idx, bias),
         OP_OUTPUT(grad_expanded_x, grad_scales),
         OP_ATTR(drop_pad_mode, active_num, expert_num, expert_capacity));
-    if (ret != ACL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MoeFinalizeRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
-        return {nullptr, nullptr};
-    }
+
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return {nullptr, nullptr},
+                                         "MoeFinalizeRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+
     return std::array<const aclTensor*, 2>{grad_expanded_x, grad_scales};
 }
 }  // namespace l0op

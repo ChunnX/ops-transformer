@@ -23,6 +23,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_log.h"
+#include "aclnn_util.h"
 #include "moe_init_routing_v2.h"
 
 using namespace op;
@@ -38,6 +39,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
     const aclTensor *expertTokensCountOrCumsumOutOptional, const aclTensor *expertTokensBeforeCapacityOutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeInitRoutingV2,
         DFX_IN(x, expertIdx, activeNumOptional, expertCapacityOptional,
                             expertNumOptional, dropPadModeOptional, expertTokensCountOrCumsumFlagOptional,
@@ -57,9 +59,9 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto xContiguous = l0op::Contiguous(x, uniqueExecutor.get());
-    CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto expertIdxContiguous = l0op::Contiguous(expertIdx, uniqueExecutor.get());
-    CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 调用l0接口进行计算，传入输出参数
     auto result = l0op::MoeInitRoutingV2(xContiguous, expertIdxContiguous, activeNumOptional,

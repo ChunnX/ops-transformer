@@ -32,14 +32,6 @@ extern "C" {
 
 constexpr int64_t READ_INDEX_BY_ROW = 2;
 
-#define CHECK_LOG_RET(cond, log_func, return_expr) \
-    do {                                           \
-        if (cond) {                                \
-            log_func;                              \
-        }                                          \
-        return_expr;                               \
-    } while (0)
-
 extern aclnnStatus aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
     const aclTensor* permutedTokens, const aclTensor* sortedIndices, const aclTensor* probsOptional, bool paddedMode,
     const aclIntArray* restoreShapeOptional, aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor);
@@ -50,6 +42,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
     const aclTensor* permutedTokens, const aclTensor* sortedIndices, const aclTensor* probsOptional, bool paddedMode,
     const aclIntArray* restoreShapeOptional, aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermute,
         DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
         DFX_OUT(out));
@@ -73,14 +66,14 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto permutedTokensContiguous = l0op::Contiguous(permutedTokens, uniqueExecutor.get());
-    CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
-    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
-        CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     // 调用l0接口进行计算

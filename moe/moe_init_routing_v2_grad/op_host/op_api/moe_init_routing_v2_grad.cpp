@@ -18,6 +18,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
+#include "aclnn_kernels/common/op_error_check.h"
 
 using namespace op;
 
@@ -38,10 +39,9 @@ const aclTensor* MoeInitRoutingV2Grad(
             OP_INPUT(grad_expanded_x, expanded_row_idx),
             OP_OUTPUT(grad_x),
             OP_ATTR(top_k, drop_pad_mode, active_num));
-        if (ret != ACL_SUCCESS) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MoeInitRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
-            return nullptr;
-        }
+
+        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
+                                        "MoeInitRoutingV2GradAiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
     }
 
     return grad_x;

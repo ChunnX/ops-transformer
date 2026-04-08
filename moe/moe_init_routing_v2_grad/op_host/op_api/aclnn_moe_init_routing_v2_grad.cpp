@@ -29,6 +29,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GradGetWorkspaceSize(
     const aclTensor* gradExpandedX, const aclTensor* expandedRowIdx, int64_t topK, int64_t dropPadMode,
     int64_t activeNum, const aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeInitRoutingV2Grad,
         DFX_IN(gradExpandedX, expandedRowIdx, topK, dropPadMode, activeNum),
         DFX_OUT(out));
@@ -44,9 +45,9 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GradGetWorkspaceSize(
 
     // 固定写法，将输入转换成连续的tensor
     auto gradExpandedXContiguous = l0op::Contiguous(gradExpandedX, uniqueExecutor.get());
-    CHECK_RET(gradExpandedXContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(gradExpandedXContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto expandedRowIdxContiguous = l0op::Contiguous(expandedRowIdx, uniqueExecutor.get());
-    CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeInitRoutingV2Grad(gradExpandedXContiguous, expandedRowIdxContiguous,
