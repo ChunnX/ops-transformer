@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class ActualSeqLenChecker : public BaseChecker {
 public:
@@ -59,5 +59,5 @@ private:
     int64_t GetActualSeqLengthsKvData(const FaTilingInfo &faInfo, uint32_t bIdx);
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // ACTUAL_SEQ_LEN_CHECKER_H

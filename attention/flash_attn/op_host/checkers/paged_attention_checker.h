@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class PagedAttentionChecker : public BaseChecker {
 public:
@@ -54,5 +54,5 @@ private:
         const std::string& inputName);
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // PAGED_ATTENTION_CHECKER_H

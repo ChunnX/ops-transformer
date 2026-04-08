@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class SystemPrefixChecker : public BaseChecker {
 public:
@@ -52,5 +52,5 @@ private:
 private:
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // SYSTEM_REPFIX_CHECKER_H

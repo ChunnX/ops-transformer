@@ -22,7 +22,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "learnable_sink_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::string;
 using std::pair;
@@ -156,4 +156,4 @@ ge::graphStatus LearnableSinkChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

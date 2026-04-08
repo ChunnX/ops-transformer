@@ -35,7 +35,7 @@
 #include "./softmax_lse_checker.h"
 #include "./system_prefix_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 class FAChecker {
 public:
     FAChecker() = default;
@@ -67,5 +67,5 @@ private:
     bool enableAntiQuant_ = false;
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // FA_CHECKER_H

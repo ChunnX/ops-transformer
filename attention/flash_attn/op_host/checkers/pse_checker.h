@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class PSEChecker : public BaseChecker {
 public:
@@ -50,5 +50,5 @@ private:
 private:
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // PSE_CHECKER_H

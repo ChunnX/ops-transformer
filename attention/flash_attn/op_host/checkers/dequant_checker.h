@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 class DequantChecker : public BaseChecker {
 public:
     DequantChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -117,5 +117,5 @@ private:
     bool enableIFAMLAFullQuant_ = false;
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // DEQUANT_CHECKER_H

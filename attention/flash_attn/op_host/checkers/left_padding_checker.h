@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class LeftPaddingChecker : public BaseChecker {
 public:
@@ -49,5 +49,5 @@ private:
 private:
 };
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG
 #endif  // LEFT_PADDING_CHECKER_H

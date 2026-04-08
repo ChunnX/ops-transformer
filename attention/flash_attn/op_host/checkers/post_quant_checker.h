@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class PostQuantChecker : public BaseChecker {
 public:
@@ -48,5 +48,5 @@ private:
 private:
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // POST_QUANT_CHECKER_H

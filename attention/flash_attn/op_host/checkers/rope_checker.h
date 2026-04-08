@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 class RopeChecker : public BaseChecker {
 public:
     RopeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -54,5 +54,5 @@ private:
 private:
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // ROPE_CHECKER_H

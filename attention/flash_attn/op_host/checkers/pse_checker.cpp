@@ -22,7 +22,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "pse_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::pair;
 using std::string;
@@ -319,4 +319,4 @@ ge::graphStatus PSEChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

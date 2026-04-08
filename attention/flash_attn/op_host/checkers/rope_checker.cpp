@@ -22,7 +22,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "rope_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::string;
 using std::pair;
@@ -434,4 +434,4 @@ ge::graphStatus RopeChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

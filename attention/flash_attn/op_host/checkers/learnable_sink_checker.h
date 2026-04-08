@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 class LearnableSinkChecker : public BaseChecker {
 public:
     LearnableSinkChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -42,5 +42,5 @@ private:
 private:
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // LEARNABLE_SINK_CHECKER_H

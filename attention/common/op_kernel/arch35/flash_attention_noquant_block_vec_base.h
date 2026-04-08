@@ -811,10 +811,18 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
             attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         }
-        // cyr_debug: dump mask tensor before applying to vec1 stage
-        AscendC::printf("cyr [KERNEL_MaskDump] s2LoopCount=%d, s2RealSize=%d, s1RealSizeAlign32=%d, compressMode=%d\n",
-            runInfo.s2LoopCount, runInfo.s2RealSize, runInfo.s1RealSizeAlign32, attenMaskInfoPtr->compressMode);
-        AscendC::DumpTensor(attenMaskUb, 1000 + runInfo.s2LoopCount, runInfo.s2AlignedSize * runInfo.s1RealSizeAlign32);
+        // cyr_debug: dump mask tensor before applying to vec1 stage (use printf for hardware compatibility)
+        uint64_t maskDumpLen = (uint64_t)runInfo.s2AlignedSize * (uint64_t)runInfo.s1RealSizeAlign32;
+        AscendC::printf("cyr [KERNEL_MaskDump] s2LoopCount=%d, s2RealSize=%d, s1RealSizeAlign32=%d, s2AlignedSize=%d, compressMode=%d, elemCount=%lu\n",
+            runInfo.s2LoopCount, runInfo.s2RealSize, runInfo.s1RealSizeAlign32, runInfo.s2AlignedSize, attenMaskInfoPtr->compressMode, maskDumpLen);
+        if (maskDumpLen > 0) {
+            uint64_t dumpCount = maskDumpLen < 64 ? maskDumpLen : 64;
+            for (uint64_t idx = 0; idx < dumpCount; idx++) {
+                AscendC::printf("cyr [MASK] idx=%lu, val=%d\n", idx, (int32_t)attenMaskUb[idx]);
+            }
+        } else {
+            AscendC::printf("cyr [KERNEL_MaskDump] SKIP: maskDumpLen is 0\n");
+        }
     }
     LocalTensor<uint8_t> dropMaskUb;
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
@@ -941,10 +949,18 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
         this->pseInQue.template FreeTensor(pseUb);
     }
 
-    // cyr_debug: dump vec1 result tensor before enqueue
-    AscendC::printf("cyr [KERNEL_Vec1Result] s2LoopCount=%d, halfS1RealSize=%d, s2RealSize=%d\n",
-        runInfo.s2LoopCount, runInfo.halfS1RealSize, runInfo.s2RealSize);
-    AscendC::DumpTensor(stage1CastTensor, 3000 + runInfo.s2LoopCount, runInfo.s2AlignedSize * runInfo.halfS1RealSize);
+    // cyr_debug: dump vec1 result tensor before enqueue (use printf for hardware compatibility)
+    uint64_t vec1ElemCount = (uint64_t)runInfo.s2AlignedSize * (uint64_t)runInfo.halfS1RealSize;
+    AscendC::printf("cyr [KERNEL_Vec1Result] s2LoopCount=%d, halfS1RealSize=%d, s2RealSize=%d, s2AlignedSize=%d, elemCount=%lu\n",
+        runInfo.s2LoopCount, runInfo.halfS1RealSize, runInfo.s2RealSize, runInfo.s2AlignedSize, vec1ElemCount);
+    if (vec1ElemCount > 0) {
+        uint64_t dumpCount = vec1ElemCount < 32 ? vec1ElemCount : 32;
+        for (uint64_t idx = 0; idx < dumpCount; idx++) {
+            AscendC::printf("cyr [VEC1] idx=%lu, val=%f\n", idx, (float)stage1CastTensor[idx]);
+        }
+    } else {
+        AscendC::printf("cyr [KERNEL_Vec1Result] SKIP: vec1ElemCount is 0\n");
+    }
 
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);

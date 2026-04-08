@@ -18,7 +18,7 @@
 #include "tiling/tiling_api.h"
 #include "../flash_attn_tiling_constants.h"
 #include "base_checker.h"
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::string;
 using std::pair;

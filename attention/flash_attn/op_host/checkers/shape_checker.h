@@ -22,7 +22,7 @@
 #include "base_checker.h"
 
 using std::map;
-namespace optiling {
+namespace optilingForBuildPKG {
 class ShapeChecker : public BaseChecker {
 public:
     ShapeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -71,5 +71,5 @@ private:
 private:
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // SHAPE_CHECKER_H

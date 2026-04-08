@@ -21,7 +21,7 @@
 #include "register/op_def_registry.h"
 #include "fa_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::string;
 using std::pair;
@@ -238,4 +238,4 @@ ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG

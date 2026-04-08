@@ -22,7 +22,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "dequant_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::string;
 using std::pair;
@@ -2242,4 +2242,4 @@ ge::graphStatus DequantChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG

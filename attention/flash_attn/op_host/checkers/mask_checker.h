@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 class MaskChecker : public BaseChecker {
 public:
     MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -57,5 +57,5 @@ private:
     bool isIFAFlag = false;
 };
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG
 #endif  // MASK_CHECKER_H

@@ -22,7 +22,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "left_padding_checker.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 using std::map;
 using std::string;
 using std::pair;
@@ -194,4 +194,4 @@ ge::graphStatus LeftPaddingChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG

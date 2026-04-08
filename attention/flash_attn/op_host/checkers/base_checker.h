@@ -24,7 +24,7 @@
 #include "../fa_tiling_shape.h"
 #include "../flash_attn_tiling_utils.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 class BaseChecker {
 public:
     BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -53,6 +53,6 @@ protected:
     bool enableFullQuant_ = false;
     bool enableAntiQuant_ = false;
 };
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // BASE_CHECKER_H
 

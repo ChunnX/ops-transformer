@@ -90,6 +90,10 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
         dataCopyExtParams.blockLen = s2Size;
         dataCopyExtParams.srcStride = totalS2Size - s2Size;
         DataCopyPadExtParams<uint8_t> dataCopyPadParams;
+        AscendC::printf("cyr [BoolCopyInRegbase] ELSE branch: s1Size=%u, s2Size=%u, totalS2Size=%ld, s2BaseSize=%ld, srcOffset=%ld\n",
+            s1Size, s2Size, totalS2Size, s2BaseSize, srcOffset);
+        AscendC::printf("cyr [BoolCopyInRegbase] extParams: blockCount=%u, blockLen=%u, dstStride=%ld, srcStride=%ld\n",
+            dataCopyExtParams.blockCount, dataCopyExtParams.blockLen, dataCopyExtParams.dstStride, dataCopyExtParams.srcStride);
         if constexpr (isInfer == true) {
             if (constInfo.isGqa) {
                 dataCopyExtParams.blockCount = 1;
