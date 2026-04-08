@@ -51,7 +51,9 @@ constexpr int32_t DIMNUM_3D = 3;
 constexpr int32_t ATTR_TRANSPOSE_X_INDEX = 0;
 constexpr int32_t ATTR_TRANSPOSE_W_INDEX = 1;
 constexpr int32_t ATTR_GROUP_TYPE_INDEX = 2;
+constexpr int32_t ATTR_GROUP_LIST_TYPE_INDEX_3 = 3; // newly added code uses this naming style.
 constexpr int32_t AIC_AIV_RATION = 2;
+constexpr int64_t GROUP_LIST_TYPE_CUMSUM_0 = 0;
 
 static inline uint32_t SixteenAlign(uint32_t a, bool up = false)
 {
@@ -183,6 +185,8 @@ static void PrintInfo(const gert::TilingContext* context, GroupedMatmulAddTiling
     OP_LOGD(nodeName, ">>> GroupedMatmulAdd [GmmBaseParams]: groupNum = %ld", tiling.gmmBaseParams.get_groupNum());
     OP_LOGD(nodeName, ">>> GroupedMatmulAdd [GmmBaseParams]: coreNum = %ld", tiling.gmmBaseParams.get_coreNum());
     OP_LOGD(nodeName, ">>> GroupedMatmulAdd [GmmBaseParams]: groupType = %ld", tiling.gmmBaseParams.get_groupType());
+    OP_LOGD(nodeName, ">>> GroupedMatmulAdd [GmmBaseParams]: groupListType = %ld",
+            tiling.gmmBaseParams.get_groupListType());
     OP_LOGD(nodeName, ">>> GroupedMatmulAdd [TCubeTiling]: usedCoreNum = %d", tiling.mmTilingData.get_usedCoreNum());
     OP_LOGD(nodeName, ">>> GroupedMatmulAdd [TCubeTiling]: M = %d", tiling.mmTilingData.get_M());
     OP_LOGD(nodeName, ">>> GroupedMatmulAdd [TCubeTiling]: N = %d", tiling.mmTilingData.get_N());
@@ -287,6 +291,12 @@ static ge::graphStatus Tiling4GroupedMatmulAdd(gert::TilingContext* context)
     // Fix: remove coreNum. kernel can get coreNum.
     tiling.gmmBaseParams.set_coreNum(aicNum * AIC_AIV_RATION);
     tiling.gmmBaseParams.set_groupType(INDEX_GROUP_LIST);
+    // set groupListType attr.
+    auto attrs =  context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_LIST_TYPE_INDEX_3);
+    int64_t groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : GROUP_LIST_TYPE_CUMSUM_0;
+    tiling.gmmBaseParams.set_groupListType(groupListType);
 
     // 设置其余
     auto ret = CalMmTiling(context, tiling, m, k, n);
