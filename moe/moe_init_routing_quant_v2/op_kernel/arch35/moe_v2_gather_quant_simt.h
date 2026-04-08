@@ -223,7 +223,7 @@ __aicore__ inline void MoeV2GatherQuant<T>::Init(
     const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe)
 {
     pipe_ = tPipe;
-    blockIdx_ = GetBlockIdx();
+    blockIdx_ = blockIdx.x;
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
 
     needCoreNum_ = gatherOutTilingData_->needCoreNum;
