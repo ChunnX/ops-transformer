@@ -109,6 +109,24 @@ public:
         }
     }
 
+    __aicore__ inline void InitFinalState()
+    {
+        if ASCEND_IS_AIV {
+            int64_t totalLen = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
+            int64_t lenPerCore = totalLen / GetBlockNum();
+            int64_t blkId = GetBlockIdx();
+            int64_t startPos = lenPerCore * blkId;
+            int64_t endPos = startPos + lenPerCore;
+            if (startPos >= totalLen) {
+                return;
+            }
+            if (endPos > totalLen) {
+                endPos = totalLen;
+            }
+            InitOutput<bfloat16>(finalState_[startPos], endPos - startPos, static_cast<bfloat16>(0.0));
+        }
+    }
+
     __aicore__ inline void InitMask()
     {
         if ASCEND_IS_AIV {
@@ -201,6 +219,7 @@ public:
 
         InitMatmul();
         InitMask();
+        InitFinalState();
     }
 
     __aicore__ inline void Process()
