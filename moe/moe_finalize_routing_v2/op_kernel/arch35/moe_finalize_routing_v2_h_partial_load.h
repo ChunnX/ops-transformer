@@ -113,12 +113,13 @@ private:
         for (int64_t kIdx = 0; kIdx < tilingData->k; kIdx += 1) {
             SetExpandedRowIdxOffset(rowOuterIdx, kIdx);
             int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
-            if constexpr (dropPadMode == DROP_PAD_COLUMN || dropPadMode == DROP_PAD_ROW) {
-                if (expandedRowIdxGmValue == INVALID_IDX) {
+            
+            if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROPLESS_ROW) {
+                if (expandedRowIdxGmValue >= tilingData->activeNum) {
                     continue;
                 }
             } else {
-                if (expandedRowIdxGmValue >= tilingData->activeNum) {
+                if (expandedRowIdxGmValue == INVALID_IDX) {
                     continue;
                 }
             }

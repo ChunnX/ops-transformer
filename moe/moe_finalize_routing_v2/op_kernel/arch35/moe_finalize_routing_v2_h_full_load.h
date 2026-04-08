@@ -39,13 +39,17 @@ public:
         hasX2 = x2 != nullptr;
         hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
         hasScales = scales != nullptr;
-        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+
         x1Gm.SetGlobalBuffer((__gm__ T*)x1);
         x2Gm.SetGlobalBuffer((__gm__ T*)x2);
+
+        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
         expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
+        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
+        
         yGm.SetGlobalBuffer((__gm__ T*)y);
 
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->h);
@@ -97,12 +101,14 @@ public:
             ProcessYWithInput(rowOuterIdx, rowInnerLoop);
             yQue.EnQue(yLocal);
 
-            if (hasX1) {
-                x1Que.FreeTensor(x1Local);
-            }
             if (hasX2) {
                 x2Que.FreeTensor(x2Local);
             }
+
+            if (hasX1) {
+                x1Que.FreeTensor(x1Local);
+            }
+
             yLocal = yQue.DeQue<float>();
             int64_t yGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
                                 rowOuterIdx * tilingData->rowFactor * tilingData->h;
@@ -242,17 +248,20 @@ private:
     bool hasScales{false};
 
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> expandedXQue;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> biasQue;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> x1Que;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> x2Que;
+
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> scalesQue;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> biasQue;
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> yQue;
 
     LocalTensor<T> expandedXLocal;
-    LocalTensor<T> x1Local;
-    LocalTensor<T> x2Local;
     LocalTensor<T> biasLocal;
     LocalTensor<S> scalesLocal;
+
+    LocalTensor<T> x1Local;
+    LocalTensor<T> x2Local;
+
     LocalTensor<float> yLocal;
 };
 } // namespace MoeFinalizeRoutingV2Regbase
