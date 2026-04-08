@@ -16,6 +16,7 @@
 #ifndef MC2_PIPELINE_TEMPLATE_COMM_COMPUTE_H
 #define MC2_PIPELINE_TEMPLATE_COMM_COMPUTE_H
 
+#include "../a2av_gmm_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -26,15 +27,6 @@
 using namespace AscendC;
 
 namespace MC2KernelTemplate {
-
-__aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
-{
-    if (b == 0) {
-        return 0;
-    }
-    return ((a + b - 1) / b) * b;
-}
-
 template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
           typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM>
 class A2avGmmScheduler {
@@ -44,55 +36,65 @@ public:
                                 GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
                                 GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM,
                                 GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe,
-                                bool isA2avGmmFlag, bool isMxScene)
+                                bool isA2avGmmFlag)
     {
+        // init member variables
         GET_TILING_DATA(tilingData, tilingGM);
         tilingData_ = &tilingData;
         e_ = tilingData_->taskTilingInfo.e;
-        isMxSceneFlag_ = isMxScene;
         gmmxScaleGm_ = gmmxScaleGM;
+        commOutGm_ = tilingData_->isPermuteOut ? permuteOutOptionalGM : workspaceGM;
+        computeScaleGm_ = gmmxScaleGm_; // 没有scale通信时为gmmxScaleGm_
+        // gmmX comm init
         const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
-        commOutGm_ = tilingData_->isPermuteOut ? permuteOutOptionalGM : workspaceGM;
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_);
-
-        if (isMxSceneFlag_) {
+        // gmmXScale comm init(MX quant)
+        if constexpr (MX_QUANT_MODE) {
             uint64_t commOutLen =
                 Align((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), TENSOR_LIST_SIZE);
             gmmxScaleCommOutGm_ = tilingData_->isPermuteOut ? workspaceGM : workspaceGM + commOutLen;
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_);
+            computeScaleGm_ = gmmxScaleCommOutGm_; // 存在scale通信时为通信后permuteScaleout的地址
         }
+        // mm compute init
         if (IsNeedMM) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 workspaceGM, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeScaleGm_ = (isMxSceneFlag_) ? gmmxScaleCommOutGm_ : gmmxScaleGm_;
+        // gmm compute init
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, workspaceGM, tilingData_,
                        &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
     __aicore__ inline void Process()
     {
+        // mm compute
         if (IsNeedMM) {
             localComputeOp.Process(0);
             SyncAll<false>();
         }
-        if (isMxSceneFlag_) {
+        // gmm scale comm(一次通信)
+        if constexpr (MX_QUANT_MODE) {
             commOp.LaunchScaleBeforeCompute(0, e_);
         }
+        // gmmx comm launch
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
             commOp.Launch(expertIdx, 1);
         }
-        if (isMxSceneFlag_) {
+        // wait scale
+        if constexpr (MX_QUANT_MODE) {
             commOp.WaitScale(0);
         }
+        // gmmx comm and compute
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
             commOp.Wait(expertIdx);
             SyncAll<false>();
             computeOp.Process(expertIdx);
         }
+        // end
         this->End();
     }
 
@@ -114,7 +116,6 @@ private:
     GM_ADDR computeScaleGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
-    bool isMxSceneFlag_ = false;
 };
 }; // namespace MC2KernelTemplate
 #endif
