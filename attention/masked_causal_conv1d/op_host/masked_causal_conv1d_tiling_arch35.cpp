@@ -254,13 +254,13 @@ done:
 // UB budget (bytes, d = xDtypeSize_):
 //   ioQueue (BUF_NUM=2):        2d × bUb×(sUb+2)×ubFactorH
 //   weightQueue (BUF_NUM=2):    2×3d × ubFactorH = 6d × ubFactorH
-//   (maskQueue removed: mask read directly from GM)
-//   Total = 2d×bUb×(sUb+2)×ubFactorH + 6d×ubFactorH ≤ ubSize_
-//
-// sUb_max = ⌊(ubSize_ - d×ubFactorH×(4×bUb+6)) / (2×d×bUb×ubFactorH)⌋
+//   maskRowBuf (BUF_NUM=1):     d × M×sUbAlign   (M = max(bUb, ubFactorH))
+//   maskCastBuf (BUF_NUM=1):    d × M×sUbAlign
+//   Total = 2d×bUb×(sUb+2)×ubFactorH + 6d×ubFactorH + 2d×M×sUbAlign ≤ ubSize_
+//   where sUbAlign = ⌈sUb/32⌉×32
 //
 // Strategy (§6.2):
-//   Step1: ubFactorH=H_REG=64, bUb=bLen; compute sUb_max.
+//   Step1: ubFactorH=H_REG=64, bUb=bLen; estimate sUb then search downward.
 //     Situation A (sUb_max ≥ sLen): B+S fully loaded → Step2
 //     Situation B (0 < sUb_max < sLen): sUb=sUb_max, done.
 //     Situation C (sUb_max < 1): reduce bUb until sUb_max ≥ 1.
@@ -270,19 +270,36 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
 {
     const int64_t d = static_cast<int64_t>(xDtypeSize_);
 
-    // sUb_max = ⌊(ubSize_ - d×h×(4×b+6)) / (2×d×b×h)⌋
-    auto calcSUbMax = [&](uint64_t h, uint64_t b) -> int64_t {
-        int64_t num = static_cast<int64_t>(ubSize_)
-                      - static_cast<int64_t>(h) * d * (4 * static_cast<int64_t>(b) + 6);
-        if (num <= 0) return 0;
-        int64_t den = 2 * d * static_cast<int64_t>(b) * static_cast<int64_t>(h);
-        return num / den;
+    // sUbAlign = ⌈sUb/32⌉×32 (align up to multiple of 32)
+    auto alignUp32 = [](uint64_t x) -> uint64_t {
+        return ((x + 31) / 32) * 32;
     };
 
-    // Total UB usage: 2d×b×(s+2)×h + 6d×h
+    // Total UB usage: 2d×b×(s+2)×h + 6d×h + 2d×max(b,h)×sUbAlign
     auto calcUsedUb = [&](uint64_t h, uint64_t b, uint64_t s) -> uint64_t {
+        uint64_t sUbAlign = alignUp32(s);
+        uint64_t M = std::max(b, h);
         return 2 * static_cast<uint64_t>(d) * b * (s + 2) * h
-               + 6 * static_cast<uint64_t>(d) * h;
+               + 6 * static_cast<uint64_t>(d) * h
+               + 2 * static_cast<uint64_t>(d) * M * sUbAlign;
+    };
+
+    // Find max sUb: estimate first, then search downward to satisfy exact constraint
+    auto findSUbMax = [&](uint64_t h, uint64_t b) -> int64_t {
+        uint64_t M = std::max(b, h);
+        int64_t num = static_cast<int64_t>(ubSize_)
+                      - static_cast<int64_t>(h) * d * (4 * static_cast<int64_t>(b) + 6);
+        int64_t den = 2 * d * static_cast<int64_t>(b) * static_cast<int64_t>(h)
+                      + 2 * d * static_cast<int64_t>(M);
+        if (num <= 0 || den <= 0) return 0;
+        int64_t sUbEst = num / den;
+        // Search downward: sUbAlign staircase may cause estimate to exceed budget
+        for (int64_t sUb = sUbEst; sUb >= 1; --sUb) {
+            if (calcUsedUb(h, b, static_cast<uint64_t>(sUb)) <= ubSize_) {
+                return sUb;
+            }
+        }
+        return 0;
     };
 
     // Step1: fix ubFactorH = H_REG = 64, bUb = bLen (full B)
@@ -290,13 +307,13 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
     uint64_t bUb = bBlockFactor_;
     uint64_t sLen = sBlockFactor_;
 
-    int64_t sUbMax = calcSUbMax(ubFactorH_, bUb);
+    int64_t sUbMax = findSUbMax(ubFactorH_, bUb);
 
     if (sUbMax < 1) {
         // Situation C: reduce bUb until sUb_max >= 1
         while (bUb > 1 && sUbMax < 1) {
             --bUb;
-            sUbMax = calcSUbMax(ubFactorH_, bUb);
+            sUbMax = findSUbMax(ubFactorH_, bUb);
         }
         if (sUbMax < 1) {
             OP_LOGE(context_->GetNodeName(), "UB tiling failed: no valid (bUb, sUb) found");
@@ -445,7 +462,8 @@ void MaskedCausalConv1dTilingArch35::DumpTilingInfo()
          << " bBlockFactor=" << bBlockFactor_ << " bBlockTailFactor=" << bBlockTailFactor_ << "\n";
     info << "sCoreCnt=" << sCoreCnt_ << " sMainCnt=" << sMainCnt_
          << " sBlockFactor=" << sBlockFactor_ << " sBlockTailFactor=" << sBlockTailFactor_ << "\n";
-    info << "ubFactorH=" << ubFactorH_ << " ubFactorB=" << ubFactorB_ << " ubFactorS=" << ubFactorS_ << "\n";
+    info << "ubFactorH=" << ubFactorH_ << " ubFactorB=" << ubFactorB_ << " ubFactorS=" << ubFactorS_
+         << " sUbAlign=" << (((ubFactorS_ + 31) / 32) * 32) << "\n";
     info << "loopNumH=" << loopNumH_ << " ubTailFactorH=" << ubTailFactorH_ << "\n";
     info << "loopNumB=" << loopNumB_ << " ubTailFactorB=" << ubTailFactorB_ << "\n";
     info << "loopNumS=" << loopNumS_ << " ubTailFactorS=" << ubTailFactorS_ << "\n";
