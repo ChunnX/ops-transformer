@@ -658,7 +658,7 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
         }
         bool foundUbMemProtocol = false;
         for (uint32_t i = 0; i < netLinkNum; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
-            if (linksList[i].linkAttr.linkProtocol == COMM_PROTOCOL_UB_MEM) {
+            if (linksList[i].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
                 foundUbMemProtocol = true;
                 break;
             }
@@ -706,7 +706,7 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
         OP_LOGE("", "Get HCCL communication engine failed");
         return ret;
     }
-
+    OP_LOGD("", "Get HCCL communication engine success engine is: %d, protocol is: %d", engine, protocol);
     HcclResult hcclRet = instance.HcclEngineCtxGet(instance.hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGD("", "Get HCCL engine context failed start to create context");
