@@ -1042,7 +1042,7 @@ mc2:
       options:
         - allto_allv_quant_grouped_mat_mul
 
-      quant_grouped_mat_mul_allto_allv:
+    quant_grouped_mat_mul_allto_allv:
       module: True
       src:
         - mc2/quant_grouped_mat_mul_allto_allv
