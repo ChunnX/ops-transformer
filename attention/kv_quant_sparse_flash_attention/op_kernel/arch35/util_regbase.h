@@ -42,9 +42,7 @@ constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset;    /* attentionOut的offset souter层确定 */ \
     int32_t actualS1Size;      /* Q的actualSeqLength */ \
-    int32_t actualS2Size;    /* KV的actualSeqLength */ \
-    int64_t tensorQOffset; \
-    int64_t qBOffset
+    int32_t actualS2Size    /* KV的actualSeqLength */ \
 
 struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
@@ -102,8 +100,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod2 = 0; \
     uint8_t multiCoreIdxMod3 = 0; \
     int64_t sOuterOffset; \
-    int64_t mOuterOffset; \
-    int64_t queryOffset
+    int64_t mOuterOffset
 
 struct RunInfo {
     COMMON_RUN_INFO;

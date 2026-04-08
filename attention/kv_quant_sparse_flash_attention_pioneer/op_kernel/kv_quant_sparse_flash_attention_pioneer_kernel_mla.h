@@ -589,7 +589,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
-    runInfo.queryOffset = runParam.tensorQOffset;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }
