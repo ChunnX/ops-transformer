@@ -637,7 +637,6 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     示例算子执行命令如下：
     ```bash
     bash build.sh --run_example --ops=moe_distribute_combine_v2 eager cust
-    ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     
