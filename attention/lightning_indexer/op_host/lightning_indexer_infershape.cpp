@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file lightning_indexer_infershape.cpp
+ * \file lightning_indexer_infershape.cpp 
  * \brief
  */
 #include <graph/utils/type_utils.h>
