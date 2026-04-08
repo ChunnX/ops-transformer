@@ -86,7 +86,6 @@ private:
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
     
     // HCCL新API函数指针
-    HcclResult (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
     HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t**, uint32_t*) = nullptr;
     HcclResult (*HcclChannelAcquire)(HcclComm, const CommEngine, const HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
