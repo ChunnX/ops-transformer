@@ -104,7 +104,6 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR y, GM_ADDR g
     size_t WorkspaceOffset = m * k;
     
     xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)y + WorkspaceOffset));
-    // dbgxOutInt4.SetGlobalBuffer(((__gm__ int8_t*)y + tilingData.preProcessWorkspaceOffset));
     groupNum = static_cast<uint32_t>(tilingData.groupNum);
     withOffset = tilingData.withOffset;
 
@@ -140,6 +139,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyIn(uint32_t mIdx, uint32_t kIdx,
     auto xTensor = vecInQueueX.AllocTensor<int8_t>();
     DataCopyPad(xTensor, xGm[mIdx * A8W4PRE_VECTOR_BASE_M * k + kIdx * A8W4PRE_VECTOR_BASE_K], dataCopyParams, padParams);
     vecInQueueX.EnQue(xTensor);
+    printf("222222");
 }
 __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
@@ -172,6 +172,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
     Cast(xLowI4Tensor, xLowHalfTensor, AscendC::RoundMode::CAST_NONE, totalLen);
     PipeBarrier<PIPE_V>();
     auto tensorOut = vecOutQueue.AllocTensor<int4b_t>();
+    printf("111111");
 
     //高四位低四位tensor交叉拼接
     DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), 1, static_cast<uint16_t>(curVecBaseK / 64 - 1), 1};
@@ -196,6 +197,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx
 __aicore__ inline void GMMA8W4PreProcessNZ::Process()
 {
     //先计算要处理的group数
+    printf("33333");
     groupListTensor = groupListBuff.Get<int64_t>();
     groupListFTensor = groupListFloatBuff.Get<float>();
     workTensor = reduceSumWorkSpace.Get<float>();

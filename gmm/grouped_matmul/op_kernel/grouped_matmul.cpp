@@ -255,12 +255,12 @@ namespace {
         GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);                              \
         if ASCEND_IS_AIV {                                                                                         \
             if (gmmBaseParams_.isA8W4MSDPreNZ == 1) {                                                              \
-                GMMA8W4PreProcess op1;                                                                             \
+                GMMA8W4PreProcessNZ op1;                                                                           \
                 op1.Init(x, x, groupList, user1, gmmBaseParams_, &tPipe);                                          \
                 op1.Process();                                                                                     \
             }                                                                                                      \
             else{                                                                                                  \
-                GMMA8W4PreProcessNZ op1;                                                                           \
+                GMMA8W4PreProcess op1;                                                                             \
                 op1.Init(x, x, groupList, user1, gmmBaseParams_, &tPipe);                                          \
                 op1.Process();                                                                                     \
             }                                                                                                      \
