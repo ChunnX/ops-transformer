@@ -292,7 +292,9 @@ MC2HcomTopology::~MC2HcomTopology() {
     }
 }
 
-aclnnStatus MC2HcomTopology::LoadHcclSymbols() {
+aclnnStatus MC2HcomTopology::LoadHcclSymbols()
+{
+    OP_LOGD("", "start to load HCCL library and symbols");
     if (hcclLibHandle_ != nullptr) return ACLNN_SUCCESS;
     std::string createTensorLibPath;
     const char* libPath = GetLibPath(createTensorLibPath).c_str();
@@ -335,11 +337,13 @@ aclnnStatus MC2HcomTopology::LoadHcclSymbols() {
             return ACLNN_ERR_INNER;
         }
     }
-
+    OP_LOGD("", "end to load HCCL library and symbols");
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus MC2HcomTopology::GetCommHandle(const char* groupEp) {
+aclnnStatus MC2HcomTopology::GetCommHandle(const char* groupEp)
+{
+    OP_LOGD("", "start to get HCCL communication handle, groupEp: %s", groupEp);
     if (HcomGetCommHandleByGroup == nullptr) {
         OP_LOGE("", "HcomGetCommHandleByGroup is null");
         return ACLNN_ERR_INNER;
@@ -350,11 +354,14 @@ aclnnStatus MC2HcomTopology::GetCommHandle(const char* groupEp) {
         OP_LOGE("", "Get HCCL handle failed, groupEp: %s", groupEp);
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Get HCCL communication handle success hcclHandle_ is: %p", hcclHandle_);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MC2HcomTopology::GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId,
-                                           uint32_t dstRankId, const CommProtocol& protocol, CommLink*& links) {
+                                           uint32_t dstRankId, const CommProtocol& protocol, CommLink*& links)
+{
+    OP_LOGD("", "start to get HCCL communication link");
     if (HcclRankGraphGetLinks == nullptr) {
         OP_LOGE("", "HcclRankGraphGetLinks is null");
         return ACLNN_ERR_INNER;
@@ -367,7 +374,7 @@ aclnnStatus MC2HcomTopology::GetHcclCommLink(uint32_t netLayers, uint32_t srcRan
         OP_LOGE("", "Get HCCL link failed");
         return ACLNN_ERR_INNER;
     }
-
+    OP_LOGD("", "Get HCCL communication link success, netLinkNum is: %u", netLinkNum);
     if (netLinkNum == 0) {
         OP_LOGE("", "No available HCCL links");
         return ACLNN_ERR_INNER;
@@ -382,15 +389,18 @@ aclnnStatus MC2HcomTopology::GetHcclCommLink(uint32_t netLayers, uint32_t srcRan
     }
 
     if (index == netLinkNum) {
-        OP_LOGE("", "No matching communication protocol found");
+        OP_LOGE("", "No matching communication protocol found in HCCL links protocol is %d", protocol);
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Get HCCL communication link success, protocol is: %d", protocol);
 
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId,
-                                  const CommProtocol& protocol, const CommEngine& engine, std::vector<ChannelHandle>& channels) {
+                                  const CommProtocol& protocol, const CommEngine& engine, std::vector<ChannelHandle>& channels)
+{
+    OP_LOGD("", "start to get HCCL communication channel");
     if (HcclRankGraphGetLayers == nullptr || HcclChannelAcquire == nullptr) {
         OP_LOGE("", "HCCL channel function pointer is null");
         return ACLNN_ERR_INNER;
@@ -408,6 +418,7 @@ aclnnStatus MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRa
         OP_LOGE("", "Get HCCL layers failed");
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Get HCCL layers success, netLayerNum is: %u", netLayerNum);
 
     uint32_t netLayers = netLayerNum - 1;
     hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
@@ -415,6 +426,7 @@ aclnnStatus MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRa
         OP_LOGE("", "HCCL channel init failed");
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "HCCL channel init success");
 
     for (uint32_t i = 0; i < rankDim; ++i) {
         if (i == srcRankId) continue;
@@ -430,18 +442,22 @@ aclnnStatus MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRa
         channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
         channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
     }
+    OP_LOGD("", "Get HCCL communication channel description success");
 
     hcclRet = HcclChannelAcquire(hcclHandle_, engine, channelDesc.data(), channelNum, channels.data());
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Acquire HCCL channel failed");
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Acquire HCCL communication channel success");
 
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MC2HcomTopology::GetHcclCommResource(const CommEngine& engine,
-                                   const CommProtocol& protocol, Mc2MoeContext* mc2ContextStruct) {
+                                   const CommProtocol& protocol, Mc2MoeContext* mc2ContextStruct)
+{
+    OP_LOGD("", "start to get HCCL communication resource");
     if (HcclGetHcclBuffer == nullptr || HcclChannelGetHcclBuffer == nullptr) {
         OP_LOGE("", "HCCL buffer function pointer is null");
         return ACLNN_ERR_INNER;
@@ -453,6 +469,7 @@ aclnnStatus MC2HcomTopology::GetHcclCommResource(const CommEngine& engine,
 
     aclnnStatus ret = GetHcclCommChannel(rankSize, rankId, protocol, engine, channels);
     if (ret != ACLNN_SUCCESS) return ret;
+    OP_LOGD("", "Get HCCL communication channel success, channel num is: %zu", channels.size());
 
     for (uint32_t i = 0; i < rankSize; ++i) {
         void* tempBuffer = nullptr;
@@ -473,12 +490,14 @@ aclnnStatus MC2HcomTopology::GetHcclCommResource(const CommEngine& engine,
 
         mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
     }
-
+    OP_LOGD("", "Get HCCL CommResource success");
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
-                               const CommEngine& engine, const CommProtocol& protocol, void*& ctx, Mc2MoeContext* mc2ContextStruct) {
+                               const CommEngine& engine, const CommProtocol& protocol, void*& ctx, Mc2MoeContext* mc2ContextStruct)
+{
+    OP_LOGD("", "start to create HCCL context");
     if (HcclEngineCtxCreate == nullptr || HcclGetRankId == nullptr ||
         HcclGetRankSize == nullptr || HcclEngineCtxCopy == nullptr) {
         OP_LOGE("", "MC2 context function pointer is null");
@@ -491,21 +510,27 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
         OP_LOGE("", "Create HCCL context memory failed");
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Create HCCL context success, ctx: %p", ctx);
 
     hcclRet = HcclGetRankId(hcclHandle_, &mc2ContextStruct->epRankId);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Get rank ID failed");
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Get rank ID success, rankId is: %u", mc2ContextStruct->epRankId);
 
     hcclRet = HcclGetRankSize(hcclHandle_, &mc2ContextStruct->epRankSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Get rank size failed");
         return ACLNN_ERR_INNER;
     }
+    OP_LOGD("", "Get rank size success, rankSize is: %u", mc2ContextStruct->epRankSize);
 
     aclnnStatus ret = GetHcclCommResource(engine, protocol, mc2ContextStruct);
-    if (ret != ACLNN_SUCCESS) return ret;
+    if (ret != ACLNN_SUCCESS){
+        OP_LOGE("", "Get HCCL communication resource failed");
+        return ret;
+    } 
 
     hcclRet = HcclEngineCtxCopy(hcclHandle_, engine, mc2ContextTag.c_str(),
                                mc2ContextStruct, ctxSize, CTX_DEFAULT_COPY_OFFSET);
@@ -513,7 +538,7 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
         OP_LOGE("", "Copy context from host to device failed");
         return ACLNN_ERR_INNER;
     }
-
+    OP_LOGD("", "Copy context from host to device success");
     return ACLNN_SUCCESS;
 }
 
@@ -547,7 +572,9 @@ aclnnStatus MC2HcomTopology::GetaclCreateTensorSymbol()
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus MC2HcomTopology::CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context) {
+aclnnStatus MC2HcomTopology::CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context)
+{
+    OP_LOGD("", "start to create MC2 context ACL tensor");
     if (ctx == nullptr) {
         OP_LOGE("", "Context pointer is null");
         return ACLNN_ERR_INNER;
@@ -557,7 +584,7 @@ aclnnStatus MC2HcomTopology::CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Con
         OP_LOGE("", "Get aclCreateTensor symbol failed");
         return ACLNN_ERR_INNER;
     }
-
+    OP_LOGD("", "Get aclCreateTensor symbol success");
     uint64_t length = sizeof(Mc2MoeContext);
     int64_t shape[1] = {static_cast<int64_t>(length / sizeof(uint32_t))};
     int64_t strides[1] = {1};
@@ -569,6 +596,7 @@ aclnnStatus MC2HcomTopology::CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Con
         return ACLNN_ERR_INNER;
     }
 
+    OP_LOGD("", "Create ACL tensor success");
     return ACLNN_SUCCESS;
 }
 
@@ -589,6 +617,7 @@ aclnnStatus MC2HcomTopology::GetHcclBufferSize(uint64_t& hcclBuffSize) {
 
 aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& protocol)
 {
+    OP_LOGD("", "start to get HCCL communication engine");
     if (HcclRankGraphGetLayers == nullptr) {
         OP_LOGE("", "HcclRankGraphGetLayers is null");
         return ACLNN_ERR_INNER;
@@ -628,7 +657,7 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
             return ACLNN_ERR_INNER;
         }
         bool foundUbMemProtocol = false;
-        for (uint32_t i = 0; i < netLinkNum; ++i) {
+        for (uint32_t i = 0; i < netLinkNum; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
             if (linksList[i].linkAttr.linkProtocol == COMM_PROTOCOL_UB_MEM) {
                 foundUbMemProtocol = true;
                 break;
@@ -637,6 +666,7 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
         if (foundUbMemProtocol) {
             engine = COMM_ENGINE_AIV;
             protocol = COMM_PROTOCOL_UB_MEM;
+            OP_LOGD("", "Get HCCL communication engine success, engine is: %d, protocol is: %d", engine, protocol);
             return ACLNN_SUCCESS;
         }
     }
@@ -645,7 +675,9 @@ aclnnStatus MC2HcomTopology::GetCommEngine(CommEngine& engine, CommProtocol& pro
 }
 
 aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char* opName,
-                                          uint64_t& hcclBuffSize, aclTensor*& mc2Context) {
+                                          uint64_t& hcclBuffSize, aclTensor*& mc2Context)
+{
+    OP_LOGD("", "start to get MC2 context tensor, groupEp: %s, opName: %s", groupEp, opName);
     auto instance = GetInstance();                                        
     aclnnStatus ret = instance.LoadHcclSymbols();
     if (ret != ACLNN_SUCCESS) return ret;
@@ -664,24 +696,38 @@ aclnnStatus MC2HcomTopology::GetMc2ContextTensor(const char* groupEp, const char
     }
 
     ret = instance.GetCommHandle(groupEp);
-    if (ret != ACLNN_SUCCESS) return ret;
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE("", "Get HCCL communication handle failed");
+        return ret;
+    } 
 
     ret = instance.GetCommEngine(engine, protocol);
-    if (ret != ACLNN_SUCCESS) return ret;
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE("", "Get HCCL communication engine failed");
+        return ret;
+    }
 
     HcclResult hcclRet = instance.HcclEngineCtxGet(instance.hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE("", "Get HCCL engine context failed start to create context");
         ret = instance.CreatMc2Context(tag, engine, protocol, ctx, &contextStruct);
         if (ret != ACLNN_SUCCESS) return ret;
         hcclBuffSize = contextStruct.winSize;
     } else {
+        OP_LOGD("", "Get HCCL engine context success");
         ret = instance.GetHcclBufferSize(hcclBuffSize);
-        if (ret != ACLNN_SUCCESS) return ret;
+        if (ret != ACLNN_SUCCESS){
+            OP_LOGE("", "Get HCCL buffer size failed");
+            return ret;
+        } 
     }
 
     ret = instance.CreatMc2ContextTensor(ctx, mc2Context);
-    if (ret != ACLNN_SUCCESS) return ret;
-
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE("", "Create MC2 context tensor failed");
+        return ret;
+    }
+    OP_LOGD("", "Get MC2 context tensor success");
     return ACLNN_SUCCESS;
 }
 
