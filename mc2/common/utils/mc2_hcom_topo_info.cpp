@@ -505,7 +505,6 @@ aclnnStatus MC2HcomTopology::CreatMc2Context(const std::string& mc2ContextTag,
     }
     OP_LOGD("", "hcclHandle_ is: %p", hcclHandle_);
     uint64_t ctxSize = sizeof(Mc2MoeContext);
-    OP_LOGD("", "HcclEngineCtxCreate start engine is : %d, protocol is: %d", engine, protocol);
     HcclResult hcclRet = HcclEngineCtxCreate(hcclHandle_, mc2ContextTag.c_str(), engine, ctxSize, &ctx);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Create HCCL context memory failed");
