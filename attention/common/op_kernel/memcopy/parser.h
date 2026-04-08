@@ -40,7 +40,7 @@ class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims, 
+    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
                                 uint64_t defaultVal = 0)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
