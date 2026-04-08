@@ -1,0 +1,33 @@
+{
+  "name": "CANN 9.0.0-beta.2 Dev",
+  "build": {
+    "dockerfile": "./Dockerfile"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/ops-transformer,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace/ops-transformer",
+  "mounts": [
+    "source=claude-config-${devcontainerId},target=/root/.claude,type=volume"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "streetsidesoftware.code-spell-checker",
+        "ms-python.python",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-vscode.cmake-tools",
+        "Anthropic.claude-code",
+        "charliermarsh.ruff",
+        "ms-vscode.cpptools"
+      ]
+    }
+  },
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "overrideCommand": true,
+  "remoteUser": "root",
+  "remoteEnv": {
+    "CLAUDE_CONFIG_DIR": "/root/.claude",
+    "CCACHE_MAXSIZE": "25Gi" // <‑‑ set a max cache size for ccache, otherwise it will grow indefinitely and consume all disk space
+  }
+}
