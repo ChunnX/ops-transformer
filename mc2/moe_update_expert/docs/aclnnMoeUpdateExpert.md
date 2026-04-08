@@ -22,6 +22,8 @@
   负载均衡对于expert_ids中的第i个值，即第i个token：
 
     ```python
+    place_num = 8
+    F = 2
     new_expert_id = eplb_table[table_offset + 1]
     expert_id = expert_ids[i]
     table_offset = expert_id * F
@@ -29,7 +31,7 @@
         new_expert_id = eplb_table[table_offset + 1]
     else:
         if (balance_mode == 0):
-            mode_value = ceil(world_size, eplb_table[table_offset])
+            mode_value = ceil(world_size / eplb_table[table_offset])
             place_idx = local_rank_id / mode_value + 1
         else:
             place_idx = i % place_num
@@ -41,7 +43,7 @@
   将shape为(BS,)的active_mask进行broadcast成为shape为(BS,K)的active_mask_tensor，其中BS对应为False的专家会直接被剪枝。对于active_mask_tensor为True的元素，满足条件也将被剪枝。
 
     ```python
-    active_mask_tensor = broadcast(active_mask, (BS, K))
+    active_mask_tensor = broadcast_to(active_mask, (BS, K))
     for i in range(BS):
         expert_scales_vec[:] = sum(expert_scales[i, :] * pruning_threshold[:])
         balanced_active_mask[i, :] = (expert_scales[i, :] < expert_scales_vec[:]) && active_mask_tensor[i, :]
@@ -337,7 +339,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
+以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调用MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
 
 - 示例代码如下，仅供参考
 
@@ -884,7 +886,7 @@ aclnnStatus aclnnMoeUpdateExpert(
             args[rankId].dispatchStream = dispatchStream[rankId];
             args[rankId].combineStream = combineStream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessUpdateExpertAndDispatchAndCombine, std::ref(args[rankId])));
+            threads[rankId] = std::thread(&LaunchOneProcessUpdateExpertAndDispatchAndCombine, std::ref(args[rankId])));
         }
 
         for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
