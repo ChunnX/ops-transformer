@@ -201,7 +201,9 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
         }
         if constexpr (isInfer) {
             if (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
-                s1Offset += (runInfo.nextTokensOfMlaPerBatch < 0) ? -runInfo.nextTokensOfMlaPerBatch : 0;
+                if (constInfo.layoutType != (uint32_t)LayOutTypeEnum::LAYOUT_BNSD) {
+                    s1Offset += (runInfo.nextTokensOfMlaPerBatch < 0) ? -runInfo.nextTokensOfMlaPerBatch : 0;
+                }
             } else {
                 s1Offset += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
             }
