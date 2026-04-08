@@ -2393,9 +2393,9 @@ aclnnStatus CheckCommonParam(const aclTensorList *x , const aclTensorList *weigh
   // sparse group list shape [e, 2]
   size_t validGroupTensorDimNum = (groupListType == gmm::GROUP_LIST_SPARSE_M) ? 2UL: 1UL;
   CHECK_COND(groupListOptional == nullptr || groupListOptional->GetViewShape().GetDimNum() == validGroupTensorDimNum,
-             ACLNN_ERR_PARAM_INVALID, "When groupList type is tensor, groupList dim only support 1 or 2"
-             "(only when groupListType is 2), but now groupList dim is %zu, groupListType is %ld.",
-             groupListOptional->GetViewShape().GetDimNum(), groupListType);
+             ACLNN_ERR_PARAM_INVALID,
+             "Invalid groupList tensor dim num: expected %zu when groupListType is %ld, but got %zu.",
+             validGroupTensorDimNum, groupListType, groupListOptional->GetViewShape().GetDimNum());
   CHECK_COND(actType >= 0, ACLNN_ERR_PARAM_INVALID, "actType must be larger or equal to 0");
   if (actType != GMMActType::GMM_ACT_TYPE_NONE) {
     CHECK_COND(actType != GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC, ACLNN_ERR_PARAM_INVALID,
