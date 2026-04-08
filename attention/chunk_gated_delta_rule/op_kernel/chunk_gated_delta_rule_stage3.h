@@ -135,7 +135,7 @@ public:
         }
     }
     
-    __aicore__ inline void CalMaskedQKT(GlobalTensor<float> outGM, int nvId, int chunkPos)
+    __aicore__ inline void CalMaskedQKT(GlobalTensor<bfloat16_t> outGM, int nvId, int chunkPos)
     {
         // chunkSize 大小进行自动补齐
         if (gOptional_) {
@@ -196,7 +196,8 @@ public:
         auto bf16AttnIn = inQueue_.DeQue<inType>();
         // auto fp32AttnIn = inQueue_.DeQue<inType>();
         auto attnOut = outQueue_.AllocTensor<bfloat16_t>();
-        Copy(attnOut, bf16AttnIn, curChunkSize_ * Dv_);
+        // Copy(attnOut, bf16AttnIn, curChunkSize_ * Dv_);
+        // DataCopyPad(attnOut, bf16AttnIn, inParams, {1, static_cast<uint16_t>(curChunkSize_), static_cast<uint16_t>(Dv_), 0, 0, 1, 1, 1});
         // Cast(attnOut, fp32AttnIn, RoundMode::CAST_RINT, curChunkSize_ * paddedDv_);
         // inQueue_.FreeTensor(fp32AttnIn);  // Cast 完成后立即释放
         outQueue_.EnQue(attnOut);
