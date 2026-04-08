@@ -40,6 +40,7 @@
 #include "matmul.hpp"
 #include "matmul_reduce_scatter_aiv_mode_padding.h"
 #include "matmul_reduce_scatter_aiv_mode_dequant.h"
+#include "adv_api/hccl/hccl.h"
 
 using namespace Catlass;
 using namespace AscendC;
@@ -103,6 +104,7 @@ private:
     GM_ADDR gm_b_align;
     DequantRunner<cType> dequant_runner;
     Arch::Resource<Arch::AtlasA2> resource;
+    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
 };
 
 template <TemplateMMReduceScatterV2Class, typename Derived>
@@ -112,6 +114,13 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 {
     REGISTER_TILING_DEFAULT(MatmulReduceScatterV2AivModeTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
+
+    auto tiling = (__gm__ MatmulReduceScatterV2AivModeTilingData*)tilingGM;
+    __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));
+    __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));
+    GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
+    hccl_.Init(contextGM, mc2InitTiling);
+    hccl_.SetCcTiling(mc2CcTiling);
 
     aGM_ = aGM;
     bGM_ = bGM;
@@ -544,6 +553,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         static_cast<Derived *>(this)->CatlassMatmul();
         static_cast<Derived *>(this)->AIVComm();
     }
+    SyncAll<false>();
+    hccl_.Finalize();
 }
 } // namespace MatmulReduceScatterV2Impl
 #endif // MATMUL_REDUCE_SCATTER_V2_H

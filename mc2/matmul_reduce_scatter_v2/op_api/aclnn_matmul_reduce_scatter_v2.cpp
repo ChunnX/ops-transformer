@@ -460,13 +460,13 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         return ACLNN_SUCCESS;
     }
 
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        }
-    }
+    // if (NnopbaseSetHcclServerType) {
+    //     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    //         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    //     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    //         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+    //     }
+    // }
 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
