@@ -33,6 +33,7 @@ protected:
     ge::graphStatus CheckScaleShape() const override;
     ge::graphStatus CheckQuantMode() const override;
     ge::graphStatus DoGmmTiling(uint64_t gmmMSize) override;
+    void GetPermuteOutSize() override;
 private:
     void SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData) const;
     void SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K) const;
