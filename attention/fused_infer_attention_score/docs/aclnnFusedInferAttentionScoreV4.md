@@ -997,7 +997,10 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td rowspan="2">PagedAttention</td>
             <td>blockSize</td>
-            <td>在使能PagedAttention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。</td>
+            <td>在使能PagedAttention场景下，blockSize需要传入非0值。在非量化场景下有以下约束：<br>
+            Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024;<br>
+            GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；<br>
+            其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512。</td>
             <td>blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。</td>
         </tr>
         <tr>
