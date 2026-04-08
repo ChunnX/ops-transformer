@@ -18,7 +18,7 @@
 
 #include "fa_tiling_info.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 namespace arch35FA {
 // shape limit
 constexpr uint32_t B_LIMIT = 65536;
@@ -191,6 +191,6 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::set<ge::Format> FORMAT_SUPPORT_SET = {ge::FORMAT_ND, ge::FORMAT_NCHW, ge::FORMAT_NHWC, ge::FORMAT_NCDHW};
 }
-} // namespace optiling
+} // namespace optilingForBuildPKG
 
 #endif // FLASH_ATTN_TILING_CONSTANTS_H

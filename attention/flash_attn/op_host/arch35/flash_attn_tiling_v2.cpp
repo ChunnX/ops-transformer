@@ -28,7 +28,7 @@
 
 using namespace ge;
 using namespace AscendC;
-namespace optiling {
+namespace optilingForBuildPKG {
 ge::graphStatus TilingFlashAttnV2(gert::TilingContext *context) {
     // Parse -> Check -> DoOpTiling
     FaTilingInfo faInfo;
@@ -52,4 +52,4 @@ ge::graphStatus TilingFlashAttnV2(gert::TilingContext *context) {
     return ge::GRAPH_SUCCESS;
 }
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

@@ -17,7 +17,7 @@
 #define FLASH_ATTN_TILING_INDEX_H
 #include "register/tilingdata_base.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 // Inputs Index
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
@@ -49,6 +49,6 @@ constexpr uint32_t ATTR_INPUT_LAYOUT_INDEX = ATTR_LAYOUT_Q_INDEX;
 // Output Index
 constexpr uint32_t ATTENTION_OUT_INDEX = 0;
 constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
-} // namespace optiling
+} // namespace optilingForBuildPKG
 
 #endif // FLASH_ATTN_TILING_INDEX_H

@@ -19,7 +19,7 @@
 #include <vector>
 #include "fa_tiling_base.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 const std::string ACTUAL_SEQ_KV_LEN_NAME = "the key/value's actual sequence lengths";
 const std::string ACTUAL_SEQ_Q_LEN_NAME = "the query's actual sequence lengths";
 const std::string ATTEN_MASK_NAME = "atten_mask";
@@ -378,5 +378,5 @@ public:
     FaLayout outLayout = FaLayout::BSND;
     FaLayout kvLayout = FaLayout::BSND;
 };
-} // optiling
+} // optilingForBuildPKG
 #endif // FA_TILING_INFO_H

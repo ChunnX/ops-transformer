@@ -22,7 +22,7 @@
 #include "../../op_kernel/arch35/flash_attn_tiling_regbase.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 struct FaTilingKeyInfo {
     uint64_t kernelTypeKey = 0;
@@ -160,5 +160,5 @@ protected:
     bool needInit_ = false;
 };
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG
 #endif  // AIR_CXX_RUNTIME_V2_OP_IMPL_FUSEDINFERATTENTIONSCORE_IMPL_H_

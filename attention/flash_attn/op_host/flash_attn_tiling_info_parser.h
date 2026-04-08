@@ -19,7 +19,7 @@
 #include "fa_tiling_info.h"
 #include "fa_tiling_shape.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 class FaInfoParser {  // TODO 类重复定义
 public:
@@ -204,4 +204,4 @@ public:
     std::shared_ptr<FaTilingShape> keyRopeShape_ = nullptr;
     std::shared_ptr<FaTilingShape> keyPrefixShape_ = nullptr;
 };
-} // namespace optiling
+} // namespace optilingForBuildPKG

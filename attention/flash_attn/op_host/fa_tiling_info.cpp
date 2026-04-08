@@ -16,7 +16,7 @@
 #include "fa_tiling_info.h"
 
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 std::string LayoutToSerialString(FaLayout layout)
 {
@@ -104,4 +104,4 @@ std::string QuantModeToSerialString(FaQuantMode faQuantMode)
 //         return "rope not exist";
 //     }
 // }
-} // namespace optiling
+} // namespace optilingForBuildPKG

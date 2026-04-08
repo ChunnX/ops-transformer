@@ -16,7 +16,7 @@
 #ifndef FLASH_ATTN_TILING_UTILS_H
 #define FLASH_ATTN_TILING_UTILS_H
 
-namespace optiling {
+namespace optilingForBuildPKG {
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T
 {
@@ -60,6 +60,6 @@ inline auto increGcd(T a, T b) -> T
     return increGcd(b, a % b);
 }
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 
 #endif // FLASH_ATTN_TILING_UTILS_H

@@ -26,7 +26,7 @@
 
 using namespace ge;
 using namespace AscendC;
-namespace optiling {
+namespace optilingForBuildPKG {
 using namespace arch35FA;
 ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo(gert::TilingContext *context, const FaTilingInfo &faInfo)
 {
@@ -2029,4 +2029,4 @@ ge::graphStatus FlashAttnTilingImpl::DoOpTiling(gert::TilingContext *context, co
     // REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttn, FlashAttnTilingImpl, static_cast<int32_t>(NpuArch::DAV_3510), 83);
 }
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

@@ -19,7 +19,7 @@
 // #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling.h"
 #include "register/tilingdata_base.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 struct FlashAttnCompileInfo {
     uint32_t aivNum;
     uint32_t aicNum;
@@ -31,6 +31,6 @@ struct FlashAttnCompileInfo {
     size_t defaultSysWorkspaceSize;
     platform_ascendc::SocVersion socShortName;
 };
-} // namespace optiling
+} // namespace optilingForBuildPKG
 
 #endif // FLASH_ATTN_TILING_COMPILE_INFO_H

@@ -19,8 +19,8 @@
 #include "../fa_tiling_base.h"
 #include "../fa_tiling_info.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 ge::graphStatus TilingFlashAttnV2(gert::TilingContext *context);
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif  // AIR_CXX_RUNTIME_V2_OP_IMPL_FLASHATTN_V2_H_

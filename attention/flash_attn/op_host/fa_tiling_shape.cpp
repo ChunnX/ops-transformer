@@ -18,7 +18,7 @@
 #include "fa_tiling_shape.h"
 
 
-namespace optiling {
+namespace optilingForBuildPKG {
 static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     {FaLayout::BSH, {FaAxis::B, FaAxis::S, FaAxis::H}},
     {FaLayout::BSND, {FaAxis::B, FaAxis::S, FaAxis::N, FaAxis::D}},
@@ -350,4 +350,4 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
 
     return ge::GRAPH_SUCCESS;
 }
-} // namespace optiling
+} // namespace optilingForBuildPKG

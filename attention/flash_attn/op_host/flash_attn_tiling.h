@@ -21,7 +21,7 @@
 #include "../op_kernel/arch35/flash_attn_tiling_regbase.h"
 #include "flash_attn_tiling_common.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 // FlashAttn 使用common中的公共结构
 using FlashAttnTilingData = FlashAttnSimplifiedTilingData;
@@ -29,6 +29,6 @@ using FlashAttnTilingData = FlashAttnSimplifiedTilingData;
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context);
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context);
 
-}  // namespace optiling
+}  // namespace optilingForBuildPKG
 
 #endif  // FLASH_ATTN_TILING_H_

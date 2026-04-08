@@ -17,7 +17,7 @@
 
 #include "fa_tiling_info.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 template <typename T> using CompareFunc = bool (*)(const T&, const T&);
 
 enum class FaCompareType : uint32_t {
@@ -173,5 +173,5 @@ public:
         CompareFunc<int64_t> &compareFunc, const std::string &funcName) const;
     ge::graphStatus CompareShape(FaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // FA_TILING_SHAPE_H

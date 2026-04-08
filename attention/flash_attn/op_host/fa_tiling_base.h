@@ -29,7 +29,7 @@
 #define ASCENDC_EXTERN_C
 #endif
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 class TilingInfo {};
 
@@ -175,5 +175,5 @@ private:
     std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG
 #endif // FA_TILING_BASE_H

@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "tiling/platform/platform_ascendc.h"
 
-namespace optiling {
+namespace optilingForBuildPKG {
 //参考训练算子公共info
 struct FlashAttnCompileInfo {
     uint32_t aivNum;
@@ -31,4 +31,4 @@ struct FlashAttnCompileInfo {
     NpuArch npuArch;
 };
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

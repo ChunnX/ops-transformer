@@ -24,9 +24,9 @@
 
 using namespace ge;
 using namespace AscendC;
-using namespace Ops::Transformer::OpTiling;
+using namespace Ops::Transformer::optilingForBuildPKG;
 
-namespace optiling {
+namespace optilingForBuildPKG {
 
 // TODO: 空tensor场景：Q/K/V中有一个为空
 static bool IsEmptyInput(gert::TilingContext *context)
@@ -84,4 +84,4 @@ IMPL_OP_OPTILING(FlashAttn)
     .TilingInputsDataDependency({4, 5, 6, 7, 9})//后续删除
     .TilingParse<FlashAttnCompileInfo>(TilingPrepareForFlashAttn);
 
-} // namespace optiling
+} // namespace optilingForBuildPKG

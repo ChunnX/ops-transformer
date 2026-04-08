@@ -27,7 +27,7 @@ using std::pair;
 using std::string;
 using namespace ge;
 // using namespace AscendC;
-namespace optiling {
+namespace optilingForBuildPKG {
 
 ge::graphStatus FaInfoParser::CheckRequiredInOutExistence() const
 {
@@ -1468,4 +1468,4 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     // }
     return ge::GRAPH_SUCCESS;
 }
-}  // namespace optiling
+}  // namespace optilingForBuildPKG
