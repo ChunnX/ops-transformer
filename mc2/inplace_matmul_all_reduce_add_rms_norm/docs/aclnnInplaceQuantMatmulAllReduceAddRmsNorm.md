@@ -95,7 +95,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
           <td>x1</td>
           <td>输入</td>
           <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
-          <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></td>
+          <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2-3</td>
@@ -105,7 +105,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
           <td>x2</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>支持转置场景下的非连续的tensor</li></td>
+          <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>支持转置场景下的非连续的tensor</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2</td>
@@ -277,6 +277,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
     <col style="width: 158px">
     <col style="width: 120px">
     <col style="width: 750px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>

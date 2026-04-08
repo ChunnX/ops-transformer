@@ -216,7 +216,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不指定序列长度可传入nullptr，表示和query的shape的S长度相同。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-        <ul>
+        </ul>
         </td>
         <td>INT64</td>
         <td>-</td>
@@ -1124,6 +1124,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <li>query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。</li>
                 <li>P_S1需大于等于query的S长度，P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
                 <li>P_S2建议padding到32对齐，提升性能</li>
+                <li>伪量化场景下，当query的S长度为1时不支持该场景</li>
                 </ul>
                 </td>
             </tr>
@@ -1447,7 +1448,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                         <li>在使能PagedAttention，并且非量化场景下，blockSize需要传入非0值，有如下约束:
                             MLA场景blocksize需要16对齐且最大不超过1024；
                             GQA场景且query、key、value的headdim=64/128时，blocksize需要16对齐且最大不超过1024；
-                            GQA场景且query、key、value的headdim≠64/128，Q_S>1时，blocksize需要128对齐且最大不超过512；
+                            GQA场景且query、key、value的headdim≠64/128，Q_S>1时，blocksize需要128对齐且最大不超过1024；
                             GQA场景且query、key、value的headdim≠64/128，Q_S=1时，blocksize需要16对齐且最大不超过512；
                             在MLA全量化场景下，blocksize需等于128。</li>
                         <li>在使能PagedAttention，并且全量化场景下，blockSize需要传入非0值, 且blocksize最大不超过512。</li>

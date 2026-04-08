@@ -383,8 +383,12 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
         compile_file = os.path.join(self.out_path, '-'.join(name_com) + '.sh')
         compile_file = os.path.realpath(compile_file)
 
-        bin_cmd_str = 'res=$(asc_opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
-                --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic '
+        if const_var.CHECK_ASC_DEVKIT_VERSION:
+            bin_cmd_str = 'res=$(asc_opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
+                 --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic '
+        else:
+            bin_cmd_str = 'res=$(opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
+                 --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic '
 
         build_cmd_var = "#!/bin/bash\n"
         build_cmd_var += f'echo "[{self.soc}] Generating {bin_file} ..."\n'

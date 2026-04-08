@@ -86,13 +86,13 @@
 | transposeWdq      | 输入      | 表示wdq是否转置。预留参数，目前只支持true | bool          | -         |
 | transposeWuq      | 输入      | 表示wuq是否转置。预留参数，目前只支持true | bool          | -         |
 | transposeWuk     | 输入      | 表示wuk是否转置。预留参数，目前只支持true | bool          | -         |
-| cacheMode           | 输入      | 表示指定cache的类型，取值范围[0, 3]</br><li>0：kcache和q均经过拼接后输出<li>1：输出的kvCacheOut拆分为kvCacheOut和krCacheOut，qOut拆分为qOut和qRopeOut<li>2：krope和ctkv转为NZ格式输出，ctkv和qnope经过per_head静态对称量化为int8类型<li>3：krope和ctkv转为NZ格式输出 | int64_t         | -          |
-| quantMode         | 输入      | 表示指定RmsNorm量化的类型，取值范围[0, 3]</br>0：per_tensor静态非对称量化，默认量化类型</br>1：per_token动态对称量化，未实现</br>2：per_token动态非对称量化，未实现</br>3：不量化，浮点输出，未实现 | int64_t         | -          |
+| cacheMode           | 输入      | 表示指定cache的类型，取值范围[0, 3]<br><li>0：kcache和q均经过拼接后输出<li>1：输出的kvCacheOut拆分为kvCacheOut和krCacheOut，qOut拆分为qOut和qRopeOut<li>2：krope和ctkv转为NZ格式输出，ctkv和qnope经过per_head静态对称量化为int8类型<li>3：krope和ctkv转为NZ格式输出 | int64_t         | -          |
+| quantMode         | 输入      | 表示指定RmsNorm量化的类型，取值范围[0, 3]<br>0：per_tensor静态非对称量化，默认量化类型</br>1：per_token动态对称量化，未实现<br>2：per_token动态非对称量化，未实现</br>3：不量化，浮点输出，未实现 | int64_t         | -          |
 | doRmsNorm        | 输入      | 表示是否对input输入进行RmsNormQuant操作，false表示不操作，true表示进行操作。预留参数，目前只支持true | bool          | -          |
 | wdkvSplitCount                  | 输入      | 表示指定wdkv拆分的个数，支持[1-3]，分别表示不拆分、拆分为2个、拆分为3个降维矩阵。预留参数，目前只支持1 | int64_t | -         |
 | qOut             | 输出      | 表示Query的输出tensor，对应计算流图中右侧经过NOPE和矩阵乘后的输出，shape和dtype随cacheMode变化</br><li>cacheMode为0：shape为[tokenNum, headNum, 576]<li>cacheMode为1或3：shape为[tokenNum, headNum, 512]<li>cacheMode为2：shape为[tokenNum, headNum, 512] | <li>与input一致<li>与input一致<li>INT8       | ND |
 | kvCacheOut             | 输出      | 表示Key经过ReshapeAndCache后的输出，shape和dtype随cacheMode变化</br><li>cacheMode为0：shape为[blockNum, blockSize, 1, 576] <li> cacheMode为1：shape为[blockNum, blockSize, 1, 512]<li>cacheMode为2：shape为[blockNum, headNum\*512/32, block_size, 32] <li>cacheMode为3：shape为[blockNum, headNum*512/16, block_size, 16] | <li>与input一致<li>与input一致<li>INT8<li>与input一致       | <li>ND<li>ND<li>NZ<li>NZ |
-| qRopeOut             | 输出      | 表示Query经过旋转编程后的输出，shape和dtype随cacheMode变化</br><li>cacheMode为0：不输出<li> cacheMode为1或3：shape为[tokenNum, headNum, 64]<li>cacheMode为2：shape为[tokenNum, headNum, 64] | <li><li>与input一致<li>与input一致       | <li><li>ND<li>ND |
+| qRopeOut             | 输出      | 表示Query经过旋转编码后的输出，shape和dtype随cacheMode变化</br><li>cacheMode为0：不输出<li> cacheMode为1或3：shape为[tokenNum, headNum, 64]<li>cacheMode为2：shape为[tokenNum, headNum, 64] | <li><li>与input一致<li>与input一致       | <li><li>ND<li>ND |
 | krCacheOut             | 输出      | 表示Key经过ROPE和ReshapeAndCache后的输出，shape和dtype随cacheMode变化，</br><li>cacheMode为0：不输出<li> cacheMode为1：shape为[blockNum, blockSize, 1, 64]<li>cacheMode为2或3：shape为[blockNum, headNum*64 / 16 ,block_size, 16] | <li><li>与input一致<li>与input一致       | <li><li>ND<li>NZ |
 ## 约束说明
 -   shape格式字段含义及约束

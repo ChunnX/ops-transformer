@@ -54,11 +54,11 @@ using namespace regbaseutil;
 
 #if defined(__DAV_C310_CUBE__) || (defined __DAV_310R6_CUBE__)
 #define INVOKE_PFA_TILING_DATA_95(tiling)                                                                               \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingData, bmm1TilingDataRect, bmm1TilingData, tiling);                 \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingData, bmm2TilingDataRect, bmm2TilingData, tiling);                 \
+    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm1TilingDataRect, bmm1TilingData, tiling);                 \
+    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm2TilingDataRect, bmm2TilingData, tiling);                 \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingData;                                                         \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingData;                                                         \
-    const PromptFlashAttentionTilingData* __restrict tiling_data = nullptr;                                             \
+    const PromptFlashAttentionTilingDataV2* __restrict tiling_data = nullptr;                                             \
     AscendC::Impl::Detail::PFAGlobalTscmArray tscmArray;                                                                   \
     AscendC::Impl::Detail::tscmGlobalPFA = &tscmArray;                                                                     \
     TSCM<QuePosition::VECIN, 1, 0x4> bmm2Scm[2];                                                                        \
@@ -73,11 +73,11 @@ using namespace regbaseutil;
 
 #define INVOKE_PFA_TILING_DATA_55(tiling)                                                                               \
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);                                                                  \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingData, bmm1TilingDataRect, bmm1TilingData, tiling);                 \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingData, bmm2TilingDataRect, bmm2TilingData, tiling);                 \
+    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm1TilingDataRect, bmm1TilingData, tiling);                 \
+    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm2TilingDataRect, bmm2TilingData, tiling);                 \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingData;                                                         \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingData;                                                         \
-    const PromptFlashAttentionTilingData* __restrict tiling_data = nullptr;                                             \
+    const PromptFlashAttentionTilingDataV2* __restrict tiling_data = nullptr;                                             \
     AscendC::Impl::Detail::PFAGlobalTscmArray tscmArray;                                                                   \
     AscendC::Impl::Detail::tscmGlobalPFA = &tscmArray;                                                                     \
     TSCM<QuePosition::VECIN, 1, 0x4> bmm2Scm[2];                                                                        \
@@ -92,10 +92,10 @@ using namespace regbaseutil;
 
 #else
 #define INVOKE_PFA_TILING_DATA_V2(tiling)                                                                             \
-    PromptFlashAttentionTilingData tiling_data_in;                                                                    \
+    PromptFlashAttentionTilingDataV2 tiling_data_in;                                                                    \
     GET_TILING_DATA_WITH_STRUCT(PFAFullQuantTilingData, tiling_data_in_new, tiling);                       \
     TilingDataCopy(tiling_data_in, tiling_data_in_new);                                                               \
-    const PromptFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;                                   \
+    const PromptFlashAttentionTilingDataV2* __restrict tiling_data = &tiling_data_in;                                   \
     const TCubeTiling* __restrict bmm1tiling = &(tiling_data->bmm1TilingDataRect);                                    \
     const TCubeTiling* __restrict bmm2tiling = &(tiling_data->bmm2TilingDataRect)
 

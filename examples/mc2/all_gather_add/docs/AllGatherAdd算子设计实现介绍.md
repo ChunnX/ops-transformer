@@ -501,7 +501,7 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
     args[rankId].rankId = rankId;
     args[rankId].hcclComm = comms[rankId];
     args[rankId].stream = stream[rankId];
-    threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadAllGatherAdd, std::ref(args [rankId]), std::ref(testData)));
+    threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadAllGatherAdd, std::ref(args[rankId]), std::ref(testData)));
     }
     // 5.将host侧数据copy到device侧
     ret = CreateAclTensor(aHostData, aShape, &aDeviceAddr, aclDataType::ACL_FLOAT16, &a);

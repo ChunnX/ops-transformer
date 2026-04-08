@@ -968,7 +968,7 @@ if (ENABLE_OPS_KERNEL)
     add_custom_target(ops_transformer_kernel ALL)
     add_custom_target(ops_transformer_config ALL)
     add_dependencies(ops_transformer_kernel ops_transformer_config)
-    add_dependencies(ops_transformer_kernel generate_compile_cmd)
+    add_dependencies(ops_transformer_kernel generate_transformer_adapt_py generate_compile_cmd)
 
     foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
         add_bin_compile_target(

@@ -93,8 +93,8 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor     *softmaxSumIndex,
     const aclTensor     *queryRope,
     const aclTensor     *keyRope,
-    const aclIntArray   *actualSeqLengthsQuery,
-    const aclIntArray   *actualSeqLengthsKey,
+    const aclTensor     *actualSeqLengthsQuery,
+    const aclTensor     *actualSeqLengthsKey,
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
@@ -358,7 +358,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>loss（aclTensor*）</td>
        <td>输出</td>
        <td>损失函数值</td>
-       <td>-</ul></td>
+       <td>-</td>
        <td>FLOAT32</td>
        <td>ND</td>
        <td>(1,)</td>

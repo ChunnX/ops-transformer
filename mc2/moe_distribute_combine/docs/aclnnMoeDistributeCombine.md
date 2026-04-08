@@ -599,6 +599,16 @@ aclnnStatus aclnnMoeDistributeCombine(
         ```
         单机16卡场景则无需修改。
 
+    - 算子编译执行：
+        在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+        ```bash
+        bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
+        ```
+
+        在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
+        ```bash
+        bash build.sh --run_example --ops=moe_distribute_combine eager cust
+
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  
     - 环境变量配置：
@@ -1013,8 +1023,12 @@ aclnnStatus aclnnMoeDistributeCombine(
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
 
+        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
+        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
+
         args.rankId = rankId;
-        args.epRankId = rankId;
+        args.epRankId = epRankId;
+        args.tpRankId = tpRankId;
         args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
@@ -1130,7 +1144,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         else if (rank_table_file && first_rank_id) {
             EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 0;
+            TP_WORLD_SIZE = 1;
             DEV_NUM = EP_WORLD_SIZE;
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;

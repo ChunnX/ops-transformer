@@ -67,25 +67,51 @@ ge::graphStatus FiaTilingCheck::CheckFeatureNoQuantDtype() const
 
 ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
 {
-    constexpr int32_t BLOCK_SIZE_ALIGN_SIZE = 16;
-    constexpr int32_t BLOCK_SIZE_MAX_SIZE = 1024;
-    if (blockSize_ % BLOCK_SIZE_ALIGN_SIZE != 0) {
-        OP_LOGE(opName_, "In %s situation, %s should aligned to 16, but got %d.",
-            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str(), blockSize_);
-            return ge::GRAPH_FAILED;
+    constexpr uint16_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
+    constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
+    constexpr uint16_t NUM_64 = 64;
+    constexpr uint16_t NUM_128 = 128;
+    constexpr uint16_t NUM1 = 1;
+    constexpr uint16_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
+    constexpr uint16_t BLOCK_SIZE_MAX = 512;
+    if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION) {
+        if (ropeMode_ != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
+            OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
+                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+                OP_LOGE(opName_,
+                    "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of "
+                    "%u, and should be in range of [%u, %u].",
+                    blockSize_, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+                return ge::GRAPH_FAILED);
+        } else if (qkHeadDim_ == NUM_64 || qkHeadDim_ == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
+            OP_CHECK_IF(blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
+                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+                OP_LOGE(opName_,
+                    "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
+                    "of %u, and should be in range of [%u, %u].",
+                    qkHeadDim_, blockSize_, BLOCK_SIZE_ALIGN_SIZE_16,
+                    BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+                return ge::GRAPH_FAILED);
+        } else {
+            // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
+            OP_CHECK_IF((s1Size_ > NUM1) && (blockSize_ > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
+                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_128 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
+                OP_LOGE(opName_,
+                    "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
+                    "of %u, and should be in range of [%u, %u].",
+                    blockSize_, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+                return ge::GRAPH_FAILED);
+            // GQA D != 64/128, QS = 1 [16, 512]且16对齐
+            OP_CHECK_IF((s1Size_ == NUM1) && (blockSize_ > BLOCK_SIZE_MAX ||
+                blockSize_ < BLOCK_SIZE_ALIGN_SIZE_16 || blockSize_ % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
+                OP_LOGE(opName_,
+                    "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
+                    "of %u, and should be in range of [%u, %u].",
+                    blockSize_, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
+                return ge::GRAPH_FAILED);
+        }
     }
-
-    if (blockSize_ > BLOCK_SIZE_MAX_SIZE) {
-        OP_LOGE(opName_, "In %s situation, %s should less equal than 1024, but got %d.",
-            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str(), blockSize_);
-            return ge::GRAPH_FAILED;
-    }
-
-    if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && blockSize_ == 0) {
-        OP_LOGE(opName_, "In %s and storage mode is page attention, %s should not be 0",
-            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str());
-            return ge::GRAPH_FAILED;
-    }
+    
     return ge::GRAPH_SUCCESS;
 }
 

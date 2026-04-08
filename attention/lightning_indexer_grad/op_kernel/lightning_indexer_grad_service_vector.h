@@ -105,6 +105,7 @@ protected:
     constexpr static int64_t reduceUbOffset = reduceFloatUbOffset + reduceFloatUbSize;
     constexpr static int64_t reduceUbSize = LIMIT_GROUPNUM * 2;
 
+    constexpr static int64_t zeroDataUbOffset = reduceUbOffset + reduceUbSize;
     constexpr static int64_t MAX_UB_SIZE = TOTAL_SIZE / sizeof(float) / 2;
 
     TPipe *pipe;
@@ -374,7 +375,7 @@ __aicore__ inline void LIGVector<LIGT>::InitOutputDqAndDweights(GlobalTensor<dat
     LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo)
 {
     uint32_t maxLen = constInfo.groupNum * constInfo.headDim;
-    LocalTensor<dataType> zeroDataTensor = unifiedBuffer.GetWithOffset<dataType>(maxLen, reluInPingUbOffset);
+    LocalTensor<dataType> zeroDataTensor = unifiedBuffer.GetWithOffset<dataType>(maxLen, zeroDataUbOffset);
 
     uint64_t blockGroupBegin = (GetBlockIdx() % 2 == 0) ? 0 : constInfo.groupNum / 2;
     uint64_t blockGroupNum = (GetBlockIdx() % 2 == 0) ? constInfo.groupNum / 2 : (constInfo.groupNum + 1) / 2;

@@ -15,7 +15,7 @@
 
 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 
-- 情形1：如果quaneMode=0（非量化场景）：
+- 情形1：如果quantMode=0（非量化场景）：
 
 $$
 allToAllXOut = AllToAllV(X)\\
@@ -26,11 +26,11 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形2：如果quaneMode=1（静态量化场景）：
+- 情形2：如果quantMode=1（静态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
-quantOut = Cast(xFp32，dstType) \\
+quantOut = Cast(xFp32, dstType) \\
 allToAllXOut = AllToAllV(quantOut)\\
 expandXOut =
 \begin{cases}
@@ -39,7 +39,7 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形3：如果quaneMode=2（pertoken动态量化场景）：
+- 情形3：如果quantMode=2（pertoken动态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
@@ -59,7 +59,7 @@ allToAllDynamicScalesOut, & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形4：如果quaneMode=3（pertile动态量化场景）：
+- 情形4：如果quantMode=3（pertile动态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
@@ -79,7 +79,7 @@ allToAllDynamicScalesOut, & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形5：如果quaneMode=4（mxfp8量化场景）：
+- 情形5：如果quantMode=4（mxfp8量化场景）：
 
 $$
 sharedExp = Floor(log_2(max(x))) - emax \\
@@ -255,7 +255,7 @@ $$
   <tr>
    <td>quantMode</td>
    <td>可选属性</td>
-   <td><li>表示量化模式，支持0：非量化，2：动态量化。</li><li>默认值为0。</li></td>
+   <td><li>表示量化模式，支持0：非量化，1：静态量化，2：动态量化，3：pertile动态量化，4：mxfp8量化。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -360,7 +360,7 @@ $$
     * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    * 不支持`expandScalesOut`。
+    * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
 * <term>Ascend 950PR/Ascend 950DT</term>：
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`expandScalesOut`。
@@ -404,6 +404,7 @@ $$
         - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
     - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：不推荐使用该环境变量控制通信算法，原`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0场景，下文均通过`commAlg` = "hierarchy"替代，默认场景使用`commAlg` = "fullmesh"替代。
     - `commAlg`配置"hierarchy"时，不支持`scalesOptional`、`xActiveMaskOptional`、`oriXOptional`、`zeroExpertNum`、`copyExpertNum`。
+    - `quantMode`支持0（非量化）、2（pertoken动态量化）。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小。
             - `commAlg` = "fullmesh"：取值范围(0, 7168]，且保证是32的整数倍。
@@ -424,10 +425,11 @@ $$
         - `moeExpertNum`：取值范围(0, 1024]。
         - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。
         - `sharedExpertNum`：取值支持[0, 4]。
-        - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。
+        - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"，"hierarchy"三种输入方式。
             - ""：默认值，使能fullmesh_v1模板。
             - "fullmesh_v1"：使能fullmesh_v1模板。
             - "fullmesh_v2"：使能fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`Bs`不一致、输入xActiveMask和特殊专家场景下使能。
+            - "hierarchy": 使能通信域跨超模板。
         - `epRecvCountsOut`：要求shape为 (`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
     - 参数说明里shape格式说明：

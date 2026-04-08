@@ -233,7 +233,7 @@
 </table>
 
 * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
+    * 支持`FLOAT16`、`BFLOAT16`数据类型。
     * `quantMode`属性仅支持0和2。
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。

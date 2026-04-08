@@ -214,7 +214,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>-</td>
       <td>-</td>
     </tr>
-  <tbody></table>
+  </tbody></table>
 
 - **返回值**
 

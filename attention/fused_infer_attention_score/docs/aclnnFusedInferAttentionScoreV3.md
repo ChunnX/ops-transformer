@@ -189,7 +189,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -827,7 +827,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         - sparse：支持sparse=0，sparse为3且传入mask，sparse为4且传入mask；
         - key&value支持ND输入。
         - inputLayout：BSH、BSND、BNSD、TND。
-        - 支持actualSeqLengths、actualSeqLengthsKv参数, 当配置Q_S大于1（即MTP）且key&value的normal部分复用同一份数据场景下，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持;
+        - 支持actualSeqLengths、actualSeqLengthsKv参数，当配置Q_S大于1（即MTP）且key&value的normal部分复用同一份数据场景下，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持;
         - 不支持pse。
       - 当query的d等于128时：
         - queryRope配置时要求queryRope的shape中b、n、s与query一致，d为64；

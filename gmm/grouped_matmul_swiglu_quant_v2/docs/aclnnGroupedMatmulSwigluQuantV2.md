@@ -737,10 +737,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <td><ul>
               <li>ND格式shape形如{(E, K, N)}</li>
               <li>NZ格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></td>
+              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></ul></td>
               <td><ul>
               <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li></td>
+              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul></td>
               <td>{(E, N)}</td>
               <td>(M,)</td>
               <td>nullptr</td>
@@ -757,7 +757,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <li>NZ非转置格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li>
               <li>NZ转置格式且INT4时原始shape形如{(E, K / 64, N / 16, 16, 64)}，并调用transpose(-1,-2)后传入</li>
               <li>NZ转置格式且INT32时原始shape形如{(E, K / 64, N / 16, 16, 8)}，并调用transpose(-1,-2)后传入</li>
-              <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li>
+              <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li></ul>
               </td>
               <td><ul>
               <li>per-channel场景shape形如{(E, N)}</li>
@@ -936,8 +936,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
               <td><ul>
               <li>非转置shape形如{(E, K, N)}</li>
               <li>转置shape形如{(E, N, K)}</li></td>
-              <td><ul>
-              <li>shape形如{(E, N)}</li>
+              <td>>shape形如{(E, N)}
               </td>
               <td>(M, )</td>
               <td>(M, N / 2)</td>
@@ -947,8 +946,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
     ```cpp
     #include <iostream>
     #include <vector>

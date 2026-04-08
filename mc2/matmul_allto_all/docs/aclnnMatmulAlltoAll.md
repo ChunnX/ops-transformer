@@ -146,7 +146,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>数据类型与输入x1保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
@@ -275,7 +275,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 * 默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
-  - <term>Atlas A3 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8、16卡。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16卡。
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
 * 参数说明中shape使用的变量H2必须整除NPU卡数。
 * H1范围仅支持[1, 65535]。
@@ -312,6 +312,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     #include <vector>
     #include <acl/acl.h>
     #include <hccl/hccl.h>
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_allto_all.h"
 
     int ndev = 2;
@@ -397,10 +398,10 @@ aclnnStatus aclnnMatmulAlltoAll(
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
         long long outShapeSize = GetShapeSize(outShape);
-        std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-        std::vector<int16_t> biasHostData(biasShapeSize, 1);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建 tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -498,7 +499,7 @@ aclnnStatus aclnnMatmulAlltoAll(
             args[rankId].hcclComm = comms[rankId];
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args  [rankId])));
+            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();
@@ -703,7 +704,7 @@ aclnnStatus aclnnMatmulAlltoAll(
             args[rankId].hcclComm = comms[rankId];
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args  [rankId])));
+            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();
