@@ -118,6 +118,20 @@ aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const acl
             shapeInfo.axes.dv);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    auto qDim = qShape.GetDimNum();
+    auto kDim = kShape.GetDimNum();
+    auto vDim = vShape.GetDimNum();
+    if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld",
+                DIM_NUM_3, qDim, kDim, vDim);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qShape[0] == 0 || kShape[0] == 0 || shapeInfo.axes.n1 == 0 || shapeInfo.axes.n2 == 0 ||shapeInfo.axes.d == 0 || shapeInfo.axes.dv == 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
+            qShape[0], kShape[0], shapeInfo.axes.n1, shapeInfo.axes.n2, shapeInfo.axes.d, shapeInfo.axes.dv);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     return ACLNN_SUCCESS;
 }
 
