@@ -1000,6 +1000,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
 #if __CCE_AICORE__ == 310
     // Ascend 950: Accumulate Split-KN Cq partials before RmsNorm
     if (baseParams_->mm1KnKGroups > 0) {
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
         uint32_t nPerVec = CeilDivT(baseParams_->headSizeCq, static_cast<uint32_t>(vectorCoreNum_));
         uint32_t nStart = blockIdx_ * nPerVec;
         uint32_t nLen = (nStart + nPerVec > baseParams_->headSizeCq) ?

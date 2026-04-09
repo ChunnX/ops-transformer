@@ -6,6 +6,7 @@
 #ifndef SERVICE_SPLIT_KN_ACCUM_H
 #define SERVICE_SPLIT_KN_ACCUM_H
 
+#include "mla_prolog_comm.h"
 #include "kernel_operator.h"
 
 namespace MlaProlog {
@@ -53,17 +54,19 @@ __aicore__ inline void AccumulateKnPartials(
         // partials[k=0][m][nStart : nStart+nLen]
         uint32_t srcOffset0 = m * N_total + nStart;
         DataCopy(accum, partials[srcOffset0], chunkElems);
-        PipeBarrier<PIPE_ALL>();
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
         // Step 2: Sequentially add remaining K-groups (deterministic order)
         for (uint32_t k = 1; k < kGroups; k++) {
             uint32_t srcOffsetK = k * partialStride + m * N_total + nStart;
             DataCopy(temp, partials[srcOffsetK], chunkElems);
-            PipeBarrier<PIPE_ALL>();
+            SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
             // Vector add: accum += temp
             Add(accum, accum, temp, chunkElems);
-            PipeBarrier<PIPE_ALL>();
+            PipeBarrier<PIPE_V>();
         }
 
         // Step 3: Cast to output type if needed and store
@@ -71,17 +74,18 @@ __aicore__ inline void AccumulateKnPartials(
             // Same type: direct store
             uint32_t dstOffset = m * N_total + nStart;
             DataCopy(output[dstOffset], accum, chunkElems);
-            PipeBarrier<PIPE_ALL>();
         } else {
             // Need type cast (float -> bf16 or float -> int32)
             // Reuse temp's memory for cast output (temp is no longer needed after accumulation)
             LocalTensor<OutputType> castBuf = temp.template ReinterpretCast<OutputType>();
             Cast(castBuf, accum, RoundMode::CAST_RINT, chunkElems);
-            PipeBarrier<PIPE_ALL>();
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             uint32_t dstOffset = m * N_total + nStart;
             DataCopy(output[dstOffset], castBuf, chunkElems);
-            PipeBarrier<PIPE_ALL>();
         }
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
 }
 
