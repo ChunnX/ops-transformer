@@ -108,9 +108,9 @@ def estimate_matmul_split_m(
     load_A_reuse_s = load_A_kl1_bytes / l2_bw_val if l2_bw_val > 0 else 0
 
     # MTE1: A and B serialized
-    mte1_first_nb = load_A_first_s + load_B_nb_s
+    mte1_first_nb = max(load_A_first_s, load_B_nb_s)
     per_nb_first_s = max(mte1_first_nb, total_inner_s, fixpipe_time_s)
-    mte1_rest_nb = load_A_reuse_s + load_B_nb_s
+    mte1_rest_nb = max(load_A_reuse_s, load_B_nb_s)
     per_nb_rest_s = max(mte1_rest_nb, total_inner_s, fixpipe_time_s)
 
     per_kl1_s = per_nb_first_s + max(n_blocks - 1, 0) * per_nb_rest_s

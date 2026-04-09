@@ -129,9 +129,9 @@ def estimate_matmul_k_outer(
         B_first_s = B_slab_bytes / hbm_bw if hbm_bw > 0 else 0
         B_rest_s = B_slab_bytes / l2_bw if l2_bw > 0 else 0
 
-        mte1_first_mb = B_first_s + A_load_s
+        mte1_first_mb = max(B_first_s, A_load_s)
         per_mb_first = max(mte1_first_mb, total_inner_s, fixpipe_time_s)
-        mte1_rest_mb = B_rest_s + A_load_s
+        mte1_rest_mb = max(B_rest_s, A_load_s)
         per_mb_rest = max(mte1_rest_mb, total_inner_s, fixpipe_time_s)
 
         per_nb_s = per_mb_first + max(m_loops - 1, 0) * per_mb_rest

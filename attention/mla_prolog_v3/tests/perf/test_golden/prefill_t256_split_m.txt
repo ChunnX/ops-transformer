@@ -20,22 +20,22 @@ workspace=17711104 bytes
 ======================================================================
 
   Parameters: T=256, He=7168, N=128, AIC=32
-  Split-N baseline: 103.17 us/step × 2 steps = 206.34 us total
-    Per step (128 tokens): MM1=26.84 MM2=20.65 MM3=50.36 MM4=1.31 Vec=1.90
+  Split-N baseline: 88.29 us/step × 2 steps = 176.58 us total
+    Per step (128 tokens): MM1=17.89 MM2=17.89 MM3=47.19 MM4=0.66 Vec=1.90
 
   Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
   ---------------------------------------------------------------------------------------------------
-     1 M8_bm32       32 |    999.07  208.81   84.42  696.11    1.23   7.27 |   99.1%  -792.73 <--
-     2 M4_bm64       64 |   1184.02  285.22  113.68  769.66    2.87  14.55 |   98.9%  -977.68
-     3 M2_bm128     128 |   1758.61  408.84  160.72 1162.13    7.39  29.09 |   98.9% -1552.27
+     1 M8_bm32       32 |    882.76  169.52   70.63  632.88    0.94   7.27 |   99.0%  -706.18 <--
+     2 M4_bm64       64 |    970.14  207.32   86.10  661.26    2.30  14.55 |   98.6%  -793.56
+     3 M2_bm128     128 |   1346.18  273.72  109.24  936.31    6.24  29.09 |   98.5% -1169.60
 
-  Split-N baseline (206.34 us for 256 tokens) is better than all split-M configs
+  Split-N baseline (176.58 us for 256 tokens) is better than all split-M configs
 
   Best split-M stage details (m_groups=8, M_per_core=32):
-    MM1_Cq: 208.81 us, bound=L2, inner=L2
-    MM2_CkvKr: 84.42 us, bound=L2, inner=L2
-    MM3_QcQr: 696.11 us, bound=L2, inner=L2
-    MM4_Qn: 1.23 us, bound=L2, inner=L2
+    MM1_Cq: 169.52 us, bound=L2, inner=L2
+    MM2_CkvKr: 70.63 us, bound=L2, inner=L2
+    MM3_QcQr: 632.88 us, bound=L2, inner=L2
+    MM4_Qn: 0.94 us, bound=L2, inner=L2
     Vector (per core, 2 vec cores):
       RmsNormCq: 1.074 us, bound=VECTOR
       RmsNormCkvKr: 0.358 us, bound=VECTOR

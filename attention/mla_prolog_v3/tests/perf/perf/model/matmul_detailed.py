@@ -99,8 +99,8 @@ def estimate_matmul_detailed(
 
     # --- Per kL1: N-blocking with A L2 reuse ---
     # MTE1 for A and B are serialized (same engine)
-    mte1_first_nb_s = A_first_s + B_load_s
-    mte1_rest_nb_s = A_reuse_s + B_load_s
+    mte1_first_nb_s = max(A_first_s, B_load_s)
+    mte1_rest_nb_s = max(A_reuse_s, B_load_s)
 
     per_nb_first_s = max(mte1_first_nb_s, total_inner_s, fixpipe_time_s)
     per_nb_rest_s = max(mte1_rest_nb_s, total_inner_s, fixpipe_time_s)
@@ -202,10 +202,10 @@ def _estimate_full_load(
     fixpipe_time_s = fixpipe_bytes / fixpipe_bw if fixpipe_bw > 0 else 0
 
     # First N-split: A from HBM/L2
-    mte1_first_s = load_A_first_s + load_B_time_s
+    mte1_first_s = max(load_A_first_s, load_B_time_s)
     per_split_first_s = max(mte1_first_s, max(l0a_time_s, l0b_time_s, mmad_time_s), fixpipe_time_s)
     # Subsequent N-splits: A from L2 (warm)
-    mte1_rest_s = load_A_reuse_s + load_B_time_s
+    mte1_rest_s = max(load_A_reuse_s, load_B_time_s)
     per_split_rest_s = max(mte1_rest_s, max(l0a_time_s, l0b_time_s, mmad_time_s), fixpipe_time_s)
 
     total_s = per_split_first_s + max(nSplits - 1, 0) * per_split_rest_s
