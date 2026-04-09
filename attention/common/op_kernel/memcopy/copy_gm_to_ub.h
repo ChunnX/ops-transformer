@@ -19,7 +19,7 @@
 #include "gm_coord.h"
 #include "fa_ub_tensor.h"
 #include "offset_calculator_v2.h"
-#include "mem_copy_const.h"
+#include "../const_def.h"
 
 // GM->UB
 /*
@@ -313,7 +313,7 @@ private:
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
-        uint32_t blockElementCnt = memory_copy::BYTE_BLOCK / sizeof(KV_T); 
+        uint32_t blockElementCnt = const_def::BYTE_BLOCK / sizeof(KV_T); 
 
         if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
             while (copyFinishRowCnt < gmCoord.s2DealSize) {

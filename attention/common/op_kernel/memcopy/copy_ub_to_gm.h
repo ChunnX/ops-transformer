@@ -19,7 +19,7 @@
 #include "gm_coord.h"
 #include "fa_ub_tensor.h"
 #include "offset_calculator_v2.h"
-#include "mem_copy_const.h"
+#include "../const_def.h"
 // ----------------------------------------------CopyAttenOutUbToGm--------------------------------
 template <typename OUT_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
 class CopyAttenOutUbToGm
@@ -32,7 +32,7 @@ public:
         // B*S过大时，跳写参数dataCopyParams.dstStride(uint32_t)计算结果将溢出，使用for循环拷贝代替
         if (dstStride > UINT32_MAX) {
             uint64_t gmSingleStride = (dstStride + blockLen) / sizeof(OUT_T);
-            uint64_t ubSingleStride = (srcStride * memory_copy::BYTE_BLOCK + blockLen) / sizeof(OUT_T);
+            uint64_t ubSingleStride = (srcStride * const_def::BYTE_BLOCK + blockLen) / sizeof(OUT_T);
             dataCopyParams.blockCount = 1;
             dataCopyParams.blockLen = blockLen;
             dataCopyParams.srcStride = 0;
@@ -83,7 +83,7 @@ public:
             uint64_t ubOffset = 0;
             uint32_t blockCount = headS1;
             uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (memory_copy::BYTE_BLOCK / sizeof(OUT_T));
+            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (const_def::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
             SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
                             dstStride);
@@ -127,7 +127,7 @@ public:
             uint64_t ubOffset = 0;
             uint32_t blockCount = headSize;
             uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (memory_copy::BYTE_BLOCK / sizeof(OUT_T));
+            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (const_def::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideG() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
             SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
                             dstStride);
@@ -189,7 +189,7 @@ __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, 
         dataCopyParams.dstStride = (constInfo.qSeqSize - 1) * sizeof(float);
         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
         startGIdx = 0;
-        ubOffset += curDealRowCount * memory_copy::FP32_BLOCK_ELEMENT_NUM;
+        ubOffset += curDealRowCount * const_def::FP32_BLOCK_ELEMENT_NUM;
     }
 }
 
@@ -227,7 +227,7 @@ __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, 
     dataCopyParams.dstStride = 0;
     DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
     outOffset += constInfo.qSeqSize - qActSeqLensParser.GetActualSeqLength(bIdx) + headActSeq;
-    ubOffset += headActSeq * memory_copy::FP32_BLOCK_ELEMENT_NUM;
+    ubOffset += headActSeq * const_def::FP32_BLOCK_ELEMENT_NUM;
     // dealCount中间块
     uint64_t pendingCount = dealCount - headActSeq;
     while (pendingCount > qActSeqLensParser.GetActualSeqLength(bIdx)) {
@@ -238,7 +238,7 @@ __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, 
         dataCopyParams.dstStride = 0;
         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
         outOffset += constInfo.qSeqSize;
-        ubOffset += qActSeqLensParser.GetActualSeqLength(bIdx) * memory_copy::FP32_BLOCK_ELEMENT_NUM;
+        ubOffset += qActSeqLensParser.GetActualSeqLength(bIdx) * const_def::FP32_BLOCK_ELEMENT_NUM;
         pendingCount -= qActSeqLensParser.GetActualSeqLength(bIdx);
     }
     // dealCount尾块
@@ -280,7 +280,7 @@ __aicore__ inline void DataCopySoftmaxLseTND(GlobalTensor<float> softmaxLseGm, L
         dataCopyParams.dstStride = 0;
         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
         startGIdx = 0;
-        ubOffset += curDealRowCount * memory_copy::FP32_BLOCK_ELEMENT_NUM;
+        ubOffset += curDealRowCount * const_def::FP32_BLOCK_ELEMENT_NUM;
     }
 }
 
@@ -312,7 +312,7 @@ __aicore__ inline void DataCopySoftmaxLseNTD(GlobalTensor<float> softmaxLseGm, L
         dataCopyParams.dstStride = (constInfo.gSize * constInfo.kvHeadNum - 1) * sizeof(float);
         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
         startS1Idx = 0;
-        ubOffset += curDealRowCount * memory_copy::FP32_BLOCK_ELEMENT_NUM;
+        ubOffset += curDealRowCount * const_def::FP32_BLOCK_ELEMENT_NUM;
     }
 }
 
