@@ -87,19 +87,15 @@ private:
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<W_T> weightUB_; 
-    // tmp buff for weight bf16 cast float
+    // tmp buff for weight cast float
     TBuf<TPosition::VECCALC> weightFloatBuf_;
     LocalTensor<float> weightFloatUB_;  
     // tmp buff for kScale
     TBuf<TPosition::VECCALC> kScaleBuf_;
     LocalTensor<SCALE_T> kScaleUB_;
-    TBuf<TPosition::VECCALC> kScaleFloatBuf_;
-    LocalTensor<float> kScaleFloatUB_;
     // tmp buff for qScale
     TBuf<TPosition::VECCALC> qScaleBuf_;
     LocalTensor<SCALE_T> qScaleUB_;
-    TBuf<TPosition::VECCALC> qScaleFloatBuf_;
-    LocalTensor<float> qScaleFloatUB_;
 
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
@@ -156,10 +152,6 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>();
     pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<SCALE_T>();
-    pipe->InitBuffer(kScaleFloatBuf_, 2 * s2BaseSize_ * sizeof(float));
-    kScaleFloatUB_ = kScaleFloatBuf_.Get<float>();
-    pipe->InitBuffer(qScaleFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    qScaleFloatUB_ = qScaleFloatBuf_.Get<float>();
     
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(uint16_t));
     vec1OutUB_ = outBuf_.Get<uint16_t>();
@@ -182,7 +174,6 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     //刷-1
     pipe->InitBuffer(outInvalidBuf_, topkCount_ * sizeof(int32_t));
     outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
-    Duplicate(kScaleFloatUB_, float(0), 2 * s2BaseSize_);
     Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_);
 }
 
@@ -372,21 +363,17 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     static_assert(std::is_same_v<uint16_t, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(uint16_t))];
     auto weightBase = weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(W_T))];
+    auto weightFloatBase = weightFloatUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto qScaleBase = qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
     auto kScaleBase = kScaleUB_[pingpong * s2BaseSize_];
-    auto qScaleFloatBase = qScaleFloatUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto kScaleFloatBase = kScaleFloatUB_[pingpong * s2BaseSize_];
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
-    if constexpr (std::is_same<SCALE_T, float>::value) {
-        qScaleFloatBase = qScaleBase;
-        kScaleFloatBase = kScaleBase;
-    }
+
     vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                         qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)), 
-                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightFloatUB_,
-                                        kScaleBase, (uint32_t)0, kScaleFloatBase,
-                                        qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T), qScaleFloatBase,
+                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightFloatBase,
+                                        kScaleBase, (uint32_t)0,
+                                        qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
                                         gSize_, curAivS1ProcNum);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
