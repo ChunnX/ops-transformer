@@ -41,7 +41,7 @@ const std::string COMM_GET_SIZE_NAME = "CommGetInstSizeByNetLayer";
 #endif
 const std::string COMM_GET_CCL_BUFFER_SIZE_NAME = "CommGetCCLBufSizeCfg";
 
-static const string GetLibPath(std::string &createTensorLibPath_)
+static const std::string GetLibPath(std::string &createTensorLibPath_)
 {
     const char *ascendPath = std::getenv("ASCEND_HOME_PATH");
     if (ascendPath == nullptr) {
