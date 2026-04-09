@@ -12,11 +12,6 @@
  * \file mhc_pre_backward_tiling.h
  * \brief
  */
-
-/*!
- * \file mhc_pre_backward_tiling.h
- * \brief
- */
 #ifndef __OP_HOST_MHC_PRE_GRAD_H__
 #define __OP_HOST_MHC_PRE_GRAD_H__
 
@@ -24,6 +19,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
 #include "err/ops_err.h"
+#include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
 
 namespace optiling {
 

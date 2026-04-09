@@ -18,13 +18,16 @@
  * \brief
  */
 
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "arch35/mhc_pre_backward.h"
+#include "arch35/mhc_pre_backward_tiling_key.h"
 
 using namespace AscendC;
 using namespace matmul;
 using namespace MhcPreBackward;
 
-extern "C" __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR h_in_grad,
+template <int8_t TILING_MODE>
+__global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR h_in_grad,
                                                        GM_ADDR h_post_grad, GM_ADDR h_comb_before_grad, GM_ADDR inv_rms,
                                                        GM_ADDR mm_res, GM_ADDR h_pre, GM_ADDR h_post, GM_ADDR gamma,
                                                        GM_ADDR grad_x_post, GM_ADDR x_grad, GM_ADDR hc_weight_grad,
@@ -36,11 +39,11 @@ extern "C" __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, G
 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
-    InitParams initParams{
-        x,          phi,    alpha, h_in_grad,   h_post_grad, h_comb_before_grad, inv_rms,    mm_res,
-        h_pre,      h_post, gamma, grad_x_post, x_grad,      hc_weight_grad,     alpha_grad, bias_post_grad,
-        gamma_grad, user,   &pipe, &tilingData};
-    if (TILING_KEY_IS(0UL)) {
+    if constexpr (TILING_MODE == MHC_PRE_BACKWARD_DEFAULT) {
+        InitParams initParams{
+            x,          phi,    alpha, h_in_grad,   h_post_grad, h_comb_before_grad, inv_rms,    mm_res,
+            h_pre,      h_post, gamma, grad_x_post, x_grad,      hc_weight_grad,     alpha_grad, bias_post_grad,
+            gamma_grad, user,   &pipe, &tilingData};
         MT_C0 mm0;
         MT_C1 mm1;
         mm0.Init(&tilingData.matmulTilingC0, &pipe);
@@ -50,3 +53,4 @@ extern "C" __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, G
         op.Process();
     }
 }
+#endif
