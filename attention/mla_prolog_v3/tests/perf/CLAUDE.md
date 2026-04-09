@@ -61,6 +61,16 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
 - **跨 matmul 复用**：MM2 的 tokenX 假设 100% 命中 L2（来自 MM1 的预取）。实际命中率取决于 L2 容量与 working set 大小。
 - **Weight L2 复用**：Split-M 模式下，B 矩阵假设跨核 L2 100% 命中。
 
+### H2b. 核内 N-blocking 与 A 矩阵重复搬运
+- 当 `per_core_N > baseN` 时，核内需 `n_blocks = ceil(per_core_N / baseN)` 次循环搬 B 到 L1
+- **A 矩阵在每个 N-block 都需要在 L1 中**：因此 A 被搬运 n_blocks 次
+  - `nb=0`：A 首次从 HBM 加载（cold，HBM 带宽）
+  - `nb≥1`：A 从 L2 加载（warm，L2 带宽 ~3.25× HBM）
+- **B 矩阵每个 N-block 是不同 N 偏移**，均首次从 HBM 加载
+- **MTE1 A+B 串行**：A 和 B 共用一个 MTE1 DMA 引擎，搬运时间 = `A_load + B_load`（非 `max(A, B)`）
+- 跨 kL1 迭代通过双缓冲流水重叠：本迭代的 MTE1 与上一迭代的内层计算+FixPipe 重叠
+- L1、L0 默认 **双缓冲 (2×)**；当且仅当矩阵可一次性全载且带来性能收益时用单缓冲 (1×)
+
 ### H3. MMAD 利用率假设
 - BF16: `mmad_ops_per_cycle_fp16 = 4096` (Ascend 950) 假设 100% 利用率
 - FP8: `mmad_ops_per_cycle_fp8 = 8192`
