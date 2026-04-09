@@ -36,6 +36,7 @@ constexpr uint32_t A8W4PRE_VECTOR_BASE_M = 16;     //单位为字节数
 constexpr uint32_t A8W4PRE_VECTOR_BASE_K = 512;    //单位为元素个数
 constexpr int32_t MASK = 128;
 constexpr half ONE_SIXTEEN = 0.0625;
+constexpr uint32_t ALIGN_MTE = 32;
 
 class GMMA8W4PreProcessNZ {
 public:
@@ -139,7 +140,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyIn(uint32_t mIdx, uint32_t kIdx,
     auto xTensor = vecInQueueX.AllocTensor<int8_t>();
     DataCopyPad(xTensor, xGm[mIdx * A8W4PRE_VECTOR_BASE_M * k + kIdx * A8W4PRE_VECTOR_BASE_K], dataCopyParams, padParams);
     vecInQueueX.EnQue(xTensor);
-    printf("222222");
+    printf("di3ci");
 }
 __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
@@ -173,7 +174,6 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
     PipeBarrier<PIPE_V>();
     auto tensorOut = vecOutQueue.AllocTensor<int4b_t>();
     printf("111111");
-
     //高四位低四位tensor交叉拼接
     DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), 1, static_cast<uint16_t>(curVecBaseK / 64 - 1), 1};
     auto loopCnt = curVecBaseK / 64;
@@ -188,8 +188,13 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx
 {
     auto tensorOut = vecOutQueue.DeQue<int4b_t>();
     auto baseOffset = mIdx * A8W4PRE_VECTOR_BASE_M * 64 * 2 + kIdx * A8W4PRE_VECTOR_BASE_K * m * 2;
+    baseOffset = (baseOffset + ALIGN_MTE - 1) / ALIGN_MTE * ALIGN_MTE;
     DataCopyExtParams dataCopyParams{static_cast<uint16_t>(curVecBaseK / 64), curVecBaseM * 64, 0, (m - curVecBaseM) * 2 * 32, 0};
     DataCopyPadExtParams<int4b_t> padParams{false, 0, 0, 0};
+    //问题
+    printf("baseOffset:%d,GetBlockIdx:%d\n",baseOffset,GetBlockIdx());
+    printf("mIdx:%u,kIdx:%d\n",mIdx,kIdx);
+    printf("curVecBaseM:%u,curVecBaseK:%d\n",curVecBaseM,curVecBaseK);
     DataCopyPad(xOutInt4[baseOffset], tensorOut, dataCopyParams);
     vecOutQueue.FreeTensor(tensorOut);
 }

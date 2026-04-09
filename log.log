@@ -1,0 +1,9 @@
+/data/miniconda3/envs/zsl/lib/python3.9/site-packages/torch_npu/dynamo/__init__.py:102: UserWarning: Register eager implementation for the 'npu' backend of dynamo, as torch_npu was not compiled with torchair.
+  warnings.warn(
+tensorflow is not install in env
+tensorflow is not install in env
+tensorflow is not install in env
+Usage: atk task [OPTIONS]
+Try 'atk task --help' for help.
+
+Error: Invalid value for '-c' / '--case': Path 'GroupedMatmul_A8W4.json' does not exist.

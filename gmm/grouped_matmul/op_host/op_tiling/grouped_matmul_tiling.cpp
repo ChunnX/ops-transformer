@@ -15,6 +15,7 @@
 #include "grouped_matmul_tiling.h"
 
 #include <climits>
+#include <cstdio>
 #include "register/op_impl_registry.h"
 #include "arch35/grouped_weight_quant_batch_matmul_tiling.h"
 #include "arch35/grouped_no_quant_matmul_tiling.h"
@@ -1808,7 +1809,17 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       cvSyncWs = (cvSyncWs + WS_ALIGN - 1) / WS_ALIGN * WS_ALIGN;//和32对齐，向上取整
 
       uint64_t FixedAxisMoveWorkspace_ = leftMatrixWs + cvSyncWs;
-      // -----------------------------------------
+      printf("FixedAxisMoveWorkspace_ = %lld\n", FixedAxisMoveWorkspace_);
+      // ----------------------------------------
+
+      // tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
+      //           (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
+      //手动加到1024*1024*1024
+      tuningConfigWorkspace_ = 1024*1024*1024;
+      
+      printf("tuningConfigWorkspace_");
+      printf("tuningConfigWorkspace_ = %lld\n", tuningConfigWorkspace_);
+
 
       bool isWorkspaceValid = 
           (static_cast<int64_t>(FixedAxisMoveWorkspace_) <= tuningConfigWorkspace_) || 
@@ -1821,14 +1832,16 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       // workspace 合法足够 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
       if (isWorkspaceValid) {
           isA8W4MSDPreNZ = 1;
-          if (tuningConfigWorkspace_ == TUNING_WS_AUTO) {
-              preProcessWorkspaceSize = FixedAxisMoveWorkspace_;
-          } else {
-              preProcessWorkspaceSize = static_cast<uint64_t>(tuningConfigWorkspace_);
-          }
+          preProcessWorkspaceSize = FixedAxisMoveWorkspace_;                
       }
 
       tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
+
+      size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
+      workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
+      printf("workspaces[0] = %lld\n", workspaces[0]);
+      workspaces[0] += preProcessWorkspaceSize;
+      printf("workspaces[0] = %lld\n", workspaces[0]);
 
       bool useHighPerf = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX) ?
                     ((reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX] == 1) : false;
@@ -1932,7 +1945,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
         workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
         workspaces[0] += workspaceSize;
-        workspaces[0] += preProcessWorkspaceSize;                //分配前处理地址
+        // workspaces[0] += preProcessWorkspaceSize;                //分配前处理地址
 
         tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
