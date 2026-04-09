@@ -12,7 +12,7 @@
 #include <array>
 #include <float.h>
 #include "gtest/gtest.h"
-#include "../../../op_api/aclnn_mhc_pre_backward.h"
+#include "../../../op_host/op_api/aclnn_mhc_pre_backward.h"
 #include "opdev/platform.h"
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/tensor_desc.h"
