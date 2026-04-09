@@ -12,6 +12,7 @@
 #include <float.h>
 #include "gtest/gtest.h"
 #include "../../../../op_api/aclnn_grouped_matmul_add.h"
+#include "../../../../op_api/aclnn_grouped_matmul_add_v2.h"
 
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
@@ -50,4 +51,30 @@ TEST_F(l2_grouped_matmul_add_test, Ascend910B2_grouped_matmul_add_fp16)
                         INPUT(x, weight, groupList, yRef, transposeX, transposeWeight, groupType), OUTPUT());
     uint64_t workspaceSize = 0;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
+}
+
+TEST_F(l2_grouped_matmul_add_test, Ascend910B2_grouped_matmul_add_fp16_v2)
+{
+    size_t M = 345;
+    size_t K = 1280;
+    size_t N = 567;
+    size_t E = 2;
+    auto x = TensorDesc({K, M}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto weight = TensorDesc({K, N}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto groupList = TensorDesc({E}, ACL_INT64, ACL_FORMAT_ND);
+    auto yRef = TensorDesc({M, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
+    int64_t groupType = 2;
+    bool transposeX = true;
+    bool transposeWeight = false;
+
+    uint64_t workspaceSize = 0;
+    int groupListTypeMode = 2;
+    for (int i = 0; i < groupListTypeMode; i++) {
+        // groupListType = 0 or 1.
+        auto ut = OP_API_UT(aclnnGroupedMatmulAddV2,
+                            INPUT(x, weight, groupList, yRef, transposeX, transposeWeight, groupType, i),
+                            OUTPUT());
+
+        aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
+    }
 }

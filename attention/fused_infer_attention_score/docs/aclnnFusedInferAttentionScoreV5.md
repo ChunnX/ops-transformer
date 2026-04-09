@@ -6,12 +6,12 @@
 
 | 产品                                                              | 是否支持 |
 | :---------------------------------------------------------------- | :------: |
-| `<term>`Ascend 950PR/Ascend 950DT `</term>`                   |    √    |
-| `<term>`Atlas A3 训练系列产品/Atlas A3 推理系列产品 `</term>` |    ×    |
-| `<term>`Atlas A2 训练系列产品/Atlas A2 推理系列产品 `</term>` |    ×    |
-| `<term>`Atlas 200I/500 A2 推理产品 `</term>`                  |    ×    |
-| `<term>`Atlas 推理系列产品 `</term>`                          |    ×    |
-| `<term>`Atlas 训练系列产品 `</term>`                          |    ×    |
+| <term>Ascend 950PR/Ascend 950DT</term>|    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×    |
+| <term>Atlas 200I/500 A2 推理产品</term>|    ×    |
+| <term>Atlas 推理系列产品</term>                         |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
@@ -348,14 +348,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-        <td>-</td>
     </tr>
     <tr>
         <td>antiquantOffsetOptional</td>
         <td>输入</td>
         <td>伪量化偏移</td>
         <td>不支持</td>
-        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -790,7 +788,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>输入</td>
         <td>伪量化的方式</td>
         <td>不支持</td>
-        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -1503,7 +1500,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 无
 - 特性交叉约束
   - 伪量化场景
-    - key/value 的数据类型为 INT8 时，query 的 layout 不支持 TND
+    - inputLayout 仅支持 BSH, BNSD, BSND, BNSD_BSND, TND
+    - key/value 的数据类型为 INT8 时，inputLayout 不支持 TND
+    - 当 Q_S 等于 1 时，inputLayout 不支持 BNSD_BSND
     - Q_S > 1 时：
       - key/value 的数据类型为 INT8 时，keyAntiquantMode 不支持 2，3，4，5
       - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，query 和 output 的数据类型仅支持 BF16
@@ -1585,7 +1584,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 非量化
     - 入参 blockSize 需要满足以下条件：
       - Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024
-      - GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；其他情况下，若Q_S> 1，blockSize 128对齐，最大支持512，若Q_S= 1，blockSize 16对齐，最大支持512
+      - GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512
   - 伪量化
     - 入参 blockSize 需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN 时，blockSize 需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1 时，blockSize 需要64对齐
   - 全量化

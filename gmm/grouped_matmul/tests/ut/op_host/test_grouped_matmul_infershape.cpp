@@ -358,9 +358,14 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulInfershapeCase> &
 
 namespace GroupedMatmulInfershapeUT {
 
-const vector<GroupedMatmulInfershapeCase> &GetAscend950Cases()
+const vector<GroupedMatmulInfershapeCase> &GetGroupedMatmulInfershapeCsvCases()
 {
-    static const vector<GroupedMatmulInfershapeCase> cases = LoadCases("Ascend950");
+    static const vector<GroupedMatmulInfershapeCase> cases = [] {
+        vector<GroupedMatmulInfershapeCase> merged = LoadCases("Ascend950");
+        vector<GroupedMatmulInfershapeCase> ascend910b = LoadCases("Ascend910B");
+        merged.insert(merged.end(), ascend910b.begin(), ascend910b.end());
+        return merged;
+    }();
     return cases;
 }
 
@@ -375,7 +380,7 @@ TEST_P(TestGroupedMatmulInfershape, csvDrivenCase)
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GROUPED_MATMUL_INFERSHAPE_950, TestGroupedMatmulInfershape,
-                         testing::ValuesIn(GetAscend950Cases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GROUPED_MATMUL_INFERSHAPE_CSV, TestGroupedMatmulInfershape,
+                         testing::ValuesIn(GetGroupedMatmulInfershapeCsvCases()), MakeParamName);
 
 } // namespace GroupedMatmulInfershapeUT

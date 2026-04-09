@@ -125,7 +125,7 @@ static AlltoAllMatmulTestParam testCases[] = {
      {}, ge::DT_BF16, ge::FORMAT_ND, // all2allout
      "group", 2, 0, 0, 0, 0, 0, 0, 0, false, true, 0, false,
      "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 16UL, "", {367513600}, 0},
+     ge::GRAPH_SUCCESS, 66UL, "", {367513600}, 0},
 
     {"alltoall_matmul_case_normalshape_4p",
      {114172, 768}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -140,7 +140,7 @@ static AlltoAllMatmulTestParam testCases[] = {
      {}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
      "group", 4, 0, 0, 0, 0, 0, 0, 0, false, false, 0, false,
      "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 0UL, "", {367513600}, 0},
+     ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
 
     {"alltoall_matmul_case_bigshape_8p",
      {228344, 384}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -155,7 +155,7 @@ static AlltoAllMatmulTestParam testCases[] = {
      {}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
      "group", 8, 0, 0, 0, 0, 0, 0, 0, false, false, 0, false,
      "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 0UL, "", {367513600}, 0},
+     ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
 
     {"alltoall_matmul_case_bigshape_16p",
      {456688, 192}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -170,7 +170,7 @@ static AlltoAllMatmulTestParam testCases[] = {
      {}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
      "group", 16, 0, 0, 0, 0, 0, 0, 0, false, false, 0, false,
      "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 0UL, "", {367513600}, 0},
+     ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
 
      // illegal
     {"error-alltoall_matmul_x1_dtype_invalid",

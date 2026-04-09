@@ -532,7 +532,7 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::SoftmaxLseCop
     if constexpr (isMlaFullQuant) {
         intriParams1.dstStride = (layout == LayOutTypeEnum::LAYOUT_BSH) ? sizeof(float) * (constInfo.s1Size - 1) : 0;
     }
-    if (isInt8 && isMlaFullQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) { // 32:gSize限制
+    if (isMlaFullQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) { // 32:gSize限制
         int64_t currRowOffset = runInfo.sOuterOffset % constInfo.n2G;
         int64_t remainDataLen = runInfo.halfS1RealSize;
         int64_t dealDataLen = 0;

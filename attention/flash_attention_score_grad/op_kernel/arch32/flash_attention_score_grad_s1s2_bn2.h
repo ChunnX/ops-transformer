@@ -1678,9 +1678,9 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             posA = curRow;
             posB = curCol;
             this->LoadFullDataA(scmATensor, queryGm[a_addr],
-                        subMAct, mm1BaseK, aIndex, posA, mm1ABaseSize, srcStrideN1, reuseQ);
+                        subMAct, dimD, aIndex, posA, mm1ABaseSize, srcStrideN1, reuseQ);
             this->LoadFullDataA(scmBTensor, keyGm[b_addr],
-                        subNAct, mm1BaseK, bIndex, posB, mm1BBaseSize, srcStrideN2, reuseK);
+                        subNAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN2, reuseK);
             AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
             AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
 
@@ -2004,9 +2004,9 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             posA = curRow;
             posB = curCol;
             this->LoadFullDataA(scmATensor, dyGm[a_addr],
-                        subMAct, mm1BaseK, aIndex, posA, mm1ABaseSize, srcStrideN1, reuseDy);
+                        subMAct, dimD, aIndex, posA, mm1ABaseSize, srcStrideN1, reuseDy);
             this->LoadBaseDataB(scmBTensor, valueGm[b_addr],
-                        subNAct, mm1BaseK, bIndex, posB, mm1BBaseSize, srcStrideN2);
+                        subNAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN2);
             AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
             AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
 

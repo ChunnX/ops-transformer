@@ -23,12 +23,12 @@
 
 namespace optiling {
 constexpr uint16_t MAX_TENSOR_LIST_SIZE = 128;
-struct GroupedMatmulAddCompileInfo {
-};
+struct GroupedMatmulAddCompileInfo {};
 BEGIN_TILING_DATA_DEF(GmmBaseParams)
 TILING_DATA_FIELD_DEF(int64_t, groupNum);
 TILING_DATA_FIELD_DEF(int64_t, coreNum);
 TILING_DATA_FIELD_DEF(int64_t, groupType); // 分组类型，仅支持2 --- K分组
+TILING_DATA_FIELD_DEF(int64_t, groupListType);
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(GmmBaseParamsOp, GmmBaseParams)

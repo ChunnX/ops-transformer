@@ -125,7 +125,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPertensor(const FiaTili
 
     const gert::CompileTimeTensorDesc *quantScale1Desc = fiaInfo.opParamInfo.quantScale1.desc;
     const gert::CompileTimeTensorDesc *deqScale1Desc = fiaInfo.opParamInfo.deqScale1.desc;
-    const gert::CompileTimeTensorDesc *deqScale2Desc = fiaInfo.opParamInfo.deqScale1.desc;
+    const gert::CompileTimeTensorDesc *deqScale2Desc = fiaInfo.opParamInfo.deqScale2.desc;
     if (quantScale1Desc == nullptr || deqScale1Desc == nullptr || deqScale2Desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
@@ -795,10 +795,11 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeCrossFullquant(const FiaTi
 ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fiaInfo)
 {
     if (enableIFAMLAFullQuant_) {  // MLA 全量化 QKV : fp8_e4m3/int8
-        OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_INT8),
+        OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_INT8 ||
+                      fiaInfo.inputQType == ge::DT_HIFLOAT8),
                     OP_LOGE(fiaInfo.opName,
                             "In MLA fullquant scenario, query datatype(%s) and key/value datatype(%s), "
-                            "should be FLOAT8_E4M3FN or INT8",
+                            "should be FLOAT8_E4M3FN 、INT8 or HIFLOAT8.",
                             DataTypeToSerialString(fiaInfo.inputQType).c_str(),
                             DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
                     return ge::GRAPH_FAILED);
@@ -878,22 +879,24 @@ ge::graphStatus DequantChecker::CheckInputLayoutMLAFullquant(const FiaTilingInfo
     }
     const std::string inputLayout = fiaInfo.opParamInfo.layOut;
     const std::vector<std::string> supportedLayoutListFP8 = {
-        "BSH", "BSND", "BNSD", "TND"};
+        "BSH", "BSND", "BNSD", "TND", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"};
     const std::vector<std::string> supportedLayoutListINT8 = {
         "BSH", "BSND", "TND", "BSH_NBSD", "BSND_NBSD", "TND_NTD"};
     
-    OP_CHECK_IF(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN &&
+        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
         (std::find(supportedLayoutListFP8.begin(), supportedLayoutListFP8.end(), inputLayout) ==
                  supportedLayoutListFP8.end()),
-                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, input layout(%s) must be BSH/BSND/BNSD/TND "
-                        "when input datatype is float8_e4m3.",fiaInfo.opParamInfo.layOut),
+                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, "
+                        "input layout(%s) must be BSH/BSND/BNSD/TND/BSH_NBSD/BSND_NBSD/BNSD_NBSD/TND_NTD "
+                        "When input datatype is float8_e4m3/hifloat8.", fiaInfo.opParamInfo.layOut),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
         (std::find(supportedLayoutListINT8.begin(), supportedLayoutListINT8.end(), inputLayout) ==
                  supportedLayoutListINT8.end()),
-                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, input layout(%s) must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD.",
-                        "when input datatype is int8.",fiaInfo.opParamInfo.layOut),
+                OP_LOGE(fiaInfo.opName, "In MLA full quant scenario, "
+                        "input layout(%s) must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD.",
+                        "when input datatype is int8.", fiaInfo.opParamInfo.layOut),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -914,20 +917,11 @@ ge::graphStatus DequantChecker::CheckInputLayoutFullquant(const FiaTilingInfo &f
 ge::graphStatus DequantChecker::CheckN1SizeFullquant(const FiaTilingInfo &fiaInfo)
 {
     if (enableIFAMLAFullQuant_) {
-        static const std::set<uint32_t> supportNumHeadForMLAFullQuantFP8 = {32U, 64U, 128U};
-        static const std::set<uint32_t> supportNumHeadForMLAFullQuantINT8 = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-        OP_CHECK_IF(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN &&
-            (supportNumHeadForMLAFullQuantFP8.find(fiaInfo.n1Size) == supportNumHeadForMLAFullQuantFP8.end()),
+        static const std::set<uint32_t> supportNumHeadForMLAFullQuant = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
+        OP_CHECK_IF((supportNumHeadForMLAFullQuant.find(fiaInfo.n1Size) == supportNumHeadForMLAFullQuant.end()),
                     OP_LOGE(fiaInfo.opName,
                             "In MLA fullquant scenario, "
-                            "the heads num(%u) of query should be in range of {32, 64, 128} when input datatype is float8_e4m3",
-                            fiaInfo.n1Size),
-                    return ge::GRAPH_FAILED);
-         OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
-            (supportNumHeadForMLAFullQuantINT8.find(fiaInfo.n1Size) == supportNumHeadForMLAFullQuantINT8.end()),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario, "
-                            "the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128} when input datatype is int8",
+                            "the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}.",
                             fiaInfo.n1Size),
                     return ge::GRAPH_FAILED);
     } else {  // QN <= 256
@@ -1334,11 +1328,29 @@ ge::graphStatus DequantChecker::CheckFeatureForAntiquant(const FiaTilingInfo &fi
 
 ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingInfo &fiaInfo)
 {
+    // 伪量化场景校验支持的inputLayout
+    const std::string inputLayout = fiaInfo.opParamInfo.layOut;
+    const std::vector<std::string> supportedLayoutList = {
+        "BSH", "BSND", "BNSD", "BNSD_BSND", "TND"};
+
     OP_CHECK_IF(
-        (fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.qLayout == FiaLayout::TND),
-        OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                                "the layout of input does not support TND."),
+        (std::find(supportedLayoutList.begin(), supportedLayoutList.end(), inputLayout) == supportedLayoutList.end()),
+        OP_LOGE(fiaInfo.opName, "In antiquant scenario, inputLayout only supports (BSH, BNSD, BSND, BNSD_BSND, TND), "
+                                "but got %s.", inputLayout.c_str()),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        (fiaInfo.inputKvType == ge::DT_INT8 && inputLayout == "TND"),
+        OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
+                                "the inputLayout of input does not support TND."),
+        return ge::GRAPH_FAILED);
+
+    if (fiaInfo.s1Size == 1) {
+        OP_CHECK_IF(
+            inputLayout == "BNSD_BSND",
+            OP_LOGE(fiaInfo.opName, "In antiquant scenario, BNSD_BSND inputLayout is not supported when Q_S is 1."),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

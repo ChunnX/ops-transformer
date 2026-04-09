@@ -217,6 +217,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
     constexpr uint16_t dLoops = srcD / floatRepSize;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
+    constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
@@ -245,8 +246,10 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
                     Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else {
+                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
                     Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                } else {
+                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
                 }
             }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -404,6 +407,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
     const uint16_t dLoops = d >> 6;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
+    constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         uint32_t sreg_init = d;
@@ -422,8 +426,10 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
                     Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else {
+                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
                     Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                } else {
+                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
                 }
             }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(

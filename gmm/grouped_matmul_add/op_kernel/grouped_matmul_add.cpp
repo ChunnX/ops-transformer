@@ -87,6 +87,7 @@ protected:
     GlobalTensor<int64_t> groupListGm;
     MNConfig lastMnConfig;
     uint32_t lastGroupIdx;
+    uint32_t groupListType;
 
 public:
     __aicore__ inline GmmAddProcess(ComputeType& computeOp_) : computeOp(computeOp_) {}
@@ -143,6 +144,7 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Init(
     groupNum = static_cast<uint32_t>(gmmBaseParams->groupNum);
     groupListPtr = groupList;
     groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupList);
+    groupListType = static_cast<uint32_t>(gmmBaseParams->groupListType);
 }
 
 template <typename ComputeType>
@@ -213,7 +215,7 @@ __aicore__ inline void GmmAddProcess<ComputeType>::Process()
     }
 
     for (uint32_t groupIdx = 0, count = 0; groupIdx < groupNum; ++groupIdx) {
-        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, groupListGm);
+        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, groupListType, groupListGm);
         SetMNConfig(splitValue, mnConfig);
         uint32_t dimM = Ceil(mnConfig.m, mnConfig.singleM);
         uint32_t dimN = Ceil(mnConfig.n, mnConfig.singleN);
