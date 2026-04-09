@@ -60,11 +60,10 @@ using namespace AscendC;
 
 constexpr uint32_t BUFFER_NUM = 2;
 constexpr uint64_t SYNC_MAX_NUM = 15;
-constexpr uint32_t INOUT_QUEUE_SIZE = 28 * 1024;                   // 28KB
-constexpr uint32_t TEMP_QUEUE_SIZE = 16 * 1024;                    // 16KB
+constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;                   // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;                    // 16KB
-constexpr uint32_t FP32_BUF_SIZE = (248 - 28 * 3 - 16 - 1) * 1024; // 147KB
-constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 112;                    // ProcessV2函数使用的chunk大小
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024;      // 151KB
+constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;                    // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
@@ -367,7 +366,6 @@ private:
     TQue<QuePosition::VECIN, 0> bf16InQueue_;
     TQue<QuePosition::VECOUT, 1> bf16OutQueue_;
     TQue<QuePosition::VECIN, 1> fp32InQueue_;
-    TQue<QuePosition::VECIN, 1> tempInQueue_;
     TQue<QuePosition::VECOUT, 1> fp32OutQueue_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
@@ -455,8 +453,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
     hCombBeforeGradBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + hCombBeforeGradBufLen_;
     onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
-
-    pipe_->InitBuffer(tempInQueue_, 1, TEMP_QUEUE_SIZE);
 
     if ASCEND_IS_AIV {
         pipe_->InitBuffer(bf16InQueue_, 1, INOUT_QUEUE_SIZE);
@@ -845,16 +841,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     fp32InputBuf = fp32InQueue_.AllocTensor<P>();
     DataCopyPad(fp32InputBuf, hPostGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
     fp32InQueue_.EnQue(fp32InputBuf);
-    AscendC::LocalTensor<P> fp32Buf = tempInQueue_.AllocTensor<P>();
-    DataCopyPad(fp32Buf, hPostGradGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
-    tempInQueue_.EnQue(fp32Buf);
+    AscendC::LocalTensor<P> hPostGrad;
+    bf16InQueue_.AllocTensor<P>(hPostGrad);
+    DataCopyPad(hPostGrad, hPostGradGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
+    bf16InQueue_.EnQue(hPostGrad);
 
     LocalTensor<P> hPost = fp32InQueue_.DeQue<P>();
-    LocalTensor<P> hPostGrad = tempInQueue_.DeQue<P>();
+    bf16InQueue_.DeQue<P>(hPostGrad);
     VFDoV0ProcessHPostGrad((__ubuf__ P *)hPost.GetPhyAddr(), (__ubuf__ P *)hPostGrad.GetPhyAddr(),
                            (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr(), buffers.stepLength);
     fp32InQueue_.FreeTensor(hPost);
-    tempInQueue_.FreeTensor(hPostGrad);
+    bf16InQueue_.FreeTensor(hPostGrad);
 
     fp32InputBuf = fp32InQueue_.AllocTensor<P>();
     dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P);

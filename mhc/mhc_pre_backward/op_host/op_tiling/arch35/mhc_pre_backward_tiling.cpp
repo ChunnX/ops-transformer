@@ -47,7 +47,7 @@ const constexpr int64_t INDEX_D_TND = 1;
 const constexpr int32_t C0_BASE_M = 256;
 const constexpr int32_t C0_BASE_N = 128;
 const constexpr int32_t C0_BASE_K = 32;
-const constexpr uint32_t MAX_D_LENTH = 8192;
+const constexpr uint32_t MAX_D_LENTH = 16384;
 const constexpr uint32_t D_ALIGN = 64;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardBaseTiling, 1000);
@@ -124,7 +124,7 @@ ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
 
     if (D_ > MAX_D_LENTH || D_ % D_ALIGN != 0) {
         OP_LOGE(context_->GetNodeName(),
-                "Invalid input shape D=%lu. Expected to be less than or equal to 8192 and 64-element alignment", D_);
+                "Invalid input shape D=%lu. Expected to be less than or equal to 16384 and 64-element alignment", D_);
         return ge::GRAPH_FAILED;
     }
 
