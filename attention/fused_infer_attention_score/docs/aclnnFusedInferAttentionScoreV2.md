@@ -368,7 +368,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
          <tr> 
        <td>valueAntiquantOffsetOptional</td>
         <td>输入</td>
-        <td>kv伪量化参数分离时表示value的反量化因子。</td>
+        <td>kv伪量化参数分离时表示value的反量化偏移。</td>
         <td><ul>
             <li>不支持空Tensor。</li>
             <li>使用时，shape必须与valueAntiquantScaleOptional保持一致。</li>
@@ -1342,7 +1342,7 @@ int main()
   int64_t preTokens = 65535;
   int64_t nextTokens = 65535;
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   int64_t sparseMode = 0;
   int64_t innerPrecise = 0;

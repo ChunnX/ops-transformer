@@ -1221,7 +1221,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - query、key、value输入类型均为INT8的场景暂不支持。
     - 在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
     - 在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
-    - key、value在特定数据数据类型下存在对于D轴的限制
+    - key、value在特定数据类型下存在对于D轴的限制
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
       - <term>Ascend 950PR/Ascend 950DT</term>：key、value输入类型为FLOAT4_E2M1/INT4（INT32）时，query的D轴以及key、value的D轴需要64对齐（INT32仅支持key、value的D 8对齐）。
   - actualSeqLengths入参，传入时应为非负数。
@@ -1439,7 +1439,7 @@ int main() {
   int64_t preTokens = 65535;
   int64_t nextTokens = 65535;
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   int64_t sparseMode = 0;
   int64_t innerPrecise = 1;
