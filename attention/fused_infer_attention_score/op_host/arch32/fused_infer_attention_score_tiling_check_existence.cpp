@@ -67,7 +67,6 @@ static std::string DtypeListToStr(const std::vector<DataType> &dtypeList)
         }
     }
     oss << "]";
-
     return oss.str();
 }
 
