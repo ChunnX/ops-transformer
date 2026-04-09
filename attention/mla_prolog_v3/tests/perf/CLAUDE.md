@@ -212,10 +212,11 @@ python perf_analyzer.py --chip 950 --batch-size 32 --head-num 128 --mode block-s
 | `roofline` | Roofline 模型 | ✓ |
 | `block-search` | baseM/baseN/baseK 搜索 | ✓ |
 | `split-kn` | 2D N×K 切分搜索 | ✓ |
+| `split-kn-fused` | split-kn 补充：融合 K-accum + RmsNorm in M-split V 核 | ✓ |
 | `split-m` | M 轴切分搜索 | ✓ |
 | `prefill` | K-outer + cube-bound 优化 | ✓ |
 | `dequant-opt` | UB-pipelined dequant+RoPE (L0C→UB→L1, intra-core sync) | ✓ |
-| `full` | 上面全部（不含 `dequant-opt`，避免破坏 regression goldens） | |
+| `full` | 上面全部（不含 `dequant-opt` 与 `split-kn-fused`，避免破坏 regression goldens） | |
 
 ### 程序化调用
 
@@ -277,6 +278,7 @@ print(f"Critical path: {' → '.join(result.critical_path)}")
 7. **kNopeClipAlpha**：作为标量参数，对性能影响可忽略，未纳入模型
 8. **变长序列 (PA_BLK_BSND/PA_BLK_NZ)**：cacheIndex 间接寻址成本未单独建模
 9. **dequant-opt intra-core HardEvent 延迟**：`build_pipeline_dag_dequant_opt` 假设 `FIX_V`、`V_MTE3`、`MTE3_M` 等核内 HardEvent 同步开销为 0，与 H6 相符。实际硬件可能有 1–2 cycle stalls，需 profiling 校准。
+10. **split-kn-fused 仅作为 split-kn 的补充**：本模式只在 `k_groups > 1` 的 split-kn 配置上有意义；它对 baseline 加上一个 "would-be barrier" 的成本（`hw.sync_overhead_us`），代表"独立 Accum 步骤"在真实 kernel 中需要插入但在现有 perf model `--mode split-kn` 中**未建模**的同步开销。该成本不污染 `--mode pipeline` / `--mode split-kn` 的输出 DAG，仅在 `--mode split-kn-fused` 内部对比时使用。现有 kernel barriers (line 854, 859, 867) 与此优化无关，**不动**。
 
 ---
 

@@ -19,6 +19,11 @@ from perf.model.dequant_opt import (
     compute_budget, estimate_dequant_opt_pipeline,
     is_dequant_opt_applicable,
 )
+from perf.model.matmul_split_kn import SplitKNSpec
+from perf.model.split_kn_fused import (
+    STATIC_AIV_UB_BYTES, SplitKnFusedBudget,
+    estimate_split_kn_fused,
+)
 from perf.model.hardware import ASCEND_910B, ASCEND_950
 from perf.model.matmul_detailed import estimate_matmul_detailed
 from perf.model.matmul_k_outer import estimate_matmul_k_outer
@@ -344,6 +349,92 @@ class TestDequantOptPipeline(unittest.TestCase):
         p = OperatorParams(batch_size=1, head_num=4, weight_quant_mode=3)
         t = compute_tiling(p, ASCEND_950)
         self.assertFalse(is_dequant_opt_applicable(p, t))
+
+
+class TestSplitKnFused(unittest.TestCase):
+    """Pin the split-kn fused K-accumulation + RmsNorm model."""
+
+    def _make_decode_bs1_n8(self):
+        params = OperatorParams(batch_size=1, seq_len=1, head_num=8)
+        tiling = compute_tiling(params, ASCEND_950)
+        return params, tiling
+
+    def test_estimate_decode_bs1_n8_k4(self):
+        """Pin SplitKnFusedTiming fields for a representative split-kn config."""
+        params, tiling = self._make_decode_bs1_n8()
+        spec = SplitKNSpec("MM1_Cq", n_groups=8, k_groups=4,
+                           single_n=192, single_k=1792)
+        timing = estimate_split_kn_fused(
+            params, tiling, ASCEND_950, spec, "MM1_Cq")
+        self.assertTrue(timing.applicable)
+        self.assertEqual(timing.k_groups, 4)
+        self.assertEqual(timing.n_groups, 8)
+        self.assertGreater(timing.total_fused_us, 0.0)
+        self.assertGreater(timing.baseline_total_us, 0.0)
+        self.assertEqual(timing.new_barrier_us, ASCEND_950.sync_overhead_us)
+        # Fused total should be SUM of components (no internal pingpong)
+        expected_total = (timing.accum_load_us + timing.accum_compute_us
+                          + timing.rmsnorm_compute_us + timing.output_store_us)
+        self.assertAlmostEqual(timing.total_fused_us, expected_total, places=9)
+        self.assertIn(timing.bound, ("MTE2", "VECTOR", "MTE3"))
+
+    def test_chunks_one_for_decode(self):
+        """All decode configs should fit in UB without chunking."""
+        configs = [
+            (OperatorParams(batch_size=1, seq_len=1, head_num=128), 1, 14),
+            (OperatorParams(batch_size=8, seq_len=1, head_num=128), 1, 14),
+            (OperatorParams(batch_size=1, seq_len=1, head_num=8), 1, 14),
+        ]
+        for params, n_groups, k_groups in configs:
+            tiling = compute_tiling(params, ASCEND_950)
+            spec = SplitKNSpec("MM1_Cq", n_groups=n_groups, k_groups=k_groups,
+                               single_n=params.Hcq // n_groups,
+                               single_k=params.He // k_groups)
+            timing = estimate_split_kn_fused(
+                params, tiling, ASCEND_950, spec, "MM1_Cq")
+            self.assertEqual(timing.chunks, 1,
+                             f"chunks > 1 unexpected for {params}")
+
+    def test_delta_positive(self):
+        """Fused must never be slower than separate-accum baseline."""
+        params, tiling = self._make_decode_bs1_n8()
+        spec = SplitKNSpec("MM1_Cq", n_groups=8, k_groups=4,
+                           single_n=192, single_k=1792)
+        timing = estimate_split_kn_fused(
+            params, tiling, ASCEND_950, spec, "MM1_Cq")
+        self.assertGreater(timing.delta_us, 0.0,
+                           "fused should always save vs baseline + new barrier")
+
+    def test_ub_under_cap(self):
+        """UB usage must fit within available budget for decode configs."""
+        configs = [
+            (OperatorParams(batch_size=1, seq_len=1, head_num=128), "MM1_Cq", 1, 14),
+            (OperatorParams(batch_size=1, seq_len=1, head_num=128), "MM2_CkvKr", 1, 14),
+            (OperatorParams(batch_size=8, seq_len=1, head_num=128), "MM1_Cq", 1, 14),
+        ]
+        for params, mm_name, n_groups, k_groups in configs:
+            tiling = compute_tiling(params, ASCEND_950)
+            n_full = params.Hcq if mm_name == "MM1_Cq" else (params.Hckv + params.Dr)
+            spec = SplitKNSpec(mm_name, n_groups=n_groups, k_groups=k_groups,
+                               single_n=n_full // n_groups,
+                               single_k=params.He // k_groups)
+            timing = estimate_split_kn_fused(
+                params, tiling, ASCEND_950, spec, mm_name)
+            budget = SplitKnFusedBudget.from_timing(timing, ASCEND_950)
+            self.assertTrue(
+                budget.fits,
+                f"UB budget exceeded for {mm_name} {params}: "
+                f"{budget.ub_used_bytes} / {budget.ub_avail_bytes}")
+
+    def test_only_when_k_groups_gt_1(self):
+        """k_groups == 1 should return non-applicable result."""
+        params, tiling = self._make_decode_bs1_n8()
+        spec = SplitKNSpec("MM1_Cq", n_groups=24, k_groups=1,
+                           single_n=64, single_k=7168)
+        timing = estimate_split_kn_fused(
+            params, tiling, ASCEND_950, spec, "MM1_Cq")
+        self.assertFalse(timing.applicable)
+        self.assertEqual(timing.delta_us, 0.0)
 
 
 class TestBackwardCompat(unittest.TestCase):

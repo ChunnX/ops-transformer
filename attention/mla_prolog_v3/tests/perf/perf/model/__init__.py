@@ -26,6 +26,10 @@ from .dequant_opt import (
     DequantOptStageTiming, DequantOptBudget,
     estimate_dequant_opt_pipeline, is_dequant_opt_applicable, compute_budget,
 )
+from .split_kn_fused import (
+    SplitKnFusedTiming, SplitKnFusedBudget,
+    estimate_split_kn_fused, STATIC_AIV_UB_BYTES,
+)
 from .orchestration import (
     get_default_block_specs,
     estimate_all_stages,

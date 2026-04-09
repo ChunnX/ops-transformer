@@ -1,0 +1,63 @@
+MLA Prolog V3 Performance Analysis
+  B=1, S=1, T=1, N=8, He=7168
+  Hcq=1536, Hckv=512, D=128, Dr=64
+  weight_quant=0, kv_quant=0, query_quant=0
+  Resolved quant_mode: NO_QUANT
+  HW: Ascend950, AIC=32, AIV=64
+  Freq: 1.65 GHz, Cache: L1=512KB, L0A=64KB, L0B=256KB, L0C=256KB
+
+Tiling:
+  stepBatchSize=1, vectorBlocks=1
+MM1: cores=24, singleN=64
+MM2: cores=9, singleN=64
+MM3: cores=32, singleN=48
+MM4: cores=8, singleBatch=1
+groupComputeOpt=False, dequantOpt=False
+workspace=15488 bytes
+
+======================================================================
+  SPLIT-KN-FUSED — Fused K-Accumulation + RmsNorm Analysis
+======================================================================
+
+
+  Parameters: T=1, He=7168, Hcq=1536, Hckv+Dr=576, N=8
+  UB budget: 262144 bytes total, 34816 bytes static AIV, 227328 bytes available for fused step
+  Vector cores: 1
+
+  Found 36 configurations with k_groups > 1.
+
+  Rank Config                       |  Baseline     Fused        Δ |     MM1 UB     MM2 UB
+  ----------------------------------------------------------------------------------------
+     1 MM1:N1xK28+MM2:N3xK8         |     9.01     7.55   -1.46 |  30KB(14%)   11KB(5%) <--
+     2 MM1:N1xK28                   |    25.95    25.27   -0.69 |  30KB(14%)          -
+     3 MM2:N3xK8                    |    26.26    25.48   -0.78 |          -   11KB(5%)
+     4 MM2:N1xK14                   |    26.26    25.48   -0.78 |          -   11KB(5%)
+     5 MM2:N1xK28                   |    26.26    25.50   -0.76 |          -   11KB(5%)
+     6 MM2:N3xK7                    |    26.49    25.71   -0.78 |          -   11KB(5%)
+     7 MM1:N2xK14                   |    26.47    25.76   -0.71 |  30KB(14%)          -
+     8 MM1:N4xK8                    |    27.41    26.67   -0.74 |  30KB(14%)          -
+     9 MM1:N4xK7                    |    27.49    26.75   -0.74 |  30KB(14%)          -
+    10 MM1:N1xK14                   |    27.49    26.75   -0.74 |  30KB(14%)          -
+    11 MM1:N3xK8                    |    27.53    26.79   -0.74 |  30KB(14%)          -
+    12 MM2:N1xK8                    |    27.79    27.00   -0.79 |          -   11KB(5%)
+    13 MM1:N3xK7                    |    28.20    27.45   -0.75 |  30KB(14%)          -
+    14 MM2:N1xK7                    |    28.54    27.75   -0.79 |          -   11KB(5%)
+    15 MM1:N2xK8                    |    28.57    27.83   -0.75 |  30KB(14%)          -
+
+  Best (fused): MM1:N1xK28+MM2:N3xK8 -> 7.55 us
+    Baseline split-kn pipeline: 9.01 us
+    Fused saving:               1.46 us  (+16.2%)
+
+  Per-MM breakdown for best config:
+    MM1 (Cq)  n_groups=1 k_groups=28
+      per_v_m=1  chunks=1  chunk_m=1
+      Fused: accum_load=0.108us  accum_compute=0.138us  rmsnorm=0.015us  store=0.002us  total=0.262us  bound=VECTOR
+      Baseline: accum=0.133us + new_barrier=0.800us + rmsnorm=0.015us = 0.947us
+      Δ (saved): +0.686us
+      UB used: 30720 / 227328 bytes (13.5%)
+    MM2 (CkvKr)  n_groups=3 k_groups=8
+      per_v_m=1  chunks=1  chunk_m=1
+      Fused: accum_load=0.012us  accum_compute=0.015us  rmsnorm=0.006us  store=0.001us  total=0.033us  bound=VECTOR
+      Baseline: accum=0.004us + new_barrier=0.800us + rmsnorm=0.006us = 0.810us
+      Δ (saved): +0.777us
+      UB used: 11520 / 227328 bytes (5.1%)

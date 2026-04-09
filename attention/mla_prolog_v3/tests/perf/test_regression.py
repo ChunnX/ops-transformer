@@ -105,6 +105,21 @@ GOLDEN_CASES = [
     ("decode_bs1_bf16_dequant_opt",
         ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
          "--head-num", "128", "--mode", "dequant-opt"]),
+
+    # split-kn-fused: supplement to split-kn (fused K-accum + RmsNorm)
+    ("decode_bs1_n8_split_kn_fused",
+        ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
+         "--head-num", "8", "--mode", "split-kn-fused"]),
+    ("decode_bs1_bf16_split_kn_fused",
+        ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
+         "--head-num", "128", "--mode", "split-kn-fused"]),
+    ("decode_bs8_bf16_split_kn_fused",
+        ["--chip", "950", "--batch-size", "8", "--seq-len", "1",
+         "--head-num", "128", "--mode", "split-kn-fused"]),
+    ("decode_bs1_int8_split_kn_fused",
+        ["--chip", "950", "--batch-size", "1", "--seq-len", "1",
+         "--head-num", "128", "--weight-quant-mode", "2",
+         "--kv-cache-quant-mode", "1", "--mode", "split-kn-fused"]),
 ]
 
 

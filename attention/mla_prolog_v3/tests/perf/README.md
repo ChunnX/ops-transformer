@@ -134,6 +134,16 @@ Not beneficial for decode (T=1). Requires `--chip 950`.
 python perf_analyzer.py --chip 950 --batch-size 512 --head-num 128 --mode split-m
 ```
 
+### `split-kn-fused` — Fused K-Accumulation + RmsNorm Analysis (Supplement to `split-kn`)
+
+A *supplement* to `--mode split-kn`. For each split-kn configuration with `k_groups > 1`, estimates the savings from fusing the K-axis accumulation step into the existing M-split RmsNorm step in vector. The fused variant avoids (a) the new full-V-core barrier that a separate accumulation step would need, and (b) the UB → GM → UB round-trip between the accumulation output and the RmsNorm input.
+
+The cube data path stays unchanged (still writes K-partials to GM via FixPipe). Existing kernel barriers at `kernel_mla_prolog_split_n.h:854,859,867` are unrelated to this optimization and remain in place. Reports per-config UB budget and chunking decisions when stepBatchSize is large enough that one V core's M slice doesn't fit in UB. Requires `--chip 950`.
+
+```bash
+python perf_analyzer.py --chip 950 --batch-size 1 --head-num 8 --mode split-kn-fused
+```
+
 ### `dequant-opt` — UB-Pipelined Dequant+RoPE Analysis
 
 Estimates the savings from running the dequant+RoPE pipeline directly through the L0C → UB → L1 path on a single AI core (intra-core HardEvent sync), instead of round-tripping through GM with cross-core CrossCoreSetFlag/WaitFlag pairs. Reports a stage-by-stage comparison vs the baseline pipeline, the DequantRopeUB sub-stage breakdown (L0C→UB, UB compute, UB→L1), and the per-core UB / L1 budget.
