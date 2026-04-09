@@ -20,6 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 struct DispatchFFNCombineInfo {
+    // 原有字段
     uint32_t epWorldSize;
     uint32_t moeExpertNum;
     uint32_t sharedExpertNum;
@@ -32,6 +33,23 @@ struct DispatchFFNCombineInfo {
     uint32_t dispatchQuantMode;
     uint32_t combineQuantMode;
     uint64_t cclBufferSize;
+    
+    // 从MegaMoeTilingData补充的字段
+    uint32_t expertPerRank;        // 每个rank的expert数量
+    uint8_t groupListType;         // grouplist类型
+    uint32_t m;                    // 矩阵m维度
+    uint32_t m0;                   // GMM1 tileShape M
+    uint32_t k0;                   // GMM1 tileShape K
+    uint32_t n0;                   // GMM1 tileShape N
+    uint32_t EP;                   // EP大小（与epWorldSize相同）
+    uint32_t blockNumPerEP;        // 每个EP的block数量
+    uint32_t maxOutputSize;        // 最大输出大小
+    uint32_t rank;                 // 当前rank
+    uint32_t topK;                 // topK值
+    int32_t dispatchRows;          // dispatch行数
+    bool transX;                   // X转置标志
+    bool transW;                   // W转置标志
+    bool transW2;                  // W2转置标志
 };
 
 struct DispatchFFNCombineTilingData {
