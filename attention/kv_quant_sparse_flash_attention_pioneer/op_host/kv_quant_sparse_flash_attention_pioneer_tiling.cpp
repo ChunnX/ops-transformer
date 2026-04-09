@@ -1202,9 +1202,9 @@ ge::graphStatus QSFAPTilingCheck::CheckFeatureMlaAntiquantShape() const
         return ge::GRAPH_FAILED);
 
     if (inputKvType_ == ge::DT_HIFLOAT8) {
-        OP_CHECK_IF(sparseBlockCount_ != 2048, 
-            OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse_count must be 2048, but got %u", sparseBlockCount_),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(sparseBlockCount_ != 2048,
+            OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse_count must be 2048,
+                but got %u", sparseBlockCount_), return ge::GRAPH_FAILED);
     }
     
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
