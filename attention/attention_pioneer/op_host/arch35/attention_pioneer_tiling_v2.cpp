@@ -86,9 +86,10 @@ constexpr uint32_t ACTUAL_SHARED_PREFIX_LEN_INDEX = 23;
 constexpr uint32_t QUERY_ROPE_INDEX = 24;
 constexpr uint32_t KEY_ROPE_INDEX = 25;
 constexpr uint32_t DEQUANT_SCALE_QUERY_INDEX = 27;
-constexpr uint32_t KEY_SINK_INDEX = 28;
-constexpr uint32_t KEY_ROPE_SINK_INDEX = 29;
-constexpr uint32_t VALUE_SINK_INDEX = 30;
+constexpr uint32_t METADATA_INDEX = 28;
+constexpr uint32_t KEY_SINK_INDEX = 29;
+constexpr uint32_t KEY_ROPE_SINK_INDEX = 30;
+constexpr uint32_t VALUE_SINK_INDEX = 31;
 
 constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 6;
 constexpr uint32_t ATTR_INNER_PRECISE_INDEX = 7;
@@ -496,18 +497,11 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext* context, C
         if (layoutStr != "TND" && layoutStr != "NTD" && layoutStr != "NTD_NTD" && layoutStr != "TND_NTD") {
             batchOfQ = contextKeyParams.queryInputShape->GetStorageShape().GetDim(QUERY_DIM_0);
         } else {
-            if (!isMaxWorkspace) {
-                const gert::Tensor* actSeqLenData = contextKeyParams.actualSequenceLengthQ;
-                int64_t actSeqLenDims = (actSeqLenData != nullptr) ? actSeqLenData->GetShapeSize() : 0;
-                OP_CHECK_IF(((actSeqLenData == nullptr) || (actSeqLenDims == 0) || (actSeqLenData->GetData<int64_t>() == nullptr)),
-                    OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "When layout is TND/NTD/TND_NTD/NTD_TND, actualSequenceLengthQ is required"),
-                    return ge::GRAPH_FAILED);
-                const gert::Tensor* actSeqLenDataKV = contextKeyParams.actualSequenceLengthKV;
-                int64_t actSeqLenKVDims = (actSeqLenDataKV != nullptr) ? actSeqLenDataKV->GetShapeSize() : 0;
-                OP_CHECK_IF(((actSeqLenDataKV == nullptr) || (actSeqLenKVDims == 0) || (actSeqLenDataKV->GetData<int64_t>() == nullptr)),
-                    OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "When layout is TND/NTD/TND_NTD/NTD_TND, actualSequenceLengthKV is required"),
-                    return ge::GRAPH_FAILED);
-                batchOfQ = actSeqLenDims;
+            // actual_seq_lengths is now a tensor, values are not available on host side.
+            // Use shape size to determine batch. isMaxWorkspace is always true.
+            const gert::Tensor* actSeqLenData = contextKeyParams.actualSequenceLengthQ;
+            if (actSeqLenData != nullptr) {
+                batchOfQ = actSeqLenData->GetShapeSize();
             }
         }
     }
@@ -552,9 +546,11 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext* context, C
 }
 
 static bool GetMaxWorkspaceFlag(gert::TilingContext& context) {
-    bool res = (context.GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX) != nullptr && context.GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX)->GetData<int64_t>()  == nullptr) || 
-        (context.GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX) != nullptr && context.GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX)->GetData<int64_t>() == nullptr);
-    return res;
+    // actual_seq_lengths and actual_seq_lengths_kv are now tensors, values are not available on host side.
+    // Core splitting info is obtained from attention_pioneer_metadata operator.
+    // Always use max workspace mode.
+    (void)context;
+    return true;
 }
 
 ge::graphStatus TilingAttentionPioneerV2(gert::TilingContext *context) {
@@ -628,37 +624,15 @@ ge::graphStatus AttentionPioneerTilingV2::DoOpTiling() {
     if (inputLayoutStr == "BNSD" || inputLayoutStr == "BNSD_BSND") {
         s = tempQ->GetStorageShape().GetDim(QUERY_DIM_2);
     } else if (inputLayoutStr == "TND" || inputLayoutStr == "TND_NTD") {
-        if (isMaxWorkspace) {
-            t = tempQ->GetStorageShape().GetDim(QUERY_DIM_0);
-            s = tempQ->GetStorageShape().GetDim(QUERY_DIM_0);
-        } else {
-            const gert::Tensor* actualSeqLength = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
-            int64_t actSeqLenDims = (actualSeqLength != nullptr) ? actualSeqLength->GetShapeSize() : 0;
-            OP_CHECK_IF(((actualSeqLength == nullptr) || (actSeqLenDims == 0) || (actualSeqLength->GetData<int64_t>() == nullptr)),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "When layout is TND/TND_NTD, actualSequenceLengthQ is required!"),
-                return ge::GRAPH_FAILED);
-            s = actualSeqLength->GetData<int64_t>()[0];
-            for (int i = 1; i < actualSeqLength->GetShapeSize(); ++i) {
-                s = std::max(s, actualSeqLength->GetData<int64_t>()[i] - actualSeqLength->GetData<int64_t>()[i - 1]);
-            }
-            t = actualSeqLength->GetData<int64_t>()[actualSeqLength->GetShapeSize() - 1];
-        }
+        // actual_seq_lengths is now a tensor, values are not available on host side.
+        // Always use shape-based max values (isMaxWorkspace is always true).
+        t = tempQ->GetStorageShape().GetDim(QUERY_DIM_0);
+        s = tempQ->GetStorageShape().GetDim(QUERY_DIM_0);
     } else if (inputLayoutStr == "NTD" || inputLayoutStr == "NTD_TND") {
-        if (isMaxWorkspace) {
-            t = tempQ->GetStorageShape().GetDim(QUERY_DIM_1);
-            s = tempQ->GetStorageShape().GetDim(QUERY_DIM_1);
-        } else {
-            const gert::Tensor* actualSeqLength = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
-            int64_t actSeqLenDims = (actualSeqLength != nullptr) ? actualSeqLength->GetShapeSize() : 0;
-            OP_CHECK_IF(((actualSeqLength == nullptr) || (actSeqLenDims == 0) || (actualSeqLength->GetData<int64_t>() == nullptr)),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "When layout is NTD/NTD_TND, actualSequenceLengthQ is required!"),
-                return ge::GRAPH_FAILED);
-            s = actualSeqLength->GetData<int64_t>()[0];
-            for (int i = 1; i < actualSeqLength->GetShapeSize(); ++i) {
-                s = std::max(s, actualSeqLength->GetData<int64_t>()[i] - actualSeqLength->GetData<int64_t>()[i - 1]);
-            }
-            t = actualSeqLength->GetData<int64_t>()[actualSeqLength->GetShapeSize() - 1];
-        }
+        // actual_seq_lengths is now a tensor, values are not available on host side.
+        // Always use shape-based max values (isMaxWorkspace is always true).
+        t = tempQ->GetStorageShape().GetDim(QUERY_DIM_1);
+        s = tempQ->GetStorageShape().GetDim(QUERY_DIM_1);
     } else {
         s = tempQ->GetStorageShape().GetDim(1);
     }

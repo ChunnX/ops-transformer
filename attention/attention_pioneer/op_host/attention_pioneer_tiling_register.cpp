@@ -22,9 +22,11 @@ static ge::graphStatus TilingPrepareForAttentionPioneer(gert::TilingParseContext
 {
     return ge::GRAPH_SUCCESS;
 }
+constexpr uint32_t METADATA_INDEX_FOR_REG = 28;
 IMPL_OP_OPTILING(AttentionPioneer)
-    .TilingInputsDataDependency({ACTUAL_SEQ_Q_INDEX, ACTUAL_SEQ_KV_INDEX, QUERY_PADDING_SIZE_INDEX,
-                                 KV_PADDING_SIZE_INDEX, ACTUAL_SHARED_PREFIX_LEN_INDEX},
+    .TilingInputsDataDependency({QUERY_PADDING_SIZE_INDEX,
+                                 KV_PADDING_SIZE_INDEX, ACTUAL_SHARED_PREFIX_LEN_INDEX,
+                                 METADATA_INDEX_FOR_REG},
                                 {gert::TilingPlacement::TILING_ON_HOST, gert::TilingPlacement::TILING_ON_AICPU})
     .Tiling(DoOpTilingAttentionPioneer)
     .TilingParse<AttentionPioneerCompileInfo>(TilingPrepareForAttentionPioneer); // Register entrance functions to the framework

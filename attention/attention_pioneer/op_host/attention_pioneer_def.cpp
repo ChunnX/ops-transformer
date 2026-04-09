@@ -135,13 +135,11 @@ public:
             .AutoContiguous();
         this->Input("actual_seq_lengths")
             .ParamType(OPTIONAL)
-            .ValueDepend(OPTIONAL)
             .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_lengths_kv")
             .ParamType(OPTIONAL)
-            .ValueDepend(OPTIONAL)
             .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
@@ -500,6 +498,11 @@ public:
         this->Input("dequant_scale_query")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("metadata")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key_sink")
@@ -894,13 +897,11 @@ public:
             .AutoContiguous();
         aicore_config_95.Input("actual_seq_lengths")
             .ParamType(OPTIONAL)
-            .ValueDepend(OPTIONAL)
             .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("actual_seq_lengths_kv")
             .ParamType(OPTIONAL)
-            .ValueDepend(OPTIONAL)
             .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
@@ -1938,6 +1939,11 @@ public:
         aicore_config_95.Input("dequant_scale_query")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_95.Input("metadata")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("key_sink")
