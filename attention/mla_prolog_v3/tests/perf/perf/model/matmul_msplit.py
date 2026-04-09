@@ -131,9 +131,9 @@ def estimate_matmul_msplit(
         if l2_bw <= 0 or hbm_bw <= 0:
             A_load_s = 0.0
 
-        mte1_first_mb = max(B_load_hbm_s, A_load_s)
+        mte1_first_mb = B_load_hbm_s + A_load_s
         per_mb_first_s = max(mte1_first_mb, total_inner_s, fixpipe_time_s)
-        mte1_rest_mb = max(B_load_l2_s, A_load_s)
+        mte1_rest_mb = B_load_l2_s + A_load_s
         per_mb_rest_s = max(mte1_rest_mb, total_inner_s, fixpipe_time_s)
 
         per_kl1_nb_s = per_mb_first_s + max(m_loops - 1, 0) * per_mb_rest_s

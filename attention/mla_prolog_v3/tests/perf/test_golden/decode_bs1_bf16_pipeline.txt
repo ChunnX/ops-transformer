@@ -19,25 +19,25 @@ workspace=553472 bytes
   PIPELINE TIMELINE — AIC/AIV Execution Overlap
 ======================================================================
 
-Total: 87.62 us
-AIC busy: 83.62 us | AIV busy: 0.96 us | Sync: 7.20 us  (sum > Total due to pipeline overlap)
+Total: 102.52 us
+AIC busy: 98.52 us | AIV busy: 0.96 us | Sync: 7.20 us  (sum > Total due to pipeline overlap)
 
                   |               |               |               |               |               |
-                  0            17.5            35.0            52.6            70.1            87.6 us
+                  0            20.5            41.0            61.5            82.0           102.5 us
 
   AIC:
-  * MM1_Cq         [==============] 17.89us
-  * MM2_CkvKr                       [==============] 17.89us
-  * MM3_QcQr                                         [=========================================] 47.19us
-  * MM4_Qn                                                                                        [] 0.66us
+  * MM1_Cq         [==================] 26.84us
+  * MM2_CkvKr                           [==============] 20.65us
+  * MM3_QcQr                                             [======================================] 50.36us
+  * MM4_Qn                                                                                        [] 0.68us
 
   AIV:
     CopyInSinCos   [] 0.50us
-    RmsNormCq                       [] 0.07us
-    RmsNormCkvKr                                     [] 0.02us
-    RopeKr                                           [] 0.00us
-    ScatterCkvKr                                     [] 0.01us
+    RmsNormCq                            [] 0.07us
+    RmsNormCkvKr                                         [] 0.02us
+    RopeKr                                               [] 0.00us
+    ScatterCkvKr                                         [] 0.01us
     RopeQr                                                                                        [] 0.36us
 
 Critical path:
-  MM1_Cq(17.9) -> MM2_CkvKr(17.9) -> MM3_QcQr(47.2) -> MM4_Qn(0.7)
+  MM1_Cq(26.8) -> MM2_CkvKr(20.6) -> MM3_QcQr(50.4) -> MM4_Qn(0.7)

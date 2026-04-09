@@ -67,7 +67,8 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
   - `nb=0`：A 首次从 HBM 加载（cold，HBM 带宽）
   - `nb≥1`：A 从 L2 加载（warm，L2 带宽 ~3.25× HBM）
 - **B 矩阵每个 N-block 是不同 N 偏移**，均首次从 HBM 加载
-- **MTE1 A+B 并行**：A 从 L1→L0A、B 从 L1→L0B，目的地址不同，可同时搬运。搬运时间 = `max(A_load, B_load)`
+- **MTE2 A+B 共享带宽**：MTE2（HBM/L2→L1）可同时搬运 A 和 B，但共享 HBM→L1 带宽。带宽打满时（典型情况），时间 = `(A_bytes + B_bytes) / per_core_bw`，等价于 `A_time + B_time`
+- **MTE1 A+B 并行**：MTE1（L1→L0A/L0B）可并行搬运 A 和 B（不同目的地址），时间 = `max(l0a_time, l0b_time)`
 - 跨 kL1 迭代通过双缓冲流水重叠：本迭代的 MTE1 与上一迭代的内层计算+FixPipe 重叠
 - L1、L0 默认 **双缓冲 (2×)**；当且仅当矩阵可一次性全载且带来性能收益时用单缓冲 (1×)
 
