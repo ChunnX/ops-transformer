@@ -182,8 +182,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskType()
     }
     auto t = desc->GetDataType();
     OP_CHECK_IF(
-        t != ge::DataType::DT_UINT8,
-        OP_LOGE(context_->GetNodeName(), "mask dtype must be UINT8, but got %s", Ops::Base::ToString(t).c_str()),
+        t != ge::DataType::DT_BOOL,
+        OP_LOGE(context_->GetNodeName(), "mask dtype must be DT_BOOL, but got %s", Ops::Base::ToString(t).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -281,7 +281,13 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     // 修复：内部动态计算 sLoopCnt，不再依赖外部未赋值的成员变量
     auto calculateBufferSize = [&](int64_t h, int64_t b, int64_t s_effective) -> int64_t {
         // 【关键修复】根据当前传入的s切分大小，动态计算循环次数，不再使用未初始化的sLoopCnt_
+
         int64_t currentSLoopCnt = (S_ + s_effective - 1) / s_effective;
+        int64_t sCacheLevels_ = 1;
+        {
+            int64_t t = currentSLoopCnt;
+            while (t > 1) { ++sCacheLevels_; t >>= 1; }
+        }
         
         int64_t s_with_overlap = s_effective + (W_ - 1);
         int64_t gradOutputSize = h * b * s_with_overlap * static_cast<int64_t>(dtypeSize_);
@@ -291,6 +297,10 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         if (hasMask_) {
             int64_t maskBytes = b * s_with_overlap;
             maskSize = ((maskBytes + ALIGN_BYTES - 1) / ALIGN_BYTES) * ALIGN_BYTES;
+            int64_t vecBytes   = ((s_with_overlap * static_cast<int64_t>(dtypeSize_) + (ALIGN_BYTES - 1)) / ALIGN_BYTES) * ALIGN_BYTES;
+            int64_t planeBytes = s_with_overlap * h * static_cast<int64_t>(dtypeSize_);
+            maskSize += vecBytes;
+            maskSize += planeBytes;
         }
         int64_t gradInputSize = h * b * s_effective * static_cast<int64_t>(dtypeSize_);
         int64_t gradWeightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
@@ -298,7 +308,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         int64_t prodBufSize = W_ * s_effective * h * sizeof(float);
         int64_t sumBufSize = h * sizeof(float);
 
-        int64_t wsSize = 3LL * currentSLoopCnt * h * sizeof(float);
+        int64_t wsSize = 3LL * sCacheLevels_ * h * sizeof(float);
         int64_t totalSize = BUFFER_NUM * (gradOutputSize + inputSize + weightSize + maskSize +
                                           gradInputSize + gradWeightSize) + tempBuffSize
                                           + prodBufSize + sumBufSize + wsSize;
@@ -344,10 +354,24 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     ubMainFactorB_ = 1;
     ubTailFactorB_ = 1;
 
-    // 有效输出（不含重叠）
-    ubMainFactorS_ = sUB_;
-    int64_t s_effective_remain = S_ % sUB_;
-    ubTailFactorS_ = (s_effective_remain == 0 && sLoopCnt_ > 0) ? sUB_ : (s_effective_remain > 0 ? s_effective_remain : sUB_);
+    // 均分 S 维：在既定 sLoopCnt_ 下，使每个子块相差不超过 1，形如 [ceil(S/L)]*R + [floor(S/L)]*(L-R)
+    // 其中 L=sLoopCnt_，R=S_%L。示例：S=102, L=5 -> 主块=21(2次)，尾块=20(3次)
+    if (sLoopCnt_ <= 0) {
+        // 防护：至少一次
+        sLoopCnt_ = 1;
+    }
+    int64_t mainS = (S_ + sLoopCnt_ - 1) / sLoopCnt_; // ceil
+    int64_t tailS = (S_ / sLoopCnt_);                  // floor
+    int64_t mainCnt = S_ % sLoopCnt_;                  // 需要分配主块大小的次数
+    int64_t tailCnt = sLoopCnt_ - mainCnt;             // 其余分配尾块大小
+
+    // 写回本核配置（有效输出大小，不含重叠）
+    ubMainFactorS_ = mainS;
+    ubTailFactorS_ = tailS;
+
+    // 记录次数（新增字段）
+    ubMainFactorSCount_ = mainCnt;
+    ubTailFactorSCount_ = tailCnt;
 
     // 尾核（保持 B 参数为 1）
     if (hTailCoreCnt_ > 0 && hTailSize_ > 0) {
@@ -416,7 +440,12 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
     tilingData_.tailCoreUbMainFactorH = tailCoreUbMainFactorH_;
     tilingData_.tailCoreUbTailFactorH = tailCoreUbTailFactorH_;
     tilingData_.tailCoreUbMainFactorB = tailCoreUbMainFactorB_;
-    tilingData_.tailCoreUbTailFactorB = tailCoreUbTailFactorB_;
+    tilingData_.tailCoreUbTailFactorB = tailCoreUbTailFactorB_;    // 新增：主/尾块出现次数（S维均分信息）
+    tilingData_.ubMainFactorSCount = ubMainFactorSCount_;
+    tilingData_.ubTailFactorSCount = ubTailFactorSCount_;
+
+    
+    
     tilingData_.tailCoreUbMainFactorS = tailCoreUbMainFactorS_;
     tilingData_.tailCoreUbTailFactorS = tailCoreUbTailFactorS_;
 
@@ -495,6 +524,8 @@ void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "ubTailFactorB = %ld", ubTailFactorB_);
     OP_LOGI(context_->GetNodeName(), "ubMainFactorS = %ld", ubMainFactorS_);
     OP_LOGI(context_->GetNodeName(), "ubTailFactorS = %ld", ubTailFactorS_);
+    OP_LOGI(context_->GetNodeName(), "ubMainFactorSCount = %ld", ubMainFactorSCount_);
+    OP_LOGI(context_->GetNodeName(), "ubTailFactorSCount = %ld", ubTailFactorSCount_);
     OP_LOGI(context_->GetNodeName(), "tailHLoopCnt = %ld", tailHLoopCnt_);
     OP_LOGI(context_->GetNodeName(), "tailBLoopCnt = %ld", tailBLoopCnt_);
     OP_LOGI(context_->GetNodeName(), "tailSLoopCnt = %ld", tailSLoopCnt_);

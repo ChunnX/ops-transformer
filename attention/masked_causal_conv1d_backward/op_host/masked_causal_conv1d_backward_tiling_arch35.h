@@ -138,6 +138,9 @@ private:
     int64_t ubMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
     int64_t ubTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
 
+    int64_t ubMainFactorSCount_ = 0;
+    int64_t ubTailFactorSCount_ = 0;
+
     // 新增：尾核参数（有效输出大小，不包含重叠）
     int64_t tailHLoopCnt_ = 0;
     int64_t tailBLoopCnt_ = 0;

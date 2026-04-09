@@ -105,7 +105,6 @@ __simd_vf__ void GradInputAndWeight(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubu
     }
 }
 
-// Cast helper: cast a single row (1 x dimLen) of float (B32) into T with pack store
 template <typename T>
 __simd_vf__ void CastRowB32ToDT(__ubuf__ float *srcAddr, __ubuf__ T *dstAddr, uint32_t dimLen)
 {
@@ -122,7 +121,7 @@ __simd_vf__ void CastRowB32ToDT(__ubuf__ float *srcAddr, __ubuf__ T *dstAddr, ui
     }
 }
 
-// Wrapper: cast a float LocalTensor (1 x dimLen) to T into outUb
+
 template <typename T>
 __aicore__ inline void DoCastToDT(LocalTensor<float> &inUb, uint32_t dimLen, LocalTensor<T> &outUb)
 {
@@ -132,8 +131,6 @@ __aicore__ inline void DoCastToDT(LocalTensor<float> &inUb, uint32_t dimLen, Loc
 }
 
 
-// Fused wrapper: single-pass over go to compute GI and products
-// Keep the same call interface style as existing wrappers
 template <typename T>
 __aicore__ inline void DoGradInputWeight(LocalTensor<T> &goUb, LocalTensor<T> &wUb, LocalTensor<T> &inUb,
                                                   LocalTensor<T> &giUb, LocalTensor<float> &p0Ub, LocalTensor<float> &p1Ub,
