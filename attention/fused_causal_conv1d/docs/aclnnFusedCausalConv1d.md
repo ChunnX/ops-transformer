@@ -135,8 +135,8 @@ aclnnStatus aclnnFusedCausalConv1d(
 - **参数说明**：
 
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 158px">
-  <col style="width: 120px">
+  <col style="width: 240px">
+  <col style="width: 100px">
   <col style="width: 333px">
   <col style="width: 400px">
   <col style="width: 212px">
@@ -158,9 +158,9 @@ aclnnStatus aclnnFusedCausalConv1d(
   </thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensor*）</td>
       <td>输入</td>
-      <td>输入序列</td>
+      <td>计算公式中的x，代表输入序列</td>
       <td><ul><li>不支持空tensor。</li><li>prefill场景：shape为[cu_seq_len, dim]。</li><li>decode场景：shape为[cu_seq_len, dim]或[batch, seq_len, dim]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -168,9 +168,9 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>√</td>
     </tr>
     <tr>
-      <td>weight</td>
+      <td>weight（aclTensor*）</td>
       <td>输入</td>
-      <td>因果1维卷积核</td>
+      <td>计算公式中的w，代表因果1维卷积核</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[K, dim]。</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
@@ -178,9 +178,9 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>convStates</td>
+      <td>convStates（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>缓存状态张量，存储各序列的历史token数据，各序列计算完成后原地更新。</td>
+      <td>计算公式中的cacheState，代表缓存状态张量，存储各序列的历史token数据，各序列计算完成后原地更新。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[..., K-1, dim]</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
@@ -188,7 +188,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>√</td>
     </tr>
     <tr>
-      <td>queryStartLoc</td>
+      <td>queryStartLoc（aclTensor*）</td>
       <td>输入</td>
       <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch+1]</li><li>queryStartLoc[i]表示第i个序列的起始偏移</li></ul></td>
@@ -198,7 +198,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>cacheIndices</td>
+      <td>cacheIndices（aclTensor*）</td>
       <td>输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch]。</li></ul></td>
@@ -208,7 +208,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>initialStateMode</td>
+      <td>initialStateMode（aclTensor*）</td>
       <td>输入</td>
       <td>初始状态标志，表示各序列是否使用缓存数据</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch]</li><li>取值为0、1、2<br>0：零填充<br>1：使用缓存<br>2：使用缓存但前K-1个输出置0。</li></ul></td>
@@ -218,8 +218,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>bias</td>
-      <td>输入</td>
+      <td>bias（aclTensor*）</td>
+      <td>可选输入</td>
       <td>卷积的偏置</td>
       <td><ul><li>支持空tensor。</li><li>shape为[dim]。</li></ul></td>
       <td>数据类型与x一致</td>
@@ -228,8 +228,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>numAcceptedTokens</td>
-      <td>输入</td>
+      <td>numAcceptedTokens（aclTensor*）</td>
+      <td>可选输入</td>
       <td>decode场景下的投机token个数。</td>
       <td><ul><li>支持空tensor。<br>shape为[batch]。</li></ul></td>
       <td>INT32</td>
@@ -238,8 +238,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>activationMode</td>
-      <td>输入</td>
+      <td>activationMode（int64_t）</td>
+      <td>属性</td>
       <td>激活函数类型</td>
       <td><ul><li>取值为0、1、2<br>0：None<br>1：silu<br>2：swish</li></ul></td>
       <td>INT64</td>
@@ -248,8 +248,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>padSlotId</td>
-      <td>输入</td>
+      <td>padSlotId（int64_t）</td>
+      <td>属性</td>
       <td>用于跳过不需要参与计算的batch</td>
       <td>当cacheIndices[i]==padSlotId时跳过该batch</td>
       <td>INT64</td>
@@ -258,8 +258,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>runMode</td>
-      <td>输入</td>
+      <td>runMode（int64_t）</td>
+      <td>属性</td>
       <td>用于判断是prefill场景或decode场景</td>
       <td><ul><li>取值为0、1<br>0：prefill场景<br>1：decode场景</li></ul></td>
       <td>INT64</td>
@@ -268,8 +268,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>residualConnection</td>
-      <td>输入</td>
+      <td>residualConnection（int64_t）</td>
+      <td>属性</td>
       <td>是否做残差连接</td>
       <td><ul><li>取值为0、1<br>0：不做残差连接<br>1：输出y和输入x相加后输出</li></ul></td>
       <td>INT64</td>
@@ -278,17 +278,17 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>y</td>
+      <td>y（aclTensor*）</td>
       <td>输出</td>
-      <td>输出序列</td>
+      <td>计算公式中的y，代表输出序列</td>
       <td>shape与x一致</td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>2-3</td>
-      <td>-</td>
+      <td>x</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（int64_t*）</td>
       <td>输出</td>
       <td>返回用户需要在Device侧申请的workspace大小</td>
       <td>-</td>
@@ -298,7 +298,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程</td>
       <td>-</td>
