@@ -28,7 +28,7 @@ $$
 
 相较于`aclnnMoeDistributeCombine`接口，该接口变更如下：
 
-- 输入了更详细的token信息辅助`aclnnMoeDistributeCombineV2`高效地进行全卡同步，因此原接口中shape为`(Bs * K,)`的`expandIdx`入参替换为shape为`(A * 128,)`的`assistInfoForCombine`参数；
+- 输入了更详细的token信息辅助`aclnnMoeDistributeCombineV2`高效地进行全卡同步，因此原接口中shape为`(BS * K,)`的`expandIdx`入参替换为shape为`(A * 128,)`的`assistInfoForCombine`参数；
 - 新增`sharedExpertXOptional`入参，支持在`sharedExpertNum`为0时，由用户输入共享专家计算后的token；
 - 新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
 
@@ -110,38 +110,38 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>expandX</td>
     <td>输入</td>
-    <td>根据expertIds进行扩展过的token特征。</td>
-    <td>要求为2D Tensor。</td>
+    <td>根据<code>expertIds</code>进行扩展过的token特征。</td>
+    <td>要求2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>(max(tpWorldSize, 1) * A , H)</td>
+    <td><code>(max(tpWorldSize, 1) * A , H)</code></td>
     <td>√</td>
     </tr>
     <tr>
     <td>expertIds</td>
     <td>输入</td>
     <td>每个token的topK个专家索引。</td>
-    <td>要求为2D Tensor。</td>
+    <td>要求2D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>(Bs, K)</td>
+    <td><code>(BS, K)</code></td>
     <td>√</td>
     </tr>
     <tr>
     <td>assistInfoForCombine</td>
     <td>输入</td>
-    <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出。</td>
-    <td>要求为1D Tensor。</td>
+    <td>对应<code>aclnnMoeDistributeDispatchV2</code>中的<code>assistInfoForCombineOut</code>输出。</td>
+    <td>要求1D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>(A * 128, )</td>
+    <td><code>(A * 128, )</code></td>
     <td>√</td>
     </tr>
     <tr>
     <td>epSendCounts</td>
     <td>输入</td>
-    <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出。</td>
-    <td>要求为1D Tensor。</td>
+    <td>对应<code>aclnnMoeDistributeDispatchV2</code>中的<code>epRecvCounts</code>输出。</td>
+    <td>要求1D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -151,30 +151,30 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>expertScales</td>
     <td>输入</td>
     <td>每个token的topK个专家的权重。</td>
-    <td>要求为2D Tensor。</td>
+    <td>要求2D Tensor。</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td>(Bs, K)</td>
+    <td><code>(BS, K)</code></td>
     <td>√</td>
     </tr>
     <tr>
     <td>tpSendCountsOptional</td>
     <td>输入</td>
-    <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出。</td>
+    <td>对应<code>aclnnMoeDistributeDispatchV2</code>中的<code>tpRecvCounts</code>输出。</td>
     <td>有TP域通信需传参，无TP域通信传空指针。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>-</td>
+    <td>当有TP域通信时，shape为 <code>(tpWorldSize, )</code></td>
     <td>√</td>
     </tr>
     <tr>
     <td>xActiveMaskOptional</td>
     <td>输入</td>
-    <td>表示token是否参与通信。</td>
-    <td><ul><li>可传有效数据或空指针，默认所有token参与通信。</li><li>各卡BS不一致时所有token需有效。</li></ul></td>
+    <td>标识token是否参与通信。</td>
+    <td><ul><li>要求是1D或者2D Tensor。可传有效数据或空指针，默认所有token参与通信。</li><li>各卡BS不一致时所有token需有效。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
-    <td>-</td>
+    <td>当输入为1D时，shape为<code>(BS, )</code>；当输入为2D时，shape为<code>(BS, K)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -210,11 +210,11 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>expandScalesOptional</td>
     <td>输入</td>
-    <td>对应aclnnMoeDistributeDispatchV2中的expandScales输出。</td>
+    <td>对应<code>aclnnMoeDistributeDispatchV2</code>中的<code>expandScales</code>输出。</td>
     <td>-</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td>-</td>
+    <td><code>(A, )</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -224,14 +224,14 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>数据类型需与expandX保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>-</td>
+    <td><code>(BS, H)</code></td>
     <td>√</td>
     </tr>
     <tr>
     <td>groupEp</td>
     <td>输入</td>
     <td>EP通信域名称（专家并行通信域）。</td>
-    <td>字符串长度范围为[1, 128)，不能和groupTp相同。</td>
+    <td>字符串长度范围为<code>[1, 128)</code>，不能和<code>groupTp</code>相同。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -250,8 +250,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>epRankId</td>
     <td>输入</td>
-    <td>EP域本卡Id。</td>
-    <td>取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+    <td>EP域本卡ID。</td>
+    <td>取值范围<code>[0, epWorldSize)</code>，同一个EP通信域中各卡的<code>epRankId</code>不重复。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -261,7 +261,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>moeExpertNum</td>
     <td>输入</td>
     <td>MoE专家数量。</td>
-    <td>满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。</td>
+    <td>满足<code>moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0</code>。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -271,7 +271,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>groupTp</td>
     <td>输入</td>
     <td>TP通信域名称（数据并行通信域）。</td>
-    <td>不能和groupEp相同。</td>
+    <td>不能和<code>groupEp</code>相同。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -290,8 +290,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>tpRankId</td>
     <td>输入</td>
-    <td>TP域本卡Id。</td>
-    <td>同一个TP通信域中各卡的tpRankId不重复</td>
+    <td>TP域本卡ID。</td>
+    <td>同一个TP通信域中各卡的<code>tpRankId</code>不重复</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>expertShardType</td>
     <td>输入</td>
-    <td>表示共享专家卡分布类型。</td>
+    <td>共享专家卡分布类型。</td>
     <td>-</td>
     <td>INT64</td>
     <td>-</td>
@@ -310,7 +310,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>sharedExpertNum</td>
     <td>输入</td>
-    <td>表示共享专家数量（一个共享专家可复制部署到多个卡上）。</td>
+    <td>共享专家数量（一个共享专家可复制部署到多个卡上）。</td>
     <td>-</td>
     <td>INT64</td>
     <td>-</td>
@@ -320,8 +320,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>sharedExpertRankNum</td>
     <td>输入</td>
-    <td>表示共享专家卡数量。</td>
-    <td>-</td>
+    <td>共享专家卡数量。（一个共享专家可复制部署到多个卡上）</td>
+    <td>数据类型需与expandX保持一致。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -330,8 +330,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>globalBs</td>
     <td>输入</td>
-    <td>EP域全局的batch size大小。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td>EP域全局batch size。</td>
+    <td><ul><li>各rank BS一致时，<code>globalBs = BS * epWorldSize</code> 或 0。</li><li>各rank BS不一致时，<code>globalBs = maxBs * epWorldSize</code>（maxBs为单卡BS最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -370,7 +370,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>commAlg</td>
     <td>输入</td>
-    <td>表示通信亲和内存布局算法，string数据类型。</td>
+    <td>通信亲和内存布局算法。</td>
     <td>-</td>
     <td>STRING</td>
     <td>-</td>
@@ -380,17 +380,17 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>xOut</td>
     <td>输出</td>
-    <td>表示处理后的token。</td>
-    <td>要求为2D Tensor。</td>
+    <td>处理后的token。</td>
+    <td>要求为2D Tensor，数据类型/格式与<code>expandX</code>一致。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>(Bs, H)</td>
+    <td><code>(BS, H)</code></td>
     <td>-</td>
     </tr>
     <tr>
     <td>workspaceSize</td>
     <td>输出</td>
-    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>返回Device侧需申请的workspace大小。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -400,7 +400,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <tr>
     <td>executor</td>
     <td>输出</td>
-    <td>返回op执行器，包含了算子的计算流程。</td>
+    <td>返回包含算子计算流程的op执行器。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -413,9 +413,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - `commAlg`支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经机内、跨机两次发送减少跨机数据量。
         - 不支持共享专家场景。
-        - `epSendCounts`的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBs=0时按Bs * epWorldSize计算。
+        - `epSendCounts`的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBs=0时按BS * epWorldSize计算。
         - 当前不支持TP域通信。
-        - `xActiveMaskOptional` 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(Bs, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
+        - `xActiveMaskOptional` 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(BS, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
         - `expandScalesOptional` 要求为1D Tensor，shape为 (A, )。
         - `sharedExpertXOptional` 为预留参数，当前版本不支持，传空指针即可。
         - `epWorldSize` 依commAlg取值，"fullmesh"支持2、3、4、5、6、7、8、16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
@@ -434,7 +434,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         - 有TP域通信时`tpSendCountsOptional`为1D shape Tensor，shape为 (tpWorldSize, )。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
         - `expandScalesOptional`为预留参数，当前版本不支持，传空指针即可。
-        - `sharedExpertXOptional`要求为2D或3D Tensor（2D时shape为 (Bs, H)；3D时前两位乘积等于Bs、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
+        - `sharedExpertXOptional`要求为2D或3D Tensor（2D时shape为 (BS, H)；3D时前两位乘积等于BS、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
         - `epWorldSize`取值支持[2, 768]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
@@ -451,7 +451,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         - `tpSendCountsOptional`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信。
         - `expandScalesOptional`预留参数，当前版本不支持，传空指针即可。
-        - `sharedExpertXOptional`要求为2D或3D Tensor（2D时shape为 (Bs, H)；3D时前两位乘积等于Bs、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
+        - `sharedExpertXOptional`要求为2D或3D Tensor（2D时shape为 (BS, H)；3D时前两位乘积等于BS、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
         - `epWorldSize`取值支持[2, 768]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`当前版本不支持，传空字符即可。
@@ -547,63 +547,55 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 ## 约束说明
 
-1. 确定性计算：
-     - aclnnMoeDistributeCombineV2默认确定性实现。
+- 确定性计算：
+  - aclnnMoeDistributeCombineV2默认确定性实现。
 
-2. `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineV2`接口必须配套使用，具体参考[调用示例](#调用示例)。
+- **接口配套约束**：
+  - `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineV2`接口必须配套使用，具体参考[调用示例](#调用示例)。在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatchV2`的Tensor输出`assistInfoForCombineOut`、`epRecvCountsOut`、`tpRecvCountsOut`、`expandScalesOut`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombineV2`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
-3. 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatchV2`的Tensor输出`assistInfoForCombineOut`、`epRecvCountsOut`、`tpRecvCountsOut`、`expandScalesOut`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombineV2`对应参数即可，模型其他业务逻辑不应对其存在依赖。
+- **参数一致性约束**：
+  - 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commAlg`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchV2`对应参数也保持一致。
 
-4. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commAlg`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchV2`对应参数也保持一致。
+- **产品特定约束**：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
-5. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+- **Shape变量约束**：
 
-6. 参数说明里shape格式说明：
+  | 变量         | 定义与取值范围                                                                 |
+  | :----------- | :----------------------------------------------------------------------------- |
+  | A            | 本卡需分发的最大token数，取值范围如下: <ul><li>对于共享专家，要满足<code>A = BS * epWorldSize \* sharedExpertNum / sharedExpertRankNum</code>。</li><li>对于MoE专家，当globalBs为0时，要满足<code>A >= BS * epWorldSize * min(localExpertNum, K)</code>；当globalBs非0时，要满足<code>A >= globalBs * min(localExpertNum, K)</code>。</li></ul>|
+  | H            |表示hidden size隐藏层大小:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：[1024, 8192]。 </li></ul>|
+  | BS           | 表示batch sequence size（本卡最终输出的token数量）:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 256]；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 512]；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：0 < BS ≤512。</li></ul> |
+  | K            |表示选取topK个专家，取值范围为 (0 < K ≤ 16) 且满足 (0 < K ≤ moeExpertNum)。 |
+  | serverNum    | 服务器节点数:<br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅该场景的shape使用了该变量，仅支持2、4、8。
+  | localExpertNum | 本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：应满足 0 < localExpertNum * epWorldSize ≤ 2048。</li></ul>|
 
-    - **A**：表示本卡需要分发的最大token数量，取值范围如下：
-      - 对于共享专家，需满足 (A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
-      - 对于MoE专家，当`globalBs`为0时，需满足 (A >= Bs * epWorldSize * min(localExpertNum, K))；当`globalBs`非0时，需满足 (A >= globalBs * min(localExpertNum, K))。
-    - **H**：表示hidden size（隐藏层大小）：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值为[1024, 8192]。
-      - <term>Ascend 950PR/Ascend 950DT</term>：取值范围[1024, 8192]。
-    - **Bs**：表示batch sequence size（本卡最终输出的token数量）：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 256]；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 512]。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围为 (0 < Bs ≤ 512)。
-      - <term>Ascend 950PR/Ascend 950DT</term>：取值范围为 (0 < Bs ≤ 512)。
-    - **K**：表示选取topK个专家，取值范围为 (0 < K ≤ 16) 且满足 (0 < K ≤ moeExpertNum)。
-    - **serverNum**：表示服务器的节点数，取值仅支持2、4、8。
-    - **localExpertNum**：表示本卡专家数量：
-      - 对于共享专家卡，(localExpertNum = 1)。
-      - 对于MoE专家卡，(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum))；当(localExpertNum > 1)时，不支持TP域通信。
 
-7. **HCCL_BUFFSIZE**：
-
-   调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
+- **环境变量约束**：
+  - **HCCL_BUFFSIZE**：调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
      - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
-     - commAlg为"fullmesh"：设置大小要求 (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
+     - commAlg为"fullmesh"：设置大小要求 (≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
      - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBs` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
      - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
      - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
-   - <term>Ascend 950PR/Ascend 950DT</term>：要求 (≥ aivNum * 512 + 2 * epWorldSize * BS * H * 2 * localExpertNum)，其中`aivNum`表示核数，`localExpertNum`需使用MoE专家卡的本卡专家数。
+    - <term>Ascend 950PR/Ascend 950DT</term>：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
 
-8. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
+  - **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：不支持该环境变量。
 
-   <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
+- **通信域使用约束**：
+  - 一个模型中的`aclnnMoeDistributeCombineV2`和`aclnnMoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
+  - 一个模型中的`aclnnMoeDistributeCombineV2`和`aclnnMoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
-9. 本文公式中的“/”表示整除。
+- **组网约束**：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
-10. 通信域使用约束：
-
-   - 一个模型中的`aclnnMoeDistributeCombineV2`和`aclnnMoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-   - 一个模型中的`aclnnMoeDistributeCombineV2`和`aclnnMoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
-
-11. 组网约束：
-
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
+- **其他约束**：
+  - 公式中的“/”表示整除。
 
 ## 调用示例
 
@@ -660,16 +652,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
-
-- <term>Ascend 950PR/Ascend 950DT</term>：
-
-    - 环境变量配置：
-    
-        ```bash
-        # 运行前需设置RANK_TABLE_FILE环境变量
-        export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
-        ```
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
