@@ -60,6 +60,8 @@ __aicore__ inline void AccumulateKnPartials(
         // Step 2: Sequentially add remaining K-groups (deterministic order)
         for (uint32_t k = 1; k < kGroups; k++) {
             uint32_t srcOffsetK = k * partialStride + m * N_total + nStart;
+            SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
             DataCopy(temp, partials[srcOffsetK], chunkElems);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -72,6 +74,8 @@ __aicore__ inline void AccumulateKnPartials(
         // Step 3: Cast to output type if needed and store
         if constexpr (std::is_same<AccumType, OutputType>::value) {
             // Same type: direct store
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             uint32_t dstOffset = m * N_total + nStart;
             DataCopy(output[dstOffset], accum, chunkElems);
         } else {
