@@ -22,7 +22,7 @@
 #include "mc2_moe_context.h"
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
-#include "acl/acl.h"
+#include "aclnn/aclnn_base.h"
 
 static constexpr uint32_t COMM_ALG_DEFAULT = 0U;
 static constexpr uint32_t COMM_MESH = 0b1U;
