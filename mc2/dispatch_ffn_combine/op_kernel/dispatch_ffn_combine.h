@@ -27,9 +27,6 @@ struct Mc2MoeContext {
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 
-template <typename BlockMmad1, typename BlockMmad2, typename BlockEpilogue, typename BlockScheduler>
-class KernelGmmSwiGluMix;
-
 template <typename T>
 class DispatchFFNCombine {
 public:
@@ -117,6 +114,16 @@ private:
     LocalTensor<bfloat16_t> l0cOutUbSecond_;
     LocalTensor<bfloat16_t> l0cOutUbGMM2First_;
     LocalTensor<bfloat16_t> l0cOutUbGMM2Second_;
+    
+    GM_ADDR weight1_;
+    GM_ADDR weight2_;
+    GM_ADDR weightScales1_;
+    GM_ADDR weightScales2_;
+    GM_ADDR x_;
+    GM_ADDR yOut_;
+    GM_ADDR topkIds_;
+    GM_ADDR topkWeights_;
+    GM_ADDR workspaceGM_;
 };
 
 template <typename T>
@@ -145,6 +152,16 @@ __aicore__ inline void DispatchFFNCombine<T>::Init(
     gmm2PingpongIdx_ = 0;
     prevSum_ = 0;
     dispatchBlockNumPerEP_ = 2;
+    
+    x_ = x;
+    weight1_ = weight1;
+    weight2_ = weight2;
+    weightScales1_ = weightScales1;
+    weightScales2_ = weightScales2;
+    yOut_ = yOut;
+    topkIds_ = topkIds;
+    topkWeights_ = topkWeights;
+    workspaceGM_ = workspaceGM;
 }
 
 template <typename T>
@@ -230,26 +247,64 @@ __aicore__ inline void DispatchFFNCombine<T>::UpdateGlobalBuffer()
 template <typename T>
 __aicore__ inline void DispatchFFNCombine<T>::InitRouting()
 {
+    CombineOpsParams params;
+    params.x = x_;
+    params.weight1 = weight1_;
+    params.weight2 = weight2_;
+    params.weightScales1 = weightScales1_;
+    params.weightScales2 = weightScales2_;
+    params.epWorldSize = tilingData_->megaMoeInfo.epWorldSize;
+    params.moeExpertNum = tilingData_->megaMoeInfo.moeExpertNum;
+    params.bs = tilingData_->megaMoeInfo.bs;
+    params.h = tilingData_->megaMoeInfo.h;
+    params.n = tilingData_->megaMoeInfo.n;
+    params.k = tilingData_->megaMoeInfo.k;
+    
+    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
+    DispatchFFNCombineImpl::InitRouting(params, tokenPerExpertGm_, 0);
 }
 
 template <typename T>
 __aicore__ inline void DispatchFFNCombine<T>::CrossRankSyncTokenPerExpert(GM_ADDR tokenPerExpertCurRank)
 {
+    CombineOpsParams params;
+    params.epWorldSize = tilingData_->megaMoeInfo.epWorldSize;
+    params.moeExpertNum = tilingData_->megaMoeInfo.moeExpertNum;
+    params.rankId = 0; // Should be set from context
+    
+    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
+    DispatchFFNCombineImpl::CrossRankSyncTokenPerExpert(params, tokenPerExpertGm_, preSumBeforeRankGm_, cumsumMMGm_);
 }
 
 template <typename T>
 __aicore__ inline void DispatchFFNCombine<T>::DispatchTokens(uint32_t groupIdx)
 {
+    CombineOpsParams params;
+    params.x = x_;
+    params.weightScales1 = weightScales1_;
+    params.epWorldSize = tilingData_->megaMoeInfo.epWorldSize;
+    params.moeExpertNum = tilingData_->megaMoeInfo.moeExpertNum;
+    params.k = tilingData_->megaMoeInfo.k;
+    
+    GlobalTensor<bfloat16_t> aGlobal;
+    GlobalTensor<fp8_e8m0_t> aScaleGlobal;
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(x_));
+    aScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ fp8_e8m0_t*>(weightScales1_));
+    
+    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
+    DispatchFFNCombineImpl::DispatchTokens(params, groupIdx, tokenPerExpertGm_, 
+                                          preSumBeforeRankGm_, cumsumMMGm_,
+                                          aGlobal, aScaleGlobal, 0);
 }
 
 template <typename T>
 __aicore__ inline void DispatchFFNCombine<T>::GroupMatmulSwigluQuant()
 {
     typename Gmm1SwigluRunner::GmmSwigluParams params = {
-        .aGm = 0,
-        .bGm = 0,
-        .bScaleGm = 0,
-        .aScaleGm = 0,
+        .aGm = x_,
+        .bGm = weight1_,
+        .bScaleGm = weightScales1_,
+        .aScaleGm = 0,  // x scale, 需要根据实际情况设置
         .cUb = 0,
         .cUb2 = 0,
         .outputUb = 0,
@@ -264,56 +319,64 @@ __aicore__ inline void DispatchFFNCombine<T>::GroupMatmulSwigluQuant()
         .isVecSetSyncCom = isVecSetSyncCom_
     };
 
-    RunGmmSwiglu<Gmm1SwigluRunner>(params, l0cOutUbFirst_, l0cOutUbSecond_,
-                        reinterpret_cast<GM_ADDR>(&NotifyVector), reinterpret_cast<GM_ADDR>(&WaitForCube));
+    Gmm1SwigluRunner::RunTile(params, l0cOutUbFirst_, l0cOutUbSecond_,
+                              gmm2PingpongIdx_, isVecSetSyncCom_, startBlockIdx_,
+                              blockNum_, blockIdx_,
+                              [this](uint16_t v) { NotifyVector(v); },
+                              [this](uint16_t v) { WaitForCube(v); });
+    startBlockIdx_ = (startBlockIdx_ + 1) % blockNum_;
 }
 
 template <typename T>
 __aicore__ inline void DispatchFFNCombine<T>::GroupMatmul2(uint32_t groupIdx)
 {
-    RunGmm2<Gmm2CombineRunner>(0, 0, 0, 0, GetMValue(), GetKValue(), GetNValue() / 2, 
-                        reinterpret_cast<GM_ADDR>(&NotifyVector), reinterpret_cast<GM_ADDR>(&WaitForCube));
+    CombineOpsParams combineParams;
+    combineParams.epWorldSize = tilingData_->megaMoeInfo.epWorldSize;
+    combineParams.moeExpertNum = tilingData_->megaMoeInfo.moeExpertNum;
+    combineParams.bs = tilingData_->megaMoeInfo.bs;
+    combineParams.n = tilingData_->megaMoeInfo.n;
+    combineParams.k = tilingData_->megaMoeInfo.k;
+    combineParams.rankId = 0; // Should be set from context
+    
+    // 填充peermem buffer地址
+    for (uint32_t i = 0; i < tilingData_->megaMoeInfo.epWorldSize; i++) {
+        combineParams.peermemBuffer[i] = commBuffer_[i];
+    }
+    
+    Gmm2CombineRunner::RunTileGmm2(0, 0, 0, 0, 0, 0, GetMValue(), GetKValue(), GetNValue() / 2,
+                                   blockNum_, blockIdx_, startBlockIdx_,
+                                   vecSetSyncCom2_, gmm2PingpongIdx_,
+                                   [this](uint16_t v) { NotifyVector(v); },
+                                   [this](uint16_t v) { WaitForCube(v); },
+                                   reinterpret_cast<GM_ADDR>(tokenPerExpertGm_.GetPhyAddr()),
+                                   reinterpret_cast<GM_ADDR>(preSumBeforeRankGm_.GetPhyAddr()),
+                                   reinterpret_cast<GM_ADDR>(cumsumMMGm_.GetPhyAddr()),
+                                   groupIdx, combineParams);
     vecSetSyncCom2_++;
     gmm2PingpongIdx_ = 1 - gmm2PingpongIdx_;
 }
 
 template <typename T>
-template<typename GmmRunner>
-__aicore__ inline void DispatchFFNCombine<T>::RunGmm(GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb, uint32_t m, uint32_t n, uint32_t k)
-{
-    GmmRunner::Run(aGm, bGm, cUb, m, n, k, blockNum_, blockIdx_, startBlockIdx_);
-}
-
-template <typename T>
-template<typename GmmSwigluRunner>
-__aicore__ inline void DispatchFFNCombine<T>::RunGmmSwiglu(
-    const typename GmmSwigluRunner::GmmSwigluParams& params,
-    LocalTensor<bfloat16_t> l0cOutUbFirst,
-    LocalTensor<bfloat16_t> l0cOutUbSecond,
-    GM_ADDR notifyFn, GM_ADDR waitFn)
-{
-    GmmSwigluRunner::RunTile(params, l0cOutUbFirst, l0cOutUbSecond, 
-                             gmm2PingpongIdx_, isVecSetSyncCom_, startBlockIdx_, 
-                             blockNum_, blockIdx_, notifyFn, waitFn);
-    startBlockIdx_ = (startBlockIdx_ + 1) % blockNum_;
-}
-
-template <typename T>
-template<typename GmmRunner>
-__aicore__ inline void DispatchFFNCombine<T>::RunGmm2(
-    GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb, GM_ADDR outputGm,
-    uint32_t m, uint32_t n, uint32_t k, GM_ADDR notifyFn, GM_ADDR waitFn)
-{
-    GmmRunner::RunTileGmm2(aGm, bGm, cUb, outputGm, m, n, k, 
-                           blockNum_, blockIdx_, startBlockIdx_,
-                           vecSetSyncCom2_, gmm2PingpongIdx_,
-                           notifyFn, waitFn);
-    startBlockIdx_ = (startBlockIdx_ + 1) % blockNum_;
-}
-
-template <typename T>
 __aicore__ inline void DispatchFFNCombine<T>::FinalizeRouting()
 {
+    CombineOpsParams params;
+    params.epWorldSize = tilingData_->megaMoeInfo.epWorldSize;
+    params.moeExpertNum = tilingData_->megaMoeInfo.moeExpertNum;
+    params.bs = tilingData_->megaMoeInfo.bs;
+    
+    GlobalTensor<bfloat16_t> combinedOutput;
+    GlobalTensor<int32_t> expandedRowIdx;
+    GlobalTensor<bfloat16_t> topkWeights;
+    GlobalTensor<int32_t> topkIds;
+    
+    combinedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(yOut_));
+    expandedRowIdx.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceGM_));
+    topkWeights.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(topkWeights_));
+    topkIds.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(topkIds_));
+    
+    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
+    DispatchFFNCombineImpl::FinalizeRouting(params, combinedOutput, expandedRowIdx, 
+                                           0, topkWeights, topkIds);
 }
 
 template <typename T>
@@ -338,15 +401,6 @@ template <typename T>
 __aicore__ inline uint32_t DispatchFFNCombine<T>::GetKValue()
 {
     return static_cast<uint32_t>(Get<2>(problemShape_));
-}
-
-template <typename T>
-template<typename GmmRunner>
-__aicore__ inline void DispatchFFNCombine<T>::RunGmm(GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb, uint32_t m, uint32_t n, uint32_t k)
-{
-    GmmRunner::Run(aGm, bGm, cUb, m, n, k, blockNum_, blockIdx_, startBlockIdx_);
-}
-
 }
 
 template <typename T>
@@ -387,5 +441,7 @@ __aicore__ inline void DispatchFFNCombine<T>::Process()
     SyncAll<true>();
     FinalizeRouting();
 }
+
+}  // namespace DispatchFFNCombineImpl
 
 #endif

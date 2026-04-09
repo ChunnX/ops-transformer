@@ -18,6 +18,8 @@
 #include "tla/layout.hpp"
 
 #include "gmmsq_base.h"
+#include "dispatch_ffn_combine_ops.h"
+#include "dispatch_ffn_combine_catlass_combine.h"
 
 using namespace AscendC;
 using namespace Catlass;
@@ -94,8 +96,11 @@ struct GmmKernelRunner {
 
     static constexpr uint32_t BLOCK_SIZE = TILE_M * TILE_N;
 
+    using ElementMxScaleA = typename GmmTypes::xScaleType;
+    using ElementMxScaleB = typename GmmTypes::weightScaleType;
+
     __aicore__ inline static void Run(
-        GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb,
+        GM_ADDR aGm, GM_ADDR bGm, GM_ADDR aScaleGm, GM_ADDR bScaleGm, GM_ADDR cUb,
         uint32_t m, uint32_t n, uint32_t k,
         uint32_t blockNum, uint32_t blockIdx, uint32_t startBlockIdx)
     {
@@ -105,20 +110,29 @@ struct GmmKernelRunner {
         
         BlockMmad blockMmad(resource);
 
+        auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         auto layoutA = tla::MakeLayout<ElementA, LayoutA>(m, k);
         auto layoutB = tla::MakeLayout<ElementB, LayoutB>(k, n);
+        auto layoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, LayoutA, false>(m, scaleK);
+        auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, LayoutB, true>(scaleK, n);
         auto layoutC = tla::MakeLayout<ElementC, LayoutC>(TILE_M, TILE_N);
 
         GlobalTensor<ElementA> aGlobal;
         GlobalTensor<ElementB> bGlobal;
+        GlobalTensor<ElementMxScaleA> aScaleGlobal;
+        GlobalTensor<ElementMxScaleB> bScaleGlobal;
         LocalTensor<ElementC> cLocal;
 
         aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(aGm));
         bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(bGm));
+        aScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(aScaleGm));
+        bScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(bScaleGm));
         cLocal.SetLocalBuffer(reinterpret_cast<__gm__ ElementC*>(cUb));
 
         auto tensorA = tla::MakeTensor(aGlobal, layoutA, Arch::PositionGM{});
         auto tensorB = tla::MakeTensor(bGlobal, layoutB, Arch::PositionGM{});
+        auto tensorMxScaleA = tla::MakeTensor(aScaleGlobal, layoutMxScaleA, Arch::PositionGM{});
+        auto tensorMxScaleB = tla::MakeTensor(bScaleGlobal, layoutMxScaleB, Arch::PositionGM{});
         auto tensorC = tla::MakeTensor(cLocal, layoutC, Arch::PositionUB{});
 
         BlockScheduler scheduler({m, n, k}, MakeCoord(TILE_M, TILE_N));
@@ -139,8 +153,14 @@ struct GmmKernelRunner {
                 tla::MakeShape(actualShape.k(), actualShape.n()));
             auto tensorBlockC = GetTile(tensorC, tla::MakeCoord(0, 0),
                 tla::MakeShape(actualShape.m(), actualShape.n()));
+            auto tensorBlockMxScaleA = GetTile(tensorMxScaleA,
+                tla::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+                tla::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
+            auto tensorBlockMxScaleB = GetTile(tensorMxScaleB,
+                tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
+                tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
 
-            blockMmad(tensorBlockA, tensorBlockB, tensorBlockC, actualShape);
+            blockMmad(tensorBlockA, tensorBlockB, tensorBlockC, actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
         }
     }
 };
@@ -161,17 +181,24 @@ struct Gmm2WithCombineRunner {
     using LayoutB = typename GmmTypes::LayoutB;
     using LayoutC = typename GmmTypes::LayoutC;
     using BlockScheduler = typename GmmTypes::BlockScheduler;
+    
+    using ElementMxScaleA = typename GmmTypes::xScaleType;
+    using ElementMxScaleB = typename GmmTypes::weightScaleType;
 
     static constexpr uint32_t TILE_M = GmmTypes::TILE_M;
     static constexpr uint32_t TILE_N = GmmTypes::TILE_N;
     static constexpr uint32_t TILE_K = GmmTypes::TILE_K;
 
     __aicore__ inline static void RunTileGmm2(
-        GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb, GM_ADDR outputGm,
+        GM_ADDR aGm, GM_ADDR bGm, GM_ADDR aScaleGm, GM_ADDR bScaleGm, 
+        GM_ADDR cUb, GM_ADDR outputGm,
         uint32_t m, uint32_t n, uint32_t k,
         uint32_t blockNum, uint32_t blockIdx, uint32_t startBlockIdx,
         uint32_t& vecSetSyncCom2, uint16_t& pingpongIdx,
-        GM_ADDR notifyFn, GM_ADDR waitFn)
+        GM_ADDR notifyFn, GM_ADDR waitFn,
+        GM_ADDR tokenPerExpertGm, GM_ADDR preSumBeforeRankGm, 
+        GM_ADDR cumsumMMGm, uint32_t groupIdx,
+        const CombineOpsParams& combineParams)
     {
         Arch::Resource<ArchTag> resource;
         using BlockMmad = Gemm::Block::BlockMmadTla<
@@ -179,22 +206,37 @@ struct Gmm2WithCombineRunner {
         
         BlockMmad blockMmad(resource);
 
+        auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         auto layoutA = tla::MakeLayout<ElementA, LayoutA>(m, k);
         auto layoutB = tla::MakeLayout<ElementB, LayoutB>(k, n);
+        auto layoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, LayoutA, false>(m, scaleK);
+        auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, LayoutB, true>(scaleK, n);
         auto layoutC = tla::MakeLayout<ElementC, LayoutC>(TILE_M, TILE_N);
 
         GlobalTensor<ElementA> aGlobal;
         GlobalTensor<ElementB> bGlobal;
+        GlobalTensor<ElementMxScaleA> aScaleGlobal;
+        GlobalTensor<ElementMxScaleB> bScaleGlobal;
         LocalTensor<ElementC> cLocal;
         GlobalTensor<ElementC> outputGlobal;
+        GlobalTensor<int32_t> tokenPerExpertGm;
+        GlobalTensor<int32_t> preSumBeforeRankGm;
+        GlobalTensor<int32_t> cumsumMMGm;
 
         aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(aGm));
         bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(bGm));
+        aScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(aScaleGm));
+        bScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(bScaleGm));
         cLocal.SetLocalBuffer(reinterpret_cast<__gm__ ElementC*>(cUb));
         outputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(outputGm));
+        tokenPerExpertGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(tokenPerExpertGm));
+        preSumBeforeRankGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(preSumBeforeRankGm));
+        cumsumMMGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(cumsumMMGm));
 
         auto tensorA = tla::MakeTensor(aGlobal, layoutA, Arch::PositionGM{});
         auto tensorB = tla::MakeTensor(bGlobal, layoutB, Arch::PositionGM{});
+        auto tensorMxScaleA = tla::MakeTensor(aScaleGlobal, layoutMxScaleA, Arch::PositionGM{});
+        auto tensorMxScaleB = tla::MakeTensor(bScaleGlobal, layoutMxScaleB, Arch::PositionGM{});
         auto tensorC = tla::MakeTensor(cLocal, layoutC, Arch::PositionUB{});
 
         BlockScheduler scheduler({m, n, k}, MakeCoord(TILE_M, TILE_N));
@@ -224,8 +266,14 @@ struct Gmm2WithCombineRunner {
                     tla::MakeShape(actualShape.m(), actualShape.k()));
                 auto tensorBlockB = GetTile(tensorB, tla::MakeCoord(kLoc, nLoc),
                     tla::MakeShape(actualShape.k(), actualShape.n()));
+                auto tensorBlockMxScaleA = GetTile(tensorMxScaleA,
+                    tla::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+                    tla::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
+                auto tensorBlockMxScaleB = GetTile(tensorMxScaleB,
+                    tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
+                    tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
 
-                blockMmad(tensorBlockA, tensorBlockB, tensorCTile, actualShape);
+                blockMmad(tensorBlockA, tensorBlockB, tensorCTile, actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
 
                 typedef void (*NotifyVectorFn)(uint16_t);
                 (*(NotifyVectorFn)notifyFn)(pingpongIdx);
@@ -234,8 +282,12 @@ struct Gmm2WithCombineRunner {
             if constexpr(g_coreType == AscendC::AIV) {
                 typedef void (*WaitCubeFn)(uint16_t);
                 (*(WaitCubeFn)waitFn)(pingpongIdx);
-                // GMM2完成后，AIV执行Combine
-                // TODO: 调用 Combine
+                
+                // Combine: 将GMM2结果分发到远端peermem
+                CombineDispatchImpl(cTile, actualShape, mLoc, nLoc, 
+                                   combineParams, tokenPerExpertGm, preSumBeforeRankGm, 
+                                   cumsumMMGm, groupIdx);
+                
                 pingpongIdx = 1 - pingpongIdx;
 
                 typedef void (*NotifyCubeFn)(uint16_t);
@@ -262,6 +314,9 @@ struct GmmSwigluRunner {
     using LayoutB = typename GmmTypes::LayoutB;
     using LayoutC = typename GmmTypes::LayoutC;
     using BlockScheduler = typename GmmTypes::BlockScheduler;
+    
+    using ElementMxScaleA = typename GmmTypes::xScaleType;
+    using ElementMxScaleB = typename GmmTypes::weightScaleType;
 
     static constexpr uint32_t TILE_M = GmmTypes::TILE_M;
     static constexpr uint32_t TILE_N = GmmTypes::TILE_N;
@@ -306,18 +361,27 @@ struct GmmSwigluRunner {
 
         uint32_t outputN = params.n / SWIGLU_N_HALF;
 
+        auto scaleK = CeilDiv(params.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         auto layoutA = tla::MakeLayout<ElementA, LayoutA>(params.m, params.k);
         auto layoutB = tla::MakeLayout<ElementB, LayoutB>(params.k, params.n);
+        auto layoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, LayoutA, false>(params.m, scaleK);
+        auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, LayoutB, true>(scaleK, params.n);
         auto layoutC = tla::MakeLayout<ElementC, LayoutC>(TILE_M, TILE_N);
 
         GlobalTensor<ElementA> aGlobal;
         GlobalTensor<ElementB> bGlobal;
+        GlobalTensor<ElementMxScaleA> aScaleGlobal;
+        GlobalTensor<ElementMxScaleB> bScaleGlobal;
 
         aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(params.aGm));
         bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(params.bGm));
+        aScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(params.aScaleGm));
+        bScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(params.bScaleGm));
 
         auto tensorA = tla::MakeTensor(aGlobal, layoutA, Arch::PositionGM{});
         auto tensorB = tla::MakeTensor(bGlobal, layoutB, Arch::PositionGM{});
+        auto tensorMxScaleA = tla::MakeTensor(aScaleGlobal, layoutMxScaleA, Arch::PositionGM{});
+        auto tensorMxScaleB = tla::MakeTensor(bScaleGlobal, layoutMxScaleB, Arch::PositionGM{});
 
         BlockScheduler scheduler({params.m, outputN, params.k}, MakeCoord(TILE_M, TILE_N));
         uint32_t coreLoops = scheduler.GetCoreLoops();
@@ -340,16 +404,23 @@ struct GmmSwigluRunner {
                     (*(WaitVectorFn)waitFn)(0);
                 }
                 
+                auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(mLoc, kLoc),
+                    tla::MakeShape(actualShape.m(), actualShape.k()));
+                auto tensorBlockMxScaleA = GetTile(tensorMxScaleA,
+                    tla::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+                    tla::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
+                
                 for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
                     LocalTensor<ElementC> cTile = weightBlock == 0 ? l0cOutUbFirst : l0cOutUbSecond;
                     auto tensorCTile = tla::MakeTensor(cTile, layoutC, Arch::PositionUB{});
                     
-                    auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(mLoc, kLoc),
-                        tla::MakeShape(actualShape.m(), actualShape.k()));
                     auto tensorBlockB = GetTile(tensorB, tla::MakeCoord(kLoc, nLoc + weightBlock * TILE_N),
                         tla::MakeShape(actualShape.k(), actualShape.n()));
+                    auto tensorBlockMxScaleB = GetTile(tensorMxScaleB,
+                        tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * TILE_N),
+                        tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
                     
-                    blockMmad(tensorBlockA, tensorBlockB, tensorCTile, actualShape);
+                    blockMmad(tensorBlockA, tensorBlockB, tensorCTile, actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
                 }
 
                 typedef void (*NotifyVectorFn)(uint16_t);
@@ -381,6 +452,6 @@ struct GmmSwigluRunner {
 
 using Gmm1SwigluRunner = GmmSwigluRunner<Gmm1Types>;
 
-}
+}  // namespace DispatchFFNCombineImpl
 
 #endif

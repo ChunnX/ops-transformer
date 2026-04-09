@@ -15,8 +15,10 @@
 #endif
 
 #include "dispatch_ffn_combine_tiling.h"
+#include "dispatch_ffn_combine.h"
 
 using namespace AscendC;
+using namespace DispatchFFNCombineImpl;
 
 __global__ __aicore__ void dispatch_ffn_combine(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
@@ -27,5 +29,10 @@ __global__ __aicore__ void dispatch_ffn_combine(
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingData);
-    TPipe pipe;
+    DispatchFFNCombine<bfloat16_t> op;
+    op.Init(context, x, topkIds, topkWeights, weight1, weight2,
+            xActiveMask, weightScales1, weightScales2,
+            scales, yOut, expertTokenNumsOut,
+            workspaceGM, tilingGM);
+    op.Process();
 }
