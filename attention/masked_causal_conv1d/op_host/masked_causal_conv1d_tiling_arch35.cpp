@@ -25,8 +25,15 @@ constexpr uint64_t INPUT_X_INDEX      = 0;
 constexpr uint64_t INPUT_WEIGHT_INDEX = 1;
 constexpr uint64_t INPUT_MASK_INDEX   = 2;
 
-constexpr uint64_t H_REG                  = 64;           // VF FP32 register width (elements)
-constexpr uint64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024;   // 8 KB
+constexpr uint64_t H_REG               = 64;   // VF FP32 register width (elements): min H granularity for tiling
+constexpr uint64_t CONV_WINDOW_SIZE      = 3;                          // W: causal conv1d kernel size (fixed)
+constexpr uint64_t PREFIX_ROW_COUNT      = CONV_WINDOW_SIZE - 1;       // prefix rows in ioQueue slot (W-1)
+constexpr uint64_t MASK_ALIGN_ELEMENTS   = 32;                         // sUb alignment granularity for mask buffers
+constexpr uint64_t DOUBLE_BUFFER_NUM     = 2;                          // ioQueue / weightQueue double buffer
+constexpr uint64_t MASK_BUF_COUNT        = 2;                          // maskRowBuf + maskCastBuf
+constexpr uint64_t X_EXPECTED_NDIM       = 3;                          // input x is 3-D [S,B,H]
+constexpr uint32_t WORKSPACE_NUM         = 1;                          // number of workspace buffers
+constexpr uint64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024;                 // 8 KB
 constexpr uint64_t SYS_WORKSPACE_SIZE      = static_cast<uint64_t>(16 * 1024 * 1024);
 
 constexpr uint64_t TILING_KEY_BF16 = 10000UL;
@@ -77,7 +84,7 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputShapes()
 {
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(INPUT_X_INDEX));
     xShape_ = context_->GetInputShape(INPUT_X_INDEX)->GetOriginShape();
-    if (xShape_.GetDimNum() != 3) {
+    if (xShape_.GetDimNum() != X_EXPECTED_NDIM) {
         OP_LOGE(context_->GetNodeName(), "x must be 3-D [S,B,H], got %lu dims", xShape_.GetDimNum());
         return ge::GRAPH_FAILED;
     }
@@ -123,8 +130,8 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CheckInputParams()
         return ge::GRAPH_FAILED;
     }
     uint64_t wK = weightShape_.GetDimNum() >= 1 ? static_cast<uint64_t>(weightShape_.GetDim(DIM_0)) : 0;
-    if (wK != 3) {
-        OP_LOGE(context_->GetNodeName(), "weight K=%lu must be 3", wK);
+    if (wK != CONV_WINDOW_SIZE) {
+        OP_LOGE(context_->GetNodeName(), "weight K=%lu must be %lu", wK, CONV_WINDOW_SIZE);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -252,45 +259,55 @@ done:
 
 // ---- CalcUbTiling ----
 // UB budget (bytes, d = xDtypeSize_):
-//   ioQueue (BUF_NUM=2):        2d × bUb×(sUb+2)×ubFactorH
-//   weightQueue (BUF_NUM=2):    2×3d × ubFactorH = 6d × ubFactorH
-//   maskRowBuf (BUF_NUM=1):     d × M×sUbAlign   (M = max(bUb, ubFactorH))
-//   maskCastBuf (BUF_NUM=1):    d × M×sUbAlign
-//   Total = 2d×bUb×(sUb+2)×ubFactorH + 6d×ubFactorH + 2d×M×sUbAlign ≤ ubSize_
+//   ioQueue (BUF_NUM=2):        2d × bUb×(sUb+2)×hUb
+//   weightQueue (BUF_NUM=2):    2×3d × hUb = 6d × hUb
+//   maskRowBuf (BUF_NUM=2):     2d × bUb×sUbAlign
+//   maskCastBuf (BUF_NUM=2):    2d × max(bUb,hUb)×sUbAlign
+//   Total = 2d×bUb×(sUb+2)×hUb + 6d×hUb + 2d×(bUb+max(bUb,hUb))×sUbAlign ≤ ubSize_
 //   where sUbAlign = ⌈sUb/32⌉×32
 //
 // Strategy (§6.2):
-//   Step1: ubFactorH=H_REG=64, bUb=bLen; estimate sUb then search downward.
-//     Situation A (sUb_max ≥ sLen): B+S fully loaded → Step2
-//     Situation B (0 < sUb_max < sLen): sUb=sUb_max, done.
-//     Situation C (sUb_max < 1): reduce bUb until sUb_max ≥ 1.
-//   Step2 (Situation A only): if UB utilization < 50%, expand ubFactorH by H_REG
-//     steps up to min(hBlockFactor_, hBlockTailFactor_).
+//   Step1: hUb=H_REG=64, bUb=bLen, sUb=sLen, try full load BS.
+//     Situation A (fits): B+S fully loaded → Step2 expand hUb.
+//     Situation B (doesn't fit): → Step3 reduce B, then S.
+//   Step2 (Situation A only): expand hUb (hUb*DTYPE_SIZE must be 128B multiple,
+//     i.e. hUb is H_REG=64 multiple) up to hLen or UB limit.
+//   Step3 (Situation B only): reduce bUb from bLen-1 down to 1 trying to fit sLen.
+//     If bUb=1 still can't fit sLen → cut S: find sUb_max with bUb=1.
 ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
 {
     const int64_t d = static_cast<int64_t>(xDtypeSize_);
 
-    // sUbAlign = ⌈sUb/32⌉×32 (align up to multiple of 32)
-    auto alignUp32 = [](uint64_t x) -> uint64_t {
-        return ((x + 31) / 32) * 32;
+    // sUbAlign = ⌈sUb/MASK_ALIGN_ELEMENTS⌉×MASK_ALIGN_ELEMENTS (align up)
+    auto alignUp = [](uint64_t x, uint64_t align) -> uint64_t {
+        return ((x + align - 1) / align) * align;
     };
 
-    // Total UB usage: 2d×b×(s+2)×h + 6d×h + 2d×max(b,h)×sUbAlign
+    // Total UB usage:
+    //   ioQueue:     DOUBLE_BUFFER_NUM * d * b * (s+PREFIX_ROW_COUNT) * h
+    //   weightQueue: DOUBLE_BUFFER_NUM * CONV_WINDOW_SIZE * d * h
+    //   maskRowBuf:  DOUBLE_BUFFER_NUM * d * b * sUbAlign
+    //   maskCastBuf: DOUBLE_BUFFER_NUM * d * max(b, h) * sUbAlign
     auto calcUsedUb = [&](uint64_t h, uint64_t b, uint64_t s) -> uint64_t {
-        uint64_t sUbAlign = alignUp32(s);
+        uint64_t sUbAlign = alignUp(s, MASK_ALIGN_ELEMENTS);
         uint64_t M = std::max(b, h);
-        return 2 * static_cast<uint64_t>(d) * b * (s + 2) * h
-               + 6 * static_cast<uint64_t>(d) * h
-               + 2 * static_cast<uint64_t>(d) * M * sUbAlign;
+        return DOUBLE_BUFFER_NUM * static_cast<uint64_t>(d) * b * (s + PREFIX_ROW_COUNT) * h
+               + DOUBLE_BUFFER_NUM * CONV_WINDOW_SIZE * static_cast<uint64_t>(d) * h
+               + DOUBLE_BUFFER_NUM * static_cast<uint64_t>(d) * b * sUbAlign
+               + DOUBLE_BUFFER_NUM * static_cast<uint64_t>(d) * M * sUbAlign;
     };
 
     // Find max sUb: estimate first, then search downward to satisfy exact constraint
     auto findSUbMax = [&](uint64_t h, uint64_t b) -> int64_t {
         uint64_t M = std::max(b, h);
+        int64_t prefixOverhead = static_cast<int64_t>(DOUBLE_BUFFER_NUM * PREFIX_ROW_COUNT)
+                                 * static_cast<int64_t>(b);
+        int64_t weightOverhead = static_cast<int64_t>(DOUBLE_BUFFER_NUM * CONV_WINDOW_SIZE);
         int64_t num = static_cast<int64_t>(ubSize_)
-                      - static_cast<int64_t>(h) * d * (4 * static_cast<int64_t>(b) + 6);
-        int64_t den = 2 * d * static_cast<int64_t>(b) * static_cast<int64_t>(h)
-                      + 2 * d * static_cast<int64_t>(M);
+                      - static_cast<int64_t>(h) * d * (prefixOverhead + weightOverhead);
+        int64_t den = static_cast<int64_t>(DOUBLE_BUFFER_NUM) * d
+                      * (static_cast<int64_t>(b) * static_cast<int64_t>(h)
+                         + static_cast<int64_t>(b + M));
         if (num <= 0 || den <= 0) return 0;
         int64_t sUbEst = num / den;
         // Search downward: sUbAlign staircase may cause estimate to exceed budget
@@ -302,53 +319,57 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
         return 0;
     };
 
-    // Step1: fix ubFactorH = H_REG = 64, bUb = bLen (full B)
     ubFactorH_ = static_cast<int64_t>(H_REG);
     uint64_t bUb = bBlockFactor_;
     uint64_t sLen = sBlockFactor_;
 
-    int64_t sUbMax = findSUbMax(ubFactorH_, bUb);
+    // Step1: try full load BS with hUb=H_REG=64
+    if (calcUsedUb(static_cast<uint64_t>(ubFactorH_), bUb, sLen) <= ubSize_) {
+        // Situation A: B+S fully loaded → Step2 expand hUb
+        uint64_t sUb = sLen;
 
-    if (sUbMax < 1) {
-        // Situation C: reduce bUb until sUb_max >= 1
-        while (bUb > 1 && sUbMax < 1) {
-            --bUb;
-            sUbMax = findSUbMax(ubFactorH_, bUb);
-        }
-        if (sUbMax < 1) {
-            OP_LOGE(context_->GetNodeName(), "UB tiling failed: no valid (bUb, sUb) found");
-            return ge::GRAPH_FAILED;
-        }
-    }
+        // Cap at min(hBlockFactor_, hBlockTailFactor_) so ubFactorH fits all cores
+        uint64_t hLenMin = (hMainCnt_ > 0)
+                           ? std::min(hBlockFactor_, hBlockTailFactor_)
+                           : hBlockFactor_;
 
-    uint64_t sUb;
-    if (static_cast<uint64_t>(sUbMax) >= sLen) {
-        // Situation A: B+S fully loaded
-        sUb = sLen;
-
-        // Step2: if UB utilization < 50%, expand ubFactorH to reduce H loop count
-        uint64_t usedUb = calcUsedUb(ubFactorH_, bUb, sLen);
-        if (usedUb * 2 < ubSize_) {
-            // Cap at min(hBlockFactor_, hBlockTailFactor_) so ubFactorH fits all cores
-            uint64_t hLenMin = (hMainCnt_ > 0)
-                               ? std::min(hBlockFactor_, hBlockTailFactor_)
-                               : hBlockFactor_;
-            for (uint64_t k = 2; k * H_REG <= hLenMin; ++k) {
-                uint64_t hTry = k * H_REG;
-                if (calcUsedUb(hTry, bUb, sLen) <= ubSize_) {
-                    ubFactorH_ = static_cast<int64_t>(hTry);
-                } else {
-                    break;
-                }
+        for (uint64_t k = 2; k * H_REG <= hLenMin; ++k) {
+            uint64_t hUbTry = k * H_REG;
+            if (calcUsedUb(hUbTry, bUb, sLen) <= ubSize_) {
+                ubFactorH_ = static_cast<int64_t>(hUbTry);
+            } else {
+                break;
             }
         }
-    } else {
-        // Situation B: S cannot be fully loaded; keep ubFactorH=H_REG, sUb=sUb_max
-        sUb = static_cast<uint64_t>(sUbMax);
-    }
 
-    ubFactorB_ = static_cast<int64_t>(bUb);
-    ubFactorS_ = static_cast<int64_t>(sUb);
+        ubFactorB_ = static_cast<int64_t>(bUb);
+        ubFactorS_ = static_cast<int64_t>(sUb);
+    } else {
+        // Situation B: can't fully load → Step3 reduce B first
+        bool found = false;
+        while (bUb > 1) {
+            --bUb;
+            if (calcUsedUb(static_cast<uint64_t>(ubFactorH_), bUb, sLen) <= ubSize_) {
+                // B reduced, S fully loaded
+                ubFactorB_ = static_cast<int64_t>(bUb);
+                ubFactorS_ = static_cast<int64_t>(sLen);
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            // bUb=1 still can't fully load S → cut S
+            bUb = 1;
+            int64_t sUbMax = findSUbMax(static_cast<uint64_t>(ubFactorH_), bUb);
+            if (sUbMax < 1) {
+                OP_LOGE(context_->GetNodeName(), "UB tiling failed: no valid sUb found with bUb=1");
+                return ge::GRAPH_FAILED;
+            }
+            ubFactorB_ = 1;
+            ubFactorS_ = static_cast<int64_t>(std::min(static_cast<uint64_t>(sUbMax), sLen));
+        }
+    }
 
     if (ubFactorB_ == 0 || ubFactorS_ == 0) {
         OP_LOGE(context_->GetNodeName(), "UB tiling failed: ubFactorB=%ld ubFactorS=%ld",
@@ -387,7 +408,7 @@ uint64_t MaskedCausalConv1dTilingArch35::GetTilingKey() const
 ge::graphStatus MaskedCausalConv1dTilingArch35::GetWorkspaceSize()
 {
     workspaceSize_ = SYS_WORKSPACE_SIZE;
-    auto workspaces = context_->GetWorkspaceSizes(1);
+    auto workspaces = context_->GetWorkspaceSizes(WORKSPACE_NUM);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = workspaceSize_;
     return ge::GRAPH_SUCCESS;
@@ -463,7 +484,7 @@ void MaskedCausalConv1dTilingArch35::DumpTilingInfo()
     info << "sCoreCnt=" << sCoreCnt_ << " sMainCnt=" << sMainCnt_
          << " sBlockFactor=" << sBlockFactor_ << " sBlockTailFactor=" << sBlockTailFactor_ << "\n";
     info << "ubFactorH=" << ubFactorH_ << " ubFactorB=" << ubFactorB_ << " ubFactorS=" << ubFactorS_
-         << " sUbAlign=" << (((ubFactorS_ + 31) / 32) * 32) << "\n";
+         << " sUbAlign=" << (((ubFactorS_ + MASK_ALIGN_ELEMENTS - 1) / MASK_ALIGN_ELEMENTS) * MASK_ALIGN_ELEMENTS) << "\n";
     info << "loopNumH=" << loopNumH_ << " ubTailFactorH=" << ubTailFactorH_ << "\n";
     info << "loopNumB=" << loopNumB_ << " ubTailFactorB=" << ubTailFactorB_ << "\n";
     info << "loopNumS=" << loopNumS_ << " ubTailFactorS=" << ubTailFactorS_ << "\n";
