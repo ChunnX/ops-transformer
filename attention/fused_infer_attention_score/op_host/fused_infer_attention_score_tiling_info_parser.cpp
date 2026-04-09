@@ -360,7 +360,7 @@ ge::graphStatus FiaInfoParser::GetAttrParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void FiaInfoParser::GetUpdateInfo()
+ge::graphStatus FiaInfoParser::GetUpdateInfo()
 {
     auto attrs = context_->GetAttrs();
     static int32_t SPARSE_ZERO = 0U;
@@ -383,6 +383,7 @@ void FiaInfoParser::GetUpdateInfo()
         opParamInfo_.queryPaddingSize.tensor = context_->GetOptionalInputTensor(QUERY_PADDING_SIZE_INDEX);
         opParamInfo_.queryPaddingSize.desc = context_->GetOptionalInputDesc(QUERY_PADDING_SIZE_INDEX);
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 void FiaInfoParser::GetPreNextToken()
@@ -403,9 +404,6 @@ void FiaInfoParser::GetPreNextToken()
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     } else if (sparseMode_ == SPARSE_MODE_LEFT_UP || sparseMode_ == SPARSE_MODE_RIGHT_DOWN) {
-        nextToken_ = 0;
-        preToken_ = SPARSE_MODE_INT_MAX;
-    } else if (sparseMode_ == SPARSE_MODE_TREE) {
         nextToken_ = 0;
         preToken_ = SPARSE_MODE_INT_MAX;
     }
@@ -947,34 +945,6 @@ ge::graphStatus FiaInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
-{
-    // sparse9时，mask形状：TND时传入∑s1²，其余场景传入[B,S1,S1]
-    auto *maskTensor = opParamInfo_.attenMask.tensor;
-    uint32_t maskDimNum = maskTensor->GetStorageShape().GetDimNum();
-
-    // TND传入的mask
-    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
-        if (maskDimNum == 1U) {
-            attenMaskBatchStride_ = 1;
-            attenMaskStride_ = 1;
-        } else {
-            OP_LOGE(opName_, "When layout is TND/NTD, Tree mask(%u) matrix dim only support 1.",
-                    *opParamInfo_.sparseMode);
-        }
-    } else {
-        if (maskDimNum == 3U) {
-            attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) * \
-                                    maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
-            attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
-        } else {
-            OP_LOGE(opName_, "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.",
-                    *opParamInfo_.sparseMode);
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
 {
     antiQuantFlag_ = inputQType_ != inputKvType_;
@@ -1027,13 +997,6 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
 {
     // only bss & b1ss & bs need to calc attenMaskSize_ , attenMaskSize_ is uesed to calc batch offset
     if (attenMaskFlag_) {
-        if (*opParamInfo_.sparseMode == 9U && npuArch_ == NpuArch::DAV_3510) {
-            OP_LOGE(opName_, "NpuArch[%d] currently does not support sparse9.", static_cast<int32_t>(npuArch_));
-            return ge::GRAPH_FAILED;
-        }
-        if (*opParamInfo_.sparseMode == 9U) {
-            return GetAttenMaskSparse9Info();
-        }
         auto *maskTensor = opParamInfo_.attenMask.tensor;
         uint32_t maskDimNum = maskTensor->GetStorageShape().GetDimNum();
         if (maskDimNum == 2U) {
@@ -1092,10 +1055,11 @@ void FiaInfoParser::GetPaddingSizeFlag()
     }
 }
 
-void FiaInfoParser::GetMaskFlag()
+ge::graphStatus FiaInfoParser::GetMaskFlag()
 {
     auto *maskTensor = opParamInfo_.attenMask.tensor;
     attenMaskFlag_ = (maskTensor != nullptr) && (maskTensor->GetStorageShape().GetShapeSize() != 0);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetPseShiftFlag()
