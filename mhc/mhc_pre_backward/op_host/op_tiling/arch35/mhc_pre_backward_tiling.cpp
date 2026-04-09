@@ -269,9 +269,6 @@ ge::graphStatus MhcPreBackwardBaseTiling::TilingProcess()
         return ge::GRAPH_FAILED;
     }
 
-    // 后续模板按位处理
-    tilingKey_ = 0UL;
-
     workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
@@ -312,7 +309,7 @@ void MhcPreBackwardBaseTiling::PrintTilingData()
 
 uint64_t MhcPreBackwardBaseTiling::GetTilingKey() const
 {
-    return tilingKey_;
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(MHC_PRE_BACKWARD_DEFAULT));
 }
 
 ge::graphStatus MhcPreBackwardBaseTiling::PostTiling()

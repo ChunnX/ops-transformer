@@ -60,10 +60,10 @@ using namespace AscendC;
 
 constexpr uint32_t BUFFER_NUM = 2;
 constexpr uint64_t SYNC_MAX_NUM = 15;
-constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;                   // 32KB
-constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;                    // 16KB
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024;      // 151KB
-constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;                    // ProcessV2函数使用的chunk大小
+constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
+constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 16KB
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024; // 151KB
+constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
@@ -72,9 +72,6 @@ constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
 constexpr uint32_t ALPHA_GRAD_SHAPE_2_OFFSET = 8;
 constexpr uint32_t ALPHA_GRAD_SHAPE_3_OFFSET = 16;
 
-// -------------------------------------------------------------------------------
-// REVISION NOTE: These MicroAPI cast traits are shared by the new V2 fused tail.
-// -------------------------------------------------------------------------------
 constexpr MicroAPI::CastTrait ctFp32To16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
@@ -461,37 +458,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
         pipe_->InitBuffer(fp32OutQueue_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
 
-
-        // gatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(hFusionBufLen_, 0);
         globalUbOffset_ = hFusionBufLen_ * sizeof(uint32_t);
         alphaBuf_ = fp32TBuf_.GetWithOffset<P>(hFusionBufLen_, globalUbOffset_);
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
-        // alphaTmpBuf_ = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
         globalUbOffset_ += fusionSize_ * sizeof(P);
-
-        // uint32_t offset1 = 0;
-        // uint32_t offset2 = 0;
-        // for (uint32_t i = 0; i < vecDealChunk_; i++) {
-        //     for (uint32_t j = 0; j < N_; j++) {
-        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P));
-        //         if (i == 0) {
-        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(0));
-        //         }
-        //     }
-
-        //     for (uint32_t j = 0; j < N_; j++) {
-        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ + j) * sizeof(P) + hPostOffset_);
-        //         if (i == 0) {
-        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(1));
-        //         }
-        //     }
-        //     for (uint32_t j = 0; j < (N_ * N_); j++) {
-        //         gatherOffsetBuf_.SetValue(offset1++, (i * N_ * N_ + j) * sizeof(P) + hMixOffset_);
-        //         if (i == 0) {
-        //             alphaTmpBuf_.SetValue(offset2++, alphaGm_.GetValue(2));
-        //         }
-        //     }
-        // }
 
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
@@ -584,8 +554,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                                                                     uint32_t lenD, uint32_t i, uint32_t j,
                                                                     uint32_t runBSStart)
 {
-    uint16_t eleNumPerVf = 64;
-    uint16_t dLoopCnt = (lenD + eleNumPerVf - 1) / eleNumPerVf;
+    uint16_t dLoopCnt = (lenD + eleNumPerVf_ - 1) / eleNumPerVf_;
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<P> sumReg;
@@ -600,11 +569,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLenD);
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, xB16InAddr + offsetN * lenD +
-                                                                                           vfBlockIdx * eleNumPerVf);
+                                                                                           vfBlockIdx * eleNumPerVf_);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    hInGradB16InReg, hInGradB16InAddr + vfBlockIdx * eleNumPerVf);
+                    hInGradB16InReg, hInGradB16InAddr + vfBlockIdx * eleNumPerVf_);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(hInGradFp32Reg, hInGradB16InReg, mask);
 
                 MicroAPI::Mul(mulReg, xFp32Reg, hInGradFp32Reg, mask); // mulReg[1,lenD] 0-63
@@ -612,7 +581,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                                                             mask);   // 每个vfBlockIdx循环的临时求和，每64个元素的和
                 MicroAPI::Add(sumReg, sumReg, tmpSumPerVfReg, mask); // D方向上的reduceSum
             }
-            // uint32_t bufIdx = (i - runBSStart) * N_ + (j + offsetN);
             uint32_t bufIdx = offset + offsetN;
             MicroAPI::Store(hPreGradAddr + bufIdx, sumReg, 1);
         }
@@ -651,8 +619,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
             DataCopyPad(bf16InputBuf, xGm_[inputOffset], dataCopyParams_, dataCopyPadParams_);
             bf16InQueue_.EnQue(bf16InputBuf);
             bf16InQueue_.DeQue<T>(bf16InputBuf);
-            // Cast(xFp32Buf[ubOffset], bf16InputBuf, RoundMode::CAST_NONE, copySizeD * curLenN);
-            // bf16InQueue_.FreeTensor(bf16InputBuf);
 
             dataCopyParams_.blockCount = 1;
             AscendC::LocalTensor<T> hInputBuf = fp32InQueue_.AllocTensor<T>();
@@ -794,8 +760,7 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr,
                                                                   __ubuf__ P *hInGradAddr, uint32_t totalElem)
 {
-    uint32_t eleNumPerVf = 64;
-    uint16_t loopCnt = Ceil(totalElem, eleNumPerVf);
+    uint16_t loopCnt = Ceil(totalElem, static_cast<uint32_t>(eleNumPerVf_));
     uint32_t curElemCnt = totalElem;
     __VEC_SCOPE__
     {
@@ -806,14 +771,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0HPreGrad(__ubuf__ P *hP
             MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
             MicroAPI::Duplicate(oneReg, 1.0f, mask);
 
-            MicroAPI::LoadAlign(hPreReg, hPreAddr + vfBlockIdx * eleNumPerVf);
-            MicroAPI::LoadAlign(hInGradReg, hInGradAddr + vfBlockIdx * eleNumPerVf);
+            MicroAPI::LoadAlign(hPreReg, hPreAddr + vfBlockIdx * eleNumPerVf_);
+            MicroAPI::LoadAlign(hInGradReg, hInGradAddr + vfBlockIdx * eleNumPerVf_);
             MicroAPI::Adds(s1Reg, hPreReg, -hcEps_, mask);
             MicroAPI::Sub(s2Reg, oneReg, s1Reg, mask);
             MicroAPI::Mul(mulReg, s1Reg, s2Reg, mask);
             MicroAPI::Mul(resReg, mulReg, hInGradReg, mask);
 
-            MicroAPI::StoreAlign(hPreBufS1Addr + vfBlockIdx * eleNumPerVf, resReg, mask);
+            MicroAPI::StoreAlign(hPreBufS1Addr + vfBlockIdx * eleNumPerVf_, resReg, mask);
         }
     }
 }
@@ -933,7 +898,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             maskPre = MicroAPI::UpdateMask<P>(curLenPre);
             MicroAPI::Load<P>(gatherReg, hPreBufAddr + srcOffset);
             MicroAPI::Store<P>(gatherFusionBufAddr + dstOffset, gatherReg);
-            // MicroAPI::Duplicate<P>(alphaReg, alphaPre, maskPre);
             MicroAPI::Mul(h1gradReg, gatherReg, alphaPreReg, maskPre);
             MicroAPI::Store<P>(h1GradBufAddr + dstOffset, h1gradReg);
 
@@ -942,7 +906,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             maskPost = MicroAPI::UpdateMask<P>(curLenPost);
             MicroAPI::Load<P>(gatherReg, hPostBufAddr + srcOffset1);
             MicroAPI::Store<P>(gatherFusionBufAddr + dstOffset1 + blockLenPre, gatherReg);
-            // MicroAPI::Duplicate<P>(alphaReg, alphaPost, maskPost);
             MicroAPI::Mul(h1gradReg, gatherReg, alphaPostReg, maskPost);
             MicroAPI::Store<P>(h1GradBufAddr + dstOffset1 + blockLenPre, h1gradReg);
 
@@ -951,7 +914,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             maskComb = MicroAPI::UpdateMask<P>(curLenComb);
             MicroAPI::Load<P>(gatherReg, hCombBufAddr + srcOffset2);
             MicroAPI::Store<P>(gatherFusionBufAddr + dstOffset2, gatherReg);
-            // MicroAPI::Duplicate<P>(alphaReg, alphaComb, maskComb);
             MicroAPI::Mul(h1gradReg, gatherReg, alphaCombReg, maskComb);
             MicroAPI::Store<P>(h1GradBufAddr + dstOffset2, h1gradReg);
         }
@@ -1026,7 +988,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     uint32_t shape[] = {curBSSize, fusionSize_};
     // inv rms grad
-    // TODO 暂时存储在invRmsBuf中，后续直接拼接好后搬运出
     ReduceSum<float, AscendC::Pattern::Reduce::AR, isReuse>(invRmsGradUb, h1GradBuf, buffers.brcbTmpBuf, shape, true);
     fp32OutQueue_.EnQue(invRmsGradUb);
     LocalTensor<P> invRmsGradUbtBuf = fp32OutQueue_.DeQue<P>();
@@ -1283,8 +1244,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
     __ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr, __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaSrcAddr,
     __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize, uint32_t copySizeND)
 {
-    uint32_t eleNumPerVf = 64;
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
+    uint16_t vfLoopCnt = CeilDiv(copySizeND, static_cast<uint32_t>(eleNumPerVf_));
     __VEC_SCOPE__
     {
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
@@ -1293,7 +1253,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
             MicroAPI::RegTensor<P> xFp32Reg, gammaReg, resultReg;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(lenND);
-                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
+                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf_;
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, bf16InputAddr + offset);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
@@ -1301,7 +1261,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
                 MicroAPI::StoreAlign(xRsFp32Addr + offset, xFp32Reg, mask); // 后续其他计算需要xFp32
 
                 if constexpr (hasGamma) {
-                    MicroAPI::LoadAlign(gammaReg, gammaSrcAddr + vfBlockIdx * eleNumPerVf);
+                    MicroAPI::LoadAlign(gammaReg, gammaSrcAddr + vfBlockIdx * eleNumPerVf_);
                     if constexpr (isFirstChunk) {
                         MicroAPI::StoreAlign(gammaBroadAddr + offset, gammaReg, mask);
                     }
@@ -1323,8 +1283,7 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, _
                                                     __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize,
                                                     uint32_t copySizeND)
 {
-    uint32_t eleNumPerVf = 64;
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
+    uint16_t vfLoopCnt = CeilDiv(copySizeND, static_cast<uint32_t>(eleNumPerVf_));
     __VEC_SCOPE__
     {
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
@@ -1332,11 +1291,11 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, _
             MicroAPI::RegTensor<P> gammaReg, xRsGradMmReg, resultReg;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(lenND);
-                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
+                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf_;
                 MicroAPI::LoadAlign(xRsGradMmReg, xRsGradMmAddr + offset);
 
                 if constexpr (hasGamma) {
-                    MicroAPI::LoadAlign(gammaReg, gammaBroadAddr + vfBlockIdx * eleNumPerVf);
+                    MicroAPI::LoadAlign(gammaReg, gammaBroadAddr + vfBlockIdx * eleNumPerVf_);
 
                     MicroAPI::Mul(resultReg, gammaReg, xRsGradMmReg, mask); // 逐元素乘：gamma * xRsGradMm
                     MicroAPI::StoreAlign(xRsGradUbAddr + offset, resultReg, mask);
@@ -1383,41 +1342,6 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
         }
     }
 }
-
-// template <class T, class P>
-// template <bool firstChunkStart>
-// __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2MulAndReduceSum(__ubuf__ P *xRsGradMmInBufAddr,
-//                                                                          __ubuf__ P *xRsFp32BufAddr,
-//                                                                          __ubuf__ P *sumBufAddr,
-//                                                                          uint32_t currentChunkSize, uint32_t
-//                                                                          copySizeND)
-// {
-//     uint32_t oneRepeatSize = AscendC::GetVecLen() / sizeof(P);
-//     uint32_t ndComputeLen = copySizeND;
-//     uint16_t ndRepeatTimes = Ceil(copySizeND, oneRepeatSize);
-//     uint16_t bsRepeatTimes = currentChunkSize;
-//     __VEC_SCOPE__
-//     {
-//         MicroAPI::RegTensor<P> xRsGradMmInReg, xRsFp32Reg, mulReg, sumReg;
-//         for (uint16_t ndRepeatIdx = 0; ndRepeatIdx < ndRepeatTimes; ndRepeatIdx++) {
-//             MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(ndComputeLen);
-//             if constexpr (firstChunkStart) {
-//                 MicroAPI::Duplicate(sumReg, 0.0f, mask);
-//             } else {
-//                 // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-//                 MicroAPI::LoadAlign(sumReg, sumBufAddr + ndRepeatIdx * oneRepeatSize);
-//             }
-//             for (uint16_t bsRepeatIdx = 0; bsRepeatIdx < bsRepeatTimes; bsRepeatIdx++) {
-//                 uint32_t Offset = bsRepeatIdx * copySizeND + ndRepeatIdx * oneRepeatSize;
-//                 MicroAPI::LoadAlign(xRsGradMmInReg, xRsGradMmInBufAddr + Offset);
-//                 MicroAPI::LoadAlign(xRsFp32Reg, xRsFp32BufAddr + Offset);
-//                 MicroAPI::Mul(mulReg, xRsGradMmInReg, xRsFp32Reg, mask);
-//                 MicroAPI::Add(sumReg, sumReg, mulReg, mask);
-//             }
-//             MicroAPI::StoreAlign(sumBufAddr + ndRepeatIdx * oneRepeatSize, sumReg, mask);
-//         }
-//     }
-// }
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
@@ -1513,12 +1437,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         LocalTensor<P> invRmsGradUb = fp32InQueue_.DeQue<P>();
 
         // 13-15 计算inv_rms = (-1/nD) * pow(inv_rms, 3) * inv_rms_grad (当前chunk)
-        // Mul(invRmsUb, invRmsInBuf, invRmsInBuf, currentChunkSize); // inv_rms^2
-        // PipeBarrier<PIPE_V>();
-
-        // Mul(invRmsUb, invRmsUb, invRmsInBuf, currentChunkSize); // inv_rms^3
-        // PipeBarrier<PIPE_V>();
-        // bf16InQueue_.FreeTensor(invRmsInBuf);
 
         AIV21Process(invRmsInBuf, invRmsUb, invRmsGradUb, currentChunkSize);
         bf16InQueue_.FreeTensor(invRmsInBuf);
@@ -1608,18 +1526,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         DataCopyPad(workSpaceGm_[offset], gammaOutUb, fp32ExtCopyParams);
         bf16OutQueue_.FreeTensor(gammaOutUb);
 
-        // const uint32_t xRsGradInvBroadCastDst[2] = {currentChunkSize, copySizeND};
-        // const uint32_t xRsGradInvBroadCastSrc[2] = {currentChunkSize, 1};
-        // BroadCast<P, 2, 1>(xRsGradInvUb, invRmsUb, xRsGradInvBroadCastDst, xRsGradInvBroadCastSrc, sharedTmpBuf);
-        // PipeBarrier<PIPE_V>();
-
-        // Mul(xRsGradInvUb, xRsGradInvUb, xRsFp32Buf, copySizeND * currentChunkSize);
-        // PipeBarrier<PIPE_V>();
-
         AIV22Process(invRmsUb, xRsFp32Buf, xRsGradInvUb, currentChunkSize, copySizeND);
 
         // add
-        // 21. <- 16
         Add(xGradVec3Buf, xGradVec3Buf, xRsGradInvUb, chunkNDSize);
         PipeBarrier<PIPE_V>();
         // datacopy x rs grad mm
@@ -1663,7 +1572,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         }
         bf16InQueue_.FreeTensor(xRsGradMmInBuf);
 
-        // 22. <- 10
         Add(xGradVec3Buf, xGradVec3Buf, xRsGradMmUb, chunkNDSize);
         PipeBarrier<PIPE_V>();
         LocalTensor<P> gradXPostFp32 = xRsGradMmUb; // reuse xRsGradMmUb
@@ -1724,13 +1632,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV22Process(LocalTensor<P> &
             maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
             P invRmsSclar = invRmsUbAddr[bsIdx];
             MicroAPI::Duplicate<P>(invRmsReg, invRmsSclar, maskAll);
-            // MicroAPI::Duplicate(invRmsIdexReg, bsIdx, maskAll);
-            // MicroAPI::Gather(invRmsReg, invRmsUbAddr, invRmsIdexReg, maskAll);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < static_cast<uint16_t>(vfloopCnt1); vfBlockIdx++) {
                 uint32_t elemOffset = vfBlockIdx * eleNumPerVf_;
                 uint32_t srcOffset = bsIdx * copySizeND;
                 mask = MicroAPI::UpdateMask<P>(curLen1);
-                // MicroAPI::Duplicate<P>(invRmsReg, invRmsSclar, mask);
                 MicroAPI::LoadAlign(NDReg, xRsFp32BufAddr + srcOffset + elemOffset);
                 MicroAPI::Mul(NDReg, NDReg, invRmsReg, mask);
                 MicroAPI::StoreAlign(xRsGradInvUbAddr + srcOffset + elemOffset, NDReg, mask);
@@ -1827,13 +1732,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3()
     uint32_t biasGradShapeSrc[] = {usedVecCoreNum_, fusionSize_};
     ReduceSum<P, AscendC::Pattern::Reduce::RA, isReuse>(biasGradOutLocal, biasGradInLocal, tmpLocal, biasGradShapeSrc,
                                                         true);
-    // if (N_ == 8) {
-    //     VFDoV3ProcessBiasGradForN8(
-    //         (__ubuf__ P *)biasGradOutLocal.GetPhyAddr(), (__ubuf__ P *)biasGradInLocal.GetPhyAddr());
-    // } else {
-    //     VFDoV3ProcessBiasGrad((__ubuf__ P *)biasGradOutLocal.GetPhyAddr(), (__ubuf__ P
-    //     *)biasGradInLocal.GetPhyAddr());
-    // }
 
     fp32OutQueue_.EnQue(biasGradOutLocal);
     biasGradOutLocal = fp32OutQueue_.DeQue<P>();
