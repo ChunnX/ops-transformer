@@ -44,26 +44,35 @@ def estimate_matmul_split_kn(
 ) -> Tuple[MatMulTiming, VectorOpTiming]:
     """Model matmul with 2D split: N-axis × K-axis across cores.
 
-    Returns per-AI-core timing for one (k_group_idx, n_group_idx) tile:
-      - cube_timing:  one cube core processing M × K_per_core × N_per_core
-                      (includes the FP32 partial-output FixPipe pressure when
-                      k_groups > 1, since c_size becomes 4 bytes)
-      - accum_timing: 2 vector cores reducing k_groups partials for one
-                      (M × N_per_core) tile
+    Returns chip-total wall-clock timing for one (k_group_idx, n_group_idx)
+    tile, under the same chip-total / contention convention as
+    estimate_matmul_detailed, estimate_matmul_split_m, estimate_matmul_k_outer,
+    estimate_matmul_legacy, and estimate_vector_op (5 of 6 timing models in
+    this perf module). All timing functions divide chip-total bandwidth across
+    the active cores doing the work.
+
+      - cube_timing:  one cube core's work (M × K_per_core × N_per_core), with
+                      bandwidth = chip_bw / total_cores (the n_groups × k_groups
+                      cores all contend for HBM)
+      - accum_timing: vector accumulation of k_groups partials, distributed
+                      across vec_cores V cores (chip-total)
 
     Pipeline overlap between accum_timing (on AIV) and subsequent AIC matmul
     stages is NOT applied here — the caller (build_pipeline_dag) places
     AccumCq/AccumCkvKr as separate AIV nodes with dependencies, and the DAG
     forward pass hides accum under whatever AIC stage runs in parallel.
 
-    Per-AI-core scope (1 cube + 2 vectors per AI core, 950 1:2 ratio):
-      - Cube call uses active_cores=1 (full per-core HBM/L2 bandwidth)
-      - Accum call uses active_cores=2 (2 V cores per AI core)
-      - K-cores within one n-group all work on the SAME N slice (N_per_core
-        columns), they only split K — they do NOT split N further.
+    K-cores within one n-group all work on the same N slice (N_per_core
+    columns); they only split K. Per_core_N = N_per_core (n-split), not
+    N_per_core / k_groups (the historical bug from before commit 9d17f206b).
+
+    "Per-AI-core" in the result is the per-AI-core slice of work, not the
+    per-AI-core peak bandwidth — bandwidth is divided across the cores
+    actually contending for HBM in this configuration.
     """
     K_per_core = spec.single_k
     N_per_core = spec.single_n
+    total_cores = spec.total_cores  # n_groups × k_groups
 
     # Cube: override block for reduced K and N, float output if K-split
     c_size = 4 if spec.k_groups > 1 else out_size
@@ -84,33 +93,39 @@ def estimate_matmul_split_kn(
     # L2-reused when n_groups > 1, on top of any cross-matmul reuse.
     a_is_l2 = a_reused or spec.n_groups > 1
 
-    # Per-AI-core cube modeling: one (k_group, n_group) cube core processes
-    # M × K_per_core × N_per_core. Pass per_core_N directly with active_cores=1
-    # so estimate_matmul_detailed sees the right tile and uses full per-core
-    # bandwidth (not chip-total / total_cores). The per-core FixPipe pressure
-    # is now correct (k_groups× larger than the previous buggy value, because
-    # per_core_N is no longer divided by k_groups).
+    # Per-AI-core slice with chip-total contention (5/6 models convention).
+    # Each (k_group_idx, n_group_idx) cube core processes M × K_per_core × N_per_core,
+    # but all total_cores cores compete for chip-total HBM bandwidth.
+    # Pass N = N_per_core × total_cores so estimate_matmul_detailed's
+    # per_core_N = ceil(N / C) = N_per_core (correct slice), and bandwidth is
+    # divided across total_cores cores (correct contention).
     cube_timing = estimate_matmul_detailed(
-        name, M, K_per_core, N_per_core,
-        active_cores=1, hw=hw, block=block_kn, a_reused=a_is_l2,
+        name, M, K_per_core, N_per_core * total_cores,
+        active_cores=total_cores, hw=hw, block=block_kn, a_reused=a_is_l2,
     )
 
-    # Vector accumulation (if k_groups > 1)
-    # Per AI core: 2 vector cores reduce k_groups partials for one (M × N_per_core)
-    # tile. Each partial is FP32 (4 bytes), the final result is BF16 (out_size).
-    # Pipeline overlap with subsequent AIC matmul is handled by build_pipeline_dag,
-    # not here — this function only reports the per-AI-core duration.
+    # Vector accumulation (if k_groups > 1) — chip-total convention
+    # Total accum work across all n_groups N-groups: each N-group has k_groups
+    # partials of size (M × N_per_core × 4). Aggregate work is
+    # k_groups × M × N_full × 4 where N_full = N_per_core × n_groups.
+    # All vec_cores V cores share the work in parallel.
+    #
+    # Note: estimate_vector_op divides both load and bandwidth by C internally,
+    # so the bandwidth-bound time is invariant to the choice of C. Only the
+    # compute-bound time depends on C; for typical k-accum workloads with small
+    # N_per_core, the load (MTE2) dominates so the C choice has minimal impact.
     if spec.k_groups > 1:
-        per_tile_load_bytes = spec.k_groups * M * N_per_core * 4
-        per_tile_compute_elements = M * N_per_core * (spec.k_groups - 1)
-        per_tile_store_bytes = M * N_per_core * out_size
-        # 2 V cores per AI core (950 ratio: 32 AIC : 64 AIV = 1:2)
+        N_full = N_per_core * spec.n_groups
+        chip_load_bytes = spec.k_groups * M * N_full * 4
+        chip_compute_elements = M * N_full * (spec.k_groups - 1)
+        chip_store_bytes = M * N_full * out_size
+        # active_cores = vec_cores: all V cores share the chip-total accum work
         accum_timing = estimate_vector_op(
             f"Accum{name.split('_')[0]}",
-            load_bytes=per_tile_load_bytes,
-            compute_elements=per_tile_compute_elements,
-            store_bytes=per_tile_store_bytes,
-            hw=hw, active_cores=2,
+            load_bytes=chip_load_bytes,
+            compute_elements=chip_compute_elements,
+            store_bytes=chip_store_bytes,
+            hw=hw, active_cores=vec_cores,
         )
     else:
         accum_timing = VectorOpTiming(name=f"Accum{name.split('_')[0]}")

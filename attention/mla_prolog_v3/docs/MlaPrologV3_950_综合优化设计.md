@@ -22,9 +22,9 @@
 
 | 场景 | dtype | Baseline (us) | + Split-KN | + Split-KN-Fused | + DequantOpt | 综合 vs Baseline |
 |---|---|---:|---:|---:|---:|---:|
-| decode bs1 hd128 | FP8  | 48.71 | 38.58 (−20.8%) | ~37.12 (−23.8%) | **~33.83** | **−14.88 us / −30.6%** |
-| decode bs1 hd128 | INT8 | 51.10 | 38.58 (−24.5%) | ~37.12 (−27.4%) | **~33.83** | **−17.27 us / −33.8%** |
-| decode bs1 hd128 | BF16 | 87.63 | 71.53 (−18.4%) | ~70.07 (−20.0%) | n/a (BF16 无量化收益) | −17.56 us / −20.0% |
+| decode bs1 hd128 | FP8  | 48.71 | 39.20 (−19.5%) | ~37.74 (−22.5%) | **~34.44** | **−14.27 us / −29.3%** |
+| decode bs1 hd128 | INT8 | 51.10 | 39.20 (−23.3%) | ~37.74 (−26.1%) | **~34.44** | **−16.66 us / −32.6%** |
+| decode bs1 hd128 | BF16 | 87.63 | 71.53 (−18.4%) | ~70.07 (−20.0%) | n/a | −17.56 us / −20.0% |
 | decode bs1 hd8   | BF16 | 43.33 | 27.23 (−37.2%) | ~25.77 (−40.5%) | n/a | −17.56 us / −40.5% |
 
 > Split-KN 数据为 perf model `--mode split-kn` 实测；DequantOpt 数据为 `--mode dequant-opt` 实测；Split-KN-Fused 增量从 `--mode split-kn-fused` 取每 MM ~0.7 µs × 2。
@@ -85,8 +85,8 @@ baseline 关键问题：
 AIC pipeline (cube)                         AIV pipeline (vector)
 ═══════════════════════════════════         ═══════════════════════════════════
 [Split-KN]
-MM1_Cq (n_groups=8 × k_groups=4 cores)
-   每核 K=He/4=1792, N=Hcq/8=192
+MM1_Cq (BF16: n_groups=4 × k_groups=7 = 28 cores; FP8/INT8: n_groups=8 × k_groups=4 = 32 cores)
+   BF16 每核 K=He/7=1024, N=Hcq/4=384; FP8/INT8 每核 K=He/4=1792, N=Hcq/8=192
    FixPipe → GM(mmCqPartialGm[kg])         ← 32 cores 写 4×8=32 个 partial 子区
    CrossCoreSetFlag PIPE_FIX (0.8 µs)
                                             CrossCoreWaitFlag(FINISH_MM_CQ)
@@ -143,7 +143,7 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 **Theory**：在 cube 侧把 MM1 / MM2 的核分成 `n_groups × k_groups` 网格。N 维 split 增加并行核数，K 维 split 减少每核 HBM 加载量。**两者一起做** 能同时提升核利用率与每核带宽预算。
 
-**修正前的 bug**（commit pending）：`estimate_matmul_split_kn` 把 `N = N_per_core × n_groups, active_cores = total_cores` 传给 `estimate_matmul_detailed`，导致 `per_core_N = N / active_cores = N_per_core / k_groups`。每核 cube 计算量、L0B 加载、FixPipe 字节都被低估了 `k_groups×`，让 K-split 看起来"白嫖"算力（hd8 best 假象 9.32 µs / 78.5%）。**修正**：传入 `N = N_per_core, active_cores = 1`，per-AI-core 视角，反映真实带宽与算力。
+**修正前的 bug**（commit pending）：`estimate_matmul_split_kn` 把 `N = N_per_core × n_groups, active_cores = total_cores` 传给 `estimate_matmul_detailed`，导致 `per_core_N = N / active_cores = N_per_core / k_groups`。每核 cube 计算量、L0B 加载、FixPipe 字节都被低估了 `k_groups×`，让 K-split 看起来"白嫖"算力（hd8 best 假象 9.32 µs / 78.5%）。**修正**：采用 chip-total / contention 约定，传入 `N = N_per_core × total_cores, active_cores = total_cores`，per-core 带宽 = `chip_bw / total_cores`，反映多核竞争 HBM 带宽。这使得 32 核配置的 per-core 带宽比 28 核低 ~10%，导致 BF16 场景最优 MM1 从 N8×K4 切换到 N4×K7。
 
 **FixPipe 压力建模**：当 `k_groups > 1`，cube 输出 dtype 为 FP32 (4 字节，不是 BF16 的 2 字节)；per-core FixPipe 字节 = `M × N_per_core × 4`。修正后 per_core_N 正确，per-core FixPipe 时间 k_groups× 大于错误版本，**正确反映 K-split 引入的搬出压力**。
 
@@ -155,17 +155,18 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 | MM | n_groups | k_groups | 总核数 | per-core N | per-core K | 备注 |
 |---|---:|---:|---:|---:|---:|---|
-| MM1 (Cq)    | 8 | 4  | 32 | Hcq/8 = 192       | He/4 = 1792 | N=1536 大，可承受 8 N-cores |
-| MM2 (CkvKr) | 1 | 28 | 28 | Hckv+Dr = 576     | He/28 = 256 | N=576 偏小，全部投到 K |
+| MM1 (Cq) BF16 | 4 | 7  | 28 | Hcq/4 = 384  | He/7 = 1024 | 28 核避免 32 核 HBM 竞争 |
+| MM1 (Cq) FP8/INT8 | 8 | 4 | 32 | Hcq/8 = 192 | He/4 = 1792 | FP8 weight 减半，32 核竞争不显著 |
+| MM2 (CkvKr) | 1 | 28 | 28 | Hckv+Dr = 576 | He/28 = 256 | N=576 偏小，全部投到 K |
 
 **理论 vs 实测**：
 
 | 场景 | 修正前 best | 修正后 best |
 |---|---|---|
-| decode bs1 hd8 BF16  | MM1:N1×K28 + MM2:N3×K8 → 9.32 µs (78.5%, 假象)  | MM1:N8×K4 + MM2:N1×K28 → 27.23 µs (37.2%, 真实) |
-| decode bs1 hd128 BF16 | MM1:N1×K28 + MM2:N3×K8 → 53.62 µs (38.8%) | MM1:N8×K4 + MM2:N1×K28 → 71.53 µs (18.4%) |
+| decode bs1 hd8 BF16  | MM1:N1×K28 + MM2:N3×K8 → 9.32 µs (78.5%, 假象)  | MM1:N4×K7 + MM2:N1×K28 → 27.23 µs (37.2%, 真实) |
+| decode bs1 hd128 BF16 | MM1:N1×K28 + MM2:N3×K8 → 53.62 µs (38.8%) | MM1:N4×K7 + MM2:N1×K28 → 71.53 µs (18.4%) |
 
-修正后的 best 跨 9 个场景（hd8/16/32/64/128，BF16/INT8/FP8，bs1/8，prefill T=128）**全部一致** = `MM1:N8×K4 + MM2:N1×K28`，是 He=7168 / Hcq=1536 / Hckv+Dr=576 维度下的"普适最优"。下一节给出 He 维度敏感度分析，验证这一最优在不同模型规模下的稳定性。
+修正后的 best：BF16 场景为 `MM1:N4×K7 + MM2:N1×K28`（28 核，避免 32 核 HBM contention），FP8/INT8 场景仍用 `MM1:N8×K4 + MM2:N1×K28`（32 核，FP8 weight 减半使 HBM 竞争较不显著）。下一节给出 He 维度敏感度分析，验证这一最优在不同模型规模下的稳定性。
 
 #### 2.1.1 He 维度敏感度分析（1k–8k 与 7680）
 
@@ -175,38 +176,38 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 | He | Baseline (us) | Best Config | Opt MM1 | Opt MM2 | Opt pipeline (us) | 节省 (us) | 节省 % |
 |---:|---:|---|---:|---:|---:|---:|---:|
-| 1024 | 56.62 | MM1:N8×K4 + MM2:N3×K8  | 1.79  | 0.89 | 54.53 | −2.09  | −3.7% |
-| 2048 | 61.39 | MM1:N8×K4 + MM2:N3×K8  | 3.58  | 1.79 | 57.21 | −4.17  | −6.8% |
-| 4096 | 72.12 | MM1:N8×K4 + MM2:N1×K32 | 7.16  | 2.68 | 61.69 | −10.44 | −14.5% |
-| **7168** | 87.63 | **MM1:N8×K4 + MM2:N1×K28** | **14.31** | **5.37** | **71.53** | **−16.10** | **−18.4%** |
-| 7680 | 87.63 | MM1:N8×K4 + MM2:N3×K10 | 14.31 | 5.37 | 71.53 | −16.10 | −18.4% |
-| 8192 | 97.17 | MM1:N8×K4 + MM2:N1×K32 | 14.31 | 5.37 | 71.53 | −25.64 | **−26.4%** |
+| 1024 | 56.62 | MM1:N8×K4 + MM2:N3×K8  | 1.79 | 0.89 | 54.71 | −1.91 | −3.4% |
+| 2048 | 61.39 | MM1:N8×K4 + MM2:N3×K8  | 3.58 | 1.79 | 57.57 | −3.82 | −6.2% |
+| 4096 | 72.12 | MM1:N8×K4 + MM2:N1×K32 | 7.16 | 2.68 | 62.66 | −9.46 | −13.1% |
+| **7168** | 87.63 | **MM1:N4×K7 + MM2:N1×K28** | **14.31** | **5.37** | **71.53** | **−16.10** | **−18.4%** |
+| 7680 | 87.63 | MM1:N6×K5 + MM2:N3×K10 | 14.79 | 5.37 | 72.12 | −15.51 | −17.7% |
+| 8192 | 97.17 | MM1:N8×K4 + MM2:N1×K32 | 15.73 | 5.37 | 73.47 | −23.70 | −24.4% |
 
 **decode bs1 hd128 FP8 — 量化推理场景**
 
-| He | Baseline (us) | Best Config | Opt MM1 | Opt MM2 | Opt pipeline (us) | 节省 (us) | 节省 % |
-|---:|---:|---|---:|---:|---:|---:|---:|
-| 1024 | 32.02 | MM1:N8×K4 + MM2:N9×K2  | 0.89 | 0.45 | 31.34 | −0.67 | −2.1% |
-| 2048 | 34.40 | MM1:N8×K4 + MM2:N3×K8  | 1.79 | 0.89 | 32.31 | −2.09 | −6.1% |
-| 4096 | 39.17 | MM1:N8×K4 + MM2:N3×K8  | 3.58 | 1.79 | 35.00 | −4.17 | −10.7% |
-| **7168** | 48.71 | **MM1:N8×K4 + MM2:N1×K28** | **6.26** | **2.68** | **38.58** | **−10.14** | **−20.8%** |
-| 7680 | 49.31 | MM1:N8×K4 + MM2:N3×K10 | 6.26 | 2.68 | 39.47 | −9.84  | −20.0% |
-| 8192 | 49.91 | MM1:N8×K4 + MM2:N1×K32 | 6.26 | 2.68 | 39.47 | −10.44 | −20.9% |
+| He | Baseline (us) | Best Config | Opt pipeline (us) | 节省 (us) | 节省 % |
+|---:|---:|---|---:|---:|---:|
+| 1024 | 32.02 | MM1:N8×K4 + MM2:N9×K2  | 31.44 | −0.57 | −1.8% |
+| 2048 | 34.40 | MM1:N8×K4 + MM2:N3×K8  | 32.49 | −1.91 | −5.6% |
+| 4096 | 39.17 | MM1:N8×K4 + MM2:N3×K8  | 35.35 | −3.82 | −9.8% |
+| **7168** | 48.71 | **MM1:N8×K4 + MM2:N1×K28** | **39.20** | **−9.52** | **−19.5%** |
+| 7680 | 49.31 | MM1:N6×K5 + MM2:N3×K10 | 39.77 | −9.54 | −19.4% |
+| 8192 | 49.91 | MM1:N8×K4 + MM2:N1×K32 | 40.44 | −9.46 | −19.0% |
 
 **decode bs1 hd8 BF16 — 小规模 / 调试场景**（MM3 极小，split-kn 收益最显著）
 
 | He | Baseline (us) | Best Config | Opt pipeline (us) | 节省 (us) | 节省 % |
 |---:|---:|---|---:|---:|---:|
-| 1024 | 12.32 | MM1:N8×K4 + MM2:N3×K8  | 10.23 | −2.09 | **−16.9%** |
-| 2048 | 17.09 | MM1:N8×K4 + MM2:N3×K8  | 12.92 | −4.17 | **−24.4%** |
-| 4096 | 27.83 | MM1:N8×K4 + MM2:N1×K32 | 17.39 | −10.44 | **−37.5%** |
-| **7168** | 43.33 | **MM1:N8×K4 + MM2:N1×K28** | 27.23 | −16.10 | **−37.2%** |
-| 7680 | 43.33 | MM1:N8×K4 + MM2:N3×K10 | 27.23 | −16.10 | −37.2% |
-| 8192 | 52.87 | MM1:N8×K4 + MM2:N1×K32 | 27.23 | −25.64 | **−48.5%** |
+| 1024 | 12.32 | MM1:N8×K4 + MM2:N3×K8  | 10.41 | −1.91 | −15.5% |
+| 2048 | 17.09 | MM1:N8×K4 + MM2:N3×K8  | 13.27 | −3.82 | −22.4% |
+| 4096 | 27.83 | MM1:N8×K4 + MM2:N1×K32 | 18.36 | −9.46 | −34.0% |
+| **7168** | 43.33 | **MM1:N4×K7 + MM2:N1×K28** | 27.23 | −16.10 | −37.2% |
+| 7680 | 43.33 | MM1:N6×K5 + MM2:N3×K10 | 27.83 | −15.51 | −35.8% |
+| 8192 | 52.87 | MM1:N8×K4 + MM2:N1×K32 | 29.18 | −23.70 | −44.8% |
 
 #### 2.1.2 关键发现
 
-1. **MM1 最优 N-split 跨所有 He 都是 `n_groups=8, k_groups=4`**（每核 N=192, K=He/4）。原因：Hcq=1536 在 baseN=192 对齐下天然适合 8 个 N-cores；剩下 4 个 K-cores 把 K 减半再减半，足以打散 HBM 加载压力。
+1. **MM1 最优在 BF16 场景切换为 `n_groups=4, k_groups=7`（28 核），避免 32 核的 HBM contention；FP8/INT8 场景仍用 `n_groups=8, k_groups=4`（32 核，FP8 weight 减半使 HBM 竞争较不显著）**。
 
 2. **MM2 最优 k_groups 随 He 的因数结构变化**：
 
@@ -225,24 +226,24 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 4. **He=7168 与 He=7680 收益基本相同**：BF16 都是 16.10 µs / 18.4%；FP8 略有差异（10.14 vs 9.84 µs）但 < 5%。**模型从 7168 升级到 7680 不需要重新调优**。
 
-5. **He=8192 收益跳升**：BF16 hd128 节省从 16.10 → 25.64 µs，因为 baseline 在 He=8192 时突破了一个 per-core 带宽上限点（baseline MM1 cube 从 17.89 → 21.47 µs，MM2 cube 从 17.89 → 23.86 µs），而最优版本的地板 19.7 µs 不变。
+5. **He=8192 收益跳升**：BF16 hd128 节省从 16.10 → 23.70 µs，因为 baseline 在 He=8192 时突破了一个 per-core 带宽上限点（baseline MM1 cube 从 17.89 → 21.47 µs，MM2 cube 从 17.89 → 23.86 µs），而最优版本的地板 ~19.7 µs 不变（slightly higher due to contention）。
 
 6. **小 He 场景收益微弱**：He=1024 的 baseline 本身就只有 56 µs（hd128），MM1+MM2 加起来才 4.78 µs，留给 split-kn 的优化空间几乎没有。**He < 2048 不建议启用 split-kn**。
 
-7. **量化场景的相对收益小于 BF16**：FP8/INT8 已经把 baseline 的 MM1/MM2 cube 时间砍到 BF16 的一半（每核 weight 加载减半），留给 split-kn 的余地也减半。FP8 hd128 He=7168 收益 −20.8% vs BF16 −18.4%（FP8 baseline 更小，相对 % 反而略大）；但**绝对节省**FP8 是 10.14 µs，BF16 是 16.10 µs。
+7. **量化场景的相对收益小于 BF16**：FP8/INT8 已经把 baseline 的 MM1/MM2 cube 时间砍到 BF16 的一半（每核 weight 加载减半），留给 split-kn 的余地也减半。FP8 hd128 He=7168 收益 −19.5% vs BF16 −18.4%（FP8 baseline 更小，相对 % 反而略大）；但**绝对节省**FP8 是 9.52 µs，BF16 是 16.10 µs。
 
 #### 2.1.3 推荐切分（按 He 分档）
 
-| He 范围 | 推荐 Best Config | 适用场景 |
+| He 范围 | 推荐 Best Config (BF16) | 推荐 Best Config (FP8/INT8) |
 |---|---|---|
-| He < 2048 | 不启用 split-kn (收益 < 5%, 不抵实现成本) | — |
-| He = 2048 | MM1:N8×K4 + MM2:N3×K8 | 1B–3B 模型 |
-| He = 4096 | MM1:N8×K4 + MM2:N1×K32 | 7B 模型早期 |
-| He = 7168 | **MM1:N8×K4 + MM2:N1×K28** | DeepSeek V2/V3, MLA 主流 |
-| He = 7680 | MM1:N8×K4 + MM2:N3×K10 | DeepSeek V3 (15×512) 变种 |
-| He = 8192 | MM1:N8×K4 + MM2:N1×K32 | 13B 模型 |
+| He < 2048 | 不启用 split-kn | 不启用 split-kn |
+| He = 2048 | MM1:N8×K4 + MM2:N3×K8 | MM1:N8×K4 + MM2:N3×K8 |
+| He = 4096 | MM1:N8×K4 + MM2:N1×K32 | MM1:N8×K4 + MM2:N3×K8 |
+| He = 7168 | **MM1:N4×K7 + MM2:N1×K28** | **MM1:N8×K4 + MM2:N1×K28** |
+| He = 7680 | MM1:N6×K5 + MM2:N3×K10 | MM1:N6×K5 + MM2:N3×K10 |
+| He = 8192 | MM1:N8×K4 + MM2:N1×K32 | MM1:N8×K4 + MM2:N1×K32 |
 
-> **MM1 选择稳定**：所有 He ≥ 2048 都用 `n_groups=8, k_groups=4`。MM1 不需要按 He 切换。
+> **BF16 场景 He >= 7168 最优 MM1 从 N8×K4（32 核）切换为 N4×K7（28 核）**，因为 chip-total / contention 建模让 32 核配置的 per-core 带宽下降 ~10%。FP8/INT8 不受影响（weight 减半使 BW 需求远低于 cap）。MM2 选择逻辑不变。
 > **MM2 切换**：根据 He 的可整除 k_groups 集合自动选择，host tiling 应实现一个查表函数 `select_mm2_split(He) → (n_groups, k_groups)`。
 
 ### 2.2 优化 2：Split-KN-Fused（K-accum + RmsNorm 融合）
@@ -311,12 +312,13 @@ Split-KN (n_groups × k_groups):
   Each (kg, ng) core does K=He/k_groups, N=Hcq/n_groups
   Output: FP32 partial → GM[k_groups × M × N_per_core] per n-group
 
-  For MM1: 8 × 4 = 32 cores, partial size = M × 192 × 4 bytes per core
+  For MM1 (BF16): 4 × 7 = 28 cores, partial size = M × 384 × 4 bytes per core
+  For MM1 (FP8/INT8): 8 × 4 = 32 cores, partial size = M × 192 × 4 bytes per core
   For MM2: 1 × 28 = 28 cores, partial size = M × 576 × 4 bytes per core
 ```
 
 **改动**：
-1. Host tiling 增加 `mm1_n_groups`, `mm1_k_groups`, `mm2_n_groups`, `mm2_k_groups` 字段（默认 1×n_groups 即原 split-N，设为最优值 8×4 / 1×28 启用 split-KN）
+1. Host tiling 增加 `mm1_n_groups`, `mm1_k_groups`, `mm2_n_groups`, `mm2_k_groups` 字段（默认 1×n_groups 即原 split-N，BF16 设为最优值 4×7 / 1×28、FP8/INT8 设为 8×4 / 1×28 启用 split-KN）
 2. Host workspace 增加 partial 子区：
    - `mmCqPartialGm`: `k_groups × M × N_per_core × 4 bytes` per n-group
    - `mmCkvKrPartialGm`: `k_groups × M × N_per_core × 4 bytes` per n-group
@@ -425,7 +427,7 @@ workspaceSize_v2 = libapiSize_
 | 区段 | Baseline 大小 (decode bs1 stepBS=128) | Optimized 大小 | 备注 |
 |---|---:|---:|---|
 | Cq mm1 中间缓冲 | 128 × 1536 × 2 × 2 = 768 KB | 768 KB | 不变 (RmsNormCq 输出仍写 GM) |
-| MM1 K-partials (新增) | — | 128 × 1536 × 4 × 4 = **3 MB** | mm1_k_groups=4，FP32 |
+| MM1 K-partials (新增) | — | 128 × 1536 × 4 × 7 = **5.25 MB** (BF16, k=7) / 128 × 1536 × 4 × 4 = **3 MB** (FP8/INT8, k=4) | mm1_k_groups 视 dtype |
 | CkvKr mm2 中间缓冲 | 128 × 576 × 2 = 144 KB | 144 KB | 不变 |
 | MM2 K-partials (新增) | — | 128 × 576 × 4 × 28 = **8 MB** | mm2_k_groups=28，FP32 |
 | mmQcQrRes buffer | 128 × 4096 × 4 = 2 MB | **0** | DequantOpt 省去 |
@@ -610,12 +612,22 @@ struct MlaPrologBaseParams {
 ```cpp
 // === Split-KN tile selection ===
 if (enableSplitKn) {
-    // Recommended config from perf model report (universal optimum)
-    cfg.mm1NGroups = 8;
-    cfg.mm1KGroups = 4;
-    cfg.mm1SingleCoreN = ceil_div(headSizeCq, cfg.mm1NGroups);  // 192
-    cfg.mm1SingleCoreK = ceil_div(headSizeX, cfg.mm1KGroups);   // 1792
-    cfg.mm1BlockNum = cfg.mm1NGroups * cfg.mm1KGroups;          // 32 cores
+    // Recommended config from perf model report
+    // BF16: N4×K7 (28 cores) avoids 32-core HBM contention
+    // FP8/INT8: N8×K4 (32 cores), weight halved makes contention less impactful
+    if (isBF16) {
+        cfg.mm1NGroups = 4;
+        cfg.mm1KGroups = 7;
+        cfg.mm1SingleCoreN = ceil_div(headSizeCq, cfg.mm1NGroups);  // 384
+        cfg.mm1SingleCoreK = ceil_div(headSizeX, cfg.mm1KGroups);   // 1024
+        cfg.mm1BlockNum = cfg.mm1NGroups * cfg.mm1KGroups;          // 28 cores
+    } else {
+        cfg.mm1NGroups = 8;
+        cfg.mm1KGroups = 4;
+        cfg.mm1SingleCoreN = ceil_div(headSizeCq, cfg.mm1NGroups);  // 192
+        cfg.mm1SingleCoreK = ceil_div(headSizeX, cfg.mm1KGroups);   // 1792
+        cfg.mm1BlockNum = cfg.mm1NGroups * cfg.mm1KGroups;          // 32 cores
+    }
 
     cfg.mm2NGroups = 1;
     cfg.mm2KGroups = 28;

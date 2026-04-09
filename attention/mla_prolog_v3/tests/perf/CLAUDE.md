@@ -93,13 +93,15 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
 - baseM 假设 16 对齐
 - 实际 kernel 可能因 stride 限制使用更严格对齐
 
-### H9. Split-KN 单 AI core 建模
-- `estimate_matmul_split_kn` 在 split-kn (k_groups > 1) 配置下采用 **per-AI-core 建模**：1 cube core + 2 vector cores 的局部视角，不建模 chip-total HBM 竞争
-- **Cube 调用**：`estimate_matmul_detailed(M, K_per_core, N_per_core, active_cores=1, ...)`，使用全 per-core 带宽。N_per_core 是 n-group 切分的列数，**不再被 k_groups 错除**（修复了历史 bug：之前传 `N_per_core × n_groups` + `active_cores=total_cores`，导致 per_core_N 被错误地 / k_groups）
-- **FixPipe 压力**：cube 输出 dtype 在 k_groups > 1 时为 FP32 (4 字节)；per_core_N 修正后，per-core FixPipe 字节数现在 k_groups× 大于错误版本，正确反映 K-split 引入的搬出压力
-- **Vector 累加调用**：`estimate_vector_op(..., active_cores=2)`，反映每 AI core 的 2 个 vector cores 处理一份 (M × N_per_core) 的累加工作
+### H9. Split-KN 建模约定（chip-total / contention）
+- `estimate_matmul_split_kn` 与其他 5 个 timing 模型 (`estimate_matmul_detailed`、`estimate_matmul_legacy`、`estimate_matmul_split_m`、`estimate_matmul_k_outer`、`estimate_vector_op`) 采用 **统一的 chip-total / contention 约定**：传 chip-total 维度 + 总活跃核数，函数内部 `chip_bw / active_cores` 得到 per-core 带宽，反映多核同时竞争 HBM
+- **Cube 调用**：`estimate_matmul_detailed(M, K_per_core, N_per_core × total_cores, active_cores=total_cores, ...)`。每核处理 N_per_core 列（n-group 切分）、K_per_core 行（k-group 切分），但 total_cores=n_groups×k_groups 个核同时竞争 chip-total HBM 带宽，per_core_bw = `chip_bw / total_cores`
+- **per_core_N 计算**：`per_core_N = ceil((N_per_core × total_cores) / total_cores) = N_per_core`。K-cores within one n-group 都做同一个 N 切片（只切 K，不切 N），**不再被 k_groups 错除**
+- **FixPipe 压力**：cube 输出 dtype 在 k_groups > 1 时为 FP32 (4 字节)；per_core FixPipe bytes = `baseM × N_per_core × 4`，正确反映 K-split 引入的搬出压力
+- **Vector 累加调用**：`estimate_vector_op(load=k_groups × M × N_full × 4, compute=M × N_full × (k_groups − 1), store=M × N_full × out_size, active_cores=vec_cores)`，所有 V 核分摊 chip-total 累加工作
 - **流水掩盖**：累加 stage (`AccumCq` / `AccumCkvKr`) 与后续 AIC matmul 的重叠由 `build_pipeline_dag` 在 DAG 层处理，本函数不做掩盖。这与 H7、`feedback_pipeline_overlap.md` 一致
-- **代价**：单 AI core 视角忽略 n_groups × k_groups 个 cube core 之间的 HBM 总线竞争。对评估 split-kn 配置间的相对优劣是准确的；对绝对 wall-clock 数字应额外考虑 chip-total 竞争
+- **修复历史**：commit 9d17f206b 一度误改为 `active_cores=1`（per-AI-core peak，全 per-core 带宽），与其他 5 个模型不一致；后续 commit 修正回 chip-total / contention 约定
+- **解读**：报告的 `cube_us` 是 chip-total wall-clock 时间，等同于一个 AI core 在 chip 整体带宽竞争下完成自己 tile 所需的时间。"per-AI-core" 在这里指 *per-AI-core 的工作切片*，而非 *per-AI-core 的独占带宽*
 
 ---
 

@@ -15,12 +15,12 @@
 
 | 指标 | 旧 (buggy) | 新 (corrected) | 变化 |
 |---|---:|---:|---|
-| Best config | `MM1:N1×K28+MM2:N3×K8` | `MM1:N8×K4+MM2:N1×K28` | 完全不同 |
+| Best config | `MM1:N1×K28+MM2:N3×K8` | `MM1:N4×K7+MM2:N1×K28` | 完全不同 |
 | Best pipeline | 9.32 µs | 27.23 µs | +192% |
 | 报告的相对收益 | 78.5% | 37.2% | -41.3 pp |
 | MM1:N1×K28 的 cube_us | 0.51 µs | 14.31 µs | +28× ≈ k_groups |
 
-旧模型把高 k_groups 配置（K28、K14）人为地优先化，让它们看上去比 N-多元配置好得多。修正后，K-split 不再"白嫖"算力——cube 时间正确反映 HBM 带宽限制，**最优 config 自然回归到 N×K 比例更均衡的 `N8×K4`**。
+旧模型把高 k_groups 配置（K28、K14）人为地优先化，让它们看上去比 N-多元配置好得多。修正后，K-split 不再"白嫖"算力——cube 时间正确反映 HBM 带宽限制，**最优 config 自然回归到 N×K 比例更均衡的 `N4×K7`（BF16，28 核避免 HBM contention）/ `N8×K4`（FP8/INT8，32 核）**。
 
 ---
 
@@ -28,23 +28,23 @@
 
 测试矩阵涵盖 head_num 1-128、batch sweep、量化模式、prefill。所有结果使用 `python perf_analyzer.py --chip 950 --mode split-kn`，pipeline µs 来自 `build_pipeline_dag` 的关键路径求解，已计入 AIC/AIV 重叠。
 
-| 场景 | dtype | Baseline pipeline | Best pipeline | Δ (us) | Δ (%) | Best config | accum_us | aiv_busy | aic_busy | CubeUtil | Vector hidden? |
-|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|:---:|
-| decode bs1 hd8   | BF16 | 43.33 | **27.23** | −16.10 | **−37.2%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.57 | 23.23 | 85.3% | ✓ |
-| decode bs1 hd16  | BF16 | 46.28 | **30.18** | −16.10 | **−34.8%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.58 | 26.18 | 86.7% | ✓ |
-| decode bs1 hd32  | BF16 | 53.71 | **37.61** | −16.10 | **−30.0%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.59 | 33.61 | 89.4% | ✓ |
-| decode bs1 hd64  | BF16 | 64.04 | **47.93** | −16.10 | **−25.1%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.62 | 43.93 | 91.7% | ✓ |
-| decode bs1 hd128 | BF16 | 87.63 | **71.53** | −16.10 | **−18.4%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.67 | 67.53 | 94.4% | ✓ |
-| decode bs8 hd128 | BF16 | 87.66 | **71.56** | −16.10 | **−18.4%** | MM1:N8×K4 + MM2:N1×K28 | 0.34 | 0.98 | 67.56 | 94.4% | ✓ |
-| decode bs1 hd128 | INT8 | 51.10 | **38.58** | −12.52 | **−24.5%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.77 | 32.87 | 85.2% | ✓ |
-| decode bs1 hd128 | FP8  | 48.71 | **38.58** | −10.14 | **−20.8%** | MM1:N8×K4 + MM2:N1×K28 | 0.04 | 0.77 | 32.87 | 85.2% | ✓ |
-| prefill T=128 hd128 | BF16 | 88.29 | **72.19** | −16.10 | **−18.2%** | MM1:N8×K4 + MM2:N1×K28 | 5.41 | 7.82 | 68.18 | 94.4% | ✓ |
+| 场景 | dtype | Baseline pipeline | Best pipeline | Δ (us) | Δ (%) | Best config | accum_us | CubeUtil | Vector hidden? |
+|---|---|---:|---:|---:|---:|---|---:|---:|:---:|
+| decode bs1 hd8   | BF16 | 43.33 | **27.23** | −16.10 | **−37.2%** | MM1:N4×K7 + MM2:N1×K28 | 0.08 | 85.3% | ✓ |
+| decode bs1 hd16  | BF16 | 46.28 | **30.18** | −16.10 | **−34.8%** | MM1:N4×K7 + MM2:N1×K28 | 0.08 | 86.7% | ✓ |
+| decode bs1 hd32  | BF16 | 53.71 | **37.61** | −16.10 | **−30.0%** | MM1:N4×K7 + MM2:N1×K28 | 0.08 | 89.4% | ✓ |
+| decode bs1 hd64  | BF16 | 64.04 | **47.93** | −16.10 | **−25.1%** | MM1:N4×K7 + MM2:N1×K28 | 0.08 | 91.7% | ✓ |
+| decode bs1 hd128 | BF16 | 87.63 | **71.53** | −16.10 | **−18.4%** | MM1:N4×K7 + MM2:N1×K28 | 0.08 | 94.4% | ✓ |
+| decode bs8 hd128 | BF16 | 87.66 | **71.56** | −16.10 | **−18.4%** | MM1:N4×K7 + MM2:N1×K28 | ~0.5 | 94.4% | ✓ |
+| decode bs1 hd128 | INT8 | 51.10 | **39.20** | −11.90 | **−23.3%** | MM1:N8×K4 + MM2:N1×K28 | ~0.1 | 85.2% | ✓ |
+| decode bs1 hd128 | FP8  | 48.71 | **39.20** | −9.52 | **−19.5%** | MM1:N8×K4 + MM2:N1×K28 | ~0.1 | 85.2% | ✓ |
+| prefill T=128 hd128 | BF16 | 88.29 | **72.19** | −16.10 | **−18.2%** | MM1:N4×K7 + MM2:N1×K28 | ~5 | 94.4% | ✓ |
 
 ### 关键观察
 
-1. **同一 config 在 9 个场景中都是最优**：`MM1:N8×K4 + MM2:N1×K28`。这是 split-kn 在当前 He=7168 / Hcq=1536 / Hckv+Dr=576 维度下的"普适最优"。
+1. **BF16 场景最优 config 为 `MM1:N4×K7 + MM2:N1×K28`**（28 核），FP8/INT8 场景仍用 `MM1:N8×K4 + MM2:N1×K28`（32 核）。BF16 场景切换到 28 核是因为 chip-total / contention 建模让 32 核的 per-core HBM 带宽下降 ~10%，而 FP8/INT8 weight 减半使 HBM 竞争较不显著。
 2. **BF16 绝对节省固定 ~16.1 µs**：MM1+MM2 cube 总时间从 35.78 µs (= 17.89 + 17.89) 压缩到 19.68 µs (= 14.31 + 5.37)，差值 16.10 µs 与 BF16 表中的所有 Δ 一致。
-3. **量化让绝对节省缩水**：INT8 节省 12.52 µs (24.5%)，FP8 节省 10.14 µs (20.8%)。原因是量化已经把 baseline 的 MM1/MM2 cube time 分别从 17.89 µs 压到 10.73 / 8.35 µs，留给 split-kn 的余地变小。
+3. **量化让绝对节省缩水**：INT8 节省 11.90 µs (23.3%)，FP8 节省 9.52 µs (19.5%)。原因是量化已经把 baseline 的 MM1/MM2 cube time 分别从 17.89 µs 压到 10.73 / 8.35 µs，留给 split-kn 的余地变小。
 4. **节省 % 随 hd 增大单调下降**：MM3 与 hd 成正比（hd8 = 2.95 µs → hd128 = 47.19 µs），split-kn 不能加速 MM3，所以 MM3 在 pipeline 中的占比越大，整体 % 收益越小。
 5. **Vector 在 9 个场景中全部被掩盖**：所有最优 config 的 `aiv_busy < aic_busy`，DAG 关键路径完全在 AIC 上。即便 prefill T=128 的 accum_us 达到 5.41 µs，仍 < MM2 cube (5.37) + MM3 cube (47.19) + 后续 AIC 工作的总并行窗口，DAG 隐藏完毕。
 
@@ -71,14 +71,14 @@ AIV: MM1 ──→ AccumCq ──→ ...
 ### 3.2 掩盖余量（hd8 best config 为例）
 
 ```
-config         : MM1:N8×K4+MM2:N1×K28
+config         : MM1:N4×K7+MM2:N1×K28
 MM1 cube       : 14.31 µs   (AIC, on critical path)
-MM1 AccumCq    :  0.04 µs   (AIV, parallel with MM2)
+MM1 AccumCq    :  0.08 µs   (AIV, parallel with MM2)
 MM2 cube       :  5.37 µs   (AIC, parallel with AccumCq)
-                            ★ 5.37 - 0.04 = 5.33 µs 余量
-MM2 AccumCkvKr :  0.04 µs   (AIV, parallel with MM3)
+                            ★ 5.37 - 0.08 = 5.29 µs 余量
+MM2 AccumCkvKr :  0.08 µs   (AIV, parallel with MM3)
 MM3 cube       :  2.95 µs
-                            ★ 2.95 - 0.04 = 2.91 µs 余量
+                            ★ 2.95 - 0.08 = 2.87 µs 余量
 ```
 
 **hd8 的掩盖余量充裕**：accum 只占并行 AIC 窗口的 < 1%。
@@ -88,10 +88,10 @@ MM3 cube       :  2.95 µs
 prefill 是 accum 最容易"暴露"的场景：T 大 → 累加元素多 → accum_us 增长。但即便如此 hidden 仍成立：
 
 ```
-config         : MM1:N8×K4+MM2:N1×K28  (T=128)
+config         : MM1:N4×K7+MM2:N1×K28  (T=128)
 MM1 cube       : 14.31 µs   (AIC)
-MM1 AccumCq    :  5.41 µs   (AIV)
-MM2 cube       :  5.37 µs   (AIC, parallel with AccumCq)  ← AccumCq 略大于 MM2!
+MM1 AccumCq    :  ~5 µs     (AIV)
+MM2 cube       :  5.37 µs   (AIC, parallel with AccumCq)  ← AccumCq 略小于 MM2
 MM3 cube       : 47.19 µs   (AIC)                          ← AccumCq 完成后还有 47 µs AIC 工作
 ```
 
@@ -115,18 +115,20 @@ MM3 cube       : 47.19 µs   (AIC)                          ← AccumCq 完成�
 
 ## 4. 最优切分推荐
 
-### 4.1 唯一最优：`MM1: n_groups=8, k_groups=4` + `MM2: n_groups=1, k_groups=28`
+### 4.1 BF16 最优：`MM1: n_groups=4, k_groups=7` + `MM2: n_groups=1, k_groups=28`
 
-**MM1 (Cq) — 切分策略**
+> FP8/INT8 quant modes still prefer N8×K4 because FP8/INT8 weights halve the per-core B load, making HBM contention at 32 cores less impactful.
+
+**MM1 (Cq) — BF16 切分策略**
 
 | 属性 | 值 |
 |---|---|
-| n_groups | 8 (列向 8 切，每核 single_n = Hcq/8 = 192) |
-| k_groups | 4 (K 向 4 切，每核 single_k = He/4 = 1792) |
-| 总核数 | 32 (= 8 × 4) |
-| 每核处理 | M=stepBS, K=1792, N=192 |
+| n_groups | 4 (列向 4 切，每核 single_n = Hcq/4 = 384) |
+| k_groups | 7 (K 向 7 切，每核 single_k = He/7 = 1024) |
+| 总核数 | 28 (= 4 × 7)，避免 32 核 HBM 竞争 |
+| 每核处理 | M=stepBS, K=1024, N=384 |
 | 每核 cube_us (BF16, T=1) | ~14.31 µs (HBM-bound) |
-| 每核 FixPipe 字节 (FP32 partial) | M × 192 × 4 |
+| 每核 FixPipe 字节 (FP32 partial) | M × 384 × 4 |
 
 **MM2 (CkvKr) — 切分策略**
 
@@ -141,11 +143,11 @@ MM3 cube       : 47.19 µs   (AIC)                          ← AccumCq 完成�
 
 ### 4.2 为什么这是最优
 
-- **MM1 的 N=1536 足够大**：可以承受 8 个 N-cores 同时工作（每核 N=192 仍然是健康的 baseN 倍数）。剩余 4 个 K-cores 让每核 K 减半再减半（7168 → 1792），HBM-bound 的 MM1 cube 时间从 17.89 → 14.31 µs (−20%)。
+- **BF16 场景 MM1 用 28 核 (N4×K7) 而非 32 核 (N8×K4)**：chip-total / contention 建模下，32 核同时竞争 HBM 带宽使 per-core 带宽下降 ~10%。28 核配置（N4×K7）每核 N=384、K=1024，避开了 32 核 HBM contention，cube 时间相同（~14.31 µs）但实际 wall-clock 更优。FP8/INT8 weight 减半使 per-core B load 较低，32 核 contention 不显著，仍用 N8×K4。
 - **MM2 的 N=576 偏小**：再切 N 会让单核 baseN 不饱和。把所有 28 cores 全部投到 K 维，每核 K=256（极小），cube_us 从 17.89 → 5.37 µs (−70%)。
-- **核数预算**：MM1 用 32 cores + MM2 用 28 cores = 60 cores 总配额；实际 MM1 和 MM2 是 **顺序串行执行**（MM2 在 MM1 完成后启动），所以两者可以分别使用全部 32 cores。`28 < 32` 是因为 K=He=7168 不能整除 32，只能取 28 (=7168/256) 让 single_k 整齐。
-- **AccumCq 0.04 µs / AccumCkvKr 0.04 µs**：T=1 时累加元素极少 → 几乎免费 → 永远被掩盖。
-- **FP32 partial 的 FixPipe 压力**：每核 192 × 4 / 576 × 4 字节，per-core FixPipe ~0.5–1.5 µs，仍小于 cube 时间，不会成为瓶颈。
+- **核数预算**：MM1 用 28 cores (BF16) / 32 cores (FP8/INT8) + MM2 用 28 cores；实际 MM1 和 MM2 是 **顺序串行执行**（MM2 在 MM1 完成后启动），所以两者可以分别使用全部核。`28 < 32` 是因为 K=He=7168 不能整除 32，只能取 28 (=7168/256) 让 single_k 整齐。
+- **AccumCq 0.08 µs / AccumCkvKr 0.08 µs**：T=1 时累加元素极少 → 几乎免费 → 永远被掩盖。
+- **FP32 partial 的 FixPipe 压力**：每核 384 × 4 / 576 × 4 字节，per-core FixPipe ~0.5–1.5 µs，仍小于 cube 时间，不会成为瓶颈。
 
 ### 4.3 备选 config（如果实现成本受限）
 
@@ -153,10 +155,10 @@ MM3 cube       : 47.19 µs   (AIC)                          ← AccumCq 完成�
 
 | 备选 | hd128 BF16 pipeline | vs Best | 说明 |
 |---|---:|---:|---|
-| **Best**: MM1:N8×K4 + MM2:N1×K28 | 71.53 µs | 0 | 推荐 |
+| **Best**: MM1:N4×K7 + MM2:N1×K28 | 71.53 µs | 0 | 推荐 (BF16) |
 | MM2:N1×K28 only (MM1 baseline) | 75.11 µs | +3.58 | 只优化 MM2，实现简单 |
 | MM2:N3×K8 | 76.00 µs | +4.47 | MM2 的 N、K 更对称 |
-| MM1:N8×K4 only (MM2 baseline) | 84.05 µs | +12.52 | 只优化 MM1，效果较弱 |
+| MM1:N4×K7 only (MM2 baseline) | 84.05 µs | +12.52 | 只优化 MM1，效果较弱 |
 
 最便宜的实现路径是先做 **MM2:N1×K28**（只动 MM2），收益约 14% (75.11 vs 87.63)。完整收益需要同时做 MM1+MM2。
 
@@ -179,11 +181,11 @@ MM3 cube       : 47.19 µs   (AIC)                          ← AccumCq 完成�
 | 组合方案 | hd128 FP8 pipeline | vs no-opt baseline |
 |---|---:|---:|
 | no-opt baseline | 48.71 µs | — |
-| split-kn only | 38.58 µs | −10.14 µs (−20.8%) |
-| split-kn + split-kn-fused | ~37.12 µs | −11.59 µs (−23.8%) |
-| split-kn + split-kn-fused + dequant-opt | **~33.83 µs** | **−14.88 µs (−30.6%)** |
+| split-kn only | 39.20 µs | −9.52 µs (−19.5%) |
+| split-kn + split-kn-fused | ~37.74 µs | −10.97 µs (−22.5%) |
+| split-kn + split-kn-fused + dequant-opt | **~34.44 µs** | **−14.27 µs (−29.3%)** |
 
-预计 hd128 FP8 decode 综合优化可从 48.71 µs 降到 ~33.8 µs（约 1.44× 加速）。
+预计 hd128 FP8 decode 综合优化可从 48.71 µs 降到 ~34.4 µs（约 1.41× 加速）。
 
 ---
 
@@ -191,7 +193,7 @@ MM3 cube       : 47.19 µs   (AIC)                          ← AccumCq 完成�
 
 按收益密度排序：
 
-1. **MM1: N8×K4 + MM2: N1×K28（split-kn 主优化）** — 实现成本：host tiling + kernel 加 K-split 累加路径。预计 collective 收益 12–16 µs/调用。
+1. **MM1: N4×K7 (BF16) / N8×K4 (FP8/INT8) + MM2: N1×K28（split-kn 主优化）** — 实现成本：host tiling + kernel 加 K-split 累加路径。预计 collective 收益 10–16 µs/调用。
 2. **split-kn-fused 融合 K-accum + RmsNorm**（已有 perf model 验证）— 实现成本：vector 侧 RmsNormCq/RmsNormCkvKr 接受 LocalTensor 输入。额外收益 ~1.5 µs/调用。
 3. **dequant-opt L0C→UB 直通**（已有 perf model 验证）— 实现成本：cube/vector intra-core handover + l0c_to_ub iterator 调用。额外收益 ~3.3 µs/调用 (FP8/INT8 only)。
 
@@ -222,7 +224,7 @@ python perf_analyzer.py --chip 950 --batch-size 1 --head-num 8 --mode split-kn |
 
 ## 8. 限制与注意事项
 
-1. **per-AI-core 视角**：本模型的 cube 时间是单 AI 核 (1 cube + 2 vectors) 视角，不建模 32 个 AI 核之间的 HBM 总线竞争。对 split-kn 配置的相对优劣比较是准确的；绝对 wall-clock 数字可能比真实硬件略乐观（DAG 流水开销 + 总线竞争）。
+1. **chip-total / contention 视角**：本模型的 cube 时间使用 chip-total HBM 带宽 / active_cores 得到 per-core 带宽，已建模多核 HBM 竞争。BF16 场景下 32 核配置的 per-core 带宽比 28 核低 ~10%，这是 MM1 最优从 N8×K4 切换到 N4×K7 的原因。
 2. **K_per_core 整除性**：K 必须能被 k_groups 整除。He=7168 = 2^10 × 7，可以整除 1, 2, 4, 7, 8, 14, 16, 28, 32 等 k_groups。当 k_groups=28 时 single_k=256，是 baseK=128 的两倍，cube 内部 stepK=2 工作良好。
 3. **Hcq/Hckv 整除性**：N_per_core 也需对齐 baseN (32B 的整数倍)。Hcq=1536 整除 192=baseN×1.5；Hckv+Dr=576 不能被 64 整除给 9 个 cores，所以 N1×K28 是把 N 全留给单核的写法。
 4. **stepBatchSize 影响 accum 大小**：T 越大，accum_us 越大。本报告测试到 T=128 (prefill cap)，accum 仍然被 hidden。如果未来 stepBatchSize 增大（>=256），需要重新验证 hidden 仍成立。

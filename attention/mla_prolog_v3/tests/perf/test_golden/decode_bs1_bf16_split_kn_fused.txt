@@ -28,36 +28,36 @@ workspace=138368 bytes
 
   Rank Config                       |  Baseline     Fused        Δ |     MM1 UB     MM2 UB
   ----------------------------------------------------------------------------------------
-     1 MM1:N8xK4+MM2:N1xK28         |    71.53    70.01   -1.51 |  30KB(14%)   11KB(5%) <--
-     2 MM2:N1xK28                   |    75.11    74.36   -0.75 |          -   11KB(5%)
-     3 MM2:N3xK8                    |    76.00    75.22   -0.78 |          -   11KB(5%)
-     4 MM2:N3xK7                    |    76.89    76.11   -0.78 |          -   11KB(5%)
-     5 MM2:N9xK2                    |    78.68    77.89   -0.79 |          -   11KB(5%)
-     6 MM2:N1xK14                   |    80.47    79.70   -0.77 |          -   11KB(5%)
+     1 MM1:N4xK7+MM2:N1xK28         |    71.53    70.00   -1.52 |  30KB(14%)   11KB(5%) <--
+     2 MM2:N1xK28                   |    75.11    74.35   -0.76 |          -   11KB(5%)
+     3 MM2:N3xK8                    |    76.00    75.21   -0.79 |          -   11KB(5%)
+     4 MM2:N3xK7                    |    76.89    76.11   -0.79 |          -   11KB(5%)
+     5 MM2:N9xK2                    |    78.68    77.89   -0.80 |          -   11KB(5%)
+     6 MM2:N1xK14                   |    80.47    79.70   -0.78 |          -   11KB(5%)
      7 MM2:N3xK4                    |    84.05    83.26   -0.79 |          -   11KB(5%)
-     8 MM1:N8xK4                    |    84.05    83.29   -0.76 |  30KB(14%)          -
-     9 MM1:N4xK7                    |    84.05    83.31   -0.74 |  30KB(14%)          -
-    10 MM1:N4xK8                    |    84.05    83.32   -0.74 |  30KB(14%)          -
-    11 MM1:N2xK14                   |    84.05    83.35   -0.70 |  30KB(14%)          -
-    12 MM1:N1xK28                   |    84.05    83.39   -0.66 |  30KB(14%)          -
-    13 MM1:N3xK8                    |    86.44    85.70   -0.74 |  30KB(14%)          -
-    14 MM1:N12xK2                   |    87.63    86.85   -0.78 |  30KB(14%)          -
-    15 MM1:N6xK4                    |    87.63    86.86   -0.77 |  30KB(14%)          -
+     8 MM1:N4xK7                    |    84.05    83.28   -0.77 |  30KB(14%)          -
+     9 MM1:N2xK14                   |    84.05    83.31   -0.74 |  30KB(14%)          -
+    10 MM1:N1xK28                   |    84.05    83.37   -0.69 |  30KB(14%)          -
+    11 MM1:N8xK4                    |    85.47    84.69   -0.78 |  30KB(14%)          -
+    12 MM1:N4xK8                    |    85.47    84.70   -0.76 |  30KB(14%)          -
+    13 MM1:N3xK8                    |    86.44    85.67   -0.76 |  30KB(14%)          -
+    14 MM1:N12xK2                   |    87.63    86.84   -0.79 |  30KB(14%)          -
+    15 MM1:N6xK4                    |    87.63    86.85   -0.78 |  30KB(14%)          -
 
-  Best (fused): MM1:N8xK4+MM2:N1xK28 -> 70.01 us
+  Best (fused): MM1:N4xK7+MM2:N1xK28 -> 70.00 us
     Baseline split-kn pipeline: 71.53 us
-    Fused saving:               1.51 us  (+2.1%)
+    Fused saving:               1.52 us  (+2.1%)
 
   Per-MM breakdown for best config:
-    MM1 (Cq)  n_groups=8 k_groups=4
+    MM1 (Cq)  n_groups=4 k_groups=7
       per_v_m=1  chunks=1  chunk_m=1
-      Fused: accum_load=0.015us  accum_compute=0.020us  rmsnorm=0.015us  store=0.002us  total=0.052us  bound=VECTOR
-      Baseline: accum=0.002us + new_barrier=0.800us + rmsnorm=0.015us = 0.817us
-      Δ (saved): +0.765us
+      Fused: accum_load=0.027us  accum_compute=0.034us  rmsnorm=0.015us  store=0.002us  total=0.078us  bound=VECTOR
+      Baseline: accum=0.029us + new_barrier=0.800us + rmsnorm=0.015us = 0.844us
+      Δ (saved): +0.766us
       UB used: 30720 / 227328 bytes (13.5%)
     MM2 (CkvKr)  n_groups=1 k_groups=28
       per_v_m=1  chunks=1  chunk_m=1
       Fused: accum_load=0.040us  accum_compute=0.052us  rmsnorm=0.006us  store=0.001us  total=0.098us  bound=VECTOR
-      Baseline: accum=0.040us + new_barrier=0.800us + rmsnorm=0.006us = 0.846us
-      Δ (saved): +0.748us
+      Baseline: accum=0.050us + new_barrier=0.800us + rmsnorm=0.006us = 0.855us
+      Δ (saved): +0.757us
       UB used: 11520 / 227328 bytes (5.1%)
