@@ -27,6 +27,7 @@ namespace {
     static constexpr uint64_t CTX_DEFAULT_COPY_OFFSET = 0;  // 默认从最开始拷贝
     static constexpr uint64_t CONTEXT_TAG_MAX_SIZE = 255;   // 最大上下文标签大小
     static constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1; // 当走MTE或者CCU通信时， hccl获取的组网层数应该为1
+    static constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;  // 当走UB_MEM通信时， hccl获取的组网层数应该为0
 }
 
 namespace Mc2Hcom {
@@ -423,6 +424,9 @@ HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRan
     OP_LOGD("", "Get HCCL layers success, netLayerNum is: %u", netLayerNum);
 
     uint32_t netLayers = netLayerNum - 1;
+    if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        netLayers = HCCL_COMM_LAYERS_UB_MEM; // UB_MEM协议只走最底层的通信，直接指定netLayers为0
+    }
     hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "HCCL channel init failed");
@@ -640,7 +644,7 @@ HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
             OP_LOGE("", "Get HCCL rank size failed");
             return HCCL_E_PTR;
         }
-        uint32_t netLayer = 0, srcRankId = 0, dstRankId = 0, netLinkNum = 0;
+        uint32_t netLayer = HCCL_COMM_LAYERS_UB_MEM, srcRankId = 0, dstRankId = 0, netLinkNum = 0;
         CommLink *linksList = nullptr;
         for (uint32_t i = 1; i < epRankSize; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
             dstRankId = i;
@@ -655,8 +659,8 @@ HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
                 return HCCL_E_PTR;
             }
             bool isFoundUbMemProtocol = false;
-            for (uint32_t i = 0; i < netLinkNum; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
-                if (linksList[i].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+            for (uint32_t j = 0; j < netLinkNum; ++j) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
+                if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
                     isFoundUbMemProtocol = true;
                     break;
                 }
