@@ -141,4 +141,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_aclnn_moe_token_permute_with_routing_map_grad.cpp](examples/test_aclnn_moe_token_permute_with_routing_map_grad.cpp) | 通过[aclnnMoeTokenPermuteWithRoutingMap](docs/aclnnMoeTokenPermuteWithRoutingMapGrad.md)接口方式调用MoeTokenPermuteWithRoutingMap算子。 |
+| aclnn接口 | [test_aclnn_moe_token_permute_with_routing_map_grad.cpp](examples/test_aclnn_moe_token_permute_with_routing_map_grad.cpp) | 通过[aclnnMoeTokenPermuteWithRoutingMapGrad](docs/aclnnMoeTokenPermuteWithRoutingMapGrad.md)接口方式调用MoeTokenPermuteWithRoutingMapGrad算子。 |
