@@ -61,7 +61,7 @@ private:
                                 const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
     HcclResult CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     HcclResult GetHcclBufferSize(uint64_t &hcclBuffSize);
-    HcclResult GetCommEngine(CommEngine &engine, CommProtocol &protocol);
+    HcclResult GetCommProtocol(CommProtocol &protocol);
     HcclResult GetaclCreateTensorSymbol();
 
     HcclResult CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle) const;

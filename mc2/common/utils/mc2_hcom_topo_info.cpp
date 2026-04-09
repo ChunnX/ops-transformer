@@ -619,14 +619,9 @@ HcclResult MC2HcomTopology::GetHcclBufferSize(uint64_t &hcclBuffSize)
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::GetCommEngine(CommEngine &engine, CommProtocol &protocol)
+HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
 {
-    OP_LOGD("", "start to get HCCL communication engine");
-    if (HcclRankGraphGetLayers == nullptr) {
-        OP_LOGE("", "HcclRankGraphGetLayers is null");
-        return HCCL_E_PTR;
-    }
-
+    OP_LOGD("", "start to get HCCL communication protocol");
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
     HcclResult ret = HcclRankGraphGetLayers(hcclHandle_, &layerList, &layerNum);
@@ -636,43 +631,43 @@ HcclResult MC2HcomTopology::GetCommEngine(CommEngine &engine, CommProtocol &prot
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        engine = CommEngine::COMM_ENGINE_AIV;
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return HCCL_SUCCESS;
     } else {
-        if (HcclRankGraphGetLinks == nullptr) {
-            OP_LOGE("", "HcclRankGraphGetLinks is null");
+        uint32_t epRankSize = 0;
+        ret = HcclGetRankSize(hcclHandle_, &epRankSize); // 获取通讯域存在多少卡
+        if (ret != HCCL_SUCCESS) {
+            OP_LOGE("", "Get HCCL rank size failed");
             return HCCL_E_PTR;
         }
-        uint32_t testNetLayer = 0;
-        uint32_t testSrcRankId = 0;
-        uint32_t testDstRankId = 1;
-
+        uint32_t netLayer = 0, srcRankId = 0, dstRankId = 0, netLinkNum = 0;
         CommLink *linksList = nullptr;
-        uint32_t netLinkNum = 0;
-        HcclResult hcclRet =
-            HcclRankGraphGetLinks(hcclHandle_, testNetLayer, testSrcRankId, testDstRankId, &linksList, &netLinkNum);
-        if (hcclRet != HCCL_SUCCESS) {
-            OP_LOGE("", "Get HCCL links failed when checking protocol support");
-            return HCCL_E_PTR;
-        }
-        if (netLinkNum == 0) {
-            OP_LOGE("", "No available HCCL links found");
-            return HCCL_E_PTR;
-        }
-        bool foundUbMemProtocol = false;
-        for (uint32_t i = 0; i < netLinkNum; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
-            if (linksList[i].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-                foundUbMemProtocol = true;
-                break;
+        for (uint32_t i = 1; i < epRankSize; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
+            dstRankId = i;
+            HcclResult hcclRet =
+                HcclRankGraphGetLinks(hcclHandle_, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
+            if (hcclRet != HCCL_SUCCESS) {
+                OP_LOGE("", "Get HCCL links failed when checking protocol support");
+                return HCCL_E_PTR;
+            }
+            if (netLinkNum == 0) {
+                OP_LOGE("", "No available HCCL links found");
+                return HCCL_E_PTR;
+            }
+            bool isFoundUbMemProtocol = false;
+            for (uint32_t i = 0; i < netLinkNum; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
+                if (linksList[i].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                    isFoundUbMemProtocol = true;
+                    break;
+                }
+            }
+            if (!isFoundUbMemProtocol) {
+                 OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
+                 return HCCL_E_PTR;
             }
         }
-        if (foundUbMemProtocol) {
-            engine = CommEngine::COMM_ENGINE_AIV;
-            protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-            OP_LOGD("", "Get HCCL communication engine success, engine is: %d, protocol is: %d", engine, protocol);
-            return HCCL_SUCCESS;
-        }
+        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        return HCCL_SUCCESS;
     }
     OP_LOGE("", "Only MTE communication mode is supported");
     return HCCL_E_PTR;
@@ -689,7 +684,7 @@ HcclResult MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char 
     }
     void *ctx = nullptr;
     uint64_t ctxSize = 0;
-    CommEngine engine;
+    CommEngine engine = CommEngine::COMM_ENGINE_AIV;
     CommProtocol protocol;
     Mc2MoeContext contextStruct;
     std::string tag = std::string(groupEp) + opName;
@@ -705,9 +700,9 @@ HcclResult MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char 
         return ret;
     }
 
-    ret = instance.GetCommEngine(engine, protocol);
+    ret = instance.GetCommProtocol(protocol);
     if (ret != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL communication engine failed");
+        OP_LOGE("", "Get HCCL communication protocol failed");
         return ret;
     }
 
