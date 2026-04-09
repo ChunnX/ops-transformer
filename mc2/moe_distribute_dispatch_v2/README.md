@@ -198,7 +198,7 @@ $$
   <tr>
    <td>epRankId</td>
    <td>属性</td>
-   <td>EP域本卡Id，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+   <td>EP域本卡ID，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -226,7 +226,7 @@ $$
   <tr>
    <td>tpRankId</td>
    <td>可选属性</td>
-   <td><li>TP域本卡Id，取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。</li><li>默认值为0。</li></td>
+   <td><li>TP域本卡ID，取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -254,7 +254,7 @@ $$
   <tr>
    <td>quantMode</td>
    <td>可选属性</td>
-   <td><li>表示量化模式，支持0：非量化，1：静态量化，2：动态量化，3：pertile动态量化，4：mxfp8量化。</li><li>默认值为0。</li></td>
+   <td><li>表示量化模式。默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -310,7 +310,7 @@ $$
   <tr>
    <td>dynamicScalesOut</td>
    <td>输出</td>
-   <td>量化场景下，表示本卡输出Token的量化系数，仅quantMode=2时有该输出。</td>
+   <td>量化场景下，表示本卡输出Token的量化系数。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
