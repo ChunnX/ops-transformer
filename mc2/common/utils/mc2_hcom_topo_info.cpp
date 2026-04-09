@@ -165,7 +165,7 @@ HcclResult MC2HcomTopology::CallCommGetNetLayers(HcclComm comm, uint32_t **netLa
 }
 
 HcclResult MC2HcomTopology::CallCommGetInstTopoTypeByNetLayer(HcclComm comm, uint32_t netLayer,
-                                                              uint32_t *topoType) const
+    uint32_t *topoType) const
 {
     if (getTopoType_ == nullptr) {
         OP_LOGE("", "Failed to get topo type, func load failed.");
@@ -362,7 +362,7 @@ HcclResult MC2HcomTopology::GetCommHandle(const char *groupEp)
 }
 
 HcclResult MC2HcomTopology::GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId, uint32_t dstRankId,
-                                             const CommProtocol &protocol, CommLink *&links)
+    const CommProtocol &protocol, CommLink *&links)
 {
     OP_LOGD("", "start to get HCCL communication link");
     if (HcclRankGraphGetLinks == nullptr) {
@@ -372,7 +372,8 @@ HcclResult MC2HcomTopology::GetHcclCommLink(uint32_t netLayers, uint32_t srcRank
 
     CommLink *linksList = nullptr;
     uint32_t netLinkNum = 0;
-    HcclResult hcclRet = HcclRankGraphGetLinks(hcclHandle_, netLayers, srcRankId, dstRankId, &linksList, &netLinkNum);
+    HcclResult hcclRet = HcclRankGraphGetLinks(hcclHandle_, netLayers, srcRankId, 
+        dstRankId, &linksList, &netLinkNum);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Get HCCL link failed");
         return HCCL_E_PTR;
@@ -401,7 +402,7 @@ HcclResult MC2HcomTopology::GetHcclCommLink(uint32_t netLayers, uint32_t srcRank
 }
 
 HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
-                                                const CommEngine &engine, std::vector<ChannelHandle> &channels)
+    const CommEngine &engine, std::vector<ChannelHandle> &channels)
 {
     OP_LOGD("", "start to get HCCL communication channel");
     if (HcclRankGraphGetLayers == nullptr || HcclChannelAcquire == nullptr) {
@@ -455,7 +456,7 @@ HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRan
 }
 
 HcclResult MC2HcomTopology::GetHcclCommResource(const CommEngine &engine, const CommProtocol &protocol,
-                                                 Mc2MoeContext *mc2ContextStruct)
+    Mc2MoeContext *mc2ContextStruct)
 {
     OP_LOGD("", "start to get HCCL communication resource");
     if (HcclGetHcclBuffer == nullptr || HcclChannelGetHcclBuffer == nullptr) {
@@ -496,7 +497,7 @@ HcclResult MC2HcomTopology::GetHcclCommResource(const CommEngine &engine, const 
 }
 
 HcclResult MC2HcomTopology::CreatMc2Context(const std::string &mc2ContextTag, const CommEngine &engine,
-                                             const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct)
+    const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct)
 {
     OP_LOGD("", "start to create HCCL context");
     if (HcclEngineCtxCreate == nullptr || HcclGetRankId == nullptr || HcclGetRankSize == nullptr ||
