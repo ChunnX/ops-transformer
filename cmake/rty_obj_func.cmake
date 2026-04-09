@@ -275,29 +275,35 @@ macro(add_modules_sources)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-  if (OPINFER_SRCS)
-    add_infer_modules()
-    target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
-  endif()
+  # RTY 模式：跳过 infer/tiling/aicpu 目标对象的创建
+  if (NOT BUILD_OPS_RTY_KERNEL)
+    message(STATUS "[add_modules_sources] Building ${OP_NAME} in normal mode (RTY disabled)")
+    file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
+    if (OPINFER_SRCS)
+      add_infer_modules()
+      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
+    endif()
 
-  file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
-  file(GLOB OPTILING_SRCS 
-      ${SOURCE_DIR}/*_tiling*.cpp
-      ${SOURCE_DIR}/*fallback*.cpp
-      ${SOURCE_DIR}/op_tiling/arch35/*.cpp
-      ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
-      )
-  if (OPTILING_SRCS OR SUB_OPTILING_SRC)
-    add_tiling_modules()
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
-    # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
-  endif()
+    file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
+    file(GLOB OPTILING_SRCS 
+        ${SOURCE_DIR}/*_tiling*.cpp
+        ${SOURCE_DIR}/*fallback*.cpp
+        ${SOURCE_DIR}/op_tiling/arch35/*.cpp
+        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
+        )
+    if (OPTILING_SRCS OR SUB_OPTILING_SRC)
+      add_tiling_modules()
+      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
+      # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+    endif()
 
-  file(GLOB AICPU_SRCS ${MODULE_DIR}/*_aicpu*.cpp)
-  if (AICPU_SRCS)
-    add_aicpu_kernel_modules()
-    target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+    file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
+    if (AICPU_SRCS)
+      add_aicpu_kernel_modules()
+      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+    endif()
+  else()
+    message(STATUS "[add_modules_sources] Building ${OP_NAME} in RTY mode, skipping infer/tiling/aicpu objects")
   endif()
 
   if (MODULE_OPTYPE)
@@ -379,29 +385,35 @@ macro(add_modules_sources_with_soc)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-  if (OPINFER_SRCS)
-    add_infer_modules()
-    target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
-  endif()
+  # RTY 模式：跳过 infer/tiling/aicpu 目标对象的创建
+  if (NOT BUILD_OPS_RTY_KERNEL)
+    message(STATUS "[add_modules_sources_with_soc] Building ${OP_NAME} in normal mode (RTY disabled)")
+    file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
+    if (OPINFER_SRCS)
+      add_infer_modules()
+      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
+    endif()
 
-  file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/*_tiling*.cpp)
-  file(GLOB OPTILING_SRCS 
-      ${SOURCE_DIR}/*_tiling*.cpp
-      ${SOURCE_DIR}/*fallback*.cpp
-      ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-      ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
-      )
-  if (OPTILING_SRCS OR SUB_OPTILING_SRC)
-    add_tiling_modules()
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
-    # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
-  endif()
+    file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/*_tiling*.cpp)
+    file(GLOB OPTILING_SRCS 
+        ${SOURCE_DIR}/*_tiling*.cpp
+        ${SOURCE_DIR}/*fallback*.cpp
+        ${SOURCE_DIR}/../op_graph/fallback_*.cpp
+        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
+        )
+    if (OPTILING_SRCS OR SUB_OPTILING_SRC)
+      add_tiling_modules()
+      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
+      # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+    endif()
 
-  file(GLOB AICPU_SRCS ${MODULE_DIR}/*_aicpu*.cpp)
-  if (AICPU_SRCS)
-    add_aicpu_kernel_modules()
-    target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+    file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
+    if (AICPU_SRCS)
+      add_aicpu_kernel_modules()
+      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+    endif()
+  else()
+    message(STATUS "[add_modules_sources_with_soc] Building ${OP_NAME} in RTY mode, skipping infer/tiling/aicpu objects")
   endif()
 
   if (MODULE_OPTYPE)
@@ -473,37 +485,43 @@ macro(add_mc2_modules_sources)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-  if (OPINFER_SRCS)
-    add_infer_modules()
-    target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
-  endif()
+  # RTY 模式：跳过 infer/tiling/aicpu/gentask 目标对象的创建
+  if (NOT BUILD_OPS_RTY_KERNEL)
+    message(STATUS "[add_mc2_modules_sources] Building ${OP_NAME} in normal mode (RTY disabled)")
+    file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
+    if (OPINFER_SRCS)
+      add_infer_modules()
+      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
+    endif()
 
-  file(GLOB_RECURSE OPTILING_SRCS 
-      ${SOURCE_DIR}/op_tiling/*.cpp
-      ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-      ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
-      ${SOURCE_DIR}/../../common/src/matmul_formulaic_tiling.cpp
-      ${SOURCE_DIR}/../../common/src/mc2_hcom_topo_info.cpp
-      ${SOURCE_DIR}/../../common/src/mc2_matmul_tiling_cfg.cpp)
-  if (OPTILING_SRCS)
-    add_tiling_modules()
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS})
-  endif()
+    file(GLOB_RECURSE OPTILING_SRCS 
+        ${SOURCE_DIR}/op_tiling/*.cpp
+        ${SOURCE_DIR}/../op_graph/fallback_*.cpp
+        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
+        ${SOURCE_DIR}/../../common/src/matmul_formulaic_tiling.cpp
+        ${SOURCE_DIR}/../../common/src/mc2_hcom_topo_info.cpp
+        ${SOURCE_DIR}/../../common/src/mc2_matmul_tiling_cfg.cpp)
+    if (OPTILING_SRCS)
+      add_tiling_modules()
+      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS})
+    endif()
 
-  file(GLOB AICPU_SRCS ${MODULE_DIR}/*_aicpu*.cpp)
-  if (AICPU_SRCS)
-    add_aicpu_kernel_modules()
-    target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
-  endif()
+    file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
+    if (AICPU_SRCS)
+      add_aicpu_kernel_modules()
+      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+    endif()
 
-  file(GLOB GENTASK_SRCS
-      ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
-      ${SOURCE_DIR}/../../common/src/mc2_a5_gen_task_utils.cpp
-  )
-  if(GENTASK_SRCS)
-    add_opmaster_ct_gentask_modules()
-    target_sources(${OPHOST_NAME}_opmaster_ct_gentask_obj PRIVATE ${GENTASK_SRCS})
+    file(GLOB GENTASK_SRCS
+        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
+        ${SOURCE_DIR}/../../common/src/mc2_a5_gen_task_utils.cpp
+    )
+    if(GENTASK_SRCS)
+      add_opmaster_ct_gentask_modules()
+      target_sources(${OPHOST_NAME}_opmaster_ct_gentask_obj PRIVATE ${GENTASK_SRCS})
+    endif()
+  else()
+    message(STATUS "[add_mc2_modules_sources] Building ${OP_NAME} in RTY mode, skipping infer/tiling/aicpu/gentask objects")
   endif()
 
   if (MODULE_OPTYPE)
@@ -539,6 +557,28 @@ macro(add_mc2_modules_sources)
   endif()
 endmacro()
 
+# 添加graph plugin object
+function(add_graph_plugin_modules)
+  if(NOT TARGET ${GRAPH_PLUGIN_NAME}_obj)
+    add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
+    target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
+      ${OP_PROTO_INCLUDE}
+    )
+    target_compile_definitions(${GRAPH_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="GRAPH_PLUGIN" LOG_CPP)
+    target_compile_options(
+      ${GRAPH_PLUGIN_NAME}_obj PRIVATE $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
+                                       -fvisibility=hidden
+      )
+    target_link_libraries(
+      ${GRAPH_PLUGIN_NAME}_obj
+      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+              $<BUILD_INTERFACE:dlog_headers>
+              $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
+              $<$<TARGET_EXISTS:ops_base_infer_objs>:$<TARGET_OBJECTS:ops_base_infer_objs>>
+      )
+  endif()
+endfunction()
+
 # useage: add_graph_plugin_sources()
 macro(add_graph_plugin_sources)
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -556,17 +596,23 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  file(GLOB GRAPH_PLUGIN_SRCS 
-      ${SOURCE_DIR}/*_graph_plugin*.cpp
-  )
-  if(GRAPH_PLUGIN_SRCS)
-    add_graph_plugin_modules()
-    target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${GRAPH_PLUGIN_SRCS})
-  endif()
+  # RTY 模式：跳过 graph_plugin 目标对象的创建
+  if (NOT BUILD_OPS_RTY_KERNEL)
+    message(STATUS "[add_graph_plugin_sources] Building ${OP_NAME} in normal mode (RTY disabled)")
+    file(GLOB GRAPH_PLUGIN_SRCS 
+        ${SOURCE_DIR}/*_graph_plugin*.cpp
+    )
+    if(GRAPH_PLUGIN_SRCS)
+      add_graph_plugin_modules()
+      target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${GRAPH_PLUGIN_SRCS})
+    endif()
 
-  file(GLOB GRAPH_PLUGIN_PROTO_HEADERS ${SOURCE_DIR}/*_proto*.h)
-  if(GRAPH_PLUGIN_PROTO_HEADERS)
-    target_sources(${GRAPH_PLUGIN_NAME}_proto_headers INTERFACE ${GRAPH_PLUGIN_PROTO_HEADERS})
+    file(GLOB GRAPH_PLUGIN_PROTO_HEADERS ${SOURCE_DIR}/*_proto*.h)
+    if(GRAPH_PLUGIN_PROTO_HEADERS)
+      target_sources(${GRAPH_PLUGIN_NAME}_proto_headers INTERFACE ${GRAPH_PLUGIN_PROTO_HEADERS})
+    endif()
+  else()
+    message(STATUS "[add_graph_plugin_sources] Building ${OP_NAME} in RTY mode, skipping graph_plugin objects")
   endif()
 endmacro()
 
