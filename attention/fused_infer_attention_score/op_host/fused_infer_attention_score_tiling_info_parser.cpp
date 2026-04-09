@@ -1207,8 +1207,8 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
         actualLenQDims_ = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
         if ((qLayout_ == FiaLayout::TND) || (qLayout_ == FiaLayout::NTD)) {
             isAccumQSeq_ = true;
-        }
-        if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
+        } else if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
+            // TND格式needInit_不需要置为1，用else if隔开
             uint32_t loop = std::min(bSize_, actualLenQDims_);
             for (uint32_t i = 0; i < loop; i++) {
                 if (actualLenQData[i] != static_cast<int64_t>(s1Size_)) {
