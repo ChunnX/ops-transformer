@@ -246,7 +246,7 @@ sequenceDiagram
 
 **Theory**：在 cube 侧把 MM1 / MM2 的核分成 `n_groups × k_groups` 网格。N 维 split 增加并行核数，K 维 split 减少每核 HBM 加载量。**两者一起做** 能同时提升核利用率与每核带宽预算。
 
-**修正前的 bug**（commit pending）：`estimate_matmul_split_kn` 把 `N = N_per_core × n_groups, active_cores = total_cores` 传给 `estimate_matmul_detailed`，导致 `per_core_N = N / active_cores = N_per_core / k_groups`。每核 cube 计算量、L0B 加载、FixPipe 字节都被低估了 `k_groups×`，让 K-split 看起来"白嫖"算力（hd8 best 假象 9.32 µs / 78.5%）。**修正**：采用 chip-total / contention 约定，传入 `N = N_per_core × total_cores, active_cores = total_cores`，per-core 带宽 = `chip_bw / total_cores`，反映多核竞争 HBM 带宽。这使得 32 核配置的 per-core 带宽比 28 核低 ~10%，导致 BF16 场景最优 MM1 从 N8×K4 切换到 N4×K7。
+采用 chip-total / contention 约定，传入 `N = N_per_core × total_cores, active_cores = total_cores`，per-core 带宽 = `chip_bw / total_cores`，反映多核竞争 HBM 带宽。这使得 32 核配置的 per-core 带宽比 28 核低 ~10%，导致 BF16 场景最优 MM1 从 N8×K4 切换到 N4×K7。
 
 **FixPipe 压力建模**：当 `k_groups > 1`，cube 输出 dtype 为 FP32 (4 字节，不是 BF16 的 2 字节)；per-core FixPipe 字节 = `M × N_per_core × 4`。修正后 per_core_N 正确，per-core FixPipe 时间 k_groups× 大于错误版本，**正确反映 K-split 引入的搬出压力**。
 
@@ -262,14 +262,8 @@ sequenceDiagram
 | MM1 (Cq) FP8/INT8 | 8 | 4 | 32 | Hcq/8 = 192 | He/4 = 1792 | FP8 weight 减半，32 核竞争不显著 |
 | MM2 (CkvKr) | 1 | 28 | 28 | Hckv+Dr = 576 | He/28 = 256 | N=576 偏小，全部投到 K |
 
-**理论 vs 实测**：
 
-| 场景 | 修正前 best | 修正后 best |
-|---|---|---|
-| decode bs1 hd8 BF16  | MM1:N1×K28 + MM2:N3×K8 → 9.32 µs (78.5%, 假象)  | MM1:N4×K7 + MM2:N1×K28 → 27.23 µs (37.2%, 真实) |
-| decode bs1 hd128 BF16 | MM1:N1×K28 + MM2:N3×K8 → 53.62 µs (38.8%) | MM1:N4×K7 + MM2:N1×K28 → 71.53 µs (18.4%) |
-
-修正后的 best：BF16 场景为 `MM1:N4×K7 + MM2:N1×K28`（28 核，避免 32 核 HBM contention），FP8/INT8 场景仍用 `MM1:N8×K4 + MM2:N1×K28`（32 核，FP8 weight 减半使 HBM 竞争较不显著）。下一节给出 He 维度敏感度分析，验证这一最优在不同模型规模下的稳定性。
+最优配饰：BF16 场景为 `MM1:N4×K7 + MM2:N1×K28`（28 核，避免 32 核 HBM contention），FP8/INT8 场景仍用 `MM1:N8×K4 + MM2:N1×K28`（32 核，FP8 weight 减半使 HBM 竞争较不显著）。下一节给出 He 维度敏感度分析，验证这一最优在不同模型规模下的稳定性。
 
 #### 2.1.1 He 维度敏感度分析（1k–8k 与 7680）
 
@@ -1204,71 +1198,3 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrDequantRopeFused(
 - **预期**：FP8 decode bs1 hd128 从 ~39.45 → ~37.92 µs
 
 最终预期：FP8 decode bs1 hd128 从 48.97 → ~34.39 µs（−29.8%，**1.42× 加速**）
-
----
-
-## 11. 风险与缓解
-
-| 风险 | 等级 | 缓解 |
-|---|:---:|---|
-| Split-KN partial workspace 占用 ~11 MB（k_groups=4 + 28），prefill 大 stepBS 下需要 K-partial 区在 L2 cache 之外，HBM 带宽变高 | 中 | perf model 已假设 partial 走 L2 命中。Phase 3 profiling 校准；如果 L2 miss 显著，缩小 mm2KGroups（K 切到 14 或 8） |
-| Bug A 修正后 hd128 split-kn 收益从 38.8% 降到 18.4%，与早期 split-kn 报告矛盾 | 低 | 早期数字源自 buggy model；修正后才是真值。已在 `report_split_kn.md` 第 1 节解释 |
-| `l0c_to_ub` 的 VDEQ16 模式不覆盖 V3 全部量化组合（per-token kvQuantMode=3 需要 multi-burst scale） | 中 | per-token 路径回退到 §8.5 第 4 步显式 Cast + Mul；perf model 已注释此限制 |
-| `service_rms_norm.h` 当前签名只接受 GlobalTensor 输入，需要扩展 | 中 | Phase 2 kernel 工作；接口变更不影响外部，只在 fused 路径下走新重载 |
-| Decode bs1 stepBS 小，per-V-core M=1 时 chunks=1，M-split 假设依然成立，但 V 核利用率低（只有 stepBS 个 V 核工作） | 低 | 与 baseline 等效，不会更差。perf model 已正确反映 |
-| Intra-core HardEvent (`FIX_V`, `V_MTE3`, `MTE3_M`) 实际硬件延迟未知，模型按 0 估算 | 低 | per H6 假设，profiling 校准。即便有 1–2 cycle stalls，不影响相对收益 |
-| 三 template 参数组合的 dispatch 表 4 条新路径，编译时间膨胀 | 低 | EnableDequantOpt 仅在量化路径开启，Split-KN 与 Fused 绑定。实际新增 ~3 个 template 实例 |
-
----
-
-## 12. 验证
-
-### 12.1 Perf model 验证（已完成）
-
-```bash
-cd attention/mla_prolog_v3/tests/perf
-python test_regression.py        # 24/24 passes (corrected baseline)
-python test_perf_unit.py         # 35/35 passes
-
-# 复现报告中的数字
-python perf_analyzer.py --chip 950 --batch-size 1 --head-num 8   --mode split-kn
-python perf_analyzer.py --chip 950 --batch-size 1 --head-num 128 --mode split-kn
-python perf_analyzer.py --chip 950 --batch-size 1 --head-num 128 --weight-quant-mode 3 --mode dequant-opt
-python perf_analyzer.py --chip 950 --batch-size 1 --head-num 8   --mode split-kn-fused
-```
-
-### 12.2 Kernel 实测验证（Phase 2 完成后）
-
-```bash
-# pytest with new feature flags
-pytest attention/mla_prolog_v3/tests/pytest/test.py \
-       -k "test_split_kn_decode_bs1_hd128 or test_dequant_opt_fp8" -v
-
-# profile (实机)
-bash build.sh --pkg --soc=ascend910b --ops=mla_prolog_v3 -j16
-python tests/profile/profile_decode_fp8.py --enable-split-kn --enable-dequant-opt
-# 期望: ~33.8 µs ± 15%
-```
-
-### 12.3 与 perf model 对齐
-
-每完成一个 Round，运行实机 profiling 并对比 perf model 预测：
-
-| Round | 配置 | Perf model 预测 | 实机目标 (±15%) |
-|---|---|---:|---:|
-| 1 (DequantOpt) | FP8 decode bs1 hd128 | 45.43 µs | 38.6–52.2 µs |
-| 2 (+ Split-KN) | FP8 decode bs1 hd128 | 38.58 µs | 32.8–44.4 µs |
-| 3 (+ Fused) | FP8 decode bs1 hd128 | 37.12 µs | 31.6–42.7 µs |
-
----
-
-## 13. 参考
-
-- `MlaPrologV3_DequantOpt设计.md` — Round 1 的详细设计
-- `MlaPrologV3_SplitKN_FusedAccum设计.md` — Round 3 的详细设计
-- `tests/perf/report_split_kn.md` — Round 2 的 perf model sweep 与最优配置选择
-- `tests/perf/methodology.md` — 性能建模假设 (H1–H9)
-- `tests/perf/CLAUDE.md` — perf 模块导览，§3 hypotheses 含 H9 (per-AI-core split-kn scope)
-- `attention/mla_preprocess/op_kernel/l0c_to_ub_iterator.h` — DequantOpt 引用的 L0C→UB iterator
-- `attention/mla_preprocess/op_kernel/l1_to_ub_iterator.h` — DequantOpt 引用的 UB→L1 iterator
-- `attention/fused_infer_attention_score/op_kernel/attn_infra/epilogue/` — UB pingpong 工程范式

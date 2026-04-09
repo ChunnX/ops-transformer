@@ -28,13 +28,13 @@ Chip total: BF16 = 432.5 TFLOPS, FP8 = 865.1 TFLOPS
 
 **Per-core bandwidth (bytes/cycle)**:
 
-| Bus | B/cycle | GB/s @1.65GHz | Contention |
-|-----|---------|---------------|-----------|
-| HBM→L1 (MTE1/MTE2) | 33.3 | 54.9 (theoretical) | Yes: min(theoretical, chip_total/active_cores) |
-| L2→Core | 108.0 | 178.2 (theoretical) | Yes: min(theoretical, chip_total/active_cores) |
-| L1→L0A (MTE1) | 256.0 | 422.4 | No (per-core local bus) |
-| L1→L0B (MTE1) | 256.0 | 422.4 | No |
-| L0C→FixPipe | 256.0 | 422.4 | No |
+| Bus | Engine | B/cycle | GB/s @1.65GHz | Parallelism |
+|-----|--------|---------|---------------|-------------|
+| HBM→L1 | MTE2 | 33.3 | 54.9 | A+B **共享带宽**: `(A+B)/bw`。Contention: min(theoretical, chip_total/active_cores) |
+| L2→L1 | MTE2 | 108.0 | 178.2 | 同上，L2 复用时使用 |
+| L1→L0A | MTE1 | 256.0 | 422.4 | A+B **并行** (不同目的地): `max(l0a, l0b)`。Per-core local bus |
+| L1→L0B | MTE1 | 256.0 | 422.4 | 同上 |
+| L0C→FixPipe | FixPipe | 256.0 | 422.4 | Per-core |
 | UB→L1 | 245.0 | 404.2 | No |
 | UB→Reg | 512.0 | 844.8 | No |
 
