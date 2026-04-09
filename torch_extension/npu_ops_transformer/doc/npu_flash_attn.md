@@ -448,7 +448,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
--   该接口支持训练和推理场景下使用。
+-   该接口支持训练正向和推理场景下使用。
 -   layout匹配关系如下：
     <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
     <col style="width: 247px">
@@ -516,8 +516,6 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     </tbody>
     </table>
 
-## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
--   该接口支持训练正向和推理场景下使用。
 - 确定性计算：
   - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
 - 公共约束
