@@ -35,13 +35,16 @@ using namespace MoeDistributeDispatchV2FullMeshImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
+REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
+
 template<bool HasTp, uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_dispatch_v3(
-    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
-    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
+    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
     GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    TPipe pipe;
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {

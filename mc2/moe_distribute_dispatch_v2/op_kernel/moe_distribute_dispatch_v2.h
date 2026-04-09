@@ -1484,5 +1484,21 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         }
     }
 }
+
+// Exported helper function template for v3 kernel
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchV2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
+                                                    GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+                                                    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+                                                    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+                                                    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, info, tilingGM);
+    MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc> op;
+    op.Init(mc2Context, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut,
+            assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
+    op.Process();
+}
 } // MoeDistributeDispatchV2Impl
+
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_H

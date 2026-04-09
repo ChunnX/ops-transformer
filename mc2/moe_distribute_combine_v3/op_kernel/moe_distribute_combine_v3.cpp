@@ -33,6 +33,8 @@ using namespace AscendC;
 using namespace MoeDistributeCombineV2Impl;
 using namespace Mc2Tiling;
 
+REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
+
 namespace {
 template <CombineMC2TypeClass>
 __aicore__ inline void ExecMoeDistributeCombineV3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds,
