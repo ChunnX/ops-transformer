@@ -607,7 +607,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持pse/左padding/公共前缀/后量化。</li>
         </ul>
         </td>
-        <td>BFLOAT16</td>
+        <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
         <td>(Q_N)</td>
         <td>×</td>
@@ -1714,7 +1714,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 特性交叉约束
   - 公共
     - LearnableSink 使能场景下，tensor dtype需要和query dtype保持一致
-    - LearnableSink 使能场景下，Q_N 仅支持 64、128、192
+    - LearnableSink 使能场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
     - LearnableSink 使能场景下，innerPrecise 必须为高精度模式 (0)
     - LearnableSink 不支持左padding场景、不支持公共前缀场景、不支持pse场景、不支持alibi场景
     - LearnableSink 不支持全量化场景、不支持伪量化场景、不支持Decode MLA场景
