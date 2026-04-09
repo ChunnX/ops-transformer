@@ -27,12 +27,12 @@
 namespace aicpu {
 uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
-    bool success = Prepare(ctx);
+        bool success = Prepare(ctx);
     if (!success) {
         return KERNEL_STATUS_PARAM_INVALID;
     }
     SplitResult splitRes{aicCoreNum_, aivCoreNum_};
-    success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
+        success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
@@ -43,9 +43,9 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
-    // output
+        // output
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
-
+    
     bool requiredAttrs =
                 GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
                 GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
@@ -56,7 +56,7 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     if (!requiredAttrs) {
         return false;
     }
-    // attributes optional
+        // attributes optional
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
@@ -66,7 +66,7 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
-    return ParamsInit();
+        return ParamsInit();
     // return true;
 }
 
@@ -89,7 +89,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
         auto sequsedKv = (int32_t *)sequsedKv_->GetData();
         for (uint32_t i = 0; i < batchSize_; ++i) {
-            actualSeqLengths[i] = sequsedKv[i];
+            actualSeqLengthsKV[i] = sequsedKv[i];
         }
     } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         auto cuSeqlensKv = (int32_t *)cuSeqlensKv_->GetData();
@@ -162,17 +162,17 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
 uint32_t FlashAttnMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
     return actualSeqLengths[bIdx];
-}
+    }
 
 uint32_t FlashAttnMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
     return actualSeqLengthsKV[bIdx];
-}
+    }
 
 uint32_t FlashAttnMetadataCpuKernel::GetSparseSeqSize(uint32_t bIdx)
 {
     return 0U;
-}
+    }
 
 void FlashAttnMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
 {
@@ -839,7 +839,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
 {
     uint32_t sectionNum = 1;
     detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
-    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
+        for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         for (size_t i = 0; i < aicCoreNum_; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
@@ -861,7 +861,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
         }
         // FA Metadata Generate
         for (size_t i = 0; i < splitRes.usedCoreNum; ++i) {
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 1U);
+            // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 1U);
             // FA start
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, (i == 0) ? 0U : splitRes.bN2End[i - 1]);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, (i == 0) ? 0U : splitRes.gS1End[i - 1]);
@@ -877,7 +877,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
         // FD Metadata Generate
         const FlashDecodeResult &fdRes = splitRes.fdRes;
         for (size_t i = 0; i < fdRes.usedVecNum; ++i) {
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 1U);
+            // faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 1U);
             uint32_t curTaskIdx = fdRes.taskIdx[i];
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, fdRes.bN2Idx[curTaskIdx]);
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, fdRes.mIdx[curTaskIdx]);
