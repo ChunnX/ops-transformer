@@ -1,97 +1,69 @@
-[2026-04-06 19:14:22] Warning: The current environment is configured for ascend910_93, Please use Atlas A3 series hardware for optimal performance.
-[2026-04-06 19:14:22] ~/workspace/ops-transformer/build/gen_bisheng_dir ~/workspace/ops-transformer
-[2026-04-06 19:14:22] ~/workspace/ops-transformer
-[2026-04-06 19:14:22] [2026-04-06 19:14:22] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DASCEND_OP_NAME=mega_moe -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/home/mace/workspace/ops-transformer/third_party -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/home/mace/miniconda3/Ascend/cann-9.0.0-beta.2 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/bin/ccache -DASCEND_COMPUTE_UNIT=ascend910_93 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
-[2026-04-06 19:14:22] -- The C compiler identification is GNU 13.3.0
-[2026-04-06 19:14:23] -- The CXX compiler identification is GNU 13.3.0
-[2026-04-06 19:14:23] -- Detecting C compiler ABI info
-[2026-04-06 19:14:23] -- Detecting C compiler ABI info - done
-[2026-04-06 19:14:23] -- Check for working C compiler: /usr/bin/cc - skipped
-[2026-04-06 19:14:23] -- Detecting C compile features
-[2026-04-06 19:14:23] -- Detecting C compile features - done
-[2026-04-06 19:14:24] -- Detecting CXX compiler ABI info
-[2026-04-06 19:14:24] -- Detecting CXX compiler ABI info - done
-[2026-04-06 19:14:24] -- Check for working CXX compiler: /usr/bin/c++ - skipped
-[2026-04-06 19:14:24] -- Detecting CXX compile features
-[2026-04-06 19:14:24] -- Detecting CXX compile features - done
-[2026-04-06 19:14:24] -- ASCEND_CANN_PACKAGE_PATH=/home/mace/miniconda3/Ascend/cann-9.0.0-beta.2
-[2026-04-06 19:14:24] -- compile project with library
-[2026-04-06 19:14:24] -- Find opbase source dir: /home/mace/workspace/ops-transformer/third_party/opbase
-[2026-04-06 19:14:24] D	aicpu_common/context/CMakeLists.txt
-[2026-04-06 19:14:24] D	aicpu_common/context/common/async_cpu_kernel.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/async_event_util.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/context.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/cpu_kernel_cache.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/cpu_kernel_register.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/cpu_kernel_utils.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/device.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/device_cpu_kernel.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/device_sharder.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/eigen_threadpool.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/host_sharder.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/common/node_def_builder.cpp
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/attr_value.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/node_def.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/node_def_impl.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/tensor.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/tensor_impl.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/tensor_shape.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cust_op/cust_dlog_record.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/cust_op/cust_dlog_record.h
-[2026-04-06 19:14:24] D	aicpu_common/context/cust_op/cust_op_log.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/device/CMakeLists.txt
-[2026-04-06 19:14:24] D	aicpu_common/context/host/CMakeLists.txt
-[2026-04-06 19:14:24] D	aicpu_common/context/utils/bcast.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/utils/eigen_tensor.cc
-[2026-04-06 19:14:24] D	aicpu_common/context/utils/kernel_util.cc
-[2026-04-06 19:14:24] D	include/aclnnop/aclnn_util.h
-[2026-04-06 19:14:24] D	include/nnopbase/aclnn/acl_meta.h
-[2026-04-06 19:14:24] D	include/nnopbase/aclnn/aclnn_base.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/aicpu/aicpu_any_value.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/aicpu/aicpu_args_handler.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/aicpu/aicpu_ext_info_handle.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/aicpu/aicpu_kernel_launcher.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/aicpu/aicpu_task.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/aicpu/aicpu_uitls.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/bfloat16.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/common_types.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/data_type_utils.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/fast_vector.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/format_utils.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/fp16_t.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/framework_op.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/make_op_executor.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/object.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_arg_def.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_cache.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_cache_container.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_common/data_type_utils.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_config.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_def.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_dfx.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_errno.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_executor.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/op_log.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/platform.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/pool_allocator.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/shape_utils.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/small_vector.h
-[2026-04-06 19:14:24] D	include/nnopbase/opdev/tensor_view_utils.h
-[2026-04-06 19:14:24] -- Found Python3: /home/mace/miniconda3/bin/python3 (found version "3.13.12") found components: Interpreter 
-[2026-04-06 19:14:24] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=/usr/bin/ccache
-[2026-04-06 19:14:24] -- CCACHE_PROGRAM=/usr/bin/ccache
-[2026-04-06 19:14:24] -- ASCEND_COMPUTE_UNIT=ascend910_93
-[2026-04-06 19:14:24] -- ASCEND_OP_NAME=mega_moe
-[2026-04-06 19:14:24] -- TILING_KEY=
-[2026-04-06 19:14:24] -- TESTS_UT_OPS_TEST=
-[2026-04-06 19:14:24] -- TESTS_EXAMPLE_OPS_TEST=
-[2026-04-06 19:14:24] -- CMAKE_BUILD_TYPE=Release
-[2026-04-06 19:14:24] -- VERSION=
-[2026-04-06 19:14:26] -- Configuring incomplete, errors occurred!
+算子,需求,"用例设计维度
+（功能/性能/边界/异常用例）",对应用例,设计开发
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,单算子、固定BS场景功能用例,ID001-ID005,x
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,单算子、可变BS场景功能用例,ID006-ID010,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,图模式、固定BS场景功能用例,ID011-ID015,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,图模式、可变BS场景功能用例,ID016-ID020,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,单算子、量化场景功能用例,ID021-ID025,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,图模式、量化场景功能用例,ID026-ID030,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,仅缩容共享专家卡功能用例,ID031-ID035,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,仅缩容MOE专家卡功能用例,ID036-ID040,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,缩容输入泛化测试用例,ID041-ID048,
+MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,非使能场景下测试用例,ID049-ID054,
+
+
+用例测试维度,,case_name,bs,h,k,graph_type,quant_mode,is_variable_bs,ep_world_size_original,random_seed,shared_expert_num,shared_expert_rank_num,broken_card_num(random),broken_shared_card_num,broken_moe_card_num,ep_world_size_after,local_moe_expertNum,moe_expert_num_after,is_performance,精度对比标准,执行预期结果,实际执行结果,备注
+单算子、固定BS场景功能用例,,Test_FullMeshElastic_16die_ID001,1,1024,1,0,0,0,16,61726,2,4,1,0,0,15,12,132,1,执行双方比对脚本,通过,通过,broken_card_num(random)表示脚本中开启随机缩容，缩多少张卡；broken_moe_card_num/moe_card_num表示脚本中固定缩容多少共享专家卡/Moe专家卡；
+,,Test_FullMeshElastic_16die_ID002,8,4096,4,0,0,0,16,7162,2,2,3,0,0,13,11,121,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID003,64,7168,8,0,0,0,16,18880,4,4,2,0,0,14,7,70,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID004,128,4096,11,0,2,0,16,19891,2,2,4,0,0,12,11,110,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID005,256,8192,12,0,2,0,16,4821,1,2,2,0,0,14,5,60,0,执行双方比对脚本,通过,通过,
+单算子、可变BS场景功能用例,,Test_FullMeshElastic_16die_ID006,7,1025,1,0,2,1,16,20516,2,6,2,0,0,14,5,40,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID007,11,4097,3,0,2,1,16,38212,1,1,3,0,0,13,1,12,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID008,71,7163,5,0,0,1,16,819,2,2,1,0,0,15,60,780,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID009,135,4099,10,0,2,1,16,62519,4,4,1,0,0,15,13,143,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID010,253,8000,11,0,2,1,16,39571,3,9,6,0,0,10,10,10,1,执行双方比对脚本,通过,通过,
+图模式、固定BS场景功能用例,,Test_FullMeshElastic_16die_ID011,3,2561,1,1,0,0,16,27279,2,2,8,0,0,8,1,6,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID012,31,6734,3,1,0,0,16,30777,1,2,3,0,0,13,6,66,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID013,63,7432,7,1,2,0,16,23280,3,3,1,0,0,15,64,768,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID014,179,8192,8,1,2,0,16,48234,2,2,7,0,0,9,4,28,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID015,249,8192,12,1,0,0,16,49190,4,8,5,0,0,11,64,192,0,执行双方比对脚本,通过,通过,
+图模式、可变BS场景功能用例,,Test_FullMeshElastic_16die_ID016,1,1111,1,1,2,1,16,14962,1,1,4,0,0,12,5,55,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID017,17,1112,4,1,2,1,16,58052,1,1,2,0,0,14,26,338,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID018,133,4327,8,1,0,1,16,38934,2,4,3,0,0,13,18,162,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID019,177,7989,11,1,2,1,16,7537,1,7,3,0,0,13,16,96,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID020,255,8153,12,1,2,1,16,49570,4,4,7,0,0,9,33,165,0,执行双方比对脚本,通过,通过,
+单算子、量化功能用例,,Test_FullMeshElastic_16die_ID021,11,1025,1,0,2,0,16,38270,2,2,10,0,0,6,17,68,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID022,32,3683,3,0,2,0,16,30142,2,2,4,0,0,12,32,320,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID023,64,7831,5,0,2,0,16,57056,1,1,3,0,0,13,11,132,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID024,135,8179,8,0,2,0,16,16429,3,3,1,0,0,15,16,192,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID025,256,8192,12,0,2,0,16,51108,4,4,5,0,0,11,13,91,0,执行双方比对脚本,通过,通过,
+图模式、量化功能用例,,Test_FullMeshElastic_16die_ID026,2,1025,1,1,2,0,16,26527,2,2,3,0,0,13,12,132,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID027,5,3600,2,1,2,0,16,33781,2,8,7,0,0,9,5,5,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID028,31,7831,3,1,2,0,16,62676,1,1,1,0,0,15,11,154,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID029,127,8179,4,1,2,0,16,18975,2,4,3,0,0,13,9,81,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID030,256,8192,5,1,2,0,16,23972,1,1,2,0,0,14,64,832,0,执行双方比对脚本,通过,通过,
+仅缩容共享专家卡功能用例,,Test_FullMeshElastic_16die_ID031,1,2222,1,0,0,0,16,22531,2,8,0,2,0,14,11,66,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID032,3,3333,3,1,0,0,16,54581,2,6,0,3,0,13,9,63,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID033,7,4444,8,1,2,0,16,50254,1,3,0,1,0,15,6,72,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID034,111,5555,6,0,2,0,16,19335,3,9,0,3,0,13,15,60,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID035,222,6666,12,0,2,0,16,44694,3,6,0,1,0,15,10,90,1,执行双方比对脚本,通过,通过,
+仅缩容MOE专家卡功能用例,,Test_FullMeshElastic_16die_ID036,40,1030,5,0,0,0,16,56612,4,4,0,0,1,15,12,132,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID037,48,2000,7,1,0,0,16,22500,1,1,0,0,6,10,15,135,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID038,93,3000,8,0,2,0,16,27965,3,3,0,0,3,13,7,70,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID039,107,3574,11,1,0,0,16,11361,2,2,0,0,2,14,3,36,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID040,214,5987,12,1,2,0,16,10746,3,3,0,0,8,8,13,65,0,执行双方比对脚本,通过,通过,
+缩容输入泛化测试用例,ElasticInfo首位传0 其余正常,Test_FullMeshElastic_16die_ID041,256,7168,8,1,2,0,16,4361,2,3,2,0,0,14,4,44,0,执行双方比对脚本,通过,通过,
+,共享专家卡为0,Test_FullMeshElastic_16die_ID042,256,7168,8,1,2,0,16,2587,0,0,8,0,0,8,64,512,1,执行双方比对脚本,通过,通过,
+,ElasticInfo首位传1 但是不缩容,Test_FullMeshElastic_16die_ID043,256,7168,8,1,0,0,16,34550,4,4,0,0,0,16,7,84,1,执行双方比对脚本,通过,通过,
+,ElasticInfo 缩容Moe专家卡只剩1张,Test_FullMeshElastic_16die_ID044,256,7168,8,1,2,0,16,13175,8,8,7,0,0,9,64,128,0,执行双方比对脚本,通过,通过,
+,双机缩容用例1,Test_FullMeshElastic_16die_ID045,127,1024,1,1,0,0,32,9040,2,2,2,0,0,30,1,28,0,执行双方比对脚本,通过,通过,
+,双机缩容用例2,Test_FullMeshElastic_16die_ID046,256,7777,2,0,2,0,32,692,8,8,8,0,0,24,5,80,0,执行双方比对脚本,通过,通过,
+,双机缩容用例3,Test_FullMeshElastic_16die_ID047,13,5199,2,1,0,0,32,30733,2,2,2,0,0,30,31,868,1,执行双方比对脚本,通过,通过,
+,双机缩容用例4,Test_FullMeshElastic_16die_ID048,256,8001,12,0,2,0,32,33831,8,8,8,0,0,24,5,80,1,执行双方比对脚本,通过,通过,
+非使能场景下测试用例,,Test_FullMeshElastic_16die_ID049,177,7989,11,1,2,1,16,7537,1,7,3,0,0,13,16,96,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID050,255,8153,12,1,2,0,16,23,4,4,0,0,0,16,4,48,0,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID051,11,1025,1,0,2,0,16,2227,2,2,0,0,0,16,17,238,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID052,32,3683,3,1,0,1,16,786,2,2,0,0,0,16,32,448,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID053,123,6666,12,0,2,0,16,345,3,6,0,0,0,16,10,100,1,执行双方比对脚本,通过,通过,
+,,Test_FullMeshElastic_16die_ID054,256,1030,5,1,0,1,16,5612,4,4,0,0,0,16,64,768,1,执行双方比对脚本,通过,通过,
