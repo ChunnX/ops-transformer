@@ -18,7 +18,6 @@
 
 #include "mc2_log.h"
 #include "register/op_impl_registry.h"
-#include "mc2_hcom_topo_info.h"
 
 namespace ops {
     const size_t GROUP = 0;

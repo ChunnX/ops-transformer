@@ -15,7 +15,6 @@
 #include "ops_utils.h"
 #include "mc2_log.h"
 #include "register/op_impl_registry.h"
-#include "mc2_hcom_topo_info.h"
 #include "op_host/mc2_common_infershape.h"
 
 using namespace ge;
