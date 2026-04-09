@@ -82,7 +82,7 @@ ge::graphStatus TilingForMoeFinalizeRoutingV2(gert::TilingContext* context)
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingPrepareForMoeFinalizeRoutingV2(gert::TilingParseContext* context)
+ ge::graphStatus TilingPrepareForMoeFinalizeRoutingV2(gert::TilingParseContext* context)
 {
     OP_LOGD(context, "TilingPrepareForMoeFinalizeRountingV2 enter.");
     
