@@ -408,7 +408,6 @@ HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRan
         OP_LOGE("", "HCCL channel function pointer is null");
         return HCCL_E_PTR;
     }
-
     uint32_t channelNum = rankDim - 1;
     std::vector<HcclChannelDesc> channelDesc(channelNum);
     channels.resize(channelNum);
@@ -422,7 +421,6 @@ HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRan
         return HCCL_E_PTR;
     }
     OP_LOGD("", "Get HCCL layers success, netLayerNum is: %u", netLayerNum);
-
     uint32_t netLayers = netLayerNum - 1;
     if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
         netLayers = HCCL_COMM_LAYERS_UB_MEM; // UB_MEM协议只走最底层的通信，直接指定netLayers为0
@@ -433,7 +431,6 @@ HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRan
         return HCCL_E_PTR;
     }
     OP_LOGD("", "HCCL channel init success");
-
     for (uint32_t i = 0; i < rankDim; ++i) {
         if (i == srcRankId) {
             continue;
@@ -443,22 +440,17 @@ HcclResult MC2HcomTopology::GetHcclCommChannel(uint32_t rankDim, uint32_t srcRan
         HcclResult ret = GetHcclCommLink(netLayers, srcRankId, dstRank, protocol, links);
         if (ret != HCCL_SUCCESS)
             return ret;
-
         channelDesc[channelId].channelProtocol = protocol;
         channelDesc[channelId].remoteRank = dstRank;
         channelDesc[channelId].notifyNum = channelNum;
         channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
         channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
     }
-    OP_LOGD("", "Get HCCL communication channel description success");
-
     hcclRet = HcclChannelAcquire(hcclHandle_, engine, channelDesc.data(), channelNum, channels.data());
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE("", "Acquire HCCL channel failed");
         return HCCL_E_PTR;
     }
-    OP_LOGD("", "Acquire HCCL communication channel success");
-
     return HCCL_SUCCESS;
 }
 
@@ -560,16 +552,13 @@ HcclResult MC2HcomTopology::GetaclCreateTensorSymbol()
         OP_LOGE("", "Failed to get aclCreateTensor library path");
         return HCCL_E_PTR;
     }
-
     void *createHandle = dlopen(libPath, RTLD_NOW | RTLD_GLOBAL);
     if (createHandle == nullptr) {
         OP_LOGE("", "dlopen aclCreateTensor library failed: %s, error: %s", libPath, dlerror());
         return HCCL_E_PTR;
     }
-
     aclCreateTensor =
         reinterpret_cast<decltype(aclCreateTensor)>(GetHcclLibFunc<void *>(createHandle, "aclCreateTensor"));
-
     if (aclCreateTensor == nullptr) {
         OP_LOGE("", "Failed to load aclCreateTensor symbol");
         dlclose(createHandle);
@@ -623,58 +612,112 @@ HcclResult MC2HcomTopology::GetHcclBufferSize(uint64_t &hcclBuffSize)
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
+// 获取通信层数列表
+static HcclResult GetCommLayerList(HcclComm hcclHandle, uint32_t *&layerList, uint32_t &layerNum)
 {
-    OP_LOGD("", "start to get HCCL communication protocol");
-    uint32_t layerNum = 0;
-    uint32_t *layerList = nullptr;
-    HcclResult ret = HcclRankGraphGetLayers(hcclHandle_, &layerList, &layerNum);
+    HcclResult ret = HcclRankGraphGetLayers(hcclHandle, &layerList, &layerNum);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE("", "Get HCCL layers failed");
         return HCCL_E_PTR;
     }
+    return HCCL_SUCCESS;
+}
 
+// 获取通信域rank数量
+static HcclResult GetCommRankSize(HcclComm hcclHandle, uint32_t &epRankSize)
+{
+    HcclResult ret = HcclGetRankSize(hcclHandle, &epRankSize);
+    if (ret != HCCL_SUCCESS) {
+        OP_LOGE("", "Get HCCL rank size failed");
+        return HCCL_E_PTR;
+    }
+    return HCCL_SUCCESS;
+}
+
+// 检查单条链路是否支持UB_MEM协议
+static bool CheckLinkSupportsUbMem(CommLink *linksList, uint32_t netLinkNum)
+{
+    for (uint32_t j = 0; j < netLinkNum; ++j) {
+        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 获取指定rank对之间的链路
+static HcclResult GetLinksBetweenRanks(HcclComm hcclHandle, uint32_t netLayer,
+                                        uint32_t srcRankId, uint32_t dstRankId,
+                                        CommLink *&linksList, uint32_t &netLinkNum)
+{
+    HcclResult hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayer, srcRankId, dstRankId,
+                                                &linksList, &netLinkNum);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE("", "Get HCCL links failed when checking protocol support");
+        return HCCL_E_PTR;
+    }
+    if (netLinkNum == 0) {
+        OP_LOGE("", "No available HCCL links found");
+        return HCCL_E_PTR;
+    }
+    return HCCL_SUCCESS;
+}
+
+// 验证所有目标rank是否都支持UB_MEM协议
+static HcclResult ValidateUbMemSupportForAllRanks(HcclComm hcclHandle, uint32_t epRankSize)
+{
+    const uint32_t netLayer = HCCL_COMM_LAYERS_UB_MEM;
+    const uint32_t srcRankId = 0;
+    
+    for (uint32_t dstRankId = 1; dstRankId < epRankSize; ++dstRankId) {
+        CommLink *linksList = nullptr;
+        uint32_t netLinkNum = 0;
+        
+        HcclResult ret = GetLinksBetweenRanks(hcclHandle, netLayer, srcRankId, dstRankId,
+                                               linksList, netLinkNum);
+        if (ret != HCCL_SUCCESS) {
+            return ret;
+        }
+        
+        if (!CheckLinkSupportsUbMem(linksList, netLinkNum)) {
+            OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
+            return HCCL_E_PTR;
+        }
+    }
+    return HCCL_SUCCESS;
+}
+
+HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
+{
+    OP_LOGD("", "start to get HCCL communication protocol");
+    
+    uint32_t layerNum = 0;
+    uint32_t *layerList = nullptr;
+    HcclResult ret = GetCommLayerList(hcclHandle_, layerList, layerNum);
+    if (ret != HCCL_SUCCESS) {
+        return ret;
+    }
+    
+    // 单层通信
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return HCCL_SUCCESS;
-    } else {
-        uint32_t epRankSize = 0;
-        ret = HcclGetRankSize(hcclHandle_, &epRankSize); // 获取通讯域存在多少卡
-        if (ret != HCCL_SUCCESS) {
-            OP_LOGE("", "Get HCCL rank size failed");
-            return HCCL_E_PTR;
-        }
-        uint32_t netLayer = HCCL_COMM_LAYERS_UB_MEM, srcRankId = 0, dstRankId = 0, netLinkNum = 0;
-        CommLink *linksList = nullptr;
-        for (uint32_t i = 1; i < epRankSize; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
-            dstRankId = i;
-            HcclResult hcclRet =
-                HcclRankGraphGetLinks(hcclHandle_, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
-            if (hcclRet != HCCL_SUCCESS) {
-                OP_LOGE("", "Get HCCL links failed when checking protocol support");
-                return HCCL_E_PTR;
-            }
-            if (netLinkNum == 0) {
-                OP_LOGE("", "No available HCCL links found");
-                return HCCL_E_PTR;
-            }
-            bool isFoundUbMemProtocol = false;
-            for (uint32_t j = 0; j < netLinkNum; ++j) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
-                if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-                    isFoundUbMemProtocol = true;
-                    break;
-                }
-            }
-            if (!isFoundUbMemProtocol) {
-                 OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
-                 return HCCL_E_PTR;
-            }
-        }
-        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-        return HCCL_SUCCESS;
     }
-    OP_LOGE("", "Only MTE communication mode is supported");
-    return HCCL_E_PTR;
+    
+    // 多层通信，需要验证所有rank对是否支持UB_MEM
+    uint32_t epRankSize = 0;
+    ret = GetCommRankSize(hcclHandle_, epRankSize);
+    if (ret != HCCL_SUCCESS) {
+        return ret;
+    }
+    
+    ret = ValidateUbMemSupportForAllRanks(hcclHandle_, epRankSize);
+    if (ret != HCCL_SUCCESS) {
+        return ret;
+    }
+    
+    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+    return HCCL_SUCCESS;
 }
 
 HcclResult MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
@@ -692,24 +735,20 @@ HcclResult MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char 
     CommProtocol protocol;
     Mc2MoeContext contextStruct;
     std::string tag = std::string(groupEp) + opName;
-
     if (tag.size() > CONTEXT_TAG_MAX_SIZE) {
         OP_LOGE("", "Context tag too long, max: %u, current: %zu", CONTEXT_TAG_MAX_SIZE, tag.size());
         return HCCL_E_PTR;
     }
-
     ret = instance.GetCommHandle(groupEp);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE("", "Get HCCL communication handle failed");
         return ret;
     }
-
     ret = instance.GetCommProtocol(protocol);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE("", "Get HCCL communication protocol failed");
         return ret;
     }
-
     HcclResult hcclRet = instance.HcclEngineCtxGet(instance.hcclHandle_, tag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGD("", "Get HCCL engine context failed start to create context");
@@ -726,13 +765,11 @@ HcclResult MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char 
             return ret;
         }
     }
-
     ret = instance.CreatMc2ContextTensor(ctx, mc2Context);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE("", "Create MC2 context tensor failed");
         return ret;
     }
-    OP_LOGD("", "Get MC2 context tensor success");
     return HCCL_SUCCESS;
 }
 
