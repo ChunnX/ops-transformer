@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 class RopeChecker : public BaseChecker {
 public:
     RopeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -55,4 +56,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // ROPE_CHECKER_H

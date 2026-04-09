@@ -21,6 +21,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 class DequantChecker : public BaseChecker {
 public:
     DequantChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -118,4 +119,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // DEQUANT_CHECKER_H

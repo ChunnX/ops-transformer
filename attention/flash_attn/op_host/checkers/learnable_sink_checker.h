@@ -21,6 +21,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 class LearnableSinkChecker : public BaseChecker {
 public:
     LearnableSinkChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -43,4 +44,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // LEARNABLE_SINK_CHECKER_H

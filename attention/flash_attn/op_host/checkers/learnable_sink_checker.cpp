@@ -23,6 +23,7 @@
 #include "learnable_sink_checker.h"
 
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -157,3 +158,5 @@ ge::graphStatus LearnableSinkChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 }
 
 } // namespace optiling
+
+}

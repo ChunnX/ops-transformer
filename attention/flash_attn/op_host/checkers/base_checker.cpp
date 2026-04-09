@@ -19,6 +19,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "base_checker.h"
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -80,4 +81,6 @@ template ge::graphStatus BaseChecker::CheckValueSupport(
     const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> &expectValList) const;
 template ge::graphStatus BaseChecker::CheckValueSupport(const int32_t value,
                                                         const std::vector<int32_t> &expectValList) const;
+}
+
 }

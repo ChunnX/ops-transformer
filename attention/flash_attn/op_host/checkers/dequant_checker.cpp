@@ -23,6 +23,7 @@
 #include "dequant_checker.h"
 
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -2243,3 +2244,4 @@ ge::graphStatus DequantChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 }
 
 }  // namespace optiling
+}

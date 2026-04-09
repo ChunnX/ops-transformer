@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 class MaskChecker : public BaseChecker {
 public:
     MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -58,4 +59,5 @@ private:
 };
 
 }  // namespace optiling
+}
 #endif  // MASK_CHECKER_H

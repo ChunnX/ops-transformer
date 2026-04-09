@@ -23,6 +23,7 @@
 #include "paged_attention_checker.h"
 
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -526,3 +527,4 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
+}

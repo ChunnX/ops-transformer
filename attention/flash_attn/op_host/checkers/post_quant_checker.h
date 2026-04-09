@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 
 class PostQuantChecker : public BaseChecker {
 public:
@@ -49,4 +50,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // POST_QUANT_CHECKER_H

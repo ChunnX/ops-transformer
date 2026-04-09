@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 
 class LeftPaddingChecker : public BaseChecker {
 public:
@@ -50,4 +51,5 @@ private:
 };
 
 }  // namespace optiling
+}
 #endif  // LEFT_PADDING_CHECKER_H

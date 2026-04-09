@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 
 class ActualSeqLenChecker : public BaseChecker {
 public:
@@ -60,4 +61,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // ACTUAL_SEQ_LEN_CHECKER_H

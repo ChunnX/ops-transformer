@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 
 class SystemPrefixChecker : public BaseChecker {
 public:
@@ -53,4 +54,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // SYSTEM_REPFIX_CHECKER_H

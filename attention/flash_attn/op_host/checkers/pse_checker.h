@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 
 class PSEChecker : public BaseChecker {
 public:
@@ -51,4 +52,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // PSE_CHECKER_H

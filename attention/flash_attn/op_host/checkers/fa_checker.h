@@ -36,6 +36,7 @@
 #include "./system_prefix_checker.h"
 
 namespace optiling {
+namespace faAttn{
 class FAChecker {
 public:
     FAChecker() = default;
@@ -68,4 +69,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // FA_CHECKER_H

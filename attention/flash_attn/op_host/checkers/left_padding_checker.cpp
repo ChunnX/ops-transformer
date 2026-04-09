@@ -23,6 +23,7 @@
 #include "left_padding_checker.h"
 
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -195,3 +196,5 @@ ge::graphStatus LeftPaddingChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 }
 
 }  // namespace optiling
+
+}

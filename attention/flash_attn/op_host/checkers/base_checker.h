@@ -25,6 +25,7 @@
 #include "../flash_attn_tiling_utils.h"
 
 namespace optiling {
+namespace faAttn{
 class BaseChecker {
 public:
     BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -34,10 +35,10 @@ public:
     virtual ~BaseChecker() = default;
 
 protected:
-    virtual ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) = 0;
-    virtual ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) = 0;
-    virtual ge::graphStatus CheckFeature(const FaTilingInfo &faInfo) = 0;
-    virtual ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) = 0;
+    virtual ge::graphStatus CheckSinglePara(const optiling::FaTilingInfo &faInfo) = 0;
+    virtual ge::graphStatus CheckParaExistence(const optiling::FaTilingInfo &faInfo) = 0;
+    virtual ge::graphStatus CheckFeature(const optiling::FaTilingInfo &faInfo) = 0;
+    virtual ge::graphStatus CheckMultiPara(const optiling::FaTilingInfo &faInfo) = 0;
 
     // public check funcs
     ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
@@ -54,5 +55,6 @@ protected:
     bool enableAntiQuant_ = false;
 };
 } // namespace optiling
+}
 #endif // BASE_CHECKER_H
 

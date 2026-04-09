@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 
 class PagedAttentionChecker : public BaseChecker {
 public:
@@ -55,4 +56,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // PAGED_ATTENTION_CHECKER_H

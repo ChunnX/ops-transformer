@@ -23,6 +23,7 @@
 
 using std::map;
 namespace optiling {
+namespace faAttn{
 class ShapeChecker : public BaseChecker {
 public:
     ShapeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -72,4 +73,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // SHAPE_CHECKER_H

@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace faAttn{
 class SoftmaxLSEChecker : public BaseChecker {
 public:
     SoftmaxLSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
@@ -43,4 +44,5 @@ private:
 };
 
 } // namespace optiling
+}
 #endif // SOFTMAX_LSE_CHECKER_H

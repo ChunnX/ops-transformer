@@ -23,6 +23,8 @@
 #include "actual_seq_len_checker.h"
 
 namespace optiling {
+namespace faAttn{
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -447,3 +449,4 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
+}

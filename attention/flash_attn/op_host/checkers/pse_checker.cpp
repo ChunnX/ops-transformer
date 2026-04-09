@@ -23,6 +23,7 @@
 #include "pse_checker.h"
 
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::pair;
 using std::string;
@@ -320,3 +321,4 @@ ge::graphStatus PSEChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 }
 
 } // namespace optiling
+}

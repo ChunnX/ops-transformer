@@ -23,6 +23,7 @@
 #include "mask_checker.h"
 
 namespace optiling {
+namespace faAttn{
 using std::map;
 using std::string;
 using std::pair;
@@ -348,3 +349,5 @@ ge::graphStatus MaskChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 }
 
 }  // namespace optiling
+
+}
