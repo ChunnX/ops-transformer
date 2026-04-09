@@ -360,7 +360,7 @@ ge::graphStatus FiaInfoParser::GetAttrParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void FiaInfoParser::GetUpdateInfo()
+ge::graphStatus FiaInfoParser::GetUpdateInfo()
 {
     auto attrs = context_->GetAttrs();
     static int32_t SPARSE_ZERO = 0U;
@@ -383,6 +383,7 @@ void FiaInfoParser::GetUpdateInfo()
         opParamInfo_.queryPaddingSize.tensor = context_->GetOptionalInputTensor(QUERY_PADDING_SIZE_INDEX);
         opParamInfo_.queryPaddingSize.desc = context_->GetOptionalInputDesc(QUERY_PADDING_SIZE_INDEX);
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 void FiaInfoParser::GetPreNextToken()
@@ -1054,10 +1055,11 @@ void FiaInfoParser::GetPaddingSizeFlag()
     }
 }
 
-void FiaInfoParser::GetMaskFlag()
+ge::graphStatus FiaInfoParser::GetMaskFlag()
 {
     auto *maskTensor = opParamInfo_.attenMask.tensor;
     attenMaskFlag_ = (maskTensor != nullptr) && (maskTensor->GetStorageShape().GetShapeSize() != 0);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetPseShiftFlag()
