@@ -57,7 +57,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_10001_001)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 10001; // tilngkey
-    string expectTilingData = "5 0 5 5 0 5 0 1 8 5 65464 0 0 10001 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "5 0 5 5 0 5 0 1 8 5 16376 0 0 10001 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -94,7 +94,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_10002_001)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 10002; // tilngkey
-    string expectTilingData = "5 0 5 5 0 5 0 1 262144 5 65464 4 288 10002 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "5 0 5 5 0 5 0 1 262144 5 16376 16 128 10002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -138,7 +138,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_20001_001)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 20001; // tilngkey
-    string expectTilingData = "15 0 15 15 0 15 0 3 8 15 21808 0 0 20001 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "15 0 15 15 0 15 0 3 8 15 5448 0 0 20001 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -182,7 +182,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_20002_001)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 20002; // tilngkey
-    string expectTilingData = "15 0 15 15 0 15 0 3 262144 15 21808 12 448 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "15 0 15 15 0 15 0 3 262144 15 5448 48 640 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -226,7 +226,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_20002_002)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 20002; // tilngkey
-    string expectTilingData = "15 0 15 15 0 15 0 3 262144 15 21808 12 448 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "15 0 15 15 0 15 0 3 262144 15 5448 48 640 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -270,7 +270,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_20002_003)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 20002; // tilngkey
-    string expectTilingData = "15 0 15 15 0 15 0 3 262144 15 26176 10 384 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "15 0 15 15 0 15 0 3 262144 15 6528 40 1024 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -307,7 +307,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_regbase_10
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 10001; // tilngkey
-    string expectTilingData = "5 0 5 5 0 5 0 1 8 5 65464 0 0 10001 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "5 0 5 5 0 5 0 1 8 5 16376 0 0 10001 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -344,7 +344,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_regbase_10
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 10002; // tilngkey
-    string expectTilingData = "5 0 5 5 0 5 0 1 262144 5 65464 4 288 10002 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "5 0 5 5 0 5 0 1 262144 5 16376 16 128 10002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -389,7 +389,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_regbase_20
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 20001; // tilngkey
-    string expectTilingData = "15 0 15 15 0 15 0 3 8 15 16360 0 0 20001 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "15 0 15 15 0 15 0 3 8 15 4088 0 0 20001 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -434,7 +434,7 @@ TEST_F(MoeFinalizeRoutingV2GradTiling, MoeFinalizeRoutingV2GradTiling_regbase_20
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 20002; // tilngkey
-    string expectTilingData = "15 0 15 15 0 15 0 3 262000 15 16360 16 240 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
+    string expectTilingData = "15 0 15 15 0 15 0 3 262000 15 4088 64 368 20002 "; // tilingData（不确定的话跑下对应用例打印看看）
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
