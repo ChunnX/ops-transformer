@@ -353,6 +353,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeOptionalShapes()
     gert::Shape expectGShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // gk (T, NV, DK)
     gert::Shape expectGkShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dk});
+    // num_accepted_tokens (B)
+    gert::Shape expectNumAcceptedShape = gert::Shape({tilingData_.b});
     if (tilingData_.hasGama == 1){
         const auto &gShape = context_->GetOptionalInputShape(G_INDEX)->GetStorageShape();
         if (!CheckDim(gShape, G_DIM_NUM, "g")) {
@@ -379,6 +381,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeOptionalShapes()
         if (!CheckDim(numAcceptedShape, NUM_ACCEPTED_TOKENS_DIM_NUM, "num_accepted_tokens")){
             return ge::GRAPH_FAILED;
         }
+        OP_CHECK_IF(numAcceptedShape != expectNumAcceptedShape,
+            OP_LOGE(context_->GetNodeName(),
+                "The shape of num_accepted_tokens parameter[%ld] is not expected, Expect [%ld].",
+                numAcceptedShape.GetDim(DIM_0), expectNumAcceptedShape.GetDim(DIM_0)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -416,6 +423,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
     gert::Shape expectBetaShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // out (T, NV, DV)
     gert::Shape expectOutShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dv});
+    // ssmStateShape (T)
+    gert::Shape expectSsmStateShape = gert::Shape({tilingData_.t});
 
     OP_CHECK_IF(queryShape != expectQKShape,
         OP_LOGE(context_->GetNodeName(), "The shape of query parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
@@ -446,6 +455,10 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
         OP_LOGE(context_->GetNodeName(), "The shape of out parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
             outShape.GetDim(DIM_0), outShape.GetDim(DIM_1), outShape.GetDim(DIM_2),
             expectOutShape.GetDim(DIM_0), expectOutShape.GetDim(DIM_1), expectOutShape.GetDim(DIM_2)),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ssmStateShape != expectSsmStateShape,
+        OP_LOGE(context_->GetNodeName(), "The shape of ssm_state_indices parameter[%ld] is not expected, Expect [%ld].",
+            ssmStateShape.GetDim(DIM_0), expectSsmStateShape.GetDim(DIM_0)),
             return ge::GRAPH_FAILED);
 
     if (AnalyzeOptionalShapes() != ge::GRAPH_SUCCESS) {
