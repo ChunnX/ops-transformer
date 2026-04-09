@@ -218,7 +218,7 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
     OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= 2048, but now sparse_count is %u",
                        *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
-    OP_CHECK_IF(((opParamInfo_.query.desc->GetDataType() == ge::DT_HIFLOAT8) && (*opParamInfo_.sparseCount != SPARSE_LIMIT)),
+    OP_CHECK_IF(opParamInfo_.query.desc->GetDataType() == ge::DT_HIFLOAT8 && *opParamInfo_.sparseCount != SPARSE_LIMIT,
                 OP_LOGE(opName_, "When query type is hifloat8, sparse_count must be 2048, but now sparse_count is %u",
                        *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
