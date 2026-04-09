@@ -107,14 +107,14 @@ __aicore__ inline void MoeMrgsortOut::SetBuffer(LocalTensor<float> &tempBuffer)
 
 __aicore__ inline void MoeMrgsortOut::UpdateMrgParam()
 {
-    if (this->remainListNum == MERGE_LIST_TWO) {
+    if (MERGE_LIST_TWO == this->remainListNum) {
         elementCountListTail[MERGE_LIST_IDX_TWO] = 0;
         elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
         validBitTail = 0b0011;
-    } else if (this->remainListNum == MERGE_LIST_THREE) {
+    } else if (MERGE_LIST_THREE == this->remainListNum) {
         elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
         validBitTail = 0b0111;
-    } else if (this->remainListNum == MERGE_LIST_FOUR) {
+    } else if (MERGE_LIST_FOUR == this->remainListNum) {
         validBitTail = 0b1111;
     } else {
         validBitTail = 0b0001;
@@ -167,16 +167,17 @@ __aicore__ inline void MoeMrgsortOut::UpdateSortInfo()
 {
     curLoopSortedNum = 0;
     for (int64_t i = 0, j = 0; i < listNum; i++) {
-        if (lengths[i] > 0) {
-            // update remain size
-            listRemainElements[i] -= listSortedNums[j];
-            allRemainElements -= listSortedNums[j];
-            // update offset
-            offsets[i] += GetSortOffset<float>(listSortedNums[j]);
-            // update current loop sorted nums
-            curLoopSortedNum += listSortedNums[j];
-            j += 1;
+        if (lengths[i] <= 0) {
+            continue;
         }
+        // update remain size
+        listRemainElements[i] -= listSortedNums[j];
+        allRemainElements -= listSortedNums[j];
+        // update offset
+        offsets[i] += GetSortOffset<float>(listSortedNums[j]);
+        // update current loop sorted nums
+        curLoopSortedNum += listSortedNums[j];
+        j += 1;
     }
 }
 
