@@ -39,7 +39,14 @@ aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
-    int64_t          dropPadMode,
+    const aclTensor* xOptional,
+    const aclTensor* a1Optional,
+    const aclTensor* a2Optional,
+    const aclTensor* vOptional,
+    int64_t           dropPadMode,
+    const aclIntArray* zeroExpertRange,
+    const aclIntArray* copyExpertRange,
+    const aclIntArray* constantExpertRange, 
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
@@ -150,10 +157,77 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
+    <td>xOptional</td>
+    <td>输入</td>
+    <td>公式中的x。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>a1Optional</td>
+    <td>输入</td>
+    <td>公式中的a1。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>a2Optional</td>
+    <td>输入</td>
+    <td>公式中的a2。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>vOptional</td>
+    <td>输入</td>
+    <td>公式中的v。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
     <td>dropPadMode</td>
     <td>输入</td>
     <td>表示是否支持丢弃模式,expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>zeroExpertMode</td>
+    <td>输入</td>
+    <td>表示是否支持zero expert。。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>copyExpertMode</td>
+    <td>输入</td>
+    <td>表示是否支持copy expert。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+    <tr>
+    <td>constantExpertMode</td>
+    <td>输入</td>
+    <td>表示是否支持costant expert。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -451,7 +525,8 @@ int main() {
 
   // 调用aclnnMoeFinalizeRoutingV2第一段接口
   ret = aclnnMoeFinalizeRoutingV2GetWorkspaceSize(expandedX, expandedRowIdx, x1, x2Optional, bias, scales,
-                                                  expandedExpertIdx, dropPadMode, out, &workspaceSize, &executor);
+                                                  expandedExpertIdx, nullptr, nullptr, nullptr, nullptr,
+                                                  dropPadMode, nullptr, nullptr, nullptr, out, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
