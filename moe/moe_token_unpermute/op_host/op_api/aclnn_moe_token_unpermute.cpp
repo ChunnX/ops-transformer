@@ -42,50 +42,51 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
     const aclTensor* permutedTokens, const aclTensor* sortedIndices, const aclTensor* probsOptional, bool paddedMode,
     const aclIntArray* restoreShapeOptional, aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_LOGI("LIJIA, ENTER ");
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermute,
         DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
         DFX_OUT(out));
 
     static bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
+    OP_LOGI("LIJIA, ENTER useMoeFinalizeRoutingV2=%ld\n", static_cast<int64_t>(useMoeFinalizeRoutingV2));
     if (!useMoeFinalizeRoutingV2) {
         return aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
             permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional, out, workspaceSize,
             executor);
     }
+    OP_LOGI("LIJIA, ENTER 11111111111111111111111111111111111111112\n");
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
-
     // 参数检查
     OP_CHECK_NULL(permutedTokens, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
-
+    OP_LOGI("LIJIA, ENTER 233333333333333333333333333333333\n");
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
+OP_LOGI("LIJIA, ENTER 4544444444444444444444444444\n");
     // 固定写法，将输入转换成连续的tensor
     auto permutedTokensContiguous = l0op::Contiguous(permutedTokens, uniqueExecutor.get());
     CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
     CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
+OP_LOGI("LIJIA, ENTER 44444444444455555555555555555555555555555555555\n");
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
         CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-
-    // 调用l0接口进行计算
-    auto out_ = l0op::MoeFinalizeRoutingV2(permutedTokensContiguous, sortedIndicesContiguous, nullptr, nullptr,
-                                           nullptr, probsContiguous, nullptr, READ_INDEX_BY_ROW,
-                                           out, uniqueExecutor.get());
+    OP_LOGI("LIJIA, ENTER 5555566666666666666666666666666\n");
+    auto out_ = l0op::MoeFinalizeRoutingV2(
+        permutedTokensContiguous, sortedIndicesContiguous, nullptr, nullptr, nullptr, probsContiguous, nullptr, nullptr,
+        nullptr, nullptr, nullptr, READ_INDEX_BY_ROW, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+    OP_LOGI("LIJIA, ENTER 33333\n");
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
     CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
+OP_LOGI("LIJIA, ENTER eeee \n");
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
@@ -95,9 +96,12 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
 aclnnStatus aclnnMoeTokenUnpermute(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
     static bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
+    OP_LOGI("LIJIA, aclnnMoeTokenUnpermute useMoeFinalizeRoutingV2=%ld\n", static_cast<int64_t>(useMoeFinalizeRoutingV2));
     if (!useMoeFinalizeRoutingV2) {
+        OP_LOGI("LIJIA, aclnnMoeTokenUnpermute 11 useMoeFinalizeRoutingV2=%ld\n", static_cast<int64_t>(useMoeFinalizeRoutingV2));
         return aclnnInnerMoeTokenUnpermute(workspace, workspaceSize, executor, stream);
     }
+    OP_LOGI("LIJIA, ENTER 112222223useMoeFinalizeRoutingV2=%ld\n", static_cast<int64_t>(useMoeFinalizeRoutingV2));
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
