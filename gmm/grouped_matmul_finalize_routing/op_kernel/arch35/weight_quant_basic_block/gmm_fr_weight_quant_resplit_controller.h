@@ -141,22 +141,25 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
     BasicBlockControlParam ctrlParam;
     ctrlParam.processId = 0;
     for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < tiling_->groupNum; ++groupIdx) {
+        // groupIdx 根据splitItem对M轴进行切分
         ctrlParam.mSize = GetSplitValueFromGroupList(groupIdx);
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
+            // 划分M轴在L1上的大小
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
             basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, nullptr,
                                          perTokenScaleGm_, biasGm_, yGm_, logitsAddr_,
                                          rowIndexAddr_, tiling_->hasBias,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
+            // 因为是32个核心分配一次，所以第二轮循环后就会出现，cubeBlockIdx在[0,31]内但是startBasicBlockId大于32
+            // 此时需要更新curBasicBlockId，当前的索引需要增加一个corenumber
             ctrlParam.curBasicBlockId =
                 cubeBlockIdx >= startBasicBlockId ? cubeBlockIdx : cubeBlockIdx + tiling_->coreNum;
             ctrlParam.basicBlockLimit = startBasicBlockId;
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
                 // 主块
-                SplitNByMultiCore(offsetParam, ctrlParam, offsetParam[0].nSize / 256,
-                                  256);
+                SplitNByMultiCore(offsetParam, ctrlParam, offsetParam[0].nSize / 256, 256);
                 ctrlParam.basicBlockLimit += offsetParam[0].nSize / 256;
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % tiling_->coreNum;

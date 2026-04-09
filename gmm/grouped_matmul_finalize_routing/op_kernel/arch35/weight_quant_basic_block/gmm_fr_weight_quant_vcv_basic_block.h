@@ -155,12 +155,13 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::Init(bool hasB
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitAtomicGm(uint64_t initSize, uint64_t sharedInputStartSize, uint64_t sharedInputSize, __gm__ sharedInputDType *shareInputAddr)
 {
-    // 首4轮的mte3写出
     constexpr uint64_t initZeroBufferSize = GetGmmFRMxA8W4BufferInfo<vecConfig>().weightHighBitSingleBufferSize / sizeof(float);
     uint64_t yGmOffset = GetBlockIdx() * initZeroBufferSize;
-    InitGmZeroWithIterate(yGmOffset, Min(QUADRUPLE_BUFFER_NUM * AscendC::GetBlockNum() * initZeroBufferSize, initSize), sharedInputStartSize, sharedInputSize);
+    // 一次直接将GM上的result上需要初始化为0的部分全部清零
+    InitGmZeroWithIterate(yGmOffset, initSize, sharedInputStartSize, sharedInputSize);
 
     // shared input mte3写出
+    // 初始化GM上的result上shareInput部分
     constexpr uint64_t mte2BufferSize =
         WeightQuantBatchMatmulV2::Arch35::GetGmmFRMxA8W4BufferInfo<vecConfig>().weightLowBitSingleBufferSize / sizeof(sharedInputDType);
     for (uint64_t sharedInputGmOffset = AscendC::GetBlockIdx() * mte2BufferSize; sharedInputGmOffset <= sharedInputSize;
@@ -173,8 +174,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitAtomicGm(u
         vecCompute_.CopyShareInputUbToGm(sharedInputGmOffset, initSharedInputRealSize);
         vecCompute_.SetVToMTE2();
     }
-    // 剩余部分的mte3写出
-    InitGmZeroWithIterate(yGmOffset, initSize, sharedInputStartSize, sharedInputSize);
 }
 
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
@@ -182,7 +181,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitGmZeroWith
     constexpr uint64_t initZeroBufferSize = GetGmmFRMxA8W4BufferInfo<vecConfig>().weightHighBitSingleBufferSize / sizeof(float);
     uint64_t bufferSize = initZeroBufferSize;
     for (; yGmStartOffset <= yGmEndOffset; yGmStartOffset += AscendC::GetBlockNum() * bufferSize){
-        uint64_t initZeroRealSize = yGmStartOffset + bufferSize > yGmEndOffset ? yGmEndOffset - yGmStartOffset : bufferSize;
+                uint64_t initZeroRealSize = yGmStartOffset + bufferSize > yGmEndOffset ? yGmEndOffset - yGmStartOffset : bufferSize;
         if (yGmStartOffset >= sharedInputStartSize) {
             vecCompute_.InitGmToZero(yGmStartOffset + sharedInputSize, initZeroRealSize);
         } else if (yGmStartOffset + bufferSize <= sharedInputStartSize) {
@@ -229,11 +228,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
     uint64_t kMte2Offset = 0;
     uint64_t curCvLoopIdx = cvLoopIdx_;
     
-    // Split M dimension between two AIV cores (0 and 1)
-    uint64_t antiquantYMSize = curOffsetParam.mL1Size - (curOffsetParam.mL1Size >> 1);
-    uint64_t antiquantYMOffset = GetSubBlockIdx() == 0 ? 0 : antiquantYMSize;
-    antiquantYMSize = GetSubBlockIdx() == 0 ? antiquantYMSize : (curOffsetParam.mL1Size >> 1);
-    
     VecComputeNzNkWithStartLimit(kMte2Offset, Min(curOffsetParam.kSize, DOUBLE_BUFFER_NUM * curOffsetParam.kbL1Size), 
                          curOffsetParam);
 
@@ -258,7 +252,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
         vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam, rlLoopIdx_);
         vecCompute_.SetFrToMTE2(rlLoopIdx_);
         vecCompute_.WaitMte2ToS(rlLoopIdx_);
-        vecCompute_.RoutingYToGm(lastBasicBlockMSize,ubOutputF32Buffer_,
+        vecCompute_.RoutingYToGm(lastBasicBlockMSize, ubOutputF32Buffer_,
                                 lastOffsetParam);
         vecCompute_.SetSToMTE2(rlLoopIdx_);
     }
