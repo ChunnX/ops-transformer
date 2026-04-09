@@ -102,7 +102,7 @@ public:
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
                                 GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
                                 GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
-                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
+                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2Info *info);
     __aicore__ inline void Process();
 
 private:
@@ -461,15 +461,15 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, 
     GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
-    GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
+    GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2Info *info)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #endif
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
-    totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    if (tilingData->moeDistributeDispatchV2Info.isMc2Context) {
+    totalWinSize_ = static_cast<uint64_t>(info->totalWinSizeEp);
+    if (info->isMc2Context) {
         isMc2Context_ = true;
         // Using Mc2Context instead of hccl context
         mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
@@ -486,7 +486,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(expandIdxOut));
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     scalesGMTensor_.SetGlobalBuffer((__gm__ float*)scales);
-    SetTilingDataAndCal(tilingData);
+    SetTilingDataAndCal(info);
     if (isPerformanceFlag_) {
         performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(performanceInfo));
     }
