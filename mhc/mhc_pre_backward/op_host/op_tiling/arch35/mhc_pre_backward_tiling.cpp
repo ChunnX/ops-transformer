@@ -269,8 +269,6 @@ ge::graphStatus MhcPreBackwardBaseTiling::TilingProcess()
         return ge::GRAPH_FAILED;
     }
 
-    // 后续模板按位处理
-
     workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
