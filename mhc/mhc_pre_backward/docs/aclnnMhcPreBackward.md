@@ -4,9 +4,9 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
@@ -14,68 +14,63 @@
 
 ## 功能说明
 
--   **接口功能**：MhcPreBackward是MhcPre的反向算子，mhc_pre基于一系列计算得到MHC架构中hidden层的Hres和Hpost投影矩阵以及Atten或MLP层的输入矩阵Hin。
+-   **接口功能**：MhcPreBackward是MhcPre的反向算子，MhcPre算子基于一系列计算得到mHC（Manifold-Constrained Hyper-Connections）架构中的$H^{res}$和$H^{post}$投影矩阵以及Atten或MLP层的输入矩阵$h^{in}$
 
 -   **计算公式**：公式如下：
 
 
 ### 输入
 - 算子输入
-
-    $x ∈ R[B,S,N,D]$ 
-
-    $phi ∈ R[ND,2N+N*N]$
-
-    $gamma ∈ R[N, D]$
-
-    $alpha ∈ R[3]$
-
-    $hc\_eps$ 
-
-    $H\_in\_grad ∈ R[B,S,D]$ （输出梯度）
-
-    $H\_post\_grad ∈ R[B,S,N]$ （输出梯度）
-
-    $H\_res\_grad ∈ R[B,S,N,N]$ （输出梯度）
-
-
+  
+  $x ∈ R[B,S,N,D]$
+  
+  $phi ∈ R[ND,2N+N*N]$
+  
+  $alpha ∈ R[3]$
+  
+  $H\_in\_grad ∈ R[B,S,D]$ （输出梯度）
+  
+  $H\_post\_grad ∈ R[B,S,N]$ （输出梯度）
+  
+  $H\_res\_grad ∈ R[B,S,N,N]$ （输出梯度）
+  
+  $gamma ∈ R[N, D]$
+  
+  $hc\_eps$
 - 前向缓存张量
-
-    $H\_mix ∈ R[B,S,2N+N^2]$ 
-
-    $H\_pre∈ R[B,S,N]$
-
-    $H\_post∈ R[B,S,N]$ 
-
-    $inv\_rms ∈ R[B,S,1]$ （或 $R[B,S]$ ，需unsqueeze转 $R[B,S,1]$ ）
-
+  
+  $inv\_rms ∈ R[B,S,1]$ （或 $R[B,S]$ ，需unsqueeze转 $R[B,S,1]$ ）
+  
+  $H\_mix ∈ R[B,S,2N+N^2]$
+  
+  $H\_pre∈ R[B,S,N]$
+  
+  $H\_post∈ R[B,S,N]$
 - 重计算张量
-
-    $[H\_pre\_1,H\_post\_1,H\_res\_2] =  H\_mix * inv\_rms  ∈ R[B,S,N^2+2N]$ 
-
+  
+  $[H\_pre\_1,H\_post\_1,H\_res\_2] =  H\_mix * inv\_rms  ∈ R[B,S,N^2+2N]$
 - 张量切分
-
-    $[alpha\_{pre}, alpha\_{post},alpha\_{res}] = alpha ∈ R[3]$ 
+  
+  $[alpha\_{pre}, alpha\_{post},alpha\_{res}] = alpha ∈ R[3]$
 
 ### 输出
 
 - 梯度输出：
-
-    $x\_{grad} ∈ R[B,S,N,D]$ 
-
-    $phi\_{grad} ∈ R[ND,2N+N^2]$ 
-
-    $alpha\_{scales\_grad} ∈ R[3]$ （ $alpha\_pre\_grad, alpha\_post\_grad, alpha\_res\_grad$ 拼接）
-
-    $bias\_{grad} ∈ R[2N+N^2]$ （ $bias\_pre\_grad, bias\_post\_grad, bias\_res\_grad$ 拼接）
-    
-    $gamma\_grad ∈ [N, D]$
+  
+  $x\_{grad} ∈ R[B,S,N,D]$
+  
+  $phi\_{grad} ∈ R[ND,2N+N^2]$
+  
+  $alpha\_{scales\_grad} ∈ R[3]$ （ $alpha\_pre\_grad, alpha\_post\_grad, alpha\_res\_grad$ 拼接）
+  
+  $bias\_{grad} ∈ R[2N+N^2]$ （ $bias\_pre\_grad, bias\_post\_grad, bias\_res\_grad$ 拼接）
+  
+  $gamma\_grad ∈ [N, D]$
 
 ### 输出组合梯度计算
 
 - 正向公式：
 $$H\_in = \sum_{i=1}^{N} x[{B,S,i,:}] · H\_pre_n[B,S,i]$$
-
 - 反向计算：
 $$
 \begin{aligned}
@@ -89,7 +84,6 @@ $$
 #### Sigmoid门控反向（H_pre）
 - 正向公式：
 $$H\_pre = \text{Sigmoid}(\alpha\_pre * H\_pre\_1 + bias\_pre) + hc\_eps$$
-
 - 反向计算：
 $$
 \begin{aligned}
@@ -103,8 +97,7 @@ $$
 
 #### Sigmoid门控反向（H_post）
 - 正向公式：
-$$H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2$$
-
+  $$H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2$$
 - 反向计算：
 $$
 \begin{aligned}
@@ -118,8 +111,8 @@ $$
 #### 残差连接反向（H_res）
 - 正向公式：
 $$H\_res = \alpha\_res * H\_res\_1 + bias\_res$$
-
 - 反向计算：
+
 $$
 \begin{aligned}
 H\_res\_2\_grad &= H\_res\_grad \cdot \alpha_{res} \quad ([B,S,N,N]) \\
@@ -134,8 +127,8 @@ $$
 #### RMSNorm Fusion反向
 - 正向公式：
 $$H\_mix\_tmp = H\_mix * inv\_rms$$
-
 - 反向计算：
+
 $$
 \begin{aligned}
 H\_mix\_tmp\_grad &= \text{Concat}(H\_pre\_1\_grad, H\_post\_1\_grad, H\_res\_1\_grad) \quad ([B,S,2N+N^2]) \\
@@ -150,8 +143,8 @@ $$
 - 正向公式：
 $$H\_mix = x\_rs @ phi^T$$
 $$x\_rs = x * gamma$$
-
 - 反向计算：
+
 $$
 \begin{aligned}
 x\_rs\_grad &= H\_mix\_grad @ phi \quad ([B,S,ND]) \\
@@ -164,8 +157,8 @@ $$
 #### 特征缩放反向
 - 正向公式：
 $$x\_rs = x * gamma$$
-
 - 反向计算：
+
 $$
 \begin{aligned}
 x\_grad\_mm &= x\_rs\_grad * gamma \\
@@ -176,9 +169,11 @@ $$
 ### RMS归一化梯度计算
 
 - 正向公式：
-$$inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D$$
-
+$$
+  inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D
+$$
 - 反向计算：
+
 $$
 \begin{aligned}
 x\_rs\_grad\_inv &= - \left(\frac{inv\_rms\_grad \cdot {inv\_rms}^3}{N*D}\right) \cdot x\_rs \\
@@ -188,28 +183,36 @@ x\_grad &= x\_grad\_vec3 + x\_grad\_vec1
 \end{aligned}
 $$
 
+### 融合mhc_post的grad_x相加操作
+$$
+\begin{aligned}
+x\_grad &= x\_grad + grad\_x\_post
+\end{aligned}
+$$
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMhcPreBackwardGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcPreBackward”接口执行计算。
 ```c++
-aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
+aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(  
     const aclTensor     *x,
     const aclTensor     *phi,
     const aclTensor     *alpha,
-    const aclTensor     *h_in_grad,
-    const aclTensor     *h_post_grad,
-    const aclTensor     *h_res_grad,
-    const aclTensor     *inv_rms,
-    const aclTensor     *h_mix,
-    const aclTensor     *h_pre,
-    const aclTensor     *h_post,
+    const aclTensor     *gradHIn,
+    const aclTensor     *gradHPost,
+    const aclTensor     *gradHRes,
+    const aclTensor     *invRms,
+    const aclTensor     *hMix,
+    const aclTensor     *hPre,
+    const aclTensor     *hPost,
     const aclTensor     *gamma,
-    double               hc_eps,
-    const aclTensor     *x_grad,
-    const aclTensor     *phi_grad,
-    const aclTensor     *alpha_grad,
-    const aclTensor     *bias_grad,
-    const aclTensor     *gamma_grad,
+    const aclTensor     *gradXPostOptional,
+    double               hcEps,
+    const aclTensor     *gradX,
+    const aclTensor     *gradPhi,
+    const aclTensor     *gradAlpha,
+    const aclTensor     *gradBias,
+    const aclTensor     *gradGamma,
     uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
@@ -256,7 +259,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S,N,D)、(T,N,D)<br>
-            B：支持泛化；S：支持泛化；T：B*S；N：4、6、8；D：128元素对齐
+            B：支持泛化；S：支持泛化；T：B*S。
             </td>
             <td>√</td>
         </tr>
@@ -386,6 +389,20 @@ aclnnStatus aclnnMhcPreBackward(
             <td>ND</td>
             <td>(N,D)<br>
             N:与x的N保持一致；D:与x的D保持一致。
+            </td>
+            <td>√</td>
+        </tr>
+        <tr>
+            <td>grad_x_post</td>
+            <td>输入</td>
+            <td>post反向输出的grad_x</td>
+            <td>
+            <li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li>
+            </td>
+            <td>BFLOAT16、FLOAT16</td>
+            <td>ND</td>
+            <td>(B,S,N,D)、(T,N,D)<br>
+            B：与x的B保持一致；S:与x的S保持一致；T：B*S；N:与x的N保持一致；D：与x的D保持一致。
             </td>
             <td>√</td>
         </tr>
@@ -575,19 +592,14 @@ aclnnStatus aclnnMhcPreBackward(
         </thead>
         <tbody>
         <tr>
-            <td>T或 B*S</td>
-            <td>512~65536</td>
-            <td>B、S的乘积与T支持512~65536范围以内</td>
-        </tr>
-        <tr>
             <td>n</td>
             <td>4， 6 ，8</td>
             <td>n值目前支持4， 6， 8</td>
         </tr>
         <tr>
             <td>D</td>
-            <td>512~16384</td>
-            <td>D支持512~65536范围以内</td>
+            <td>1~16384</td>
+            <td>D支持1~16384范围以内且64元素对齐</td>
         </tr>
         </tbody>
     </table>
@@ -650,14 +662,15 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
+void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr, const char* name) {
   auto size = GetShapeSize(shape);
-  std::vector<short> resultData(size, 0);
+  std::vector<float> resultData(size, 0); 
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                          *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-  for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %e\n", i, resultData[i]);
+  LOG_PRINT("%s result (first 10 elements):\n", name);                                                                                                  
+  for (int64_t i = 0; i < std::min(size, (int64_t)10); i++) {                                                                                           
+    LOG_PRINT("  [%ld] = %f\n", i, resultData[i]);
   }
 }
 
@@ -712,70 +725,73 @@ int main() {
   std::vector<int64_t> xShape = {1024, 4, 512};         // T, N, D
   std::vector<int64_t> phiShape = {24, 2048};           // 2 * N + N * N, N * D
   std::vector<int64_t> alphaShape = {3};                // 固定大小
-  std::vector<int64_t> hInGradShape = {1024, 512};      // T, D
-  std::vector<int64_t> hPostGradShape = {1024, 4};      // T, N
-  std::vector<int64_t> hResGradShape = {1024, 4, 4};    // T, N, N
+  std::vector<int64_t> gradHInShape = {1024, 512};      // T, D
+  std::vector<int64_t> gradHPostShape = {1024, 4};      // T, N
+  std::vector<int64_t> gradHResShape = {1024, 4, 4};    // T, N, N
   std::vector<int64_t> invRmsShape = {1024};            // T
-  std::vector<int64_t> hMixShape = {1024, 24};          // T, 2 * N + N * N
+  std::vector<int64_t> mmResShape = {1024, 24};          // T, 2 * N + N * N
   std::vector<int64_t> hPreShape = {1024, 4};           // T, N
   std::vector<int64_t> hPostShape = {1024, 4};          // T, N
   std::vector<int64_t> gammaShape = {4, 512};           // N, D
-  std::vector<int64_t> xGradShape = {1024, 4, 512};     // T, N, D
-  std::vector<int64_t> phiGradShape = {24, 2048};       // 2 * N + N * N, N * D
-  std::vector<int64_t> alphaGradShape = {3};            // 固定大小
-  std::vector<int64_t> biasGradShape = {24};            // 2 * N + N * N
-  std::vector<int64_t> gammaGradShape = {4, 512};       // N, D
-
+  std::vector<int64_t> gradXShape = {1024, 4, 512};     // T, N, D
+  std::vector<int64_t> gradPhiShape = {24, 2048};       // 2 * N + N * N, N * D
+  std::vector<int64_t> gradAlphaShape = {3};            // 固定大小
+    std::vector<int64_t> gradGammaShape = {4, 512};       // N, D
+  std::vector<int64_t> gradBiasShape = {24}; // T, N, D (grad_x_post)
+  std::vector<int64_t> gradXPostShape = {1024, 4, 512};
+  
   void* xDeviceAddr = nullptr;
   void* phiDeviceAddr = nullptr;
   void* alphaDeviceAddr = nullptr;
-  void* hInGradDeviceAddr = nullptr;
-  void* hPostGradDeviceAddr = nullptr;
-  void* hResGradDeviceAddr = nullptr;
+  void* gradHInDeviceAddr = nullptr;
+  void* gradHPostDeviceAddr = nullptr;
+  void* gradHResDeviceAddr = nullptr;
   void* invRmsDeviceAddr = nullptr;
   void* hMixDeviceAddr = nullptr;
   void* hPreDeviceAddr = nullptr;
   void* hPostDeviceAddr = nullptr;
   void* gammaDeviceAddr = nullptr;
-  void* xGradDeviceAddr = nullptr;
-  void* phiGradDeviceAddr = nullptr;
-  void* alphaGradDeviceAddr = nullptr;
-  void* biasGradDeviceAddr = nullptr;
-  void* gammaGradDeviceAddr = nullptr;
+  void* gradXDeviceAddr = nullptr;
+  void* gradPhiDeviceAddr = nullptr;
+  void* gradAlphaDeviceAddr = nullptr;
+  void* gradBiasDeviceAddr = nullptr;
+  void* gradGammaDeviceAddr = nullptr;
+  void* gradXPostDeviceAddr = nullptr;
 
   aclTensor* x = nullptr;
   aclTensor* phi = nullptr;
   aclTensor* alpha = nullptr;
-  aclTensor* hInGrad = nullptr;
-  aclTensor* hPostGrad = nullptr;
-  aclTensor* hResGrad = nullptr;
+  aclTensor* gradHIn = nullptr;
+  aclTensor* gradHPost = nullptr;
+  aclTensor* gradHRes = nullptr;
   aclTensor* invRms = nullptr;
   aclTensor* hMix = nullptr;
   aclTensor* hPre = nullptr;
   aclTensor* hPost = nullptr;
   aclTensor* gamma = nullptr;
-  aclTensor* xGrad = nullptr;
-  aclTensor* phiGrad = nullptr;
-  aclTensor* alphaGrad = nullptr;
-  aclTensor* biasGrad = nullptr;
-  aclTensor* gammaGrad = nullptr;
+  aclTensor* gradX = nullptr;
+  aclTensor* gradPhi = nullptr;
+  aclTensor* gradAlpha = nullptr;
+  aclTensor* gradBias = nullptr;
+  aclTensor* gradGamma = nullptr;
+  aclTensor* gradXPost = nullptr;
 
   std::vector<short> xHostData(1024 * 4 * 512, 1.0);
   std::vector<float> phiHostData(24 * 2048, 1.0);
   std::vector<float> alphaHostData(3, 1.0);
-  std::vector<short> hInGradHostData(1024 * 512, 1.0);
-  std::vector<float> hPostGradHostData(1024 * 4, 1.0);
-  std::vector<float> hResGradHostData(1024 * 4 * 4, 1.0);
+  std::vector<short> gradHInHostData(1024 * 512, 1.0);
+  std::vector<float> gradHPostHostData(1024 * 4, 1.0);
+  std::vector<float> gradHResHostData(1024 * 4 * 4, 1.0);
   std::vector<float> invRmsHostData(1024, 1.0);
   std::vector<float> hMixHostData(1024 * 24, 1.0);
   std::vector<float> hPreHostData(1024 * 4, 1.0);
   std::vector<float> hPostHostData(1024 * 4, 1.0);
   std::vector<float> gammaHostData(4 * 512, 1.0);
-  std::vector<short> xGradHostData(1024 * 4 * 512, 0);
-  std::vector<float> phiGradHostData(24 * 2048, 0);
-  std::vector<float> alphaGradHostData(3, 0);
-  std::vector<float> biasGradHostData(24, 0);
-  std::vector<float> gammaGradHostData(4 * 512, 0);
+  std::vector<short> gradXHostData(1024 * 4 * 512, 0);
+  std::vector<float> gradPhiHostData(24 * 2048, 0);
+  std::vector<float> gradAlphaHostData(3, 0);
+  std::vector<float> gradBiasHostData(24, 0);
+  std::vector<float> gradGammaHostData(4 * 512, 0);
 
   ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -783,101 +799,101 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(alphaHostData, alphaShape, &alphaDeviceAddr, aclDataType::ACL_FLOAT, &alpha);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hInGradHostData, h_in_gradShape, &hInGradDeviceAddr, aclDataType::ACL_BF16, &hInGrad);
+  ret = CreateAclTensor(gradHInHostData, gradHInShape, &gradHInDeviceAddr, aclDataType::ACL_BF16, &gradHIn);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hPostGradHostData, xGradShape, &hPostGradDeviceAddr, aclDataType::ACL_FLOAT, &hPostGrad);
+  ret = CreateAclTensor(gradHPostHostData, gradHPostShape, &gradHPostDeviceAddr, aclDataType::ACL_FLOAT, &gradHPost);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hResGradHostData, phiGradShape, &hResGradDeviceAddr, aclDataType::ACL_FLOAT, &hResGrad);
+  ret = CreateAclTensor(gradHResHostData, gradHResShape, &gradHResDeviceAddr, aclDataType::ACL_FLOAT, &gradHRes);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(invRmsHostData, hPostGradShape, &invRmsDeviceAddr, aclDataType::ACL_FLOAT, &invRms);
+  ret = CreateAclTensor(invRmsHostData, invRmsShape, &invRmsDeviceAddr, aclDataType::ACL_FLOAT, &invRms);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hMixHostData, hResGradShape, &hMixDeviceAddr, aclDataType::ACL_FLOAT, &hMix);
+  ret = CreateAclTensor(hMixHostData, mmResShape, &hMixDeviceAddr, aclDataType::ACL_FLOAT, &hMix);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hPreHostData, invRmsShape, &hPreDeviceAddr, aclDataType::ACL_FLOAT, &hPre);
+  ret = CreateAclTensor(hPreHostData, hPreShape, &hPreDeviceAddr, aclDataType::ACL_FLOAT, &hPre);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hPostHostData, hMixShape, &hPostDeviceAddr, aclDataType::ACL_FLOAT, &hPost);
+  ret = CreateAclTensor(hPostHostData, hPostShape, &hPostDeviceAddr, aclDataType::ACL_FLOAT, &hPost);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(gammaHostData, hPreShape, &gammaDeviceAddr, aclDataType::ACL_FLOAT, &gamma);
+  ret = CreateAclTensor(gammaHostData, gammaShape, &gammaDeviceAddr, aclDataType::ACL_FLOAT, &gamma);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(xGradHostData, hPostShape, &xGradDeviceAddr, aclDataType::ACL_BF16, &xGrad);
+  ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_BF16, &gradX);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(phiGradHostData, xShape, &phiGradDeviceAddr, aclDataType::ACL_FLOAT, &phiGrad);
+  ret = CreateAclTensor(gradPhiHostData, gradPhiShape, &gradPhiDeviceAddr, aclDataType::ACL_FLOAT, &gradPhi);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(alphaGradHostData, phiShape, &alphaGradDeviceAddr, aclDataType::ACL_FLOAT, &alphaGrad);
+  ret = CreateAclTensor(gradAlphaHostData, gradAlphaShape, &gradAlphaDeviceAddr, aclDataType::ACL_FLOAT, &gradAlpha);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(biasGradHostData, alphaShape, &biasGradDeviceAddr, aclDataType::ACL_FLOAT, &biasGrad);
+  ret = CreateAclTensor(gradBiasHostData, gradBiasShape, &gradBiasDeviceAddr, aclDataType::ACL_FLOAT, &gradBias);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(gammaGradHostData, hPreShape, &gammaGradDeviceAddr, aclDataType::ACL_FLOAT, &gammaGrad);
+  ret = CreateAclTensor(gradGammaHostData, gradGammaShape, &gradGammaDeviceAddr, aclDataType::ACL_FLOAT, &gradGamma);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   float hc_eps = 1e-6;
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 80 * 1024 * 1024;
   aclOpExecutor* executor;
 
   // 调用aclnnMhcPreBackward第一段接口
-  ret = aclnnMhcPreBackwardGetWorkspaceSize(x, phi, alpha, hInGrad, hPostGrad, hResGrad, invRms,
-        hMix, hPre, hPost, gamma, hc_eps, xGrad, phiGrad, alphaGrad, biasGrad, gammaGrad, &workspaceSize, &executor);
+  ret = aclnnMhcPreBackwardGetWorkspaceSize(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms,
+        hMix, hPre, hPost, gamma, hc_eps, gradX, gradPhi, gradAlpha, gradBias, gradGamma, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreBackwardGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnMhcPreBackward第二段接口
   ret = aclnnMhcPreBackward(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreBackward failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintOutResult(xShape, &dxDeviceAddr);
-  PrintOutResult(phiShape, &dkDeviceAddr);
-  PrintOutResult(alphaShape, &dvDeviceAddr);
-  PrintOutResult(biasShape, &dxRopeDeviceAddr);
-  PrintOutResult(hPostShape, &dkRopeDeviceAddr);
-  
+  PrintOutResult(gradXShape, &gradXDeviceAddr, "gradX");
+  PrintOutResult(gradPhiShape, &gradPhiDeviceAddr, "gradPhi");
+  PrintOutResult(gradAlphaShape, &gradAlphaDeviceAddr, "gradAlpha");
+  PrintOutResult(gradBiasShape, &gradBiasDeviceAddr, "gradBias");
+  PrintOutResult(gradGammaShape, &gradGammaDeviceAddr, "gradGamma");
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(x);
   aclDestroyTensor(phi);
   aclDestroyTensor(alpha);
-  aclDestroyTensor(hInGrad);
-  aclDestroyTensor(hPostGrad);
-  aclDestroyTensor(hResGrad);
+  aclDestroyTensor(gradHIn);
+  aclDestroyTensor(gradHPost);
+  aclDestroyTensor(gradHRes);
   aclDestroyTensor(invRms);
   aclDestroyTensor(hMix);
   aclDestroyTensor(hPre);
   aclDestroyTensor(hPost);
   aclDestroyTensor(gamma);
-  aclDestroyTensor(xGrad);
-  aclDestroyTensor(phiGrad);
-  aclDestroyTensor(alphaGrad);
-  aclDestroyTensor(biasGrad);
-  aclDestroyTensor(gammaGrad);
+  aclDestroyTensor(gradX);
+  aclDestroyTensor(gradPhi);
+  aclDestroyTensor(gradAlpha);
+  aclDestroyTensor(gradBias);
+  aclDestroyTensor(gradGamma);
 
   // 7. 释放device资源
   aclrtFree(xDeviceAddr);
   aclrtFree(phiDeviceAddr);
   aclrtFree(alphaDeviceAddr);
-  aclrtFree(hInGradDeviceAddr);
-  aclrtFree(hPostGradDeviceAddr);
-  aclrtFree(hResGradDeviceAddr);
+  aclrtFree(gradHInDeviceAddr);
+  aclrtFree(gradHPostDeviceAddr);
+  aclrtFree(gradHResDeviceAddr);
   aclrtFree(invRmsDeviceAddr);
   aclrtFree(hMixDeviceAddr);
   aclrtFree(hPreDeviceAddr);
   aclrtFree(hPostDeviceAddr);
   aclrtFree(gammaDeviceAddr);
-  aclrtFree(xGradDeviceAddr);
-  aclrtFree(phiGradDeviceAddr);
-  aclrtFree(alphaGradDeviceAddr);
-  aclrtFree(biasGradDeviceAddr);
-  aclrtFree(gammaGradDeviceAddr);
+  aclrtFree(gradXDeviceAddr);
+  aclrtFree(gradPhiDeviceAddr);
+  aclrtFree(gradAlphaDeviceAddr);
+  aclrtFree(gradBiasDeviceAddr);
+  aclrtFree(gradGammaDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
@@ -885,7 +901,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```
