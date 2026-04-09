@@ -35,6 +35,7 @@ constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 6;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 7;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
+constexpr uint32_t METADATA_INDEX = 9;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
 // Attributes Index
@@ -61,6 +62,7 @@ constexpr uint32_t COPYND2NZ_SRC_STRIDE_LIMITATION = 65535;
 constexpr uint32_t NUM_BYTES_FLOAT = 4;
 constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
+constexpr uint32_t METADATA_LIMIT = 1024;
 constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t QSFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 
@@ -126,6 +128,7 @@ struct QSFAParaInfo {
     QSFAOptionalParaInfo keyRope = {nullptr, nullptr};
     QSFAOptionalParaInfo keyDequantScale = {nullptr, nullptr};
     QSFAOptionalParaInfo valueDequantScale = {nullptr, nullptr};
+    QSFAOptionalParaInfo metadata = {nullptr, nullptr};
     QSFARequiredParaInfo attenOut = {nullptr, nullptr};
 
     const char *layoutQuery = nullptr;
@@ -450,6 +453,7 @@ private:
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
     ge::graphStatus CheckActualSeqLensQ();
+    ge::graphStatus CheckMetadata();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();
     ge::graphStatus CheckActualSeqLens();
