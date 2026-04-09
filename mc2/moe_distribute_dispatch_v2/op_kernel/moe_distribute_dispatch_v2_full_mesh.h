@@ -116,7 +116,7 @@ private:
     __aicore__ inline void GenerateGatherMaskTensor(uint32_t maskCnt);
     __aicore__ inline void MaskZeroComputeExpert(uint32_t maskCnt);
     __aicore__ inline void ZeroComputeExpertMaskCal();
-    __aicore__ inline void SetTilingDataAndCal(const MoeDistributeDispatchV2TilingData *tilingData);
+    __aicore__ inline void SetTilingDataAndCal(const MoeDistributeDispatchV2Info *info);
     __aicore__ inline void SendToSharedExpert(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void SendToMoeExpert(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> expertMaskBuf, TBuf<> outBuf);
     __aicore__ inline void CalExpertSendNum(TBuf<> outBuf, TBuf<> expertMaskBuf);
@@ -382,9 +382,19 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetTilingDataAndCal(
-    const MoeDistributeDispatchV2TilingData *tilingData)
+    const MoeDistributeDispatchV2Info *info)
 {
-    SetTilingData(tilingData);
+    axisBS_ = info->bs;
+    axisH_ = info->h;
+    epWorldSizeOriginal_ = info->epWorldSize;
+    hasElasticInfoFlag_ = info->hasElasticInfo;
+    isPerformanceFlag_ = info->isPerformance;
+    epWorldSize_ = info->epWorldSize;
+    sharedExpertRankNum_ = info->sharedExpertRankNum;
+    moeExpertNum_ = info->moeExpertNum;
+    globalBS_ = info->globalBs;
+    scaleInBytes_ = info->scalesCol * info->scalesTypeSize;
+    scalesCount_ = info->scalesCount;
     copyInAxisH_ = axisH_;
     copyOutAxisH_ = axisH_;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
