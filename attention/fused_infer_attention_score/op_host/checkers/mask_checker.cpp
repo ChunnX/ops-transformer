@@ -89,38 +89,20 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     if (enableIFAMLA) {
         if (fiaInfo.s1Size == 1U) {
             // mla fullquant int8
-            if (fiaInfo.inputQType == ge::DT_INT8) {
-                const std::vector<std::string> layoutSupportList = {
-                    "TND", "TND_NTD",
-                };
-                std::string layoutStr(fiaInfo.opParamInfo.layOut);
-                std::string layout = layoutStr;
-                OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) &&
-                            std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                            OP_LOGE(fiaInfo.opName,
-                                    "Sparse 0 without mask is only supported when using IFA MLA full quantization, with Int8 input datatype and layout not being TND or TND_NTD, "
-                                    "input sparse mode is %d and there has%smask",
-                                    fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                            return ge::GRAPH_FAILED);
-            } else {
-                OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)),
-                            OP_LOGE(fiaInfo.opName,
-                                    "Only support sparse 0 without mask when ifa mla and query's sequence length is 1, "
-                                    "input sparse mode is %d and there has%smask",
-                                    fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                            return ge::GRAPH_FAILED);
-            }
-        } else {
-            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN &&
-                        !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
-                          ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+            const std::vector<std::string> layoutSupportList = {
+                "TND", "TND_NTD",
+            };
+            std::string layoutStr(fiaInfo.opParamInfo.layOut);
+            std::string layout = layoutStr;
+            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
+                        !((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) &&
+                        std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
                         OP_LOGE(fiaInfo.opName,
-                                "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and "
-                                "query's sequence length is > 1, and input datatype is FLOAT8_E4M3, "
+                                "Sparse 0 without mask is only supported when using IFA MLA full quantization, with Int8 input datatype and layout not being TND or TND_NTD, "
                                 "input sparse mode is %d and there has%smask",
                                 fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
-            
+        } else {
             OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
                         !((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)),
                         OP_LOGE(fiaInfo.opName,
@@ -130,6 +112,14 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                                 fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
         }
+        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
+                    !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
+                    ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and " 
+                            "input datatype is FLOAT8_E4M3/HIFLOAT8, input sparse mode is %d and there has%smask", 
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }

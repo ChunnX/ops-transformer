@@ -71,9 +71,9 @@ using namespace AscendC;
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm1TilingData, bmm1TilingDataVar, tiling);   \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm2TilingData, bmm2TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingDataVar;                                      \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingDataVar;
 
@@ -84,27 +84,27 @@ using namespace AscendC;
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm1TilingData, bmm1TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingDataVar;
 
 #define COPY_BMM2_TILING_DATA(tiling, need_cube)                                                        \
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm2TilingData, bmm2TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingDataVar;
 #else
 #define COPY_TILING_DATA(tiling, need_cube)                                                             \
-    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingData, tiling_data_in, tiling);                 \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;                      \
+    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingDataRegbase, tiling_data_in, tiling);                 \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = &tiling_data_in;                      \
     const TCubeTiling* __restrict bmm1tiling = &(tiling_data->bmm1TilingData);                          \
     const TCubeTiling* __restrict bmm2tiling = &(tiling_data->bmm2TilingData);
 
 #define COPY_TILING_DATA_NO_CUBE(tiling)                                                                \
-    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingData, tiling_data_in, tiling);                 \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;
+    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingDataRegbase, tiling_data_in, tiling);                 \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = &tiling_data_in;
 
 #define COPY_BMM1_TILING_DATA(tiling, need_cube) COPY_TILING_DATA(tiling, need_cube)
 #define COPY_BMM2_TILING_DATA(tiling, need_cube) COPY_TILING_DATA(tiling, need_cube)
