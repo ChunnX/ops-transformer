@@ -65,10 +65,6 @@ private:
     HcclResult GetaclCreateTensorSymbol();
 
     HcclResult CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle) const;
-
-    HcclResult GetCommProtocol(CommProtocol &protocol);
-    HcclResult CheckUbMemSupportForSingleRank(uint32_t dstRankId);
-    HcclResult ValidateUbMemSupportForMultiLayer();
 #ifdef BUILD_OPEN_PROJECT
     HcclResult CallHcomGetRankSizeEx(const char *group, uint32_t *ranksize, uint32_t flag) const;
     HcclResult CallHcomGetL0TopoTypeEx(const char *group, CommTopo *topoType, uint32_t flag) const;
