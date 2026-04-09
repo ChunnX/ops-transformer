@@ -255,19 +255,12 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDi
                                                                                               uint64_t curBaseM,
                                                                                               uint64_t baseN)
 {
-    if constexpr(transB) {
-        if (curBaseM >= mSize) {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        } else {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        }
+    if (curBaseM >= mSize) {
+        bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     } else {
-        if (curBaseM >= mSize) {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        } else {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        }
+        bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
     }
+
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
