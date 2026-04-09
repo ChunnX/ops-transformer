@@ -199,7 +199,7 @@ public:
         // Copy(attnOut, bf16AttnIn, curChunkSize_ * Dv_);
         // DataCopyPad(attnOut, bf16AttnIn, inParams, {1, static_cast<uint16_t>(curChunkSize_), static_cast<uint16_t>(Dv_), 0, 0, 1, 1, 1});
         // Cast(attnOut, fp32AttnIn, RoundMode::CAST_RINT, curChunkSize_ * paddedDv_);
-        // inQueue_.FreeTensor(fp32AttnIn);  // Cast 完成后立即释放
+        inQueue_.FreeTensor(bf16AttnIn);  // Cast 完成后立即释放
         outQueue_.EnQue(attnOut);
         auto outLocal = outQueue_.DeQue<bfloat16_t>();
         DataCopyExtParams copyParams;
