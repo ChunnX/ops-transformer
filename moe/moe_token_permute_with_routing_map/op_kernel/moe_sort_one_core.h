@@ -20,6 +20,8 @@
 namespace MoeTokenPermute {
 using namespace AscendC;
 
+constexpr int32_t BLOCK_SIZE = 32;
+
 template <typename T>
 class MoeSortOneCore : public MoeSortBase
 {
@@ -37,6 +39,7 @@ private:
 
 private:
     int64_t sortNum;
+    TBuf<TPosition::VECCALC> offsetBuf;
     TBuf<TPosition::VECCALC> indexBuffer;
     LocalTensor<int32_t> indexLocal;
     GlobalTensor<T> expertForSourceRowGm;
@@ -147,11 +150,26 @@ __aicore__ inline void MoeSortOneCore<T>::Init(
     int64_t sortDataBufferSize = indexBufferSize * sizeof(int64_t) / sizeof(int32_t);
 
     int64_t buffSize = indexBufferSize * kvFactor;
+    pipe->InitBuffer(offsetBuf, BLOCK_SIZE);
     pipe->InitBuffer(sortDataCopyInQueue, bufferNum, sortDataBufferSize);
     pipe->InitBuffer(indexBuffer, indexBufferSize);
     pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, buffSize);
     pipe->InitBuffer(sortedBuffer, buffSize);
     indexLocal = indexBuffer.Get<int32_t>();
+
+    LocalTensor<int32_t> offsetLocal = offsetBuf.Get<int32_t>();
+    DataCopyExtParams copyParams{1, static_cast<uint32_t>(this->coreNum * sizeof(int32_t)), 0, 0, 0};
+    DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+    // 将上一个kernel残留在workspace中的结果写入offset
+    DataCopyPad(offsetLocal, expandDstToSrcRowGm, copyParams, padParams);
+    PipeBarrier<PIPE_ALL>();
+    int32_t validLength = 0;
+    for (int32_t i = 0; i < (int32_t)this->coreNum; i++)
+    {
+        int32_t val = offsetLocal.GetValue(i);
+        validLength += val;
+    }
+    this->totalLength = validLength;
 }
 
 template <typename T>

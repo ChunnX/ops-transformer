@@ -32,10 +32,9 @@ public:
 
 private:
     __aicore__ inline void CopyIn(
-        int64_t Offset, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<T>& DataCopyPadExtParams);
+        int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<T>& DataCopyPadExtParams);
     __aicore__ inline void CopyOut(
-        int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams,
-        DataCopyPadExtParams<T>& DataCopyPadExtParams);
+        int64_t innerLoop, DataCopyExtParams dataCopyExtParams, DataCopyPadExtParams<T>& DataCopyPadExtParams);
     __aicore__ inline void CopyInIndices(
         int64_t progress, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<int32_t>& DataCopyPadExtParams);
     __aicore__ inline void SyncAll();
@@ -96,10 +95,13 @@ private:
 
 template <typename T, bool ifNumOutTokens>
 __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::CopyIn(
-    int64_t Offset, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<T>& DataCopyPadExtParams)
+    int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<T>& DataCopyPadExtParams)
 {
     LocalTensor<T> inLocal = copyInQueue.AllocTensor<T>();
-    DataCopyPadCustom(inLocal, srcGm[Offset], dataCopyExtParams, DataCopyPadExtParams);
+    for (int32_t i = 0; i < outTokenNum * topK; i++) {
+        int32_t tokenId = indicesLocal.GetValue(i);
+        DataCopyPadCustom(inLocal[i * colsAlign], srcGm[tokenId * cols], dataCopyExtParams, DataCopyPadExtParams);
+    }
     copyInQueue.EnQue<T>(inLocal);
 }
 
@@ -113,27 +115,12 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::CopyInIndices(
 
 template <typename T, bool ifNumOutTokens>
 __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::CopyOut(
-    int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams,
-    DataCopyPadExtParams<T>& DataCopyPadExtParams)
+    int64_t innerLoop, DataCopyExtParams dataCopyExtParams, DataCopyPadExtParams<T>& DataCopyPadExtParams)
 {
     LocalTensor<T> inLocal = copyInQueue.DeQue<T>();
     int64_t offset = innerLoop * onceUbIndicesCols;
-    for (int32_t tokensId = 0; tokensId < outTokenNum; tokensId++) {
-        for (int32_t topKId = 0; topKId < topK; topKId++) {
-#ifndef __CCE_KT_TEST__
-            if constexpr (ifNumOutTokens == true) {
-                auto indicesValue = indicesLocal.GetValue(offset);
-                if (indicesValue < numOutTokens) {
-                    DataCopyPadCustom(dstGm[indicesValue * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
-                }
-            } else {
-                DataCopyPadCustom(
-                    dstGm[indicesLocal.GetValue(offset) * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
-            }
-#endif
-            offset++;
-        }
-    }
+    dataCopyExtParams.blockCount *= topK;
+    DataCopyPadCustom(dstGm[offset * cols], inLocal, dataCopyExtParams);
     copyInQueue.FreeTensor(inLocal);
 }
 
@@ -200,9 +187,9 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::Init(
     onceUbTokenCols = this->onceUbTokenNums * cols;
     onceUbIndicesCols = this->onceUbTokenNums * topK;
 
-    srcGm.SetGlobalBuffer((__gm__ T*)src + srcoffset, this->coreCalcNum * cols);
+    srcGm.SetGlobalBuffer((__gm__ T*)src, this->numOutTokens * cols);
     indicesGm.SetGlobalBuffer((__gm__ int32_t*)indices + indicesoffset, this->coreCalcNum * topK);
-    dstGm.SetGlobalBuffer((__gm__ T*)dst, this->numOutTokens * cols);
+    dstGm.SetGlobalBuffer((__gm__ T*)dst + srcoffset * topK, this->coreCalcNum * topK * cols);
     pipe->InitBuffer(copyInQueue, 2, this->indexCopyTilingData->tokenUB);
     pipe->InitBuffer(indicesBuffer, 1, this->indexCopyTilingData->indicesUB);
     onceIndicesNums = onceIndicesTokenNums * topK;
@@ -232,8 +219,8 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::Process()
             SetFlag<HardEvent::MTE2_S>(indicesMte2ToS);
             WaitFlag<HardEvent::MTE2_S>(indicesMte2ToS);
             for (int64_t innerLoop = 0; innerLoop < onceIndicesTokenMoveTimes; innerLoop++) {
-                CopyIn(outoffset, tokenCopyParams, padParams);
-                CopyOut(innerLoop, onceUbTokenNums, tokenCopyOutParams, padParams);
+                CopyIn(onceUbTokenNums, tokenCopyOutParams, padParams);
+                CopyOut(innerLoop, tokenCopyParams, padParams);
                 outoffset += onceUbTokenCols;
             }
             indicesBuffer.FreeTensor(indicesLocal);
@@ -244,12 +231,12 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::Process()
         SetFlag<HardEvent::MTE2_S>(indicesMte2ToS);
         WaitFlag<HardEvent::MTE2_S>(indicesMte2ToS);
         for (int64_t innerLoop = 0; innerLoop < LastonceIndicesTokenMoveTimes - 1; innerLoop++) {
-            CopyIn(outoffset, tokenCopyParams, padParams);
-            CopyOut(innerLoop, onceUbTokenNums, tokenCopyOutParams, padParams);
+            CopyIn(onceUbTokenNums, tokenCopyOutParams, padParams);
+            CopyOut(innerLoop, tokenCopyParams, padParams);
             outoffset += onceUbTokenCols;
         }
-        CopyIn(outoffset, tokenCopyLastParams, padParams);
-        CopyOut(LastonceIndicesTokenMoveTimes - 1, LastIndicesLastTokenNums, tokenCopyOutParams, padParams);
+        CopyIn(LastIndicesLastTokenNums, tokenCopyOutParams, padParams);
+        CopyOut(LastonceIndicesTokenMoveTimes - 1, tokenCopyLastParams, padParams);
         indicesBuffer.FreeTensor(indicesLocal);
     }
 }

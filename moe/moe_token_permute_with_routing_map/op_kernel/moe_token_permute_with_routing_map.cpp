@@ -42,15 +42,16 @@ using namespace MoeTokenPermute;
         opMS.Process(permuteProbs, sortedIndices);                                                                     \
         sortPipe.Destroy();                                                                                            \
         AscendC::SyncAll();                                                                                            \
+        TPipe MoeindexCopyPipe;                                                                                        \
+        indexCopyClass<__VA_ARGS__> indexCopyOp;                                                                       \
+        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);                                  \
+        indexCopyOp.Process();                                                                                         \
+        MoeindexCopyPipe.Destroy();                                                                                    \
         TPipe sortPipe2;                                                                                               \
         sortClass2<int32_t> op2;                                                                                       \
         op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                                                 \
         op2.Process();                                                                                                 \
         sortPipe2.Destroy();                                                                                           \
-        TPipe MoeindexCopyPipe;                                                                                        \
-        indexCopyClass<__VA_ARGS__> indexCopyOp;                                                                       \
-        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);                                  \
-        indexCopyOp.Process();                                                                                         \
     } while (0)
 
 #define GENERAL_PAD_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)         \
