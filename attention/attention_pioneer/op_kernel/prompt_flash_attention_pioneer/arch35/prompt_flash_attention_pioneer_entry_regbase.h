@@ -38,7 +38,7 @@ using namespace regbaseutil;
         using VecBlockType = BaseApi::FABlockVecInfer<__VA_ARGS__>;                                                     \
         templateClass<CubeBlockType, VecBlockType> op;                                                                  \
         op.Init(query, key, value, pseShift, attenMask, actualSeqLengths,                                               \
-                actualSeqLengthsKV, blocktable, postQuantScale, postQuantOffset, queryRope, keyRope, keySink, keyRopeSink, valueSink, softmaxLse, attentionOut,                           \
+                actualSeqLengthsKV, blocktable, postQuantScale, postQuantOffset, queryRope, keyRope, keySink, keyRopeSink, valueSink, metaData, softmaxLse, attentionOut,                           \
                 user, tilingData, &tPipe);                                                                              \
         op.Process();                                                                                                   \
     } while(0)
@@ -56,7 +56,7 @@ using namespace regbaseutil;
         templateClass<CubeBlockType, VecBlockType> op;                                                                                  \
         op.InitBaseAPI(query, key, value, pseShift, nullptr, nullptr, attenMask, nullptr, actualSeqLengths,                             \
             actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, key_antiquant_scale, value_antiquant_scale, postQuantScale,                 \
-            postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, keySink, keyRopeSink, valueSink, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, nullptr, &tPipe);            \
+            postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, keySink, keyRopeSink, valueSink, metaData, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, nullptr, &tPipe);            \
         op.Process();                                                                                                                   \
     } while (0)
 
@@ -75,7 +75,7 @@ using namespace regbaseutil;
         templateClass<CubeBlockType, VecBlockType> op;                                                                                  \
         op.InitBaseAPI(query, key, value, pseShift, nullptr, nullptr, attenMask, nullptr, actualSeqLengths,                             \
             actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, key_antiquant_scale, value_antiquant_scale, postQuantScale,                 \
-            postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, keySink, keyRopeSink, valueSink, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, tilingData, &tPipe);        \
+            postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, keySink, keyRopeSink, valueSink, metaData, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, tilingData, &tPipe);        \
         op.Process();                                                                                                                   \
     } while (0)
 
@@ -109,8 +109,8 @@ inline __aicore__ void prompt_flash_attention_pioneer_FIAS_regbase(__gm__ uint8_
     __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* key_antiquant_scale,
     __gm__ uint8_t* key_antiquant_offset, __gm__ uint8_t* value_antiquant_scale, __gm__ uint8_t* value_antiquant_offset,
     __gm__ uint8_t* keySharedPrefix, __gm__ uint8_t* valueSharedPrefix, __gm__ uint8_t* actualSharedPrefixLen,
-    __gm__ uint8_t * queryRope, __gm__ uint8_t * keyRope, __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t *learnableSink, 
-    __gm__ uint8_t * keySink, __gm__ uint8_t *keyRopeSink, __gm__ uint8_t *valueSink, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t * queryRope, __gm__ uint8_t * keyRope, __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t *learnableSink,
+    __gm__ uint8_t *metaData, __gm__ uint8_t * keySink, __gm__ uint8_t *keyRopeSink, __gm__ uint8_t *valueSink, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     __gm__ uint8_t* user = GetUserWorkspace(workspace);
