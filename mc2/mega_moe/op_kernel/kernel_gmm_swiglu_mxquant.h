@@ -230,8 +230,8 @@ public:
             epilogueOp.UpdateGlobalAddr(vecBaseOffset);
             outputGm.SetGlobalBuffer((__gm__ ElementMMadOut2*)params.y2GmAddr + Get<IDX_Y2_OFFSET>(baseOffset));
         }
-        groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrFlagList + Get<IDX_FLAG_OFFSET>(baseOffset) * INT_CACHELINE * MAX_AICORE_NUM);
-        groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrFlagList2 + Get<IDX_FLAG_OFFSET>(baseOffset) * INT_CACHELINE * MAX_AICORE_NUM);
+        groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrFlagList + Get<IDX_FLAG_OFFSET>(baseOffset) * INT_CACHELINE);
+        groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrFlagList2 + Get<IDX_FLAG_OFFSET>(baseOffset) * INT_CACHELINE);
     }
 
     CATLASS_DEVICE void UpdateOffset(uint32_t groupIdx)
@@ -395,15 +395,15 @@ public:
         groupListGm = cumsumMM[(tilingData->EP - 1) * tilingData->expertPerRank]; // cumsumMM的最后一行
         groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrFlagList);
         if constexpr(g_coreType == AscendC::AIV) {
-            int32_t flagNum = tilingData->expertPerRank * INT_CACHELINE * MAX_AICORE_NUM * 2;
-            int32_t coreLen, coreOffset;
-            TilingByCore(flagNum, coreLen, coreOffset);
-            // groupFlagList清零
-            AscendC::LocalTensor<int32_t> initTensor{AscendC::TPosition::VECIN, 0, 0};
-            AscendC::Duplicate(initTensor, 0, coreLen);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::DataCopy(groupFlagListGm[coreOffset], initTensor, coreLen);
+            if (aivCoreIdx == 0) {
+                int32_t flagNum = tilingData->expertPerRank * INT_CACHELINE * 2;
+                // groupFlagList清零
+                AscendC::LocalTensor<int32_t> initTensor{AscendC::TPosition::VECIN, 0, 0};
+                AscendC::Duplicate(initTensor, 0, flagNum);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+                AscendC::DataCopy(groupFlagListGm, initTensor, flagNum);
+            }
         }
         epilogueOp.Init({params.workspaceInfo.ptrA2, params.workspaceInfo.ptrA2Scale, params.workspaceInfo.ptrFlagList,
                          nullptr, nullptr, nullptr, L1_TILE_M, L1_TILE_N});
@@ -807,7 +807,7 @@ public:
                                          tilingData->dispatchRows, pingpongId);
                 }
             }
-            AtomicAddFlag((__gm__ int32_t*)groupFlagListGm2.GetPhyAddr(), MAX_AICORE_NUM * INT_CACHELINE);
+            AtomicAddFlag((__gm__ int32_t*)groupFlagListGm2.GetPhyAddr(), 1);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);

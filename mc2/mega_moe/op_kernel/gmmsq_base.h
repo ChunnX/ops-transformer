@@ -87,6 +87,21 @@ CATLASS_DEVICE int64_t CeilAlign(int64_t a, int64_t b)
     return (a + b - 1) / b * b;
 }
 
-
-
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+CATLASS_DEVICE
+void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t& coreOffset, int32_t align = 32)
+{
+    int32_t coreIdx = AscendC::GetBlockIdx(); // 0-63
+    int32_t coreNum = AscendC::GetBlockNum() * 2; // 32
+    int32_t lenPerCore = CeilDiv((uint32_t)totalLen, coreNum) / align * align;
+    coreLen = lenPerCore;
+    coreOffset = coreIdx * lenPerCore;
+    if (coreOffset + coreLen >= totalLen) {
+        coreLen = totalLen - coreOffset;
+    }
+    if (coreOffset >= totalLen) {
+        coreLen = 0;
+    }
+}
+#endif 
 #endif // GMMSQ_ARGS_H

@@ -244,7 +244,7 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGl
     if constexpr(g_coreType == AscendC::AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
-        groupFlagListGmAddr_ = (__gm__ int32_t *)params_->groupFlagListGmAddr + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE * MAX_AICORE_NUM;
+        groupFlagListGmAddr_ = (__gm__ int32_t *)params_->groupFlagListGmAddr + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
 //        // ***************
 //        quantOutput.SetGlobalBuffer((__gm__ CopyOutType *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
 //        // ***************
