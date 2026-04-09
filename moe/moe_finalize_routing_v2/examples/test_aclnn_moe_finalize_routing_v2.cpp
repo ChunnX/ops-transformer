@@ -144,7 +144,9 @@ int main() {
 
   // 调用aclnnMoeFinalizeRoutingV2第一段接口
   ret = aclnnMoeFinalizeRoutingV2GetWorkspaceSize(expandedX, expandedRowIdx, x1, x2Optional, bias, scales,
-                                                  expandedExpertIdx, dropPadMode, out, &workspaceSize, &executor);
+                                                  expandedExpertIdx, nullptr, nullptr, nullptr, nullptr,
+                                                  dropPadMode, nullptr, nullptr, nullptr,
+                                                  out, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;

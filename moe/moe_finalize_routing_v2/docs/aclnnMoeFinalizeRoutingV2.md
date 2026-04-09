@@ -18,13 +18,9 @@
 - **接口功能**：MoE计算中，最后处理合并MoE FFN的输出结果。
 - **计算公式**：
 
-  $$
-  expertid=expertIdx[i,k]
-  $$
-  
-  $$
-  out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
-  $$
+$$
+\begin{aligned} &\mathrm{expertId} = \mathrm{expertIdx}[i,k] \\ &\text{if } \mathrm{expertId} \in \mathrm{zero\_expert\_range}:\\&\quad \text{skip}; \\&\text{elif } \mathrm{expertId} \in \mathrm{copy\_expert\_range}: \\ &\quad x = x[i] \\ &\quad \mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=1}^{K}\mathrm{scales}_{i,k} \cdot \left(x + \mathrm{bias}_{mathrm{expertId},j}\right) \\ &\text{elif } \mathrm{expertId} \in \mathrm{constant\_expert\_range}: \\&\quad x = \alpha_1 \cdot x[i] + \alpha_2 \cdot v \\ &\quad \mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=1}^{K}\mathrm{scales}_{i,k} \cdot \left(x + \mathrm{bias}_mathrm{expertId},j\right) \\ &\text{else}: \\ &\quad \mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=0}^{K}\mathrm{scales}_{i,k} \cdot\big(\mathrm{expandedX}_{\mathrm{expandedRowIdx}_{i\cdot K+k},j} + \mathrm{bias}_{\mathrm{expertid}_{i\cdot K+k},j}\big) \end{aligned}
+$$
 
 ## 函数原型
 
@@ -39,7 +35,14 @@ aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
-    int64_t          dropPadMode,
+    const aclTensor* xOptional,
+    const aclTensor* a1Optional,
+    const aclTensor* a2Optional,
+    const aclTensor* vOptional,
+    int64_t           dropPadMode,
+    const aclIntArray* zeroExpertRange,
+    const aclIntArray* copyExpertRange,
+    const aclIntArray* constantExpertRange, 
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
@@ -150,10 +153,77 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
+    <td>xOptional</td>
+    <td>输入</td>
+    <td>公式中的x。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>a1Optional</td>
+    <td>输入</td>
+    <td>公式中的a1。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>a2Optional</td>
+    <td>输入</td>
+    <td>公式中的a2。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>vOptional</td>
+    <td>输入</td>
+    <td>公式中的v。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
     <td>dropPadMode</td>
     <td>输入</td>
     <td>表示是否支持丢弃模式,expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>zeroExpertMode</td>
+    <td>输入</td>
+    <td>表示是否支持zero expert。。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>copyExpertMode</td>
+    <td>输入</td>
+    <td>表示是否支持copy expert。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+    <tr>
+    <td>constantExpertMode</td>
+    <td>输入</td>
+    <td>表示是否支持costant expert。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -451,7 +521,8 @@ int main() {
 
   // 调用aclnnMoeFinalizeRoutingV2第一段接口
   ret = aclnnMoeFinalizeRoutingV2GetWorkspaceSize(expandedX, expandedRowIdx, x1, x2Optional, bias, scales,
-                                                  expandedExpertIdx, dropPadMode, out, &workspaceSize, &executor);
+                                                  expandedExpertIdx, nullptr, nullptr, nullptr, nullptr,
+                                                  dropPadMode, nullptr, nullptr, nullptr, out, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
