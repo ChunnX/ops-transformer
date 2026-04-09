@@ -1,0 +1,27 @@
+{
+    "AttentionPioneerMetadata":{
+        "opInfo":{
+            "computeCost":"100",
+            "engine":"DNN_VM_AICPU",
+            "flagAsync":"False",
+            "flagPartial":"False",
+            "functionName":"RunCpuKernel",
+            "kernelSo":"libtransformer_aicpu_kernels.so",
+            "opKernelLib":"CUSTAICPUKernel",
+            "userDefined":"True",
+            "workspaceSize":"100"
+        },
+        "input0":{
+            "name":"actual_seq_lengths_q",
+            "type":"DT_INT64"
+        },
+        "input1":{
+            "name":"actual_seq_lengths_kv",
+            "type":"DT_INT64"
+        },
+        "output0":{
+            "name":"metaData_out",
+            "type":"DT_INT32"
+        }
+    }
+}
