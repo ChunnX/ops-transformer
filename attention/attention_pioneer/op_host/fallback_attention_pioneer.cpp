@@ -163,21 +163,8 @@ struct ActualSeqInfo {
 
 static void FillActualSeqInfo(const FusedInferHostTensorParams &fiaTensors, ActualSeqInfo &actualSeqInfo)
 {
-    if (fiaTensors.actualSeqLengthsGe != nullptr) {
-        const int64_t *actSeqData = fiaTensors.actualSeqLengthsGe->GetData<int64_t>();
-        const size_t len = static_cast<size_t>(fiaTensors.actualSeqLengthsGe->GetShapeSize());
-        for (size_t i = 0; i < len; i++) {
-            actualSeqInfo.actSeqArray.push_back(actSeqData[i]);
-        }
-    }
-
-    if (fiaTensors.actualSeqLengthsGeKv != nullptr) {
-        const int64_t *actSeqData = fiaTensors.actualSeqLengthsGeKv->GetData<int64_t>();
-        const size_t len = static_cast<size_t>(fiaTensors.actualSeqLengthsGeKv->GetShapeSize());
-        for (size_t i = 0; i < len; i++) {
-            actualSeqInfo.actSeqArrayKv.push_back(actSeqData[i]);
-        }
-    }
+    // actual_seq_lengths and actual_seq_lengths_kv are now tensors, values are not available on host side.
+    // Core splitting info is obtained from attention_pioneer_metadata operator.
 
     std::vector<int64_t> actSeqSharedPrefix;
     if (fiaTensors.actualSharedPrefixLenGe != nullptr) {
