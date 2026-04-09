@@ -76,7 +76,7 @@ __aicore__ inline void AccumulateKnPartials(
             // Need type cast (float -> bf16 or float -> int32)
             // Reuse temp's memory for cast output (temp is no longer needed after accumulation)
             LocalTensor<OutputType> castBuf = temp.template ReinterpretCast<OutputType>();
-            Cast(castBuf, accum, RoundMode::CAST_NONE, chunkElems);
+            Cast(castBuf, accum, RoundMode::CAST_RINT, chunkElems);
             PipeBarrier<PIPE_ALL>();
             uint32_t dstOffset = m * N_total + nStart;
             DataCopy(output[dstOffset], castBuf, chunkElems);

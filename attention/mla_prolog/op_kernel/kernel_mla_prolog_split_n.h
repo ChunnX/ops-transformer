@@ -911,8 +911,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     {
 
         uint32_t mm2KGroupSize =  baseParams_->mm2KnKGroups;
-        uint32_t mm2KGroupIdx =  blockIdx_ / mm2KGroupSize;
-        uint32_t mm2NGroupIdx =  blockIdx_ % mm2KGroupSize;
+        uint32_t mm2KGroupIdx =  blockIdx_ % mm2KGroupSize;
+        uint32_t mm2NGroupIdx =  blockIdx_ / mm2KGroupSize;
         uint32_t mm2SingleKSize = baseParams_->mm2KnSingleK;
         uint32_t mm2SingleNSize = baseParams_->mm2KnSingleN;
         uint64_t mm2KStartOffset = mm2KGroupIdx * mm2SingleKSize;
@@ -994,8 +994,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
         CopyGlobalParams();
     }
     CopyInSinCos(tokenIndex, aivOffset.curVecToken, batchOffset, curStepBatchSize);
+    // WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     CrossCoreWaitFlag(FINISH_MM_CQ);
-    WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
 
 #if __CCE_AICORE__ == 310
     // Ascend 950: Accumulate Split-KN Cq partials before RmsNorm
