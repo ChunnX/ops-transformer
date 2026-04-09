@@ -15,7 +15,7 @@
 #ifndef CONST_DEF_H
 #define CONST_DEF_H
 
-namespace const_def {
+namespace AttentionCommon {
 constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);
 } // namespace const_def
