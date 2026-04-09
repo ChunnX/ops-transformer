@@ -508,7 +508,7 @@ ge::graphStatus GroupedMatmulQuantChecker::GetGroupNumValue(const gert::InferSha
     } else {
         OP_CHECK_IF(groupListShape->GetDimNum() != GROUP_LIST_DIM_NUM,
                     OP_LOGE(context->GetNodeName(),
-                            "When groupListType is 0 or 1, groupList dim num should be [%zu], but the actual is [%zu].",
+                            "groupListType 0/1 requires groupList dim [%zu], but got [%zu].",
                             GROUP_LIST_DIM_NUM, groupListShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
     }
