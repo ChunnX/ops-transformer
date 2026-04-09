@@ -201,19 +201,7 @@ protected:
         PFAShapeInfo& queryRopeShapeInfo, PFAShapeInfo& valueShapeInfo, PromptFlashAttentionPioneerTilingData &tilingData);
     void InferTilingMod(const ContextParamsForPFATiling& contextKeyParams, std::vector<int64_t>& actualSeqLengths,
         std::vector<int64_t>& actualSeqLengthsKV, uint32_t actualSeqArrayLen, uint32_t d);
-    int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
-    int64_t SinkBlockCount(int64_t actualSeqLength, int64_t actualSeqLengthKV, uint32_t sOuterSize, uint32_t sInnerSize);
-    int64_t SumOfArithmeticSeries(int64_t an, int64_t d) const;
-    int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter, int64_t token) const;
-    void FixParamWithRowInvalid(int64_t& actualSeqLength, int64_t actualSeqLengthKV, int64_t& preTokensLeftUp,
-        int64_t& nextTokensLeftUp) const;
-    int64_t GetCalcBlockNumsOneHead(int64_t actualSeqLength, int64_t actualSeqLengthKV, uint32_t sOuterSize,
-        uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp, bool isAttenMaskUsed);
-    void ComputeSplitNBSeq(PromptFlashAttentionPioneerTilingData& tilingData, uint32_t batchSize, const size_t tilingElementArrayLen,
-        std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV, uint32_t sOuterSize,
-        uint32_t sInnerSize, double coreWightTarget, uint32_t& curCore);
-    void PromptFlashAttentionPioneerSplitNBSeq(PromptFlashAttentionPioneerTilingData& tilingData, std::vector<int64_t>& actualSeqLengths,
-        std::vector<int64_t>& actualSeqLengthsKV, bool isAttenMaskUsed);
+
     void InferSplitCoreMode();
     void InferConstantization();
     bool AdjustCVTilingCVDiff(const ContextParamsForPFATiling& contextKeyParams, uint32_t& sOuterFactor,
@@ -230,8 +218,6 @@ protected:
         bool autoBaseMNK=false);
     bool PromptFlashAttentionPioneerComputeCVDiffParams(PromptFlashAttentionPioneerTilingData& tilingData,
         int64_t l1Size, int64_t l0CSize, uint32_t& sOuterFactor, uint32_t &sInnerFactor);
-    void GetPreNextTokensLeftUp(PromptFlashAttentionPioneerTilingData& tilingData, int64_t actualSeqLength, 
-        int64_t actualSeqLengthKV, int64_t& preTokensLeftUp, int64_t& nextTokensLeftUp);
     void PromptFlashAttentionPioneerInitSoftmaxLseOutputSplit(int64_t totalSize, PromptFlashAttentionPioneerTilingData &tilingData);
     bool TilingGetTilingKeyAttentionAscendC(ContextParamsForPFATiling& contextKeyParams,
         PromptFlashAttentionPioneerTilingData &tilingData);
@@ -252,7 +238,6 @@ protected:
     void SetAttenMaskCompressMode();
     void SetLayoutType();
     void PFATilingDataconvert(PromptFlashAttentionPioneerTilingData& tilingData);
-    void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
     bool IsFlashDecode(ContextParamsForPFATiling& contextKeyParams, uint64_t bng) const;
     ge::graphStatus SplitBNS(PromptFlashAttentionPioneerTilingData& tilingData, uint64_t bng);
     bool CheckAlibiPseShiftTypeAndShape(ContextParamsForPFATiling& contextKeyParams, uint32_t n);
@@ -261,9 +246,6 @@ protected:
     void GetMaxWorkspaceFlag(ContextParamsForPFATiling& contextKeyParams);
     void GetQueryDimAndOutDim(const gert::StorageShape* queryShape, const gert::StorageShape* outShape,
         const std::string &layoutStr, int64_t &tmpqueryDim, int64_t &outDim, uint32_t i) const;
-    int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue);
-    int64_t GetCalcBlockNumsForS1G(int64_t actualSeqLength, int64_t actualSeqLengthKV,
-        uint32_t sOuterSize, uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp);
 
     void UpdateTilingKeyLayoutType();
     void UpdateTilingKeyConfig(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionPioneerTilingData& tilingData);
