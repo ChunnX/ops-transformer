@@ -612,60 +612,9 @@ HcclResult MC2HcomTopology::GetHcclBufferSize(uint64_t &hcclBuffSize)
     return HCCL_SUCCESS;
 }
 
-// 检查rank0与指定目标rank之间的链路是否支持UB_MEM协议
-HcclResult MC2HcomTopology::CheckUbMemSupportForSingleRank(uint32_t dstRankId)
-{
-    const uint32_t netLayer = HCCL_COMM_LAYERS_UB_MEM;
-    const uint32_t srcRankId = 0;
-    CommLink *linksList = nullptr;
-    uint32_t netLinkNum = 0;
-    
-    HcclResult hcclRet = HcclRankGraphGetLinks(hcclHandle_, netLayer, srcRankId, dstRankId,
-                                                &linksList, &netLinkNum);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL links failed when checking protocol support");
-        return HCCL_E_PTR;
-    }
-    
-    if (netLinkNum == 0) {
-        OP_LOGE("", "No available HCCL links found");
-        return HCCL_E_PTR;
-    }
-    
-    for (uint32_t j = 0; j < netLinkNum; ++j) {
-        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-            return HCCL_SUCCESS;
-        }
-    }
-    
-    OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
-    return HCCL_E_PTR;
-}
-
-// 遍历所有目标rank，验证rank0与每个目标rank之间的链路是否支持UB_MEM协议
-HcclResult MC2HcomTopology::ValidateUbMemSupportForMultiLayer()
-{
-    uint32_t epRankSize = 0;
-    HcclResult ret = HcclGetRankSize(hcclHandle_, &epRankSize);
-    if (ret != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL rank size failed");
-        return HCCL_E_PTR;
-    }
-    
-    for (uint32_t dstRankId = 1; dstRankId < epRankSize; ++dstRankId) {
-        ret = CheckUbMemSupportForSingleRank(dstRankId);
-        if (ret != HCCL_SUCCESS) {
-            return ret;
-        }
-    }
-    
-    return HCCL_SUCCESS;
-}
-
 HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
 {
     OP_LOGD("", "start to get HCCL communication protocol");
-    
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
     HcclResult ret = HcclRankGraphGetLayers(hcclHandle_, &layerList, &layerNum);
@@ -673,19 +622,46 @@ HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
         OP_LOGE("", "Get HCCL layers failed");
         return HCCL_E_PTR;
     }
-    
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return HCCL_SUCCESS;
+    } else {
+        uint32_t epRankSize = 0;
+        ret = HcclGetRankSize(hcclHandle_, &epRankSize); // 获取通讯域存在多少卡
+        if (ret != HCCL_SUCCESS) {
+            OP_LOGE("", "Get HCCL rank size failed");
+            return HCCL_E_PTR;
+        }
+        uint32_t netLayer = HCCL_COMM_LAYERS_UB_MEM, srcRankId = 0, dstRankId = 0, netLinkNum = 0;
+        CommLink *linksList = nullptr;
+        for (uint32_t i = 1; i < epRankSize; ++i) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
+            dstRankId = i;
+            HcclResult hcclRet =
+                HcclRankGraphGetLinks(hcclHandle_, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
+            if (hcclRet != HCCL_SUCCESS) {
+                OP_LOGE("", "Get HCCL links failed when checking protocol support");
+                return HCCL_E_PTR;
+            }
+            if (netLinkNum == 0) {
+                OP_LOGE("", "No available HCCL links found");
+                return HCCL_E_PTR;
+            }
+            bool isFoundUbMemProtocol = false;
+            for (uint32_t j = 0; j < netLinkNum; ++j) { // 判断卡0是否可以和所有的其他卡通信，并且通信协议是否支持UB_MEM
+                if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                    isFoundUbMemProtocol = true;
+                    break;
+                }
+            }
+            if (!isFoundUbMemProtocol) {
+                OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
+                return HCCL_E_PTR;
+            }
+        }
+        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        return HCCL_SUCCESS;
     }
-    
-    ret = ValidateUbMemSupportForMultiLayer();
-    if (ret != HCCL_SUCCESS) {
-        return ret;
-    }
-    
-    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-    return HCCL_SUCCESS;
+    return HCCL_E_PTR;
 }
 
 HcclResult MC2HcomTopology::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
