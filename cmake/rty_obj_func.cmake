@@ -12,70 +12,8 @@
 # ACLNNTYPE 支持类型aclnn/aclnn_inner/aclnn_exclude
 # OPTYPE 和 ACLNNTYPE 需一一对应
 
-# 添加infer object
-function(add_infer_modules)
-  if (NOT TARGET ${OPHOST_NAME}_infer_obj)
-    add_library(${OPHOST_NAME}_infer_obj OBJECT)
-    target_include_directories(${OPHOST_NAME}_infer_obj
-      PRIVATE ${OP_PROTO_INCLUDE}
-    )
-    target_compile_definitions(${OPHOST_NAME}_infer_obj
-      PRIVATE
-      OPS_UTILS_LOG_SUB_MOD_NAME="OP_PROTO"
-      $<$<BOOL:${ENABLE_TEST}>:ASCEND_OPSPROTO_UT>
-      LOG_CPP
-    )
-    target_compile_options(${OPHOST_NAME}_infer_obj
-      PRIVATE
-      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
-      -Dgoogle=ascend_private
-      -fvisibility=hidden
-    )
-    target_link_libraries(${OPHOST_NAME}_infer_obj
-      PRIVATE
-      $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
-      $<BUILD_INTERFACE:dlog_headers>
-      $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
-      $<$<TARGET_EXISTS:ops_base_infer_objs>:$<TARGET_OBJECTS:ops_base_infer_objs>>
-
-      $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
-      $<$<TARGET_EXISTS:ops_base_tiling_objs>:$<TARGET_OBJECTS:ops_base_tiling_objs>>
-      tiling_api
-    )
-  endif()
-endfunction()
-
-# 添加tiling object
-function(add_tiling_modules)
-  if (NOT TARGET ${OPHOST_NAME}_tiling_obj)
-    add_library(${OPHOST_NAME}_tiling_obj OBJECT)
-    target_include_directories(${OPHOST_NAME}_tiling_obj
-      PRIVATE ${OP_TILING_INCLUDE}
-    )
-    target_compile_definitions(${OPHOST_NAME}_tiling_obj
-      PRIVATE
-      OPS_UTILS_LOG_SUB_MOD_NAME="OP_TILING"
-      $<$<BOOL:${ENABLE_TEST}>:ASCEND_OPTILING_UT>
-      LOG_CPP
-    )
-    target_compile_options(${OPHOST_NAME}_tiling_obj
-      PRIVATE
-      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
-      -Dgoogle=ascend_private
-      -fvisibility=hidden
-      -fno-strict-aliasing
-    )
-    target_link_libraries(${OPHOST_NAME}_tiling_obj
-      PRIVATE
-      $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
-      $<BUILD_INTERFACE:dlog_headers>
-      $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
-      $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
-      $<$<TARGET_EXISTS:ops_base_tiling_objs>:$<TARGET_OBJECTS:ops_base_tiling_objs>>
-      tiling_api
-    )
-  endif()
-endfunction()
+# RTY 模式：不编译 infer/tiling/aicpu/gentask/graph_plugin 组件
+# 已删除相关函数定义
 
 # 添加opapi object
 function(add_opapi_modules)
@@ -106,94 +44,11 @@ function(add_opapi_modules)
   endif()
 endfunction()
 
-# 添加gentask object
-function(add_opmaster_ct_gentask_modules)
-  message(STATUS "add_opmaster_ct_gentask_modules start")
-  if (NOT TARGET ${OPHOST_NAME}_opmaster_ct_gentask_obj)
-    add_library(${OPHOST_NAME}_opmaster_ct_gentask_obj OBJECT)
+# RTY 模式：不编译 gentask 组件
+# 已删除 add_opmaster_ct_gentask_modules 函数定义
 
-    #如果protobuf还没生成的话，要生成.h
-    if(NOT TARGET ops_proto_gen)
-      set(_op_proto_utils_protolist
-      "${TOP_DIR}/metadef/proto/task.proto"
-      "${TOP_DIR}/metadef/proto/ge_ir.proto"
-      )
-      protobuf_generate(ops_proto_gen _proto_cc _proto_h ${_op_proto_utils_protolist} TARGET)
-      message("task.pb.h generate location: ${_proto_h}")
-    endif()
-    add_dependencies(${OPHOST_NAME}_opmaster_ct_gentask_obj ops_proto_gen)
-
-    list(GET _proto_h 0 first_proto_header)
-    get_filename_component(proto_gen_dir "${first_proto_header}" DIRECTORY)
-    get_filename_component(task_pb_dir "${proto_gen_dir}" DIRECTORY)
-
-    target_include_directories(${OPHOST_NAME}_opmaster_ct_gentask_obj
-      PRIVATE ${OP_TILING_INCLUDE}
-      ${task_pb_dir}
-    )
-    target_compile_definitions(${OPHOST_NAME}_opmaster_ct_gentask_obj
-      PRIVATE
-      OP_TILING_LIB
-    )
-    target_compile_options(${OPHOST_NAME}_opmaster_ct_gentask_obj
-      PRIVATE
-      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
-      -Dgoogle=ascend_private
-      -fvisibility=hidden
-      -fno-strict-aliasing
-    )
-    set(_op_master_ct_gen_task_link_libs
-      -Wl,--no-as-needed
-        graph
-        graph_base
-        exe_graph
-        platform
-        register
-        alog
-        error_manager
-        ops_utils_tiling
-      -Wl,--as-needed
-      -Wl,--whole-archive
-        tiling_api
-      -Wl,--no-whole-archive
-        c_sec
-        json
-        platform
-        mmpa
-        ascend_protobuf
-    )
-    target_link_libraries(${OPHOST_NAME}_opmaster_ct_gentask_obj
-      PRIVATE
-      $<BUILD_INTERFACE:intf_pub_cxx17>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:alog_headers>>
-      $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:$<BUILD_INTERFACE:slog_headers>>
-      ${_op_master_ct_gen_task_link_libs}
-    )
-  endif()
-endfunction()
-
-# useage: add_aicpu_kernel_modules()
-# 添加aicpu kernel object
-function(add_aicpu_kernel_modules)
-  message(STATUS "add_aicpu_kernel_modules")
-  if(NOT TARGET ${OPHOST_NAME}_aicpu_obj)
-    add_library(${OPHOST_NAME}_aicpu_obj OBJECT)
-    target_include_directories(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_INCLUDE})
-    target_compile_definitions(
-      ${OPHOST_NAME}_aicpu_obj PRIVATE _FORTIFY_SOURCE=2 google=ascend_private
-                                       $<$<BOOL:${ENABLE_TEST}>:ASCEND_AICPU_UT>
-      )
-    target_compile_options(
-      ${OPHOST_NAME}_aicpu_obj PRIVATE $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
-                                       -fvisibility=hidden ${AICPU_DEFINITIONS}
-      )
-    target_link_libraries(
-      ${OPHOST_NAME}_aicpu_obj
-      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
-              $<BUILD_INTERFACE:dlog_headers>
-      )
-  endif()
-endfunction()
+# RTY 模式：不编译 aicpu 组件
+# 已删除 add_aicpu_kernel_modules 函数定义
 
 # useage: add_aicpu_cust_kernel_modules(target_name)
 # 添加aicpu cust kernel object target
@@ -275,36 +130,8 @@ macro(add_modules_sources)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  # RTY 模式：跳过 infer/tiling/aicpu 目标对象的创建
-  if (NOT BUILD_OPS_RTY_KERNEL)
-    message(STATUS "[add_modules_sources] Building ${OP_NAME} in normal mode (RTY disabled)")
-    file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-    if (OPINFER_SRCS)
-      add_infer_modules()
-      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
-    endif()
-
-    file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
-    file(GLOB OPTILING_SRCS 
-        ${SOURCE_DIR}/*_tiling*.cpp
-        ${SOURCE_DIR}/*fallback*.cpp
-        ${SOURCE_DIR}/op_tiling/arch35/*.cpp
-        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
-        )
-    if (OPTILING_SRCS OR SUB_OPTILING_SRC)
-      add_tiling_modules()
-      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
-      # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
-    endif()
-
-    file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
-    if (AICPU_SRCS)
-      add_aicpu_kernel_modules()
-      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
-    endif()
-  else()
-    message(STATUS "[add_modules_sources] Building ${OP_NAME} in RTY mode, skipping infer/tiling/aicpu objects")
-  endif()
+  # RTY 模式：不编译 infer/tiling/aicpu 组件
+  # 已删除相关代码
 
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
@@ -385,36 +212,8 @@ macro(add_modules_sources_with_soc)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  # RTY 模式：跳过 infer/tiling/aicpu 目标对象的创建
-  if (NOT BUILD_OPS_RTY_KERNEL)
-    message(STATUS "[add_modules_sources_with_soc] Building ${OP_NAME} in normal mode (RTY disabled)")
-    file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-    if (OPINFER_SRCS)
-      add_infer_modules()
-      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
-    endif()
-
-    file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/*_tiling*.cpp)
-    file(GLOB OPTILING_SRCS 
-        ${SOURCE_DIR}/*_tiling*.cpp
-        ${SOURCE_DIR}/*fallback*.cpp
-        ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
-        )
-    if (OPTILING_SRCS OR SUB_OPTILING_SRC)
-      add_tiling_modules()
-      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
-      # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
-    endif()
-
-    file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
-    if (AICPU_SRCS)
-      add_aicpu_kernel_modules()
-      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
-    endif()
-  else()
-    message(STATUS "[add_modules_sources_with_soc] Building ${OP_NAME} in RTY mode, skipping infer/tiling/aicpu objects")
-  endif()
+  # RTY 模式：不编译 infer/tiling/aicpu 组件
+  # 已删除相关代码
 
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
@@ -485,44 +284,8 @@ macro(add_mc2_modules_sources)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  # RTY 模式：跳过 infer/tiling/aicpu/gentask 目标对象的创建
-  if (NOT BUILD_OPS_RTY_KERNEL)
-    message(STATUS "[add_mc2_modules_sources] Building ${OP_NAME} in normal mode (RTY disabled)")
-    file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-    if (OPINFER_SRCS)
-      add_infer_modules()
-      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
-    endif()
-
-    file(GLOB_RECURSE OPTILING_SRCS 
-        ${SOURCE_DIR}/op_tiling/*.cpp
-        ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-        ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp
-        ${SOURCE_DIR}/../../common/src/matmul_formulaic_tiling.cpp
-        ${SOURCE_DIR}/../../common/src/mc2_hcom_topo_info.cpp
-        ${SOURCE_DIR}/../../common/src/mc2_matmul_tiling_cfg.cpp)
-    if (OPTILING_SRCS)
-      add_tiling_modules()
-      target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS})
-    endif()
-
-    file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
-    if (AICPU_SRCS)
-      add_aicpu_kernel_modules()
-      target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
-    endif()
-
-    file(GLOB GENTASK_SRCS
-        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
-        ${SOURCE_DIR}/../../common/src/mc2_a5_gen_task_utils.cpp
-    )
-    if(GENTASK_SRCS)
-      add_opmaster_ct_gentask_modules()
-      target_sources(${OPHOST_NAME}_opmaster_ct_gentask_obj PRIVATE ${GENTASK_SRCS})
-    endif()
-  else()
-    message(STATUS "[add_mc2_modules_sources] Building ${OP_NAME} in RTY mode, skipping infer/tiling/aicpu/gentask objects")
-  endif()
+  # RTY 模式：不编译 infer/tiling/aicpu/gentask 组件
+  # 已删除相关代码
 
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
@@ -558,26 +321,8 @@ macro(add_mc2_modules_sources)
 endmacro()
 
 # 添加graph plugin object
-function(add_graph_plugin_modules)
-  if(NOT TARGET ${GRAPH_PLUGIN_NAME}_obj)
-    add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
-    target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
-      ${OP_PROTO_INCLUDE}
-    )
-    target_compile_definitions(${GRAPH_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="GRAPH_PLUGIN" LOG_CPP)
-    target_compile_options(
-      ${GRAPH_PLUGIN_NAME}_obj PRIVATE $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
-                                       -fvisibility=hidden
-      )
-    target_link_libraries(
-      ${GRAPH_PLUGIN_NAME}_obj
-      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
-              $<BUILD_INTERFACE:dlog_headers>
-              $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
-              $<$<TARGET_EXISTS:ops_base_infer_objs>:$<TARGET_OBJECTS:ops_base_infer_objs>>
-      )
-  endif()
-endfunction()
+# RTY 模式：不编译 graph_plugin 组件
+# 已删除 add_graph_plugin_modules 函数定义
 
 # useage: add_graph_plugin_sources()
 macro(add_graph_plugin_sources)
@@ -596,24 +341,8 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  # RTY 模式：跳过 graph_plugin 目标对象的创建
-  if (NOT BUILD_OPS_RTY_KERNEL)
-    message(STATUS "[add_graph_plugin_sources] Building ${OP_NAME} in normal mode (RTY disabled)")
-    file(GLOB GRAPH_PLUGIN_SRCS 
-        ${SOURCE_DIR}/*_graph_plugin*.cpp
-    )
-    if(GRAPH_PLUGIN_SRCS)
-      add_graph_plugin_modules()
-      target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${GRAPH_PLUGIN_SRCS})
-    endif()
-
-    file(GLOB GRAPH_PLUGIN_PROTO_HEADERS ${SOURCE_DIR}/*_proto*.h)
-    if(GRAPH_PLUGIN_PROTO_HEADERS)
-      target_sources(${GRAPH_PLUGIN_NAME}_proto_headers INTERFACE ${GRAPH_PLUGIN_PROTO_HEADERS})
-    endif()
-  else()
-    message(STATUS "[add_graph_plugin_sources] Building ${OP_NAME} in RTY mode, skipping graph_plugin objects")
-  endif()
+  # RTY 模式：不编译 graph_plugin 组件
+  # 已删除相关代码
 endmacro()
 
 set(_op_tiling_link_libs
