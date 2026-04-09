@@ -1092,7 +1092,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
             SplitOutSeq(fiaInfo);
         } else {
             SplitNBSeq(fiaInfo);
-            if (isIFAFlag_ && !pfaMergeFlag_ && CheckFlashDecode(fiaInfo)) {
+            if (isIFAFlag_ && CheckFlashDecode(fiaInfo)) {
                 flashDecodeFlag_ = true;
                 OP_LOGI(fiaInfo.opName, "FlashDecode is enable.");
                 SplitS2(fiaInfo);
