@@ -50,7 +50,6 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     common/fia_tiling_shape.cpp
     common/fia_tiling_info.cpp
-    common/split_core.cpp
     prompt_flash_attention_pioneer/prompt_flash_attention_pioneer_tiling_v2.cpp
     arch35/attention_pioneer_tiling_v2.cpp
     fallback_attention_pioneer.cpp
