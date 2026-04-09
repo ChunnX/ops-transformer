@@ -19,27 +19,30 @@
 
 #include "gmmsq_base.h"
 #include "dispatch_ffn_combine_ops.h"
-#include "dispatch_ffn_combine_catlass_combine.h"
 
 using namespace AscendC;
 using namespace Catlass;
 
 namespace DispatchFFNCombineImpl {
 
+// 模板化的GMM类型定义
+// XType: 输入类型, WeightType: 权重类型, WeightScaleType: scale类型, 
+// GMM1OutType: GMM1输出类型(SwiGLU输出), OutputType: 最终输出类型
+template <typename XType, typename WeightType, typename WeightScaleType, typename GMM1OutType, typename OutputType>
 struct Gmm1Types {
     using ArchTag = Arch::AtlasA5;
     constexpr static bool enableUnitFlag = true;
     using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
 
-    using AType = fp8_e4m3fn_t;
-    using BType = fp8_e4m3fn_t;
-    using CType = bfloat16_t;
+    using AType = XType;
+    using BType = WeightType;
+    using CType = GMM1OutType;  // GMM1输出(SwiGLU输出)
     using LayoutA = layout::RowMajor;
     using LayoutB = layout::ColumnMajor;
     using LayoutC = layout::RowMajor;
 
-    using xScaleType = AscendC::fp8_e8m0_t;
-    using weightScaleType = AscendC::fp8_e8m0_t;
+    using xScaleType = WeightScaleType;
+    using weightScaleType = WeightScaleType;
 
     using L1TileShape = tla::Shape<Int<256>, Int<256>, Int<448>>;
     using L0TileShape = tla::Shape<Int<256>, Int<256>, Int<128>>;
@@ -51,24 +54,26 @@ struct Gmm1Types {
     static constexpr uint32_t SWIGLU_N_HALF = 2;
 };
 
+// GMM2类型定义 - A输入是GMM1输出，B是权重
+template <typename GMM1OutType, typename WeightType, typename WeightScaleType, typename OutputType>
 struct Gmm2Types {
-    using ArchTag = Gmm1Types::ArchTag;
+    using ArchTag = Arch::AtlasA5;
     constexpr static bool enableUnitFlag = true;
     using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
 
-    using AType = bfloat16_t;
-    using BType = fp8_e4m3fn_t;
-    using CType = bfloat16_t;
+    using AType = GMM1OutType;  // GMM2的A输入是GMM1的输出
+    using BType = WeightType;
+    using CType = OutputType;
     using LayoutA = layout::RowMajor;
     using LayoutB = layout::ColumnMajor;
     using LayoutC = layout::RowMajor;
 
-    using xScaleType = AscendC::fp8_e8m0_t;
-    using weightScaleType = AscendC::fp8_e8m0_t;
+    using xScaleType = WeightScaleType;
+    using weightScaleType = WeightScaleType;
 
     using L1TileShape = tla::Shape<Int<256>, Int<256>, Int<448>>;
     using L0TileShape = tla::Shape<Int<256>, Int<256>, Int<128>>;
-    using BlockScheduler = Gmm1Types::BlockScheduler;
+    using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 1>;
 
     static constexpr uint32_t TILE_M = 256;
     static constexpr uint32_t TILE_N = 256;
@@ -283,10 +288,10 @@ struct Gmm2WithCombineRunner {
                 typedef void (*WaitCubeFn)(uint16_t);
                 (*(WaitCubeFn)waitFn)(pingpongIdx);
                 
-                // Combine: 将GMM2结果分发到远端peermem
-                CombineDispatchImpl(cTile, actualShape, mLoc, nLoc, 
-                                   combineParams, tokenPerExpertGm, preSumBeforeRankGm, 
-                                   cumsumMMGm, groupIdx);
+                // Combine: 将GMM2结果按token组合并分发到远端peermem
+                CombineTokensToPeermem(cTile, actualShape, mLoc, nLoc, 
+                                       combineParams, tokenPerExpertGm, preSumBeforeRankGm, 
+                                       cumsumMMGm, groupIdx);
                 
                 pingpongIdx = 1 - pingpongIdx;
 
@@ -410,14 +415,15 @@ struct GmmSwigluRunner {
                     tla::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                     tla::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
                 
+                uint32_t outputN = n / SWIGLU_N_HALF;
                 for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
                     LocalTensor<ElementC> cTile = weightBlock == 0 ? l0cOutUbFirst : l0cOutUbSecond;
                     auto tensorCTile = tla::MakeTensor(cTile, layoutC, Arch::PositionUB{});
                     
-                    auto tensorBlockB = GetTile(tensorB, tla::MakeCoord(kLoc, nLoc + weightBlock * TILE_N),
+                    auto tensorBlockB = GetTile(tensorB, tla::MakeCoord(kLoc, nLoc + weightBlock * outputN),
                         tla::MakeShape(actualShape.k(), actualShape.n()));
                     auto tensorBlockMxScaleB = GetTile(tensorMxScaleB,
-                        tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * TILE_N),
+                        tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * outputN),
                         tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
                     
                     blockMmad(tensorBlockA, tensorBlockB, tensorCTile, actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
@@ -449,8 +455,6 @@ struct GmmSwigluRunner {
         }
     }
 };
-
-using Gmm1SwigluRunner = GmmSwigluRunner<Gmm1Types>;
 
 }  // namespace DispatchFFNCombineImpl
 
