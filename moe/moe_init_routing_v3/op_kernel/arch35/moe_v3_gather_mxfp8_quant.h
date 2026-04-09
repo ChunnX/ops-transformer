@@ -442,13 +442,11 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::InitKernelTiling(GM_ADDR so
     int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
 
     // inner core split
-    int64_t originPerLoopElements;
+    coreRows_ = perCoreRow_;
+    int64_t originPerLoopElements = gatherOutTilingData_->perCorePerLoopIndicesElements;
     if (blockIdx_ == needCoreNum_ - 1) {
         coreRows_ = lastCoreIndicesElements;
         originPerLoopElements = gatherOutTilingData_->lastCorePerLoopIndicesElements;
-    } else {
-        coreRows_ = perCoreRow_;
-        originPerLoopElements = gatherOutTilingData_->perCorePerLoopIndicesElements;
     }
     perLoopRows_ = Min(coreRows_, originPerLoopElements);
     rowLoops_ = Ceil(coreRows_, perLoopRows_);

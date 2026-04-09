@@ -275,12 +275,12 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
         int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
 
         int64_t originPerLoopElements;
-        if (blockIdx_ == needCoreNum_ - 1) {
-            coreRows_ = lastCoreIndicesElements;
-            originPerLoopElements = gatherOutTilingData_->lastCorePerLoopIndicesElements;
-        } else {
+        if (blockIdx_ != needCoreNum_ - 1) {
             coreRows_ = perCoreRow_;
             originPerLoopElements = gatherOutTilingData_->perCorePerLoopIndicesElements;
+        } else {
+            coreRows_ = lastCoreIndicesElements;
+            originPerLoopElements = gatherOutTilingData_->lastCorePerLoopIndicesElements;
         }
         perLoopRows_ = Min(coreRows_, originPerLoopElements);
         rowLoops_ = Ceil(coreRows_, perLoopRows_);
