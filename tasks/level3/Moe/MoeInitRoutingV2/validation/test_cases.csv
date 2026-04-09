@@ -1,0 +1,6 @@
+case_id;x_shape;expert_idx_shape;exprt_idx_range;active_num;expert_capacity;expert_num;drop_pad_mode;expert_tokens_count_or_cumsum_flag;expert_tokens_before_capacity_flag;dtype
+0;[25856,7168];[25856,1];[0,255];10;10;258;1;2;1;float16
+1;[35,32];[35,1];[1,2];164;2;238;1;2;1;float16
+2;[36,32];[36,1];[1,2];147;5;344;1;2;1;float16
+3;[34,34];[34,1];[1,2];147;2;294;1;2;1;float32
+4;[38,32];[38,1];[1,2];43;8;380;1;2;1;bfloat16
