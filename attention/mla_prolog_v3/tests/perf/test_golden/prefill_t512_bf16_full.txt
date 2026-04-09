@@ -32,11 +32,11 @@ MM4_Qn          128    128     512  32 |   0.66   0.08   0.08   0.31   0.08   1.
 
 Stage            |     MTE2   Vector     MTE3    Total | Bound   
 -----------------------------------------------------------------
-RmsNormCq        |    0.25    0.03    0.25    0.25 | MTE2    
-RmsNormCkvKr     |    0.09    0.01    0.08    0.09 | MTE2    
-RopeKr           |    0.02    0.00    0.01    0.02 | MTE2    
-ScatterCkvKr     |    0.09    0.00    0.23    0.23 | MTE3    
-RopeQr           |    1.32    0.21    1.31    1.32 | MTE2    
+RmsNormCq        |    0.25    0.13    0.25    0.25 | MTE2    
+RmsNormCkvKr     |    0.09    0.04    0.08    0.09 | MTE2    
+RopeKr           |    0.02    0.01    0.01    0.02 | MTE2    
+ScatterCkvKr     |    0.09    0.01    0.23    0.23 | MTE3    
+RopeQr           |    1.32    0.72    1.31    1.32 | MTE2    
 
 ======================================================================
   PIPELINE TIMELINE — AIC/AIV Execution Overlap
@@ -239,11 +239,11 @@ Fitting formulas (for tiling code):
 
   Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
   ---------------------------------------------------------------------------------------------------
-     1 M16_bm32      32 |    783.11  150.96   62.90  563.58    0.84   2.06 |   99.4%  -429.95 <--
-     2 M8_bm64       64 |    789.98  169.52   70.63  542.47    1.88   4.13 |   99.3%  -436.82
-     3 M4_bm128     128 |   1050.85  208.52   86.88  744.73    4.59   8.25 |   99.4%  -697.69
-     4 M12_bm32      43 |   1624.85  314.29  130.95 1173.35    1.75   2.77 |   99.7% -1271.70
-     5 M2_bm256     256 |   2190.11  524.34  218.47 1429.88   12.48  16.50 |   99.8% -1836.95
+     1 M16_bm32      32 |    787.16  150.96   62.90  563.58    0.84   7.27 |   98.9%  -434.01 <--
+     2 M8_bm64       64 |    798.08  169.52   70.63  542.47    1.88  14.55 |   98.3%  -444.92
+     3 M4_bm128     128 |   1067.05  208.52   86.88  744.73    4.59  29.09 |   97.9%  -713.89
+     4 M12_bm32      43 |   1630.30  314.29  130.95 1173.35    1.75   9.77 |   99.4% -1277.14
+     5 M2_bm256     256 |   2222.51  524.34  218.47 1429.88   12.48  58.18 |   98.3% -1869.36
 
   Split-N baseline (353.16 us for 512 tokens) is better than all split-M configs
 
@@ -253,11 +253,11 @@ Fitting formulas (for tiling code):
     MM3_QcQr: 563.58 us, bound=L2, inner=L2
     MM4_Qn: 0.84 us, bound=L2, inner=L2
     Vector (per core, 2 vec cores):
-      RmsNormCq: 0.236 us, bound=VECTOR
-      RmsNormCkvKr: 0.079 us, bound=VECTOR
-      RopeKr: 0.013 us, bound=VECTOR
-      ScatterCkvKr: 0.058 us, bound=MTE3
-      RopeQr: 1.678 us, bound=VECTOR
+      RmsNormCq: 1.074 us, bound=VECTOR
+      RmsNormCkvKr: 0.358 us, bound=VECTOR
+      RopeKr: 0.045 us, bound=VECTOR
+      ScatterCkvKr: 0.067 us, bound=VECTOR
+      RopeQr: 5.729 us, bound=VECTOR
 
 ======================================================================
   PREFILL K-OUTER — B Pinned in L1, Cube-Bound Target

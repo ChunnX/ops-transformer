@@ -117,15 +117,16 @@ def estimate_matmul_split_kn(
     if spec.k_groups > 1:
         N_full = N_per_core * spec.n_groups
         chip_load_bytes = spec.k_groups * M * N_full * 4
-        chip_compute_elements = M * N_full * (spec.k_groups - 1)
         chip_store_bytes = M * N_full * out_size
         # active_cores = vec_cores: all V cores share the chip-total accum work
+        # n_instructions = k_groups - 1: one element-wise Add per partial
         accum_timing = estimate_vector_op(
             f"Accum{name.split('_')[0]}",
             load_bytes=chip_load_bytes,
-            compute_elements=chip_compute_elements,
+            compute_elements=M * N_full,
             store_bytes=chip_store_bytes,
             hw=hw, active_cores=vec_cores,
+            n_instructions=spec.k_groups - 1,
         )
     else:
         accum_timing = VectorOpTiming(name=f"Accum{name.split('_')[0]}")
@@ -169,9 +170,10 @@ def estimate_mm2_split_k_cross_core(
     accum_timing = estimate_vector_op(
         "AccumCkvKr",
         load_bytes=k_cores * M * N * 4,
-        compute_elements=M * N * (k_cores - 1),
+        compute_elements=M * N,
         store_bytes=M * N * out_size,
         hw=hw, active_cores=vec_cores,
+        n_instructions=k_cores - 1,
     )
 
     return cube_timing, accum_timing

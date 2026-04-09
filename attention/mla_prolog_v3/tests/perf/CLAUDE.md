@@ -68,9 +68,14 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
 - **校准建议**：与实际 profiling 对比时，若 MMAD-bound 阶段误差 >15%，调整一个 dtype-specific derate 因子
 
 ### H4. Vector 算力假设
-- 950: `vector_ops_per_sec_bf16 = 20.0e12`，分摊到 64 AIV 核
+- 950 per-cycle 建模：每条 vector 指令吞吐量 **256 B/cycle**，IPC = **1.3**
+  - 指令耗时 = `data_volume(B) / 256`（cycles）
+  - 基本块耗时 = `sum(指令耗时) / IPC`
+  - 所有指令在 float32 (4 字节/元素) 上操作
+  - 具体指令数查表见 `vector_ops.py::vector_instr_count`
+- **量化场景差异**：INT8/FP8 模式在 RmsNorm 前增加 dequant 指令（cast + mul），KV 量化模式在 RmsNormCkvKr 后增加 quantize 指令（abs + reducemax + mul + cast），使得 RmsNormCkvKr 从 6 条指令增加到 10 条
 - Scatter 效率 0.4（间接寻址降速 60%）
-- **不区分** Add / Mul / RmsNorm / RoPE 的不同 op cost——统一按 ops/sec 计算
+- Legacy 910B path: chip-total `vector_ops_per_sec_bf16 = 10.0e12`，不区分指令（当 `has_vec_instr_spec=False` 时走此路径）
 
 ### H5. HBM 带宽分摊假设
 - 单核带宽 = `min(per_cycle * freq, chip_total / active_cores)`

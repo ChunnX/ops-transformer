@@ -192,17 +192,23 @@ def estimate_split_kn_fused(
     ) * 1e6
 
     # PIPE_V: k_groups Add ops, each chunk_m * N_full elements
-    vec_per_core = hw.vector_ops_per_sec_bf16 / hw.aiv_num
-    accum_compute_us_per_chunk = (
-        spec.k_groups * accum_compute_elements / vec_per_core
-        if vec_per_core > 0 else 0.0
-    ) * 1e6
-
-    # PIPE_V: RmsNorm on accumulator (already in UB, no MTE2/MTE3)
-    # Reuse estimate_vector_op compute portion semantics: ~3 ops/element.
-    rmsnorm_compute_us_per_chunk = (
-        rmsnorm_compute_elements / vec_per_core if vec_per_core > 0 else 0.0
-    ) * 1e6
+    if hw.has_vec_instr_spec:
+        from .vector_ops import vector_compute_time_s, vector_instr_count
+        accum_compute_us_per_chunk = (
+            vector_compute_time_s(accum_compute_elements, spec.k_groups, hw) * 1e6)
+        rmsnorm_stage = "RmsNormCq" if mm_name == "MM1_Cq" else "RmsNormCkvKr"
+        rmsnorm_n_instr = vector_instr_count(rmsnorm_stage, params.quant_mode)
+        rmsnorm_compute_us_per_chunk = (
+            vector_compute_time_s(chunk_m * N_full, rmsnorm_n_instr, hw) * 1e6)
+    else:
+        vec_per_core = hw.vector_ops_per_sec_bf16 / hw.aiv_num
+        accum_compute_us_per_chunk = (
+            spec.k_groups * accum_compute_elements / vec_per_core
+            if vec_per_core > 0 else 0.0
+        ) * 1e6
+        rmsnorm_compute_us_per_chunk = (
+            rmsnorm_compute_elements / vec_per_core if vec_per_core > 0 else 0.0
+        ) * 1e6
 
     # MTE3: final BF16 output to GM
     mte3_bw_per_core = hw.mte3_bw_bytes_per_sec / active_cores
@@ -244,15 +250,21 @@ def estimate_split_kn_fused(
 
     # Baseline RmsNorm: standard estimate_vector_op with full M × N_full GM read
     rmsnorm_load = M * N_full * out_size
-    rmsnorm_compute = M * N_full * 3
     rmsnorm_store = M * N_full * out_size
+    rmsnorm_stage_name = "RmsNormCq" if mm_name == "MM1_Cq" else "RmsNormCkvKr"
+    if hw.has_vec_instr_spec:
+        from .vector_ops import vector_instr_count as _vic
+        baseline_n_instr = _vic(rmsnorm_stage_name, params.quant_mode)
+    else:
+        baseline_n_instr = 0
     rmsnorm_timing = estimate_vector_op(
-        f"RmsNorm{'Cq' if mm_name == 'MM1_Cq' else 'CkvKr'}_baseline",
+        f"{rmsnorm_stage_name}_baseline",
         load_bytes=rmsnorm_load,
-        compute_elements=rmsnorm_compute,
+        compute_elements=M * N_full,
         store_bytes=rmsnorm_store,
         hw=hw,
         active_cores=tiling.vector_block_num,
+        n_instructions=baseline_n_instr,
     )
     baseline_rmsnorm_us = rmsnorm_timing.total_us
 

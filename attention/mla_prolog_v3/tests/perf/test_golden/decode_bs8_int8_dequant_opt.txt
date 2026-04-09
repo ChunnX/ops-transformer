@@ -25,25 +25,25 @@ Stage                    Baseline (us)     dequantOpt (us)             Δ
   ----------------------------------------------------------------------
   MM3_QcQr                      23.593              23.593         0.000
   sync→AIV                       0.800               0.000        -0.800
-  DequantQc                      0.328               0.000        -0.328
-  RopeQr                         0.105               0.000        -0.105
+  DequantQc                      0.358               0.000        -0.358
+  RopeQr                         0.358               0.000        -0.358
   sync→AIC                       0.800               0.000        -0.800
-  DequantRopeUB                  0.000               0.154         0.154
+  DequantRopeUB                  0.000               0.268         0.268
   MM4_Qn                         0.369               0.369         0.000
   ----------------------------------------------------------------------
-  Segment total                 27.594              24.116        -3.478  (-12.6%)
+  Segment total                 27.878              24.229        -3.648  (-13.1%)
 
 Whole pipeline (DAG critical path)
-  Baseline       : 51.359 us
-  dequantOpt     : 47.985 us
-  Δ              : -3.374 us  (-6.6%)
+  Baseline       : 51.389 us
+  dequantOpt     : 48.099 us
+  Δ              : -3.290 us  (-6.4%)
 
 DequantRopeUB stage breakdown (per AI core, per stepBatchSize=8)
   L0C → UB         : 0.058 us
-  UB compute       : 0.066 us
+  UB compute       : 0.179 us
   UB → L1          : 0.030 us
   intra-core sync  : 0.000 us  (assumed 0 per H6)
-  total            : 0.154 us
+  total            : 0.268 us
   bound            : UBCOMPUTE
   per-core N       : 768  (active cores: 32)
 

@@ -1,10 +1,11 @@
 # MlaPrologV3 Ascend 950 综合优化设计
 
-> 版本：v1.0  日期：2026-04
+> 版本：v1.1  日期：2026-04
 > 适用范围：Ascend 950 chip，decode 与 small prefill 场景
 > 状态：Phase 1（perf model）已完成，Phase 2（kernel 实现）待启动
-> 关联 commit：`66b9f779f` (perf 重构) · `4c46bda97` (dequant-opt model) · `10e54bd18` (split-kn-fused model) · pending (split-kn 修正)
+> 关联 commit：`66b9f779f` (perf 重构) · `4c46bda97` (dequant-opt model) · `10e54bd18` (split-kn-fused model) · `45d7341ad` (split-kn chip-total 修正)
 > 关联文档：`MlaPrologV3_DequantOpt设计.md`、`MlaPrologV3_SplitKN_FusedAccum设计.md`、`tests/perf/report_split_kn.md`
+> **v1.1 变更**：vector 阶段从 chip-total ops/sec 粗粒度模型升级为指令级建模（256 B/cycle, IPC=1.3，按量化场景区分指令数）。FP8/INT8 baseline 偏移 ~0.25 µs，cube 时间及 split-kn 节省不变。
 
 ---
 
@@ -22,12 +23,12 @@
 
 | 场景 | dtype | Baseline (us) | + Split-KN | + Split-KN-Fused | + DequantOpt | 综合 vs Baseline |
 |---|---|---:|---:|---:|---:|---:|
-| decode bs1 hd128 | FP8  | 48.71 | 39.20 (−19.5%) | ~37.74 (−22.5%) | **~34.44** | **−14.27 us / −29.3%** |
-| decode bs1 hd128 | INT8 | 51.10 | 39.20 (−23.3%) | ~37.74 (−26.1%) | **~34.44** | **−16.66 us / −32.6%** |
-| decode bs1 hd128 | BF16 | 87.63 | 71.53 (−18.4%) | ~70.07 (−20.0%) | n/a | −17.56 us / −20.0% |
-| decode bs1 hd8   | BF16 | 43.33 | 27.23 (−37.2%) | ~25.77 (−40.5%) | n/a | −17.56 us / −40.5% |
+| decode bs1 hd128 | FP8  | 48.97 | 39.45 (−19.4%) | ~37.92 (−22.6%) | **~34.39** | **−14.58 us / −29.8%** |
+| decode bs1 hd128 | INT8 | 51.35 | 39.45 (−23.2%) | ~37.92 (−26.1%) | **~34.40** | **−16.95 us / −33.0%** |
+| decode bs1 hd128 | BF16 | 87.63 | 71.53 (−18.4%) | ~70.01 (−20.1%) | n/a | −17.62 us / −20.1% |
+| decode bs1 hd8   | BF16 | 43.33 | 27.23 (−37.2%) | ~25.72 (−40.7%) | n/a | −17.61 us / −40.7% |
 
-> Split-KN 数据为 perf model `--mode split-kn` 实测；DequantOpt 数据为 `--mode dequant-opt` 实测；Split-KN-Fused 增量从 `--mode split-kn-fused` 取每 MM ~0.7 µs × 2。
+> Split-KN 数据为 perf model `--mode split-kn` 实测；DequantOpt 数据为 `--mode dequant-opt` 实测；Split-KN-Fused 增量从 `--mode split-kn-fused` 取。FP8/INT8 baseline 的 vector 阶段采用指令级建模（256 B/cycle, IPC=1.3），与旧版 chip-total 模型相比 baseline 偏移 ~0.25 µs。
 
 **核心思想**：
 - Split-KN 解决 cube 阶段的 HBM 带宽利用率
@@ -39,7 +40,7 @@
 
 ## 1. 现状与目标流水
 
-### 1.1 Baseline 数据流（解码 bs1 / FP8 hd128 ≈ 48.7 µs，hd8 BF16 ≈ 43.3 µs）
+### 1.1 Baseline 数据流（解码 bs1 / FP8 hd128 ≈ 49.0 µs，hd8 BF16 ≈ 43.3 µs）
 
 ```
 AIC pipeline (cube)                         AIV pipeline (vector)
@@ -133,7 +134,7 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 **节省汇总**：
 - **MM1/MM2 cube** (Split-KN)：14–16 µs（每 MM ~6 µs cube 时间下降）
 - **MM1/MM2 vector** (Split-KN-Fused)：~1.5 µs（避免 2 个新 barrier + 2 次 GM round-trip）
-- **MM3→MM4** (DequantOpt)：~3.3 µs（消除 3 个 cross-core sync + 3 次 GM 往返；仅量化场景）
+- **MM3→MM4** (DequantOpt)：~3.5 µs（消除 3 个 cross-core sync + 3 次 GM 往返；仅量化场景）
 
 ---
 
@@ -147,7 +148,7 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 **FixPipe 压力建模**：当 `k_groups > 1`，cube 输出 dtype 为 FP32 (4 字节，不是 BF16 的 2 字节)；per-core FixPipe 字节 = `M × N_per_core × 4`。修正后 per_core_N 正确，per-core FixPipe 时间 k_groups× 大于错误版本，**正确反映 K-split 引入的搬出压力**。
 
-**Vector accumulation 建模**：单 AI core 的 2 个 vector cores 累加 k_groups 个 partial，每个 partial 是 `M × N_per_core × 4 bytes`，总 load = `k_groups × M × N_per_core × 4`，compute = `M × N_per_core × (k_groups − 1)` 次 add，store = `M × N_per_core × out_size` 字节。`active_cores=2` 反映每 AI core 的 vector 资源。
+**Vector accumulation 建模**：所有 vec_cores 个 V 核分摊 chip-total 累加工作（chip-total / contention 约定），总 load = `k_groups × M × N_full × 4`，compute = `M × N_full` 个元素 × `(k_groups − 1)` 条 Add 指令（每条 256 B/cycle，IPC=1.3），store = `M × N_full × out_size` 字节。
 
 **Pipeline 掩盖**：`build_pipeline_dag` 把 `AccumCq` 作为 AIV 节点，`depends_on=["aiv_wait_CQ"]`（与 `MM2_CkvKr` 的 AIC 节点同时启动）。DAG 前向求解自然让 AccumCq 在 MM2 cube 内被掩盖。**只要 `accum_us < parallel AIC window`**（实测 9 个场景全满足），accum 不上关键路径。
 
@@ -174,31 +175,31 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 **decode bs1 hd128 BF16 — 主流推理场景**
 
-| He | Baseline (us) | Best Config | Opt MM1 | Opt MM2 | Opt pipeline (us) | 节省 (us) | 节省 % |
-|---:|---:|---|---:|---:|---:|---:|---:|
-| 1024 | 56.62 | MM1:N8×K4 + MM2:N3×K8  | 1.79 | 0.89 | 54.71 | −1.91 | −3.4% |
-| 2048 | 61.39 | MM1:N8×K4 + MM2:N3×K8  | 3.58 | 1.79 | 57.57 | −3.82 | −6.2% |
-| 4096 | 72.12 | MM1:N8×K4 + MM2:N1×K32 | 7.16 | 2.68 | 62.66 | −9.46 | −13.1% |
-| **7168** | 87.63 | **MM1:N4×K7 + MM2:N1×K28** | **14.31** | **5.37** | **71.53** | **−16.10** | **−18.4%** |
-| 7680 | 87.63 | MM1:N6×K5 + MM2:N3×K10 | 14.79 | 5.37 | 72.12 | −15.51 | −17.7% |
-| 8192 | 97.17 | MM1:N8×K4 + MM2:N1×K32 | 15.73 | 5.37 | 73.47 | −23.70 | −24.4% |
+| He | Baseline (us) | Best Config | Opt pipeline (us) | 节省 (us) | 节省 % |
+|---:|---:|---|---:|---:|---:|
+| 1024 | 56.62 | MM1:N8×K4 + MM2:N3×K8  | 54.71 | −1.90 | −3.4% |
+| 2048 | 61.39 | MM1:N8×K4 + MM2:N3×K8  | 57.57 | −3.82 | −6.2% |
+| 4096 | 72.12 | MM1:N8×K4 + MM2:N1×K32 | 62.66 | −9.46 | −13.1% |
+| **7168** | 87.63 | **MM1:N4×K7 + MM2:N1×K28** | **71.53** | **−16.10** | **−18.4%** |
+| 7680 | 87.63 | MM1:N6×K5 + MM2:N3×K10 | 72.12 | −15.51 | −17.7% |
+| 8192 | 97.17 | MM1:N8×K4 + MM2:N1×K32 | 73.47 | −23.70 | −24.4% |
 
 **decode bs1 hd128 FP8 — 量化推理场景**
 
 | He | Baseline (us) | Best Config | Opt pipeline (us) | 节省 (us) | 节省 % |
 |---:|---:|---|---:|---:|---:|
-| 1024 | 32.02 | MM1:N8×K4 + MM2:N9×K2  | 31.44 | −0.57 | −1.8% |
-| 2048 | 34.40 | MM1:N8×K4 + MM2:N3×K8  | 32.49 | −1.91 | −5.6% |
-| 4096 | 39.17 | MM1:N8×K4 + MM2:N3×K8  | 35.35 | −3.82 | −9.8% |
-| **7168** | 48.71 | **MM1:N8×K4 + MM2:N1×K28** | **39.20** | **−9.52** | **−19.5%** |
-| 7680 | 49.31 | MM1:N6×K5 + MM2:N3×K10 | 39.77 | −9.54 | −19.4% |
-| 8192 | 49.91 | MM1:N8×K4 + MM2:N1×K32 | 40.44 | −9.46 | −19.0% |
+| 1024 | 32.27 | MM1:N8×K4 + MM2:N9×K2  | 31.78 | −0.49 | −1.5% |
+| 2048 | 34.65 | MM1:N8×K4 + MM2:N3×K8  | 32.76 | −1.89 | −5.5% |
+| 4096 | 39.43 | MM1:N8×K4 + MM2:N3×K8  | 35.61 | −3.82 | −9.7% |
+| **7168** | 48.97 | **MM1:N8×K4 + MM2:N1×K28** | **39.45** | **−9.52** | **−19.4%** |
+| 7680 | 49.56 | MM1:N6×K5 + MM2:N3×K10 | 40.02 | −9.54 | −19.3% |
+| 8192 | 50.16 | MM1:N8×K4 + MM2:N1×K32 | 40.70 | −9.46 | −18.9% |
 
 **decode bs1 hd8 BF16 — 小规模 / 调试场景**（MM3 极小，split-kn 收益最显著）
 
 | He | Baseline (us) | Best Config | Opt pipeline (us) | 节省 (us) | 节省 % |
 |---:|---:|---|---:|---:|---:|
-| 1024 | 12.32 | MM1:N8×K4 + MM2:N3×K8  | 10.41 | −1.91 | −15.5% |
+| 1024 | 12.32 | MM1:N8×K4 + MM2:N3×K8  | 10.42 | −1.90 | −15.5% |
 | 2048 | 17.09 | MM1:N8×K4 + MM2:N3×K8  | 13.27 | −3.82 | −22.4% |
 | 4096 | 27.83 | MM1:N8×K4 + MM2:N1×K32 | 18.36 | −9.46 | −34.0% |
 | **7168** | 43.33 | **MM1:N4×K7 + MM2:N1×K28** | 27.23 | −16.10 | −37.2% |
@@ -224,13 +225,13 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 3. **优化后 MM1+MM2 cube 时间的"地板"**：He ≥ 4096 后，最优 config 的 (MM1+MM2) cube 时间稳定在 **~19.7 µs** (= 14.31 + 5.37) — 这是单 AI core 在 1.6 TB/s chip-total HBM 与 32 cores 竞争下的 per-core 极限。**继续增大 He 不会让优化版本更慢**，但 baseline 会线性变长 → 收益随 He 单调增长。
 
-4. **He=7168 与 He=7680 收益基本相同**：BF16 都是 16.10 µs / 18.4%；FP8 略有差异（10.14 vs 9.84 µs）但 < 5%。**模型从 7168 升级到 7680 不需要重新调优**。
+4. **He=7168 与 He=7680 收益基本相同**：BF16 都是 16.10 µs / 18.4%；FP8 略有差异（9.52 vs 9.54 µs）且 < 1%。**模型从 7168 升级到 7680 不需要重新调优**。
 
 5. **He=8192 收益跳升**：BF16 hd128 节省从 16.10 → 23.70 µs，因为 baseline 在 He=8192 时突破了一个 per-core 带宽上限点（baseline MM1 cube 从 17.89 → 21.47 µs，MM2 cube 从 17.89 → 23.86 µs），而最优版本的地板 ~19.7 µs 不变（slightly higher due to contention）。
 
 6. **小 He 场景收益微弱**：He=1024 的 baseline 本身就只有 56 µs（hd128），MM1+MM2 加起来才 4.78 µs，留给 split-kn 的优化空间几乎没有。**He < 2048 不建议启用 split-kn**。
 
-7. **量化场景的相对收益小于 BF16**：FP8/INT8 已经把 baseline 的 MM1/MM2 cube 时间砍到 BF16 的一半（每核 weight 加载减半），留给 split-kn 的余地也减半。FP8 hd128 He=7168 收益 −19.5% vs BF16 −18.4%（FP8 baseline 更小，相对 % 反而略大）；但**绝对节省**FP8 是 9.52 µs，BF16 是 16.10 µs。
+7. **量化场景的相对收益小于 BF16**：FP8/INT8 已经把 baseline 的 MM1/MM2 cube 时间砍到 BF16 的一半（每核 weight 加载减半），留给 split-kn 的余地也减半。FP8 hd128 He=7168 收益 −19.4% vs BF16 −18.4%（FP8 baseline 更小，相对 % 反而略大）；但**绝对节省**FP8 是 9.52 µs，BF16 是 16.10 µs。
 
 #### 2.1.3 推荐切分（按 He 分档）
 
@@ -293,7 +294,7 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 - 3 cross-core sync (2.4 µs) → 3 intra-core HardEvent (~0)
 - 3 次 GM round-trip → 0 次
 
-实测 hd128 FP8 decode 节省 ~3.3 µs（`tests/perf/test_golden/decode_bs1_fp8_dequant_opt.txt`）。
+实测 hd128 FP8 decode 节省 ~3.5 µs（`tests/perf/test_golden/decode_bs1_fp8_dequant_opt.txt`）。
 
 ---
 
@@ -990,7 +991,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrDequantRopeFused(
 - 引入 `l0c_to_ub` / `ub_to_l1` iterators
 - pytest：新增 FP8/INT8 hd128 decode 用例对比 baseline 与 dequantOpt
 - profile：实测 ~3 µs 节省，对比 perf model
-- **预期**：FP8 decode bs1 hd128 从 48.71 → ~45.4 µs
+- **预期**：FP8 decode bs1 hd128 从 48.97 → ~45.44 µs
 
 ### Round 2：Split-KN（中风险，影响 host 与 cube）
 - Host tiling 加 `enableSplitKn` flag、`mm1/mm2NGroups/KGroups`、partial workspace
@@ -998,7 +999,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrDequantRopeFused(
 - AIV 端**先用 baseline accum + RmsNorm**（不开 fused），让 split-kn 独立验证
 - pytest：新增 hd8 BF16 decode 用例（split-kn 收益最大）
 - profile：实测 ~16 µs cube 时间下降（hd8/hd128/INT8/FP8 sweep）
-- **预期**：FP8 decode bs1 hd128 从 ~45.4 → ~38.6 µs（加上 dequantOpt）
+- **预期**：FP8 decode bs1 hd128 从 ~45.44 → ~39.45 µs（加上 dequantOpt）
 
 ### Round 3：Split-KN-Fused（在 Round 2 基础上）
 - 扩 `service_rms_norm.h` 加 LocalTensor 重载
@@ -1006,9 +1007,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrDequantRopeFused(
 - 删除 fused 路径下的（本应新增的）barrier
 - pytest：对比 fused vs naive 的输出 bit-identical（同时验证累加顺序确定性）
 - profile：实测 ~1.5 µs 节省
-- **预期**：FP8 decode bs1 hd128 从 ~38.6 → ~37.1 µs
+- **预期**：FP8 decode bs1 hd128 从 ~39.45 → ~37.92 µs
 
-最终预期：FP8 decode bs1 hd128 从 48.71 → ~33.8 µs（−30.6%，**1.44× 加速**）
+最终预期：FP8 decode bs1 hd128 从 48.97 → ~34.39 µs（−29.8%，**1.42× 加速**）
 
 ---
 

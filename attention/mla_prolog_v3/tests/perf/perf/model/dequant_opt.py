@@ -121,12 +121,16 @@ def estimate_dequant_opt_pipeline(
     # paths (per-token quant) are not under-counted.
     qc_elements = (per_core_n * D) // (D + Dr) * T  # Qc portion of per_core_n
     qr_elements = (per_core_n * Dr) // (D + Dr) * T
-    # Dequant: ~2 ops/element (multiply by scale + accumulate offset)
-    # Cast int32→bf16: ~1 op/element
-    # RoPE: ~4 ops/element (sin*x + cos*y)
-    compute_ops = qc_elements * (2 + 1) + qr_elements * 4
-    vec_throughput = hw.vector_ops_per_sec_bf16 / hw.aiv_num  # per AIV core
-    ub_compute_s = compute_ops / vec_throughput if vec_throughput > 0 else 0.0
+    # Dequant Qc: cast(i32→f32) + mul(rowScale) + mul(colScale) = 3 instructions
+    # RoPE Qr: 6 instructions (same as RopeQr in orchestration)
+    if hw.has_vec_instr_spec:
+        from .vector_ops import vector_compute_time_s
+        ub_compute_s = (vector_compute_time_s(qc_elements, 3, hw)
+                        + vector_compute_time_s(qr_elements, 6, hw))
+    else:
+        compute_ops = qc_elements * 3 + qr_elements * 4
+        vec_throughput = hw.vector_ops_per_sec_bf16 / hw.aiv_num  # per AIV core
+        ub_compute_s = compute_ops / vec_throughput if vec_throughput > 0 else 0.0
 
     # --- 3. UB → L1 direct transfer ---
     ub_to_l1_bytes = T * per_core_n * bf16_size

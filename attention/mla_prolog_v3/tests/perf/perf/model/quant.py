@@ -77,6 +77,18 @@ def is_mxfp8(qm: QuantMode) -> bool:
     )
 
 
+def has_kv_quant(qm: QuantMode) -> bool:
+    """True when the quant mode quantizes the KV cache (not just weights)."""
+    return qm in (
+        QuantMode.PARTIAL_QUANT_KV_QUANT_PER_CHANNEL,
+        QuantMode.FULL_QUANT_KV_QUANT_PER_TENSOR,
+        QuantMode.PARTIAL_QUANT_KV_QUANT_PERTILE,
+        QuantMode.FULL_QUANT_KV_QUANT_PERTILE,
+        QuantMode.MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR,
+        QuantMode.MXFP8_FULL_QUANT_KV_QUANT_PER_TILE,
+    )
+
+
 def is_int8_quant(qm: QuantMode) -> bool:
     return qm in (
         QuantMode.PARTIAL_QUANT_KV_NO_QUANT,

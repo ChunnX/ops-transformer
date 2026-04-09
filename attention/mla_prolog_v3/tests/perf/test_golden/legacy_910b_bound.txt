@@ -31,8 +31,8 @@ MM4_Qn               4    128     512    22 |    0.11    0.00    0.00    0.11 | 
 
 Stage            |     MTE2   Vector     MTE3    Total | Bound   
 -----------------------------------------------------------------
-RmsNormCq        |    0.01    0.02    0.01    0.02 | VECTOR  
+RmsNormCq        |    0.01    0.04    0.01    0.04 | VECTOR  
 RmsNormCkvKr     |    0.00    0.01    0.00    0.01 | VECTOR  
 RopeKr           |    0.00    0.00    0.00    0.00 | VECTOR  
 ScatterCkvKr     |    0.00    0.00    0.01    0.01 | MTE3    
-RopeQr           |    0.06    0.16    0.05    0.16 | VECTOR  
+RopeQr           |    0.06    0.24    0.05    0.24 | VECTOR  

@@ -23,7 +23,7 @@ from .matmul_split_kn import (
 from .matmul_split_m import SplitMSpec, estimate_matmul_split_m
 from .operator_params import OperatorParams
 from .quant import is_full_quant, is_int8_quant, is_mxfp8
-from .vector_ops import estimate_vector_op
+from .vector_ops import estimate_vector_op, vector_instr_count
 
 
 def get_default_block_specs(params: 'OperatorParams', hw: AscendHWSpec):
@@ -209,30 +209,30 @@ def estimate_all_stages(params: OperatorParams, tiling, hw: AscendHWSpec,
 
     # RMSNorm Cq
     rmsnorm_cq_load = T * Hcq * out_size
-    rmsnorm_cq_compute = T * Hcq * 3
     rmsnorm_cq_store = T * Hcq * 2
     stages["RmsNormCq"] = estimate_vector_op(
-        "RmsNormCq", rmsnorm_cq_load, rmsnorm_cq_compute, rmsnorm_cq_store,
+        "RmsNormCq", rmsnorm_cq_load, T * Hcq, rmsnorm_cq_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCq", qm),
     )
 
     # RMSNorm CkvKr
     ckv_kr_size = Hckv + Dr
     rmsnorm_ckvkr_load = T * ckv_kr_size * out_size
-    rmsnorm_ckvkr_compute = T * Hckv * 3
     rmsnorm_ckvkr_store = T * Hckv * 2
     stages["RmsNormCkvKr"] = estimate_vector_op(
-        "RmsNormCkvKr", rmsnorm_ckvkr_load, rmsnorm_ckvkr_compute, rmsnorm_ckvkr_store,
+        "RmsNormCkvKr", rmsnorm_ckvkr_load, T * Hckv, rmsnorm_ckvkr_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCkvKr", qm),
     )
 
     # RoPE Kr
     rope_kr_load = T * Dr * 2 + T * Dr * 2
-    rope_kr_compute = T * Dr * 4
     rope_kr_store = T * Dr * 2
     stages["RopeKr"] = estimate_vector_op(
-        "RopeKr", rope_kr_load, rope_kr_compute, rope_kr_store,
+        "RopeKr", rope_kr_load, T * Dr, rope_kr_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeKr", qm),
     )
 
     # Scatter CkvKr
@@ -240,45 +240,46 @@ def estimate_all_stages(params: OperatorParams, tiling, hw: AscendHWSpec,
     stages["ScatterCkvKr"] = estimate_vector_op(
         "ScatterCkvKr", T * (Hckv + Dr) * 2, T * (Hckv + Dr), scatter_store,
         hw, active_cores=vec_cores, is_scatter=True,
+        n_instructions=vector_instr_count("ScatterCkvKr", qm),
     )
 
     # DequantQc
     if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
         dequant_load = T * N * D * out_size
-        dequant_compute = T * N * D * 2
         dequant_store = T * N * D * 2
         stages["DequantQc"] = estimate_vector_op(
-            "DequantQc", dequant_load, dequant_compute, dequant_store,
+            "DequantQc", dequant_load, T * N * D, dequant_store,
             hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DequantQc", qm),
         )
 
     # RoPE Qr
     rope_qr_load = T * N * Dr * 2 + T * Dr * 2
-    rope_qr_compute = T * N * Dr * 4
     rope_qr_store = T * N * Dr * 2
     stages["RopeQr"] = estimate_vector_op(
-        "RopeQr", rope_qr_load, rope_qr_compute, rope_qr_store,
+        "RopeQr", rope_qr_load, T * N * Dr, rope_qr_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeQr", qm),
     )
 
     # DynamicQuant Qn
     if params.query_quant_mode == 1:
         dyn_quant_load = T * N * Hckv * 2
-        dyn_quant_compute = T * N * Hckv * 3
         dyn_quant_store = T * N * Hckv * 1
         stages["DynamicQuantQn"] = estimate_vector_op(
-            "DynamicQuantQn", dyn_quant_load, dyn_quant_compute, dyn_quant_store,
+            "DynamicQuantQn", dyn_quant_load, T * N * Hckv, dyn_quant_store,
             hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DynamicQuantQn", qm),
         )
 
     # MulQr
     if params.query_quant_mode == 1:
         mul_qr_load = T * N * Dr * 2
-        mul_qr_compute = T * N * Dr * 1
         mul_qr_store = T * N * Dr * 2
         stages["MulQr"] = estimate_vector_op(
-            "MulQr", mul_qr_load, mul_qr_compute, mul_qr_store,
+            "MulQr", mul_qr_load, T * N * Dr, mul_qr_store,
             hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("MulQr", qm),
         )
 
     return stages
@@ -367,38 +368,46 @@ def estimate_all_stages_k_outer(
 
     # Vector ops use full T (single launch)
     stages["RmsNormCq"] = estimate_vector_op(
-        "RmsNormCq", T * Hcq * out_size, T * Hcq * 3, T * Hcq * 2,
-        hw, active_cores=vec_cores)
+        "RmsNormCq", T * Hcq * out_size, T * Hcq, T * Hcq * 2,
+        hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCq", qm))
 
     ckv_kr_size = Hckv + Dr
     stages["RmsNormCkvKr"] = estimate_vector_op(
-        "RmsNormCkvKr", T * ckv_kr_size * out_size, T * Hckv * 3, T * Hckv * 2,
-        hw, active_cores=vec_cores)
+        "RmsNormCkvKr", T * ckv_kr_size * out_size, T * Hckv, T * Hckv * 2,
+        hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCkvKr", qm))
 
     stages["RopeKr"] = estimate_vector_op(
-        "RopeKr", T * Dr * 4, T * Dr * 4, T * Dr * 2,
-        hw, active_cores=vec_cores)
+        "RopeKr", T * Dr * 4, T * Dr, T * Dr * 2,
+        hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeKr", qm))
 
     stages["ScatterCkvKr"] = estimate_vector_op(
         "ScatterCkvKr", T * ckv_kr_size * 2, T * ckv_kr_size, T * ckv_kr_size * 2,
-        hw, active_cores=vec_cores, is_scatter=True)
+        hw, active_cores=vec_cores, is_scatter=True,
+        n_instructions=vector_instr_count("ScatterCkvKr", qm))
 
     if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
         stages["DequantQc"] = estimate_vector_op(
-            "DequantQc", T * N * D * out_size, T * N * D * 2, T * N * D * 2,
-            hw, active_cores=vec_cores)
+            "DequantQc", T * N * D * out_size, T * N * D, T * N * D * 2,
+            hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DequantQc", qm))
 
     stages["RopeQr"] = estimate_vector_op(
-        "RopeQr", T * N * Dr * 2 + T * Dr * 2, T * N * Dr * 4, T * N * Dr * 2,
-        hw, active_cores=vec_cores)
+        "RopeQr", T * N * Dr * 2 + T * Dr * 2, T * N * Dr, T * N * Dr * 2,
+        hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeQr", qm))
 
     if params.query_quant_mode == 1:
         stages["DynamicQuantQn"] = estimate_vector_op(
-            "DynamicQuantQn", T * N * Hckv * 2, T * N * Hckv * 3, T * N * Hckv,
-            hw, active_cores=vec_cores)
+            "DynamicQuantQn", T * N * Hckv * 2, T * N * Hckv, T * N * Hckv,
+            hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DynamicQuantQn", qm))
         stages["MulQr"] = estimate_vector_op(
             "MulQr", T * N * Dr * 2, T * N * Dr, T * N * Dr * 2,
-            hw, active_cores=vec_cores)
+            hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("MulQr", qm))
 
     return stages
 
@@ -463,30 +472,30 @@ def estimate_all_stages_split_m(
 
     # RMSNorm Cq (per core: M_per_core tokens)
     rmsnorm_cq_load = M_per_core * Hcq * out_size
-    rmsnorm_cq_compute = M_per_core * Hcq * 3
     rmsnorm_cq_store = M_per_core * Hcq * 2
     stages["RmsNormCq"] = estimate_vector_op(
-        "RmsNormCq", rmsnorm_cq_load, rmsnorm_cq_compute, rmsnorm_cq_store,
+        "RmsNormCq", rmsnorm_cq_load, M_per_core * Hcq, rmsnorm_cq_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCq", qm),
     )
 
     # RMSNorm CkvKr
     ckv_kr_size = Hckv + Dr
     rmsnorm_ckvkr_load = M_per_core * ckv_kr_size * out_size
-    rmsnorm_ckvkr_compute = M_per_core * Hckv * 3
     rmsnorm_ckvkr_store = M_per_core * Hckv * 2
     stages["RmsNormCkvKr"] = estimate_vector_op(
-        "RmsNormCkvKr", rmsnorm_ckvkr_load, rmsnorm_ckvkr_compute, rmsnorm_ckvkr_store,
+        "RmsNormCkvKr", rmsnorm_ckvkr_load, M_per_core * Hckv, rmsnorm_ckvkr_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCkvKr", qm),
     )
 
     # RoPE Kr
     rope_kr_load = M_per_core * Dr * 2 + M_per_core * Dr * 2
-    rope_kr_compute = M_per_core * Dr * 4
     rope_kr_store = M_per_core * Dr * 2
     stages["RopeKr"] = estimate_vector_op(
-        "RopeKr", rope_kr_load, rope_kr_compute, rope_kr_store,
+        "RopeKr", rope_kr_load, M_per_core * Dr, rope_kr_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeKr", qm),
     )
 
     # Scatter CkvKr
@@ -495,45 +504,46 @@ def estimate_all_stages_split_m(
     stages["ScatterCkvKr"] = estimate_vector_op(
         "ScatterCkvKr", scatter_load, M_per_core * (Hckv + Dr), scatter_store,
         hw, active_cores=vec_cores, is_scatter=True,
+        n_instructions=vector_instr_count("ScatterCkvKr", qm),
     )
 
     # DequantQc
     if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
         dequant_load = M_per_core * N * D * out_size
-        dequant_compute = M_per_core * N * D * 2
         dequant_store = M_per_core * N * D * 2
         stages["DequantQc"] = estimate_vector_op(
-            "DequantQc", dequant_load, dequant_compute, dequant_store,
+            "DequantQc", dequant_load, M_per_core * N * D, dequant_store,
             hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DequantQc", qm),
         )
 
     # RoPE Qr
     rope_qr_load = M_per_core * N * Dr * 2 + M_per_core * Dr * 2
-    rope_qr_compute = M_per_core * N * Dr * 4
     rope_qr_store = M_per_core * N * Dr * 2
     stages["RopeQr"] = estimate_vector_op(
-        "RopeQr", rope_qr_load, rope_qr_compute, rope_qr_store,
+        "RopeQr", rope_qr_load, M_per_core * N * Dr, rope_qr_store,
         hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeQr", qm),
     )
 
     # DynamicQuant Qn
     if params.query_quant_mode == 1:
         dyn_quant_load = M_per_core * N * Hckv * 2
-        dyn_quant_compute = M_per_core * N * Hckv * 3
         dyn_quant_store = M_per_core * N * Hckv * 1
         stages["DynamicQuantQn"] = estimate_vector_op(
-            "DynamicQuantQn", dyn_quant_load, dyn_quant_compute, dyn_quant_store,
+            "DynamicQuantQn", dyn_quant_load, M_per_core * N * Hckv, dyn_quant_store,
             hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DynamicQuantQn", qm),
         )
 
     # MulQr
     if params.query_quant_mode == 1:
         mul_qr_load = M_per_core * N * Dr * 2
-        mul_qr_compute = M_per_core * N * Dr * 1
         mul_qr_store = M_per_core * N * Dr * 2
         stages["MulQr"] = estimate_vector_op(
-            "MulQr", mul_qr_load, mul_qr_compute, mul_qr_store,
+            "MulQr", mul_qr_load, M_per_core * N * Dr, mul_qr_store,
             hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("MulQr", qm),
         )
 
     return stages

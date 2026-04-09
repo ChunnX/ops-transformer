@@ -53,6 +53,10 @@ class AscendHWSpec:
     ub_to_l1_per_cycle: float = 0.0
     ub_to_reg_per_cycle: float = 0.0
 
+    # Vector instruction throughput and IPC (0 = use legacy chip-total model)
+    vec_instr_bytes_per_cycle: float = 0.0   # 256 for 950
+    vec_ipc: float = 1.0                     # 1.3 for 950
+
     # MMAD throughput: multiply-accumulate ops per cycle per core
     mmad_ops_per_cycle_fp8: int = 0
     mmad_ops_per_cycle_fp16: int = 0
@@ -64,6 +68,10 @@ class AscendHWSpec:
     @property
     def has_cycle_spec(self) -> bool:
         return self.freq_ghz > 0.0
+
+    @property
+    def has_vec_instr_spec(self) -> bool:
+        return self.vec_instr_bytes_per_cycle > 0.0
 
     @property
     def freq_hz(self) -> float:
@@ -167,6 +175,8 @@ ASCEND_950 = AscendHWSpec(
     l0c_to_out_per_cycle=256.0,
     ub_to_l1_per_cycle=245.0,
     ub_to_reg_per_cycle=512.0,
+    vec_instr_bytes_per_cycle=256.0,
+    vec_ipc=1.3,
     mmad_ops_per_cycle_fp8=8192,
     mmad_ops_per_cycle_fp16=4096,
     chip_hbm_bw_bytes_per_sec=1.6e12,

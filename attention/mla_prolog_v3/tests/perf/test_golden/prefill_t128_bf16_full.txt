@@ -32,11 +32,11 @@ MM4_Qn          128    128     512  32 |   0.66   0.08   0.08   0.31   0.08   1.
 
 Stage            |     MTE2   Vector     MTE3    Total | Bound   
 -----------------------------------------------------------------
-RmsNormCq        |    0.25    0.03    0.25    0.25 | MTE2    
-RmsNormCkvKr     |    0.09    0.01    0.08    0.09 | MTE2    
-RopeKr           |    0.02    0.00    0.01    0.02 | MTE2    
-ScatterCkvKr     |    0.09    0.00    0.23    0.23 | MTE3    
-RopeQr           |    1.32    0.21    1.31    1.32 | MTE2    
+RmsNormCq        |    0.25    0.13    0.25    0.25 | MTE2    
+RmsNormCkvKr     |    0.09    0.04    0.08    0.09 | MTE2    
+RopeKr           |    0.02    0.01    0.01    0.02 | MTE2    
+ScatterCkvKr     |    0.09    0.01    0.23    0.23 | MTE3    
+RopeQr           |    1.32    0.72    1.31    1.32 | MTE2    
 
 ======================================================================
   PIPELINE TIMELINE — AIC/AIV Execution Overlap
@@ -237,8 +237,8 @@ Fitting formulas (for tiling code):
 
   Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
   ---------------------------------------------------------------------------------------------------
-     1 M4_bm32       32 |   1069.90  206.65   86.10  771.47    1.15   2.06 |   99.6%  -981.61 <--
-     2 M2_bm64       64 |   1304.15  280.89  117.04  898.86    3.12   4.13 |   99.7% -1215.86
+     1 M4_bm32       32 |   1073.95  206.65   86.10  771.47    1.15   7.27 |   99.2%  -985.66 <--
+     2 M2_bm64       64 |   1312.25  280.89  117.04  898.86    3.12  14.55 |   99.1% -1223.96
 
   Split-N baseline (88.29 us for 128 tokens) is better than all split-M configs
 
@@ -248,11 +248,11 @@ Fitting formulas (for tiling code):
     MM3_QcQr: 771.47 us, bound=L2, inner=L2
     MM4_Qn: 1.15 us, bound=L2, inner=L2
     Vector (per core, 2 vec cores):
-      RmsNormCq: 0.236 us, bound=VECTOR
-      RmsNormCkvKr: 0.079 us, bound=VECTOR
-      RopeKr: 0.013 us, bound=VECTOR
-      ScatterCkvKr: 0.058 us, bound=MTE3
-      RopeQr: 1.678 us, bound=VECTOR
+      RmsNormCq: 1.074 us, bound=VECTOR
+      RmsNormCkvKr: 0.358 us, bound=VECTOR
+      RopeKr: 0.045 us, bound=VECTOR
+      ScatterCkvKr: 0.067 us, bound=VECTOR
+      RopeQr: 5.729 us, bound=VECTOR
 
 ======================================================================
   PREFILL K-OUTER — B Pinned in L1, Cube-Bound Target

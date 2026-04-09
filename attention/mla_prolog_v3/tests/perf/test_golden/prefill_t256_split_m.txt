@@ -25,9 +25,9 @@ workspace=17711104 bytes
 
   Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
   ---------------------------------------------------------------------------------------------------
-     1 M8_bm32       32 |    878.71  169.52   70.63  632.88    0.94   2.06 |   99.5%  -702.13 <--
-     2 M4_bm64       64 |    961.37  206.65   86.10  661.26    2.30   4.13 |   99.5%  -784.79
-     3 M2_bm128     128 |   1318.43  262.17  109.24  936.31    6.24   8.25 |   99.7% -1141.85
+     1 M8_bm32       32 |    882.76  169.52   70.63  632.88    0.94   7.27 |   99.0%  -706.18 <--
+     2 M4_bm64       64 |    969.47  206.65   86.10  661.26    2.30  14.55 |   98.6%  -792.89
+     3 M2_bm128     128 |   1334.63  262.17  109.24  936.31    6.24  29.09 |   98.5% -1158.05
 
   Split-N baseline (176.58 us for 256 tokens) is better than all split-M configs
 
@@ -37,8 +37,8 @@ workspace=17711104 bytes
     MM3_QcQr: 632.88 us, bound=L2, inner=L2
     MM4_Qn: 0.94 us, bound=L2, inner=L2
     Vector (per core, 2 vec cores):
-      RmsNormCq: 0.236 us, bound=VECTOR
-      RmsNormCkvKr: 0.079 us, bound=VECTOR
-      RopeKr: 0.013 us, bound=VECTOR
-      ScatterCkvKr: 0.058 us, bound=MTE3
-      RopeQr: 1.678 us, bound=VECTOR
+      RmsNormCq: 1.074 us, bound=VECTOR
+      RmsNormCkvKr: 0.358 us, bound=VECTOR
+      RopeKr: 0.045 us, bound=VECTOR
+      ScatterCkvKr: 0.067 us, bound=VECTOR
+      RopeQr: 5.729 us, bound=VECTOR

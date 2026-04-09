@@ -32,18 +32,18 @@ MM4_Qn            4    128     512  16 |   0.02   0.00   0.08   0.01   0.00   0.
 
 Stage            |     MTE2   Vector     MTE3    Total | Bound   
 -----------------------------------------------------------------
-RmsNormCq        |    0.01    0.01    0.01    0.01 | VECTOR  
-RmsNormCkvKr     |    0.00    0.00    0.00    0.00 | VECTOR  
+RmsNormCq        |    0.01    0.07    0.01    0.07 | VECTOR  
+RmsNormCkvKr     |    0.00    0.02    0.00    0.02 | VECTOR  
 RopeKr           |    0.00    0.00    0.00    0.00 | VECTOR  
 ScatterCkvKr     |    0.00    0.00    0.01    0.01 | MTE3    
-RopeQr           |    0.01    0.01    0.01    0.01 | VECTOR  
+RopeQr           |    0.01    0.04    0.01    0.04 | VECTOR  
 
 ======================================================================
   PIPELINE TIMELINE — AIC/AIV Execution Overlap
 ======================================================================
 
 Total: 20.06 us
-AIC busy: 16.06 us | AIV busy: 0.54 us | Sync: 7.20 us
+AIC busy: 16.06 us | AIV busy: 0.64 us | Sync: 7.20 us
 
                   |              |               |                |              |                |
                   0            4.0             8.0             12.0           16.0             20.1 us
@@ -56,11 +56,11 @@ AIC busy: 16.06 us | AIV busy: 0.54 us | Sync: 7.20 us
 
   AIV:
     CopyInSinCos   [] 0.50us
-    RmsNormCq                               [] 0.01us
-    RmsNormCkvKr                                                  [] 0.00us
+    RmsNormCq                               [] 0.07us
+    RmsNormCkvKr                                                  [] 0.02us
     RopeKr                                                        [] 0.00us
     ScatterCkvKr                                                  [] 0.01us
-    RopeQr                                                                                      [] 0.01us
+    RopeQr                                                                                      [] 0.04us
 
 Critical path:
   MM1_Cq(4.8) -> MM2_CkvKr(4.8) -> MM3_QcQr(5.9) -> MM4_Qn(0.6)
@@ -88,7 +88,7 @@ Estimated kernel time: 20.06 us (0.020 ms)
 
   5. [MM2] Low core utilization: 9/32 AIC cores active. Consider rebalancing N-split to use more cores.
 
-  6. AIV largely idle (0.54 vs AIC 16.06 us). Vector pipeline is underutilized — consider fusing more post-MM vector ops.
+  6. AIV largely idle (0.64 vs AIC 16.06 us). Vector pipeline is underutilized — consider fusing more post-MM vector ops.
 
   7. Sync overhead is 7.20 us (35.9% of total). Consider reducing cross-core synchronization events.
 
@@ -193,21 +193,21 @@ Fitting formulas (for tiling code):
 
   Rank Config                       | Pipeline     MM1     MM2     MM3     MM4   Accum | CubeUtil     AIC     AIV
   ---------------------------------------------------------------------------------------------------------------
-     1 MM1:N8xK4+MM2:N3xK8          |   16.23   3.93   1.79   5.90   0.62   0.11 |   75.4%  12.23   0.65 <--
-     2 MM2:N3xK8                    |   17.07   4.77   1.79   5.90   0.62   0.05 |   76.6%  13.07   0.59
-     3 MM2:N9xK2                    |   17.67   4.77   2.39   5.90   0.62   0.01 |   77.4%  13.67   0.55
-     4 MM2:N1xK16                   |   17.97   4.77   2.68   5.90   0.62   0.09 |   77.7%  13.97   0.63
-     5 MM2:N3xK4                    |   18.86   4.77   3.58   5.90   0.62   0.02 |   78.8%  14.86   0.56
-     6 MM1:N8xK4                    |   19.22   3.93   4.77   5.90   0.62   0.06 |   79.2%  15.22   0.60
-     7 MM1:N4xK8                    |   19.22   3.93   4.77   5.90   0.62   0.12 |   79.2%  15.22   0.66
-     8 MM1:N2xK16                   |   19.22   3.93   4.77   5.90   0.62   0.25 |   79.2%  15.22   0.79
-     9 baseline                     |   20.06   4.77   4.77   5.90   0.62   0.00 |   80.1%  16.06   0.54
-    10 MM1:N24xK1                   |   20.06   4.77   4.77   5.90   0.62   0.00 |   80.1%  16.06   0.54
-    11 MM1:N12xK2                   |   20.06   4.77   4.77   5.90   0.62   0.03 |   80.1%  16.06   0.57
-    12 MM1:N6xK4                    |   20.06   4.77   4.77   5.90   0.62   0.06 |   80.1%  16.06   0.60
-    13 MM1:N3xK8                    |   20.06   4.77   4.77   5.90   0.62   0.12 |   80.1%  16.06   0.66
-    14 MM2:N9xK1                    |   20.06   4.77   4.77   5.90   0.62   0.00 |   80.1%  16.06   0.54
-    15 MM2:N1xK8                    |   20.65   4.77   5.37   5.90   0.62   0.05 |   80.6%  16.65   0.59
+     1 MM1:N8xK4+MM2:N3xK8          |   16.23   3.93   1.79   5.90   0.62   0.11 |   75.4%  12.23   0.75 <--
+     2 MM2:N3xK8                    |   17.07   4.77   1.79   5.90   0.62   0.05 |   76.6%  13.07   0.69
+     3 MM2:N9xK2                    |   17.67   4.77   2.39   5.90   0.62   0.01 |   77.4%  13.67   0.66
+     4 MM2:N1xK16                   |   17.97   4.77   2.68   5.90   0.62   0.09 |   77.7%  13.97   0.74
+     5 MM2:N3xK4                    |   18.86   4.77   3.58   5.90   0.62   0.02 |   78.8%  14.86   0.67
+     6 MM1:N8xK4                    |   19.22   3.93   4.77   5.90   0.62   0.06 |   79.2%  15.22   0.71
+     7 MM1:N4xK8                    |   19.22   3.93   4.77   5.90   0.62   0.12 |   79.2%  15.22   0.77
+     8 MM1:N2xK16                   |   19.22   3.93   4.77   5.90   0.62   0.25 |   79.2%  15.22   0.89
+     9 baseline                     |   20.06   4.77   4.77   5.90   0.62   0.00 |   80.1%  16.06   0.64
+    10 MM1:N24xK1                   |   20.06   4.77   4.77   5.90   0.62   0.00 |   80.1%  16.06   0.64
+    11 MM1:N12xK2                   |   20.06   4.77   4.77   5.90   0.62   0.03 |   80.1%  16.06   0.67
+    12 MM1:N6xK4                    |   20.06   4.77   4.77   5.90   0.62   0.06 |   80.1%  16.06   0.71
+    13 MM1:N3xK8                    |   20.06   4.77   4.77   5.90   0.62   0.12 |   80.1%  16.06   0.77
+    14 MM2:N9xK1                    |   20.06   4.77   4.77   5.90   0.62   0.00 |   80.1%  16.06   0.64
+    15 MM2:N1xK8                    |   20.65   4.77   5.37   5.90   0.62   0.05 |   80.6%  16.65   0.69
 
   Best: MM1:N8xK4+MM2:N3xK8 -> 16.23 us (saves 3.82 us / 19.1% vs baseline)
 
