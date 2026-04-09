@@ -339,7 +339,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     ubMainFactorS_ = (S_ + sLoopCnt_ - 1) / sLoopCnt_; // ceil
     ubTailFactorS_ = (S_ / sLoopCnt_);                  // floor
     ubMainFactorSCount_ = S_ % sLoopCnt_;                  // 需要分配主块大小的次数
-    ubTailFactorSCount_ = sLoopCnt_ - mainCnt;             // 其余分配尾块大小
+    ubTailFactorSCount_ = sLoopCnt_ - ubMainFactorSCount_;             // 其余分配尾块大小
 
     // 尾核
     if (hTailCoreCnt_ > 0 && hTailSize_ > 0) {

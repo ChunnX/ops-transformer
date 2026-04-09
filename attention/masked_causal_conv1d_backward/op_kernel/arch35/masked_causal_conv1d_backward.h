@@ -10,7 +10,7 @@
 
 /*!
  * \file masked_causal_conv1d_backward.h
- * \brief Arch35 AICore kernel for masked_causal_conv1d_backward (W=3)
+ * \brief Arch35 AICore kernel for masked_causal_conv1d_backward
  */
 
 #ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_H
@@ -151,7 +151,6 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     S_ = td->S;                      // S维度大小
     B_ = td->B;                      // B维度大小
     H_ = td->H;                      // H维度大小
-    kW = td->W;                      // W维度大小
 
     // compute this core's H start/len
     uint64_t blkIdx = GetBlockIdx();
