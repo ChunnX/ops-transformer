@@ -132,13 +132,13 @@ private:
     //              rows 0,1 = prefix x[s0-2], x[s0-1]; rows 2..sUb+1 = x[s0..]
     //              each row: ubFactorH elements wide (ubFactorH = k×H_REG)
     // weightQueue: [3][ubFactorH] T, double buffer, loaded once per S-tile
-    // maskRowBuf_: [bUb][sPad] — uint8 DMA landing (step1), then T mask values (step3)
-    // maskCastBuf_: [bUb][sPad] half (step2) → reused as [sPad][ubFactorH] T Broadcast dst (step4)
+    // maskRowQueue_: [bUb][sPad] — uint8 DMA landing (step1), then T mask values (step3), double buffer
+    // maskCastQueue_: [bUb][sPad] half (step2) → reused as [sPad][ubFactorH] T Broadcast dst (step4), double buffer
     // -------------------------------------------------------------------------
-    TQueBind<TPosition::VECIN, TPosition::VECOUT, BUFFER_NUM> ioQueue_;
-    TQue<QuePosition::VECIN, BUFFER_NUM> weightQueue_;  // [3][ubFactorH]
-    TBuf<TPosition::VECCALC> maskRowBuf_;                // uint8 DMA (step1) / T mask result (step3)
-    TBuf<TPosition::VECCALC> maskCastBuf_;               // half Cast intermediate (step2) / T Broadcast dst (step4)
+    TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> ioQueue_;
+    TQue<QuePosition::VECIN, 1> weightQueue_;  // [3][ubFactorH]
+    TQue<QuePosition::VECIN, 1> maskRowQueue_;    // double-buffered: uint8 DMA / T mask
+    TQue<QuePosition::VECIN, 1> maskCastQueue_;   // double-buffered: half Cast / T Broadcast dst
 };
 
 // ============================================================================
@@ -252,14 +252,14 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
     if (isMaskNone_ == 0) {
         uint32_t sPadAligned = AlignUp(ubFactorS_, ALIGN_BYTES);
 
-        // maskRowBuf_: uint8 DMA landing (step1), then T mask values (step3)
+        // maskRowQueue_: uint8 DMA landing (step1), then T mask values (step3)
         uint32_t maskRowBytes = AlignUp(ubFactorB_ * sPadAligned * static_cast<uint32_t>(sizeof(T)), ALIGN_BYTES);
-        pipe_.InitBuffer(maskRowBuf_, maskRowBytes);
+        pipe_.InitBuffer(maskRowQueue_, BUFFER_NUM, maskRowBytes);
 
-        // maskCastBuf_: half Cast result (step2), then reused as T Broadcast dst (step4)
+        // maskCastQueue_: half Cast result (step2), then reused as T Broadcast dst (step4)
         uint32_t castHalfBytes  = AlignUp(ubFactorB_ * sPadAligned * static_cast<uint32_t>(sizeof(half)), ALIGN_BYTES);
         uint32_t broadcastBytes = AlignUp(sPadAligned * ubFactorH_ * static_cast<uint32_t>(sizeof(T)), ALIGN_BYTES);
-        pipe_.InitBuffer(maskCastBuf_, castHalfBytes > broadcastBytes ? castHalfBytes : broadcastBytes);
+        pipe_.InitBuffer(maskCastQueue_, BUFFER_NUM, castHalfBytes > broadcastBytes ? castHalfBytes : broadcastBytes);
     }
 }
 
@@ -350,57 +350,59 @@ __aicore__ inline void MaskedCausalConv1d<T>::Compute(
 
     if (isMaskNone_ == 0) {
         // ---- Mask application: 2-step Cast (uint8→half→T) + Broadcast + Mul ----
-        // No float intermediate needed: uint8→half(CAST_NONE), half→T(CAST_RINT or copy)
-
         uint32_t sPad = AlignUp(sCur, ALIGN_BYTES);
 
+        // Alloc from double-buffered queues
+        LocalTensor<T> maskRowBuf = maskRowQueue_.AllocTensor<T>();
+        LocalTensor<uint8_t> maskRaw = maskRowBuf.template ReinterpretCast<uint8_t>();
+
         // Step1: DMA mask rows (uint8) from GM to maskRowBuf
-        LocalTensor<uint8_t> maskRaw = maskRowBuf_.Get<uint8_t>();
         for (uint32_t b = 0; b < bUbCur; ++b) {
             uint64_t maskGmOff = (uint64_t)(b0 + b) * S_ + s0;
             DataCopyExtParams mcp{1, static_cast<uint16_t>(sCur), 0, 0, 0};
             DataCopyPadExtParams<uint8_t> mpadParams{false, 0, 0, 0};
             DataCopyPad(maskRaw[b * sPad], maskGM_[maskGmOff], mcp, mpadParams);
         }
-        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+        // SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+        maskRowQueue_.EnQue(maskRaw);
+        maskRaw = maskRowQueue_.DeQue<uint8_t>();
 
         // Step2: Cast uint8 → half, store to maskCastBuf
-        LocalTensor<half> maskHalf = maskCastBuf_.Get<half>();
+        LocalTensor<T> maskCastBuf = maskCastQueue_.AllocTensor<T>();
+        LocalTensor<half> maskHalf = maskCastBuf.template ReinterpretCast<half>();
         for (uint32_t b = 0; b < bUbCur; ++b) {
             Cast(maskHalf[b * sPad], maskRaw[b * sPad], RoundMode::CAST_NONE, sPad);
         }
         PipeBarrier<PIPE_V>();
 
         // Step3: half → T, store back to maskRowBuf (frees maskCastBuf for Broadcast)
-        LocalTensor<T> maskT = maskRowBuf_.Get<T>();
         if constexpr (std::is_same<T, half>::value) {
-            // T is half: copy half→half via Adds(x, 0)
             for (uint32_t b = 0; b < bUbCur; ++b) {
-                Adds(maskT[b * sPad], maskHalf[b * sPad], static_cast<T>(0), sPad);
+                Adds(maskRowBuf[b * sPad], maskHalf[b * sPad], static_cast<T>(0), sPad);
             }
         } else {
-            // T is bf16: Cast half→bf16
             for (uint32_t b = 0; b < bUbCur; ++b) {
-                Cast(maskT[b * sPad], maskHalf[b * sPad], RoundMode::CAST_RINT, sPad);
+                Cast(maskRowBuf[b * sPad], maskHalf[b * sPad], RoundMode::CAST_RINT, sPad);
             }
         }
         PipeBarrier<PIPE_V>();
 
         // Step4: Per-batch Broadcast + Mul (maskCastBuf reused as Broadcast dst)
-        LocalTensor<T> maskExp = maskCastBuf_.Get<T>();
         for (uint32_t b = 0; b < bUbCur; ++b) {
             uint32_t srcShape[2] = {sPad, 1u};
             uint32_t dstShape[2] = {sPad, ubFactorHCur};
-            Broadcast<T, 2, 1>(maskExp, maskT[b * sPad], dstShape, srcShape);
-            PipeBarrier<PIPE_V>();
+            Broadcast<T, 2, 1>(maskCastBuf, maskRowBuf[b * sPad], dstShape, srcShape);
 
             uint32_t ioOff = b * (sCur + 2) * ubFactorHCur;
-            Mul(ioBuf[ioOff], ioBuf[ioOff], maskExp, sCur * ubFactorHCur);
+            Mul(ioBuf[ioOff], ioBuf[ioOff], maskCastBuf, sCur * ubFactorHCur);
             PipeBarrier<PIPE_V>();
         }
+
+        // Free back to queues
+        maskCastQueue_.FreeTensor(maskCastBuf);
+        maskRowQueue_.FreeTensor(maskRowBuf);
     }
-    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-    ioQueue_.EnQue(ioBuf);
+    ioQueue_.EnQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>(ioBuf);
 }
 
 // ============================================================================
@@ -413,7 +415,7 @@ template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
     uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0, uint32_t ubFactorHCur)
 {
-    LocalTensor<T> ioBuf = ioQueue_.DeQue<T>();
+    LocalTensor<T> ioBuf = ioQueue_.DeQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>();
 
     // dstJumpStride: bytes to skip in y GM between consecutive S rows
     uint32_t dstSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
@@ -431,7 +433,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
         };
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
     }
-    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     ioQueue_.FreeTensor(ioBuf);
 }
 

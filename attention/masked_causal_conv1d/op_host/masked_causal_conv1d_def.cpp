@@ -24,15 +24,18 @@ public:
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("mask")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_BOOL})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
 
         this->Output("y")
             .ParamType(REQUIRED)
