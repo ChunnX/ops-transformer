@@ -738,9 +738,11 @@ for filename in os.listdir(os.path.join(floder_path)):
 
             dis_core_info.to_csv("win_data.csv", index=True, mode='a', header=not file_eixsts, encoding="gbk")
             dis_status_list_info = pd.DataFrame([dis_status_list], index=[f"d{card_num}_dispatch各核执行位置数据"])
-            dis_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            dis_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_eixsts,
+                                        encoding="gbk")
             dis_0_1_list_info = pd.DataFrame([dis_0_1_list], index=[f"d{card_num}_dispatch各核0/1标识区数据"])
-            dis_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            dis_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_eixsts,
+                                        encoding="gbk")
 
             if dis_0_1 == 0:
                 int32_dis_0_status_info = pd.DataFrame([int32_dis_0_status],
@@ -765,9 +767,11 @@ for filename in os.listdir(os.path.join(floder_path)):
             com_core_info.to_csv("win_data.csv", index=True, mode='a', header=not file_eixsts, encoding="gbk")
 
             com_status_list_info = pd.DataFrame([com_status_list], index=[f"d{card_num}_combine各核执行位置数据"])
-            com_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            com_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_eixsts,
+                                        encoding="gbk")
             com_0_1_list_info = pd.DataFrame([com_0_1_list], index=[f"d{card_num}_combine各核0/1标识区数据"])
-            com_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            com_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_eixsts,
+                                        encoding="gbk")
 
             if com_0_1 == 0:
                 int32_com_0_status_info = pd.DataFrame([int32_com_0_status],
