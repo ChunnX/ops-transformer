@@ -238,10 +238,10 @@ def _compute_pipeline_msplit(stages: Dict, hw: AscendHWSpec,
                   "DequantQc", "RopeQr", "DynamicQuantQn", "MulQr"]
     aiv_busy = sum(get_us(s) for s in aiv_stages)
 
-    # Pipeline: AIC dominates (cube-bound), AIV overlaps
-    # Critical path ≈ max(AIC + sync, AIV total with dependencies)
-    # In practice AIC >> AIV for prefill, so pipeline ≈ AIC + sync
-    pipeline_us = aic_busy + total_sync_us
+    # Pipeline: pure per-core compute + data movement (no sync overhead).
+    # Sync is reported separately but does not affect pipeline ranking.
+    # AIC dominates for prefill; AIV overlaps with AIC.
+    pipeline_us = aic_busy
 
     return pipeline_us, aic_busy, aiv_busy, total_sync_us, n_barriers + n_aic_aiv_syncs
 
