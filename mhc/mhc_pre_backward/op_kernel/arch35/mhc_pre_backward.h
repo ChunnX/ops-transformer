@@ -318,7 +318,6 @@ private:
     uint32_t dealStartND_;
     uint32_t dealEndND_;
 
-
     GlobalTensor<T> xGm_;               // 输入 x
     GlobalTensor<P> phiGm_;             // 输入 phi
     GlobalTensor<P> alphaGm_;           // 输入 alpha
@@ -1384,7 +1383,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
     LocalTensor<P> hPreUb = fp32TBuf_.GetWithOffset<P>(currentBsSize * N_, ubOffset); // 1024 * 4 = 16k
     ubOffset = CeilAlign(uint32_t(ubOffset + currentBsSize * N_ * sizeof(P)), uint32_t(32));
-    LocalTensor<uint8_t> sharedTmpBuf = fp32TBuf_.GetWithOffset<uint8_t>(5 * 1024, ubOffset); // FIXME: 没人用就删除
 
     // ==========================================================
     // 参数初始化
