@@ -36,9 +36,36 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
 
+// Metadata layout constants (matching attention_pioneer_metadata layout, defined locally to avoid cross-operator includes)
+namespace ap_metadata {
+constexpr uint32_t AIC_CORE_NUM = 36;
+constexpr uint32_t SLOTS_PER_CORE = 10;
+constexpr uint32_t BASE_OFFSET = AIC_CORE_NUM * SLOTS_PER_CORE;  // 360
+
+// Per-core field indices
+constexpr uint32_t BN2_START_PTR_INDEX = 1;
+constexpr uint32_t GS1_START_PTR_INDEX = 2;
+
+// Base metadata field indices
+constexpr uint32_t USED_CORE_NUM_INDEX = 0;
+constexpr uint32_t S1_OUTER_SIZE_INDEX = 3;
+constexpr uint32_t TOTAL_SIZE_INDEX = 10;
+constexpr uint32_t SPLIT_FACTOR_SIZE_INDEX = 11;
+constexpr uint32_t SPLIT_FACTOR_TAIL_SIZE_INDEX = 12;
+
+__aicore__ inline constexpr uint32_t GetCoreFieldOffset(uint32_t coreIdx, uint32_t fieldIdx)
+{
+    return coreIdx * SLOTS_PER_CORE + fieldIdx;
+}
+
+__aicore__ inline constexpr uint32_t GetBaseMetaIndex(uint32_t fieldIdx)
+{
+    return BASE_OFFSET + fieldIdx;
+}
+} // namespace ap_metadata
+
 using matmul::MatmulType;
 using namespace AscendC;
-using namespace optiling;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
@@ -52,13 +79,14 @@ public:
     __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
                             __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
-                            __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
-                            __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, 
+                            __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
+                            __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                             __gm__ uint8_t *deqScaleV, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-                            __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, 
+                            __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
                             __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink,
-                            __gm__ uint8_t *keySink, __gm__ uint8_t *keyRopeSink, __gm__ uint8_t *valueSink, __gm__ uint8_t *softmaxMax, 
-                            __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                            __gm__ uint8_t *keySink, __gm__ uint8_t *keyRopeSink, __gm__ uint8_t *valueSink, __gm__ uint8_t *metaData,
+                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut,
+                            __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                             __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
@@ -81,6 +109,7 @@ public:
     __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam);
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
+    __aicore__ inline void ReadMetadataForSplitCore();
 
     __aicore__ inline ChildClass* GetDerived() {
         return static_cast<ChildClass*>(this);
@@ -118,6 +147,8 @@ public:
     /* GM信息 */
     using keyGmType = typename std::conditional<isInfer, GlobalTensor<INPUT_T>, int32_t>::type;
     keyGmType keyGm; // kv不连续场景需要使用来获取shape
+    /* metaData GM tensor for device-side split core info */
+    GlobalTensor<int32_t> metadataGm;
     __gm__ int64_t *actualSeqQlenAddr;
     __gm__ int64_t *actualSeqKvlenAddr;
     /* 核Index信息 */
@@ -149,9 +180,9 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
     __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, 
+    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
     __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink,
-    __gm__ uint8_t *keySink, __gm__ uint8_t *keyRopeSink, __gm__ uint8_t *valueSink,
+    __gm__ uint8_t *keySink, __gm__ uint8_t *keyRopeSink, __gm__ uint8_t *valueSink, __gm__ uint8_t *metaData,
     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
     const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
@@ -166,7 +197,11 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         this->tilingData = tiling;
     }
     this->pipe = tPipe;
-    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
+
+    // Init metadataGm
+    this->metadataGm.SetGlobalBuffer((__gm__ int32_t *)metaData);
+
+    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx,
         attenMaskInfo, pseInfo);
     vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
@@ -188,6 +223,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         actualSeqLengths, actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, postQuantScale, postQuantOffset,
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
+    this->ReadMetadataForSplitCore();
     this->InitLocalBuffer();
 }
 
@@ -696,5 +732,36 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         }
     }
 }
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::ReadMetadataForSplitCore()
+{
+    // Read base metadata scalars from device-side metadata tensor
+    auto &mcParams = const_cast<MultiCoreParamsRegbase &>(this->tilingData->multiCoreParamsRegbase);
+    __gm__ int32_t *metaPtr = this->metadataGm.GetPhyAddr();
+
+    uint32_t usedCoreNum = static_cast<uint32_t>(metaPtr[ap_metadata::GetBaseMetaIndex(ap_metadata::USED_CORE_NUM_INDEX)]);
+    uint32_t s1OuterSize = static_cast<uint32_t>(metaPtr[ap_metadata::GetBaseMetaIndex(ap_metadata::S1_OUTER_SIZE_INDEX)]);
+    int32_t totalSize = metaPtr[ap_metadata::GetBaseMetaIndex(ap_metadata::TOTAL_SIZE_INDEX)];
+    int32_t splitFactorSize = metaPtr[ap_metadata::GetBaseMetaIndex(ap_metadata::SPLIT_FACTOR_SIZE_INDEX)];
+    int32_t splitFactorTailSize = metaPtr[ap_metadata::GetBaseMetaIndex(ap_metadata::SPLIT_FACTOR_TAIL_SIZE_INDEX)];
+
+    // Set multiCoreParamsRegbase scalar fields
+    mcParams.coreNum = static_cast<int32_t>(usedCoreNum);
+    mcParams.s1OuterSize = static_cast<int64_t>(s1OuterSize);
+    mcParams.totalSize = static_cast<int64_t>(totalSize);
+    mcParams.splitFactorSize = static_cast<int64_t>(splitFactorSize);
+    mcParams.splitFactorTailSize = static_cast<int64_t>(splitFactorTailSize);
+
+    // Copy per-core bnStartIdx and sparseStartIdx from metadata
+    for (uint32_t i = 0; i < usedCoreNum && i < ap_metadata::AIC_CORE_NUM; i++) {
+        mcParams.bnStartIdx[i] = static_cast<uint32_t>(metaPtr[ap_metadata::GetCoreFieldOffset(i, ap_metadata::BN2_START_PTR_INDEX)]);
+        mcParams.sparseStartIdx[i] = static_cast<int64_t>(metaPtr[ap_metadata::GetCoreFieldOffset(i, ap_metadata::GS1_START_PTR_INDEX)]);
+    }
+
+    // Update constInfo.s1OuterSize which was already set from tiling/sharedParams
+    constInfo.s1OuterSize = static_cast<int64_t>(s1OuterSize);
+}
+
 }
 #endif // FLASH_ATTENTION_SCORE_KERNEL_BASE_H_
