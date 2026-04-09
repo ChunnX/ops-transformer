@@ -136,9 +136,14 @@ graphStatus MlaV3HostExecuteFunc(OpExecuteContext *host_api_ctx)
         param.rmsnormGammaCq, param.rmsnormGammaCkv, param.ropeSin, param.ropeCos,
         param.kvCache, param.krCache, param.cacheIndex, // cacheIndex当前为可选参数
         param.dequantScaleX, param.dequantScaleWDq, param.dequantScaleWUqQr,
-        param.dequantScaleWDkvKr, param.quantScaleCkv, param.quantScaleCkr, param.smoothScalesCq, param.actualAeqLen, param.kNopeClipAlpha, 
-        param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv, param.cacheMode,
-        param.weightQuantMode, param.kvCacheQuantMode, param.queryQuantMode, param.ckvkrRepoMode, param.quantScaleRepoMode,
+        param.dequantScaleWDkvKr, param.quantScaleCkv,
+        param.quantScaleCkr, param.smoothScalesCq,
+        param.actualAeqLen, param.kNopeClipAlpha,
+        param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv,
+        param.cacheMode,
+        param.weightQuantMode, param.kvCacheQuantMode,
+        param.queryQuantMode, param.ckvkrRepoMode,
+        param.quantScaleRepoMode,
         param.tileSize, param.qcQrScale, param.kcScale,
         param.query, param.queryRope, param.kvCacheOut, param.krCacheOut,
         param.dequantScaleQNope, param.queryNorm, param.dequantScaleQNorm);

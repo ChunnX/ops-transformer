@@ -74,7 +74,9 @@ aclnnStatus aclnnMlaPrologGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaPrologGetWorkspaceSize are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+            "Interface aclnnMlaPrologGetWorkspaceSize "
+            "are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;

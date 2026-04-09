@@ -32,15 +32,33 @@ extern "C" {
 namespace {
 
 extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
-    const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk, const aclTensor *weightDkvKr,
-    const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv, const aclTensor *ropeSin, const aclTensor *ropeCos,
-    aclTensor *kvCacheRef, aclTensor *krCacheRef, const aclTensor *cacheIndexOptional, const aclTensor *dequantScaleXOptional,
-    const aclTensor *dequantScaleWDqOptional, const aclTensor *dequantScaleWUqQrOptional, const aclTensor *dequantScaleWDkvKrOptional,
-    const aclTensor *quantScaleCkvOptional, const aclTensor *quantScaleCkrOptional, const aclTensor *smoothScalesCqOptional,
-    const aclTensor *actualSeqLenOptional, const aclTensor *kNopeClipAlphaOptional, double rmsnormEpsilonCq, double rmsnormEpsilonCkv, char *cacheModeOptional,
-    bool queryNormFlag, int64_t weightQuantMode, int64_t kvCacheQuantMode, int64_t queryQuantMode, int64_t ckvkrRepoMode,
-    int64_t quantScaleRepoMode, int64_t tileSize, double qcQrScale, double kcScale, const aclTensor *queryOut,
-    const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOut, const aclTensor *queryNormOut, const aclTensor *dequantScaleQNormOut,
+    const aclTensor *tokenX, const aclTensor *weightDq,
+    const aclTensor *weightUqQr, const aclTensor *weightUk,
+    const aclTensor *weightDkvKr,
+    const aclTensor *rmsnormGammaCq,
+    const aclTensor *rmsnormGammaCkv,
+    const aclTensor *ropeSin, const aclTensor *ropeCos,
+    aclTensor *kvCacheRef, aclTensor *krCacheRef,
+    const aclTensor *cacheIndexOptional,
+    const aclTensor *dequantScaleXOptional,
+    const aclTensor *dequantScaleWDqOptional,
+    const aclTensor *dequantScaleWUqQrOptional,
+    const aclTensor *dequantScaleWDkvKrOptional,
+    const aclTensor *quantScaleCkvOptional,
+    const aclTensor *quantScaleCkrOptional,
+    const aclTensor *smoothScalesCqOptional,
+    const aclTensor *actualSeqLenOptional,
+    const aclTensor *kNopeClipAlphaOptional,
+    double rmsnormEpsilonCq, double rmsnormEpsilonCkv,
+    char *cacheModeOptional,
+    bool queryNormFlag, int64_t weightQuantMode,
+    int64_t kvCacheQuantMode, int64_t queryQuantMode,
+    int64_t ckvkrRepoMode, int64_t quantScaleRepoMode,
+    int64_t tileSize, double qcQrScale, double kcScale,
+    const aclTensor *queryOut, const aclTensor *queryRopeOut,
+    const aclTensor *dequantScaleQNopeOut,
+    const aclTensor *queryNormOut,
+    const aclTensor *dequantScaleQNormOut,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
@@ -159,20 +177,28 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
-    if (!CheckWeightQuantModeValidity(weightQuantMode)){
+    if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
     };
 
-    auto dequantScaleQNopeHolder = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
-    aclDataType queryNormDataType = weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT ? aclDataType::ACL_BF16 : aclDataType::ACL_INT8;
-    aclDataType dequantScaleQNormDataType = weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ? aclDataType::ACL_FLOAT8_E8M0 : aclDataType::ACL_FLOAT;
+    auto dequantScaleQNopeHolder = TensorHolder(
+        dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT,
+        std::string("dequantScaleQNopeOut"));
+    aclDataType queryNormDataType =
+        weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT ?
+        aclDataType::ACL_BF16 : aclDataType::ACL_INT8;
+    aclDataType dequantScaleQNormDataType =
+        weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ?
+        aclDataType::ACL_FLOAT8_E8M0 : aclDataType::ACL_FLOAT;
     if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8) {
         queryNormDataType = aclDataType::ACL_FLOAT8_E4M3FN;
     } else if (weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8) {
         queryNormDataType = aclDataType::ACL_HIFLOAT8;
     }
     auto queryNormHolder = TensorHolder(queryNormOutOptional, queryNormDataType, std::string("queryNormOut"));
-    auto dequantScaleQNormHolder = TensorHolder(dequantScaleQNormOutOptional, dequantScaleQNormDataType, std::string("dequantScaleQNormOut"));
+    auto dequantScaleQNormHolder = TensorHolder(
+        dequantScaleQNormOutOptional, dequantScaleQNormDataType,
+        std::string("dequantScaleQNormOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOu!");
         return ge::GRAPH_FAILED;
@@ -195,11 +221,18 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         kvCacheQuantMode == KV_CACHE_QUANT_MODE_PER_TENSOR);
     bool queryNormFlag = queryNormHolder.IsTensorNotNull();
     // weightQuantMode != 0:量化场景
-    dequantScaleQNormHolder.CheckTensorConditionalNotNull(weightQuantMode != WEIGHT_QUANT_MODE_NO_QUANT && queryNormFlag);
+    dequantScaleQNormHolder.CheckTensorConditionalNotNull(
+        weightQuantMode != WEIGHT_QUANT_MODE_NO_QUANT &&
+        queryNormFlag);
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCacheRef, krCacheRef,
-        cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional, dequantScaleWUqQrOptional,
-        dequantScaleWDkvKrOptional, quantScaleCkvOptional, quantScaleCkrOptional, smoothScalesCqOptional, actualSeqLenOptional, kNopeClipAlphaOptional,
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
+        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+        kvCacheRef, krCacheRef,
+        cacheIndexOptional, dequantScaleXOptional,
+        dequantScaleWDqOptional, dequantScaleWUqQrOptional,
+        dequantScaleWDkvKrOptional, quantScaleCkvOptional,
+        quantScaleCkrOptional, smoothScalesCqOptional,
+        actualSeqLenOptional, kNopeClipAlphaOptional,
         rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheModeOptional,
         queryNormFlag, weightQuantMode, kvCacheQuantMode, queryQuantMode, ckvkrRepoMode, quantScaleRepoMode, tileSize,
         qcQrScale, kcScale, queryOut, queryRopeOut,

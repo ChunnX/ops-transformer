@@ -114,7 +114,9 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaPrologV2WeightNzGetWorkspaceSize are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+            "Interface aclnnMlaPrologV2WeightNzGetWorkspaceSize "
+            "are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -124,12 +126,17 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    auto dequantScaleQNopeHolder = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
+    auto dequantScaleQNopeHolder = TensorHolder(
+        dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT,
+        std::string("dequantScaleQNopeOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOut!");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+            "Failed to create the holder of tensor dequantScaleQNopeOut!");
         return ge::GRAPH_FAILED;
     }
-    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(tokenX ->GetDataType() == ge::DT_INT8 && kvCacheRef ->GetDataType() == ge::DT_INT8); 
+    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(
+        tokenX->GetDataType() == ge::DT_INT8 &&
+        kvCacheRef->GetDataType() == ge::DT_INT8);
 
     return aclnnInnerMlaPrologV2GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
