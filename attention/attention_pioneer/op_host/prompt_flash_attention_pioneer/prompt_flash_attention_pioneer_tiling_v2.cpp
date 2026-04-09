@@ -3834,7 +3834,8 @@ int64_t PromptFlashAttentionPioneerTilingV2::GetCalcBlockNumsForS1G(int64_t actu
     for (uint32_t i = 0; i < outerBlockNums; i ++) {
         int64_t cubeSOuterOffset = i * static_cast<int64_t>(sOuterSize);
         sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize, 0, actualSeqLengthKV);
-        sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize), static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
+        sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
+            static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
         s2BlockNum += (sInnerLastToken + sInnerSize - 1) / sInnerSize - sInnerFirstToken / sInnerSize; 
     }
     return s2BlockNum;
@@ -3940,9 +3941,14 @@ void PromptFlashAttentionPioneerTilingV2::ComputeSplitNBSeq(PromptFlashAttention
                 int64_t sInnerLastToken = 0;
                 if (enableIFAMLA) {
                     int64_t cubeSOuterOffset = sOuterIndex * sOuterSize;
-                    sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize, 0, actualSeqLengthKV);
-                    sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize), static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
-                    actualInnerBlockNums = (sInnerLastToken + sInnerSize - 1) / sInnerSize - sInnerFirstToken / sInnerSize;
+                    sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize,
+                        0, actualSeqLengthKV);
+                    sInnerLastToken = ClipSInnerToken(CeilDivision(
+                        static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
+                        static_cast<int64_t>(gSize)),
+                        0, actualSeqLengthKV);
+                    actualInnerBlockNums = (sInnerLastToken + sInnerSize - 1) / sInnerSize -
+                        sInnerFirstToken / sInnerSize;
                     if (sinkLength > 0) {
                         actualInnerBlockNums += sinkBlockNumberPerS1g;
                     }
