@@ -612,123 +612,78 @@ HcclResult MC2HcomTopology::GetHcclBufferSize(uint64_t &hcclBuffSize)
     return HCCL_SUCCESS;
 }
 
-// 获取HCCL通信层数列表和层数数量
-static HcclResult GetCommLayerInfo(HcclComm hcclHandle, uint32_t *&layerList, uint32_t &layerNum)
-{
-    HcclResult ret = HcclRankGraphGetLayers(hcclHandle, &layerList, &layerNum);
-    if (ret != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL layers failed");
-        return HCCL_E_PTR;
-    }
-    return HCCL_SUCCESS;
-}
-
-// 获取当前通信域中的rank数量
-static HcclResult GetCommRankCount(HcclComm hcclHandle, uint32_t &epRankSize)
-{
-    HcclResult ret = HcclGetRankSize(hcclHandle, &epRankSize);
-    if (ret != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL rank size failed");
-        return HCCL_E_PTR;
-    }
-    return HCCL_SUCCESS;
-}
-
-// 遍历链路列表，检查是否存在支持UB_MEM协议的链路
-static bool HasUbMemProtocolLink(CommLink *linksList, uint32_t netLinkNum)
-{
-    for (uint32_t j = 0; j < netLinkNum; ++j) {
-        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 获取源rank和目标rank之间的通信链路列表
-static HcclResult GetLinksBetweenRanks(HcclComm hcclHandle, uint32_t netLayer,
-                                        uint32_t srcRankId, uint32_t dstRankId,
-                                        CommLink *&linksList, uint32_t &netLinkNum)
-{
-    HcclResult hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayer, srcRankId, dstRankId,
-                                                &linksList, &netLinkNum);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE("", "Get HCCL links failed when checking protocol support");
-        return HCCL_E_PTR;
-    }
-    if (netLinkNum == 0) {
-        OP_LOGE("", "No available HCCL links found");
-        return HCCL_E_PTR;
-    }
-    return HCCL_SUCCESS;
-}
-
 // 检查rank0与指定目标rank之间的链路是否支持UB_MEM协议
-static HcclResult CheckUbMemSupportForSingleRank(HcclComm hcclHandle, uint32_t dstRankId)
+HcclResult MC2HcomTopology::CheckUbMemSupportForSingleRank(uint32_t dstRankId)
 {
     const uint32_t netLayer = HCCL_COMM_LAYERS_UB_MEM;
     const uint32_t srcRankId = 0;
     CommLink *linksList = nullptr;
     uint32_t netLinkNum = 0;
     
-    HcclResult ret = GetLinksBetweenRanks(hcclHandle, netLayer, srcRankId, dstRankId,
-                                           linksList, netLinkNum);
-    if (ret != HCCL_SUCCESS) {
-        return ret;
-    }
-    
-    if (!HasUbMemProtocolLink(linksList, netLinkNum)) {
-        OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
+    HcclResult hcclRet = HcclRankGraphGetLinks(hcclHandle_, netLayer, srcRankId, dstRankId,
+                                                &linksList, &netLinkNum);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE("", "Get HCCL links failed when checking protocol support");
         return HCCL_E_PTR;
     }
-    return HCCL_SUCCESS;
+    
+    if (netLinkNum == 0) {
+        OP_LOGE("", "No available HCCL links found");
+        return HCCL_E_PTR;
+    }
+    
+    for (uint32_t j = 0; j < netLinkNum; ++j) {
+        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+            return HCCL_SUCCESS;
+        }
+    }
+    
+    OP_LOGE("", "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
+    return HCCL_E_PTR;
 }
 
-// 遍历所有目标rank（1到epRankSize-1），验证与rank0的链路是否都支持UB_MEM
-static HcclResult ValidateUbMemSupportForAllRanks(HcclComm hcclHandle, uint32_t epRankSize)
+// 遍历所有目标rank，验证rank0与每个目标rank之间的链路是否支持UB_MEM协议
+HcclResult MC2HcomTopology::ValidateUbMemSupportForMultiLayer()
 {
+    uint32_t epRankSize = 0;
+    HcclResult ret = HcclGetRankSize(hcclHandle_, &epRankSize);
+    if (ret != HCCL_SUCCESS) {
+        OP_LOGE("", "Get HCCL rank size failed");
+        return HCCL_E_PTR;
+    }
+    
     for (uint32_t dstRankId = 1; dstRankId < epRankSize; ++dstRankId) {
-        HcclResult ret = CheckUbMemSupportForSingleRank(hcclHandle, dstRankId);
+        ret = CheckUbMemSupportForSingleRank(dstRankId);
         if (ret != HCCL_SUCCESS) {
             return ret;
         }
     }
+    
     return HCCL_SUCCESS;
 }
 
-// 根据通信层数判断通信协议类型，单层直接返回UB_MEM，多层则验证后返回
 HcclResult MC2HcomTopology::GetCommProtocol(CommProtocol &protocol)
 {
     OP_LOGD("", "start to get HCCL communication protocol");
     
-    // 获取通信层数信息
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
-    HcclResult ret = GetCommLayerInfo(hcclHandle_, layerList, layerNum);
+    HcclResult ret = HcclRankGraphGetLayers(hcclHandle_, &layerList, &layerNum);
     if (ret != HCCL_SUCCESS) {
-        return ret;
+        OP_LOGE("", "Get HCCL layers failed");
+        return HCCL_E_PTR;
     }
     
-    // 单层通信场景（MTE/CCU），直接返回UB_MEM协议
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return HCCL_SUCCESS;
     }
     
-    // 多层通信场景，需要获取rank数量并验证UB_MEM支持
-    uint32_t epRankSize = 0;
-    ret = GetCommRankCount(hcclHandle_, epRankSize);
+    ret = ValidateUbMemSupportForMultiLayer();
     if (ret != HCCL_SUCCESS) {
         return ret;
     }
     
-    // 验证所有目标rank是否都支持UB_MEM协议
-    ret = ValidateUbMemSupportForAllRanks(hcclHandle_, epRankSize);
-    if (ret != HCCL_SUCCESS) {
-        return ret;
-    }
-    
-    // 验证通过，设置协议类型为UB_MEM
     protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     return HCCL_SUCCESS;
 }
