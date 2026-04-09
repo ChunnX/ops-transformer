@@ -35,6 +35,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   target_link_libraries(${OPHOST_NAME}_ut PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       -Wl,--no-as-needed
+      $<$<TARGET_EXISTS:softmax_tiling_ut_stub>:softmax_tiling_ut_stub>
       -Wl,--as-needed
       -Wl,--whole-archive
           rt2_registry_static

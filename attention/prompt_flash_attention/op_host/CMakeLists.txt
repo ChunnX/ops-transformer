@@ -42,10 +42,12 @@ if(UT_TEST_ALL OR OP_HOST_UT)
         ${_SOFTMAX_STUB_COMMON_DIR}
         ${OP_TILING_INCLUDE}
     )
+    target_link_directories(softmax_tiling_ut_stub PRIVATE
+        ${ASCEND_DIR}/lib64
+    )
     target_link_libraries(softmax_tiling_ut_stub PRIVATE
-        -Wl,--allow-multiple-definition
-        -Wl,--whole-archive $<TARGET_FILE:tiling_api> -Wl,--no-whole-archive
-        -Wl,--no-allow-multiple-definition
+        $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+        tiling_api
     )
 endif()
 
