@@ -1,22 +1,35 @@
 ---
 name: perf-model
-description: Perform theoretical performance modeling for an Ascend NPU operator. For MLA Prolog V3, use the existing perf model toolkit (14 CLI modes, 6 timing models, 3 optimization analysis modes). For other operators, build a model from the operator's kernel code and tiling logic.
-argument-hint: <operator_path> [--chip 950|910b] [--scenario decode|prefill] [--bs <N>] [--heads <N>] [--quant bf16|int8|fp8] [--He <N>] [--mode <mode>]
+description: Perform theoretical performance modeling for an Ascend NPU operator. For MLA Prolog V3, use the existing perf model toolkit (14 CLI modes, 6 timing models, 3 optimization analysis modes). For other operators, build a model from the operator's kernel code and tiling logic. Optionally generates optimization recommendations with projected performance gains.
+argument-hint: <operator_path> [--chip 950|910b] [--scenario decode|prefill] [--bs <N>] [--heads <N>] [--quant bf16|int8|fp8] [--He <N>] [--mode <mode>] [--optimize]
 ---
 
 # Ascend NPU Operator Performance Modeling
 
 You are performing **theoretical performance modeling** for an operator on Ascend NPU hardware.
 
-## Decision: Use Existing Toolkit or Build From Scratch?
+---
 
-**Check first**: if `<operator_path>` is `attention/mla_prolog_v3` (or `attention/mla_prolog`), a comprehensive perf model toolkit already exists at `attention/mla_prolog_v3/tests/perf/`. **Use it directly** — do NOT rebuild from scratch.
+## Step 0: Ask the User
 
-For any other operator, follow the "Build From Scratch" workflow in Phase 2 below.
+Before starting, confirm with the user:
+
+1. **Target chip**: 950 (per-cycle model) or 910B (chip-total model)? Default: 950.
+2. **Scenario**: Decode (small T=1~32) or Prefill (large T≥128)?
+3. **Quantization**: BF16, INT8, or FP8?
+4. **Optimization suggestions?** Ask: "是否需要性能优化建议？我可以在建模同时分析瓶颈并提出可行的优化方案及预期收益。" If yes, follow the optimization workflow in `optimization_guide.md`.
 
 ---
 
-## MLA Prolog V3: Use the Existing Perf Model Toolkit
+## Step 1: Route — Existing Toolkit or Build From Scratch?
+
+**Check first**: If `<operator_path>` is `attention/mla_prolog_v3` (or `attention/mla_prolog`), a comprehensive perf model toolkit already exists at `attention/mla_prolog_v3/tests/perf/`. **Use it directly** — do NOT rebuild from scratch. Skip to [MLA Prolog V3 Fast Path](#mla-prolog-v3-fast-path).
+
+For **any other operator**, follow the [Generic Operator Workflow](#generic-operator-workflow) below.
+
+---
+
+## MLA Prolog V3 Fast Path
 
 ### Quick Start
 
@@ -54,33 +67,15 @@ python perf_analyzer.py --chip 950 --mode report
 
 ### Three Landed Optimization Analyses
 
-These optimizations have perf model validation but kernel implementation is pending:
-
-1. **Split-KN** (`--mode split-kn`): N×K 2D cube core splitting for MM1/MM2. Best config: MM1:N4×K7 + MM2:N1×K28 (BF16); MM1:N8×K4 + MM2:N1×K28 (FP8/INT8). Savings: −16 µs BF16 / −9.5 µs FP8 for decode bs1 hd128.
-
-2. **Split-KN-Fused** (`--mode split-kn-fused`): Fuses K-accumulation into M-split RmsNorm step, avoiding a new barrier + GM round-trip. Savings: ~1.5 µs/call.
-
-3. **DequantOpt** (`--mode dequant-opt`): L0C→UB direct (with VDEQ16 inline dequant) → UB compute (cast + RoPE) → UB→L1 direct, all intra-core. Eliminates 3 cross-core syncs + 3 GM round-trips. Savings: ~3.3 µs FP8/INT8.
-
-Combined projection: FP8 decode bs1 hd128 from 48.7 → ~34.4 µs (−29%, 1.42× speedup).
-
-### He Sweep (different model sizes)
-
-The optimal split-kn config varies by He (hidden_size). Use:
-```bash
-python perf_analyzer.py --chip 950 --batch-size 1 --head-num 128 --He <value> --mode split-kn
-```
-
-Recommended configs per He are documented in `docs/MlaPrologV3_950_综合优化设计.md` §2.1.3.
+1. **Split-KN** (`--mode split-kn`): N×K 2D cube core splitting for MM1/MM2. Savings: −16 µs BF16 / −9.5 µs FP8 for decode bs1 hd128.
+2. **Split-KN-Fused** (`--mode split-kn-fused`): Fuses K-accumulation into M-split RmsNorm step. Savings: ~1.5 µs/call.
+3. **DequantOpt** (`--mode dequant-opt`): L0C→UB direct path, eliminates 3 cross-core syncs + 3 GM round-trips. Savings: ~3.3 µs FP8/INT8.
 
 ### Key Design Documents
 
 | Document | Path |
 |----------|------|
 | Comprehensive 3-optimization design | `docs/MlaPrologV3_950_综合优化设计.md` |
-| DequantOpt detailed design | `docs/MlaPrologV3_DequantOpt设计.md` |
-| Split-KN-Fused detailed design | `docs/MlaPrologV3_SplitKN_FusedAccum设计.md` |
-| Split-KN corrected sweep report | `tests/perf/report_split_kn.md` |
 | Perf modeling methodology | `tests/perf/methodology.md` |
 | Perf module guide | `tests/perf/CLAUDE.md` |
 
@@ -88,24 +83,9 @@ Recommended configs per He are documented in `docs/MlaPrologV3_950_综合优化�
 
 ```bash
 cd attention/mla_prolog_v3/tests/perf
-python test_regression.py     # 24/24 golden snapshots must pass (bit-identical)
-python test_perf_unit.py      # 35/35 unit tests must pass
+python test_regression.py     # golden snapshots must pass (bit-identical)
+python test_perf_unit.py      # unit tests must pass
 ```
-
-After any numerical formula change, run `test_regression.py`. If the change is intentional (bug fix), inspect each `.diff` and reset with `python test_regression.py --reset`.
-
-### 6 Timing Models (chip-total / contention convention)
-
-All share the same convention: pass chip-total dimensions + `active_cores = total cores`, divide bandwidth by `active_cores` internally.
-
-| Model | File | Purpose |
-|-------|------|---------|
-| `estimate_matmul_detailed` | `perf/model/matmul_detailed.py` | Per-cycle inner-loop (950, split-N) |
-| `estimate_matmul_legacy` | `perf/model/matmul_legacy.py` | Chip-total (910B) |
-| `estimate_matmul_split_kn` | `perf/model/matmul_split_kn.py` | 2D N×K split + K-accum |
-| `estimate_matmul_split_m` | `perf/model/matmul_split_m.py` | M-axis split (prefill) |
-| `estimate_matmul_k_outer` | `perf/model/matmul_k_outer.py` | K-outer (cube-bound prefill) |
-| `estimate_vector_op` | `perf/model/vector_ops.py` | Vector MTE2→compute→MTE3 |
 
 ### Programmatic Usage
 
@@ -119,84 +99,170 @@ tiling = compute_tiling(params, ASCEND_950)
 stages = estimate_all_stages(params, tiling, ASCEND_950)
 result = build_pipeline_dag(params, tiling, ASCEND_950, stages)
 print(f"Pipeline total: {result.total_us:.2f} us")
-print(f"Critical path: {' → '.join(result.critical_path)}")
 ```
 
 ---
 
-## Other Operators: Build From Scratch
+## Generic Operator Workflow
 
-For operators without an existing perf model toolkit, follow this workflow.
+For any CANN operator without an existing perf model toolkit.
 
-### Phase 1: Read Operator Source
+### Phase 1: Read Operator Source & Identify Patterns
 
-1. **Kernel code**: Read all `.h` files in `<operator_path>/op_kernel/` — look for:
-   - Matmul calls (Mmad, MatmulSplitK, MatmulFullLoad, etc.)
-   - Buffer size constants (L1_A_SIZE, L0A_PP_SIZE, etc.)
-   - baseM, baseN, baseK, stepK parameters per matmul
-   - Data types and quantization handling
-   - Pipeline stages and sync points (AIC/AIV events)
+Read the operator source code and classify its computational pattern:
 
-2. **Tiling code**: Read `<operator_path>/op_host/*_tiling.cpp` and `*_tiling.h` — look for:
-   - Core allocation per matmul (FillMatmul*Tiling functions)
-   - N-axis split vs K-axis split strategy
-   - stepBatchSize calculation
-   - Workspace size computation
+```
+<operator_path>/
+├── op_host/                      ← Tiling logic, shape inference
+│   ├── *_tiling.h / *_tiling.cpp ← Core allocation, block sizes, stepK
+│   ├── *_tiling_data.h           ← TilingData struct
+│   └── *_def.cpp                 ← Operator registration
+├── op_kernel/                    ← Device-side kernel
+│   ├── *.cpp                     ← Kernel entry (__global__ function)
+│   ├── *.h                       ← Core compute template class
+│   └── arch*/ or service_*.h     ← Arch-specific or modular implementations
+└── docs/                         ← Design docs
+```
 
-3. **Docs**: Read `<operator_path>/docs/` and `README.md` for:
-   - Operator computation graph
-   - Input/output tensor dimensions
-   - Supported quantization modes
+**What to extract from kernel code** (`op_kernel/*.h`):
 
-### Phase 2: Extract Matmul Parameters
+| Pattern | Look for | Example |
+|---------|----------|---------|
+| **Matmul calls** | `Mmad`, `MatmulSplitN`, `MatmulFullLoad`, `matmulObj.Iterate()` | Each call = one matmul stage |
+| **Buffer constants** | `L1_A_SIZE`, `L0A_PP_SIZE`, `UB_SIZE`, `BLOCK_SIZE` | Determines tile sizes |
+| **Block parameters** | `baseM`, `baseN`, `baseK`, `stepK`, `nSplitSize` | Per-matmul tiling |
+| **Data types** | Template params `<bf16, int8, fp8>`, `sizeof(T)` | Affects bandwidth & compute |
+| **AIC/AIV split** | `ASCEND_IS_AIC`, `ASCEND_IS_AIV`, `if constexpr (CvMode)` | Pipeline structure |
+| **Sync points** | `CrossCoreSetFlag`, `CrossCoreWaitFlag`, `SYNC_*` | Pipeline dependencies |
+| **Vector ops** | `RmsNorm`, `Softmax`, `RoPE`, `Scatter`, `Dequant`, `DynamicQuant` | Vector stages |
+| **Loop structure** | `for (step = 0; step < totalSteps; step++)` | Main iteration |
 
-For each matmul found, record:
+**What to extract from tiling code** (`op_host/*_tiling.cpp`):
 
 | Field | Description |
 |-------|-------------|
-| Name | e.g., MM1_Cq, MM2_CkvKr |
-| M | Batch dimension (typically T = BS × SeqLen) |
-| K | Reduction dimension |
-| N | Output dimension (total, before core split) |
-| dtype_a | Left matrix element size in bytes |
-| dtype_b | Right matrix element size in bytes |
-| dtype_c | Output element size in bytes |
-| split_mode | "split_n", "split_k", or "full_load" |
-| active_cores | Number of AIC cores used |
-| N_per_core | N / active_cores |
-| a_reused | Whether A matrix is reused from a prior matmul (L2 warm) |
+| `coreNum` / `blockNum` | Number of AIC cores per matmul |
+| `singleCoreN` | N-axis work per core |
+| `stepBatchSize` | M-axis batch per kernel step |
+| `mm*BlockNum` | Per-matmul core allocation |
+| Buffer factor | Single (1×) vs double (2×) buffer |
 
-### Phase 3: Build Performance Model
+**Common CANN operator patterns:**
 
-Follow the methodology in `methodology.md` (in this skill directory):
+| Pattern | Operators | Characteristics |
+|---------|-----------|-----------------|
+| **Multi-matmul fusion** | MlaProlog, FFN, FlashAttention | Multiple sequential matmuls with vector ops between them; AIC/AIV pipeline |
+| **Single matmul + vector** | GroupedMatmul, MatmulAdd | One matmul with pre/post-processing; simpler pipeline |
+| **Pure vector** | MoeTokenPermute, RoPE operators | No cube ops; UB-based, MTE2/Vector/MTE3 pipeline |
+| **Batched independent** | GroupedMatmul (GMM) | Multiple independent matmuls with per-group tiling |
+| **Communication + compute** | MC2 operators | Cross-device data movement + local compute |
 
-1. Load chip specs from `chip_specs.md`
-2. For each matmul, compute the inner-loop timing model:
-   - Outer: HBM/L2 → L1 (MTE1), max(load_A, load_B)
-   - Inner: L1 → L0A/L0B + MMAD, stepK iterations, double-buffered
-   - Output: L0C → FixPipe, overlaps with outer loop
-   - Per kL1 iter: `max(mte1_time, total_inner, fixpipe_time)`
-   - Total: `kL1_loops × per_kl1`
-3. Use **chip-total / contention** convention: `per_core_bw = chip_bw / active_cores`
-4. Compute roofline metrics (AI, ridge point, efficiency)
-5. If possible, build AIC/AIV pipeline DAG and find critical path
+### Phase 2: Extract Computation Graph
 
-### Phase 4: Generate Report
+For each operator, build a **stage table**:
 
-Output a markdown report with these sections:
+```markdown
+| Stage | Type | M | K | N | dtype_a | dtype_b | dtype_c | Pipeline | Active Cores |
+|-------|------|---|---|---|---------|---------|---------|----------|-------------|
+| MM1   | matmul | T | He | Hcq | 2B | 2B | 2B | AIC | 24 |
+| RmsNorm | vector | T×Hcq | — | — | 4B | — | 2B | AIV | 64 |
+| MM2   | matmul | T | Hcq | N×D | 2B | 2B | 2B | AIC | 32 |
+| ...   | ... | ... | ... | ... | ... | ... | ... | ... | ... |
+```
 
-1. **Chip Specs Summary** — key hardware numbers
-2. **Operator Overview** — matmul table with dimensions
+Record **data dependencies** between stages (which stage's output feeds into which stage's input) — these determine the pipeline DAG.
+
+### Phase 3: Compute Per-Stage Timing
+
+Follow the methodology in `methodology.md`:
+
+#### For Matmul stages (AIC/Cube):
+
+Use the **three-stage inner-loop model** (see `methodology.md` §3):
+
+```
+1. MTE1 (HBM/L2 → L1): time = max(A_load_time, B_load_time)
+2. Inner loop (L1 → L0 + MMAD): time = stepK × max(l0a, l0b, mmad)
+3. FixPipe (L0C → output): time = C_bytes / fixpipe_bw
+
+per_kl1 = max(mte1, inner, fixpipe)
+total = kL1Loops × per_kl1
+```
+
+Key parameters from `chip_specs.md`:
+- Bandwidth: use `per_core_bw = min(per_cycle × freq, chip_total / active_cores)` (contention model)
+- MMAD throughput: BF16 = 4096 MACs/cycle, FP8 = 8192 MACs/cycle
+- Cache sizes: L0A=64KB, L0B=256KB, L0C=256KB, L1=512KB, UB=256KB (per core, 950)
+
+#### For Vector stages (AIV):
+
+Use the **instruction-level model** (see `chip_specs.md` §Vector Compute):
+
+```
+per_instr_cycles = (per_core_elements × 4 bytes) / 256    # 256 B/cycle
+total_cycles = n_instructions × per_instr_cycles / 1.3    # IPC=1.3
+vec_time = total_cycles / (1.65 × 10⁹)                    # freq=1.65 GHz
+
+total = max(mte2_load_time, vec_time, mte3_store_time)     # pipelined
+```
+
+Refer to `chip_specs.md` §Vector Instruction Count Table for `n_instructions` by operation type.
+
+#### For Sync overhead:
+
+Each `CrossCoreSetFlag`/`WaitFlag` pair = **0.8 µs** on 950.
+
+### Phase 4: Build Pipeline DAG & Find Critical Path
+
+If the operator has AIC/AIV stages:
+
+1. **Nodes**: Each matmul and vector stage
+2. **Edges**: Data dependencies + sync events (CrossCore flags)
+3. **Solve**: Topological sort → forward pass (earliest start/end) → backtrack critical path
+4. **Total time** = max(end time of all leaf nodes)
+
+Key insight: **Never naively sum AIC + AIV times**. Vector stages often overlap with the next matmul:
+- AIV accumulation can hide behind the next AIC matmul
+- Only the critical path determines end-to-end latency
+
+### Phase 5: Generate Report
+
+Output a **markdown report** with these sections:
+
+1. **Chip Specs Summary** — key hardware numbers used
+2. **Operator Overview** — stage table with dimensions
 3. **Roofline Analysis** — per-matmul AI vs ridge point, bound classification
-4. **Detailed Timing** — per-matmul breakdown (MTE1, L0A, L0B, MMAD, FixPipe)
-5. **Pipeline Analysis** — AIC/AIV timeline, critical path (if DAG built)
-6. **Optimization Recommendations** — based on bottleneck analysis
+4. **Detailed Timing** — per-stage breakdown (MTE1, L0A, L0B, MMAD, FixPipe for matmuls; MTE2, Vec, MTE3 for vectors)
+5. **Pipeline Analysis** — AIC/AIV timeline with critical path highlighted
+6. **Bottleneck Summary** — which stages dominate, what resource limits them
+7. **Optimization Recommendations** (if `--optimize` or user opted in) — see `optimization_guide.md`
 
 Save the report to `<operator_path>/tests/perf/report_<chip>.md`.
 
-### Phase 5: Summarize
+### Phase 5b: Generate Mermaid Diagrams
 
-Present key findings to the user:
-- Which matmuls dominate execution time
+Use the **Mermaid MCP** (`mcp__mermaidchart__validate_and_render_mermaid_diagram`) to create visual diagrams for the report. Generate at minimum:
+
+1. **Hardware dataflow diagram** (flowchart) — HBM → L2 → AIC/AIV cache hierarchy with bandwidth annotations
+2. **Pipeline timeline** (sequence diagram) — AIC/AIV execution with sync points, timing data, and critical path highlighted
+3. **Optimization decision tree** (flowchart, if `--optimize`) — bottleneck classification → recommended techniques → projected gains
+
+Validate each diagram via the MCP tool. Include `[在线编辑此图](link)` links from the MCP response. See `methodology.md` §7.2 for Mermaid templates.
+
+### Phase 6: Present to User
+
+Summarize key findings:
+- Which stages dominate execution time (and why)
 - Whether the operator is compute-bound or memory-bound
-- Top optimization opportunities with expected impact
+- Top optimization opportunities with expected impact (if optimization enabled)
+- Actionable next steps (what to try first)
+
+---
+
+## Reference Files
+
+| File | Content |
+|------|---------|
+| `chip_specs.md` | Ascend 950/910B hardware constants, bandwidth, cache, vector compute model |
+| `methodology.md` | Matmul timing model, vector op model, roofline, pipeline DAG methodology |
+| `optimization_guide.md` | Performance optimization decision tree, techniques by bottleneck type, projected gains |
