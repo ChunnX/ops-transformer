@@ -84,7 +84,24 @@ ge::graphStatus TilingForMoeFinalizeRoutingV2(gert::TilingContext* context)
 
 ge::graphStatus TilingPrepareForMoeFinalizeRoutingV2(gert::TilingParseContext* context)
 {
-    (void)context;
+    OP_LOGD(context, "TilingPrepareForMoeFinalizeRountingV2 enter.");
+    
+    auto compileInfo = context->GetCompiledInfo<MoeFinalizeRoutingCompileInfoV2>();
+    OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
+    auto platformInfo = context->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF(
+        (compileInfo->aivNum <= 0),
+        OP_LOGE(context, "TilingPrepareForMoeFinalizeRountingV2 fail to get core num."), return ge::GRAPH_FAILED);
+
+    uint64_t ubSize;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    compileInfo->ubSize = static_cast<int64_t>(ubSize);
+    OP_CHECK_IF(
+        (compileInfo->ubSize <= 0),
+        OP_LOGE(context, "TilingPrepareForMoeFinalizeRountingV2 fail to get ub size."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

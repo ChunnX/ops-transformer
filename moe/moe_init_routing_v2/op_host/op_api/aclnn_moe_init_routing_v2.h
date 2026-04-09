@@ -16,6 +16,7 @@
 #define ACLNN_MOE_INIT_ROUTING_V2_H_
 
 #include "aclnn/acl_meta.h"
+#include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
 extern "C" {
