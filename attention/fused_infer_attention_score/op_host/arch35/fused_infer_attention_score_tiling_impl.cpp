@@ -578,6 +578,10 @@ bool FusedInferAttentionScoreTilingImpl::CheckS1OutSplit(const FiaTilingInfo &fi
         return false;
     }
 
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         return false;
     }
