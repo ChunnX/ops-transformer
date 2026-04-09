@@ -161,12 +161,60 @@ Runs bound + pipeline + estimate + advice + search. On Ascend 950, also runs roo
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph CLI ["perf_analyzer.py (CLI 入口)"]
+        MODES["14 种分析模式<br/>bound | pipeline | estimate | advice<br/>search | report | roofline | block-search<br/>split-kn | split-kn-fused | split-m<br/>prefill | dequant-opt | full"]
+    end
+
+    subgraph TILING ["tiling_sim.py (Tiling 搜索)"]
+        CT["compute_tiling()"]
+        SKN["search_split_kn()"]
+        SM["search_split_m()"]
+        SPO["search_prefill_optimal()"]
+        SBS["search_matmul_block_sizes()"]
+    end
+
+    subgraph MODEL ["perf_model.py (时间模型)"]
+        HW["AscendHWSpec<br/>ASCEND_950 / ASCEND_910B"]
+        EMD["estimate_matmul_detailed()"]
+        ESKN["estimate_matmul_split_kn()"]
+        ESM["estimate_matmul_split_m()"]
+        EVO["estimate_vector_op()"]
+        EAS["estimate_all_stages()"]
+    end
+
+    subgraph PIPE ["pipeline_model.py (Pipeline DAG)"]
+        BPD["build_pipeline_dag()"]
+        FT["format_timeline()"]
+        RA["roofline_analysis()"]
+    end
+
+    subgraph TC ["testcases.py"]
+        CASES["预定义测试用例<br/>decode_bs1, prefill_t256, ..."]
+    end
+
+    MODES --> CT
+    MODES --> SKN
+    MODES --> SPO
+    CT --> EAS
+    SKN --> ESKN
+    SM --> ESM
+    SBS --> EMD
+    EAS --> BPD
+    ESKN --> BPD
+    ESM --> BPD
+    BPD --> FT
+    CASES --> MODES
+
+    style CLI fill:#e17055,color:#fff
+    style TILING fill:#fdcb6e,color:#2d3436
+    style MODEL fill:#6c5ce7,color:#fff
+    style PIPE fill:#00b894,color:#fff
+    style TC fill:#636e72,color:#fff
 ```
-perf_model.py       Hardware specs, inner-loop timing model, cache validation
-tiling_sim.py       Python replica of C++ tiling logic, block/split-KN search
-pipeline_model.py   AIC/AIV pipeline DAG, critical path, roofline analysis
-perf_analyzer.py    CLI entry point, all analysis modes
-```
+
+> [在线编辑此图](https://l.mermaid.ai/OFwwLr)
 
 ### Key Concepts
 

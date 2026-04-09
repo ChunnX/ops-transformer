@@ -72,6 +72,7 @@ def search_prefill_optimal(
             new_bm = baseM
             while new_bm > 16:
                 if (new_bm * spec.baseK * spec.dtype_a_size * 2 <= hw.cache.l0a_size and
+                    spec.baseK * spec.baseN * spec.dtype_b_size * 2 <= hw.cache.l0b_size and
                     new_bm * spec.baseN * spec.dtype_c_size * 2 <= hw.cache.l0c_size):
                     break
                 new_bm //= 2

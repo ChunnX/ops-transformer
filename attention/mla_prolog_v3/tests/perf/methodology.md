@@ -39,39 +39,52 @@
 
 Ascend AI Core 包含两条计算流水线，共享 HBM 访问：
 
+```mermaid
+graph TB
+    HBM["<b>HBM (片外存储)</b><br/>芯片总带宽: 1.6 TB/s"]
+    L2["<b>L2 Cache (片上共享)</b><br/>5.2 TB/s"]
+
+    HBM -->|"33.3 B/cycle<br/>(MTE1/MTE2)"| L2
+
+    subgraph AIC ["AIC Cube 流水线"]
+        direction TB
+        L1["<b>L1 Buffer</b><br/>512 KB"]
+        L0A["<b>L0A</b><br/>64 KB"]
+        L0B["<b>L0B</b><br/>256 KB"]
+        MMAD["<b>MMAD</b><br/>BF16: 4096 MACs/cycle<br/>FP8: 8192 MACs/cycle"]
+        L0C["<b>L0C</b><br/>256 KB"]
+        L1 -->|"256 B/cycle<br/>(MTE1)"| L0A
+        L1 -->|"256 B/cycle<br/>(MTE1)"| L0B
+        L0A --> MMAD
+        L0B --> MMAD
+        MMAD --> L0C
+        L0C -->|"256 B/cycle<br/>(FixPipe)"| FPOut["HBM/UB 写回"]
+    end
+
+    subgraph AIV ["AIV Vector 流水线"]
+        direction TB
+        UB["<b>UB (Unified Buffer)</b><br/>256 KB"]
+        VEC["<b>向量计算引擎</b><br/>256 B/cycle, IPC=1.3"]
+        UB -->|"PIPE_V"| VEC
+        VEC --> UB
+        UB -->|"MTE3"| VOut["HBM 写回"]
+    end
+
+    L2 -->|"MTE1/MTE2"| L1
+    L2 -->|"MTE2"| UB
+
+    style HBM fill:#4a90d9,color:#fff,stroke:#2c5f9e
+    style L2 fill:#67b7dc,color:#fff,stroke:#4a90a4
+    style L1 fill:#f5a623,color:#fff,stroke:#c48418
+    style L0A fill:#ff7675,color:#fff,stroke:#d63031
+    style L0B fill:#ff7675,color:#fff,stroke:#d63031
+    style L0C fill:#ff7675,color:#fff,stroke:#d63031
+    style MMAD fill:#e17055,color:#fff,stroke:#b34a35
+    style UB fill:#a29bfe,color:#fff,stroke:#6c5ce7
+    style VEC fill:#6c5ce7,color:#fff,stroke:#5241b5
 ```
-                        ┌─────────────────────────────────────┐
-                        │              HBM (片外)              │
-                        │         芯片总带宽: 1.6 TB/s         │
-                        └──────┬──────────────────┬────────────┘
-                               │                  │
-                        ┌──────▼──────┐    ┌──────▼──────┐
-                        │  L2 Cache   │    │  L2 Cache   │
-                        │  5.2 TB/s   │    │  5.2 TB/s   │
-                        └──────┬──────┘    └──────┬──────┘
-                               │                  │
-                ┌──────────────▼──┐          ┌────▼──────────────┐
-                │  Cube 流水线    │          │  Vector 流水线    │
-                │                 │          │                   │
-                │   ┌────────┐   │          │   ┌───────────┐   │
-          MTE1/ │   │   L1   │   │    MTE2  │   │    UB     │   │
-          MTE2  │   │ 512 KB │   │          │   │  256 KB   │   │
-                │   └───┬────┘   │          │   └─────┬─────┘   │
-                │  MTE1 │        │          │   PIPE_V│         │
-                │   ┌───▼──┐ ┌──▼──┐       │   ┌─────▼─────┐   │
-                │   │ L0A  │ │ L0B │       │   │  向量计算  │   │
-                │   │64 KB │ │256KB│       │   │ (在 UB 中) │   │
-                │   └───┬──┘ └──┬──┘       │   └─────┬─────┘   │
-                │    MMAD│      │          │         │MTE3     │
-                │   ┌───▼──────▼──┐       │         │         │
-                │   │    L0C      │       │         ▼         │
-                │   │   256 KB    │       │      HBM 写回     │
-                │   └──────┬──────┘       │                   │
-                │   FixPipe│              │                   │
-                │          ▼              │                   │
-                │       HBM 写回          │                   │
-                └─────────────────────────┴───────────────────┘
-```
+
+> [在线编辑此图](https://l.mermaid.ai/tERtCD)
 
 ### 2.2 数据搬运引擎
 
@@ -145,32 +158,35 @@ Ridge = 270.3 → AI (1.0) << Ridge → HBM 瓶颈
 
 ## 4. Matmul 性能建模
 
-### 4.1 内层循环结构
+### 4.1 内层循环结构与时间模型
 
+```mermaid
+graph LR
+    subgraph OUTER ["外层循环: kL1 次迭代 (HBM/L2 → L1)"]
+        direction TB
+        MTE1["<b>Stage 1: MTE1</b><br/>HBM/L2 → L1<br/>加载 A[baseM, kL1Step]<br/>加载 B[kL1Step, N_per_core]<br/>time = max(A_load, B_load)"]
+        INNER["<b>Stage 2: Inner Loop</b><br/>stepK 次迭代<br/>L1 → L0A + L0B + MMAD<br/>time = stepK × max(l0a, l0b, mmad)"]
+        FIXPIPE["<b>Stage 3: FixPipe</b><br/>L0C → HBM/UB 写回<br/>time = M × N × sizeof(C) / bw"]
+
+        MTE1 --> INNER --> FIXPIPE
+    end
+
+    subgraph OVERLAP ["双缓冲流水重叠"]
+        direction TB
+        FORMULA["<b>per_kl1 = max(mte1, inner, fixpipe)</b><br/><br/>总时间 = kL1Loops × per_kl1<br/><br/>瓶颈判定:<br/>mte1 最大 → HBM bound<br/>inner 最大 → L0B/MMAD bound<br/>fixpipe 最大 → 写回 bound"]
+    end
+
+    FIXPIPE --> FORMULA
+
+    style MTE1 fill:#4a90d9,color:#fff
+    style INNER fill:#e17055,color:#fff
+    style FIXPIPE fill:#00b894,color:#fff
+    style FORMULA fill:#2d3436,color:#fff
 ```
-外层循环 (kL1 次): HBM/L2 → L1     [MTE1/MTE2 引擎]
-  加载 A[baseM, baseK×stepK] 到 L1
-  加载 B[baseK×stepK, N_per_core] 到 L1
 
-  内层循环 (stepK 次): L1 → L0 + MMAD  [MTE1 + MMAD 引擎]
-    搬运 A tile[baseM, baseK] → L0A
-    搬运 B tile[baseK, N_per_core] → L0B (转置)
-    MMAD: C[baseM, N_per_core] += A × B
+> [在线编辑此图](https://l.mermaid.ai/PiNdeZ)
 
-  写回 C → HBM                        [FixPipe 引擎]
-```
-
-### 4.2 时间模型
-
-```
-每次 kL1 循环 (三阶段流水重叠):
-  mte1 = max(A_load_time, B_load_time)           ← HBM→L1
-  inner = stepK × max(l0a_time, l0b_time, mmad)  ← L1→L0+计算
-  fixpipe = C_store_time                          ← L0C→HBM
-
-  per_kl1 = max(mte1, inner, fixpipe)             ← 流水瓶颈
-  总时间 = kL1Loops × per_kl1
-```
+三个 Stage 在 kL1 迭代之间通过双缓冲实现流水重叠，总时间由瓶颈 Stage 决定。
 
 ### 4.3 模式 A: Full-Load (MM4)
 
@@ -378,12 +394,56 @@ per_step = 32×64×2 + 64×768×2 = 100 KB
 
 ### 7.1 AIC/AIV 并行结构
 
+```mermaid
+sequenceDiagram
+    participant AIC as AIC (Cube)
+    participant AIV as AIV (Vector)
+
+    Note over AIV: CopyIn + GetSinCos
+
+    rect rgb(225, 112, 85, 0.3)
+    AIC->>AIC: ① MM1 MatmulCq (17.89 us)
+    end
+    AIC-->>AIV: SYNC_MMCQ ✉️
+
+    rect rgb(108, 92, 231, 0.3)
+    Note over AIV: 全核同步 (V→V)
+    AIV->>AIV: ② RmsNormCq (0.015 us)
+    end
+
+    par AIC 做 MM2 & AIV 做 RmsNormCq
+        rect rgb(225, 112, 85, 0.3)
+        AIC->>AIC: ③ MM2 MatmulCkvKr (17.89 us)
+        end
+    end
+
+    AIV-->>AIC: SYNC_RMSNORM_CQ ✉️
+    AIC-->>AIV: SYNC_MMCKVKR ✉️
+
+    rect rgb(108, 92, 231, 0.3)
+    AIV->>AIV: ④ RmsNormCkv (0.005 us)
+    AIV->>AIV: ⑤ RopeKr (0.001 us)
+    AIV->>AIV: ⑥ ScatterCkvKr (0.002 us)
+    end
+
+    rect rgb(225, 112, 85, 0.3)
+    AIC->>AIC: ⑦ MM3 MatmulQcQr (47.19 us)
+    end
+    AIC-->>AIV: SYNC_MMQCQR ✉️
+
+    Note over AIC,AIV: SYNC_ALL_CUBE (全核同步)
+
+    par AIC 做 MM4 & AIV 做 RopeQr
+        rect rgb(225, 112, 85, 0.3)
+        AIC->>AIC: ⑨ MM4 MatmulQn (0.66 us)
+        end
+        rect rgb(108, 92, 231, 0.3)
+        AIV->>AIV: ⑧ RopeQr (0.105 us)
+        end
+    end
 ```
-AIC: MM1 → signal → MM2 → signal → wait(RmsNorm) → MM3 → signal → [wait(Dequant)] → MM4
-AIV: CopyIn → wait(MM1) → [AccumCq] → RmsNormCq → signal
-     → wait(MM2) → [AccumCkvKr] → RmsNormCkvKr → RopeKr → Scatter
-     → wait(MM3) → [DequantQc] → signal → RopeQr → [DynQuant + MulQr]
-```
+
+> [在线编辑此图](https://l.mermaid.ai/y7XF2T)
 
 `[括号]` 表示可选阶段（取决于量化模式或 Split-KN 配置）。
 AccumCq/AccumCkvKr 在 AIV 上执行，与下一个 AIC matmul **并行**，可被完全遮盖。
@@ -423,6 +483,41 @@ Pipeline 总计: 53.31 us (↓ 39.2%)
 ---
 
 ## 8. 优化决策指南
+
+```mermaid
+graph TD
+    START["性能优化决策"] --> SCENE{"场景类型?"}
+
+    SCENE -->|"Decode<br/>(T=1~32)"| DECODE_BOUND{"瓶颈类型?<br/>(--mode roofline)"}
+    SCENE -->|"Prefill<br/>(T≥128)"| PREFILL_BOUND{"N 轴大小?"}
+
+    DECODE_BOUND -->|"AI << Ridge<br/>HBM 瓶颈"| HBM_OPT{"N 轴核利用率?<br/>(--mode bound)"}
+    DECODE_BOUND -->|"AI >> Ridge<br/>Cube 瓶颈"| CUBE_OPT["增大 baseM×baseK<br/>FP8 (2× MMAD)<br/>(--mode block-search)"]
+
+    HBM_OPT -->|"N 小, 核数不足<br/>(MM1: 24核, MM2: 9核)"| SPLIT_KN["Split-KN 2D 切分<br/>n_groups × k_groups = 32<br/>(--mode split-kn)<br/>收益: 最高 4.6×"]
+    HBM_OPT -->|"N 大, 核数充足<br/>(MM3: 32核)"| QUANT["INT8/FP8 量化<br/>B 矩阵减半<br/>(--mode report)<br/>收益: ~2×"]
+
+    PREFILL_BOUND -->|"N 较小<br/>(N≤16)"| SPLIT_M["Split-M (M轴切分)<br/>每核处理 T/m_groups tokens<br/>B 矩阵 L2 复用<br/>(--mode split-m)<br/>收益: 最高 4.8×"]
+    PREFILL_BOUND -->|"N 较大<br/>(N=128)"| K_OUTER{"baseM 是否够大?<br/>(baseM ≥ 88 for BF16)"}
+
+    K_OUTER -->|"是: Cube bound"| K_OUTER_OPT["K-Outer Loop 优化<br/>B 在 L1 内跨 N-block 复用<br/>(--mode prefill)<br/>收益: 3.3×"]
+    K_OUTER -->|"否: HBM bound"| BLOCK_SEARCH["搜索最优 block 尺寸<br/>(--mode block-search)<br/>+ 量化"]
+
+    style START fill:#2d3436,color:#fff
+    style SPLIT_KN fill:#00b894,color:#fff
+    style QUANT fill:#00b894,color:#fff
+    style SPLIT_M fill:#00b894,color:#fff
+    style K_OUTER_OPT fill:#00b894,color:#fff
+    style CUBE_OPT fill:#00b894,color:#fff
+    style BLOCK_SEARCH fill:#00b894,color:#fff
+    style SCENE fill:#fdcb6e,color:#2d3436
+    style DECODE_BOUND fill:#fdcb6e,color:#2d3436
+    style PREFILL_BOUND fill:#fdcb6e,color:#2d3436
+    style HBM_OPT fill:#fdcb6e,color:#2d3436
+    style K_OUTER fill:#fdcb6e,color:#2d3436
+```
+
+> [在线编辑此图](https://l.mermaid.ai/7cVZj0)
 
 ### 8.1 HBM 带宽瓶颈 (AI << Ridge, 典型 Decode)
 

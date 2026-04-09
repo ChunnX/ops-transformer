@@ -15,7 +15,7 @@ def format_timeline(result: PipelineResult, width: int = 100) -> str:
 
     lines = []
     lines.append(f"Total: {total:.2f} us")
-    lines.append(f"AIC busy: {result.aic_busy_us:.2f} us | AIV busy: {result.aiv_busy_us:.2f} us | Sync: {result.sync_overhead_us:.2f} us")
+    lines.append(f"AIC busy: {result.aic_busy_us:.2f} us | AIV busy: {result.aiv_busy_us:.2f} us | Sync: {result.sync_overhead_us:.2f} us  (sum > Total due to pipeline overlap)")
     lines.append("")
 
     # Time ruler

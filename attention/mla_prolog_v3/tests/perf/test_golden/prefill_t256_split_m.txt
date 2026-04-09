@@ -21,7 +21,7 @@ workspace=17711104 bytes
 
   Parameters: T=256, He=7168, N=128, AIC=32
   Split-N baseline: 88.29 us/step × 2 steps = 176.58 us total
-    Per step (128 tokens): MM1=17.89 MM2=17.89 MM3=47.19 MM4=1.31 Vec=1.91
+    Per step (128 tokens): MM1=17.89 MM2=17.89 MM3=47.19 MM4=1.31 Vec=1.90
 
   Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
   ---------------------------------------------------------------------------------------------------

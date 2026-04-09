@@ -43,7 +43,7 @@ RopeQr           |    0.04    0.36    0.04    0.36 | VECTOR
 ======================================================================
 
 Total: 87.64 us
-AIC busy: 83.64 us | AIV busy: 0.96 us | Sync: 7.20 us
+AIC busy: 83.64 us | AIV busy: 0.96 us | Sync: 7.20 us  (sum > Total due to pipeline overlap)
 
                   |               |               |              |                |               |
                   0            17.5            35.1           52.6             70.1            87.6 us

@@ -51,10 +51,10 @@ def _get_split_m_block_specs(params: 'OperatorParams', hw: AscendHWSpec,
         # Check L0A: baseM × baseK × dtype × 2 ≤ l0a_size
         new_baseM = baseM
         while new_baseM > 16:
-            if new_baseM * spec.baseK * spec.dtype_a_size * 2 <= hw.cache.l0a_size:
-                # Also check L0C: baseM × baseN × dtype_c × 2 ≤ l0c_size
-                if new_baseM * spec.baseN * spec.dtype_c_size * 2 <= hw.cache.l0c_size:
-                    break
+            if (new_baseM * spec.baseK * spec.dtype_a_size * 2 <= hw.cache.l0a_size and
+                    spec.baseK * spec.baseN * spec.dtype_b_size * 2 <= hw.cache.l0b_size and
+                    new_baseM * spec.baseN * spec.dtype_c_size * 2 <= hw.cache.l0c_size):
+                break
             new_baseM //= 2
         specs[name] = MatmulBlockSpec(
             spec.name, new_baseM, spec.baseN, spec.baseK, spec.stepK,

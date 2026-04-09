@@ -167,7 +167,7 @@ def compute_tiling(
         cfg.mm2_block_num = aic_num
     elif aic_num >= 9:
         base_n = 64
-        cfg.mm2_block_num = ckv_kr_total // base_n
+        cfg.mm2_block_num = ceil_div(ckv_kr_total, base_n)
         cfg.mm2_single_core_n = base_n
     else:
         align_num_mm2 = BLOCK_SIZE // wt_dtype_size

@@ -216,9 +216,8 @@ def estimate_all_stages(params: OperatorParams, tiling, hw: AscendHWSpec,
         n_instructions=vector_instr_count("RmsNormCq", qm),
     )
 
-    # RMSNorm CkvKr
-    ckv_kr_size = Hckv + Dr
-    rmsnorm_ckvkr_load = T * ckv_kr_size * out_size
+    # RMSNorm CkvKr — kernel only loads the Hckv portion (Dr is read separately by RopeKr)
+    rmsnorm_ckvkr_load = T * Hckv * out_size
     rmsnorm_ckvkr_store = T * Hckv * 2
     stages["RmsNormCkvKr"] = estimate_vector_op(
         "RmsNormCkvKr", rmsnorm_ckvkr_load, T * Hckv, rmsnorm_ckvkr_store,
@@ -374,7 +373,7 @@ def estimate_all_stages_k_outer(
 
     ckv_kr_size = Hckv + Dr
     stages["RmsNormCkvKr"] = estimate_vector_op(
-        "RmsNormCkvKr", T * ckv_kr_size * out_size, T * Hckv, T * Hckv * 2,
+        "RmsNormCkvKr", T * Hckv * out_size, T * Hckv, T * Hckv * 2,
         hw, active_cores=vec_cores,
         n_instructions=vector_instr_count("RmsNormCkvKr", qm))
 
@@ -479,9 +478,8 @@ def estimate_all_stages_split_m(
         n_instructions=vector_instr_count("RmsNormCq", qm),
     )
 
-    # RMSNorm CkvKr
-    ckv_kr_size = Hckv + Dr
-    rmsnorm_ckvkr_load = M_per_core * ckv_kr_size * out_size
+    # RMSNorm CkvKr — kernel only loads Hckv portion (Dr read separately by RopeKr)
+    rmsnorm_ckvkr_load = M_per_core * Hckv * out_size
     rmsnorm_ckvkr_store = M_per_core * Hckv * 2
     stages["RmsNormCkvKr"] = estimate_vector_op(
         "RmsNormCkvKr", rmsnorm_ckvkr_load, M_per_core * Hckv, rmsnorm_ckvkr_store,

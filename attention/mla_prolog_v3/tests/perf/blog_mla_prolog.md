@@ -39,7 +39,64 @@ $$c^{KV} = \alpha_{kv} \cdot \mathrm{RmsNorm}(x \cdot W^{DKV}) \tag{d}$$
 
 ### 2.2 分步计算单元
 
-将 4 条路径拆解为基本计算单元：
+将 4 条路径拆解为 9 个基本计算单元（橙色 = AIC Cube，紫色 = AIV Vector）：
+
+```mermaid
+graph LR
+    X["输入 x<br/>[T, He]"]
+
+    subgraph Path_AB ["路径 a+b: Query"]
+        MM1["① MM1: MatmulCq<br/>x · W_DQ → cQ<br/><i>AIC</i>"]
+        RN1["② RmsNormCq<br/>α_q · RmsNorm(cQ)<br/><i>AIV</i>"]
+        MM3["⑦ MM3: MatmulQcQr<br/>cQ_norm · [W_UQ|W_QR]<br/><i>AIC</i>"]
+        RoPE_Qr["⑧ RopeQr<br/>RoPE(qR)<br/><i>AIV</i>"]
+        MM4["⑨ MM4: MatmulQn<br/>qC · W_UK<br/><i>AIC</i>"]
+        MM1 --> RN1 --> MM3
+        MM3 -->|"qR"| RoPE_Qr
+        MM3 -->|"qC"| MM4
+    end
+
+    subgraph Path_CD ["路径 c+d: KV Cache"]
+        MM2["③ MM2: MatmulCkvKr<br/>x · [W_DKV|W_KR]<br/><i>AIC</i>"]
+        RN2["④ RmsNormCkv<br/>α_kv · RmsNorm(cKV)<br/><i>AIV</i>"]
+        RoPE_Kr["⑤ RopeKr<br/>RoPE(kR)<br/><i>AIV</i>"]
+        SC["⑥ ScatterCkvKr<br/>写入 Cache<br/><i>AIV</i>"]
+        MM2 -->|"cKV"| RN2 --> SC
+        MM2 -->|"kR"| RoPE_Kr --> SC
+    end
+
+    X --> MM1
+    X --> MM2
+
+    OUT_QN["输出: qN"]
+    OUT_QR["输出: qR"]
+    OUT_KV["输出: KVCache"]
+    OUT_KR["输出: KRCache"]
+
+    MM4 --> OUT_QN
+    RoPE_Qr --> OUT_QR
+    SC --> OUT_KV
+    SC --> OUT_KR
+
+    style MM1 fill:#e17055,color:#fff
+    style MM2 fill:#e17055,color:#fff
+    style MM3 fill:#e17055,color:#fff
+    style MM4 fill:#e17055,color:#fff
+    style RN1 fill:#6c5ce7,color:#fff
+    style RN2 fill:#6c5ce7,color:#fff
+    style RoPE_Qr fill:#6c5ce7,color:#fff
+    style RoPE_Kr fill:#6c5ce7,color:#fff
+    style SC fill:#6c5ce7,color:#fff
+    style X fill:#2d3436,color:#fff
+    style OUT_QN fill:#00b894,color:#fff
+    style OUT_QR fill:#00b894,color:#fff
+    style OUT_KV fill:#00b894,color:#fff
+    style OUT_KR fill:#00b894,color:#fff
+```
+
+> [在线编辑此图](https://l.mermaid.ai/qMzHtq)
+
+对应的计算公式与管线分配：
 
 | 步骤 | 计算 | 所在管线 |
 |------|------|---------|
@@ -130,14 +187,24 @@ mla_prolog_v3/
 
 **组件间的连接关系：**
 
-```
-① def.cpp 注册算子 → GE 框架调度 → tiling.h 计算切分方案
-                                         ↓
-                                    TilingData 结构体
-                                         ↓ （二进制序列化，随 kernel launch 传递）
-② mla_prolog_v3.cpp 反序列化 → 模板实例化 → kernel_mla_prolog_split_n.h
-                                                    ↓
-                                              service_*.h 各计算模块
+```mermaid
+graph LR
+    DEF["def.cpp<br/>算子注册"] --> GE["GE 框架调度"]
+    GE --> TILING["tiling.h<br/>计算切分方案"]
+    TILING --> TD["TilingData 结构体"]
+    TD -->|"二进制序列化<br/>随 kernel launch 传递"| ENTRY["mla_prolog_v3.cpp<br/>反序列化"]
+    ENTRY --> TMPL["模板实例化<br/>(if constexpr)"]
+    TMPL --> KERNEL["kernel_mla_prolog_split_n.h<br/>核心计算类"]
+    KERNEL --> SVC["service_*.h<br/>Matmul / RmsNorm / RoPE / Scatter"]
+
+    style DEF fill:#4a90d9,color:#fff
+    style GE fill:#636e72,color:#fff
+    style TILING fill:#4a90d9,color:#fff
+    style TD fill:#fdcb6e,color:#2d3436
+    style ENTRY fill:#e17055,color:#fff
+    style TMPL fill:#e17055,color:#fff
+    style KERNEL fill:#e17055,color:#fff
+    style SVC fill:#6c5ce7,color:#fff
 ```
 
 ---
@@ -197,16 +264,20 @@ FillTiling()         → 填充 MlaPrologBaseParams 结构体
 
 ### 5.5 TilingData 如何传递到 Kernel
 
-```
-Host CPU                              Device NPU
-┌───────────────┐                     ┌───────────────┐
-│ MlaProlog-    │  二进制序列化         │ __gm__ uint8_t│
-│ TilingData    │ ──────────────────→  │ *tiling       │
-│ {baseParams:  │  GE 框架管理          │               │
-│   batchSize,  │  随 kernel launch    │ GET_TILING_    │
-│   mm1Block,   │  参数传递             │ DATA_WITH_    │
-│   ...}        │                      │ STRUCT(...)   │
-└───────────────┘                     └───────────────┘
+```mermaid
+graph LR
+    subgraph HOST ["Host CPU"]
+        TD2["MlaPrologTilingData<br/>{baseParams:<br/>  batchSize,<br/>  mm1Block, ...}"]
+    end
+
+    subgraph DEVICE ["Device NPU"]
+        GM["__gm__ uint8_t *tiling<br/>GET_TILING_DATA_WITH_STRUCT(...)"]
+    end
+
+    TD2 -->|"二进制序列化<br/>GE 框架管理<br/>随 kernel launch 参数传递"| GM
+
+    style HOST fill:#4a90d9,color:#fff
+    style DEVICE fill:#e17055,color:#fff
 ```
 
 GE 框架将 `MlaPrologTilingData` 结构体**二进制序列化**，作为 kernel launch 的最后一个参数传递。在 Device 侧，`GET_TILING_DATA_WITH_STRUCT` 宏通过 **reinterpret_cast 零拷贝反序列化**——直接将 `__gm__ uint8_t*` 指针转换为 `MlaPrologTilingData*`，无需任何数据拷贝。
@@ -313,16 +384,56 @@ Ascend NPU 的每个 AI Core 包含两个**物理独立**的计算单元：
 
 ### 7.2 时序图
 
-```
-时间 →
+```mermaid
+sequenceDiagram
+    participant AIC as AIC (Cube)
+    participant AIV as AIV (Vector)
 
-AIC: ║ MM1(Cq) ║→sig║ MM2(CkvKr) ║→sig║←wait    ║ MM3(QcQr) ║→sig║←全核同步║ MM4(Qn) ║
-     ║─────────║    ║────────────║    ║ RmsNorm  ║───────────║    ║          ║─────────║
-     ║         ║    ║            ║    ║          ║           ║    ║          ║         ║
-AIV: ║ CopyIn  ║←wt ║ RmsNormCq  ║→sig║←wait     ║ RmsNormCkv║←wt ║ RopeQr   ║
-     ║ SinCos  ║    ║            ║    ║          ║+RopeKr    ║    ║          ║
-     ║         ║    ║            ║    ║          ║+Scatter   ║    ║          ║
+    Note over AIV: CopyIn + GetSinCos
+
+    rect rgb(225, 112, 85, 0.3)
+    AIC->>AIC: ① MM1 MatmulCq (17.89 us)
+    end
+    AIC-->>AIV: SYNC_MMCQ ✉️
+
+    rect rgb(108, 92, 231, 0.3)
+    Note over AIV: 全核同步 (V→V)
+    AIV->>AIV: ② RmsNormCq (0.015 us)
+    end
+
+    par AIC 做 MM2 & AIV 做 RmsNormCq
+        rect rgb(225, 112, 85, 0.3)
+        AIC->>AIC: ③ MM2 MatmulCkvKr (17.89 us)
+        end
+    end
+
+    AIV-->>AIC: SYNC_RMSNORM_CQ ✉️
+    AIC-->>AIV: SYNC_MMCKVKR ✉️
+
+    rect rgb(108, 92, 231, 0.3)
+    AIV->>AIV: ④ RmsNormCkv (0.005 us)
+    AIV->>AIV: ⑤ RopeKr (0.001 us)
+    AIV->>AIV: ⑥ ScatterCkvKr (0.002 us)
+    end
+
+    rect rgb(225, 112, 85, 0.3)
+    AIC->>AIC: ⑦ MM3 MatmulQcQr (47.19 us)
+    end
+    AIC-->>AIV: SYNC_MMQCQR ✉️
+
+    Note over AIC,AIV: SYNC_ALL_CUBE (全核同步)
+
+    par AIC 做 MM4 & AIV 做 RopeQr
+        rect rgb(225, 112, 85, 0.3)
+        AIC->>AIC: ⑨ MM4 MatmulQn (0.66 us)
+        end
+        rect rgb(108, 92, 231, 0.3)
+        AIV->>AIV: ⑧ RopeQr (0.105 us)
+        end
+    end
 ```
+
+> [在线编辑此图](https://l.mermaid.ai/y7XF2T)
 
 ### 7.3 同步点详解
 

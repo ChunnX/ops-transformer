@@ -1,11 +1,14 @@
 # MlaPrologV3 Ascend 950 综合优化设计
 
-> 版本：v1.1  日期：2026-04
+> 版本：v1.2  日期：2026-04
 > 适用范围：Ascend 950 chip，decode 与 small prefill 场景
 > 状态：Phase 1（perf model）已完成，Phase 2（kernel 实现）待启动
-> 关联 commit：`66b9f779f` (perf 重构) · `4c46bda97` (dequant-opt model) · `10e54bd18` (split-kn-fused model) · `45d7341ad` (split-kn chip-total 修正)
+> 关联 commit：`66b9f779f` (perf 重构) · `4c46bda97` (dequant-opt model) · `10e54bd18` (split-kn-fused model) · `45d7341ad` (split-kn chip-total 修正) · `8cadcdb0c` (指令级 vector 建模)
 > 关联文档：`MlaPrologV3_DequantOpt设计.md`、`MlaPrologV3_SplitKN_FusedAccum设计.md`、`tests/perf/report_split_kn.md`
-> **v1.1 变更**：vector 阶段从 chip-total ops/sec 粗粒度模型升级为指令级建模（256 B/cycle, IPC=1.3，按量化场景区分指令数）。FP8/INT8 baseline 偏移 ~0.25 µs，cube 时间及 split-kn 节省不变。
+>
+> **变更历史**：
+> - **v1.2**: 修复 RmsNormCkvKr load 重复计算 Dr 的 bug；新增 Mermaid 流程图
+> - **v1.1**: vector 阶段从 chip-total ops/sec 粗粒度模型升级为指令级建模（256 B/cycle, IPC=1.3，按量化场景区分指令数）
 
 ---
 
@@ -36,44 +39,138 @@
 - DequantOpt 解决 vector → cube 衔接的浪费（cross-core sync + 多次 GM 往返）
 - 三者作用区域不重叠 → 完全可叠加
 
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#4a90d9"
+---
+xychart-beta
+    title "FP8 decode bs1 hd128 — 逐步优化效果 (us)"
+    x-axis ["Baseline", "+ Split-KN", "+ Fused", "+ DequantOpt"]
+    y-axis "Pipeline Time (us)" 0 --> 55
+    bar [48.97, 39.45, 37.92, 34.39]
+```
+
+```mermaid
+---
+config:
+  theme: base
+---
+xychart-beta
+    title "BF16 decode bs1 hd128 — 逐步优化效果 (us)"
+    x-axis ["Baseline", "+ Split-KN", "+ Fused"]
+    y-axis "Pipeline Time (us)" 0 --> 100
+    bar [87.63, 71.53, 70.01]
+```
+
+```mermaid
+block-beta
+    columns 3
+    block:opt1:1
+        columns 1
+        A["Split-KN"]
+        B["MM1 / MM2 cube"]
+        C["K 维核间切分"]
+    end
+    block:opt2:1
+        columns 1
+        D["Split-KN-Fused"]
+        E["MM1 / MM2 vector"]
+        F["K-accum + RmsNorm 融合"]
+    end
+    block:opt3:1
+        columns 1
+        G["DequantOpt"]
+        H["MM3 → MM4"]
+        I["L0C→UB→L1 直通"]
+    end
+    style opt1 fill:#4a90d9,color:#fff
+    style opt2 fill:#e8a838,color:#fff
+    style opt3 fill:#50b86c,color:#fff
+```
+
 ---
 
 ## 1. 现状与目标流水
 
 ### 1.1 Baseline 数据流（解码 bs1 / FP8 hd128 ≈ 49.0 µs，hd8 BF16 ≈ 43.3 µs）
 
+```mermaid
+sequenceDiagram
+    participant AIC as AIC (Cube)
+    participant GM as GM (HBM)
+    participant AIV as AIV (Vector)
+
+    Note over AIC: MM1_Cq (17.89 us BF16)
+    AIC->>GM: FixPipe → mmCqResGm
+    AIC-->>AIV: CrossCoreSetFlag (0.8 us)
+
+    Note over AIV: WaitAllCore★ (kept)
+    GM->>AIV: MTE2 load Cq
+    Note over AIV: RmsNormCq (PIPE_V)
+    AIV->>GM: MTE3 store
+    Note over AIV: WaitAllCore★ (kept)
+    AIV-->>AIC: CrossCoreSetFlag (0.8 us)
+
+    Note over AIC: MM2_CkvKr (17.89 us BF16)
+    AIC->>GM: FixPipe → mmCkvKrResGm
+    AIC-->>AIV: CrossCoreSetFlag (0.8 us)
+
+    Note over AIV: WaitAllCore★ (kept)
+    GM->>AIV: MTE2 load CkvKr
+    Note over AIV: RmsNormCkvKr + RopeKr
+    AIV->>GM: Scatter → KV cache
+    AIV-->>AIC: CrossCoreSetFlag (0.8 us)
+
+    Note over AIC: MM3_QcQr (47.19 us BF16)
+    AIC->>GM: FixPipe → mmQcQrResGm
+    AIC-->>AIV: CrossCoreSetFlag (0.8 us)
+
+    GM->>AIV: MTE2 load QcQr
+    Note over AIV: DequantQc (PIPE_V)
+    AIV->>GM: MTE3 store
+    AIV-->>AIC: CrossCoreSetFlag (0.8 us)
+    Note over AIV: RopeQr (PIPE_V)
+    AIV->>GM: MTE3 store
+
+    Note over AIC: MM4_Qn (0.66 us)
+    GM->>AIC: MTE1 load Qc from GM
+    AIC->>GM: mmQnResGm
 ```
-AIC pipeline (cube)                         AIV pipeline (vector)
-═══════════════════════════════════         ═══════════════════════════════════
-MM1_Cq  ──FixPipe──→ GM(mmCqResGm)
-       │ CrossCoreSetFlag PIPE_FIX (0.8 µs)
-       ↓
-       wait FINISH_VEC_RMSNORM_CQ           CrossCoreWaitFlag(FINISH_MM_CQ)
-                                            WaitAllCore<ALL_VEC>             ★ existing barrier (kept)
-                                            RmsNormCq:
-                                              MTE2 GM → UB → PIPE_V → MTE3 → GM
-                                            WaitAllCore<ALL_VEC>             ★ existing barrier (kept)
-                                            CrossCoreSetFlag PIPE_MTE3 (0.8 µs)
-                                            ────────────────────────────
-MM2_CkvKr ──FixPipe──→ GM(mmCkvKrResGm)     CrossCoreWaitFlag(FINISH_MM_CKVKR)
-       │ CrossCoreSetFlag (0.8 µs)          WaitAllCore<ALL_VEC>             ★ existing barrier (kept)
-                                            RmsNormCkvKr + RopeKr + Scatter
-       ↓
-       wait FINISH_RMS_CKVKR
-       ↓
-MM3_QcQr ──FixPipe──→ GM(mmQcQrResGm)
-       │ CrossCoreSetFlag PIPE_FIX (0.8 µs)
-       ↓                                    CrossCoreWaitFlag(FINISH_MM_QCQR)
-                                            DequantQc:
-                                              MTE2 GM → UB → PIPE_V → MTE3 → GM
-                                            CrossCoreSetFlag (0.8 µs)
-                                            RopeQr:
-                                              MTE2 GM → UB → PIPE_V → MTE3 → GM
-                                            CrossCoreSetFlag (0.8 µs)
-       wait FINISH_VEC_DEQUANT_QC ←────────┘
-       ↓
-MM4_Qn ──→ GM(mmQnResGm)
+
+**AIC/AIV 流水时序图**（BF16 decode bs1 hd128, He=7168, total = 87.63 µs）：
+
+```mermaid
+gantt
+    title Baseline Pipeline Timeline — BF16 decode bs1 hd128
+    dateFormat X
+    axisFormat %s us
+
+    section AIC (Cube)
+    MM1_Cq (17.89 us)          :active, aic1, 0, 18
+    sync (0.8 us)              :aic_s1, 18, 19
+    MM2_CkvKr (17.89 us)       :active, aic2, 19, 37
+    sync (0.8 us)              :aic_s2, 37, 38
+    wait RmsNormCq             :crit, aic_w, 38, 39
+    MM3_QcQr (47.19 us)        :active, aic3, 39, 86
+    sync (0.8 us)              :aic_s3, 86, 87
+    MM4_Qn (0.66 us)           :active, aic4, 87, 88
+
+    section AIV (Vector)
+    CopyInSinCos (0.5 us)      :aiv0, 0, 1
+    wait MM1                   :aiv_w1, 1, 19
+    RmsNormCq (0.07 us)        :active, aiv1, 19, 20
+    sync (0.8 us)              :aiv_s1, 20, 21
+    wait MM2                   :aiv_w2, 21, 38
+    RmsNormCkvKr (0.02 us)     :aiv2, 38, 39
+    RopeKr + Scatter           :aiv3, 39, 40
+    wait MM3                   :aiv_w3, 40, 87
+    RopeQr (0.36 us)           :aiv4, 87, 88
 ```
+
+> 关键路径：MM1→MM2→MM3→MM4（纯 AIC），AIV 完全被 AIC 掩盖。
 
 baseline 关键问题：
 - **MM1/MM2 cube 时间被 HBM 带宽限制**：每核读取 weight (He × N_per_core × dtype) + token (M × He × dtype)。decode bs1 hd128 BF16 下 ~17.89 µs，是流水主体之一。
@@ -82,53 +179,58 @@ baseline 关键问题：
 
 ### 1.2 目标流水（三项优化全开）
 
-```
-AIC pipeline (cube)                         AIV pipeline (vector)
-═══════════════════════════════════         ═══════════════════════════════════
-[Split-KN]
-MM1_Cq (BF16: n_groups=4 × k_groups=7 = 28 cores; FP8/INT8: n_groups=8 × k_groups=4 = 32 cores)
-   BF16 每核 K=He/7=1024, N=Hcq/4=384; FP8/INT8 每核 K=He/4=1792, N=Hcq/8=192
-   FixPipe → GM(mmCqPartialGm[kg])         ← 32 cores 写 4×8=32 个 partial 子区
-   CrossCoreSetFlag PIPE_FIX (0.8 µs)
-                                            CrossCoreWaitFlag(FINISH_MM_CQ)
-                                            WaitAllCore<ALL_VEC>             ★ kept
-                                            [Split-KN-Fused] AccumCq + RmsNormCq:
-                                              for kg in 0..k_groups-1:
-                                                MTE2 GM partial[kg] → UB partialBuf
-                                                PIPE_V accumUbFp32 += partialBuf
-                                              RmsNorm(rmsOut, accumUbFp32)
-                                              MTE3 UB → GM(rmsNormCqResGm)
-                                            ★ no new barrier vs naive accum
-                                            WaitAllCore<ALL_VEC>             ★ kept
-                                            CrossCoreSetFlag PIPE_MTE3
-                                            ────────────────────────────
-[Split-KN]
-MM2_CkvKr (n_groups=1 × k_groups=28 cores)
-   每核 K=He/28=256, N=576
-   FixPipe → GM(mmCkvKrPartialGm[kg])
-   CrossCoreSetFlag (0.8 µs)
-                                            CrossCoreWaitFlag(FINISH_MM_CKVKR)
-                                            WaitAllCore<ALL_VEC>             ★ kept
-                                            [Split-KN-Fused] AccumCkvKr + RmsNormCkvKr + RopeKr + Scatter
-                                              fused k_groups loads + reduce in UB
-                                              → RmsNorm in UB
-                                              → RoPE Kr in UB
-                                              → Scatter to KV cache GM
-       wait FINISH_RMS_CKVKR
-       ↓
-MM3_QcQr (split-N, baseline cube 配置)
-   ──FixPipe──→ L0C  (NOT GM, intra-core handover)
-   ───[DequantOpt]─────────────────────────────────────────────
-   SetFlag<HardEvent::FIX_V> → intra-core to AIV
-   ↓                                       l0c_to_ub<int32, half>(qcqrUb, l0cBuf, ...)
-                                             with VDEQ16 inline dequant
-                                           PIPE_V: Cast → BF16, RoPE on Qr region
-                                           SetFlag<HardEvent::V_MTE3> → ub_to_l1
-                                           ub_to_l1<half>(qcL1Buf, qcUb, ...)
-                                           SetFlag<HardEvent::MTE3_M> → cube
-   ↓
-MM4_Qn ←──L1── (qcL1Buf intra-core)
-   ──→ GM(mmQnResGm)
+```mermaid
+sequenceDiagram
+    participant AIC as AIC (Cube)
+    participant GM as GM (HBM)
+    participant UB as UB (On-chip)
+    participant AIV as AIV (Vector)
+
+    rect rgb(74, 144, 217, 0.1)
+    Note over AIC,AIV: Split-KN: MM1 (BF16: N4xK7=28 cores / FP8: N8xK4=32 cores)
+    Note over AIC: MM1_Cq — K-split cube
+    AIC->>GM: FixPipe → FP32 partials[k_groups]
+    AIC-->>AIV: CrossCoreSetFlag (0.8 us)
+    end
+
+    rect rgb(232, 168, 56, 0.1)
+    Note over AIV: WaitAllCore★ (kept)
+    Note over AIV,UB: Split-KN-Fused: Accum + RmsNormCq (no new barrier)
+    loop k = 0..k_groups-1
+        GM->>UB: MTE2 partial[k]
+        Note over UB: PIPE_V: accumFP32 += partial
+    end
+    Note over UB: RmsNorm in UB (no GM round-trip)
+    UB->>GM: MTE3 → rmsNormCqResGm
+    Note over AIV: WaitAllCore★ (kept)
+    AIV-->>AIC: CrossCoreSetFlag (0.8 us)
+    end
+
+    rect rgb(74, 144, 217, 0.1)
+    Note over AIC,AIV: Split-KN: MM2 (N1xK28=28 cores)
+    Note over AIC: MM2_CkvKr — K-split cube
+    AIC->>GM: FixPipe → FP32 partials[28]
+    AIC-->>AIV: CrossCoreSetFlag (0.8 us)
+    end
+
+    rect rgb(232, 168, 56, 0.1)
+    Note over AIV: WaitAllCore★ (kept)
+    Note over AIV,UB: Split-KN-Fused: Accum + RmsNorm + RoPE + Scatter
+    GM->>UB: Fused k_groups loads + reduce
+    Note over UB: RmsNorm → RoPE Kr
+    UB->>GM: Scatter → KV cache
+    AIV-->>AIC: CrossCoreSetFlag (0.8 us)
+    end
+
+    rect rgb(80, 184, 108, 0.1)
+    Note over AIC,UB: DequantOpt: MM3 → MM4 intra-core (no cross-core sync)
+    Note over AIC: MM3_QcQr (split-N cube)
+    AIC->>UB: L0C → UB (VDEQ16 inline dequant)
+    Note over UB: PIPE_V: Cast + RoPE
+    UB->>AIC: UB → L1 (ub_to_l1)
+    Note over AIC: MM4_Qn ← L1 (no GM)
+    AIC->>GM: mmQnResGm
+    end
 ```
 
 **节省汇总**：
@@ -206,6 +308,32 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 | 7680 | 43.33 | MM1:N6×K5 + MM2:N3×K10 | 27.83 | −15.51 | −35.8% |
 | 8192 | 52.87 | MM1:N8×K4 + MM2:N1×K32 | 29.18 | −23.70 | −44.8% |
 
+```mermaid
+---
+config:
+  theme: base
+---
+xychart-beta
+    title "Split-KN 节省 vs He — BF16 decode bs1 hd128"
+    x-axis ["1024", "2048", "4096", "7168", "7680", "8192"]
+    y-axis "Pipeline Time (us)" 0 --> 100
+    bar [56.62, 61.39, 72.12, 87.63, 87.63, 97.17]
+    line [54.71, 57.57, 62.66, 71.53, 72.12, 73.47]
+```
+
+```mermaid
+---
+config:
+  theme: base
+---
+xychart-beta
+    title "Split-KN 节省 vs He — FP8 decode bs1 hd128"
+    x-axis ["1024", "2048", "4096", "7168", "7680", "8192"]
+    y-axis "Pipeline Time (us)" 0 --> 55
+    bar [32.27, 34.65, 39.43, 48.97, 49.56, 50.16]
+    line [31.78, 32.76, 35.61, 39.45, 40.02, 40.70]
+```
+
 #### 2.1.2 关键发现
 
 1. **MM1 最优在 BF16 场景切换为 `n_groups=4, k_groups=7`（28 核），避免 32 核的 HBM contention；FP8/INT8 场景仍用 `n_groups=8, k_groups=4`（32 核，FP8 weight 减半使 HBM 竞争较不显著）**。
@@ -256,6 +384,26 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 **Fused approach**：每个 V 核在它现有的 M 行范围内顺序读 k_groups 个 partial，UB 内 FP32 累加，立即在同一 UB 内跑 RmsNorm，最后写 GM 一次。**没有新 barrier**，**没有 GM 中转**。
 
+```mermaid
+flowchart LR
+    subgraph Naive["Naive Accum + RmsNorm"]
+        direction TB
+        P1[GM partials] -->|MTE2| A1[UB: Accum]
+        A1 -->|MTE3| G1[GM: reducedRes]
+        G1 -->|"barrier (0.8 us)"| B1[" "]
+        G1 -->|MTE2| R1[UB: RmsNorm]
+        R1 -->|MTE3| O1[GM: rmsNormRes]
+    end
+    subgraph Fused["Fused Accum + RmsNorm"]
+        direction TB
+        P2[GM partials] -->|MTE2| A2[UB: Accum FP32]
+        A2 -->|"in-UB"| R2[UB: RmsNorm]
+        R2 -->|MTE3| O2[GM: rmsNormRes]
+    end
+    style Naive fill:#ffcccc
+    style Fused fill:#ccffcc
+```
+
 **理论分析**（每 MM）：
 
 | 项目 | Naive separate | Fused | 节省 |
@@ -275,6 +423,28 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 - AIV 从 GM MTE2 加载 → DequantQc → MTE3 写 GM
 - AIV 从 GM 加载 → RopeQr → MTE3 写 GM
 - mmQn cube 从 GM MTE2 加载 Qc/Qr
+
+```mermaid
+flowchart LR
+    subgraph Baseline["Baseline: MM3 → MM4 via GM"]
+        direction TB
+        C1[Cube: MM3] -->|"FixPipe"| G1[GM]
+        G1 -->|"sync 0.8us"| V1[Vector: Dequant]
+        V1 -->|MTE3| G2[GM]
+        G2 -->|"sync 0.8us"| V2[Vector: RoPE]
+        V2 -->|MTE3| G3[GM]
+        G3 -->|"sync 0.8us"| C2[Cube: MM4]
+    end
+    subgraph Optimized["DequantOpt: intra-core L0C→UB→L1"]
+        direction TB
+        C3[Cube: MM3] -->|"L0C (HardEvent ~0)"| U1[UB: VDEQ16 dequant]
+        U1 -->|"PIPE_V"| U2[UB: Cast + RoPE]
+        U2 -->|"ub_to_l1 (HardEvent ~0)"| L1[L1]
+        L1 -->|"direct"| C4[Cube: MM4]
+    end
+    style Baseline fill:#ffcccc
+    style Optimized fill:#ccffcc
+```
 
 3 个 cross-core sync × 0.8 µs = **2.4 µs**；3 次 GM 往返浪费带宽。
 
@@ -302,21 +472,38 @@ MM4_Qn ←──L1── (qcL1Buf intra-core)
 
 ### 3.1 Split-KN cube 切分（MM1 / MM2）
 
-```
-Baseline (split-N only):
-  AIC layout: 24 cores split N=Hcq into 24 × 64 columns
-  Each core does full K=7168, partial N=64
-  Output: BF16 → GM[24 × M × 64]
+```mermaid
+block-beta
+    columns 5
+    space:1 N0["N-group 0"] N1["N-group 1"] N2["N-group 2"] N3["N-group 3"]
+    K0["K-group 0"]:1 C00["Core(0,0)"]:1 C01["Core(0,1)"]:1 C02["Core(0,2)"]:1 C03["Core(0,3)"]:1
+    K1["K-group 1"]:1 C10["Core(1,0)"]:1 C11["Core(1,1)"]:1 C12["Core(1,2)"]:1 C13["Core(1,3)"]:1
+    K2["K-group 2"]:1 C20["Core(2,0)"]:1 C21["Core(2,1)"]:1 C22["Core(2,2)"]:1 C23["Core(2,3)"]:1
+    K3["K-group 3"]:1 C30["Core(3,0)"]:1 C31["Core(3,1)"]:1 C32["Core(3,2)"]:1 C33["Core(3,3)"]:1
+    K4["K-group 4"]:1 C40["Core(4,0)"]:1 C41["Core(4,1)"]:1 C42["Core(4,2)"]:1 C43["Core(4,3)"]:1
+    K5["K-group 5"]:1 C50["Core(5,0)"]:1 C51["Core(5,1)"]:1 C52["Core(5,2)"]:1 C53["Core(5,3)"]:1
+    K6["K-group 6"]:1 C60["Core(6,0)"]:1 C61["Core(6,1)"]:1 C62["Core(6,2)"]:1 C63["Core(6,3)"]:1
 
-Split-KN (n_groups × k_groups):
-  AIC layout: n_groups columns × k_groups rows = total_cores
-  Each (kg, ng) core does K=He/k_groups, N=Hcq/n_groups
-  Output: FP32 partial → GM[k_groups × M × N_per_core] per n-group
-
-  For MM1 (BF16): 4 × 7 = 28 cores, partial size = M × 384 × 4 bytes per core
-  For MM1 (FP8/INT8): 8 × 4 = 32 cores, partial size = M × 192 × 4 bytes per core
-  For MM2: 1 × 28 = 28 cores, partial size = M × 576 × 4 bytes per core
+    style N0 fill:#4a90d9,color:#fff
+    style N1 fill:#4a90d9,color:#fff
+    style N2 fill:#4a90d9,color:#fff
+    style N3 fill:#4a90d9,color:#fff
+    style K0 fill:#e8a838,color:#fff
+    style K1 fill:#e8a838,color:#fff
+    style K2 fill:#e8a838,color:#fff
+    style K3 fill:#e8a838,color:#fff
+    style K4 fill:#e8a838,color:#fff
+    style K5 fill:#e8a838,color:#fff
+    style K6 fill:#e8a838,color:#fff
 ```
+
+> 上图示例：MM1 BF16 He=7168, N4×K7 = 28 cores。每核处理 K=1024, N=384。
+
+| 配置 | n_groups | k_groups | 总核数 | per-core K | per-core N | partial size/core |
+|---|---:|---:|---:|---:|---:|---|
+| MM1 BF16 | 4 | 7 | 28 | 1024 | 384 | M × 384 × 4B |
+| MM1 FP8/INT8 | 8 | 4 | 32 | 1792 | 192 | M × 192 × 4B |
+| MM2 (all) | 1 | 28 | 28 | 256 | 576 | M × 576 × 4B |
 
 **改动**：
 1. Host tiling 增加 `mm1_n_groups`, `mm1_k_groups`, `mm2_n_groups`, `mm2_k_groups` 字段（默认 1×n_groups 即原 split-N，BF16 设为最优值 4×7 / 1×28、FP8/INT8 设为 8×4 / 1×28 启用 split-KN）
@@ -544,6 +731,13 @@ qrUb_                    : M × per_core_qr × 2            (qrUb，UB→L1 sour
 | prefill T=128 hd128 | 34 KB | 60 KB | (BF16 不适用) | **94 KB** (36%) |
 
 UB 充裕，无溢出风险。
+
+```mermaid
+pie title "UB 占用 — decode bs1 hd128 FP8（256 KB 总量）"
+    "静态 buffer" : 34
+    "Split-KN-Fused / DequantOpt (复用)" : 30
+    "可用空间" : 192
+```
 
 ---
 
