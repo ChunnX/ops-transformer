@@ -13,8 +13,8 @@
  * \brief MaskedCausalConv1dBackward tiling implementation
  */
 
-#ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
-#define MASK_EDCAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
+#ifndef MASK_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
+#define MASK_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
 
 #include "log/log.h"
 #include "platform/platform_info.h"
@@ -28,7 +28,7 @@
 
 namespace optiling {
 
-// CompileInfo structure for platform information (arch35)
+
 struct MaskedCausalConv1dBackwardArch35CompileInfo {
     uint64_t coreNum = 0;
     uint64_t ubSize = 0;
@@ -49,11 +49,15 @@ constexpr int64_t ALIGN_BYTES = 32;                   // Base alignment requirem
 constexpr int64_t DTYPE_SIZE = 2;                     // bf16/fp16 size in bytes
 constexpr int64_t BUFFER_NUM = 2;                     // Double buffering recommended
 constexpr int64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024; // Reserve for system usage
+constexpr int64_t S_MAX = 1 << 15;
+constexpr int64_t B_MAX = 8;
 
 // Shape dim indices
 constexpr int64_t DIM_0 = 0; // S or W
 constexpr int64_t DIM_1 = 1; // B or H
 constexpr int64_t DIM_2 = 2; // H
+constexpr int64_t NUM_2 = 2;
+constexpr int64_t NUM_3 = 3;
 
 class MaskedCausalConv1dBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -62,22 +66,16 @@ public:
     }
 
 protected:
-    // Capability & info collection
     bool IsCapable() override;
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;
-
-    // Tiling main entry
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus DoLibApiTiling() override;
-
-    // Post processing
     uint64_t GetTilingKey() const override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
     void DumpTilingInfo() override;
 
-    // Validation helpers
     ge::graphStatus CheckInputParams();
     ge::graphStatus ValidateGradOutputShape();
     ge::graphStatus ValidateInputShape();
@@ -90,9 +88,8 @@ protected:
     ge::graphStatus ValidateMaskType();
 
 private:
-    // Tiling helpers
-    ge::graphStatus ComputeInterCoreSplit();    // 核间切分（H维度，非均匀）
-    ge::graphStatus ComputeIntraCoreUbTiling(); // 核内切分（优先满载B、S，H从64起步）
+    ge::graphStatus ComputeInterCoreSplit();    // 核间切分
+    ge::graphStatus ComputeIntraCoreUbTiling(); // 核内切分
 
     // Hardware information
     uint64_t ubSize_ = 0;       // UB size per core (bytes)
@@ -109,7 +106,7 @@ private:
     size_t dtypeSize_ = DTYPE_SIZE;
     int64_t hasMask_ = 0; // 1 if mask provided
 
-    // Inter-core tiling parameters (H non-uniform split by 64)
+    // Inter-core tiling parameters (H split by 64)
     int64_t hMainCoreCnt_ = 0; // big cores count
     int64_t hTailCoreCnt_ = 0; // small cores count
     int64_t hMainSize_ = 0;    // elements per big core (multiple of 64)
@@ -118,45 +115,35 @@ private:
 
     // Intra-core tiling parameters (UB loop for H/B/S)
     int64_t hUB_ = DIM_ALIGN_ELEMENT; // start with 64
-    int64_t bUB_ = 1;
     int64_t sUB_ = 1;
 
     int64_t hLoopCnt_ = 0;
-    int64_t bLoopCnt_ = 0;
     int64_t sLoopCnt_ = 0;
 
     int64_t hUBTail_ = 0;
-    int64_t bUBTail_ = 0;
     int64_t sUBTail_ = 0;
     int64_t allUb_ = 0;
 
-    // 新增：主核UB切块参数（有效输出大小，不包含重叠）
+    // 主核UB切块参数（有效输出大小，不包含重叠）
     int64_t ubMainFactorH_ = 0;
     int64_t ubTailFactorH_ = 0;
-    int64_t ubMainFactorB_ = 0;
-    int64_t ubTailFactorB_ = 0;
     int64_t ubMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
     int64_t ubTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
-
     int64_t ubMainFactorSCount_ = 0;
     int64_t ubTailFactorSCount_ = 0;
 
-    // 新增：尾核参数（有效输出大小，不包含重叠）
+    // 尾核参数（有效输出大小，不包含重叠）
     int64_t tailHLoopCnt_ = 0;
-    int64_t tailBLoopCnt_ = 0;
     int64_t tailSLoopCnt_ = 0;
 
     int64_t tailCoreUbMainFactorH_ = 0;
     int64_t tailCoreUbTailFactorH_ = 0;
-    int64_t tailCoreUbMainFactorB_ = 0;
-    int64_t tailCoreUbTailFactorB_ = 0;
     int64_t tailCoreUbMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
     int64_t tailCoreUbTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
 
-    // TilingData object
     MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35 tilingData_{};
 };
 
 } // namespace optiling
 
-#endif // OPS_TRANSFORMER_ATTENTION_MASK_EDCAUSAL_CONV1D_BACKWARD_OP_HOST_H
+#endif // MASK_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H

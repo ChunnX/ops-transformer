@@ -100,7 +100,6 @@ private:
     int64_t S_{0};                      // S维度大小
     int64_t B_{0};                      // B维度大小
     int64_t H_{0};                      // H维度大小
-    int64_t W_{0};                      // W维度大小
 
     int64_t hStart_{0}, hLen_{0};
 
@@ -152,7 +151,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     S_ = td->S;                      // S维度大小
     B_ = td->B;                      // B维度大小
     H_ = td->H;                      // H维度大小
-    W_ = td->W;                      // W维度大小
+    kW = td->W;                      // W维度大小
 
     // compute this core's H start/len
     uint64_t blkIdx = GetBlockIdx();
@@ -179,9 +178,9 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     // bind GM tensors
     gradOutGm_.SetGlobalBuffer((__gm__ DT *)grad_output, S_ * B_ * H_);
     inputGm_.SetGlobalBuffer((__gm__ DT *)input, S_ * B_ * H_);
-    weightGm_.SetGlobalBuffer((__gm__ DT *)weight, W_ * H_);
+    weightGm_.SetGlobalBuffer((__gm__ DT *)weight, kW * H_);
     gradInGm_.SetGlobalBuffer((__gm__ DT *)grad_input, S_ * B_ * H_);
-    gradWeightGm_.SetGlobalBuffer((__gm__ DT *)grad_weight, W_ * H_);
+    gradWeightGm_.SetGlobalBuffer((__gm__ DT *)grad_weight, kW * H_);
     if (hasMask_) {
         maskGm_.SetGlobalBuffer((__gm__ bool *)mask, B_ * S_);
     }
