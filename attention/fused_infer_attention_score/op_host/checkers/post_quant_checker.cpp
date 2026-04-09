@@ -255,7 +255,7 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
                     OP_LOGE(fiaInfo.opName,
-                            "When keyAntiquantMode and valueAntiquantMode is 1"
+                            "When keyAntiquantMode and valueAntiquantMode are both 1, "
                             "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
                     return ge::GRAPH_FAILED);
     }
@@ -264,7 +264,7 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
                     OP_LOGE(fiaInfo.opName,
-                            "When keyAntiquantMode and valueAntiquantMode is 4"
+                            "When keyAntiquantMode and valueAntiquantMode are both 4, "
                             "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
                     return ge::GRAPH_FAILED);
     }
