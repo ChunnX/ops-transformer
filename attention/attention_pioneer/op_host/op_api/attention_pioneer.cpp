@@ -26,8 +26,8 @@ const AttentionPioneerOutputs AttentionPioneer(
     const aclTensorList *value,
     const aclTensor *pseShift,
     const aclTensor *attenMask,
-    const aclIntArray *actualSeqLengths,
-    const aclIntArray *actualSeqLengthsKv,
+    const aclTensor *actualSeqLengths,
+    const aclTensor *actualSeqLengthsKv,
     const aclTensor *deqScale1,
     const aclTensor *quantScale1,
     const aclTensor *deqScale2,
@@ -49,7 +49,8 @@ const AttentionPioneerOutputs AttentionPioneer(
     const aclTensor *keyRope,
     const aclTensor *keyRopeAntiquantScale,
     const aclTensor *dequantScaleQuery,
-    const aclTensor *keySink, 
+    const aclTensor *metaData,
+    const aclTensor *keySink,
     const aclTensor *keyRopeSink,
     const aclTensor *valueSink,
     int64_t numHeads,
@@ -75,32 +76,15 @@ const AttentionPioneerOutputs AttentionPioneer(
            deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,
            blockTable, queryPaddingSize, kvPaddingSize, keyAntiquantScale, keyAntiquantOffset,
            valueAntiquantScale, valueAntiquantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen,
-           queryRope, keyRope, keyRopeAntiquantScale, dequantScaleQuery, 
-           keySink, keyRopeSink, valueSink, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
+           queryRope, keyRope, keyRopeAntiquantScale, dequantScaleQuery,
+           metaData, keySink, keyRopeSink, valueSink, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
            sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
            keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outType);
 
-    const aclTensor *actualSeqLengthsTensor = nullptr;
-    const aclTensor *actualSeqLengthsKvTensor = nullptr;
     const aclTensor *actualSharedPrefixLenTensor = nullptr;
     if (executor == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FusedInferAttention: executor is nullptr.");
         return {nullptr, nullptr};
-    }
-
-    // 转换 aclIntArray 为 tensor
-    if (actualSeqLengths != nullptr) {
-        actualSeqLengthsTensor = executor->ConvertToTensor(actualSeqLengths, DataType::DT_INT64);
-        const_cast<aclTensor *>(actualSeqLengthsTensor)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqLengthsTensor)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqLengthsTensor)->SetOriginalFormat(Format::FORMAT_ND);
-    }
-
-    if (actualSeqLengthsKv != nullptr) {
-        actualSeqLengthsKvTensor = executor->ConvertToTensor(actualSeqLengthsKv, DataType::DT_INT64);
-        const_cast<aclTensor *>(actualSeqLengthsKvTensor)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqLengthsKvTensor)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqLengthsKvTensor)->SetOriginalFormat(Format::FORMAT_ND);
     }
 
     if (actualSharedPrefixLen != nullptr) {
@@ -115,13 +99,13 @@ const AttentionPioneerOutputs AttentionPioneer(
     auto softmaxLseOut = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     // 形状推导
     auto ret = INFER_SHAPE(AttentionPioneer,
-        OP_INPUT(query, key, value, pseShift, attenMask, actualSeqLengthsTensor, actualSeqLengthsKvTensor,
+        OP_INPUT(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv,
                  deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
                  antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
                  keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,
                  keySharedPrefix, valueSharedPrefix, actualSharedPrefixLenTensor,
                  queryRope, keyRope, keyRopeAntiquantScale, dequantScaleQuery,
-                 keySink, keyRopeSink, valueSink),
+                 metaData, keySink, keyRopeSink, valueSink),
         OP_OUTPUT(attentionOutOut, softmaxLseOut),
         OP_ATTR(numHeads, static_cast<float>(scaleValue), static_cast<int32_t>(preTokens),
                 static_cast<int32_t>(nextTokens), inputLayout, numKeyValueHeads,
@@ -140,13 +124,13 @@ const AttentionPioneerOutputs AttentionPioneer(
     }
     // 添加到启动列表
     ret = ADD_TO_LAUNCHER_LIST_AICORE(AttentionPioneer,
-        OP_INPUT(query, key, value, pseShift, attenMask, actualSeqLengthsTensor, actualSeqLengthsKvTensor,
+        OP_INPUT(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv,
                  deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
                  antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
                  keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,
                  keySharedPrefix, valueSharedPrefix, actualSharedPrefixLenTensor,
                  queryRope, keyRope, keyRopeAntiquantScale, dequantScaleQuery,
-                 keySink, keyRopeSink, valueSink),
+                 metaData, keySink, keyRopeSink, valueSink),
         OP_OUTPUT(attentionOutOut, softmaxLseOut),
         OP_ATTR(numHeads, static_cast<float>(scaleValue), static_cast<int32_t>(preTokens),
                 static_cast<int32_t>(nextTokens), inputLayout, numKeyValueHeads,

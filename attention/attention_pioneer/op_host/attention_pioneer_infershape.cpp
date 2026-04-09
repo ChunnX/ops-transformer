@@ -422,7 +422,6 @@ static ge::graphStatus InferDataTypeAttentionPioneer(gert::InferDataTypeContext 
 IMPL_OP_INFERSHAPE(AttentionPioneer)
     .InferShape(InferShapeAttentionPioneer)
     .InferDataType(InferDataTypeAttentionPioneer)
-    .InputsDataDependency({FIA_INPUT_ACTUAL_SEQ_LENGTHS_INDEX, FIA_INPUT_ACTUAL_SEQ_LENGTHS_KV_INDEX,
-                           FIA_INPUT_QUERY_PADDING_SIZE_INDEX, FIA_INPUT_KV_PADDING_SIZE_INDEX,
+    .InputsDataDependency({FIA_INPUT_QUERY_PADDING_SIZE_INDEX, FIA_INPUT_KV_PADDING_SIZE_INDEX,
                            FIA_INPUT_ACTUAL_SHARED_PREFIX_LEN_INDEX});
 } // namespace ops
