@@ -456,10 +456,6 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
     outputL1.WaitCrossCore(); // 核间同步
-    if constexpr (IS_SPLIT_G) {
-        v0ResGm.WaitCrossCore();
-    }
-
     blockSize = constInfo.blockSize;
     maxBlockNumPerBatch = constInfo.maxBlockNumPerBatch;
 

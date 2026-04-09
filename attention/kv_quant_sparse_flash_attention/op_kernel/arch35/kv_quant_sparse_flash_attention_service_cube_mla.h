@@ -249,7 +249,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         DataCopy(dst, v0ResGmTensor, runInfo.s2RealSize * constInfo.dSize);
         SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
         WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-        v0ResGm.SetCrossCore();
     }
 
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A

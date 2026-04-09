@@ -200,6 +200,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     uint32_t avgBaseNum = 1;
     if (totalBaseNum > coreNum) {
         avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
+        if constexpr (IS_SPLIT_G) {
+            usedCoreNum = (totalBaseNum + avgBaseNum - 1) / avgBaseNum * 2;
+        }
     } else {
         if constexpr (IS_SPLIT_G) {
             usedCoreNum = totalBaseNum * 2;
@@ -353,7 +356,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     }
 
     if constexpr (IS_SPLIT_G) {
-        uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
+        uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
         int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
         gmBufferManager.Init(workspace + totalOffset);
         v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
