@@ -44,15 +44,26 @@ def estimate_matmul_split_kn(
 ) -> Tuple[MatMulTiming, VectorOpTiming]:
     """Model matmul with 2D split: N-axis × K-axis across cores.
 
-    Cores are organized as (n_groups × k_groups) grid.
-    - n_groups cores split N: each handles single_n columns
-    - k_groups cores split K: each handles single_k of K reduction
-    - If k_groups > 1: FixPipe outputs float32, vector accumulates partial sums
-    - A matrix: within same K-group, n_groups cores share A slice (L2 reuse)
+    Returns per-AI-core timing for one (k_group_idx, n_group_idx) tile:
+      - cube_timing:  one cube core processing M × K_per_core × N_per_core
+                      (includes the FP32 partial-output FixPipe pressure when
+                      k_groups > 1, since c_size becomes 4 bytes)
+      - accum_timing: 2 vector cores reducing k_groups partials for one
+                      (M × N_per_core) tile
+
+    Pipeline overlap between accum_timing (on AIV) and subsequent AIC matmul
+    stages is NOT applied here — the caller (build_pipeline_dag) places
+    AccumCq/AccumCkvKr as separate AIV nodes with dependencies, and the DAG
+    forward pass hides accum under whatever AIC stage runs in parallel.
+
+    Per-AI-core scope (1 cube + 2 vectors per AI core, 950 1:2 ratio):
+      - Cube call uses active_cores=1 (full per-core HBM/L2 bandwidth)
+      - Accum call uses active_cores=2 (2 V cores per AI core)
+      - K-cores within one n-group all work on the SAME N slice (N_per_core
+        columns), they only split K — they do NOT split N further.
     """
     K_per_core = spec.single_k
     N_per_core = spec.single_n
-    total_cores = spec.total_cores
 
     # Cube: override block for reduced K and N, float output if K-split
     c_size = 4 if spec.k_groups > 1 else out_size
@@ -68,33 +79,38 @@ def estimate_matmul_split_kn(
     if derived > 0:
         block_kn.stepK = derived
 
-    # All total_cores contend on HBM, but within a K-group the n_groups cores
-    # share the same A slice via L2. Model: pass total_cores for contention,
-    # a_reused reflects cross-matmul reuse (e.g., MM2 reuses tokenX from MM1).
-    # Within a K-group, A is loaded once from HBM and reused via L2 by n_groups-1
-    # other cores. We model this by treating A as L2-reused when n_groups > 1.
+    # Within a K-group, the n_groups cores share the same A slice (loaded once
+    # from HBM and reused via L2 by the other n_groups-1 cores). Model A as
+    # L2-reused when n_groups > 1, on top of any cross-matmul reuse.
     a_is_l2 = a_reused or spec.n_groups > 1
 
+    # Per-AI-core cube modeling: one (k_group, n_group) cube core processes
+    # M × K_per_core × N_per_core. Pass per_core_N directly with active_cores=1
+    # so estimate_matmul_detailed sees the right tile and uses full per-core
+    # bandwidth (not chip-total / total_cores). The per-core FixPipe pressure
+    # is now correct (k_groups× larger than the previous buggy value, because
+    # per_core_N is no longer divided by k_groups).
     cube_timing = estimate_matmul_detailed(
-        name, M, K_per_core, N_per_core * spec.n_groups,
-        active_cores=total_cores, hw=hw, block=block_kn, a_reused=a_is_l2,
+        name, M, K_per_core, N_per_core,
+        active_cores=1, hw=hw, block=block_kn, a_reused=a_is_l2,
     )
 
     # Vector accumulation (if k_groups > 1)
+    # Per AI core: 2 vector cores reduce k_groups partials for one (M × N_per_core)
+    # tile. Each partial is FP32 (4 bytes), the final result is BF16 (out_size).
+    # Pipeline overlap with subsequent AIC matmul is handled by build_pipeline_dag,
+    # not here — this function only reports the per-AI-core duration.
     if spec.k_groups > 1:
-        # Per N-group: load k_groups partial sums, reduce, store
-        # All n_groups accumulations run in parallel on different vec cores
-        per_group_load = spec.k_groups * M * N_per_core * 4
-        per_group_compute = M * N_per_core * (spec.k_groups - 1)
-        per_group_store = M * N_per_core * out_size
-        # vec_cores shared across n_groups
-        cores_per_group = max(vec_cores // spec.n_groups, 1)
+        per_tile_load_bytes = spec.k_groups * M * N_per_core * 4
+        per_tile_compute_elements = M * N_per_core * (spec.k_groups - 1)
+        per_tile_store_bytes = M * N_per_core * out_size
+        # 2 V cores per AI core (950 ratio: 32 AIC : 64 AIV = 1:2)
         accum_timing = estimate_vector_op(
             f"Accum{name.split('_')[0]}",
-            load_bytes=per_group_load,
-            compute_elements=per_group_compute,
-            store_bytes=per_group_store,
-            hw=hw, active_cores=cores_per_group,
+            load_bytes=per_tile_load_bytes,
+            compute_elements=per_tile_compute_elements,
+            store_bytes=per_tile_store_bytes,
+            hw=hw, active_cores=2,
         )
     else:
         accum_timing = VectorOpTiming(name=f"Accum{name.split('_')[0]}")

@@ -93,6 +93,14 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
 - baseM 假设 16 对齐
 - 实际 kernel 可能因 stride 限制使用更严格对齐
 
+### H9. Split-KN 单 AI core 建模
+- `estimate_matmul_split_kn` 在 split-kn (k_groups > 1) 配置下采用 **per-AI-core 建模**：1 cube core + 2 vector cores 的局部视角，不建模 chip-total HBM 竞争
+- **Cube 调用**：`estimate_matmul_detailed(M, K_per_core, N_per_core, active_cores=1, ...)`，使用全 per-core 带宽。N_per_core 是 n-group 切分的列数，**不再被 k_groups 错除**（修复了历史 bug：之前传 `N_per_core × n_groups` + `active_cores=total_cores`，导致 per_core_N 被错误地 / k_groups）
+- **FixPipe 压力**：cube 输出 dtype 在 k_groups > 1 时为 FP32 (4 字节)；per_core_N 修正后，per-core FixPipe 字节数现在 k_groups× 大于错误版本，正确反映 K-split 引入的搬出压力
+- **Vector 累加调用**：`estimate_vector_op(..., active_cores=2)`，反映每 AI core 的 2 个 vector cores 处理一份 (M × N_per_core) 的累加工作
+- **流水掩盖**：累加 stage (`AccumCq` / `AccumCkvKr`) 与后续 AIC matmul 的重叠由 `build_pipeline_dag` 在 DAG 层处理，本函数不做掩盖。这与 H7、`feedback_pipeline_overlap.md` 一致
+- **代价**：单 AI core 视角忽略 n_groups × k_groups 个 cube core 之间的 HBM 总线竞争。对评估 split-kn 配置间的相对优劣是准确的；对绝对 wall-clock 数字应额外考虑 chip-total 竞争
+
 ---
 
 ## 4. Design Prototypes (关键设计原型)
