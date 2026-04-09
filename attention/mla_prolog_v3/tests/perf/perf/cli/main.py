@@ -11,7 +11,8 @@ from ..tiling.config import compute_tiling
 from .formatting import params_from_testcase
 from .modes import (
     advice, block_search, bound, dequant_opt, estimate, pipeline, prefill,
-    report, roofline, search, split_kn, split_kn_fused, split_m,
+    prefill_msplit, report, roofline, search, split_kn, split_kn_fused,
+    split_m,
 )
 
 _USAGE_EPILOG = """\
@@ -73,7 +74,8 @@ def main():
                         choices=["bound", "pipeline", "estimate", "advice",
                                  "search", "report", "roofline", "block-search",
                                  "split-kn", "split-kn-fused", "split-m",
-                                 "prefill", "dequant-opt", "full"],
+                                 "prefill", "prefill-msplit", "dequant-opt",
+                                 "full"],
                         help="Analysis mode (default: full = all modes)")
 
     # Hardware
@@ -155,6 +157,7 @@ def main():
         "split-kn-fused": split_kn_fused.run,
         "split-m": split_m.run,
         "prefill": prefill.run,
+        "prefill-msplit": prefill_msplit.run,
         "dequant-opt": dequant_opt.run,
     }
 
