@@ -192,7 +192,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
         uint64_t hcclBuffSize = 0;
         const char* opName = "moe_distribute_combine_v2";
         auto ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        CHECK_RET(ret == HCCL_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
             mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
             activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
