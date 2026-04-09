@@ -344,6 +344,8 @@ void QSFAPMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockSize(sfaaInfo_->sparseBlockSize);
     tilingData_.baseParams.set_sparseBlockCount(sfaaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_dSizeVInput(sfaaInfo_->dSizeVInput);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -1898,7 +1900,10 @@ void QSFAPInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaaInfo.maxActualseq = maxActualseq_;
+
+    sfaaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
     sfaaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
+
     sfaaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaaInfo.isSameActualseq = isSameActualseq_;
 

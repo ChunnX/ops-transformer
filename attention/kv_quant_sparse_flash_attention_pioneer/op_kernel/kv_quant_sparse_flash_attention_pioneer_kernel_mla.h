@@ -126,6 +126,8 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     const KvQuantSparseFlashAttentionPioneerTilingDataMla *__restrict tiling,
     TPipe *tPipe)
 {
+    constInfo.isActualLenDimsNull = actualSeqLengthsQ == nullptr ? true : false;
+    constInfo.isActualLenDimsKVNull = actualSeqLengths == nullptr ? true : false;
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
@@ -261,8 +263,6 @@ KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecBlockType>::GetBalanceAc
     } else {
         if (constInfo.isActualLenDimsNull == 1) {
             return constInfo.s1Size;
-        } else if (constInfo.isActualLenDimsNull == 0) {
-            return actualSeqQlenAddr[0];
         } else {
             return actualSeqQlenAddr[bIdx];
         }
