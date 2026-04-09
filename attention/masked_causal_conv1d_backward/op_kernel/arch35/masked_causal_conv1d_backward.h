@@ -51,18 +51,17 @@ private:
                                        int64_t sLen, int64_t hLenThis);
     __aicore__ inline void CopyInWeight(int64_t hTile, int64_t hLenThis);
     __aicore__ inline void CopyInMask(int64_t bTile, int64_t sTile, int64_t sLen);
-    __aicore__ inline void ComputeGradOutputMask(int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void ApplyMaskToGradOutput(LocalTensor<DT>& goLocal, int64_t sEff, int64_t hLenThis);
     __aicore__ inline void ComputeGradInputWeight(LocalTensor<DT>& goLocal,
-                                                    LocalTensor<DT>& inLocal,
-                                                    LocalTensor<DT>& wLocal,
-                                                    int64_t sLen, int64_t hLenThis);
-    __aicore__ inline void ReduceSTile(int64_t sTile, int64_t sLen, int64_t hLenThis);
-    __aicore__ inline void ReduceWsTile(int64_t bTile, int64_t hLenThis);
+                                                LocalTensor<DT>& inLocal,
+                                                LocalTensor<DT>& wLocal,
+                                                int64_t sLen, int64_t hLenThis);
     __aicore__ inline void CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
                                             int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void ReduceSTile(int64_t sTile, int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void ReduceWsTile(int64_t bTile, int64_t hLenThis);
     __aicore__ inline void ReduceBTileAndCopyOut(int64_t hTile, int64_t hLenThis);
     __aicore__ inline void AccumulateLevels(uint32_t kIdx, int64_t hLenThis, uint32_t wsBase, uint32_t wsStrideBytes, LocalTensor<float>& sumUb);
-    __aicore__ inline void ApplyMaskToGradOutput(LocalTensor<DT>& goLocal, int64_t sEff, int64_t hLenThis);
 
     template <HardEvent event>
     __aicore__ inline void SetWaitFlag(HardEvent evt)
@@ -118,7 +117,6 @@ private:
 
     // Binary reduction cache for S (levels = floor(log2(sLoopCntCur_))+1)
     int32_t sCacheLevels_{0};
-    uint32_t sCacheMask_[kW];
 
     // fp32 accumulators for grad_weight
     LocalTensor<float> gwAccF32_[kW];
@@ -153,14 +151,14 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     H_ = td->H;                      // H维度大小
 
     // compute this core's H start/len
-    uint64_t blkIdx = GetBlockIdx();
-    isMainCore_ = (blkIdx < static_cast<uint64_t>(hMainCoreCnt_));
+    int64_t blkIdx = GetBlockIdx();
+    isMainCore_ = (blkIdx < hMainCoreCnt_);
     if (isMainCore_) {
         hStart_ = blkIdx * hMainSize_;
         hLen_ = hMainSize_;
     } else {
-        uint64_t tailIdx = blkIdx - static_cast<uint64_t>(hMainCoreCnt_);
-        hStart_ = static_cast<uint64_t>(hMainCoreCnt_) * hMainSize_ + tailIdx * hTailSize_;
+        int64_t tailIdx = blkIdx - hMainCoreCnt_;
+        hStart_ = hMainCoreCnt_ * hMainSize_ + tailIdx * hTailSize_;
         hLen_ = hTailSize_;
     }
 
@@ -190,7 +188,6 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     pipe_->InitBuffer(weightQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * kW * sizeof(DT)));
     if (hasMask_) {
         uint32_t sEffMax = static_cast<uint32_t>(ubMainSCur_ + 2);
-        // vecBytes holds the per-row vector (DT, sizeof(DT)==2; also suits half) and planeBytes holds the broadcast plane
         uint32_t vecBytes   = static_cast<uint32_t>(((sEffMax * sizeof(DT) + (kAlignBytes - 1)) / kAlignBytes) * kAlignBytes);
         uint32_t planeBytes = static_cast<uint32_t>(sEffMax * ubMainHCur_ * sizeof(DT));
         pipe_->InitBuffer(maskBuf_, vecBytes + planeBytes);
@@ -201,11 +198,10 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     pipe_->InitBuffer(gradInQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * ubMainSCur_ * sizeof(DT)));
     pipe_->InitBuffer(gradWeightQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * kW * sizeof(DT)));
 
-    // Reuse a single buffer (tmpBuf_) for accumulators, product planes, S-partial sums (Ws) and sum buffer
     // Layout in bytes: [accBytes | p2Plane | p1Plane | p0Plane | wsBytes | sumBytes]
     uint32_t accBytes = static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float));
     uint32_t planeBytesCap = static_cast<uint32_t>(kW * ubMainSCur_ * ubMainHCur_ * sizeof(float));
-    // Binary reduction cache levels: floor(log2(sLoopCntCur_)) + 1 (e.g., L=8 -> 4 levels)
+    // Binary reduction cache levels: floor(log2(sLoopCntCur_)) + 1
     sCacheLevels_ = 1;
     {
         int64_t t = sLoopCntCur_;
@@ -241,23 +237,17 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Process()
         LocalTensor<DT> wLocal = weightQ_.DeQue<DT>();
 
         for (int64_t bTile = 0; bTile < B_; ++bTile) {
-            // reset binary-reduce layer occupancy for this B tile
-            sCacheMask_[0] = 0U;
-            sCacheMask_[1] = 0U;
-            sCacheMask_[2] = 0U;
             for (int64_t sTile = 0; sTile < sLoopCntCur_; ++sTile) {
                 int64_t sLen = (sTile < sMainCntCur_) ? ubMainSCur_ : ubTailSCur_;
                 int64_t sEff = (sTile == sLoopCntCur_ - 1) ? sLen : (sLen + 2);
 
                 CopyInGradOutput(bTile, sTile, hTile, sEff, hLenThis);
                 CopyInInput(bTile, sTile, hTile, sLen, hLenThis);
-                if (hasMask_) {
-                    CopyInMask(bTile, sTile, sEff);
-                }
 
                 LocalTensor<DT> goLocal = gradOutQ_.DeQue<DT>();
                 LocalTensor<DT> inLocal = inputQ_.DeQue<DT>();
                 if (hasMask_) {
+                    CopyInMask(bTile, sTile, sEff);
                     ApplyMaskToGradOutput(goLocal, sEff, hLenThis);
                 }
                 ComputeGradInputWeight(goLocal, inLocal, wLocal, sLen, hLenThis);
@@ -278,22 +268,6 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Process()
     }
 }
 
-template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ComputeGradOutputMask(int64_t sLen, int64_t hLenThis)
-{
-    LocalTensor<bool> mLocal = maskQ_.DeQue<bool>();
-    LocalTensor<DT> goLocal = gradOutQ_.DeQue<DT>();
-    for (int64_t s = 0; s < sLen; ++s) {
-        bool flag = mLocal.GetValue(static_cast<uint32_t>(s));
-        if (!flag) {
-            uint32_t offset = static_cast<uint32_t>((s) * hLenThis);
-            LocalTensor<DT> row = goLocal[offset];
-            Duplicate(row, static_cast<DT>(0), static_cast<uint32_t>(hLenThis));
-        }
-    }
-    maskQ_.FreeTensor(mLocal);
-    gradOutQ_.EnQue<DT>(goLocal);
-}
 
 template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ComputeGradInputWeight(
@@ -340,7 +314,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
     // binary-reduce insert for k=2
     {
         int64_t level = 0;
-        while (level < sCacheLevels_ - 1 && (static_cast<uint64_t>(sTile) & (1ULL << level))) {
+        while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
             LocalTensor<float> ws2_lvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
                 static_cast<uint32_t>(wsBase + (0U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
             Add(sumUb, sumUb, ws2_lvl, static_cast<uint32_t>(hLenThis));
@@ -356,7 +330,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
     // binary-reduce insert for k=1
     {
         int64_t level = 0;
-        while (level < sCacheLevels_ - 1 && (static_cast<uint64_t>(sTile) & (1ULL << level))) {
+        while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
             LocalTensor<float> ws1_lvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
                 static_cast<uint32_t>(wsBase + (1U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
             Add(sumUb, sumUb, ws1_lvl, static_cast<uint32_t>(hLenThis));
@@ -372,7 +346,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
     // binary-reduce insert for k=0
     {
         int64_t level = 0;
-        while (level < sCacheLevels_ - 1 && (static_cast<uint64_t>(sTile) & (1ULL << level))) {
+        while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
             LocalTensor<float> ws0_lvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
                 static_cast<uint32_t>(wsBase + (2U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
             Add(sumUb, sumUb, ws0_lvl, static_cast<uint32_t>(hLenThis));
