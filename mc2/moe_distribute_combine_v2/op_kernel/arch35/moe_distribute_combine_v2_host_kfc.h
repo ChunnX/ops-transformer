@@ -944,7 +944,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Sum
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId, 
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId,
     LocalTensor<float> sumTileUb, LocalTensor<uint32_t> existFlagUb)
     
 {
