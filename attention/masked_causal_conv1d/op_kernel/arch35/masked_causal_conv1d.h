@@ -192,8 +192,8 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
     // Decode 3D core index: blockIdx = hCoreIdx + bCoreIdx*hCoreCnt + sCoreIdx*(hCoreCnt*bCoreCnt)
     uint32_t blockIdx = GetBlockIdx();
 
-    hCoreIdx_ = blockIdx % hCoreCnt_;
-    bCoreIdx_ = (blockIdx / hCoreCnt_) % bCoreCnt_;
+    hCoreIdx_ = blockIdx - (blockIdx / hCoreCnt_) * hCoreCnt_;
+    bCoreIdx_ = (blockIdx / hCoreCnt_) - ((blockIdx / hCoreCnt_) / bCoreCnt_)  * bCoreCnt_;
     sCoreIdx_ = blockIdx / (hCoreCnt_ * bCoreCnt_);
 
     // Compute this core's H range
