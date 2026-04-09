@@ -99,8 +99,11 @@ class QuantMatmulDequantGrouped : public QuantMatmulDequantNormal {
     PipeBarrier<PIPE_ALL>();
   }
 
-  __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR group_list, GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale,
-                              GM_ADDR y, GM_ADDR usrWorkspace, const QuantGroupedMatmulDequantTilingData* __restrict qmmTiling) {
+__aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR group_list,
+                            GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale,
+                            GM_ADDR y, GM_ADDR usrWorkspace,
+                            const QuantMatmulDequantTilingData* __restrict qmmTiling)
+{
     // block_id
     block_id = GetBlockIdx();
     tilingData = qmmTiling;
@@ -115,7 +118,7 @@ class QuantMatmulDequantGrouped : public QuantMatmulDequantNormal {
     InitSyncWsSwift();
 
     InitTransLocalLists();
-  }
+}
   __aicore__ inline void SetSwift(){
     isSwift = true;
   }
