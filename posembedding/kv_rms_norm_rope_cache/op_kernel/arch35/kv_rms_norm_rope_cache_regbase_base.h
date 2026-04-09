@@ -50,7 +50,7 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_INT32_TO_FP32 = {
     AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_INT16 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::MicroAPI::CastTrait CAST_INT16_TO_FP16 = {
