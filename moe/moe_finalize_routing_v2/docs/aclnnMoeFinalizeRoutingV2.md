@@ -21,9 +21,9 @@
   $$
   expertid=expertIdx[i,k]
   $$
-  
+ 
   $$
-  out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
+  out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j})) 
   $$
 
 ## 函数原型
@@ -39,7 +39,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
-    int64_t          dropPadMode,
+    int64_t         dropPadMode,
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
