@@ -23,8 +23,6 @@
 #include "hccl/hccl_rank_graph.h"
 #include "mmpa/mmpa_api.h"
 #include "acl/acl.h"
-#include "opdev/op_errno.h"
-#include "opdev/platform.h"
 
 static constexpr uint32_t COMM_ALG_DEFAULT = 0U;
 static constexpr uint32_t COMM_MESH = 0b1U;
@@ -42,7 +40,7 @@ public:
     static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t *cclBufferSize);
 
     // 新增的静态接口，通过实例内部的hcclHandle_获取数据
-    static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
+    static HcclResult GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                            aclTensor *&mc2Context);
 
 private:
@@ -51,20 +49,20 @@ private:
     ~MC2HcomTopology();
 
     // 内部辅助方法
-    aclnnStatus LoadHcclSymbols();
-    aclnnStatus GetCommHandle(const char *groupEp);
-    aclnnStatus GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId, uint32_t dstRankId,
+    HcclResult LoadHcclSymbols();
+    HcclResult GetCommHandle(const char *groupEp);
+    HcclResult GetHcclCommLink(uint32_t netLayers, uint32_t srcRankId, uint32_t dstRankId,
                                 const CommProtocol &protocol, CommLink *&links);
-    aclnnStatus GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
+    HcclResult GetHcclCommChannel(uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
                                    const CommEngine &engine, std::vector<ChannelHandle> &channels);
-    aclnnStatus GetHcclCommResource(const CommEngine &engine, const CommProtocol &protocol,
+    HcclResult GetHcclCommResource(const CommEngine &engine, const CommProtocol &protocol,
                                     Mc2MoeContext *mc2ContextStruct);
-    aclnnStatus CreatMc2Context(const std::string &mc2ContextTag, const CommEngine &engine,
+    HcclResult CreatMc2Context(const std::string &mc2ContextTag, const CommEngine &engine,
                                 const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
-    aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
-    aclnnStatus GetHcclBufferSize(uint64_t &hcclBuffSize);
-    aclnnStatus GetCommEngine(CommEngine &engine, CommProtocol &protocol);
-    aclnnStatus GetaclCreateTensorSymbol();
+    HcclResult CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
+    HcclResult GetHcclBufferSize(uint64_t &hcclBuffSize);
+    HcclResult GetCommEngine(CommEngine &engine, CommProtocol &protocol);
+    HcclResult GetaclCreateTensorSymbol();
 
     HcclResult CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle) const;
 #ifdef BUILD_OPEN_PROJECT
