@@ -56,17 +56,17 @@ public:
 private:
     __aicore__ inline void CalcSoftmaxBackward(__local_mem__ float *gradYAddr, __local_mem__ float *normAddr,
                                                __local_mem__ float *gradInputAddr,__local_mem__ uint32_t *maskAddr, 
-                                               __local_mem__ float *tempAddr, uint32_t dataLen, uint32_t n, uint32_t perT);
+                                               __local_mem__ float *tempAddr, uint32_t n, uint32_t perT);
 
     __aicore__ inline void CalcColBackward(__local_mem__ float *gradYAddr, __local_mem__ float *normAddr,
                                            __local_mem__ float *sumAddr, __local_mem__ float *gradInputAddr,
                                            __local_mem__ uint32_t *maskAddr, __local_mem__ float *tempAddr,
-                                           uint32_t dataLen, uint32_t n, uint32_t perT);
+                                           uint32_t n, uint32_t perT);
 
     __aicore__ inline void CalcRowBackward(__local_mem__ float *gradYAddr, __local_mem__ float *normAddr,
                                            __local_mem__ float *sumAddr, __local_mem__ float *gradInputAddr,
                                            __local_mem__ uint32_t *maskAddr, __local_mem__ float *tempAddr,
-                                           uint32_t dataLen, uint32_t n, uint32_t perT);
+                                           uint32_t n, uint32_t perT);
     
     template <HardEvent EVENT>
     __aicore__ inline void SetWaitEvent(HardEvent event);
@@ -107,13 +107,11 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Init(GM_ADDR gradY, GM_ADDR norm
     
     // 如果是主核的话
     loop_ = tilingData_.normCoreTLoops; // 循环次数
-    totalTSize_ = tilingData_.coreTSize; // 总T
     loopTSize_ = tilingData_.normCorePerLoopTSize;  // 主块T
     tailLoopTSize_ = tilingData_.normCoreLastLoopTSize; // 尾块T
     // 如果是尾核的话
     if (blockIdx_ == tilingData_.needCoreNum - 1) {
         loop_ = tilingData_.tailCoreLoops;
-        totalTSize_ = tilingData_.tailCoreTSize;
         loopTSize_ = tilingData_.tailCorePerLoopTSize;
         tailLoopTSize_ = tilingData_.tailCoreLastLoopTSize;
     }
@@ -132,7 +130,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(__local_mem__ fl
                                                                  __local_mem__ float *gradInputAddr,
                                                                  __local_mem__ uint32_t *maskAddr,
                                                                  __local_mem__ float *tempAddr,
-                                                                 uint32_t dataLen, uint32_t n, uint32_t perT)
+                                                                 uint32_t n, uint32_t perT)
 {
     __VEC_SCOPE__
     {
@@ -151,7 +149,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(__local_mem__ fl
         MicroAPI::RegTensor<int32_t> tmpReg1;
         MicroAPI::RegTensor<int32_t> tmpReg2;
         MicroAPI::RegTensor<int32_t> tmpReg3;
-        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(dataLen);
+        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(perT);
 
         // 生成索引 indexReg
         MicroAPI::Duplicate(duplicateReg1, INDEX_BLOCK_LEN); // 填充 8
@@ -172,7 +170,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(__local_mem__ fl
         MicroAPI::ReduceSumWithDataBlock(sumGradYReg, gradInputReg, maskReg);
 
         // 先要搬出去再搬进来广播 todo:能不能之间广播？
-        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(tempAddr, sumGradYReg);
+        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(tempAddr, sumGradYReg, dataCopyMaskReg);
         MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(sumGradYReg, tempAddr);
 
@@ -190,7 +188,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(__local_mem__ fl
                                                                  __local_mem__ float *gradInputAddr,
                                                                  __local_mem__ uint32_t *maskAddr,
                                                                  __local_mem__ float *tempAddr,
-                                                                 uint32_t dataLen, uint32_t n, uint32_t perT)
+                                                                 uint32_t n, uint32_t perT)
 {
     __VEC_SCOPE__
     {
@@ -209,7 +207,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(__local_mem__ fl
         MicroAPI::RegTensor<int32_t> tmpReg1;
         MicroAPI::RegTensor<int32_t> tmpReg2;
         MicroAPI::RegTensor<int32_t> tmpReg3;
-        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(dataLen);
+        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(perT);
 
         // 生成索引 indexReg
         MicroAPI::Duplicate(duplicateReg1, INDEX_BLOCK_LEN); // 填充 8
@@ -230,7 +228,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(__local_mem__ fl
         MicroAPI::Mul(gradInputReg, gradYReg, normReg, maskReg);
         MicroAPI::ReduceSumWithDataBlock(sumGradYReg, gradInputReg, maskReg); // 8*8 ->  1*8
         // 1*8 -> 8*8
-        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(tempAddr, sumGradYReg);
+        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(tempAddr, sumGradYReg, dataCopyMaskReg);
         MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(sumGradYReg, tempAddr); // sumGradYReg ->8*8
 
@@ -246,7 +244,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(__local_mem_
                                                                     __local_mem__ float *gradInputAddr,
                                                                     __local_mem__ uint32_t *maskAddr, 
                                                                     __local_mem__ float *tempAddr,
-                                                                    uint32_t dataLen, uint32_t n, uint32_t perT)
+                                                                    uint32_t n, uint32_t perT)
 {
     __VEC_SCOPE__
     {
@@ -269,7 +267,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(__local_mem_
         MicroAPI::RegTensor<int32_t> tmpReg1;
         MicroAPI::RegTensor<int32_t> tmpReg2;
         MicroAPI::RegTensor<int32_t> tmpReg3;
-        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(dataLen);
+        MicroAPI::MaskReg dataCopyMaskReg = MicroAPI::UpdateMask<uint32_t>(perT);
 
         // indexReg：使用DataCopyGather生成制定索引
         MicroAPI::Duplicate(duplicateReg1, static_cast<int32_t>(INDEX_BLOCK_LEN));  // 填充8,以8个float数为一个block
@@ -291,7 +289,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(__local_mem_
         MicroAPI::ReduceSumWithDataBlock(dotProdReg, mulResultReg, maskReg); // 1*8
 
         // 将dotProdReg [1,t,align_n] 广播到 [n,t,align_n]
-        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(tempAddr, dotProdReg);
+        MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM>(tempAddr, dotProdReg, dataCopyMaskReg);
         MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(dotProdReg, tempAddr); // 8*8
 
@@ -344,6 +342,8 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         // 计算gradY起始偏移地址以及搬运的数据量
         LocalTensor<float> gradYLocal = inputGradYQue_.AllocTensor<float>();
         LocalTensor<float> gradInputLocal = outputQue_.AllocTensor<float>();
+        LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
+        LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
         uint64_t gradYOffset = blockIdx_ * tilingData_.coreTSize * nSize_ * nSize_ +
                                i * loopTSize_ * nSize_ * nSize_;
         uint32_t loopSize = (i == loop_ - 1) ? tailLoopTSize_ : loopTSize_; // 整块处理的矩阵个数
@@ -358,11 +358,17 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         __local_mem__ float *gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
         __local_mem__ uint32_t *maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
         __local_mem__ float *tempAddr = (__local_mem__ float *)tempLocal.GetPhyAddr();
+        __local_mem__ float *normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
+        __local_mem__ float *sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();
 
         // 计算UB -> reg 循环次数
         // 每一次能搬几个T
         uint32_t repeatSize = Ops::Base::GetVRegSize() / BLOCK_SIZE; // 256/32=8
         uint16_t repeatTimes = Ceil(loopSize, repeatSize); // 总T / 每次T = 循环次数  假设总T=13  循环次数=2， 第一次处理8 第二次处理3
+
+        // norm_out、sum_out搬运数据量：GM -> UB [行,列]
+        uint32_t normSize = loopSize * nSize_ * nAlignSize_; // norm_out从GM搬到UB上的元素个数：
+        uint32_t sumSize = loopSize * nAlignSize_; // sum_out从GM搬到UB上的元素个数：
 
         // 迭代numIters-1次，迭代19次 列 -> 行 -> 列 -> 行 -> 列 -> ....
         for (int64_t iter = tilingData_.numIters - 1; iter > 0; iter--) {  // 参考A3写法，迭代下标从19开始
@@ -378,16 +384,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             uint64_t sumOffset = colOffset * tilingData_.totalLength * nSize_ + nAlignSize_ +
                                  2 * blockIdx_ * tilingData_.coreTSize * nAlignSize_ +
                                  i * loopTSize_ * nAlignSize_;
-            
-            // norm_out、sum_out搬运数据量：GM -> UB [行,列]
-            uint32_t normSize = loopSize * nSize_ * nAlignSize_; // norm_out从GM搬到UB上的元素个数：
-            uint32_t sumSize = loopSize * nAlignSize_; // sum_out从GM搬到UB上的元素个数：
             CopyInNormAndSum(normOffset, normSize, sumOffset, sumSize);
-
-            LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
-            LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
-            __local_mem__ float *normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
-            __local_mem__ float *sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();
 
             for (uint16_t j = 0; j < repeatTimes; j++) {
                 uint32_t perT = min(repeatSize, loopSize - (repeatSize * repeatTimes));
@@ -396,11 +393,8 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                     auto curGradYAddr = gradYAddr + j * repeatSize * nSize_ + k * nSize_;
                     auto curNormAddr = normAddr + j * repeatSize * nAlignSize_ + k * perT * nAlignSize_;
                     auto curSumAddr = sumAddr + j * repeatSize * nAlignSize_; // 和k无关
-                    auto curGradInputAddr = gradInputAddr + j * repeatSize * nSize + k * nSize_;
-                    uint32_t dataLen = perT * nAlignSize_;
-                    // uint32_t dataLen = loopSize * nSize_ * nAlignSize_; // 总数据量=总T*n*n 存疑
-                    CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, tempAddr,
-                                    static_cast<uint32_t>(dataLen), static_cast<uint32_t>(nSize_), perT);
+                    auto curGradInputAddr = gradInputAddr + j * repeatSize * nSize_ + k * nSize_;
+                    CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, tempAddr, static_cast<uint32_t>(nSize_), perT);
                 }
                 __VEC_SCOPE__
                 {
@@ -436,10 +430,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                     auto curNormAddr = normAddr + j * repeatSize * nAlignSize_ + k * perT * nAlignSize_;
                     auto curSumAddr = sumAddr + j * nAlignSize_ + k * loopSize;
                     auto curGradInputAddr = gradInputAddr + j * repeatSize * nSize_ + k * nSize_;
-                    uint32_t dataLen = perT * nAlignSize_;
-                    // uint32_t dataLen = loopSize * nSize_ * nAlignSize_; // 总数据量=总T*n*n 存疑
-                    CalcRowBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, tempAddr,
-                                    static_cast<uint32_t>(dataLen), static_cast<uint32_t>(nSize_), perT);
+                    CalcRowBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, tempAddr, static_cast<uint32_t>(nSize_), perT);
                 }
                 __VEC_SCOPE__
                 {
@@ -474,10 +465,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                 auto curNormAddr = normAddr + j * repeatSize * nAlignSize_ + k * perT * nAlignSize_;
                 auto curSumAddr = sumAddr + j * repeatSize * nAlignSize_;
                 auto curGradInputAddr = gradInputAddr + j * repeatSize * nSize_ + k * nSize_;
-                uint32_t dataLen = perT * nAlignSize_;
-                // uint32_t dataLen = loopSize * nSize_ * nAlignSize_; // 总数据量=总T*n*n 存疑
-                CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, tempAddr,
-                                static_cast<uint32_t>(dataLen), static_cast<uint32_t>(nSize_), perT);
+                CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, tempAddr, static_cast<uint32_t>(nSize_), perT);
             }
             __VEC_SCOPE__
             {
@@ -492,7 +480,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                             2 * blockIdx_ * tilingData_.coreTSize * nSize_ * nAlignSize_ + 
                             i * loopTSize_ * nSize_ * nAlignSize_;
         // norm_out、sum_out搬运数据量：GM -> UB
-        normParams = {1, static_cast<uint32_t>(normSize * sizeof(float)), 0, 0, 0};
+        DataCopyExtParams normParams = {1, static_cast<uint32_t>(normSize * sizeof(float)), 0, 0, 0};
         DataCopyPad(normLocal, norm_[normOffset], normParams, dataCopyPadExtParams);
 
         for (uint16_t j = 0; j < repeatTimes; j++) {
@@ -502,9 +490,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
                 auto curGradYAddr = gradYAddr + j * repeatSize * nSize_ + k * nSize_;
                 auto curNormAddr = normAddr + j * repeatSize * nAlignSize_ + k * perT * nAlignSize_;
                 auto curGradInputAddr = gradInputAddr + j * repeatSize * nSize_ + k * nSize_;
-                uint32_t dataLen = perT * nAlignSize_;
-                // uint32_t dataLen = loopSize * nSize_ * nAlignSize_; // 总数据量=总T*n*n 存疑
-                CalcSoftmaxBackward(curGradYAddr, curNormAddr, curGradInputAddr, maskAddr, tempAddr, static_cast<uint32_t>(dataLen), static_cast<uint32_t>(nSize_), perT);
+                CalcSoftmaxBackward(curGradYAddr, curNormAddr, curGradInputAddr, maskAddr, tempAddr, static_cast<uint32_t>(nSize_), perT);
             }
             __VEC_SCOPE__
             {
