@@ -79,19 +79,6 @@ CATLASS_DEVICE void AtomicAddFlagVec(__gm__ int32_t* flagPtr, int32_t flagNum, i
     SetWaitFlag<AscendC::HardEvent::S_MTE3>();
 }
 
-CATLASS_DEVICE
-void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t& coreOffset, int32_t align = 32)
-{
-    int32_t coreIdx = AscendC::GetBlockIdx(); // 0-63
-    int32_t coreNum = AscendC::GetBlockNum() * 2; // 32
-    int32_t lenPerCore = CeilDiv((uint32_t)totalLen, coreNum) / align * align;
-    coreLen = lenPerCore;
-    coreOffset = coreIdx * lenPerCore;
-    if (coreOffset + coreLen > totalLen) {
-        coreLen = totalLen - coreOffset;
-    }
-}
-
 class HcclShmem {
 public:
    #ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context

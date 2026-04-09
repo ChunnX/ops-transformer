@@ -86,9 +86,9 @@ struct WorkspaceInfo{
         ptrSumBeforeRank = base + workspaceSize;
         workspaceSize += CeilAlign(tilingData->EP * tilingData->expertPerRank, ALIGN_128) * sizeof(int32_t);
         ptrFlagList = base + workspaceSize;
-        workspaceSize += tilingData->expertPerRank * INT_CACHELINE * MAX_AICORE_NUM * sizeof(int32_t);
+        workspaceSize += tilingData->expertPerRank * INT_CACHELINE * sizeof(int32_t);
         ptrFlagList2 = base + workspaceSize;
-        workspaceSize += tilingData->expertPerRank * INT_CACHELINE * MAX_AICORE_NUM * sizeof(int32_t);
+        workspaceSize += tilingData->expertPerRank * INT_CACHELINE * sizeof(int32_t);
         gmCtx = base + workspaceSize;
         workspaceSize += CeilAlign(sizeof(SchedulerContext), ALIGN_512);
         expandedRowIdxGather = ptrA;    // 复用
