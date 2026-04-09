@@ -225,7 +225,7 @@ python perf_analyzer.py --chip 950 --from-testcase perf_decode_bs1 --mode pipeli
 python perf_analyzer.py --chip 950 --batch-size 32 --head-num 128 --mode block-search
 ```
 
-### 11 种分析模式
+### 15 种分析模式
 
 | Mode | 用途 | 仅 950 |
 |------|------|:------:|
@@ -241,8 +241,9 @@ python perf_analyzer.py --chip 950 --batch-size 32 --head-num 128 --mode block-s
 | `split-kn-fused` | split-kn 补充：融合 K-accum + RmsNorm in M-split V 核 | ✓ |
 | `split-m` | M 轴切分搜索 | ✓ |
 | `prefill` | K-outer + cube-bound 优化 | ✓ |
+| `prefill-msplit` | M-Split + K-outer 消除全核 barrier，cube-bound prefill | ✓ |
 | `dequant-opt` | UB-pipelined dequant+RoPE (L0C→UB→L1, intra-core sync) | ✓ |
-| `full` | 上面全部（不含 `dequant-opt` 与 `split-kn-fused`，避免破坏 regression goldens） | |
+| `full` | 上面全部（不含 `dequant-opt`、`split-kn-fused`、`prefill-msplit`，避免破坏 regression goldens） | |
 
 ### 程序化调用
 

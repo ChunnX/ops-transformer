@@ -155,16 +155,33 @@ python perf_analyzer.py --chip 950 --batch-size 1 --head-num 128 \
     --weight-quant-mode 3 --mode dequant-opt
 ```
 
+### `prefill-msplit` — M-Split + K-outer for Cube-Bound Prefill
+
+Searches `m_groups × n_groups` configurations to eliminate full-core barriers and achieve cube-bound execution in prefill. Each core handles `M/m_groups` tokens with `N/n_groups` columns — no full-AIV WaitAllCore barriers needed.
+
+Reports per-configuration:
+- **Total**: end-to-end time (single kernel launch, no multi-step)
+- **MM1–MM4, Vec, Sync**: component breakdown
+- **MM3 bound**: whether MM3 achieves cube-bound (goal of this optimization)
+- **Workspace**: GM workspace size for partial sums
+- **vs Base**: savings vs split-N multi-step baseline
+
+Not beneficial for decode (T=1). Requires `--chip 950`.
+
+```bash
+python perf_analyzer.py --chip 950 --batch-size 256 --head-num 128 --mode prefill-msplit
+```
+
 ### `full` — All Modes Combined
 
-Runs bound + pipeline + estimate + advice + search. On Ascend 950, also runs roofline + block-search + split-kn + split-m. Note: `dequant-opt` is intentionally **not** in `full` mode, run it explicitly.
+Runs bound + pipeline + estimate + advice + search. On Ascend 950, also runs roofline + block-search + split-kn + split-m. Note: `dequant-opt`, `split-kn-fused`, and `prefill-msplit` are intentionally **not** in `full` mode, run them explicitly.
 
 ## Architecture
 
 ```mermaid
 graph TB
     subgraph CLI ["perf_analyzer.py (CLI 入口)"]
-        MODES["14 种分析模式<br/>bound | pipeline | estimate | advice<br/>search | report | roofline | block-search<br/>split-kn | split-kn-fused | split-m<br/>prefill | dequant-opt | full"]
+        MODES["15 种分析模式<br/>bound | pipeline | estimate | advice<br/>search | report | roofline | block-search<br/>split-kn | split-kn-fused | split-m<br/>prefill | prefill-msplit | dequant-opt | full"]
     end
 
     subgraph TILING ["tiling_sim.py (Tiling 搜索)"]

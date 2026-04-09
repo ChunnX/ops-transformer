@@ -93,7 +93,7 @@ def roofline_analysis(
         total_bytes = bytes_A + bytes_B + bytes_C
         ai = total_flops / total_bytes if total_bytes > 0 else 0
 
-        # Peak compute (per core)
+        # Peak compute (per core, ×2 converts MACs to FLOPs, matching total_flops convention)
         if dtype_a == 1:
             peak_ops_per_sec = hw.mmad_ops_per_cycle_fp8 * hw.freq_hz * 2.0
         else:
