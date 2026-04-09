@@ -607,7 +607,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持pse/左padding/公共前缀/后量化。</li>
         </ul>
         </td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(Q_N)</td>
         <td>×</td>
