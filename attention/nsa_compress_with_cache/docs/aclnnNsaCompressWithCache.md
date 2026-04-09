@@ -187,7 +187,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>compressStride</td>
         <td>输入</td>
         <td>两次压缩间的滑窗间隔大小。</td>
-        <td>仅支持compressBlockStride取值16、32、48、64。</td>
+        <td>仅支持compressStride取值16、32、48、64。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -218,7 +218,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>输出</td>
         <td>压缩之后的cache</td>
         <td>数据类型与input保持一致。</td>
-        <td>INT64</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[result_len, N, D]</td>
         <td>x</td>

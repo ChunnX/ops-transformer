@@ -1018,7 +1018,7 @@ int main()
     int64_t preTokens = 65535;
     int64_t nextTokens = 65535;
     string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()];
+    char layerOut[sLayerOut.length()+1];
     strcpy(layerOut, sLayerOut.c_str());
     int64_t sparseMode = 0;
     int64_t innerPrecise = 0;
