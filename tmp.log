@@ -67,3 +67,14 @@ MoeDistributeDispatchV2,MoeDistributeDispatchV2 FullMesh支持动态缩容,非�
 ,,Test_FullMeshElastic_16die_ID052,32,3683,3,1,0,1,16,786,2,2,0,0,0,16,32,448,1,执行双方比对脚本,通过,通过,
 ,,Test_FullMeshElastic_16die_ID053,123,6666,12,0,2,0,16,345,3,6,0,0,0,16,10,100,1,执行双方比对脚本,通过,通过,
 ,,Test_FullMeshElastic_16die_ID054,256,1030,5,1,0,1,16,5612,4,4,0,0,0,16,64,768,1,执行双方比对脚本,通过,通过,
+
+4、场景：bf16进 fp8mx量化 fp8_e5m2/fp8_e4m3 bf16出
+    BS [1, 512]    
+    K 6/8 
+    H 4k/5k/7k    
+    N 1024/2048/3072/4096/7168
+    weight1/2 ND
+    exprtPerRank [1, 16]  
+    无共享      
+    epWorldSize [2, 768] （迭代交付2P/8P） 
+    moeExpertNum [1*epWordSize, 1024] 且为epWorldSize倍数
