@@ -403,7 +403,7 @@ private:
   uint32_t startIdxEachCore_[MAX_CORE_NUM_REGBASE] = {};
   uint32_t coreSposStart_[MAX_CORE_NUM_REGBASE] = {};
   IncreFlashAttentionContext* ifaContext_ = nullptr;
-  IncreFlashAttentionTilingData* tilingData_ = nullptr;
+  IncreFlashAttentionTilingDataRegbase* tilingData_ = nullptr;
   bool isMaxWorkspace_ = false;
   
   uint32_t formerCoreNum_ = 0;

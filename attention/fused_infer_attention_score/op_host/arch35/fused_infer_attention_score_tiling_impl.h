@@ -143,7 +143,7 @@ protected:
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
 
     PromptFlashAttentionTilingDataV2 pfaTilingData_;
-    IncreFlashAttentionTilingData ifaTilingData_;
+    IncreFlashAttentionTilingDataRegbase ifaTilingData_;
     FlashAttentionScoreSimplifiedTilingData faRunTilingAdapter_;
     FiaTilingKeyInfo tilingKeyInfo_;
     FiaPlatFormInfo platformInfo_;

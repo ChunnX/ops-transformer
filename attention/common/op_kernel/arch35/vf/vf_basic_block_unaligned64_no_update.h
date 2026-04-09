@@ -184,9 +184,12 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
             if constexpr (IsSameType<T2, int8_t>::value) {
                 // INT8: × 127
                 Muls(vreg_exp, vreg_exp, int8MaxValue, preg_ori_src_n);
-            } else {
+            } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
                 // FP8: × 448
                 Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, preg_ori_src_n);
+            } else {
+                // HIFP8: × 32768
+                Muls(vreg_exp, vreg_exp, hifp8MaxValue, preg_ori_src_n);
             }
         }
         // dropmask compute
