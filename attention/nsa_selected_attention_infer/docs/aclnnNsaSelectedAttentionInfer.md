@@ -198,7 +198,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>-</td>
         </tr>
         <tr>
-          <td>actualSelKvSeqLenOptional</td>
+          <td>actualKvSeqLenOptional</td>
           <td>输入</td>
           <td>表示算子处理的key和value的S轴实际长度。</td>
           <td>-
@@ -268,7 +268,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>输入</td>
           <td>代表topK阶段需要保留的block数量。</td>
           <td>
-  		selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualSelKvSeqLenOptional)。
+  		selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualKvSeqLenOptional)。
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -376,10 +376,10 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
         <!-- 合并单元格添加 merged-cell 类实现上下居中 -->
         <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
         <td class="merged-cell" rowspan="2">161002</td>
-        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualSelKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
+        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
       </tr>
       <tr>
-        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualSelKvSeqLenOptional、output的数据格式不在支持的范围内。</td>
+        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据格式不在支持的范围内。</td>
       </tr>
     </tbody>
   </table>
@@ -597,7 +597,7 @@ int main(int argc, char **argv)
     int64_t sparseMod = 0;
     int64_t numHeads= static_cast<int64_t>(n2 * g);
     std::string sLayerOut = "BSND";
-    char layOut[sLayerOut.length()];
+    char layOut[sLayerOut.length()+1];
     std::strcpy(layOut, sLayerOut.c_str());
 
     void *queryDeviceAddr = nullptr;
