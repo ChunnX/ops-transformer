@@ -259,8 +259,6 @@ KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::GetBalanceActualSeq
     } else {
         if (constInfo.isActualLenDimsNull == 1) {
             return constInfo.s1Size;
-        } else if (constInfo.isActualLenDimsNull == 0) {
-            return actualSeqQlenAddr[0];
         } else {
             return actualSeqQlenAddr[bIdx];
         }
@@ -377,6 +375,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
 
+    constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
+    constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
+
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         // (BS)ND
         constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
@@ -407,7 +408,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     // bsize + 1-> bsize
     this->constInfo.actualSeqLenSize = this->sharedParams.bSize;
     this->constInfo.actualSeqLenKVSize = this->sharedParams.bSize;
-    this->constInfo.isActualLenDimsKVNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsKVNull);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
