@@ -21,9 +21,9 @@
   $$
   expertid=expertIdx[i,k]
   $$
-  
-  $$
-  out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
+
+  $$ 
+  out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j})) 
   $$
 
 ## 函数原型
@@ -39,7 +39,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
-    int64_t          dropPadMode,
+    int64_t           dropPadMode,
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
@@ -450,7 +450,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnMoeFinalizeRoutingV2第一段接口
-  ret = aclnnMoeFinalizeRoutingV2GetWorkspaceSize(expandedX, expandedRowIdx, x1, x2Optional, bias, scales,
+  ret = aclnnMoeFinalizeRoutingV2GetWorkspaceSize(expandedX, expandedRowIdx, x1, x2Optional, bias, scales,	 
                                                   expandedExpertIdx, dropPadMode, out, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
