@@ -516,6 +516,210 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     </tbody>
     </table>
 
+## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
+-   该接口支持训练正向和推理场景下使用。
+- 确定性计算：
+  - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
+- 公共约束
+    - 入参为空的场景处理：
+        - 空Tensor指必选输入和输出的shapeSize为0。在空Tensor场景下，若attentionOut为空，返回空，否则返回全0；若有lse且lse为空时返回空，lse不为空则返回全inf。非空Tensor时输入正常拦截。
+        - query，attentionOut所有tensor的shapeSize为0，属于空Tensor。
+        - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
+        - attentionOut和lse都为空时，属于空Tensor。
+        - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
+- <a id="public"></a>通用场景
+    <table style="undefined;table-layout: fixed; width: 1000px">
+        <colgroup>
+            <col style="width: 150px">
+            <col style="width: 100px">
+            <col style="width: 750px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>参数</th>
+                <th>维度</th>
+                <th>限制</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td rowspan="4">q/k/v</td>
+                <td>B</td>
+                <td>
+                    <ul>
+                        <li>支持B轴小于等于65536</li>
+                        <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr>
+                <td>N</td>
+                <td>
+                    <ul>
+                        <li>N轴无限制</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr>
+                <td>S</td>
+                <td>
+                    <ul>
+                        <li>S轴无限制</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr>
+                <td>D</td>
+                <td>
+                    <ul>
+                        <li>D轴无限制</li>
+                    </ul>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+- <a id="Mask"></a>Mask
+    <table style="undefined;table-layout: fixed; width: 820"><colgroup>
+        <col style="width: 100px">
+        <col style="width: 360px">
+        <col style="width: 360px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>sparseMode</th>
+                <th>含义</th>
+                <th>备注</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td>1</td>
+            <td>allMask</td>
+            <td>
+                无
+            </td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</td>
+            <td>
+                无
+            </td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>band模式的mask</td>
+            <td>
+                无
+            </td>
+        </tr>
+        </tbody>
+    </table>
+- <a id="seqused"></a>seqused
+    <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+    <col style="width: 195px">
+    <col style="width: 156px">
+    <col style="width: 608px">
+    <col style="width: 189px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>参数</th>
+                <th>Layout</th>
+                <th>说明</th>
+                <th>限制</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>seqused_q</td>
+                <td>不为TND</td>
+                <td>该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S</td>
+                <td rowspan="4">传入时应为非负数</td>
+            </tr>
+            <tr>
+                <td>cu_seqused_q</td>
+                <td>TND</td>
+                <td>该入参必须传入，第b+1个值表示前b个batch的Q_S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch_size + 1</td>
+            </tr>
+            <tr>
+                <td>seqused_kv</td>
+                <td>不为TND</td>
+                <td>
+                在非PA场景下，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。</br>
+                在PA场景下，该入参为必选入参，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S
+                </td>
+            </tr>
+            <tr>
+                <td>cu_seqused_kv</td>
+                <td>TND</td>
+                <td>该入参必须传入</br>
+                    在非PA场景下，第b + 1个值表示前b个batch的KV_S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数</br>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+- <a id="PagedAttention"></a>PagedAttention
+    <table style="undefined;table-layout: fixed; width: 1354px">
+        <colgroup>
+            <col style="width: 155px">
+            <col style="width: 169px">
+            <col style="width: 550px">
+            <col style="width: 600px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>参数所属场景或特性</th>
+                <th>参数</th>
+                <th>约束</th>
+                <th>备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td rowspan="2">PagedAttention</td>
+                <td>blockSize</td>
+                <td>
+                    <li>在使能PagedAttention，blockSize需要传入非0值</li>
+                </td>
+                <td>blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。</td>
+            </tr>
+            <tr>
+                <td>blockTable</td>
+                <td>PagedAttention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
+                </td>
+                <td>-</td>
+            </tr>
+            <tr>
+                <td rowspan="2">通用场景</td>
+                <td>k、v</td>
+                <td>
+                    <ul>
+                        <li>支持key、value dtype为FLOAT16/BFLOAT16</li>
+                </td>
+                <td>
+                <ul>
+                    <li>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。</li>
+                    <li>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。</li>
+                    <li>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</li>
+                </ul>
+                </td>
+            </tr>
+            <tr>
+                <td>seqused_kv</td>
+                <td>PagedAttention场景下，必须传入seqused_kv。</td>
+                <td>-</td>
+            </tr>
+            <tr>
+                <td colspan="4">
+                <ul><li>PagedAttention 不支持tensorlist场景</li>
+                <li>PagedAttention的使能必要条件是blocktable存在且有效，同时k、v是按照blocktable中的索引在一片连续内存中排布，在该场景下k、v的inputLayout参数无效</li>
+                </ul></td>
+            </tr>
+        </tbody>
+    </table>
+
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
