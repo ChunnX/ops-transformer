@@ -2,11 +2,14 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Atlas A3 推理系列产品</term>   | √  |
-|<term>Atlas A2 推理系列产品</term>   | √  |
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列加速卡产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -18,12 +21,6 @@
     1. 将某个token对应的输入参数`query`（$Q_{index}^{Quant}\in\R^{g\times d}$）乘以给定上下文`key`（$K_{index}^{Quant}\in\R^{S_{k}\times d}$），得到相关性。
     2. 相关性结果与`query`和`key`对应的反量化系数`query_dequant_scale`（$Scale_Q$）和`key_dequant_scale`（$Scale_K^T$）相乘，通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的相关性分数向量。
     3. 将其与权重系数`weights`（$W$）相乘后，沿g的方向，选取前$Top-k$个索引值得到输出$out$，作为SparseFlashAttention的输入。
-
-## 函数原型
-
-```
-torch_npu.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequant_scale, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, query_quant_mode=0, key_quant_mode=0, layout_query='BSND', layout_key='BSND', sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1, query_dtype=None, key_dtype=None) -> Tensor
-```
 
 ## 参数说明
 
@@ -70,143 +67,9 @@ torch_npu.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, 
 
 - **key\_dtype**（`int`）：可选参数，用于支持key为hifloat8数据类型。如果key的数据类型为hifloat8，则将该变量赋值为torch_npu.hifloat8。
 
-## 返回值说明
-
-`Tensor`
-
-代表公式中的输出Out。数据格式支持$ND$，数据类型支持`int32`，支持输出shape[B,S1,N2,k]或[T,N2,k]。
-
 ## 约束说明
 
 - 该接口支持图模式。
 - 该接口要求$W \odot Scale_Q$的结果在`float16`的表示范围内。
 - 该接口的TopK过程对NAN排序是未定义行为。
 - 对于Ascend 950PR/Ascend 950DT，当query和key的数据类型为`float8_e4m3fn`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`bfloat16、float32、float32`或`float16、float16、float16`；当query和key的数据类型为`hifloat8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`bfloat16、float32、float32`。
-
-## 调用示例
-
-- 单算子模式调用
-
-    ```python
-    import torch
-    import torch_npu
-    import numpy as np
-    import torch.nn as nn
-    import math
-
-    n1 = 64
-    n2 = 1
-    d = 128
-    block_size = 128
-    layout_key = "PA_BSND"
-    layout_query = "BSND"
-    query_quant_mode = 0
-    key_quant_mode = 0
-    np.random.seed(0)
-    # -------------
-    b = 24
-    t = None
-    s1 = 4
-    s2 = 512
-    act_seq_q = None
-    act_seq_k = None
-    sparse_mode = 0
-    sparse_count = 2048
-    max_block_table_num = (s2 + block_size - 1) // block_size
-    block_table = torch.tensor([range(b * max_block_table_num)], dtype = torch.int32).reshape(b, -1)
-    key = torch.tensor(np.random.uniform(-128, 127, (b * max_block_table_num, block_size, n2, d))).to(torch.int8)
-    key_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b * max_block_table_num, block_size, n2)))
-    key_dequant_scale = key_dequant_scale.to(torch.float16)
-    query = torch.tensor(np.random.uniform(-128, 127, (b, s1, n1, d))).to(torch.int8)
-    query_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b, s1, n1))).to(torch.float16)
-    weights = torch.tensor(np.random.uniform(0, 0.01, (b, s1, n1))).to(torch.float16)
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32) \
-                                if act_seq_q is None else torch.tensor(act_seq_q).to(torch.int32)
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32) \
-                                if act_seq_k is None else torch.tensor(act_seq_k).to(torch.int32)
-    
-    npu_out = torch_npu.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
-                                                    key_dequant_scale.npu(),
-                                                    actual_seq_lengths_query=actual_seq_lengths_query.npu(),
-                                                    actual_seq_lengths_key=actual_seq_lengths_key.npu(),
-                                                    block_table=block_table.npu(),
-                                                    query_quant_mode=query_quant_mode,
-                                                    key_quant_mode=key_quant_mode,
-                                                    layout_query=layout_query,
-                                                    layout_key=layout_key, sparse_count=sparse_count,
-                                                    sparse_mode=sparse_mode, query_dtype=query_dtype, key_dtype=key_dtype)
-    ```
-
-- 图模式调用
-
-    ```python
-    import torch
-    import torch_npu
-    import numpy as np
-    import torch.nn as nn
-    import math
-
-    n1 = 64
-    n2 = 1
-    d = 128
-    block_size = 128
-    layout_key = "PA_BSND"
-    layout_query = "BSND"
-    query_quant_mode = 0
-    key_quant_mode = 0
-    np.random.seed(0)
-    # -------------
-    b = 24
-    t = None
-    s1 = 4
-    s2 = 512
-    act_seq_q = None
-    act_seq_k = None
-    sparse_mode = 0
-    sparse_count = 2048
-    max_block_table_num = (s2 + block_size - 1) // block_size
-    block_table = torch.tensor([range(b * max_block_table_num)], dtype = torch.int32).reshape(b, -1)
-    key = torch.tensor(np.random.uniform(-128, 127, (b * max_block_table_num, block_size, n2, d))).to(torch.int8)
-    key_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b * max_block_table_num, block_size, n2)))
-    key_dequant_scale = key_dequant_scale.to(torch.float16)
-    query = torch.tensor(np.random.uniform(-128, 127, (b, s1, n1, d))).to(torch.int8)
-    query_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b, s1, n1))).to(torch.float16)
-    weights = torch.tensor(np.random.uniform(0, 0.01, (b, s1, n1))).to(torch.float16)
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32) \
-                                if act_seq_q is None else torch.tensor(act_seq_q).to(torch.int32)
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32) \
-                                if act_seq_k is None else torch.tensor(act_seq_k).to(torch.int32)
-    
-    class LIQuantNetwork(nn.Module):
-        def __init__(self):
-            super(LIQuantNetwork, self).__init__()
-
-        def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query=None, 
-                    actual_seq_lengths_key=None, block_table=None, query_quant_mode=0, key_quant_mode=0,
-                    layout_query='BSND', layout_key='BSND', sparse_count=2048, sparse_mode=3, query_dtype=None, key_dtype=None):
-
-            out = torch_npu.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),       
-                                                        key_dequant_scale.npu(),
-                                                        actual_seq_lengths_query=actual_seq_lengths_query.npu(),
-                                                        actual_seq_lengths_key=actual_seq_lengths_key.npu(),
-                                                        block_table=block_table.npu(),
-                                                        query_quant_mode=query_quant_mode,
-                                                        key_quant_mode=key_quant_mode,
-                                                        layout_query=layout_query,
-                                                        layout_key=layout_key, sparse_count=sparse_count,
-                                                        sparse_mode=sparse_mode, query_dtype=query_dtype, key_dtype=key_dtype)
-            return out
-    
-    from torchair.configs.compiler_config import CompilerConfig
-    config = CompilerConfig()
-    npu_backend = torchair.get_npu_backend(compiler_config=config)
-    torch._dynamo.reset()
-    npu_mode = torch.compile(LIQuantNetwork().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
-    npu_out = npu_mode(query, key, weights, query_dequant_scale, key_dequant_scale,
-                        actual_seq_lengths_query=actual_seq_lengths_query,
-                        actual_seq_lengths_key=actual_seq_lengths_key,
-                        block_table=block_table, query_quant_mode=query_quant_mode,
-                        key_quant_mode=key_quant_mode, layout_query=layout_query,
-                        layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode
-                        query_dtype=query_dtype, key_dtype=key_dtype)
-    ```
