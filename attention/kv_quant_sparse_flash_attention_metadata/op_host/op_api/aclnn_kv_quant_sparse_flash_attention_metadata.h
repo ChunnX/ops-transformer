@@ -19,47 +19,31 @@ extern "C" {
 
 __attribute__((visibility("default"))) 
 aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional,const aclTensor* cuSeqLensKvOptional, const aclTensor* sequsedQOptional, 
-    const aclTensor* sequsedKvOptional, const aclTensor* topkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
-    int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, 
-    int64_t topKOptional, int64_t kvQuantMode, int64_t tileSizeOptional, int64_t ropeHeadDimOptional, 
-    int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, char *layoutQOptional, 
-    char *layoutKvOptional, const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKvOptional, int64_t numHeadsQ, 
+    int64_t numHeadsKv, int64_t headDim, int64_t keyQuantMode, int64_t valueQuantMode, int64_t batchSizeOptional, 
+    int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, int64_t topKOptional, int64_t sparseBlockSizeOptional, 
+    char *layoutQueryOptional, char *layoutKvOptional, int64_t sparseModeOptional, int64_t preTokensOptional, 
+    int64_t  nextTokensOptional, int64_t  attentionModeOptional, int64_t  quantScaleRepoModeOptional, 
+    int64_t tileSizeOptional, int64_t ropeHeadDimOptional, const aclTensor* metaData, uint64_t* workspaceSize, 
+    aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-aclnnStatus ParamsCheckQsfaN128(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
-                                const aclTensor* cuSeqLensKvOptional, const aclTensor* sequsedKvOptional, 
-                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
-                                int64_t maxSeqlenQOptional, char* layoutQOptional, char* layoutKvOptional);
+aclnnStatus CheckSingleParamQsfa(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
+                                 int64_t numHeadsKv, int64_t sparseModeOptional, int64_t preTokensOptional, 
+                                 int64_t  nextTokensOptional, char* layoutQueryOptional, 
+                                 char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckSingleParamQsfaN128(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
-                                     int64_t numHeadsKv, char* layoutQOptional, char* layoutKvOptional);
+aclnnStatus CheckExistenceQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
+                               const aclTensor* actualSeqLengthsKvOptional, 
+                               char* layoutQueryOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceQsfa(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                                   const aclTensor* sequsedKvOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQsfa(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                                     char* layoutQOptional, const aclTensor* sequsedKvOptional, 
-                                     const aclTensor* cuSeqLensKvOptional, char* layoutKvOptional, 
-                                     int64_t batchSizeOptional);
+aclnnStatus CheckConsistencyQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
+                                 char* actualSeqLengthsKvOptional, int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckFeatureQsfa();
-
-__attribute__((visibility("default"))) 
-aclnnStatus ParamsCheckQsfaN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKvOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, int64_t numHeadsQ, 
-                               int64_t numHeadsKv, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-                               int64_t maskModeOptional, int64_t winLeftOptional, char* layoutQOptional, 
-                               char* layoutKvOptional);
-
-__attribute__((visibility("default"))) 
-aclnnStatus CheckSingleParamQsfaN64(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
-                                    int64_t numHeadsKv, int64_t oriMaskMode_, int64_t winLeft_, char* layoutQOptional, 
-                                    char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus aclnnKvQuantSparseFlashAttentionMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 

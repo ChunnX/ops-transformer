@@ -32,88 +32,17 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKvOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, 
+static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsQueryOptional, 
+                               const aclTensor* actualSeqLengthsKvOptional, 
                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
-                               int64_t maxSeqlenQOptional, int64_t maskModeOptional, int64_t winLeftOptional, 
-                               char* layoutQOptional, char* layoutKvOptional) 
+                               int64_t maxSeqlenQOptional, int64_t sparseModeOptional, int64_t preTokensOptional, 
+                               int64_t  nextTokensOptional, char* layoutQueryOptional, char* layoutKvOptional) 
 {
-    if (numHeadsQ > 64) {
-        return ParamsCheckQsfaN128(cuSeqLensQOptional, sequsedQOptional, cuSeqLensKvOptional, sequsedKvOptional, 
-                                   numHeadsQ, numHeadsKv, batchSizeOptional, maxSeqlenQOptional, layoutQOptional, 
-                                   layoutKvOptional);
-    } else {
-        return ParamsCheckQsfaN64(cuSeqLensQOptional, cuSeqLensKvOptional, sequsedQOptional, sequsedKvOptional, 
-                                  numHeadsQ, numHeadsKv, batchSizeOptional, maxSeqlenQOptional, maskModeOptional, 
-                                  winLeftOptional, layoutQOptional, layoutKvOptional);
-    }
-    return ACLNN_SUCCESS;
-}
-
-int64_t GetQueryBatchSizeQsfa(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                              char* layoutQOptional, int64_t batchSizeOptional)
-{
-    // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
-    auto ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        int64_t dimSize = viewDims[0];
-        delete[] viewDims;
-        return dimSize;
-    }
-    // 2. sequsedQOptional 没传，判断 Layout
-    if (strcmp(layoutQOptional, "TND") == 0) {
-        // 如果是 TND，尝试使用 cuSeqLensQOptional获取BatchSize
-        ret = aclGetViewShape(cuSeqLensQOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-            int64_t dimSize = viewDims[0];
-            delete[] viewDims;
-            return dimSize - 1;
-        }
-    }
-    // 3. 如果不是 TND，或者 cuSeqLensQOptional 为空，使用batchSizeOptional
-    delete[] viewDims;
-    return batchSizeOptional;
-}
-
-int64_t GetKvBatchSizeQsfa(const aclTensor* sequsedKvOptional, const aclTensor* cuSeqLensKvOptional, 
-                           char* layoutKvOptional, int64_t batchSizeOptional)
-{
-    // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
-    auto ret = aclGetViewShape(sequsedKvOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        int64_t dimSize = viewDims[0];
-        delete[] viewDims;
-        return dimSize;
-    }
-    // 2. sequsedKvOptional 没传，判断 Layout
-    if (strcmp(layoutKvOptional, "TND") == 0) {
-        // 如果是 TND，尝试使用 cuSeqLensKvOptional获取BatchSize
-        ret = aclGetViewShape(cuSeqLensKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-            int64_t dimSize = viewDims[0];
-            delete[] viewDims;
-            return dimSize - 1;
-        }
-    }
-    // 3. 如果不是 TND，或者 cuSeqLensKvOptional 为空，使用 batchSizeOptional
-    delete[] viewDims;
-    return batchSizeOptional;
-}
-
-aclnnStatus ParamsCheckQsfaN128(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
-                                const aclTensor* cuSeqLensKvOptional, const aclTensor* sequsedKvOptional, 
-                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
-                                int64_t maxSeqlenQOptional, char* layoutQOptional, char* layoutKvOptional)
-{
-    if (CheckSingleParamQsfaN128(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, layoutQOptional, 
-                                 layoutKvOptional) == ACLNN_SUCCESS && 
-        CheckExistenceQsfa(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
-        CheckConsistencyQsfa(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, sequsedKvOptional, 
-                                 cuSeqLensKvOptional, layoutKvOptional, batchSizeOptional) == ACLNN_SUCCESS &&
+    if (CheckSingleParamQsfa(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, sparseModeOptional, preTokensOptional, 
+                             nextTokensOptional, layoutQueryOptional, 
+                             layoutKvOptional) == ACLNN_SUCCESS && 
+        CheckExistenceQsfa(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, layoutQueryOptional, layoutKvOptional) == ACLNN_SUCCESS && 
+        CheckConsistencyQsfa(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, batchSizeOptional) == ACLNN_SUCCESS &&
         CheckFeatureQsfa() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
@@ -121,8 +50,42 @@ aclnnStatus ParamsCheckQsfaN128(const aclTensor* cuSeqLensQOptional, const aclTe
     }
 }
 
-aclnnStatus CheckSingleParamQsfaN128(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
-                                     int64_t numHeadsKv, char* layoutQOptional, char* layoutKvOptional)
+int64_t GetQueryBatchSizeQsfa(const aclTensor* actualSeqLengthsQueryOptional, int64_t batchSizeOptional)
+{
+    // 如果 actualSeqLengthsQueryOptional 传了，使用sequsedQOptional获取BatchSize
+    int64_t *viewDims = nullptr;
+    uint64_t viewDimsNum = 0;
+    auto ret = aclGetViewShape(actualSeqLengthsQueryOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        int64_t dimSize = viewDims[0];
+        delete[] viewDims;
+        return dimSize;
+    }
+    // 使用batchSizeOptional
+    delete[] viewDims;
+    return batchSizeOptional;
+}
+
+int64_t GetKvBatchSizeQsfa(const aclTensor* actualSeqLengthsKvOptional, int64_t batchSizeOptional)
+{
+    // 如果 sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
+    int64_t *viewDims = nullptr;
+    uint64_t viewDimsNum = 0;
+    auto ret = aclGetViewShape(actualSeqLengthsKvOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        int64_t dimSize = viewDims[0];
+        delete[] viewDims;
+        return dimSize;
+    }
+    // 如果不是 TND，或者 cuSeqLensKvOptional 为空，使用 batchSizeOptional
+    delete[] viewDims;
+    return batchSizeOptional;
+}
+
+aclnnStatus CheckSingleParamQsfa(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
+                                 int64_t numHeadsKv, int64_t sparseModeOptional, int64_t preTokensOptional, 
+                                 int64_t  nextTokensOptional, char* layoutQueryOptional, 
+                                 char* layoutKvOptional) 
 {
     // batch_size 非负校验
     if (batchSizeOptional < 0) {
@@ -134,49 +97,68 @@ aclnnStatus CheckSingleParamQsfaN128(int64_t batchSizeOptional, int64_t maxSeqle
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should not be negative, but got %d", maxSeqlenQOptional);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // num_heads_q 校验
-    if (numHeadsQ > 128) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should not be greater than 128, but got %d", numHeadsQ);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     // num_heads_kv 校验
     if (numHeadsKv != 1) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %d", numHeadsKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // sparse_mode 校验
+    if (sparseModeOptional != 0 && sparseModeOptional != 3 && sparseModeOptional != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sparse_mode should be 0, 3 or4, but got %d", sparseModeOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // pre_tokens 校验
+    if (preTokensOptional != INT64_MAX) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pre_tokens should only be 2^63-1, but got %ld", preTokensOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // next_tokens 校验
+    if (nextTokensOptional != INT64_MAX) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "next_tokens should only be 2^63-1, but got %ld", nextTokensOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // layout_q 校验
-    if ((strcmp(layoutQOptional, "TND") != 0) && (strcmp(layoutQOptional, "BSND") != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q must be TND or BSND, but got %s", layoutQOptional);
+    if ((strcmp(layoutQueryOptional, "TND") != 0) && (strcmp(layoutQueryOptional, "BSND") != 0)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q must be TND or BSND, but got %s", layoutQueryOptional);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_kv 校验
-    if ((strcmp(layoutKvOptional, "PA_BNBD") != 0) && (strcmp(layoutKvOptional, "TND") != 0) && 
+    if ((strcmp(layoutKvOptional, "PA_BSND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) && 
         (strcmp(layoutKvOptional, "BSND") != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD, but got %s", layoutKvOptional);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BSND, but got %s", layoutKvOptional);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckExistenceQsfa(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                                   const aclTensor* sequsedKvOptional)
+aclnnStatus CheckExistenceQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
+                               const aclTensor* actualSeqLengthsKvOptional, 
+                               char* layoutQueryOptional, char* layoutKvOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
-    // cu_seqlens_q 存在性校验
-    if (strcmp(layoutQOptional, "TND") == 0) {
-        auto ret = aclGetViewShape(cuSeqLensQOptional, &viewDims, &viewDimsNum);
+    // Query 存在性逻辑
+    if (strcmp(layoutQueryOptional, "TND") == 0) {
+        auto ret = aclGetViewShape(actualSeqLengthsQueryOptional, &viewDims, &viewDimsNum);
         if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_q TND, cu_seqlens_q must be provided!");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_query TND, actual_seq_lengths_query must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    // layout_kv "PA_BNBD" 存在性校验
-    if (strcmp(layoutKvOptional, "PA_BNBD") == 0) {
-        auto ret = aclGetViewShape(sequsedKvOptional, &viewDims, &viewDimsNum);
+    // KV 存在性逻辑
+    if (strcmp(layoutKvOptional, "PA_BSND") == 0) {
+        auto ret = aclGetViewShape(actualSeqLengthsKvOptional, &viewDims, &viewDimsNum);
         if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_kv PA_BNBD, seqused_kv must be provided!");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_key PA_BSND, actual_seq_lengths_kv must be provided!");
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    if (strcmp(layoutKvOptional, "TND") == 0) {
+        auto ret = aclGetViewShape(actualSeqLengthsKvOptional, &viewDims, &viewDimsNum);
+        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_key TND, actual_seq_lengths_kv must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -185,14 +167,12 @@ aclnnStatus CheckExistenceQsfa(char* layoutQOptional, char* layoutKvOptional, co
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckConsistencyQsfa(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                                     char* layoutQOptional, const aclTensor* sequsedKvOptional, 
-                                     const aclTensor* cuSeqLensKvOptional, char* layoutKvOptional, 
-                                     int64_t batchSizeOptional)
+aclnnStatus CheckConsistencyQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
+                                 char* actualSeqLengthsKvOptional, int64_t batchSizeOptional)
 {
-    int64_t queryBatchSize = GetQueryBatchSizeQsfa(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
+    int64_t queryBatchSize = GetQueryBatchSizeQsfa(actualSeqLengthsQueryOptional, 
                                                    batchSizeOptional);
-    int64_t kvBatchSize = GetKvBatchSizeQsfa(sequsedKvOptional, cuSeqLensKvOptional, layoutKvOptional, 
+    int64_t kvBatchSize = GetKvBatchSizeQsfa(actualSeqLengthsKvOptional, 
                                              batchSizeOptional);
     if (queryBatchSize != kvBatchSize) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
@@ -207,92 +187,29 @@ aclnnStatus CheckFeatureQsfa()
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ParamsCheckQsfaN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKvOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, int64_t numHeadsQ, 
-                               int64_t numHeadsKv, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-                               int64_t maskModeOptional, int64_t winLeftOptional, char* layoutQOptional, 
-                               char* layoutKvOptional) 
-{
-    if (CheckSingleParamQsfaN64(batchSizeOptional, maxSeqlenQOptional, numHeadsQ, numHeadsKv, maskModeOptional, 
-                            winLeftOptional, layoutQOptional, layoutKvOptional) == ACLNN_SUCCESS && 
-        CheckExistenceQsfa(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
-        CheckConsistencyQsfa(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, sequsedKvOptional, 
-                            cuSeqLensKvOptional, layoutKvOptional, batchSizeOptional) == ACLNN_SUCCESS && 
-        CheckFeatureQsfa() == ACLNN_SUCCESS) {
-        return ACLNN_SUCCESS;
-    } else {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-}
-
-aclnnStatus CheckSingleParamQsfaN64(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
-                                    int64_t numHeadsKv, int64_t oriMaskMode_, int64_t winLeft_, char* layoutQOptional, 
-                                    char* layoutKvOptional) 
-{
-    // batch_size 非负校验
-    if (batchSizeOptional < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "batch_size should not be negative, but got %d", batchSizeOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // max_seqlen_q 非负校验
-    if (maxSeqlenQOptional < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should not be negative, but got %d", maxSeqlenQOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // num_heads_q 校验
-    if (numHeadsQ > 64) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should not be greater than 64, but got %d", numHeadsQ);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // num_heads_kv 校验
-    if (numHeadsKv != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %d", numHeadsKv);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // ori_mask_mode 校验
-    if (oriMaskMode_ != 0 && oriMaskMode_ != 3 && oriMaskMode_ != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_mask_mode should be 0, 3 or4, but got %d", oriMaskMode_);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // ori_win_left 校验
-    if (winLeft_ != 127) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_win_left should only be 127, but got %ld", winLeft_);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // layout_q 校验
-    if ((strcmp(layoutQOptional, "TND") != 0) && (strcmp(layoutQOptional, "BSND") != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q must be TND or BSND, but got %s", layoutQOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // layout_kv 校验
-    if (strcmp(layoutKvOptional, "PA_BNBD") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be PA_BNBD, but got %s", layoutKvOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    return ACLNN_SUCCESS;
-}
-
 aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional,const aclTensor* cuSeqLensKvOptional, const aclTensor* sequsedQOptional, 
-    const aclTensor* sequsedKvOptional, const aclTensor* topkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
-    int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, 
-    int64_t topKOptional, int64_t kvQuantMode, int64_t tileSizeOptional, int64_t ropeHeadDimOptional, 
-    int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, char *layoutQOptional, 
-    char *layoutKvOptional, const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor) 
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKvOptional, int64_t numHeadsQ, 
+    int64_t numHeadsKv, int64_t headDim, int64_t keyQuantMode, int64_t valueQuantMode, int64_t batchSizeOptional, 
+    int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, int64_t topKOptional, int64_t sparseBlockSizeOptional, 
+    char *layoutQueryOptional, char *layoutKvOptional, int64_t sparseModeOptional, int64_t preTokensOptional, 
+    int64_t  nextTokensOptional, int64_t  attentionModeOptional, int64_t  quantScaleRepoModeOptional, 
+    int64_t tileSizeOptional, int64_t ropeHeadDimOptional, const aclTensor* metaData, uint64_t* workspaceSize, 
+    aclOpExecutor** executor) 
 {
     L2_DFX_PHASE_1(aclnnKvQuantSparseFlashAttentionMetadata,
-                   DFX_IN(cuSeqLensQOptional, cuSeqLensKvOptional, sequsedQOptional, sequsedKvOptional, 
-                          topkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, 
-                          maxSeqlenKvOptional, topKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, 
-                          maskModeOptional, winLeftOptional, winRightOptional, layoutQOptional, layoutKvOptional),
+                   DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, numHeadsQ, numHeadsKv, headDim, 
+                          keyQuantMode, valueQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, 
+                          topKOptional, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, 
+                          sparseModeOptional, preTokensOptional, nextTokensOptional, attentionModeOptional, 
+                          quantScaleRepoModeOptional, tileSizeOptional, ropeHeadDimOptional),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensKvOptional, sequsedQOptional, sequsedKvOptional, numHeadsQ, 
-                           numHeadsKv, batchSizeOptional, maxSeqlenQOptional, maskModeOptional, winLeftOptional, 
-                           layoutQOptional, layoutKvOptional);
+    auto ret = ParamsCheck(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, numHeadsQ, 
+                           numHeadsKv, batchSizeOptional, maxSeqlenQOptional, sparseModeOptional, 
+                           preTokensOptional, nextTokensOptional, layoutQueryOptional, layoutKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -304,21 +221,16 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIC num or AIV num should not be 0, but got %u and %u", aicCoreNum, aivCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
-    CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto cuSeqLensKvOptionalContiguous = l0op::Contiguous(cuSeqLensKvOptional, uniqueExecutor.get());
-    CHECK_RET(cuSeqLensKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-    CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto sequsedKvOptionalContiguous = l0op::Contiguous(sequsedKvOptional, uniqueExecutor.get());
-    CHECK_RET(sequsedKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto topkLengthOptionalContiguous = l0op::Contiguous(topkLengthOptional, uniqueExecutor.get());
-    CHECK_RET(topkLengthOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto actualSeqLengthsQueryOptionalContiguous = l0op::Contiguous(actualSeqLengthsQueryOptional, uniqueExecutor.get());
+    CHECK_RET(actualSeqLengthsQueryOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto actualSeqLengthsKvOptionalContiguous = l0op::Contiguous(actualSeqLengthsKvOptional, uniqueExecutor.get());
+    CHECK_RET(actualSeqLengthsKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto output = l0op::KvQuantSparseFlashAttentionMetadata(
-        cuSeqLensQOptionalContiguous, cuSeqLensKvOptionalContiguous, sequsedQOptionalContiguous, 
-        sequsedKvOptionalContiguous, topkLengthOptionalContiguous, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
-        maxSeqlenQOptional, maxSeqlenKvOptional, topKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, 
-        maskModeOptional, winLeftOptional, winRightOptional, layoutQOptional, layoutKvOptional, socVersion, aicCoreNum, 
+        actualSeqLengthsQueryOptionalContiguous, actualSeqLengthsKvOptionalContiguous, numHeadsQ, numHeadsKv, headDim, 
+        keyQuantMode, valueQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, 
+        topKOptional, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, 
+        sparseModeOptional, preTokensOptional, nextTokensOptional, attentionModeOptional, 
+        quantScaleRepoModeOptional, tileSizeOptional, ropeHeadDimOptional, socVersion, aicCoreNum, 
         aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

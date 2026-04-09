@@ -27,32 +27,36 @@ namespace l0op {
 OP_TYPE_REGISTER(KvQuantSparseFlashAttentionMetadata);
 
 const aclTensor* KvQuantSparseFlashAttentionMetadata(
-    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKvOptional, const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKvOptional, const aclTensor* topkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv,
-    int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional,
-    int64_t topKOptional, int64_t kvQuantMode, int64_t tileSizeOptional, int64_t ropeHeadDimOptional, 
-    int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, char *layoutQOptional, 
-    char *layoutKvOptional, const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor* metaData,
-    aclOpExecutor* executor) 
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKvOptional, int64_t numHeadsQ, 
+    int64_t numHeadsKv, int64_t headDim, int64_t keyQuantMode, int64_t valueQuantMode, int64_t batchSizeOptional, 
+    int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, int64_t topKOptional, int64_t sparseBlockSizeOptional, 
+    char *layoutQueryOptional, char *layoutKvOptional, int64_t sparseModeOptional, int64_t preTokensOptional, 
+    int64_t  nextTokensOptional, int64_t  attentionModeOptional, int64_t  quantScaleRepoModeOptional, 
+    int64_t tileSizeOptional, int64_t ropeHeadDimOptional, const char *socVersion, int64_t aicCoreNum, 
+    int64_t aivCoreNum, const aclTensor* metaData, aclOpExecutor* executor) 
 {
-    L0_DFX(KvQuantSparseFlashAttentionMetadata, cuSeqLensQOptional, cuSeqLensKvOptional, sequsedQOptional, 
-           sequsedKvOptional, topkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, 
-           maxSeqlenKvOptional, topKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, maskModeOptional, 
-           winLeftOptional, winRightOptional, layoutQOptional, layoutKvOptional, socVersion, aicCoreNum, aivCoreNum, 
+    L0_DFX(KvQuantSparseFlashAttentionMetadata, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, numHeadsQ, numHeadsKv, headDim, 
+           keyQuantMode, valueQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, 
+           topKOptional, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, 
+           sparseModeOptional, preTokensOptional, nextTokensOptional, attentionModeOptional, 
+           quantScaleRepoModeOptional, tileSizeOptional, ropeHeadDimOptional, socVersion, aicCoreNum, aivCoreNum, 
            metaData);
 
     static internal::AicpuTaskSpace space("KvQuantSparseFlashAttentionMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
     KvQuantSparseFlashAttentionMetadata,
-    OP_ATTR_NAMES({"num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_kv", 
-                   "topk", "kv_quant_mode", "tile_size", "rope_head_dim", "mask_mode", "win_left", "win_right", 
-                   "layout_q", "layout_kv", "soc_version", "aic_core_num", "aiv_core_num"}),
-    OP_INPUT(cuSeqLensQOptional, cuSeqLensKvOptional, sequsedQOptional, sequsedKvOptional, topkLengthOptional), 
+    OP_ATTR_NAMES({"num_heads_q", "num_heads_kv", "head_dim", "key_quant_mode", "value_quant_mode", "batch_size", 
+                   "max_seqlen_q", "max_seqlen_kv", "topk", "sparse_block_size", "layout_query", "layout_kv", 
+                   "sparse_mode", "pre_tokens", "next_tokens", "attention_mode", "quant_scale_repo_mode", 
+                   "tile_size", "rope_head_dim", "soc_version", "aic_core_num", "aiv_core_num"}),
+    OP_INPUT(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional), 
     OP_OUTPUT(metaData),
-    OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, topKOptional, 
-            kvQuantMode, tileSizeOptional, ropeHeadDimOptional, maskModeOptional, winLeftOptional, winRightOptional, 
-            layoutQOptional, layoutKvOptional, socVersion, aicCoreNum, aivCoreNum));
+    OP_ATTR(numHeadsQ, numHeadsKv, headDim, 
+            keyQuantMode, valueQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, 
+            topKOptional, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, 
+            sparseModeOptional, preTokensOptional, nextTokensOptional, attentionModeOptional, 
+            quantScaleRepoModeOptional, tileSizeOptional, ropeHeadDimOptional, socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                     "KvQuantSparseFlashAttentionMetadata"
