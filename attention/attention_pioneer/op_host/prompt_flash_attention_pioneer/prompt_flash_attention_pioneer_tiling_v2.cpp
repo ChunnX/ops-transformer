@@ -16,6 +16,7 @@
 #include <queue>
 
 #include "register/op_def_registry.h"
+#include "../common/attention_pioneer_metadata.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/data_copy_transpose_tiling.h"
 #include "log/log.h"
@@ -48,6 +49,7 @@ constexpr uint32_t QUANT_SCALE2_INDEX = 10;
 constexpr uint32_t QUANT_OFFSET2_INDEX = 11;
 constexpr uint32_t ANTIQUANT_SCALE_INDEX = 12;
 constexpr uint32_t ANTIQUANT_OFFSET_INDEX = 13;
+constexpr uint32_t METADATA_INDEX = 28;
 
 
 constexpr uint32_t ATTR_N_INDEX = 0;
@@ -3665,327 +3667,98 @@ bool PromptFlashAttentionPioneerTilingV2::PromptFlashAttentionPioneerComputeCVDi
     return true;
 }
 
-void PromptFlashAttentionPioneerTilingV2::GetPreNextTokensLeftUp(PromptFlashAttentionPioneerTilingData& tilingData,
-    int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t& preTokensLeftUp, int64_t& nextTokensLeftUp) 
+void PromptFlashAttentionPioneerTilingV2::ReadMetadataForSplitCore(
+    PromptFlashAttentionPioneerTilingData& tilingData)
 {
+    const gert::Tensor* metadataTensor = context_->GetOptionalInputTensor(METADATA_INDEX);
+    if (metadataTensor == nullptr) {
+        return;
+    }
+    const int32_t* metaPtr = metadataTensor->GetData<int32_t>();
+    if (metaPtr == nullptr) {
+        return;
+    }
+
+    // Read base metadata scalars
+    uint32_t usedCoreNum = static_cast<uint32_t>(metaPtr[AP_BASE_OFFSET + USED_CORE_NUM_INDEX]);
+    uint32_t sInnerSize = static_cast<uint32_t>(metaPtr[AP_BASE_OFFSET + S_INNER_SIZE_INDEX]);
+    uint32_t s1OuterSize = static_cast<uint32_t>(metaPtr[AP_BASE_OFFSET + S1_OUTER_SIZE_INDEX]);
+    uint32_t s2Size = static_cast<uint32_t>(metaPtr[AP_BASE_OFFSET + S2_SIZE_INDEX]);
+
+    // Copy per-core bnStartIdx from new layout: core_id * 10 + field
+    constexpr size_t REGBASE_ARRAY_LEN = 48;
+    std::vector<uint32_t> bnStartIdx(REGBASE_ARRAY_LEN, 0U);
+    for (uint32_t i = 0; i < usedCoreNum && i < AP_AIC_CORE_NUM; i++) {
+        bnStartIdx[i] = static_cast<uint32_t>(metaPtr[GetCoreFieldOffset(i, BN2_START_PTR_INDEX)]);
+    }
+    faTilingAdapter.multiCoreParamsRegbase.set_bnStartIdx(bnStartIdx.data());
+
+    // Copy per-core gS1StartIdx from new layout
+    std::vector<int64_t> gS1StartIdx(REGBASE_ARRAY_LEN, 0L);
+    for (uint32_t i = 0; i < usedCoreNum && i < AP_AIC_CORE_NUM; i++) {
+        gS1StartIdx[i] = static_cast<int64_t>(metaPtr[GetCoreFieldOffset(i, GS1_START_PTR_INDEX)]);
+    }
+    faTilingAdapter.multiCoreParamsRegbase.set_sparseStartIdx(gS1StartIdx.data());
+
+    // Read derived fields from metadata
+    int32_t totalSize = metaPtr[AP_BASE_OFFSET + TOTAL_SIZE_INDEX];
+    int32_t splitFactorSize = metaPtr[AP_BASE_OFFSET + SPLIT_FACTOR_SIZE_INDEX];
+    int32_t splitFactorTailSize = metaPtr[AP_BASE_OFFSET + SPLIT_FACTOR_TAIL_SIZE_INDEX];
+    uint32_t actualCoreNums = static_cast<uint32_t>(metaPtr[AP_BASE_OFFSET + ACTUAL_CORE_NUMS_INDEX]);
+    uint32_t multiSmaxsInnerLoopTimes = static_cast<uint32_t>(
+        metaPtr[AP_BASE_OFFSET + MULTI_SMAX_S_INNER_LOOP_TIMES_INDEX]);
+
+    // Set multiCoreParamsRegbase scalar fields
+    faTilingAdapter.multiCoreParamsRegbase.set_s1OuterSize(static_cast<int64_t>(s1OuterSize));
+    // Derive seqParams from per-core bnStartIdx/gS1StartIdx
     PromptAttentionBaseParams* baseParams = &tilingData.promptAttentionBaseParams;
-    if (baseParams->get_sparseMode() == SPARSE_MODE_RIGHT_DOWN) {
-        preTokensLeftUp = SPARSE_MODE_INT_MAX;
-        if (enableIFAMLA) {
-            if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
-            } else { // BNSD场景下分核不做优化
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
-        } else if (enableIFA){
-            nextTokensLeftUp = actualSeqLengthKV * gSize - actualSeqLength;
-        }else {
-            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
+    uint32_t headNumSize = baseParams->get_headNumSize();
+    int64_t totalBN = static_cast<int64_t>(baseParams->get_batchSize()) *
+                      static_cast<int64_t>(headNumSize);
+    faTilingAdapter.multiCoreParamsRegbase.set_coreNum(static_cast<int32_t>(usedCoreNum));
+    faTilingAdapter.multiCoreParamsRegbase.set_totalSize(static_cast<int64_t>(totalSize));
+    faTilingAdapter.multiCoreParamsRegbase.set_splitFactorSize(static_cast<int64_t>(splitFactorSize));
+    faTilingAdapter.multiCoreParamsRegbase.set_splitFactorTailSize(static_cast<int64_t>(splitFactorTailSize));
+
+    // Set actualCoreNums (from metadata)
+    PromptAttentionSingleCoreParams* singleCoreParams = &tilingData.promptAttentionSingleCoreParams;
+    singleCoreParams->set_actualCoreNums(actualCoreNums);
+    constexpr size_t SEQ_PARAMS_LEN = 64;
+    std::vector<uint32_t> coreNidStart(SEQ_PARAMS_LEN, 0U);
+    std::vector<uint32_t> coreNidEnd(SEQ_PARAMS_LEN, 0U);
+    std::vector<uint32_t> coreSidStart(SEQ_PARAMS_LEN, 0U);
+    std::vector<uint32_t> coreSidEnd(SEQ_PARAMS_LEN, 0U);
+    std::vector<uint32_t> coreSposStart(SEQ_PARAMS_LEN, 0U);
+    std::vector<uint32_t> coreSposEnd(SEQ_PARAMS_LEN, 0U);
+
+    for (uint32_t core = 0; core < usedCoreNum; core++) {
+        uint32_t bnStart = bnStartIdx[core];
+        coreSidStart[core] = (headNumSize > 0) ? bnStart / headNumSize : 0;
+        coreNidStart[core] = (headNumSize > 0) ? bnStart % headNumSize : 0;
+        coreSposStart[core] = static_cast<uint32_t>(gS1StartIdx[core]);
+
+        // For end boundary: use next core's start, or total values for last core
+        uint32_t bnNext;
+        int64_t gS1Next;
+        if (core + 1 < usedCoreNum) {
+            bnNext = bnStartIdx[core + 1];
+            gS1Next = gS1StartIdx[core + 1];
+        } else {
+            bnNext = static_cast<uint32_t>(totalBN);
+            gS1Next = 0;  // signal to use s1OuterSize
         }
-    } else if (baseParams->get_sparseMode() == SPARSE_MODE_BAND) {
-        if (enableIFAMLA) {
-            if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
-                preTokensLeftUp = baseParams->get_preTokens() * gSize - actualSeqLengthKV * gSize + actualSeqLength;
-                nextTokensLeftUp = baseParams->get_nextTokens() * gSize + actualSeqLengthKV * gSize - actualSeqLength;
-            } else { // BNSD场景下分核不做优化
-                preTokensLeftUp = SPARSE_MODE_INT_MAX;
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
-        } else if (enableIFA){
-            preTokensLeftUp = baseParams->get_preTokens() * gSize - actualSeqLengthKV * gSize + actualSeqLength;
-            nextTokensLeftUp = baseParams->get_nextTokens() * gSize + actualSeqLengthKV * gSize - actualSeqLength;
-        }else {
-            preTokensLeftUp = baseParams->get_preTokens() - actualSeqLengthKV + actualSeqLength;
-            nextTokensLeftUp = baseParams->get_nextTokens() + actualSeqLengthKV - actualSeqLength;
-        }
-    } else {
-        if (enableIFAMLA) {
-            if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
-                preTokensLeftUp = baseParams->get_preTokens() * gSize;
-                nextTokensLeftUp = baseParams->get_nextTokens() * gSize;
-            } else { // BNSD场景下分核不做优化
-                preTokensLeftUp = SPARSE_MODE_INT_MAX;
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
-        } else if(enableIFA){
-            preTokensLeftUp = baseParams->get_preTokens() * gSize;
-            nextTokensLeftUp = baseParams->get_nextTokens() * gSize;
-        }else {
-            preTokensLeftUp = baseParams->get_preTokens();
-            nextTokensLeftUp = baseParams->get_nextTokens();
-        }
-    }
-}
 
-int64_t PromptFlashAttentionPioneerTilingV2::GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd,
-    int64_t innerBlockNums) const 
-{
-    int64_t sInnerBlockNums = 0;
-
-    if (sInnerIndexEnd < 0) {
-        sInnerBlockNums = 0;
-    } else if (sInnerIndexEnd < innerBlockNums) {
-        sInnerBlockNums = (sInnerIndexStart < 0) ? (sInnerIndexEnd + 1) : (sInnerIndexEnd - sInnerIndexStart + 1);
-    } else {
-        sInnerBlockNums = (sInnerIndexStart < 0) ? innerBlockNums :
-            (sInnerIndexStart < innerBlockNums ? innerBlockNums - sInnerIndexStart : 0);
-    }
-
-    return sInnerBlockNums;
-}
-
-int64_t PromptFlashAttentionPioneerTilingV2::SumOfArithmeticSeries(int64_t an, int64_t d) const 
-{
-    // 等差数列求和，an：等差数列第n项，d：等差数列公差
-    if (d == 0) {
-        return 0;
-    }
-    return (an > 0) ? (an % d + an) * (an / d + 1) / 2 : 0; // 2: 等差数列求和公式分母
-}
-
-int64_t PromptFlashAttentionPioneerTilingV2::SinkBlockCount(int64_t actualSeqLength, int64_t actualSeqLengthKV,
-    uint32_t sOuterSize, uint32_t sInnerSize) {
-    int64_t SinkBlock = 0;
-    //S1方向进行分核，把不同sOuterIndex分给不同核，计算当前batch下的S1方向基本块数量
-    int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
-    //求出sink部分有多少个S2基本块
-    int64_t sinkBlockNumberPerS1g = (sinkLength + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize);
-    SinkBlock = sinkBlockNumberPerS1g * outerBlockNums;
-    return SinkBlock;
-}
-
-int64_t PromptFlashAttentionPioneerTilingV2::GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength,
-        int64_t sInner, int64_t sOuter, int64_t token) const
-{
-    // 以nextToken视角计算完全被nextToken掩盖的基本块数
-    int64_t blockNums = 0;
-    int64_t blockToken = token > 0 ? ((token + sInner - 1) / sInner * sInner) : (token / sInner * sInner);
-    int64_t outDivIn = sOuter > sInner ? sOuter / sInner : 1;
-    int64_t InDivOut = sInner > sOuter ? sInner / sOuter : 1;
-    int64_t tolerance = 0;
-    int64_t smallSize = 0;
-    if (outDivIn >= 1) {
-        tolerance = outDivIn;
-        smallSize = sInner;
-    } else {
-        tolerance = InDivOut;
-        smallSize = sOuter;
-    }
-
-    // nextToken与上边右边构成的大三角形
-    int64_t innerCutBlockNums = (blockSeqLengthKV - blockToken) / smallSize - tolerance;
-    blockNums += SumOfArithmeticSeries(innerCutBlockNums, tolerance);
-
-    // nextToken与上边左边构成的左侧三角形，需要减去
-    int64_t innerCutBlockLeftNums = -blockToken / smallSize - tolerance;
-    blockNums -= SumOfArithmeticSeries(innerCutBlockLeftNums, tolerance);
-
-    // nextToken与下边右边构成的下侧三角形，需要减去
-    int64_t innerCutBlockDownNums = (blockSeqLengthKV - blockSeqLength - blockToken) / smallSize - tolerance;
-    blockNums -= SumOfArithmeticSeries(innerCutBlockDownNums, tolerance);
-
-    // nextToken与下边左边构成的小三角形，是前两个三角形的重叠部分，需要加上
-    int64_t innerCutBlockLeftDownNums = (-blockToken - blockSeqLength) / smallSize - tolerance;
-    blockNums += SumOfArithmeticSeries(innerCutBlockLeftDownNums, tolerance);
-    return blockNums;
-}
-
-// 函数内部不处理prefix逻辑，prefix场景下入参需自行传入actualSeqLengthKV + prefix
-void PromptFlashAttentionPioneerTilingV2::FixParamWithRowInvalid(int64_t& actualSeqLength, int64_t actualSeqLengthKV,
-    int64_t& preTokensLeftUp, int64_t& nextTokensLeftUp) const 
-{
-    // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
-    int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
-    nextTokensError = nextTokensError > actualSeqLength ? actualSeqLength : nextTokensError;
-    int64_t preTokensError = 0;
-    if (enableIFAMLA) {
-        preTokensError = (actualSeqLength > actualSeqLengthKV * gSize + preTokensLeftUp) ?
-            (actualSeqLength - actualSeqLengthKV * gSize - preTokensLeftUp) : 0;
-    } else {
-        preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
-            (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) : 0;
-    }
-    preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
-
-    // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
-    nextTokensLeftUp += nextTokensError;
-    preTokensLeftUp -= nextTokensError;
-    actualSeqLength -= nextTokensError;
-
-    // 若出现下方行无效，需要重新计算actualseqlen
-    actualSeqLength -= preTokensError;
-}
-
-int64_t PromptFlashAttentionPioneerTilingV2::ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
-{
-    sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
-    sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
-    return sInnerToken;
-}
- 
-int64_t PromptFlashAttentionPioneerTilingV2::GetCalcBlockNumsForS1G(int64_t actualSeqLength, int64_t actualSeqLengthKV,
-    uint32_t sOuterSize, uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp)
-{
-    int64_t s2BlockNum = 0;
-    int64_t outerBlockNums = (actualSeqLength + static_cast<int64_t>(sOuterSize) - 1) /
-            static_cast<int64_t>(sOuterSize);
-    int64_t sInnerFirstToken = 0;
-    int64_t sInnerLastToken = 0;
-    for (uint32_t i = 0; i < outerBlockNums; i ++) {
-        int64_t cubeSOuterOffset = i * static_cast<int64_t>(sOuterSize);
-        sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize, 0, actualSeqLengthKV);
-        sInnerLastToken = ClipSInnerToken(CeilDivision(
-            static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
-            static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
-        s2BlockNum += (sInnerLastToken + sInnerSize - 1) / sInnerSize - sInnerFirstToken / sInnerSize; 
-    }
-    return s2BlockNum;
-}
-
-int64_t PromptFlashAttentionPioneerTilingV2::GetCalcBlockNumsOneHead(int64_t actualSeqLength, int64_t actualSeqLengthKV,
-    uint32_t sOuterSize, uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp, bool isAttenMaskUsed)
-{
-    if (!isAttenMaskUsed) {
-        int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
-        int64_t innerBlockNums = (actualSeqLengthKV + sInnerSize - 1) / sInnerSize + (actualSharedPrefixLen + sInnerSize - 1) / sInnerSize; 
-        int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
-        return toCalcBlockNums;
-    } else {
-        if (enableIFAMLA) {
-            return GetCalcBlockNumsForS1G(actualSeqLength, actualSeqLengthKV, sOuterSize, sInnerSize, preTokensLeftUp, nextTokensLeftUp);
-        }
-        int64_t innerBlockNums = (actualSeqLengthKV + static_cast<int64_t>(sInnerSize) - 1) /
-            static_cast<int64_t>(sInnerSize);
-        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerSize);
-        int64_t outerBlockNums = (actualSeqLength + static_cast<int64_t>(sOuterSize) - 1) /
-            static_cast<int64_t>(sOuterSize);
-        int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterSize);
-        int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
-        // 必须满足pretoken + nexttoken > 0，否则会减出小于0的块数，这里需要去除prefix影响
-        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
-            static_cast<int64_t>(sOuterSize), nextTokensLeftUp - actualSharedPrefixLen);
-        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
-            static_cast<int64_t>(sOuterSize), blockSeqLengthKV - blockSeqLength + preTokensLeftUp + actualSharedPrefixLen);
-
-        // prefix部分单独计算
-        int64_t innerBlockNumsPrefix = (actualSharedPrefixLen + static_cast<int64_t>(sInnerSize) - 1) /
-            static_cast<int64_t>(sInnerSize);
-        int64_t blockSharedPrefix = innerBlockNumsPrefix * static_cast<int64_t>(sInnerSize);
-        toCalcBlockNums += innerBlockNumsPrefix * outerBlockNums;
-        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerSize),
-            static_cast<int64_t>(sOuterSize), nextTokensLeftUp);
-        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerSize),
-            static_cast<int64_t>(sOuterSize), blockSharedPrefix - blockSeqLength + preTokensLeftUp);
- 
-        return toCalcBlockNums;
-    }
-}
-
-void PromptFlashAttentionPioneerTilingV2::ComputeSplitNBSeq(PromptFlashAttentionPioneerTilingData& tilingData, uint32_t batchSize,
-    const size_t tilingElementArrayLen, std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV,
-    uint32_t sOuterSize, uint32_t sInnerSize, double coreWightTarget, uint32_t& curCore) 
-{
-    PromptAttentionBaseParams* baseParams = &tilingData.promptAttentionBaseParams;
-    std::vector<uint32_t> coreSposEnd(tilingElementArrayLen, 0U);
-    std::vector<uint32_t> coreSposStart(tilingElementArrayLen, 0U);
-    std::vector<uint32_t> coreSidEnd(tilingElementArrayLen, 0U);
-    std::vector<uint32_t> coreSidStart(tilingElementArrayLen, 0U);
-    std::vector<uint32_t> coreNidEnd(tilingElementArrayLen, 0U);
-    std::vector<uint32_t> coreNidStart(tilingElementArrayLen, 0U);
-    std::vector<int64_t> sparseStartIdx(tilingElementArrayLen, 0L);
-    std::vector<uint32_t> bnStartIdx(tilingElementArrayLen, 0U);
-    std::vector<int64_t> gS1StartIdx(tilingElementArrayLen, 0L);
-    // Temporary algorithm to be optimized
-    int64_t curWight = 0;
-    curCore = 0;
-    uint32_t tmpCoreNidEnd = 0; // actual seq为0时不分配核
-    uint32_t tmpCoreSidEnd = 0;
-    uint32_t tmpCoreSposEnd = 0;
-    int64_t innerBlockNumsPrefix = (actualSharedPrefixLen + sInnerSize - 1) / sInnerSize;
-    int64_t sinkBlockNumberPerS1g = 0;
-    if (sinkLength > 0) {
-        sinkBlockNumberPerS1g = (sinkLength + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize);
-    }
-    for (uint32_t sIdx = 0; sIdx < batchSize; sIdx++) {
-        for (uint32_t headNum = 0; headNum < baseParams->get_headNumSize(); headNum++) {
-            // 针对行无效情况修正actualseqlen
-            int64_t preTokensLeftUp = 0;
-            int64_t nextTokensLeftUp = 0;
-            GetPreNextTokensLeftUp(tilingData, actualSeqLengths[sIdx], actualSeqLengthsKV[sIdx] + actualSharedPrefixLen,
-                preTokensLeftUp, nextTokensLeftUp);
-            int64_t actualSeqLength = actualSeqLengths[sIdx];
-            int64_t actualSeqLengthKV = actualSeqLengthsKV[sIdx];
-            FixParamWithRowInvalid(actualSeqLength, actualSeqLengthKV + actualSharedPrefixLen,
-                preTokensLeftUp, nextTokensLeftUp);
-
-            int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
-            int64_t innerBlockNums = (actualSeqLengthKV + sInnerSize - 1) / sInnerSize;
-            for (uint32_t sOuterIndex = 0; sOuterIndex < outerBlockNums; sOuterIndex++) {
-                int64_t dif = static_cast<int64_t>(coreWightTarget * double(curCore + 1)) - curWight;
-                // 非prefix部分计算，去除prefix影响
-                int64_t preTokensNoPrefix = preTokensLeftUp + actualSharedPrefixLen;
-                int64_t nextTokensNoPrefix = nextTokensLeftUp - actualSharedPrefixLen;
-                int64_t sInnerIndexStart = -(preTokensNoPrefix > 0 ? (preTokensNoPrefix + static_cast<int64_t>(sInnerSize) - 1) /
-                    static_cast<int64_t>(sInnerSize) : preTokensNoPrefix / static_cast<int64_t>(sInnerSize));
-                int64_t sInnerIndexEnd = nextTokensNoPrefix > 0 ? (nextTokensNoPrefix + static_cast<int64_t>(sInnerSize) - 1) /
-                    static_cast<int64_t>(sInnerSize) : nextTokensNoPrefix / static_cast<int64_t>(sInnerSize);
-
-                // prefix部分单独计算
-                int64_t sInnerIndexStartPrefix = -(preTokensLeftUp > 0 ? (preTokensLeftUp + static_cast<int64_t>(sInnerSize) - 1) /
-                    static_cast<int64_t>(sInnerSize) : preTokensLeftUp / static_cast<int64_t>(sInnerSize));
-                int64_t sInnerIndexEndPrefix = nextTokensLeftUp > 0 ? (nextTokensLeftUp + static_cast<int64_t>(sInnerSize) - 1) /
-                    static_cast<int64_t>(sInnerSize) : nextTokensLeftUp / static_cast<int64_t>(sInnerSize);
-
-                // 当前这一行有多少基本块需要计算
-                int64_t actualInnerBlockNums = 0;
-                int64_t sInnerFirstToken = 0;
-                int64_t sInnerLastToken = 0;
-                if (enableIFAMLA) {
-                    int64_t cubeSOuterOffset = sOuterIndex * sOuterSize;
-                    sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize,
-                        0, actualSeqLengthKV);
-                    sInnerLastToken = ClipSInnerToken(CeilDivision(
-                        static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
-                        static_cast<int64_t>(gSize)),
-                        0, actualSeqLengthKV);
-                    actualInnerBlockNums = (sInnerLastToken + sInnerSize - 1) / sInnerSize -
-                        sInnerFirstToken / sInnerSize;
-                    if (sinkLength > 0) {
-                        actualInnerBlockNums += sinkBlockNumberPerS1g;
-                    }
-                } else {
-                    actualInnerBlockNums = GetActualInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums) +
-                    GetActualInnerBlockNums(sInnerIndexStartPrefix, sInnerIndexEndPrefix, innerBlockNumsPrefix);
-                    if (sinkLength > 0) {
-                        actualInnerBlockNums += sinkBlockNumberPerS1g;
-                    }
-                }
-                if (actualInnerBlockNums - dif > dif && !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
-                    coreNidEnd[curCore] = tmpCoreNidEnd;
-                    coreSidEnd[curCore] = tmpCoreSidEnd;
-                    coreSposEnd[curCore] = tmpCoreSposEnd;
-                    curCore += 1;
-                    coreNidStart[curCore] = headNum;
-                    coreSidStart[curCore] = sIdx;
-                    coreSposStart[curCore] = sOuterIndex;
-                    bnStartIdx[curCore] = sIdx * baseParams->get_headNumSize() + headNum;
-                    gS1StartIdx[curCore] = sOuterIndex;
-                }
-                tmpCoreNidEnd = headNum + 1;
-                tmpCoreSidEnd = sIdx + 1;
-                tmpCoreSposEnd = sOuterIndex + 1;
-
-                curWight += actualInnerBlockNums;
-                preTokensLeftUp -= sOuterSize;
-                nextTokensLeftUp += sOuterSize;
-            }
+        if (gS1Next > 0) {
+            coreSidEnd[core] = (headNumSize > 0) ? bnNext / headNumSize + 1 : 1;
+            coreNidEnd[core] = (headNumSize > 0) ? bnNext % headNumSize + 1 : 1;
+            coreSposEnd[core] = static_cast<uint32_t>(gS1Next);
+        } else {
+            uint32_t lastBn = (bnNext > 0) ? bnNext - 1 : 0;
+            coreSidEnd[core] = (headNumSize > 0) ? lastBn / headNumSize + 1 : 1;
+            coreNidEnd[core] = (headNumSize > 0) ? lastBn % headNumSize + 1 : 1;
+            coreSposEnd[core] = s1OuterSize;
         }
     }
-    coreNidEnd[curCore] = tmpCoreNidEnd;
-    coreSidEnd[curCore] = tmpCoreSidEnd;
-    coreSposEnd[curCore] = tmpCoreSposEnd;
-    bnStartIdx[curCore + 1] = batchSize * baseParams->get_headNumSize();
-    gS1StartIdx[curCore + 1] = tmpCoreSposEnd;
 
     PromptAttentionSeqParams* seqParams = &tilingData.promptAttentionSeqParams;
     seqParams->set_CoreHeadNumTail(coreNidStart.data());
@@ -3994,78 +3767,13 @@ void PromptFlashAttentionPioneerTilingV2::ComputeSplitNBSeq(PromptFlashAttention
     seqParams->set_singleCoreHeadNumSize(coreSidEnd.data());
     seqParams->set_coreSeqPosStart(coreSposStart.data());
     seqParams->set_coreSeqPosEnd(coreSposEnd.data());
-    faTilingAdapter.multiCoreParamsRegbase.set_bnStartIdx(bnStartIdx.data());
-    faTilingAdapter.multiCoreParamsRegbase.set_sparseStartIdx(gS1StartIdx.data());
-}
 
-void PromptFlashAttentionPioneerTilingV2::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t actualUsedCoreNum)
-{
-    faTilingAdapter.multiCoreParamsRegbase.set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
-    faTilingAdapter.multiCoreParamsRegbase.set_totalSize(totalSize);
-    faTilingAdapter.multiCoreParamsRegbase.set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
-    faTilingAdapter.multiCoreParamsRegbase.set_splitFactorTailSize(CalcTailSize(totalSize, faTilingAdapter.multiCoreParamsRegbase.get_splitFactorSize()));
-}
-
-void PromptFlashAttentionPioneerTilingV2::PromptFlashAttentionPioneerSplitNBSeq(PromptFlashAttentionPioneerTilingData& tilingData,
-    std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV, bool isAttenMaskUsed) 
-{
-    PromptAttentionBaseParams* baseParams = &tilingData.promptAttentionBaseParams;
-    PromptAttentionSingleCoreParams* singleCoreParams = &tilingData.promptAttentionSingleCoreParams;
-    uint32_t curCoreNum = coreNum;
-    uint32_t batchSize = baseParams->get_dimNumOfseq();
-    uint32_t sOuterSize = singleCoreParams->get_singleProcessSOuterSize();
-    uint32_t sInnerSize = singleCoreParams->get_singleProcessSInnerSize();
-
-    if (splitCoreMode == SplitCoreMode::SPLIT_NBS_CUBE) { // From the perspective of cube
-        sOuterSize = sOuterSize * CV_RATIO;
-        curCoreNum = curCoreNum / CV_RATIO;
-    }
-
-    int64_t totalBlockNumsOneHead = 0; // The calculation amount of all sequences for a single head
-
-    uint32_t multiSmaxsInnerLoopTimes = 0U;
-    for (uint32_t sIdx = 0; sIdx < batchSize; sIdx++) {
-        int64_t actualSeqLengthsTmp = actualSeqLengths[sIdx]; // 用于存放减去行无效后，真实的actseqlen
-        int64_t preTokensLeftUp = 0;
-        int64_t nextTokensLeftUp = 0;
-        GetPreNextTokensLeftUp(tilingData, actualSeqLengths[sIdx], actualSeqLengthsKV[sIdx] + actualSharedPrefixLen,
-            preTokensLeftUp, nextTokensLeftUp);
-
-        // 计算各sparse mode情况下，减去行无效后真实的actseqlen
-        FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV[sIdx] + actualSharedPrefixLen, preTokensLeftUp, nextTokensLeftUp);
-
-        // sinner方向块数，prefix和origin是分开切的。
-        uint32_t sInnerLoopTimes = (actualSeqLengthsKV[sIdx] + sInnerSize - 1) / sInnerSize +
-            (actualSharedPrefixLen + sInnerSize - 1) / sInnerSize;
-        multiSmaxsInnerLoopTimes = std::max(multiSmaxsInnerLoopTimes, sInnerLoopTimes);
-
-        totalBlockNumsOneHead += GetCalcBlockNumsOneHead(actualSeqLengthsTmp, actualSeqLengthsKV[sIdx], sOuterSize,
-            sInnerSize, preTokensLeftUp, nextTokensLeftUp, isAttenMaskUsed);
-        if(sinkLength > 0){
-            totalBlockNumsOneHead += SinkBlockCount(actualSeqLengthsTmp, actualSeqLengthsKV[sIdx], sOuterSize,
-            sInnerSize);
-        }
+    // multiSmaxsInnerLoopTimes: read from metadata, add shared prefix if needed
+    if (actualSharedPrefixLen > 0 && sInnerSize > 0) {
+        multiSmaxsInnerLoopTimes += static_cast<uint32_t>(
+            (actualSharedPrefixLen + sInnerSize - 1) / sInnerSize);
     }
     singleCoreParams->set_multiSmaxsInnerLoopTimes(multiSmaxsInnerLoopTimes);
-
-    // Amount of computation per core
-    double coreWightTarget = (double(totalBlockNumsOneHead * baseParams->get_headNumSize()) / double(curCoreNum));
-
-    int64_t s1OuterSize = (baseParams->get_seqSize() + sOuterSize - 1) / sOuterSize;
-    faTilingAdapter.multiCoreParamsRegbase.set_s1OuterSize(s1OuterSize);
-
-    // The tiling structure element needs to have a length greater than or equal to the length specified
-    // by TILING_DATA_FIELD_DEF_ARR. If the tiling structure definition specifies a length of 64,
-    // the vector definition needs to compare its size with coreNum and take the larger value
-    const size_t tilingElementArrayLen = (static_cast<size_t>(curCoreNum) > 64UL) ? static_cast<size_t>(curCoreNum) : 64UL;
-    uint32_t curIndx = 0;
-    ComputeSplitNBSeq(tilingData, batchSize, tilingElementArrayLen, actualSeqLengths, actualSeqLengthsKV, sOuterSize,
-        sInnerSize, coreWightTarget, curIndx);
-    if (curIndx > curCoreNum -1) curIndx = curCoreNum - 1;
-    uint32_t actualCoreNums = (splitCoreMode == SplitCoreMode::SPLIT_NBS_CUBE) ? (curIndx + 1) * CV_RATIO : curIndx + 1;
-    singleCoreParams->set_actualCoreNums(actualCoreNums);
-    int64_t sinnerBlocknum = (baseParams->get_seqInnerSize() + sInnerSize - 1) / sInnerSize;
-    SetMultiCoreParamsRegbase((totalBlockNumsOneHead / sinnerBlocknum) * baseParams->get_headNumSize(), static_cast<int64_t>((curIndx + 1)));
 }
 
 void PromptFlashAttentionPioneerTilingV2::PromptFlashAttentionPioneerInitSoftmaxLseOutputSplit(int64_t totalSize,
@@ -4865,8 +4573,7 @@ ge::graphStatus PromptFlashAttentionPioneerTilingV2::ComputeTilingData(ContextPa
 {
     // Compute tiling data.
     if (splitCoreMode == SplitCoreMode::SPLIT_NBS_CUBE) {
-        bool isAttenMaskUsed = (contextKeyParams.attentionMaskShape != nullptr);
-        PromptFlashAttentionPioneerSplitNBSeq(tilingData, actualSeqLengths, actualSeqLengthsKV, isAttenMaskUsed);
+        ReadMetadataForSplitCore(tilingData);
     }
 
     if (needInit == 1) {
