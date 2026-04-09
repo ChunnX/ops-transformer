@@ -414,9 +414,9 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoLibApiTiling()
 uint64_t MaskedCausalConv1dBackwardTiling::GetTilingKey() const
 {
     if (dataType_ == ge::DataType::DT_BF16) {
-        return TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_BF16;
+        return TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16;
     } else if (dataType_ == ge::DataType::DT_FLOAT16) {
-        return TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_FP16;
+        return TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16;
     }
     
 }

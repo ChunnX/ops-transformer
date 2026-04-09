@@ -13,8 +13,8 @@
  * \brief Tiling data struct for masked_causal_conv1d_backward on arch35
  */
 
-#ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_STRUCT_H
-#define MASK_EDCAUSAL_CONV1D_BACKWARD_STRUCT_H
+#ifndef MASKED_CAUSAL_CONV1D_BACKWARD_STRUCT_H
+#define MASKED_CAUSAL_CONV1D_BACKWARD_STRUCT_H
 
 namespace MaskedCausalConv1dBackwardArch35Tiling {
 
@@ -58,4 +58,4 @@ struct MaskedCausalConv1dBackwardTilingDataV35 {
 
 } // namespace MaskedCausalConv1dBackwardArch35Tiling
 
-#endif // OPS_TRANSFORMER_ATTENTION_MASK_EDCAUSAL_CONV1D_BACKWARD_OP_KERNEL_ARCH35_STRUCT_H
+#endif // MASKED_CAUSAL_CONV1D_BACKWARD_STRUCT_H

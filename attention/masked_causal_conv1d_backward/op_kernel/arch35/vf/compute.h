@@ -13,8 +13,8 @@
  * \brief MicroAPI VF helpers for masked_causal_conv1d_backward
  */
 
-#ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
-#define MASK_EDCAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
+#ifndef MASKED_CAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
+#define MASKED_CAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
 
 #include "kernel_operator.h"
 

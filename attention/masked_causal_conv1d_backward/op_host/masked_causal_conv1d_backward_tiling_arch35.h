@@ -13,8 +13,8 @@
  * \brief MaskedCausalConv1dBackward tiling implementation
  */
 
-#ifndef MASK_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
-#define MASK_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
+#ifndef MASKED_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
+#define MASKED_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
 
 #include "log/log.h"
 #include "platform/platform_info.h"
@@ -34,8 +34,8 @@ struct MaskedCausalConv1dBackwardArch35CompileInfo {
     uint64_t ubSize = 0;
 };
 
-constexpr uint64_t TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_BF16 = 10000;
-constexpr uint64_t TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_FP16 = 10001;
+constexpr uint64_t TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16 = 10000;
+constexpr uint64_t TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16 = 10001;
 
 // Input tensor indices
 constexpr int32_t GRAD_OUTPUT_INDEX = 0;
@@ -146,4 +146,4 @@ private:
 
 } // namespace optiling
 
-#endif // MASK_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H
+#endif // MASKED_CAUSAL_CONV1D_BACKWARD_TILING_ARCH35_H

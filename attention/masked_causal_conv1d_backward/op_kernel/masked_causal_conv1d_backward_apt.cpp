@@ -17,8 +17,8 @@
 #include "arch35/masked_causal_conv1d_backward.h"
 #include "arch35/masked_causal_conv1d_backward_struct.h"
 
-#define TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_BF16 10000
-#define TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_FP16 10001
+#define TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16 10000
+#define TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16 10001
 
 using namespace AscendC;
 using MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35;
@@ -36,12 +36,12 @@ extern "C" __global__ __aicore__ void masked_causal_conv1d_backward(GM_ADDR grad
     GET_TILING_DATA_WITH_STRUCT(MaskedCausalConv1dBackwardTilingDataV35, td, tiling);
     
     TPipe pipe;
-    if (TILING_KEY_IS(TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_BF16)) {
+    if (TILING_KEY_IS(TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16)) {
         MaskedCausalConv1dBackwardKernel<bfloat16_t> op;
         op.Init(grad_output, input, weight, mask, grad_input, grad_weight, &td, &pipe);
         op.Process();
     }
-    else if(TILING_KEY_IS(TILING_KEY_MASK_EDCAUSAL_CONV1D_BACKWARD_FP16)) {
+    else if(TILING_KEY_IS(TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16)) {
         MaskedCausalConv1dBackwardKernel<half> op;
         op.Init(grad_output, input, weight, mask, grad_input, grad_weight, &td, &pipe);
         op.Process();

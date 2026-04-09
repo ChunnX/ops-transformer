@@ -13,8 +13,8 @@
  * \brief Arch35 AICore kernel for masked_causal_conv1d_backward
  */
 
-#ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_H
-#define MASK_EDCAUSAL_CONV1D_BACKWARD_H
+#ifndef MASKED_CAUSAL_CONV1D_BACKWARD_H
+#define MASKED_CAUSAL_CONV1D_BACKWARD_H
 
 #include "kernel_operator.h"
 #include "vf/compute.h"
@@ -618,4 +618,4 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyOutGradInput(in
 
 } // namespace MaskedCausalConv1dBackwardKernelNS
 
-#endif // MASK_EDCAUSAL_CONV1D_BACKWARD_H
+#endif // MASKED_CAUSAL_CONV1D_BACKWARD_H
