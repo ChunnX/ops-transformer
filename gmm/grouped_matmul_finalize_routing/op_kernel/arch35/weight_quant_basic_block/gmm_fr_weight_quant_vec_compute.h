@@ -218,7 +218,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(b
     biasRescale_ = LocalTensor<biasType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.biasRescaleTotalSize);
     ubOffset += UB_BUFFER_INFO.biasRescaleTotalSize * sizeof(biasType);
     rowIndex_ = LocalTensor<rowIndexType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.rowIndexTotalSize);
-    ubOffset += UB_BUFFER_INFO.biasRescaleTotalSize * sizeof(rowIndexType);
+    ubOffset += UB_BUFFER_INFO.rowIndexTotalSize * sizeof(rowIndexType);
     logits_ = LocalTensor<logitsType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.logitsTotalSize);
 
     for (uint16_t idx = 0; idx < UB_BUFFER_INFO.weightHighBitBufferNum; idx++) {
@@ -247,13 +247,15 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitGm
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
-
+    // 判断是否存在尾块，若存在则单独搬运
     uint64_t mte3TailSize = initZeroSize % VEC_MAX_ELEM_B32;
-    uint64_t mte3MainCount = mte3TailSize == 0 ? CeilDivide(initZeroSize, VEC_MAX_ELEM_B32) : initZeroSize / VEC_MAX_ELEM_B32;    
+    uint64_t mte3MainCount = initZeroSize / VEC_MAX_ELEM_B32;
+    // 主块的搬运逻辑
     if (mte3MainCount > 0) {
         DataCopyPad2D(yFp32Global_[yGmOffset], weightHighBit_[bufId * VECTOR_REG_WIDTH].template ReinterpretCast<float>(),
                   mte3MainCount, VEC_MAX_ELEM_B32, VEC_MAX_ELEM_B32 * QUADRUPLE_BUFFER_NUM, VEC_MAX_ELEM_B32);
     }
+    // 尾块的搬运逻辑
     if (mte3TailSize > 0) {
         DataCopyPad2D(yFp32Global_[yGmOffset + mte3MainCount * VEC_MAX_ELEM_B32], weightHighBit_[bufId * VECTOR_REG_WIDTH].template ReinterpretCast<float>(),
                   1, mte3TailSize, VEC_MAX_ELEM_B32, VEC_MAX_ELEM_B32);
@@ -298,13 +300,14 @@ GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyShareInputUbToGm(uint64_t
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
 
     uint64_t mte3TailSize = initSharedInputRealSize % VEC_MAX_ELEM_B32;
-    uint64_t mte3MainCount = mte3TailSize == 0 ? CeilDivide(initSharedInputRealSize, VEC_MAX_ELEM_B32) :
-                                                 initSharedInputRealSize / VEC_MAX_ELEM_B32;
+    uint64_t mte3MainCount = initSharedInputRealSize / VEC_MAX_ELEM_B32;
+    // 主块搬运
     if (mte3MainCount > 0) {
         DataCopyPad2D(yFp32Global_[sharedInputGmOffset],
                     weightHighBit_[vfBufId * VECTOR_REG_WIDTH].template ReinterpretCast<float>(), mte3MainCount,
                     VEC_MAX_ELEM_B32, VEC_MAX_ELEM_B32 * QUADRUPLE_BUFFER_NUM, VEC_MAX_ELEM_B32);
     }
+    // 尾块搬运
     if (mte3TailSize > 0) {
         DataCopyPad2D(
             yFp32Global_[sharedInputGmOffset + mte3MainCount * VEC_MAX_ELEM_B32],
