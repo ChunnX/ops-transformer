@@ -24,7 +24,12 @@ class Model(nn.Module):
         self.scales1 = scales1.to(torch.float32).to('cpu')
         self.scales2 = scales2
 
-        self.zero_points1 = zero_points1.to(torch.float32).to('cpu')
+        if zero_points1 is not None:
+            self.zero_points1 = zero_points1.to(torch.float32).to('cpu')
+        else:
+            self.zero_points1 = torch.zeros(
+                self.gamma.shape, dtype=torch.float32, device='cpu'
+            )
         self.zero_points2 = zero_points2
 
         self.axis = axis

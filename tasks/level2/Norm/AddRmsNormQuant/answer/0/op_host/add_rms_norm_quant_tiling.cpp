@@ -66,6 +66,7 @@ inline static int64_t CeilDiv(const int64_t dividend, const int64_t divisor)
 static void InitPlatformParams(gert::TilingContext *context, const AddRmsNormQuantCompileInfo *ptrCompileInfo,
     uint32_t &numCore, uint64_t &ubSize, platform_ascendc::SocVersion &socVersion)
 {
+    std::cout << "***lyy InitPlatformParams start" << std::endl;
     if (ptrCompileInfo == nullptr) {
         auto ascendc_platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
         socVersion = ascendc_platform.GetSocVersion();
@@ -76,11 +77,13 @@ static void InitPlatformParams(gert::TilingContext *context, const AddRmsNormQua
         ubSize = ptrCompileInfo->totalUbSize;
         socVersion = ptrCompileInfo->socVersion;
     }
+    std::cout << "***lyy InitPlatformParams end" << std::endl;
 }
 
 ge::graphStatus GetOpDescInfo(gert::TilingContext *context, uint32_t &hasZeroPoints1, uint32_t &numCol,
     uint32_t &numRow, float &epsilon, float &avgFactor)
 {
+    std::cout << "***lyy GetOpDescInfo start" << std::endl;
     auto zeroPoints1Desc = context->GetOptionalInputDesc(INPUT_IDX_ZERO_POINTS1);
     hasZeroPoints1 = (zeroPoints1Desc == nullptr) ? 0 : 1;
     const gert::Shape xShape = context->GetInputShape(0)->GetStorageShape();
@@ -97,14 +100,17 @@ ge::graphStatus GetOpDescInfo(gert::TilingContext *context, uint32_t &hasZeroPoi
         numRow *= xShape.GetDim(i);
     }
     avgFactor = (numCol == 0) ? 0 : 1.0 / numCol;
+    std::cout << "***lyy GetOpDescInfo end" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
 static void CalcModeAndUbFactor(gert::TilingContext *context, uint32_t &modeKey, uint32_t &ubFactor,
     uint32_t blockFactor, platform_ascendc::SocVersion &socVersion, uint32_t numCol, DataType &dataType)
 {
+    std::cout << "***lyy CalcModeAndUbFactor start" << std::endl;
+    // FP16 + SingleN 路径在部分形状上触发 TBE 子进程异常；FP16 走 Normal（key 0）内核更稳。
     if (blockFactor == 1 && socVersion != platform_ascendc::SocVersion::ASCEND310P &&
-        numCol <= UB_FACTOR_SINGLE_N_B16) {
+        numCol <= UB_FACTOR_SINGLE_N_B16 && dataType != ge::DT_FLOAT16) {
         modeKey = MODE_SINGLE_N;
         ubFactor = UB_FACTOR_SINGLE_N_B16;
     } else if (numCol > ubFactor) {
@@ -116,10 +122,12 @@ static void CalcModeAndUbFactor(gert::TilingContext *context, uint32_t &modeKey,
         modeKey = MODE_NORMAL;
         ubFactor = UB_FACTOR_B16;
     }
+    std::cout << "***lyy CalcModeAndUbFactor end" << std::endl;
 }
 
 ge::graphStatus Tiling4AddRmsNormQuant(gert::TilingContext *context)
 {
+    std::cout << "***lyy Tiling4AddRmsNormQuant start" << std::endl;
     OP_LOGD("Tiling4AddRmsNormQuant", "Enter Tiling4AddRmsNormQuant");
     AddRMSNormQuantTilingData tiling;
     auto ptrCompileInfo = reinterpret_cast<const AddRmsNormQuantCompileInfo *>(context->GetCompileInfo());
@@ -181,12 +189,13 @@ ge::graphStatus Tiling4AddRmsNormQuant(gert::TilingContext *context)
         ubFactor,
         epsilon,
         avgFactor);
-
+    std::cout << "***lyy Tiling4AddRmsNormQuant end" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus TilingPrepare4AddRmsNormQuant(gert::TilingParseContext *context)
 {
+    std::cout << "***lyy TilingPrepare4AddRmsNormQuant start" << std::endl;
     OP_LOGD(context->GetNodeName(), "TilingPrepare4AddRmsNormQuant running.");
     auto compileInfo = GetCompileInfoPtr<AddRmsNormQuantCompileInfo>(context);
     OPS_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
@@ -198,6 +207,7 @@ ge::graphStatus TilingPrepare4AddRmsNormQuant(gert::TilingParseContext *context)
     compileInfo->totalCoreNum = ascendcPlatform.GetCoreNumAiv();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo->totalUbSize);
 
+    std::cout << "***lyy TilingPrepare4AddRmsNormQuant end" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

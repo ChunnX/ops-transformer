@@ -41,8 +41,10 @@ std::vector<at::Tensor> custom_pybind_api(
     at::Tensor yOut2 = torch::empty_like(x1, options);
 
     at::Tensor xOut = torch::empty_like(x1);
-   
-    EXEC_NPU_CMD(aclnnCustomOp, x1, x2, gamma, scales1, scales2, zero_points1, zero_points2, axis, epsilon, div_mode, yOut1, yOut2, xOut);
+
+    // aclnnAddRmsNormQuantGetWorkspaceSize declares double epsilon; pass double for correct ABI.
+    double epsilon_d = static_cast<double>(epsilon);
+    EXEC_NPU_CMD(aclnnCustomOp, x1, x2, gamma, scales1, scales2, zero_points1, zero_points2, axis, epsilon_d, div_mode, yOut1, yOut2, xOut);
     
     std::vector<at::Tensor> result;
     result = {yOut1};
