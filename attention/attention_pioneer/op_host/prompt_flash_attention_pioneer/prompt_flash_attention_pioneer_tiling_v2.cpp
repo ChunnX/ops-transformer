@@ -3834,7 +3834,8 @@ int64_t PromptFlashAttentionPioneerTilingV2::GetCalcBlockNumsForS1G(int64_t actu
     for (uint32_t i = 0; i < outerBlockNums; i ++) {
         int64_t cubeSOuterOffset = i * static_cast<int64_t>(sOuterSize);
         sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize, 0, actualSeqLengthKV);
-        sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
+        sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(
+            cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
             static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
         s2BlockNum += (sInnerLastToken + sInnerSize - 1) / sInnerSize - sInnerFirstToken / sInnerSize; 
     }
