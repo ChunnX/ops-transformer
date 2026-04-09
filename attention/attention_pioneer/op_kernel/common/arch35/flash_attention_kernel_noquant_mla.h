@@ -20,6 +20,7 @@
 #include "pse.h"
 #include "flash_attention_block_cube_noquant_mla.h"
 #include "flash_attention_score_block_vec_infer.h"
+#include "../../../../attention_pioneer_metadata/op_host/attention_pioneer_metadata.h"
 
 using namespace fa_base_matmul;
 
@@ -31,8 +32,8 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,__gm__ uint8_t * keySink, __gm__ uint8_t *keyRopeSink, 
-                                __gm__ uint8_t *valueSink, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,__gm__ uint8_t * keySink, __gm__ uint8_t *keyRopeSink,
+                                __gm__ uint8_t *valueSink, __gm__ uint8_t *metaData, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
                                 const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -52,10 +53,14 @@ private:
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer>& runParam);
     __aicore__ inline bool IsLastBN(uint32_t bnStartIdx, uint32_t bnEndIdx);
+    __aicore__ inline void ReadMetadataForSplitCore();
 
 private:
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = nullptr;
     TPipe *tPipe = nullptr;
+
+    /* metaData GM tensor for device-side split core info */
+    GlobalTensor<int32_t> metadataGm;
 
     static constexpr uint32_t dTemplateAlign64 = CubeBlockType::dTemplateAlign64;
     static constexpr uint32_t s1BaseSize = CubeBlockType::s1BaseSize;
@@ -107,8 +112,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,__gm__ uint8_t * keySink, __gm__ uint8_t *keyRopeSink, 
-    __gm__ uint8_t *valueSink, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,__gm__ uint8_t * keySink, __gm__ uint8_t *keyRopeSink,
+    __gm__ uint8_t *valueSink, __gm__ uint8_t *metaData, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
     const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
     this->tilingData = tiling;
@@ -121,6 +126,9 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
         this->aicIdx = constInfo.aivIdx;
     }
     this->tPipe = tPipe;
+
+    // Init metadataGm
+    this->metadataGm.SetGlobalBuffer((__gm__ int32_t *)metaData);
 
     // Init Vec
     this->vecBlock.InitVecBlock(this->tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
@@ -135,6 +143,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     ComputeConstexpr();
     InitInput(query, key, value, pse, attenMask, actualSeqLengths, actualSeqLengthsKv, blockTable, postQuantScale,
         postQuantOffset, queryRope, keyRope, softmaxLse, attentionOut, workspace, tiling, tPipe);
+    ReadMetadataForSplitCore();
     InitBuffer();
 }
 
@@ -699,6 +708,36 @@ __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN
         }
     }
     return true;
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ReadMetadataForSplitCore()
+{
+    // Read base metadata scalars from device-side metadata tensor
+    auto &mcParams = const_cast<MultiCoreParamsRegbase &>(this->tilingData->multiCoreParamsRegbase);
+    __gm__ int32_t *metaPtr = this->metadataGm.GetPhyAddr();
+
+    uint32_t usedCoreNum = static_cast<uint32_t>(metaPtr[GetAPBaseMetaIndex(USED_CORE_NUM_INDEX)]);
+    uint32_t s1OuterSize = static_cast<uint32_t>(metaPtr[GetAPBaseMetaIndex(S1_OUTER_SIZE_INDEX)]);
+    int32_t totalSize = metaPtr[GetAPBaseMetaIndex(TOTAL_SIZE_INDEX)];
+    int32_t splitFactorSize = metaPtr[GetAPBaseMetaIndex(SPLIT_FACTOR_SIZE_INDEX)];
+    int32_t splitFactorTailSize = metaPtr[GetAPBaseMetaIndex(SPLIT_FACTOR_TAIL_SIZE_INDEX)];
+
+    // Set multiCoreParamsRegbase scalar fields
+    mcParams.coreNum = static_cast<int32_t>(usedCoreNum);
+    mcParams.s1OuterSize = static_cast<int64_t>(s1OuterSize);
+    mcParams.totalSize = static_cast<int64_t>(totalSize);
+    mcParams.splitFactorSize = static_cast<int64_t>(splitFactorSize);
+    mcParams.splitFactorTailSize = static_cast<int64_t>(splitFactorTailSize);
+
+    // Copy per-core bnStartIdx and sparseStartIdx from metadata
+    for (uint32_t i = 0; i < usedCoreNum && i < AP_AIC_CORE_NUM; i++) {
+        mcParams.bnStartIdx[i] = static_cast<uint32_t>(metaPtr[GetCoreFieldOffset(i, BN2_START_PTR_INDEX)]);
+        mcParams.sparseStartIdx[i] = static_cast<int64_t>(metaPtr[GetCoreFieldOffset(i, GS1_START_PTR_INDEX)]);
+    }
+
+    // Update constInfo.s1OuterSize which was already set from tiling data
+    constInfo.s1OuterSize = static_cast<int64_t>(s1OuterSize);
 }
 
 #endif
