@@ -28,7 +28,7 @@ using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16>;
 using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16>;
 using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
 
-constexpr uint64_t UB_REST_BYTES = 151 * 1024;  // 140KB
+constexpr uint64_t UB_REST_BYTES = 145 * 1024;  // 140KB
 constexpr uint64_t INVERSE_SHAPE = 32;          // 对角块边长
 constexpr uint64_t INVERSE_COUNT = 5;           // 求逆所需空间
 constexpr uint32_t ALIGN_SIZE = 16;
@@ -300,8 +300,7 @@ private:
 
         // query @ key.transpose(-1,-2)   stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], 
-                       outQkGm_[chunkRowBase_[i] * chunkSize_],
+            AICProcess(queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], outQkGm_[chunkRowBase_[i] * chunkSize_],
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
                        true);
         }

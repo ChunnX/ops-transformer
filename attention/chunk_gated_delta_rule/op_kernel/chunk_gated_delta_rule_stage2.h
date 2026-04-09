@@ -118,7 +118,7 @@ public:
                     CrossCoreSetFlag<0x2, PIPE_MTE2>(0x3);
                     if (GetSubBlockIdx() == 0) {
                         CalGCumExp(finalState, sTP_->gCumExp[nvId * Sp_ + length]);
-                        printf("=========================   nvId * Sp_ + length: %ld \n", nvId * Sp_ + length);
+                        // printf("=========================   nvId * Sp_ + length: %ld \n", nvId * Sp_ + length);
                     }
 
                     CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
@@ -152,8 +152,8 @@ public:
                                  CacheLine::SINGLE_CACHE_LINE,
                                  DcciDst::CACHELINE_OUT>(gCumExp[curChunkSize_ - 1]);
         float lastGCumExp = gOptional_? gCumExp.GetValue(curChunkSize_ - 1) : 1.0f;
-        printf("===================== lastGCumExp %f  \n", lastGCumExp);
-        printf("=====================  curChunkSize_ %ld  \n", curChunkSize_);
+        // printf("===================== lastGCumExp %f  \n", lastGCumExp);
+        // printf("=====================  curChunkSize_ %ld  \n", curChunkSize_);
         auto stateIn = inQueue_.DeQue<bfloat16_t>();
         auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
@@ -161,9 +161,9 @@ public:
         Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
         Muls(tmpBuffer1_, tmpBuffer1_, lastGCumExp, Dv_ * curDk_);
         Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
-        DumpTensor(stateOut, 0, 10);
+        // DumpTensor(stateOut, 0, 10);
         // DumpTensor(stateOut, 0, Dv_ * curDk_);
-        DumpTensor(stateOut[Dv_ * curDk_ - 16], 0, 16);
+        // DumpTensor(stateOut[Dv_ * curDk_ - 16], 0, 16);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
 
