@@ -1104,6 +1104,11 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
     }
 
     if (isA5_) {
+        if (inputKvType_ == ge::DT_HIFLOAT8) {
+            OP_CHECK_IF(sparseBlockCount_ != 2048,
+                OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse block count must be 2048, but got %u",
+                    sparseBlockCount_), return ge::GRAPH_FAILED);
+        }
         OP_CHECK_IF(sparseBlockSize_ != 1,
             OP_LOGE(opName_, "sparse block size must be 1, but got %u", sparseBlockSize_),
             return ge::GRAPH_FAILED);

@@ -1186,6 +1186,11 @@ ge::graphStatus QSFAPTilingCheck::CheckFeatureMlaAntiquantShape() const
         return ge::GRAPH_FAILED);
 
     if (isA5_) {
+        if (inputKvType_ == ge::DT_HIFLOAT8) {
+            OP_CHECK_IF(sparseBlockCount_ != 2048,
+                OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse block count must be 2048, but got %u",
+                    sparseBlockCount_), return ge::GRAPH_FAILED);
+        }
         std::vector<uint32_t> gSizeSupportList = {1, 2, 3, 4, 6, 8, 16, 24, 32, 48, 64};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
             OP_LOGE(opName_, "group num should be in 1, 2, 3, 4, 6, 8, 16, 24, 32, 48, 64, but got %u", gSize_),
