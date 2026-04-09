@@ -126,6 +126,93 @@ install_gawk() {
     fi
 }
 
+# 帮助信息函数
+show_help() {
+    cat << EOF
+用法: bash $0 [选项]
+
+选项说明:
+  -url "镜像地址 信任主机"    自定义 PyPI 镜像源（必须用引号包裹，地址与主机名用空格分隔）
+  -h                        显示此帮助信息并退出
+
+使用示例:
+  1. 使用默认镜像源（清华 → 华为自动切换）
+     bash $0
+
+  2. 使用自定义镜像源
+     bash $0 -url "https://repo.huaweicloud.com/repository/pypi/simple repo.huaweicloud.com"
+
+  3. 查看帮助
+     bash $0 -h
+EOF
+}
+
+# 解析命令行参数
+CUSTOM_MIRROR=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -url)
+            if [[ -n "$2" ]]; then
+                IFS=' ' read -ra CUSTOM_MIRROR <<< "$2"
+                shift 2
+            else
+                echo "错误：-url 参数必须跟随 镜像地址 和 信任host" >&2
+                exit 1
+            fi
+            ;;
+        -h)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "无效参数：$1" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# 1. 统一的依赖包列表
+COMMON_PKGS=(
+    "numpy>=1.21.6"
+    "sympy>=1.10.1"
+    "psutil>=5.9"
+    "scipy>=1.7.3"
+    "cloudpickle"
+    "ml-dtypes"
+    "tornado"
+    "absl-py"
+    "decorator>=5.1.0"
+    "attrs"
+    "jinja2"
+    "mpmath"
+)
+
+# 2. 统一的 pip 公共参数
+PIP_COMMON_ARGS=(
+    "--no-deps"
+    "--timeout=60"
+)
+
+# 3. 镜像源配置
+MIRROR_TSINGHUA=("https://pypi.tuna.tsinghua.edu.cn/simple" "pypi.tuna.tsinghua.edu.cn")
+MIRROR_HUAWEI=("https://repo.huaweicloud.com/repository/pypi/simple" "repo.huaweicloud.com")
+
+# ==================== 逻辑区（勿动） ====================
+# 封装安装函数：接收 镜像URL 和 信任Host 作为参数
+install_with_mirror() {
+    local mirror_url=$1
+    local trusted_host=$2
+    local mirror_name=$3
+
+    echo "尝试使用 ${mirror_name} 安装..."
+    pip3 install "${COMMON_PKGS[@]}" \
+        -i "${mirror_url}" \
+        --trusted-host "${trusted_host}" \
+        "${PIP_COMMON_ARGS[@]}"
+    return $?
+}
+
 install_python_deps() {
     echo -e "\n==== Installing CANN 8.5 required Python packages ===="
 
@@ -139,25 +226,37 @@ install_python_deps() {
         fi
     fi
 
+    # ============== 优先使用自定义镜像源 ==============
+    if [ ${#CUSTOM_MIRROR[@]} -ge 2 ]; then
+        local custom_url=${CUSTOM_MIRROR[0]}
+        local custom_host=${CUSTOM_MIRROR[1]}
+        echo -e "\n使用命令行传入的自定义镜像源安装..."
+        if install_with_mirror "${custom_url}" "${custom_host}" "自定义镜像源"; then
+            echo -e "\n✅ CANN Python 依赖安装完成（自定义镜像源）"
+            return
+        else
+            echo -e "\033[31m[错误] 自定义镜像源安装失败！\033[0m"
+            exit 1
+        fi
+    fi
+
     # Let pip handle redundancy — it's safe and idempotent
-    pip3 install \
-        "numpy>=1.21.6" \
-        "sympy>=1.10.1" \
-        "psutil>=5.9" \
-        "scipy>=1.7.3" \
-        cloudpickle \
-        ml-dtypes \
-        tornado \
-        absl-py \
-        "decorator>=5.1.0" \
-        attrs \
-        jinja2 \
-        mpmath \
-        -i https://pypi.tuna.tsinghua.edu.cn/simple \
-        --trusted-host pypi.tuna.tsinghua.edu.cn \
-        --no-deps \
-        --timeout=60
-    echo "CANN Python dependencies installed."
+    # 1. 尝试清华镜像
+    if install_with_mirror "${MIRROR_TSINGHUA[@]}" "清华镜像源"; then
+        echo -e "\n✅ CANN Python 依赖安装完成（清华镜像）"
+        return
+    fi
+
+    echo -e "\033[33m[警告] 清华镜像安装失败，自动切换华为云镜像...\033[0m"
+
+    # 2. 尝试华为云镜像
+    if install_with_mirror "${MIRROR_HUAWEI[@]}" "华为云镜像源"; then
+        echo -e "\n✅ CANN Python 依赖安装完成（华为云镜像）"
+        return
+    fi
+
+    # 3. 全部失败
+    echo -e "\033[31m[错误] 所有镜像源均安装失败！请检查网络或手动安装\033[0m"
 }
 
 install_python() {
