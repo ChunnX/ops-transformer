@@ -30,8 +30,8 @@ constexpr int64_t ATTR_IDX_TYPE_INDEX = 1;
 constexpr int64_t DIM_SIZE_TWO = 2;
 constexpr int64_t DOUBLE_BUFFER = 2;
 
-static const std::set<ge::DataType> TOKENS_DTYPE = {ge::DT_INT8, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN,
-                                                    ge::DT_FLOAT8_E5M2};
+static const std::set<ge::DataType> TOKENS_DTYPE = {ge::DT_INT8,          ge::DT_FLOAT16,     ge::DT_BF16,
+                                                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8};
 static const std::set<ge::DataType> EXPERT_TOKEN_NUM_DTYPE = {ge::DT_INT32, ge::DT_INT64};
 static const std::set<ge::DataType> SCALE_DTYPE = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 
@@ -98,10 +98,16 @@ ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
                 OP_LOGE(context_->GetNodeName(), "expert_token_num_per_rank support int32, int64, actual %s.",
                         ge::TypeUtils::DataTypeToSerialString(expertDtype_).c_str()),
                 return ge::GRAPH_FAILED);
-    if (tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8) {
+    if (tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) {
         OP_CHECK_IF((scaleDtype_ != ge::DT_FLOAT8_E8M0 && scaleDtype_ != ge::DT_FLOAT),
                     OP_LOGE(context_->GetNodeName(),
-                            "tokens is fp8/hif8, scale should be float8_e8m0 or float32, actual %s.",
+                            "tokens is fp8, scale should be float8_e8m0 or float32, actual %s.",
+                            ge::TypeUtils::DataTypeToSerialString(scaleDtype_).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (tokenDtype_ == ge::DT_HIFLOAT8) {
+        OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
+                    OP_LOGE(context_->GetNodeName(), "tokens is hif8, scale should be float32, actual %s.",
                             ge::TypeUtils::DataTypeToSerialString(scaleDtype_).c_str()),
                     return ge::GRAPH_FAILED);
     }

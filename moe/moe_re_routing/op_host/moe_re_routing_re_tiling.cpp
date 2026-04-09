@@ -65,6 +65,7 @@ ge::graphStatus MoeReRoutingReTiling::DoOpTiling()
     if (hasScale_) {
         tilingKey_ =
             scaleDtype_ == ge::DT_FLOAT ? MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT : MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
+        // HIF8+float32场景复用FP8的Tiling路径与Kernel实现，故共用此Key
         if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 ||
              tokenDtype_ == ge::DT_HIFLOAT8) &&
             scaleDtype_ == ge::DT_FLOAT) {

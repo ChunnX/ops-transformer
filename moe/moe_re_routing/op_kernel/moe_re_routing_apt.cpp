@@ -67,6 +67,7 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
     } else if (TILING_KEY_IS(MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0)) {
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingReTilingData, tiling_data_in, tiling);
         const MoeReRoutingReTilingData *__restrict tilingData = &tiling_data_in;
+        // HIF8与FP8/int8_t同为1字节，且算子仅为数据搬运无类型感知计算，故复用int8_t模板路径
         MoeReRoutingReRegbase<int8_t, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, int8_t, true> op(&pipe, tilingData);
         InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                        permuteTokenIdx, expertTokenNum);
@@ -91,6 +92,7 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
     } else if (TILING_KEY_IS(MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0)) {
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingRTilingData, tiling_data_in, tiling);
         const MoeReRoutingRTilingData *__restrict tilingData = &tiling_data_in;
+        // HIF8与FP8/int8_t同为1字节，且算子仅为数据搬运无类型感知计算，故复用int8_t模板路径
         MoeReRoutingRRegbase<int8_t, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, int8_t, true> op(&pipe, tilingData);
         InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                        permuteTokenIdx, expertTokenNum);
