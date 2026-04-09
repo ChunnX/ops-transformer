@@ -504,7 +504,7 @@ ge::graphStatus FiaInfoParser::GetBatchSize()
     // 1、非TND/NTD时, 以query的batch_size维度为基准;
     // 2、TND/NTD时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
     if ((qLayout_ == FiaLayout::TND) || (qLayout_ == FiaLayout::NTD)) {
-        if (isMaxWorkspace_) {
+        if (isMaxWorkspace_ && !antiQuantFlag_) {
             bSize_ = 1;
             return ge::GRAPH_SUCCESS;
         }
