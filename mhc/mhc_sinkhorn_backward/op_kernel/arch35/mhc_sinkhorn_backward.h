@@ -332,32 +332,30 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
         LocalTensor<float> gradYLocal = inputGradYQue_.AllocTensor<float>();
         LocalTensor<float> gradInputLocal = outputQue_.AllocTensor<float>();
 
+        // grad_y搬运数据量：GM -> UB
+        uint32_t loopSize = (i == loop_ - 1) ? tailLoopTSize_ : loopTSize_; // loopSize:整核/尾核每次循环处理的矩阵个数:11
+    
         // 计算grad_y起始偏移地址
         int64_t inputOffsetGradY =  blockIdx_ * tilingData_.coreTSize * tilingData_.nSize * tilingData_.nSize + 
-                                i * tilingData_.normCorePerLoopTSize * tilingData_.nSize * tilingData_.nSize;
+                                i * loopSize * tilingData_.nSize * tilingData_.nSize;
 
-        // grad_y搬运数据量：GM -> UB
-        uint32_t loopSize = (i == loop_ - 1) ? tailLoopTSize_ : loopTSize_; // 整块处理的矩阵个数：5
-        uint32_t copyInGradYSize = loopSize * (tilingData_.nSize * tilingData_.nSize); // grad_y从GM搬到UB上的元素个数：5*4*4
+        uint32_t copyInGradYSize = loopSize * (tilingData_.nSize * tilingData_.nSize); // grad_y从GM搬到UB上的元素个数：11*4*4
         
         DataCopyPadExtParams<float> dataCopyPadExtParams{false, 0, 0, 0};
         DataCopyExtParams dataCopyExtParamsGradY{1, static_cast<uint32_t>(copyInGradYSize * sizeof(float)), 0, 0, 0}; //n=4和8时，搬运天然32字节对齐，如果n=6时,可能会多搬4个脏数据，搬出搬同样数据量大小即可
         DataCopyPad(gradYLocal, gradY_[inputOffsetGradY], dataCopyExtParamsGradY, dataCopyPadExtParams);
 
-        // inputGradYQue_.EnQue(gradYLocal);
-
         SetWaitEvent<HardEvent::MTE2_V>(HardEvent::MTE2_V);
         
+        // grad_y、grad_input、mask、max
         __local_mem__ float *gradYAddr = (__local_mem__ float *)gradYLocal.GetPhyAddr();
         __local_mem__ float *gradInputAddr = (__local_mem__ float *)gradInputLocal.GetPhyAddr();
         __local_mem__ uint32_t *maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
         __local_mem__ float *maxAddr = (__local_mem__ float *)maxLocal.GetPhyAddr();
 
-        // 计算UB -> reg 循环次数
-        uint32_t perLoopT = Ops::Base::GetVRegSize() / sizeof(float) / tilingData_.nSize / tilingData_.nAlignSize ; //计算一次可以搬运多少个矩阵到Register:256/4/8/4=2
-        uint32_t repeatSize = perLoopT * tilingData_.nSize * tilingData_.nAlignSize; // 一次可以从UB搬到Reg中的元素个数：2*4*8   2*4*8  1*4*8
-        // uint16_t repeatTimes = Ops::Base::CeilDiv(loopSize * tilingData_.nSize * tilingData_.nAlignSize, repeatSize); // 循环次数：需要循环多少次才可以把UB中数据搬运完到Reg中 3
-        uint16_t repeatTimes = Ceil(loopSize * tilingData_.nSize * tilingData_.nAlignSize, repeatSize); // 循环次数：需要循环多少次才可以把UB中数据搬运完到Reg中 3
+        uint32_t perLoopT = 8 ; // 每个loop_循环整块每次固定处理8个矩阵
+        uint32_t repeatSize = 64; // 整块一次可以从UB搬到Reg中元素个数：8*8=64
+        uint16_t repeatTimes = Ceil(loopSize * tilingData_.nSize * tilingData_.nAlignSize, repeatSize); // // 计算UB -> reg 循环次数 3
 
         // 迭代numIters-1次，迭代19次 列 -> 行 -> 列 -> 行 -> 列 -> ....
         for (int64_t iter = tilingData_.numIters - 1; iter > 0; iter--) {  // 参考A3写法，迭代下标从19开始
@@ -367,34 +365,42 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             
             //列归一
             // Norm_out、Sum_out的偏移
-            int64_t inputOffsetNorm = colOffset * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
+            int64_t inputOffsetNorm = colOffset * tilingData_.totalLength * tilingData_.nSize * tilingData_.nAlignSize + 
                                 2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nSize * tilingData_.nAlignSize + 
-                                i * loopTSize_ * tilingData_.nSize * tilingData_.nAlignSize;
-            int64_t inputOffsetSum = colOffset * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
+                                i * loopSize * tilingData_.nSize * tilingData_.nAlignSize; // 改动点：loopTSize_ -> loopSize，结果应该是一样的，但可以区别整核/尾核每次循环处理矩阵个数不同
+            int64_t inputOffsetSum = colOffset * tilingData_.totalLength * tilingData_.nSize * tilingData_.nAlignSize + 
                                 2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nAlignSize + 
-                                i * loopTSize_ * tilingData_.nAlignSize;
+                                i * loopSize * tilingData_.nAlignSize;
             
             // norm_out、sum_out搬运数据量：GM -> UB
-            uint32_t copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
-            uint32_t copyInSumSize = 2* loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*5*8
-            CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize);
+            uint32_t copyInNormSize = 2 * loopSize * tilingData_.nSize * tilingData_.nAlignSize; // norm_out从GM搬到UB上的元素个数：2*11*4*8, 这里就是文档里说的loop_每次循环处理矩阵的个数
+            uint32_t copyInSumSize = 2 * loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*11*8
+            CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize); // norm、sum一块搬到normLocal、sumLocal上
 
             LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
             LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
+
             __local_mem__ float *normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
             __local_mem__ float *sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();
 
-            for (uint16_t j = 0; j < repeatTimes; j++) {
-                auto curGradYAddr = gradYAddr + j * repeatSize;
-                auto curNormAddr = normAddr + j * repeatSize;
-                auto curSumAddr = sumAddr + j * repeatSize;
-                auto curGradInputAddr = gradInputAddr + j * repeatSize;
-                uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
-                CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                                static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
-                __VEC_SCOPE__
-                {
-                    MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+            for (uint16_t j = 0; j < repeatTimes; j++) {    // 每次repeatTimes处理8个矩阵
+                for(uint16_t n = 0; n < tilingData_.n; n++){
+                    // grad_y和grad_input的取址方式一样，因为都是用gather收集索引，只要知道起始下标就可以
+                    auto curGradYAddr = gradYAddr + j * repeatSize / 2 + n * tilingData_.nSize;   // gradYAddr：grad_y在当前loop_循环内的偏移地址
+                    auto curGradInputAddr = gradInputAddr + j * repeatSize + n * tilingData_.nSize;
+                    
+                    // norm、sum的取址方式一样，因为内存排布已经连续，顺着取就可以
+                    perLoopT =  min(perLoopT, loopSize - perLoopT * (repeatTimes + 1));
+                    uint32_t dataLen = perLoopT * tilingData_.nAlignSize; //  变动搬运数据量
+                    auto curNormAddr = normAddr + j * dataLen + n * perLoopT * tilingData_.nAlignSize; 
+                    auto curSumAddr = sumAddr + j * dataLen; //sum_out_col常驻
+                    
+                    CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
+                                    static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
+                    __VEC_SCOPE__
+                    {
+                        MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                    }
                 }
             }
 
@@ -403,32 +409,38 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
 
             // 行归一
             // Norm_out、Sum_out的偏移
-            inputOffsetNorm = rowOffset * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
+            inputOffsetNorm = rowOffset * tilingData_.totalLength * tilingData_.nSize * tilingData_.nAlignSize + 
                                 2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nSize * tilingData_.nAlignSize + 
-                                i * loopTSize_ * tilingData_.nSize * tilingData_.nAlignSize;
-            inputOffsetSum = rowOffset * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
+                                i * loopSize * tilingData_.nSize * tilingData_.nAlignSize;
+            inputOffsetSum = rowOffset * tilingData_.totalLength * tilingData_.nSize * tilingData_.nAlignSize + 
                                 2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nAlignSize + 
-                                i * loopTSize_ * tilingData_.nAlignSize;
+                                i * loopSize * tilingData_.nAlignSize;
             // norm_out、sum_out搬运数据量：GM -> UB
-            copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
-            copyInSumSize = 2* loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*5*8
-            CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize);
+            copyInNormSize = 2 * loopSize * tilingData_.nSize * tilingData_.nAlignSize; // norm_out从GM搬到UB上的元素个数：2*11*4*8
+            copyInSumSize = 2 * loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*11*8
+            CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize); // norm、sum一块搬到normLocal、sumLocal上
 
             LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
             LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
+
             normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
             sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();   
-
+            
             for (uint16_t j = 0; j < repeatTimes; j++) {
-                // 行归一
-                // 计算偏移
-                auto curGradYAddr = gradYAddr + j * repeatSize;
-                auto curNormAddr = normAddr + j * repeatSize;
-                auto curSumAddr = sumAddr + j * repeatSize;
-                auto curGradInputAddr = gradInputAddr + j * repeatSize;
-                uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
-                CalcRowBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                                static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
+                for(uint16_t n=0; n < tilingData_.n; n++){
+                    auto curGradYAddr = gradYAddr + j * repeatSize / 2 + n * tilingData_.nSize;   // gradYAddr：grad_y在当前loop_循环内的偏移地址   j * perLoopT * tilingData_.nSize * tilingData_.nSize：前面循环了多少个整块(8)  n * tilingData_.nSize：取所有矩阵第n行的起始索引
+                    auto curGradInputAddr = gradInputAddr + j * repeatSize + n * tilingData_.nSize;
+                    
+                    perLoopT =  min(perLoopT, loopSize - perLoopT * (repeatTimes + 1));
+
+                    auto curNormAddr = normAddr + j * dataLen + n * perLoopT * tilingData_.nAlignSize; 
+                    auto curSumAddr = sumAddr + n * loopSize + j * 8; //sum_out_row需广播
+
+                    uint32_t dataLen = perLoopT * tilingData_.nAlignSize; //  变动搬运数据量
+
+                    CalcRowBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
+                                static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize)); // 这个地方应该要新增perLoopT类似的参数
+                }
                 __VEC_SCOPE__
                 {
                     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
@@ -438,59 +450,69 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             inputSumQue_.FreeTensor<float>(sumLocal);
         }
 
-        // 最后一次迭归一
+        // 最后一次列归一
         // Norm_out、Sum_out的偏移
-        int64_t inputOffsetNorm = 1 * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
-                            2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nSize * tilingData_.nAlignSize + 
-                            i * loopTSize_ * tilingData_.nSize * tilingData_.nAlignSize;
-        int64_t inputOffsetSum = 1 * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
+        int64_t inputOffsetNorm = 1 * tilingData_.totalLength * tilingData_.nSize * tilingData_.nAlignSize + 
+                                2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nSize * tilingData_.nAlignSize + 
+                                i * loopSize * tilingData_.nSize * tilingData_.nAlignSize;;
+
+        int64_t inputOffsetSum = 1 * tilingData_.totalLength * tilingData_.nSize * tilingData_.nAlignSize + 
                             2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nAlignSize + 
-                            i * loopTSize_ * tilingData_.nAlignSize;
+                            i * loopSize * tilingData_.nAlignSize;
         
         // norm_out、sum_out搬运数据量：GM -> UB
-        uint32_t copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
-        uint32_t copyInSumSize = 2* loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*5*8
-        CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize);
+        uint32_t copyInNormSize = 2 * loopSize * tilingData_.nSize * tilingData_.nAlignSize; // norm_out从GM搬到UB上的元素个数：2*11*4*8, 这里就是文档里说的loop_每次循环处理矩阵的个数
+        uint32_t copyInSumSize = 2 * loopSize * tilingData_.nAlignSize; // sum_out从GM搬到UB上的元素个数：2*11*8
+        CopyInNormAndSum(inputOffsetNorm, copyInNormSize, inputOffsetSum, copyInSumSize); // norm、sum一块搬到normLocal、sumLocal上
 
         LocalTensor<float> normLocal = inputNormQue_.DeQue<float>();
         LocalTensor<float> sumLocal = inputSumQue_.DeQue<float>();
         normAddr = (__local_mem__ float *)normLocal.GetPhyAddr();
         sumAddr = (__local_mem__ float *)sumLocal.GetPhyAddr();   
 
-        for (uint16_t i = 0; i < repeatTimes; i++) {
-            auto curGradYAddr = gradYAddr + i * repeatSize;
-            auto curNormAddr = normAddr + i * repeatSize;
-            auto curSumAddr = sumAddr + i * repeatSize;
-            auto curGradInputAddr = gradInputAddr + i * repeatSize;
-            uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
-            CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
-                            static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
-            __VEC_SCOPE__
-            {
-                MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        for (uint16_t j = 0; j < repeatTimes; j++) {    // 每次repeatTimes处理8个矩阵
+            for(uint16_t n = 0; n < tilingData_.n; n++){
+                // grad_y和grad_input的取址方式一样，因为都是用gather收集索引，只要知道起始下标就可以
+                auto curGradYAddr = gradYAddr + j * repeatSize / 2 + n * tilingData_.nSize;   // gradYAddr：grad_y在当前loop_循环内的偏移地址   j * perLoopT * tilingData_.nSize * tilingData_.nSize：前面循环了多少个整块(8)  n * tilingData_.nSize：取所有矩阵第n行的起始索引
+                auto curGradInputAddr = gradInputAddr + j * repeatSize + n * tilingData_.nSize;
+                
+                // norm、sum的取址方式一样，因为内存排布已经连续，顺着取就可以
+                perLoopT =  min(perLoopT, loopSize - perLoopT * (repeatTimes + 1));
+                uint32_t dataLen = perLoopT * tilingData_.nAlignSize; //  变动搬运数据量
+                auto curNormAddr = normAddr + j * dataLen + n * perLoopT * tilingData_.nAlignSize; 
+                auto curSumAddr = sumAddr + j * dataLen; //sum_out_col常驻
+                
+                CalcColBackward(curGradYAddr, curNormAddr, curSumAddr, curGradInputAddr, maskAddr, maxAddr,
+                                static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
+                __VEC_SCOPE__
+                {
+                    MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                }
             }
         }
+
         inputNormQue_.FreeTensor<float>(normLocal);
         inputSumQue_.FreeTensor<float>(sumLocal);
 
         // 最后一次迭代Softmax
         inputOffsetNorm = 0 * tilingData_.totalLength * tilingData_.nSize + tilingData_.nAlignSize + 
                             2 * blockIdx_ * tilingData_.coreTSize * tilingData_.nSize * tilingData_.nAlignSize + 
-                            i * loopTSize_ * tilingData_.nSize * tilingData_.nAlignSize;
+                            i * loopSize * tilingData_.nSize * tilingData_.nAlignSize;
         // norm_out、sum_out搬运数据量：GM -> UB
-        copyInNormSize = 2 * loopSize * (tilingData_.nSize * tilingData_.nAlignSize); // norm_out从GM搬到UB上的元素个数：2*5*4*8
+        copyInNormSize = 2 * loopSize * tilingData_.nSize * tilingData_.nAlignSize; // norm_out从GM搬到UB上的元素个数：2*5*4*8
         dataCopyExtParamsNorm = {1, static_cast<uint32_t>(copyInNormSize * sizeof(float)), 0, 0, 0};
         DataCopyPad(normLocal, norm_[inputOffsetNorm], dataCopyExtParamsNorm, dataCopyPadExtParams);
 
         for (uint16_t j = 0; j < repeatTimes; j++) {
-            // 计算偏移
-            auto curGradYAddr = gradYAddr + j * repeatSize;
-            auto curNormAddr = normAddr + j * repeatSize;
-            auto curSumAddr = sumAddr + j * repeatSize;
-            auto curGradInputAddr = gradInputAddr + j * repeatSize;
-
-            uint32_t dataLen = min(perLoopT, loopSize - perLoopT * (repeatTimes + 1)) * tilingData_.nSize * tilingData_.nAlignSize;
-            CalcSoftmaxBackward(curGradYAddr, curNormAddr, curGradInputAddr, maskAddr, maxAddr, static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
+            for(uint16_t n=0; n < tilingData_.n; n++){
+                auto curGradYAddr = gradYAddr + j * repeatSize / 2 + n * tilingData_.nSize;   // gradYAddr：grad_y在当前loop_循环内的偏移地址   j * perLoopT * tilingData_.nSize * tilingData_.nSize：前面循环了多少个整块(8)  n * tilingData_.nSize：取所有矩阵第n行的起始索引
+                auto curGradInputAddr = gradInputAddr + j * repeatSize + n * tilingData_.nSize;
+                
+                perLoopT =  min(perLoopT, loopSize - perLoopT * (repeatTimes + 1));
+                uint32_t dataLen = perLoopT * tilingData_.nAlignSize; //  变动搬运数据量
+                auto curNormAddr = normAddr + j * dataLen + n * perLoopT * tilingData_.nAlignSize; 
+                CalcSoftmaxBackward(curGradYAddr, curNormAddr, curGradInputAddr, maskAddr, maxAddr, static_cast<uint32_t>(dataLen), static_cast<uint32_t>(tilingData_.nSize));
+            }
             __VEC_SCOPE__
             {
                 MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
