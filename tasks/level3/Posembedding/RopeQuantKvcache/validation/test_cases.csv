@@ -1,0 +1,13 @@
+case_id;B;S;n_q;n_kv;D;cache_sl;kv_output;layout;use_offset
+0;1;1;2;1;32;8;true;BSND;false
+1;2;1;2;1;32;12;true;BSND;false
+2;1;1;4;2;64;32;true;BSND;false
+3;2;1;2;2;32;16;true;BSND;true
+4;1;1;2;1;64;16;false;BSND;false
+5;1;1;2;1;32;8;true;BSND;true
+6;4;1;2;1;32;12;true;BSND;false
+7;1;1;8;4;64;24;true;BSND;false
+8;2;1;4;2;32;20;true;BSND;true
+9;1;1;2;1;32;10;true;BSND;false
+10;3;1;2;1;32;14;true;BSND;false
+11;1;1;2;1;128;16;true;BSND;false
