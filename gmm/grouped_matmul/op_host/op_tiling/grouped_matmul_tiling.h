@@ -49,6 +49,11 @@ TILING_DATA_FIELD_DEF(uint64_t, parallNum);            // for A8W4 MSD
 TILING_DATA_FIELD_DEF(uint64_t, quantGroupNum);        // for A8W4 MSD
 TILING_DATA_FIELD_DEF(uint64_t, isPreTiling);
 TILING_DATA_FIELD_DEF(uint32_t, withOffset);
+//begin
+// TILING_DATA_FIELD_DEF(uint32_t, preProcessWorkspaceOffset); 
+// TILING_DATA_FIELD_DEF(uint64_t, preProcessWorkspace); 
+TILING_DATA_FIELD_DEF(uint32_t, isA8W4MSDPreNZ);       //for A8->A4 <ND>
+//end
 TILING_DATA_FIELD_DEF(uint32_t, isOutputDisableL2Cache);
 TILING_DATA_FIELD_DEF(uint64_t, isA4W4Optimize);
 END_TILING_DATA_DEF;
