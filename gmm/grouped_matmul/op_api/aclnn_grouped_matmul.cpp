@@ -452,11 +452,13 @@ static aclnnStatus CheckGroupListCommonTensor(const gmm::GroupedMatmulParams &gm
     int64_t groupListSize = gmmParams.groupTensorOptional->GetViewShape().GetDim(0);
     size_t groupListDimNum = gmmParams.groupTensorOptional->GetViewShape().GetDimNum();
     if (gmmParams.groupListType == gmm::GROUP_LIST_SPARSE_M) {
-      CHECK_COND(groupListDimNum == GROUP_LIST_SPARSE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,  // sparse, group list shape [e, 2]
-        "When groupList type is 2, dim num of groupList should be 2, but now is %zu.", groupListDimNum);
-      CHECK_COND(gmmParams.groupTensorOptional->GetViewShape().GetDim(1) == GROUP_LIST_SPARSE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
-        "When groupList type is 2, the 2nd dim of groupList should be 2, but now is %ld.",
-        gmmParams.groupTensorOptional->GetViewShape().GetDim(1));
+        CHECK_COND(groupListDimNum == GROUP_LIST_SPARSE_DIM_NUM,
+                   ACLNN_ERR_PARAM_INVALID, // sparse, group list shape [e, 2]
+                   "When groupList type is 2, dim num of groupList should be 2, but now is %zu.", groupListDimNum);
+        CHECK_COND(gmmParams.groupTensorOptional->GetViewShape().GetDim(1) == GROUP_LIST_SPARSE_DIM_NUM,
+                   ACLNN_ERR_PARAM_INVALID,
+                   "When groupList type is 2, the 2nd dim of groupList should be 2, but now is %ld.",
+                   gmmParams.groupTensorOptional->GetViewShape().GetDim(1));
     }
     CHECK_COND(groupListSize <= MAX_GROUP_LIST_SIZE_TENSOR, ACLNN_ERR_PARAM_INVALID,
                "When groupList type is tenosr, size of groupList %ld should be less than or equal to %ld.",
