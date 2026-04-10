@@ -64,7 +64,6 @@ ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
     auto hInDims = hInGradTensor->GetStorageShape().GetDimNum();
     auto hPostDims = hPostGradTensor->GetStorageShape().GetDimNum();
     auto hCombDims = hCombBeforeGradTensor->GetStorageShape().GetDimNum();
-
     if ((hInDims != BSD_DIM_NUM && hInDims != TD_DIM_NUM) || (hPostDims != BSD_DIM_NUM && hPostDims != TN_DIM_NUM) ||
         (hCombDims != BSNN_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
         OP_LOGE(context_->GetNodeName(), "input dims invalid for MhcPreBackward");
@@ -212,7 +211,6 @@ uint64_t MhcPreBackwardBaseTiling::CalculateWorkspaceSize(uint64_t totalLength, 
                           3 * coreNum +              // alpha_grad
                           coreNum * fusionSize +     // bias_grad
                           totalLength;               // inv_rms_grad
-
 
     uint32_t v2Elements = 1024 * 128 * coreNum * 2 + // x_rs_grad_mm
                           1024 * 128 * coreNum * 2 + // x_rs

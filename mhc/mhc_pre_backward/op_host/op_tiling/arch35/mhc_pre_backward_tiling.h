@@ -95,22 +95,8 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
 
-    /**
-     * @brief 计算workspace所需的总大小（以字节为单位）
-     * 内存布局：
-     * 1. h_mix_grad: [B * S * fusionSize]
-     * 2. alpha_grad: [3 * coreNum]
-     * 3. bias_grad: [coreNum * fusionSize]
-     * 4. inv_rms_grad: [B * S]
-     * @param totalLength B * S
-     * @param fusionSize 2N + N*N
-     * @param coreNum 核心数量
-     * @param elementSize 每个元素的大小（字节）
-     * @return uint64_t 总字节数
-     */
     static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
                                            uint64_t elementSize);
-
 
 private:
     MhcPreBackwardTilingData tilingData_;

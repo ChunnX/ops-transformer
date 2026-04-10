@@ -16,10 +16,10 @@
 
 namespace l0op {
 const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>
-MhcPreBackward(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *h_in_grad,
-               const aclTensor *h_post_grad, const aclTensor *h_res_grad, const aclTensor *inv_rms,
-               const aclTensor *mm_res, const aclTensor *h_pre, const aclTensor *h_post, const aclTensor *gamma,
-               const aclTensor *grad_x_post, float hc_eps, aclOpExecutor *executor);
+MhcPreBackward(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *hInGrad,
+               const aclTensor *hPostGrad, const aclTensor *hResGrad, const aclTensor *invRms,
+               const aclTensor *mmRes, const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma,
+               const aclTensor *gradXPost, float hcEps, aclOpExecutor *executor);
 }
 
 #endif // OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_BACKWARD_H

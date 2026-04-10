@@ -24,29 +24,28 @@ extern "C" {
  * @param [in] x: 输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型支持：BF16/FP16。
  * @param [in] phi: 输入tensor，shape为[n^2+2n, nD]，数据类型支持：FP32。
  * @param [in] alpha: 输入tensor，shape为[3]，数据类型支持：FP32。
- * @param [in] h_in_grad: 输入梯度，数据类型支持：BF16/FP16。
- * @param [in] h_post_grad: 输入梯度，数据类型支持：FP32。
- * @param [in] h_res_grad: 输入梯度，数据类型支持：FP32。
- * @param [in] inv_rms: 输入tensor，shape为[B,S]或[T]，数据类型：FP32。
- * @param [in] mm_res: 输入tensor，shape为[B,S,N^2+2N]或[T,N^2+2N]，数据类型：FP32。
- * @param [in] h_pre: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
- * @param [in] h_post: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
+ * @param [in] hInGrad: 输入梯度，数据类型支持：BF16/FP16。
+ * @param [in] hPostGrad: 输入梯度，数据类型支持：FP32。
+ * @param [in] hResGrad: 输入梯度，数据类型支持：FP32。
+ * @param [in] invRms: 输入tensor，shape为[B,S]或[T]，数据类型：FP32。
+ * @param [in] mmRes: 输入tensor，shape为[B,S,N^2+2N]或[T,N^2+2N]，数据类型：FP32。
+ * @param [in] hPre: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
+ * @param [in] hPost: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
  * @param [in] gamma: 可选输入tensor，shape为[N,D]，数据类型：FP32。
- * @param [out] x_grad: 输出梯度，数据类型支持：BF16/FP16。
- * @param [out] hc_weight_grad: 输出梯度，数据类型支持：FP32。
- * @param [out] alpha_grad: 输出梯度，数据类型支持：FP32。
- * @param [out] bias_post_grad: 输出梯度，数据类型支持：FP32。
+ * @param [out] xGrad: 输出梯度，数据类型支持：BF16/FP16。
+ * @param [out] hcWeightGrad: 输出梯度，数据类型支持：FP32。
+ * @param [out] biasPostGrad: 输出梯度，数据类型支持：FP32。
  * @param [out] gamma_grad: 输出梯度，数据类型支持：FP32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *h_in_grad,
-    const aclTensor *h_post_grad, const aclTensor *h_res_grad, const aclTensor *inv_rms, const aclTensor *mm_res,
-    const aclTensor *h_pre, const aclTensor *h_post, const aclTensor *gamma, const aclTensor *grad_x_post,
-    double hc_eps, const aclTensor *x_grad, const aclTensor *hc_weight_grad, const aclTensor *alpha_grad,
-    const aclTensor *bias_post_grad, const aclTensor *gamma_grad, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *hInGrad,
+    const aclTensor *hPostGrad, const aclTensor *hResGrad, const aclTensor *invRms, const aclTensor *mmRes,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPost,
+    double hcEps, const aclTensor *xGrad, const aclTensor *hcWeightGrad, const aclTensor *alphaGrad,
+    const aclTensor *biasPostGrad, const aclTensor *gammaGrad, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

@@ -78,7 +78,6 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
     auto hInGradDimNum = hInGradShape->GetDimNum();
     auto hPostGradDimNum = hPostGradShape->GetDimNum();
     auto hCombBeforeGradDimNum = hCombBeforeGradShape->GetDimNum();
-
     if ((hInGradDimNum != BSD_DIM_NUM && hInGradDimNum != TD_DIM_NUM) ||
         (hPostGradDimNum != BSD_DIM_NUM && hPostGradDimNum != TN_DIM_NUM) ||
         (hCombBeforeGradDimNum != BSNN_DIM_NUM && hCombBeforeGradDimNum != TNN_DIM_NUM)) {
