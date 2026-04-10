@@ -54,6 +54,10 @@ private:
     aclnnStatus GetHcclBufferSize(const HcclComm& hcclHandle, uint64_t& hcclBuffSize);
     aclnnStatus GetCommProtocol(const HcclComm& hcclHandle, CommProtocol& protocol);
 
+    const std::string GetLibPath();
+    template <typename T>
+    T GetHcclLibFunc(void* handle, const std::string& funcName);
+
     void* hcclLibHandle_ = nullptr;
 
     HcclResult (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
