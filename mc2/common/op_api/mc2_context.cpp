@@ -101,7 +101,6 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void**>(&HcclEngineCtxCopy), "HcclEngineCtxCopy"},
         {reinterpret_cast<void**>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void**>(&HcclGetRankSize), "HcclGetRankSize"},
-        {reinterpret_cast<void**>(&aclCreateTensor), "aclCreateTensor"}
     };
 
     for (auto& sym : symbols) {
@@ -323,10 +322,6 @@ aclnnStatus Mc2Context::CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context)
     OP_LOGD("Start to create Mc2Context Tensor");
     if (ctx == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "Create Mc2Context Tensor failed ctx is nullptr.");
-        return ACLNN_ERR_INNER;
-    }
-    if (aclCreateTensor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclCreateTensor is null");
         return ACLNN_ERR_INNER;
     }
 
