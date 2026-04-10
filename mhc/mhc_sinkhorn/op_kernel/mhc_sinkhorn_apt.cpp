@@ -27,9 +27,16 @@ __global__ __aicore__ void mhc_sinkhorn(GM_ADDR h_res, GM_ADDR y, GM_ADDR norm_o
     }
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(MhcSinkhornTilingData);
-    GET_TILING_DATA(tilingData, tiling);
     AscendC::TPipe pipe;
-    MhcSinkhornSimd op(pipe, tilingData);
-    op.Init(h_res, y, norm_out, sum_out, tiling);
-    op.Process();
+    if constexpr (TILING_KEY == 0) {
+        GET_TILING_DATA_WITH_STRUCT(MhcSinkhornTilingData, tilingData, tiling);
+        MhcSinkhornSimd<float, false> op(pipe, tilingData);
+        op.Init(h_res, y, norm_out, sum_out, tiling);
+        op.Process();
+    } else if constexpr (TILING_KEY == 1) {
+        GET_TILING_DATA_WITH_STRUCT(MhcSinkhornTilingData, tilingData, tiling);
+        MhcSinkhornSimd<float, true> op(pipe, tilingData);
+        op.Init(h_res, y, norm_out, sum_out, tiling);
+        op.Process();
+    }
 }
