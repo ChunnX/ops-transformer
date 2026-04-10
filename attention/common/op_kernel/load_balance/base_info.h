@@ -23,6 +23,10 @@
 
 namespace load_balance {
 
+/**
+ * This interface provides basic shape info for Balancer
+ * This interface should be implemented by Operator itself
+ */
 class IBaseInfo {
 public:
     IBaseInfo() = default;
@@ -47,6 +51,9 @@ public:
     virtual DataType GetKvDataType() const = 0;
 };
 
+/**
+ * BaseInfo represents as a standard IBaseInfo for convenience
+ */
 class BaseInfo : public IBaseInfo {
 public:
     BaseInfo() = default;
@@ -187,7 +194,6 @@ public:
     {
         return kvType;
     }
-
 public:
     uint32_t batchSize { 0U };
     uint32_t queryHeadNum { 0U };
@@ -203,10 +209,10 @@ public:
     bool isCumulativeKvSeq { false };
     std::vector<int64_t> actualQuerySeqSize {};
     std::vector<int64_t> actualKvSeqSize {};
-    Layout layoutQuery { Layout::BUTT };
-    Layout layoutKv { Layout::BUTT };
-    DataType queryType { DataType::BUTT };
-    DataType kvType { DataType::BUTT };
+    Layout layoutQuery { Layout::BSND };
+    Layout layoutKv { Layout::BSND };
+    DataType queryType { DataType::FP16 };
+    DataType kvType { DataType::FP16 };
 };
 
 }
