@@ -228,8 +228,12 @@ void SetupPlatformForCase(const string &socVersion)
         {"Ascend910B", SocVersion::ASCEND910B},
         {"Ascend950", SocVersion::ASCEND950},
     };
-    auto it = socMap.find(Trim(socVersion));
+    const string trimmedSoc = Trim(socVersion);
+    auto it = socMap.find(trimmedSoc);
     SetPlatformSocVersion(it == socMap.end() ? SocVersion::ASCEND910B : it->second);
+    if (trimmedSoc == "Ascend950") {
+        SetPlatformNpuArch(NpuArch::DAV_3510);
+    }
 }
 
 TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFormat format,
@@ -321,10 +325,6 @@ struct GroupedMatmulFinalizeRoutingWeightNzV2Case {
                                       transposeX, transposeW, groupListType, tuningConfigPtr),
                                 OUTPUT(out));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        }
-
-        if (tuningConfigPtr != nullptr) {
-            aclDestroyIntArray(tuningConfigPtr);
         }
 
         if (ParseBool(checkRet)) {
