@@ -237,11 +237,33 @@ void SetupPlatformForCase(const string &socVersion)
 }
 
 TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFormat format,
-                          const vector<int64_t> &storageShape, bool fillRange = true)
+                          const vector<int64_t> &storageShape, bool fillRange = true,
+                          bool allowNdCustomStorage = false)
 {
-    TensorDesc desc = storageShape.empty() ? TensorDesc(shape, dtype, format)
-                                           : TensorDesc(shape, dtype, format, {}, 0, storageShape);
+    TensorDesc desc;
+    if (format == ACL_FORMAT_ND && !allowNdCustomStorage) {
+        desc = TensorDesc(shape, dtype, format);
+    } else if (!storageShape.empty()) {
+        desc = TensorDesc(shape, dtype, format, {}, 0, storageShape);
+    } else {
+        desc = TensorDesc(shape, dtype, format);
+    }
     return fillRange ? desc.ValueRange(-1, 1) : desc;
+}
+
+void FallbackSingleNzWeightToNdStorage(vector<int64_t> &weightShape, aclFormat &weightFormat,
+                                       vector<int64_t> &weightStorageShape)
+{
+    if (weightFormat != ACL_FORMAT_FRACTAL_NZ) {
+        return;
+    }
+    if (weightShape.size() != 3 || weightStorageShape.size() != 5) {
+        return;
+    }
+    if (weightStorageShape[0] <= 0 || weightStorageShape[3] != 16 || weightStorageShape[4] != 32) {
+        return;
+    }
+    weightFormat = ACL_FORMAT_ND;
 }
 
 struct GroupedMatmulFinalizeRoutingWeightNzV2Case {
@@ -250,8 +272,12 @@ struct GroupedMatmulFinalizeRoutingWeightNzV2Case {
         SetupPlatformForCase(socVersion);
 
         TensorDesc x1 = MakeTensorDesc(ParseDims(x1Shape), ParseDtype(x1Dtype), ACL_FORMAT_ND, {}, ParseBool(x1UseRange));
-        TensorDesc x2 = MakeTensorDesc(ParseDims(x2Shape), ParseDtype(x2Dtype), ParseFormat(x2Format),
-                                       ParseDims(x2StorageShape), ParseBool(x2UseRange));
+        vector<int64_t> x2Dims = ParseDims(x2Shape);
+        vector<int64_t> x2StorageDims = ParseDims(x2StorageShape);
+        aclFormat x2FormatVal = ParseFormat(x2Format);
+        FallbackSingleNzWeightToNdStorage(x2Dims, x2FormatVal, x2StorageDims);
+        TensorDesc x2 = MakeTensorDesc(x2Dims, ParseDtype(x2Dtype), x2FormatVal, x2StorageDims,
+                                       ParseBool(x2UseRange), x2FormatVal == ACL_FORMAT_ND && !x2StorageDims.empty());
         TensorDesc scale =
             MakeTensorDesc(ParseDims(scaleShape), ParseDtype(scaleDtype), ACL_FORMAT_ND, {}, ParseBool(scaleUseRange));
         if (ParseBool(scaleUseRange)) {
