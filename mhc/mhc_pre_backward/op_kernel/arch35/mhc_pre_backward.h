@@ -75,7 +75,7 @@ constexpr uint32_t ALPHA_GRAD_SHAPE_3_OFFSET = 16;
 
 constexpr uint32_t LARGE_N_THRESHOLD = 6;
 constexpr uint32_t VEC_CORE_VECIDX_MOD = 2;
-constexpr uint32_t MAX_D_LEN = 10240;
+constexpr uint32_t MAX_D_LEN = 16384;
 constexpr uint32_t VEC_DEAL_CHUNK_LARGE_N = 32;
 constexpr uint32_t VEC_DEAL_CHUNK_SMALL_N = 64;
 constexpr uint32_t CEIL_ALIGN_DEFAULT = 32;
