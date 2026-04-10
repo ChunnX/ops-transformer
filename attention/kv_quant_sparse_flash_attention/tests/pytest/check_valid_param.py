@@ -15,7 +15,7 @@ import torch
 
 def check_valid_param(params):
     (_, layout_query, layout_kv, q_type, kv_dtype,
-     batch_size, seq_q, seq_kv, head_num_q, head_num_kv, head_dim, sparse_count,
+     B, S1, S2, N1, N2, D, K,
      scale_value, key_quant_mode, value_quant_mode, sparse_block_size,
      tile_size, rope_head_dim, sparse_mode, attention_mode, quant_scale_repo_mode,
      block_size, block_num, actual_seq_q, actual_seq_kv) = params
@@ -32,11 +32,11 @@ def check_valid_param(params):
     if layout_kv != "PA_BSND" and layout_query != layout_kv:
         raise ValueError("layout_query and layout_kv must match in non-PA mode")
 
-    if head_num_kv != 1:
-        raise ValueError(f"N2 only supports 1, but got {head_num_kv}")
+    if N2 != 1:
+        raise ValueError(f"N2 only supports 1, but got {N2}")
 
-    if head_num_q not in (1, 2, 4, 8, 16, 32, 48, 64):
-        raise ValueError(f"N1 only supports 1/2/4/8/16/32/48/64, but got {head_num_q}")
+    if N1 not in (1, 2, 4, 8, 16, 32, 48, 64):
+        raise ValueError(f"N1 only supports 1/2/4/8/16/32/48/64, but got {N1}")
 
     if sparse_block_size != 1:
         raise ValueError(f"sparse_block_size only supports 1, but got {sparse_block_size}")
@@ -59,14 +59,14 @@ def check_valid_param(params):
     if attention_mode == 2 and rope_head_dim != 64:
         raise ValueError(f"rope_head_dim must be 64 when attention_mode=2, but got {rope_head_dim}")
 
-    for name, value in (("B", batch_size), ("S1", seq_q), ("S2", seq_kv), ("D", head_dim), ("K", sparse_count)):
+    for name, value in (("B", B), ("S1", S1), ("S2", S2), ("D", D), ("K", K)):
         if value <= 0:
             raise ValueError(f"{name} should be greater than 0, but got {value}")
 
-    if actual_seq_q is not None and len(actual_seq_q) != batch_size:
-        raise ValueError(f"actual_seq_q length should equal B={batch_size}, but got {len(actual_seq_q)}")
-    if actual_seq_kv is not None and len(actual_seq_kv) != batch_size:
-        raise ValueError(f"actual_seq_kv length should equal B={batch_size}, but got {len(actual_seq_kv)}")
+    if actual_seq_q is not None and len(actual_seq_q) != B:
+        raise ValueError(f"actual_seq_q length should equal B={B}, but got {len(actual_seq_q)}")
+    if actual_seq_kv is not None and len(actual_seq_kv) != B:
+        raise ValueError(f"actual_seq_kv length should equal B={B}, but got {len(actual_seq_kv)}")
 
     if layout_kv == "PA_BSND":
         if block_size is None or block_size <= 0:
