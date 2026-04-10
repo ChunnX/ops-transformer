@@ -1,0 +1,15 @@
+case_id;B;S;n_q;n_kv;D;cache_sl;x_dtype;cos_dtype;dequant_int32;use_offset;use_bias;use_activation_scale;kv_output;cache_mode;quant_mode;layout
+0;1;1;2;1;32;8;float16;float16;false;false;false;false;true;contiguous;static;BSND
+1;2;2;2;1;32;16;float16;float16;false;false;false;false;true;contiguous;static;BSND
+2;1;4;4;2;64;32;float16;float16;false;false;false;false;true;contiguous;static;BSND
+3;2;1;2;2;32;12;float16;float16;false;true;false;false;true;contiguous;static;BSND
+4;1;2;2;1;64;16;float16;float16;false;false;true;false;true;contiguous;static;BSND
+5;1;1;2;1;32;8;bfloat16;bfloat16;false;false;false;false;true;contiguous;static;BSND
+6;2;2;2;1;32;16;bfloat16;bfloat16;false;false;false;false;true;contiguous;static;BSND
+7;1;1;2;1;32;8;int32;float16;true;false;true;false;true;contiguous;static;BSND
+8;1;2;2;1;32;12;float16;float16;false;true;true;false;true;contiguous;static;BSND
+9;2;1;2;1;32;10;float16;float16;false;false;false;true;true;contiguous;static;BSND
+10;1;3;2;1;32;16;float16;float16;false;false;false;false;true;contiguous;static;BSND
+11;4;1;2;1;32;12;float16;float16;false;false;false;false;true;contiguous;static;BSND
+12;1;1;2;1;32;8;float16;float16;false;false;false;false;true;contiguous;static;BSND
+13;1;2;4;2;64;20;float16;float16;false;false;false;false;true;contiguous;static;BSND
