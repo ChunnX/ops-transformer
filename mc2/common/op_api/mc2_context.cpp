@@ -15,7 +15,6 @@
 
 #include <cstdlib>
 #include <dlfcn.h>
-#include "log/log.h"
 #include "mc2_context.h"
 
 namespace Mc2Aclnn {
@@ -31,8 +30,6 @@ static const std::string GetLibPath()
     std::string hcclPathPostfix = "/x86_64-linux/lib64/libhccl_fwk.so";
 #elif defined(__aarch64__)
     std::string hcclPathPostfix = "/aarch64-linux/lib64/libhccl_fwk.so";
-#else
-    return "";
 #endif
     std::string fullPath = std::string(ascendPath) + hcclPathPostfix;
     OP_LOGI("Loading lib in path %s.", fullPath.c_str());
