@@ -21,6 +21,8 @@
 #include <vector>
 #include "hccl/hccl_rank_graph.h"
 #include "aclnn/aclnn_base.h"
+#include "opdev/op_log.h"
+#include "opdev/common_types.h"
 #include "mc2_moe_context.h"
 
 namespace Mc2Aclnn {
