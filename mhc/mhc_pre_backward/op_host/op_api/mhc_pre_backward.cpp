@@ -23,17 +23,17 @@ namespace l0op {
 OP_TYPE_REGISTER(MhcPreBackward);
 
 const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>
-MhcPreBackward(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *h_in_grad,
-               const aclTensor *h_post_grad, const aclTensor *h_res_grad, const aclTensor *inv_rms,
-               const aclTensor *mm_res, const aclTensor *h_pre, const aclTensor *h_post, const aclTensor *gamma,
-               const aclTensor *grad_x_post, float hc_eps, aclOpExecutor *executor)
+MhcPreBackward(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *hInGrad,
+               const aclTensor *hPostGrad, const aclTensor *hResGrad, const aclTensor *invRms,
+               const aclTensor *mmRes, const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma,
+               const aclTensor *gradXPost, float hcEps, aclOpExecutor *executor)
 {
-    L0_DFX(MhcPreBackward, x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma,
-           grad_x_post, hc_eps);
+    L0_DFX(MhcPreBackward, x, phi, alpha, hInGrad, hPostGrad, hResGrad, invRms, mmRes, hPre, hPost, gamma,
+           gradXPost, hcEps);
 
     DataType outType = DataType::DT_FLOAT; // 输出类型
     Format format = Format::FORMAT_ND;     // 输出分形
-    auto outXGrad = executor->AllocTensor(h_in_grad->GetDataType(), format, format);
+    auto outXGrad = executor->AllocTensor(hInGrad->GetDataType(), format, format);
     auto outHcWeightGrad = executor->AllocTensor(outType, format, format);
     auto outAlphaGrad = executor->AllocTensor(outType, format, format);
     auto outBiasPostGrad = executor->AllocTensor(outType, format, format);
@@ -41,14 +41,14 @@ MhcPreBackward(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
 
     auto ret = INFER_SHAPE(
         MhcPreBackward,
-        OP_INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, grad_x_post),
-        OP_OUTPUT(outXGrad, outHcWeightGrad, outAlphaGrad, outBiasPostGrad, outGammaGrad), OP_ATTR(hc_eps));
+        OP_INPUT(x, phi, alpha, hInGrad, hPostGrad, hResGrad, invRms, mmRes, hPre, hPost, gamma, gradXPost),
+        OP_OUTPUT(outXGrad, outHcWeightGrad, outAlphaGrad, outBiasPostGrad, outGammaGrad), OP_ATTR(hcEps));
     OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr),
                         "MhcPreBackward InferShape failed.");
     auto ret1 = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcPreBackward,
-        OP_INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, grad_x_post),
-        OP_OUTPUT(outXGrad, outHcWeightGrad, outAlphaGrad, outBiasPostGrad, outGammaGrad), OP_ATTR(hc_eps));
+        OP_INPUT(x, phi, alpha, hInGrad, hPostGrad, hResGrad, invRms, mmRes, hPre, hPost, gamma, gradXPost),
+        OP_OUTPUT(outXGrad, outHcWeightGrad, outAlphaGrad, outBiasPostGrad, outGammaGrad), OP_ATTR(hcEps));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret1 != ACLNN_SUCCESS,
                                          return std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr),
                                          "MhcPreBackward ADD_TO_LAUNCHER_LIST_AICORE failed.");
