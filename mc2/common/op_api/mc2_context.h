@@ -73,8 +73,6 @@ private:
     HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char*, void*, uint64_t, uint64_t) = nullptr;
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t*) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t*) = nullptr;
-    aclTensor* (*aclCreateTensor)(const int64_t*, uint64_t, aclDataType, const int64_t*, int64_t, aclFormat,
-                                  const int64_t*, uint64_t, void*) = nullptr;
 };
 } // namespace Mc2Aclnn
 
