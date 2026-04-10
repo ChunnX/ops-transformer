@@ -13,7 +13,7 @@
 import itertools
 import torch
 import result_compare_method
-from batch import quant_lightning_indexer_pt_loadprocess
+from batch import lightning_indexer_pt_loadprocess
 import pytest
 import random
 import pandas as pd
@@ -43,7 +43,7 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def qli(testcase_files):   # 初始化参数和tensor
-    cpu_result, npu_result, topk_value, params = quant_lightning_indexer_pt_loadprocess.test_qli_process(testcase_files, device_id=0)
+    cpu_result, npu_result, topk_value, params = lightning_indexer_pt_loadprocess.test_qli_process(testcase_files, device_id=0)
     if npu_result != None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
     else:
@@ -64,22 +64,19 @@ def qli(testcase_files):   # 初始化参数和tensor
         "block_num": params[9],
         "qk_dtype": params[10],
         "weight_dtype": params[11],
-        "dequant_dtype": params[12],
-        "actual_seq_dtype": params[13],
-        "act_seq_q": params[14],
-        "act_seq_k": params[15],
-        "query_quant_mode": params[16],
-        "key_quant_mode": params[17],
-        "layout_query": params[18],
-        "layout_key": params[19],
-        "sparse_count":params[20],
-        "sparse_mode":params[21],
-        "query_datarange":params[22],
-        "key_datarange":params[23],
-        "weights_datarange":params[24],
-        "q_scale_datarange":params[25],
-        "k_scale_datarange":params[26],
-        "cmp_ratio":params[27],
+        "actual_seq_dtype": params[12],
+        "act_seq_q": params[13],
+        "act_seq_k": params[14],
+        "layout_query": params[15],
+        "layout_key": params[16],
+        "sparse_count":params[17],
+        "sparse_mode":params[18],
+        "query_datarange":params[19],
+        "key_datarange":params[20],
+        "weights_datarange":params[21],
+        "q_scale_datarange":params[22],
+        "k_scale_datarange":params[23],
+        "cmp_ratio":params[24],
         "result":result,
         "fulfill_percent":fulfill_percent
     }
