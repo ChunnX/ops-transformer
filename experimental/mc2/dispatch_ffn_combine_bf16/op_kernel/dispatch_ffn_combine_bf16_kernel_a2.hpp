@@ -1032,7 +1032,29 @@ private:
             GM_ADDR winInAggPtr = shmem() + peermemInfo.offsetPeerTokenPerExpert
                                   + tokenPerExpertLayout(serverId_ * SERVER_RANK_SIZE_A2, 0, 0) * sizeof(int32_t);
 
-            // ---- Stage 2a: winOut → winIn (本rank copy，使 Stage3 能从 winIn 读取完整表) ----
+            // ---- Stage 2b: RDMA from winOut → 其他server rank-0 的 windowsIn ----
+            // 先发起异步 RDMA，使网络传输与后续本地 copy 重叠
+            {
+                AscendC::GlobalTensor<int32_t> srcAddress;
+                srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(winOutAggPtr));
+
+                for (uint32_t dstServerId = 0; dstServerId < serverCount; dstServerId++) {
+                    if (dstServerId == serverId_) continue;
+
+                    uint32_t dstRank0Global = dstServerId * SERVER_RANK_SIZE_A2;
+
+                    AscendC::GlobalTensor<int32_t> dstAddress;
+                    __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstRank0Global);
+                    dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPeermemPtr));
+
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AIVRDMAPostSend((GM_ADDR)srcAddress.GetPhyAddr(), (GM_ADDR)dstAddress.GetPhyAddr(),
+                                    dstRank0Global, numPerCore * localValidRanks * sizeof(int32_t),
+                                    qp_info_, rdmaUbLocal, rdmaUbLocalHead);
+                }
+            }
+
+            // ---- Stage 2a: winOut → winIn (本rank copy，与 RDMA 网络传输重叠) ----
             {
                 AscendC::GlobalTensor<int32_t> cpySrc, cpyDst;
                 cpySrc.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(winOutAggPtr));
@@ -1040,35 +1062,14 @@ private:
                 CopyGMToGM(cpyDst, cpySrc[0], numPerCore * localValidRanks, params.ubMoveNum);
             }
 
-            // ---- Stage 2b: RDMA from winOut → 其他server rank-0 的 windowsIn ----
-            // RDMA 源须为 winOut 物理地址
-            AscendC::GlobalTensor<int32_t> srcAddress;
-            srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(winOutAggPtr));
+        }
 
-            for (uint32_t dstServerId = 0; dstServerId < serverCount; dstServerId++) {
-                if (dstServerId == serverId_) continue;
-
-                uint32_t dstRank0Global = dstServerId * SERVER_RANK_SIZE_A2;  // 目标server的rank-0 global rank
-
-                // 目标地址：其他server rank-0 的 windowsIn
-                AscendC::GlobalTensor<int32_t> dstAddress;
-                __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstRank0Global);
-                dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPeermemPtr));
-
-                // RDMA发送仅包含本server有效rank数的行，避免越界读写
-                AscendC::PipeBarrier<PIPE_ALL>();
-                AIVRDMAPostSend((GM_ADDR)srcAddress.GetPhyAddr(), (GM_ADDR)dstAddress.GetPhyAddr(),
-                                dstRank0Global, numPerCore * localValidRanks * sizeof(int32_t),
-                                qp_info_, rdmaUbLocal, rdmaUbLocalHead);
-
-            }
-
-            // 等待其他server的数据到达本server rank-0 的 windowsIn
-            for (uint32_t srcServerId = 0; srcServerId < serverCount; srcServerId++) {
+        // 等待其他server的数据到达本server rank-0 的 windowsIn（rank-0 所有 core 并行轮询）
+        if (serverRankIdx == 0) {
+            for (uint32_t srcServerId = coreIdx; srcServerId < serverCount; srcServerId += coreNum) {
                 if (srcServerId == serverId_) continue;
                 uint32_t srcRank0Global = srcServerId * SERVER_RANK_SIZE_A2;
 
-                // 计算源server的实际有效rank数，仅等待有效行
                 uint32_t srcValidRanks = (srcRank0Global + SERVER_RANK_SIZE_A2 <= static_cast<uint32_t>(params.EP))
                                          ? SERVER_RANK_SIZE_A2
                                          : static_cast<uint32_t>(params.EP) - srcRank0Global;
@@ -1082,59 +1083,55 @@ private:
             }
         }
 
-        // ========== 阶段3: Server内分发 (copy) ==========
-        // rank-0 将完整 tokenPerExpert 表 (所有server的数据) 分发到本server其他rank的 windowsIn
-        // 仅 core 0 执行分发和等待，避免多核重复写
-        if (coreIdx == 0) {
-            uint32_t fullTableSize = numPerCore * params.EP;
-            if (serverRankIdx == 0) {
-                // rank-0: 从自己的 winIn 读取完整表，分发到本server其他rank的 winIn
-                AscendC::GlobalTensor<int32_t> srcAddress;
-                srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
-
-                for (uint32_t dstRankIdx = 1; dstRankIdx < SERVER_RANK_SIZE_A2; dstRankIdx++) {
-                    uint32_t dstRankGlobal = serverId_ * SERVER_RANK_SIZE_A2 + dstRankIdx;
-                    if (dstRankGlobal >= static_cast<uint32_t>(params.EP)) break;
-
-                    // 目标地址：其他rank的 winIn 表起始位置
-                    AscendC::GlobalTensor<int32_t> dstAddress;
-                    __gm__ void* dstPeermemPtr = shmem(peermemInfo.offsetPeerTokenPerExpert, dstRankGlobal);
-                    dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPeermemPtr));
-
-                    // 使用 CopyGMToGM 分发完整表（所有 EP 行）
-                    CopyGMToGM(dstAddress, srcAddress[0], fullTableSize, params.ubMoveNum);
-                }
-            } else {
-                // 非 rank-0: 等待 rank-0 分发的完整表数据到达
-                // 逐行检查所有 cache line 边界，确保每行数据完整到达
-                int32_t intPer512 = CACHE_LINE / sizeof(int);
-                for (int32_t epIdx = 0; epIdx < params.EP; epIdx++) {
-                    for (int32_t checkIdx = 0; checkIdx < static_cast<int32_t>(numPerCore); checkIdx += intPer512) {
-                        __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert)
-                                                    + tokenPerExpertLayout(epIdx, 0, checkIdx);
-                        gm_signal_wait_until_ne(sync_check, 0);
-                    }
-                }
-            }
-        }
-
-        // 等待 core 0 完成所有通信阶段后，所有 core 再开始计算 preSum
+        // 同步：确保 RDMA 数据全部到达 + CopyGMToGM 完成，所有 core 才能安全读取 rank-0 winIn
         AscendC::SyncAll<true>();
 
-        // ========== 阶段4: 计算 preSum (多核分核) ==========
-        for(int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
+        // ========== 阶段3: Server内分发 (多核并行) ==========
+        // rank-0 将完整 tokenPerExpert 表分发到本server其他rank的 windowsIn
+        // 所有 core 参与，每个 core 处理部分目标 rank，实现并行分发
+        uint32_t fullTableSize = numPerCore * params.EP;
+        if (serverRankIdx == 0) {
+            // rank-0: 所有 core 参与分发，每个 core 处理部分目标 rank（步进 coreNum）
+            AscendC::GlobalTensor<int32_t> srcAddress;
+            srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
+
+            for (uint32_t dstRankIdx = 1 + coreIdx; dstRankIdx < SERVER_RANK_SIZE_A2; dstRankIdx += coreNum) {
+                uint32_t dstRankGlobal = serverId_ * SERVER_RANK_SIZE_A2 + dstRankIdx;
+                if (dstRankGlobal >= static_cast<uint32_t>(params.EP)) break;
+
+                AscendC::GlobalTensor<int32_t> dstAddress;
+                __gm__ void* dstPeermemPtr = shmem(peermemInfo.offsetPeerTokenPerExpert, dstRankGlobal);
+                dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPeermemPtr));
+
+                CopyGMToGM(dstAddress, srcAddress[0], fullTableSize, params.ubMoveNum);
+            }
+            AscendC::SyncAll<true>();
+        }
+        // 非 rank-0: 边接收边去 tag（OPT-3: 通信-计算重叠）
+        // 每等到一行数据立即去 tag，无需等待所有行到齐后再统一处理
+        int32_t intPer512 = CACHE_LINE / sizeof(int);
+        for (int32_t epIdx = coreIdx; epIdx < params.EP; epIdx += coreNum) {
+            if (serverRankIdx != 0) {
+                // 1) 轮询等待此行数据到达
+                for (int32_t checkIdx = 0; checkIdx < static_cast<int32_t>(numPerCore); checkIdx += intPer512) {
+                    __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(
+                        shmem() + peermemInfo.offsetPeerTokenPerExpert)
+                        + tokenPerExpertLayout(epIdx, 0, checkIdx);
+                    gm_signal_wait_until_ne(sync_check, 0);
+                }
+            }
+            // 2) 数据到达后立即去 tag，与 rank-0 持续分发重叠
+            AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(epIdx, 0, 0)], numPerCore);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::DataCopy(tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], tmpBuffer, numPerCore);
+            AscendC::DataCopy(tokenPerExpert[tokenPerExpertLayout(epIdx, 0, 0)], tmpBuffer, numPerCore);
 
-            // 只有 dstEpIdx == params.rank 的 core 才拥有本 rank 自身的 token 分布，
-            // 只允许该 core 写 preSumBeforeRank，避免其他 core 覆盖正确数据（写竞争修复）
-            if (static_cast<uint32_t>(dstEpIdx) == params.rank) {
+            // 3) preSum（仅 rank 自身所在行）
+            if (static_cast<uint32_t>(epIdx) == params.rank) {
                 for (uint32_t i = 0, currentSum = 0; i < numPerCore; i++) {
                     prevSumBuf(i) = currentSum;
                     currentSum += tmpBuffer(i);
@@ -1145,7 +1142,7 @@ private:
                     AscendC::DataCopyParams{1, static_cast<uint16_t>(numPerCore * sizeof(int32_t)), 0, 0});
             }
         }
-        // 等待所有 core 完成 Stage 4（去tag + preSum）
+
         AscendC::SyncAll<true>();
     }
 
@@ -1203,28 +1200,25 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
 
-            // 带tag数据从winOut copy到winIn（供Stage2 push和轮询使用）
-            CopyGMToGM(localDstAddress, srcAddress[0], numPerCore, params.ubMoveNum);
-
-            // RDMA从winOut发送到其他server同ID rank的winIn
+            // 先发起 RDMA，使网络传输与后续本地 copy 重叠
             for (uint32_t dstServerId = 0; dstServerId < serverCount; dstServerId++) {
-                if (dstServerId == serverId_) continue;  // 同server已通过copy完成
+                if (dstServerId == serverId_) continue;
 
-                // 目标rank = dstServerId * 8 + serverRankIdx (同ID rank)
                 uint32_t dstRankGlobal = dstServerId * SERVER_RANK_SIZE_A2 + serverRankIdx;
                 if (dstRankGlobal >= static_cast<uint32_t>(params.EP)) continue;
 
-                // 目标地址：其他server同ID rank的winIn
                 AscendC::GlobalTensor<int32_t> dstAddress;
                 __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstRankGlobal);
                 dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPeermemPtr));
 
-                // RDMA从winOut发送带tag数据（源须为winOut物理地址）
                 AscendC::PipeBarrier<PIPE_ALL>();
                 AIVRDMAPostSend((GM_ADDR)srcAddress.GetPhyAddr(), (GM_ADDR)dstAddress.GetPhyAddr(),
                                 dstRankGlobal, numPerCore * sizeof(int32_t),
                                 qp_info_, rdmaUbLocal, rdmaUbLocalHead);
             }
+
+            // 带tag数据从winOut copy到winIn（与 RDMA 网络传输重叠）
+            CopyGMToGM(localDstAddress, srcAddress[0], numPerCore, params.ubMoveNum);
 
             // 等待其他server同ID rank的数据到达
             // srcRank发送的数据存储在本rank的winIn的srcRankGlobal行（使用sender的rank计算偏移）
@@ -1242,113 +1236,84 @@ private:
                 }
             }
 
-            // ========== 阶段2: Server内分发 (push, 远端写) ==========
-            // 将本rank已有的数据（自身行 + 跨server收到的行）推送到同server其他rank的winIn
-            for (uint32_t otherRankIdx = 0; otherRankIdx < SERVER_RANK_SIZE_A2; otherRankIdx++) {
-                if (otherRankIdx == serverRankIdx) continue;  // 跳过自己
+        } // end if (coreIdx == 0) — Stage 1 结束
 
-                uint32_t otherRankGlobal = serverId_ * SERVER_RANK_SIZE_A2 + otherRankIdx;
-                if (otherRankGlobal >= static_cast<uint32_t>(params.EP)) break;
+        // Stage 1 完成后同步，确保所有 core 可见 core 0 写入的 winIn 数据
+        AscendC::SyncAll<true>();
 
-                // 1) 推送本rank自身数据行 → otherRank的winIn row[params.rank]
-                {
-                    AscendC::GlobalTensor<int32_t> srcAddress;
-                    GM_ADDR srcPtr = shmem() + peermemInfo.offsetPeerTokenPerExpert
-                                     + tokenPerExpertLayout(params.rank, 0, 0) * sizeof(int32_t);
-                    srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(srcPtr));
+        // ========== 阶段2: Server内分发 (多核并行, push 远端写) ==========
+        // 将本rank已有的数据（自身行 + 跨server收到的行）推送到同server其他rank的winIn
+        // 每个 core 处理部分目标 rank（步进 coreNum），写入地址各不相同，无冲突
+        for (uint32_t otherRankIdx = coreIdx; otherRankIdx < SERVER_RANK_SIZE_A2; otherRankIdx += coreNum) {
+            if (otherRankIdx == serverRankIdx) continue;
 
-                    AscendC::GlobalTensor<int32_t> dstAddress;
-                    GM_ADDR dstPtr = shmem(otherRankGlobal) + peermemInfo.offsetPeerTokenPerExpert
-                                     + tokenPerExpertLayout(params.rank, 0, 0) * sizeof(int32_t);
-                    dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPtr));
+            uint32_t otherRankGlobal = serverId_ * SERVER_RANK_SIZE_A2 + otherRankIdx;
+            if (otherRankGlobal >= static_cast<uint32_t>(params.EP)) break;
 
-                    CopyGMToGM(dstAddress, srcAddress[0], numPerCore, params.ubMoveNum);
-                }
+            // 推送本rank已有的所有行（自身行 + 跨server RDMA行）→ otherRank的winIn
+            for (uint32_t sid = 0; sid < serverCount; sid++) {
+                uint32_t rowRankGlobal = sid * SERVER_RANK_SIZE_A2 + serverRankIdx;
+                if (rowRankGlobal >= static_cast<uint32_t>(params.EP)) continue;
 
-                // 2) 推送本rank收到的跨server数据行 → otherRank的winIn
-                for (uint32_t remoteServerId = 0; remoteServerId < serverCount; remoteServerId++) {
-                    if (remoteServerId == serverId_) continue;
-                    // 本rank收到的跨server行号 = remoteServerId * 8 + serverRankIdx（同ID rank发来的）
-                    uint32_t remoteRankGlobal = remoteServerId * SERVER_RANK_SIZE_A2 + serverRankIdx;
-                    if (remoteRankGlobal >= static_cast<uint32_t>(params.EP)) continue;
+                AscendC::GlobalTensor<int32_t> srcAddress;
+                GM_ADDR srcPtr = shmem() + peermemInfo.offsetPeerTokenPerExpert
+                                 + tokenPerExpertLayout(rowRankGlobal, 0, 0) * sizeof(int32_t);
+                srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(srcPtr));
 
-                    AscendC::GlobalTensor<int32_t> srcAddress;
-                    GM_ADDR srcPtr = shmem() + peermemInfo.offsetPeerTokenPerExpert
-                                     + tokenPerExpertLayout(remoteRankGlobal, 0, 0) * sizeof(int32_t);
-                    srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(srcPtr));
+                AscendC::GlobalTensor<int32_t> dstAddress;
+                GM_ADDR dstPtr = shmem(otherRankGlobal) + peermemInfo.offsetPeerTokenPerExpert
+                                 + tokenPerExpertLayout(rowRankGlobal, 0, 0) * sizeof(int32_t);
+                dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPtr));
 
-                    AscendC::GlobalTensor<int32_t> dstAddress;
-                    GM_ADDR dstPtr = shmem(otherRankGlobal) + peermemInfo.offsetPeerTokenPerExpert
-                                     + tokenPerExpertLayout(remoteRankGlobal, 0, 0) * sizeof(int32_t);
-                    dstAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dstPtr));
-
-                    CopyGMToGM(dstAddress, srcAddress[0], numPerCore, params.ubMoveNum);
-                }
+                CopyGMToGM(dstAddress, srcAddress[0], numPerCore, params.ubMoveNum);
             }
+        }
 
-            // 等待同server其他rank推送的数据到达本rank的winIn（轮询tag非零）
-            {
-                int32_t intPer512 = CACHE_LINE / sizeof(int);
-                for (uint32_t otherRankIdx = 0; otherRankIdx < SERVER_RANK_SIZE_A2; otherRankIdx++) {
-                    if (otherRankIdx == serverRankIdx) continue;
+        // 确保所有核完成 push 后再 detag，否则快核的 detag 会破坏慢核 push 的源数据
+        AscendC::SyncAll<true>();
 
-                    uint32_t otherRankGlobal = serverId_ * SERVER_RANK_SIZE_A2 + otherRankIdx;
-                    if (otherRankGlobal >= static_cast<uint32_t>(params.EP)) break;
+        // ========== 阶段2b+3 合并: 边等边去tag (OPT-4: 通信-计算重叠, 多核分核) ==========
+        // 按 epIdx 遍历所有行：已有数据直接去 tag，需等待的行先 polling 再去 tag
+        {
+            int32_t intPer512 = CACHE_LINE / sizeof(int);
+            for (int32_t epIdx = coreIdx; epIdx < params.EP; epIdx += coreNum) {
+                // 本 rank 自身行（Stage 1 CopyGMToGM 已写入 winIn）和
+                // RDMA 收到的行（Stage 1 polling 已确认到达）不需要 polling
+                bool isOwnRow = (static_cast<uint32_t>(epIdx) == params.rank);
+                bool isRdmaRow = (static_cast<uint32_t>(epIdx) / SERVER_RANK_SIZE_A2 != serverId_) &&
+                                 (static_cast<uint32_t>(epIdx) % SERVER_RANK_SIZE_A2 == serverRankIdx);
 
-                    // 等待 otherRank 推送的自身行 (row[otherRankGlobal])
+                if (!isOwnRow && !isRdmaRow) {
                     for (int32_t checkIdx = 0; checkIdx < static_cast<int32_t>(numPerCore); checkIdx += intPer512) {
                         __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(
                             shmem() + peermemInfo.offsetPeerTokenPerExpert)
-                            + tokenPerExpertLayout(otherRankGlobal, 0, checkIdx);
+                            + tokenPerExpertLayout(epIdx, 0, checkIdx);
                         gm_signal_wait_until_ne(sync_check, 0);
                     }
+                }
 
-                    // 等待 otherRank 推送的跨server数据行
-                    for (uint32_t remoteServerId = 0; remoteServerId < serverCount; remoteServerId++) {
-                        if (remoteServerId == serverId_) continue;
-                        // otherRank收到的跨server行号 = remoteServerId * 8 + otherRankIdx
-                        uint32_t remoteRankGlobal = remoteServerId * SERVER_RANK_SIZE_A2 + otherRankIdx;
-                        if (remoteRankGlobal >= static_cast<uint32_t>(params.EP)) continue;
+                AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(epIdx, 0, 0)], numPerCore);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::DataCopy(tokenPerExpert[tokenPerExpertLayout(epIdx, 0, 0)], tmpBuffer, numPerCore);
 
-                        for (int32_t checkIdx = 0; checkIdx < static_cast<int32_t>(numPerCore); checkIdx += intPer512) {
-                            __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(
-                                shmem() + peermemInfo.offsetPeerTokenPerExpert)
-                                + tokenPerExpertLayout(remoteRankGlobal, 0, checkIdx);
-                            gm_signal_wait_until_ne(sync_check, 0);
-                        }
+                if (static_cast<uint32_t>(epIdx) == params.rank) {
+                    for (uint32_t i = 0, currentSum = 0; i < numPerCore; i++) {
+                        prevSumBuf(i) = currentSum;
+                        currentSum += tmpBuffer(i);
                     }
+                    AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+                    AscendC::DataCopyPad(preSumBeforeRank, prevSumBuf,
+                        AscendC::DataCopyParams{1, static_cast<uint16_t>(numPerCore * sizeof(int32_t)), 0, 0});
                 }
-            }
-        } // end if (coreIdx == 0) — 通信阶段结束
-
-        // 等待 core 0 完成所有通信阶段后，所有 core 再开始计算 preSum
-        AscendC::SyncAll<true>();
-
-        // ========== 阶段3: 计算 preSum (多核分核) ==========
-        for(int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::DataCopy(tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], tmpBuffer, numPerCore);
-
-            // 只有 dstEpIdx == params.rank 的 core 才拥有本 rank 自身的 token 分布，
-            // 只允许该 core 写 preSumBeforeRank，避免其他 core 覆盖正确数据（写竞争修复）
-            if (static_cast<uint32_t>(dstEpIdx) == params.rank) {
-                for (uint32_t i = 0, currentSum = 0; i < numPerCore; i++) {
-                    prevSumBuf(i) = currentSum;
-                    currentSum += tmpBuffer(i);
-                }
-                AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-                AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-                AscendC::DataCopyPad(preSumBeforeRank, prevSumBuf,
-                    AscendC::DataCopyParams{1, static_cast<uint16_t>(numPerCore * sizeof(int32_t)), 0, 0});
             }
         }
-        // 等待所有 core 完成阶段3（去tag + preSum）
+
         AscendC::SyncAll<true>();
     }
 
@@ -1521,7 +1486,7 @@ private:
                         dstEpIdx, groupIdx, static_cast<int32_t>(rowStart), params);
                 }
             }
-            AscendC::SyncAll<true>();  // 等待所有 core 发送完成
+            // AscendC::SyncAll<true>();  // 等待所有 core 发送完成
 
             // ── RECV 阶段：各 core 并行等 epoch flag ──
             for (int32_t srcEpIdx = static_cast<int32_t>(coreIdx);
