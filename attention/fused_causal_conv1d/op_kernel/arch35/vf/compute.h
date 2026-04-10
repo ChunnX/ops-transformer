@@ -97,19 +97,14 @@ __simd_vf__ void GradInputAndWeightNoTail(
             MicroAPI::Cast<float, T, castTraitB162B32>(in1B32, in1B16, fullMask);
 
             // y0 = go0*w2 + go1*w1 + go2*w0
-            MicroAPI::RegTensor<float> y0B32, y1B32, tmpB32;
+            MicroAPI::RegTensor<float> y0B32, y1B32, tmp0B32, tmp1B32, tmp2B32;
             MicroAPI::Mul(y0B32,  go0B32, w2B32, fullMask);
-            MicroAPI::Mul(tmpB32, go1B32, w1B32, fullMask);
-            MicroAPI::Add(y0B32,  y0B32,  tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go2B32, w0B32, fullMask);
-            MicroAPI::Add(y0B32,  y0B32,  tmpB32, fullMask);
-
+            MicroAPI::MulAddDst(y0B32, go1B32, w1B32, fullMask);
+            MicroAPI::MulAddDst(y0B32, go2B32, w0B32, fullMask);
             // y1 = go3*w2 + go4*w1 + go5*w0
             MicroAPI::Mul(y1B32,  go3B32, w2B32, fullMask);
-            MicroAPI::Mul(tmpB32, go4B32, w1B32, fullMask);
-            MicroAPI::Add(y1B32,  y1B32,  tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go5B32, w0B32, fullMask);
-            MicroAPI::Add(y1B32,  y1B32,  tmpB32, fullMask);
+            MicroAPI::MulAddDst(y1B32, go4B32, w1B32, fullMask);
+            MicroAPI::MulAddDst(y1B32, go5B32, w0B32, fullMask);
 
             // store gi rows
             MicroAPI::RegTensor<T> y0B16, y1B16;
@@ -119,20 +114,20 @@ __simd_vf__ void GradInputAndWeightNoTail(
             MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(giAddr + r1 * dimLen + dimOff, y1B16, fullMask);
 
             // products for row r0
-            MicroAPI::Mul(tmpB32, go0B32, in0B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go1B32, in0B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go2B32, in0B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmpB32, fullMask);
+            MicroAPI::Mul(tmp0B32, go0B32, in0B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmp0B32, fullMask);
+            MicroAPI::Mul(tmp1B32, go1B32, in0B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmp1B32, fullMask);
+            MicroAPI::Mul(tmp2B32, go2B32, in0B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmp2B32, fullMask);
 
             // products for row r1
-            MicroAPI::Mul(tmpB32, go3B32, in1B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go4B32, in1B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go5B32, in1B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmpB32, fullMask);
+            MicroAPI::Mul(tmp0B32, go3B32, in1B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmp0B32, fullMask);
+            MicroAPI::Mul(tmp1B32, go4B32, in1B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmp1B32, fullMask);
+            MicroAPI::Mul(tmp2B32, go5B32, in1B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmp2B32, fullMask);
         }
         dimOff += B32_REP_SIZE;
     }
@@ -187,19 +182,15 @@ __simd_vf__ void GradInputAndWeightWithTail(
             MicroAPI::Cast<float, T, castTraitB162B32>(in0B32, in0B16, fullMask);
             MicroAPI::Cast<float, T, castTraitB162B32>(in1B32, in1B16, fullMask);
 
-            MicroAPI::RegTensor<float> y0B32, y1B32, tmpB32;
+            MicroAPI::RegTensor<float> y0B32, y1B32, tmp0B32, tmp1B32, tmp2B32;
             // y0
             MicroAPI::Mul(y0B32,  go0B32, w2B32, fullMask);
-            MicroAPI::Mul(tmpB32, go1B32, w1B32, fullMask);
-            MicroAPI::Add(y0B32,  y0B32,  tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go2B32, w0B32, fullMask);
-            MicroAPI::Add(y0B32,  y0B32,  tmpB32, fullMask);
+            MicroAPI::MulAddDst(y0B32, go1B32, w1B32, fullMask);
+            MicroAPI::MulAddDst(y0B32, go2B32, w0B32, fullMask);
             // y1
             MicroAPI::Mul(y1B32,  go3B32, w2B32, fullMask);
-            MicroAPI::Mul(tmpB32, go4B32, w1B32, fullMask);
-            MicroAPI::Add(y1B32,  y1B32,  tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go5B32, w0B32, fullMask);
-            MicroAPI::Add(y1B32,  y1B32,  tmpB32, fullMask);
+            MicroAPI::MulAddDst(y1B32, go4B32, w1B32, fullMask);
+            MicroAPI::MulAddDst(y1B32, go5B32, w0B32, fullMask);
 
             MicroAPI::RegTensor<T> y0B16, y1B16;
             MicroAPI::Cast<T, float, castTraitB322B16>(y0B16, y0B32, fullMask);
@@ -208,25 +199,25 @@ __simd_vf__ void GradInputAndWeightWithTail(
             MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(giAddr + r1 * dimLen + dimOff, y1B16, fullMask);
 
             // products
-            MicroAPI::Mul(tmpB32, go0B32, in0B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go1B32, in0B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go2B32, in0B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmpB32, fullMask);
+            MicroAPI::Mul(tmp0B32, go0B32, in0B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmp0B32, fullMask);
+            MicroAPI::Mul(tmp1B32, go1B32, in0B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmp1B32, fullMask);
+            MicroAPI::Mul(tmp2B32, go2B32, in0B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmp2B32, fullMask);
 
-            MicroAPI::Mul(tmpB32, go3B32, in1B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go4B32, in1B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmpB32, fullMask);
-            MicroAPI::Mul(tmpB32, go5B32, in1B32, fullMask);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmpB32, fullMask);
+            MicroAPI::Mul(tmp0B32, go3B32, in1B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmp0B32, fullMask);
+            MicroAPI::Mul(tmp1B32, go4B32, in1B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmp1B32, fullMask);
+            MicroAPI::Mul(tmp2B32, go5B32, in1B32, fullMask);
+            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmp2B32, fullMask);
         }
 
         // Tail row (unconditional; this variant is called only when sLen is odd)
         uint32_t r = (sMain << 1); // last row index
         MicroAPI::RegTensor<T>     go0B16, go1B16, go2B16, inB16;
-        MicroAPI::RegTensor<float> go0B32, go1B32, go2B32, inB32, yB32, tmpB32;
+        MicroAPI::RegTensor<float> go0B32, go1B32, go2B32, inB32, yB32, tmp0B32, tmp1B32, tmp2B32;
         MicroAPI::RegTensor<T>     yB16;
 
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(go0B16, goAddr + r     * dimLen + dimOff);
@@ -239,19 +230,17 @@ __simd_vf__ void GradInputAndWeightWithTail(
         MicroAPI::Cast<float, T, castTraitB162B32>(inB32,  inB16,  fullMask);
 
         MicroAPI::Mul(yB32,   go0B32, w2B32, fullMask);
-        MicroAPI::Mul(tmpB32, go1B32, w1B32, fullMask);
-        MicroAPI::Add(yB32,   yB32,   tmpB32, fullMask);
-        MicroAPI::Mul(tmpB32, go2B32, w0B32, fullMask);
-        MicroAPI::Add(yB32,   yB32,   tmpB32, fullMask);
+        MicroAPI::MulAddDst(yB32, go1B32, w1B32, fullMask);
+        MicroAPI::MulAddDst(yB32, go2B32, w0B32, fullMask);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, fullMask);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(giAddr + r * dimLen + dimOff, yB16, fullMask);
 
-        MicroAPI::Mul(tmpB32, go0B32, inB32, fullMask);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r * dimLen + dimOff, tmpB32, fullMask);
-        MicroAPI::Mul(tmpB32, go1B32, inB32, fullMask);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r * dimLen + dimOff, tmpB32, fullMask);
-        MicroAPI::Mul(tmpB32, go2B32, inB32, fullMask);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r * dimLen + dimOff, tmpB32, fullMask);
+        MicroAPI::Mul(tmp0B32, go0B32, inB32, fullMask);
+        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p2Addr + r * dimLen + dimOff, tmp0B32, fullMask);
+        MicroAPI::Mul(tmp1B32, go1B32, inB32, fullMask);
+        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p1Addr + r * dimLen + dimOff, tmp1B32, fullMask);
+        MicroAPI::Mul(tmp2B32, go2B32, inB32, fullMask);
+        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(p0Addr + r * dimLen + dimOff, tmp2B32, fullMask);
 
         dimOff += B32_REP_SIZE;
     }
@@ -293,7 +282,6 @@ __aicore__ inline void DoGradInputWeight(LocalTensor<T> &goUb, LocalTensor<T> &w
         GradInputAndWeightNoTail<T>(goAddr, wAddr, inAddr, giAddr, p0Addr, p1Addr, p2Addr, sMain, dimLen);
     }
 }
-
 
 template <typename T>
 __aicore__ inline void DoCastToDT(LocalTensor<float> &inUb, uint32_t dimLen, LocalTensor<T> &outUb)
