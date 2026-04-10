@@ -336,8 +336,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
     OP_CHECK_IF(rowIndexDesc == nullptr, OP_LOGE(context_->GetNodeName(), "RowIndexDesc is nullptr."), return false);
     rowIndex_ = context_->GetOptionalInputShape(ROW_INDEX_INDEX)->GetStorageShape()[0];
 
-    OP_CHECK_IF(rowIndex_ > inputParams_.mSize,
-                OP_LOGE(context_->GetNodeName(), "Input rowIndex (%lu) out of M (%lu).", rowIndex_, inputParams_.mSize),
+    OP_CHECK_IF(rowIndex_ != inputParams_.mSize,
+                OP_LOGE(context_->GetNodeName(), "Input rowIndex length (%lu) must equal M (%lu).", rowIndex_,
+                        inputParams_.mSize),
                 return false);
 
     OP_CHECK_IF(outputBs_ > inputParams_.mSize,

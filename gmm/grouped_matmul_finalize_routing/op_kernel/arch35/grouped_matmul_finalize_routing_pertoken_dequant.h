@@ -84,7 +84,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
          gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
          gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
+        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
+         static_cast<int32_t>(gmmFinalizeRoutingQuantParams_.batch)}, // epilogue params + batch for rowIndex guard
         gmmParams};
     GmmKernel gmm;
     gmm(params);
