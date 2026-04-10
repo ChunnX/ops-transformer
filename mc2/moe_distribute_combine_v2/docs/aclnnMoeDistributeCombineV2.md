@@ -682,6 +682,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     #include <string>
     #include <cstring>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"

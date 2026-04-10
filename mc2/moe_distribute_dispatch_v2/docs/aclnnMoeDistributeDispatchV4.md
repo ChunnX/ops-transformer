@@ -713,6 +713,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"
@@ -1694,7 +1696,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
             ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
             CHECK_RET(ret == ACL_SUCCESS,
-                        LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret); return ret);
+                        LOG_PRINT("[ERROR] HcclCommInitAll TP %d failed, ret %d\n", epId, ret); return ret);
         }
 
         Args args[DEV_NUM];

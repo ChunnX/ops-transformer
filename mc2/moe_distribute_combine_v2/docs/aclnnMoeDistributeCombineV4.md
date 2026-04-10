@@ -445,7 +445,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <td>commAlg</td>
     <td>输入</td>
     <td>通信亲和内存布局算法。</td>
-    <td>。</td>
+    <td>-</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -789,6 +789,8 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"
