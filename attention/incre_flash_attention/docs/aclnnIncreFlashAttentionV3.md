@@ -596,7 +596,7 @@ int main() {
   int64_t innerPrecise = 1;
   double scaleValue = 1 / sqrt(headDims); // 1/sqrt(d)
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;

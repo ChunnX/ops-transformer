@@ -710,7 +710,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>inputLayout=BNSD_BSND仅支持Q_D=K_D=V_D都16对齐(output dtype为int8时为32对齐)，或Q_D=K_D等于192，V_D等于128<br></li>
         </ul>
         </td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -1033,7 +1033,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 |                      |         value         |      INPUT      | TensorList |
 |                      |       numHeads       |      ATTR      |   int64   |
 |                      |      scaleValue      | ATTR(OPTIONAL) |   double   |
-|                      |      inputLayout      | ATTR(OPTIONAL) |    char    |
+|                      |      inputLayout      | ATTR(OPTIONAL) |   string   |
 |                      |   numKeyValueHeads   | ATTR(OPTIONAL) |   int64   |
 |                      |     innerPrecise     | ATTR(OPTIONAL) |   int64   |
 |                      |     attentionOut     |     OUTPUT     |   Tensor   |
@@ -1870,7 +1870,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       int64_t preTokens = 65535;
       int64_t nextTokens = 65535;
       string sLayerOut = "BNSD";
-      char layerOut[sLayerOut.length()];
+      char layerOut[sLayerOut.length()+1];
       strcpy(layerOut, sLayerOut.c_str());
       int64_t sparseMode = 0;
       int64_t innerPrecise = 1;

@@ -218,7 +218,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>输出</td>
         <td>压缩之后的cache</td>
         <td>数据类型与input保持一致。</td>
-        <td>INT64</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[result_len, N, D]</td>
         <td>x</td>
@@ -347,7 +347,7 @@ aclnnStatus aclnnNsaCompressWithCache(
 
 - 确定性计算：
   - aclnnNsaCompressWithCache默认确定性实现。
-- outputCache的N和D和input一致，而且要满足result_len>(blockNum*pageBlockSize-compressBlockSize)/compressStride。
+- outputCache的N和D与input一致，而且要满足result_len>(blockNum*pageBlockSize-compressBlockSize)/compressStride。
 - page attention场景下input的shape支持[blockNum,pageBlockSize,N,D]，其余场景下input的shape支持[T,N,D]。
 
 ## 调用示例
