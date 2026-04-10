@@ -49,13 +49,12 @@ struct MhcPreBackwardCompileInfo {
     uint64_t l0BSize{0UL};
 };
 
-class MhcPreBackwardBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MhcPreBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-public:
-    explicit MhcPreBackwardBaseTiling(gert::TilingContext *context)
+    explicit MhcPreBackwardTiling(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
-    ~MhcPreBackwardBaseTiling() override = default;
+    ~MhcPreBackwardTiling() override = default;
 
 protected:
     bool IsCapable() override
