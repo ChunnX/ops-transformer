@@ -20,7 +20,6 @@ from torch_npu import npu
 from torchair.configs.compiler_config import CompilerConfig
 import ascend_ops
 
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(levelname)s: %(message)s',
@@ -67,11 +66,11 @@ class FusedAttentionNetwork(nn.Module):
 
     def forward(self, param: dict):
         # Step 1: Compute metadata
-        metadata = torch.ops.custom.npu_fused_infer_attention_score_metadata(**param['metaParam'])
+        metadata = torch.ops.ascend_ops.npu_fused_infer_attention_score_metadata(**param['metaParam'])
         param['faParam']['metadata'] = metadata
 
         # Step 2: Call fused attention
-        return torch.ops.custom.npu_fused_infer_attention_score(**param['faParam'])
+        return torch.ops.ascend_ops.npu_fused_infer_attention_score(**param['faParam'])
 
 # =============================================
 # 📥 INPUT GENERATION (输入构造独立函数)
@@ -164,9 +163,6 @@ def main():
     compiler_config = CompilerConfig()
     compiler_config.mode = config.compile_mode
     compiler_config.debug.aclgraph.clone_input = False
-    compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
-    compiler_config.experimental_config.aclgraph._super_kernel_optimize = True
-    compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
     # 5. Get NPU backend
     logger.info("🎯 Getting NPU backend...")
     npu_backend = tng.get_npu_backend(compiler_config=compiler_config)

@@ -54,16 +54,16 @@ struct IncreFlashAttentionMetadata {
 };
 
 struct IncreFlashAttentionMetadataArgs {
-    uint32_t aicCoreNum;
-    uint32_t aivCoreNum;
-    uint32_t batchSize;
-    uint32_t querySeqSize;
-    uint32_t queryHeadNum;
-    uint32_t keyHeadNum;
-    uint32_t headDim;
-    uint32_t blockSize;
-    uint32_t maxBlockNumPerBatch;
-    uint64_t actSeqKvLenDim;
+    int64_t aicCoreNum;
+    int64_t aivCoreNum;
+    int64_t batchSize;
+    int64_t querySeqSize;
+    int64_t queryHeadNum;
+    int64_t keyHeadNum;
+    int64_t headDim;
+    int64_t blockSize;
+    int64_t maxBlockNumPerBatch;
+    int64_t actSeqKvLenDim;
     int64_t *actSeqKvLen = nullptr;
     Layout layoutQuery = Layout::BUTT;
     int8_t* metaData = nullptr;

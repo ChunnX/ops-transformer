@@ -17,6 +17,7 @@
 #include <algorithm>
 #include "./acl/acl.h"
 #include "aicpu_api.h"
+#include "log.h"
 #include "ifa_meta_public_define.h"
 
 template <typename T> 
@@ -511,9 +512,41 @@ bool SplitCore::GenMetaData(aicpu::kernels::IncreFlashAttentionMetadataArgs *arg
     return true;
 }
 
+bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr)
+{
+    KERNEL_CHECK_FALSE(arg_ptr->batchSize >= 0, false, "batchSize(%ld) can't be less than 0 !!", arg_ptr->batchSize);
+    KERNEL_CHECK_FALSE(arg_ptr->querySeqSize >= 0, false, "querySeqSize(%ld) can't be less than 0 !!", arg_ptr->querySeqSize);
+    KERNEL_CHECK_FALSE(arg_ptr->queryHeadNum >= 0, false, "queryHeadNum(%ld) can't be less than 0 !!", arg_ptr->queryHeadNum);
+    KERNEL_CHECK_FALSE(arg_ptr->keyHeadNum >= 0, false, "keyHeadNum(%ld) can't be less than 0 !!", arg_ptr->keyHeadNum);
+    KERNEL_CHECK_FALSE(arg_ptr->headDim >= 0, false, "headDim(%ld) can't be less than 0 !!", arg_ptr->headDim);
+    KERNEL_CHECK_FALSE(arg_ptr->blockSize >= 0, false, "blockSize(%ld) can't be less than 0 !!", arg_ptr->blockSize);
+    KERNEL_CHECK_FALSE(arg_ptr->maxBlockNumPerBatch >= 0, false, "maxBlockNumPerBatch(%ld) can't be less than 0 !!",
+        arg_ptr->maxBlockNumPerBatch);
+
+    bool layoutCheck = arg_ptr->layoutQuery == aicpu::kernels::Layout::BSND ||
+                        arg_ptr->layoutQuery == aicpu::kernels::Layout::BSH ||
+                        arg_ptr->layoutQuery == aicpu::kernels::Layout::BNSD;
+    KERNEL_CHECK_FALSE(layoutCheck, false, "layoutQuery can only be BSND/BNSD/BSH !!");
+
+    KERNEL_CHECK_FALSE((arg_ptr->actSeqKvLenDim == 1U || arg_ptr->actSeqKvLenDim >= arg_ptr->batchSize), false,
+        "actSeqKvLen length(%ld) should be either 1 or no less than batchSize(%ld)",
+        arg_ptr->actSeqKvLenDim, arg_ptr->batchSize);
+
+    for (auto i = 0; i < arg_ptr->actSeqKvLenDim; ++i) {
+        KERNEL_CHECK_FALSE(arg_ptr->actSeqKvLen[i] >= 0, false, 
+            "actSeqKvLen element can't be less than 0, but got %ld at index %d!!", arg_ptr->actSeqKvLen[i], i);
+    }
+
+    return true;
+}
+
 extern "C" __global__ __aicpu__ uint32_t IncreFlashAttentionMetadataKernel(void *args)
 {
     aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr = (aicpu::kernels::IncreFlashAttentionMetadataArgs *)args;
+    if (!CheckInput(arg_ptr)) {
+        return 1;
+    }
+
     SplitCore balancer {};
     balancer.Compute(arg_ptr);
     return 0;
