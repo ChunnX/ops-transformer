@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import ast
+import math
 import result_compare_method
 import utils
 import itertools
@@ -27,107 +29,81 @@ save_pt = False
 pt_save_path = "data"
 
 # 处理所有参数组合
-param_combinations = []
 result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx')
+param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 
-for params in ENABLED_PARAMS:
-    # 确保所有参数都存在，缺失的用默认值填充
-    param_values = {
-        "testcase_name": params.get("testcase_name", [None]),
-        "layout_q": params.get("layout_q"),
-        "layout_kv": params.get("layout_kv"),
-        "q_type": params.get("q_type"),
-        "ori_kv_type": params.get("ori_kv_type"),
-        "cmp_kv_type": params.get("cmp_kv_type", [None]),
-        "B": params.get("B"),
-        "S1": params.get("S1"),
-        "S2": params.get("S2", [None]),
-        "T1": params.get("T1", [None]),
-        "T2": params.get("T2", [None]),
-        "N1": params.get("N1"),
-        "N2": params.get("N2"),
-        "D": params.get("D"),
-        "K1": params.get("K1", [None]),
-        "K": params.get("K", [None]),
-        "block_num1": params.get("block_num1", [None]),
-        "block_num2": params.get("block_num2", [None]),
-        "block_size1": params.get("block_size1", [None]),
-        "block_size2": params.get("block_size2", [None]),
-        "seqused_q": params.get("seqused_q", [None]),
-        "cu_seqlens_q": params.get("cu_seqlens_q", [None]),
-        "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", [None]),
-        "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv", [None]),
-        "seqused_kv": params.get("seqused_kv", [None]),
-        "softmax_scale": params.get("softmax_scale"),
-        "cmp_ratio": params.get("cmp_ratio", [None]),
-        "ori_mask_mode": params.get("ori_mask_mode"),
-        "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
-        "ori_win_left": params.get("ori_win_left"),
-        "ori_win_right": params.get("ori_win_right"),
-        "ori_kv_topk_mode": params.get("ori_kv_topk_mode", [None]),
-        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", [None]),
-        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", [None]),
-        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", [None]),
-    }
+def fill_random_len(T, SMax, B, has_prefix=True, qk_equal_len=False):
+    seqlens = [0] if has_prefix else []
+    S = min(SMax, T // B)
+    length = S if qk_equal_len else random.randint(0, S)
+    seqlens.append(random.randint(0, S))
+    for i in range(B - 1):
+        length = S if qk_equal_len else random.randint(0, S)
+        seqlens.append(seqlens[-1] + random.randint(0, S))
+    seqlens[-1] = T
+    return seqlens
 
-    # 生成参数名和值列表
-    param_names = list(param_values.keys())
-    values_lists = [param_values[name] for name in param_names]
+def generate_case(param_combinations):
+    case_param = param_combinations.copy()
+    case_param.setdefault('testcase_name', "case_" + str(int(time.time() * 1000000)))
+    case_param.update({'q_datarange': ast.literal_eval(param_combinations.get('q_datarange')) if param_combinations.get('q_datarange') is not None else [-10, 10]})
+    case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if param_combinations.get('ori_kv_datarange') is not None else [-10, 10]})
+    case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10]})
 
-    # 生成所有组合
-    for combo in itertools.product(*values_lists):
-        combination = dict(zip(param_names, combo))
-        param_combinations.append(combination)
+    # 测试用，数据预填充，TND场景下cu_seqlens如果没有传入，根据T和S自动填充随机值
+    # 常用参数提取
+    layout_q = case_param['layout_q']
+    layout_kv = case_param['layout_kv']
+    T1 = case_param['T1']
+    T2 = case_param['T2']
+    B = case_param['B']
+    S1 = case_param['S1']
+    S2 = case_param['S2']
+    cmp_ratio = case_param['cmp_ratio']
+    # 数据预填充
+    if case_param['cu_seqlens_q'] is None:
+        if layout_q == "TND":
+            case_param['cu_seqlens_q'] = fill_random_len(T1, S1, B, True, param_combinations['qk_equal_len'])
+            print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
+        elif layout_q == "BSND":
+            case_param['cu_seqlens_q'] = fill_random_len(B * S1, S1, B, True, True)
+            print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
+
+    if case_param['cu_seqlens_ori_kv'] is None and layout_kv == "TND":
+        case_param['cu_seqlens_ori_kv'] = fill_random_len(T2, S2, B, True, param_combinations['qk_equal_len'])
+        print("cu_seqlens_ori_kv auto set to: ", case_param['cu_seqlens_ori_kv'])
+
+    if case_param['cu_seqlens_cmp_kv'] is None and layout_kv == "TND" and cmp_ratio is not None:
+        case_param['cu_seqlens_cmp_kv'] = [x // cmp_ratio for x in case_param['cu_seqlens_ori_kv']]
+        print("cu_seqlens_cmp_kv auto set to: ", case_param['cu_seqlens_cmp_kv'])
+        case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
+
+    # maxSeqLen / block_size向上取整
+    ori_block_num_per_batch = []
+    ori_block_num_sum = 0
+    cmp_block_num_per_batch = []
+    cmp_block_num_sum = 0
+
+    if layout_kv == "PA_BNBD":
+        for cur_ori_act_kv in case_param['seqused_kv']:
+            cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param['block_size1'])
+            ori_block_num_per_batch.append(cur_ori_kv_block_num)
+            ori_block_num_sum += cur_ori_kv_block_num
+            if cmp_ratio is not None and case_param['block_size2'] is not None:
+                cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+                cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / case_param['block_size2'])
+                cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
+                cmp_block_num_sum += cur_cmp_kv_block_num
+    case_param['block_num1'] = ori_block_num_sum
+    case_param['block_num2'] = cmp_block_num_sum
+    return case_param
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
-    testcase_name = param_combinations['testcase_name'] if param_combinations['testcase_name'] is not None else "case_" + str(int(time.time() * 1000000))
-    layout_q = param_combinations['layout_q']
-    layout_kv = param_combinations['layout_kv']
-    q_type = param_combinations['q_type']
-    ori_kv_type = param_combinations['ori_kv_type']
-    cmp_kv_type = param_combinations['cmp_kv_type']
-    B = param_combinations['B']
-    S1 = param_combinations['S1']
-    S2 = param_combinations['S2']
-    T1 = param_combinations['T1']
-    T2 = param_combinations['T2']
-    N1 = param_combinations['N1']
-    N2 = param_combinations['N2']
-    D = param_combinations['D']
-    K1 = param_combinations['K1']
-    K = param_combinations['K']
-    block_num1 = param_combinations['block_num1']
-    block_num2 = param_combinations['block_num2']
-    block_size1 = param_combinations['block_size1']
-    block_size2 = param_combinations['block_size2']
-    cu_seqlens_q = param_combinations['cu_seqlens_q']
-    cu_seqlens_ori_kv = param_combinations['cu_seqlens_ori_kv']
-    cu_seqlens_cmp_kv = param_combinations['cu_seqlens_cmp_kv']
-    seqused_q = param_combinations['seqused_q']
-    seqused_kv = param_combinations['seqused_kv']
-    softmax_scale = param_combinations['softmax_scale']
-    cmp_ratio = param_combinations['cmp_ratio']
-    ori_mask_mode = param_combinations['ori_mask_mode']
-    cmp_mask_mode = param_combinations['cmp_mask_mode']
-    ori_win_left = param_combinations['ori_win_left']
-    ori_win_right = param_combinations['ori_win_right']
-    q_datarange = [-10, 10]
-    ori_kv_datarange = [-10, 10]
-    cmp_kv_datarange = [-10, 10]
-    ori_kv_topk_mode = param_combinations['ori_kv_topk_mode']
-    cmp_kv_topk_mode = param_combinations['cmp_kv_topk_mode']
-    ori_sparse_indices_mode = param_combinations['ori_sparse_indices_mode']
-    cmp_sparse_indices_mode = param_combinations['cmp_sparse_indices_mode']
-
+    test_data = generate_case(param_combinations)
     torch_npu.npu.set_device(0)
-    # 增加参数请在最后增加，保证结果统计
-    test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, T2, N1, N2, D, K1, K, block_num1,   \
-                block_num2, block_size1, block_size2, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_kv, \
-                softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2,\
-                q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q, ori_kv_topk_mode, cmp_kv_topk_mode, \
-                ori_sparse_indices_mode, cmp_sparse_indices_mode
+
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_attn_sharedkv_golden.gen_data(test_data)

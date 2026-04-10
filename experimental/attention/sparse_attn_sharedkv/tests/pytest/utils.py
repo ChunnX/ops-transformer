@@ -9,11 +9,23 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
+import ast
+import itertools
 import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
 import pytest
+import torch
+ 	 
+str_map_dict = {
+    'True': True,
+    'False': False,
+    'TRUE': True,
+    'FALSE': False,
+    'torch.bfloat16': torch.bfloat16,
+    'torch.float8_e4m3fn': torch.float8_e4m3fn,
+}
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
@@ -94,39 +106,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 def save_result(result, fulfill_percent, params, result_path='./result/sas_result.xlsx'):
     result_path = Path(result_path)
     row_data = {
-        "testcase_name": params[24] ,
-        "layout_q": params[0],
-        "layout_kv": params[1],
-        "q_type": params[2],
-        "ori_kv_type": params[3],
-        "cmp_kv_type": params[4],
-        "B": params[5],
-        "S1": params[6],
-        "S2": None if len(params) == 25 else params[25],
-        "T1": params[7],
-        "N1": params[8],
-        "N2": params[9],
-        "D": params[10],
-        "K1": None if len(params) < 31 else params[30],
-        "K": params[11],
-        "block_num1": params[12],
-        "block_num2": params[13],
-        "block_size1": params[14],
-        "block_size2": params[15],
-        "cu_seqlens_q": params[16],
-        "seqused_q": None if len(params) < 30 else params[29],
-        "seqused_kv": params[17],
-        "softmax_scale": params[18],
-        "cmp_ratio": params[19],
-        "ori_mask_mode": params[20],
-        "cmp_mask_mode": params[21],
-        "ori_win_left": params[22],
-        "ori_win_right": params[23],
-        "q_datarange": None if len(params) == 25 else params[26],
-        "ori_kv_datarange": None if len(params) == 25 else params[27],
-        "cmp_kv_datarange": None if len(params) == 25 else params[28],
-        "ori_kv_topk_mode": None if len(params) < 32 else params[31],
-        "cmp_kv_topk_mode": None if len(params) < 33 else params[32],
+        **params,
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
@@ -153,3 +133,77 @@ def save_result(result, fulfill_percent, params, result_path='./result/sas_resul
     
     # 保存到Excel
     df.to_excel(result_path, index=False)
+
+def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
+    """
+    生成参数组合
+
+    Args:
+        ENABLED_PARAMS: 启用的参数列表
+
+    Returns:
+        list: 参数组合列表
+    """
+    param_combinations = []
+    
+    for params in ENABLED_PARAMS:
+        # 确保所有参数都存在，缺失的用默认值填充
+        param_values = {
+            "testcase_name": params.get("testcase_name", [None] if not is_save_pt else None),
+            "layout_q": params.get("layout_q", [None] if not is_save_pt else None),
+            "layout_kv": params.get("layout_kv", [None] if not is_save_pt else None),
+            "q_type": params.get("q_type", [None] if not is_save_pt else None),
+            "ori_kv_type": params.get("ori_kv_type", [None] if not is_save_pt else None),
+            "cmp_kv_type": params.get("cmp_kv_type", [None] if not is_save_pt else None),
+            "B": params.get("B", [None] if not is_save_pt else None),
+            "S1": params.get("S1", [None] if not is_save_pt else None),
+            "S2": params.get("S2", [None] if not is_save_pt else None),
+            "T1": params.get("T1", [None] if not is_save_pt else None),
+            "T2": params.get("T2", [None] if not is_save_pt else None),
+            "T3": params.get("T3", [None] if not is_save_pt else None),
+            "N1": params.get("N1", [None] if not is_save_pt else None),
+            "N2": params.get("N2", [None] if not is_save_pt else None),
+            "D": params.get("D", [None] if not is_save_pt else None),
+            "K1": params.get("K1", [None] if not is_save_pt else None),
+            "K": params.get("K", [None] if not is_save_pt else None),
+            "block_num1": params.get("block_num1", [None] if not is_save_pt else None),
+            "block_num2": params.get("block_num2", [None] if not is_save_pt else None),
+            "block_size1": params.get("block_size1", [None] if not is_save_pt else None),
+            "block_size2": params.get("block_size2", [None] if not is_save_pt else None),
+            "seqused_q": params.get("seqused_q", [None] if not is_save_pt else None),
+            "cu_seqlens_q": params.get("cu_seqlens_q", [None] if not is_save_pt else None),
+            "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", [None] if not is_save_pt else None),
+            "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv", [None] if not is_save_pt else None),
+            "seqused_kv": params.get("seqused_kv", [None] if not is_save_pt else None),
+            "softmax_scale": params.get("softmax_scale", [None] if not is_save_pt else None),
+            "cmp_ratio": params.get("cmp_ratio", [None] if not is_save_pt else None),
+            "ori_mask_mode": params.get("ori_mask_mode", [None] if not is_save_pt else None),
+            "cmp_mask_mode": params.get("cmp_mask_mode", [None] if not is_save_pt else None),
+            "ori_win_left": params.get("ori_win_left", [None] if not is_save_pt else None),
+            "ori_win_right": params.get("ori_win_right", [None] if not is_save_pt else None),
+            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ["full"] if not is_save_pt else "full"),
+            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", ["full"] if not is_save_pt else "full"),
+            "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"] if not is_save_pt else "full"),
+            "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"] if not is_save_pt else "full"),
+            "actlen_mode": params.get("actlen_mode", ["full"] if not is_save_pt else "full"),
+            "template_mode": params.get("template_mode", [None] if not is_save_pt else None),
+            "q_datarange": params.get("q_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
+            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
+            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
+            "qk_equal_len": params.get("qk_equal_len", ["False"] if not is_save_pt else False)
+        }
+        param_names = list(param_values.keys())
+        for key, value in param_values.items():
+            if isinstance(value, str) and value in str_map_dict:
+                    param_values[key] = str_map_dict[value]
+        if is_save_pt:
+            values_lists = [[param_values[name]] for name in param_names]
+        else:
+            # 生成参数名和值列表
+            values_lists = [param_values[name] for name in param_names]
+    
+        # 生成所有组合
+        for combo in itertools.product(*values_lists):
+            combination = dict(zip(param_names, combo))
+            param_combinations.append(combination)
+    return param_combinations

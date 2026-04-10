@@ -281,9 +281,14 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.oriSparseBlockCount = runParam.oriSparseBlockCount;
     runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
-        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
-        TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
         if (((runInfo.isCmp) && (!constInfo.hasCmpTopkLength)) || ((!runInfo.isCmp) && (!constInfo.hasOriTopkLength))) {
+            runInfo.isS2Gather = true;
+        } else {
+            runInfo.isS2Gather = false;
+        }
+    } else if (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        if ((runInfo.isCmp) && (!constInfo.hasCmpTopkLength)) {
             runInfo.isS2Gather = true;
         } else {
             runInfo.isS2Gather = false;

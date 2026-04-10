@@ -257,7 +257,7 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow,
+__aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow,
     int64_t token0Idx, int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t keyOffset0 = GetkeyOffset(token0Idx, runInfo, constInfo);
@@ -401,13 +401,16 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         v0ResGm.SetCrossCore();
     }
 
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && !IS_SPLIT_G) {
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) {
+            if constexpr (IS_SPLIT_G) {
+                CrossCoreSetFlag<0, PIPE_MTE3>(15);
+                CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+            }
             return;
         }
-        outputL1.WaitCrossCore();
-        v0ResGm.WaitCrossCore();
         keyGm = cmpKVGm;
+        cuSeqlensKvGm = cuSeqlensCmpKvGm;
         sparseIndicesGm = cmpSparseIndicesGm;
         if constexpr (IS_PA) {
             blockTableGm = cmpBlockTableGm;
@@ -416,6 +419,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         }
         CalSparseCalSize(runInfo, constInfo);
         ProcessSparseKv(outputL1, v0ResGm, s2LenGm, runInfo, constInfo, startPos);
+        if constexpr (IS_SPLIT_G) {
+            CrossCoreSetFlag<0, PIPE_MTE3>(15);
+            if (runInfo.isS2Gather) {
+                CrossCoreWaitFlag(15);
+            } else {
+                CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+            }
+        }
         outputL1.SetCrossCore();
         v0ResGm.SetCrossCore();
     }
@@ -454,7 +465,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
-        (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && !IS_SPLIT_G)) {
+        TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         if (sparseCalSize == 0) {
             if (runInfo.isS2Gather) {
                 UpdateS2RealLengthToGm(0, s2LenGm, runInfo, constInfo);
