@@ -328,6 +328,8 @@
 
 - `MoeDistributeDispatchV3`与`CombineV3`系列算子必须配套使用，具体参考调用示例。
 
+- 算子通信域各节点的驱动版本应当相同。
+
 - 在不同产品型号、不同通信算法或不同版本中，`MoeDistributeDispatchV3`的Tensor输出`assist_info_for_combine_out`、`ep_recv_counts_out`、`tp_recv_counts_out`、`expand_scales_out`中的元素值可能不同，使用时直接将上述Tensor传给`CombineV3`系列算子对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
 - 调用算子过程中使用的`ep_world_size`、`moe_expert_num`、`ccl_buffer_size`、`tp_world_size`、`expert_shard_type`、`shared_expert_num`、`shared_expert_num`、`global_bs`、`comm_alg`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`MoeDistributeDispatchV3`算子对应参数也保持一致。
@@ -374,4 +376,4 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| npu_low_latency_combine接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](../../torch_extension/npu_ops_transformer/docs/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
+| npu_low_latency_combine接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](./docs/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
