@@ -1104,6 +1104,11 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
     }
 
     if (isA5_) {
+        if (inputKvType_ == ge::DT_HIFLOAT8) {
+            OP_CHECK_IF(sparseBlockCount_ != 2048,
+                OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse block count must be 2048, but got %u",
+                    sparseBlockCount_), return ge::GRAPH_FAILED);
+        }
         OP_CHECK_IF(sparseBlockSize_ != 1,
             OP_LOGE(opName_, "sparse block size must be 1, but got %u", sparseBlockSize_),
             return ge::GRAPH_FAILED);
@@ -1114,7 +1119,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
             OP_LOGE(opName_, "sparse block size should be in 1, 2, 4, 8, 16, but got %u", sparseBlockSize_),
             return ge::GRAPH_FAILED);
     }
-    
+
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
         OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
         return ge::GRAPH_FAILED);
