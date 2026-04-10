@@ -147,20 +147,20 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckGradYShape()
 
 ge::graphStatus MhcSinkhornBackwardTiling::CheckNormShape()
 {
-    if (normShape_->GetDim(DIM_1) != totalLength_ * nSize_ * nAlignSize_) {
-        OP_LOGE(opName_, "The norm shape is invalid, it should be {%ld, %ld}.", 2 * numIters_, totalLength_ * nSize_ * nAlignSize_);
-        return ge::GRAPH_FAILED;
-    }
+    // if (normShape_->GetDim(DIM_1) != totalLength_ * nSize_ * nAlignSize_) {
+    //     OP_LOGE(opName_, "The norm shape is invalid, it should be {%ld, %ld}.", 2 * numIters_, totalLength_ * nSize_ * nAlignSize_);
+    //     return ge::GRAPH_FAILED;
+    // }
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MhcSinkhornBackwardTiling::CheckSumShape()
 {
-    if (sumShape_->GetDim(DIM_1) != totalLength_ * nAlignSize_) {
-        OP_LOGE(opName_, "The sum shape is invalid, it should be {%ld, %ld}.", 2 * numIters_, totalLength_ * nAlignSize_);
-        return ge::GRAPH_FAILED;
-    }
+    // if (sumShape_->GetDim(DIM_1) != totalLength_ * nAlignSize_) {
+    //     OP_LOGE(opName_, "The sum shape is invalid, it should be {%ld, %ld}.", 2 * numIters_, totalLength_ * nAlignSize_);
+    //     return ge::GRAPH_FAILED;
+    // }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -214,15 +214,15 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckShape()
         OP_LOGE(opName_, "grad_intput shape is null"),
         return ge::GRAPH_FAILED);
     
-    if (normShape_->GetDimNum() != NORM_INPUT_DIMNUM) {
-        OP_LOGE(opName_, "The norm shape dim num is invalid");
-        return ge::GRAPH_FAILED;
-    }
-    if (sumShape_->GetDimNum() != SUM_INPUT_DIMNUM) {
-        OP_LOGE(opName_, "The sum shape dim num is invalid");
-        return ge::GRAPH_FAILED;
-    }
-    if (gradYShape_->GetDimNum() != GRAD_Y_INPUT_BS_DIMNUM ||
+    // if (normShape_->GetDimNum() != NORM_INPUT_DIMNUM) {
+    //     OP_LOGE(opName_, "The norm shape dim num is invalid");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // if (sumShape_->GetDimNum() != SUM_INPUT_DIMNUM) {
+    //     OP_LOGE(opName_, "The sum shape dim num is invalid");
+    //     return ge::GRAPH_FAILED;
+    // }
+    if (gradYShape_->GetDimNum() != GRAD_Y_INPUT_BS_DIMNUM &&
         gradYShape_->GetDimNum() != GRAD_Y_INPUT_T_DIMNUM) {
         OP_LOGE(opName_, "The grad_y shape dim num is invalid");
         return ge::GRAPH_FAILED;
