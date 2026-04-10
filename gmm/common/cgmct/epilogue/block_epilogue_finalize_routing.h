@@ -51,7 +51,13 @@ using namespace AscendC;
 GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 class BlockEpilogueFinalizeRouting {
 public:
-    __aicore__ inline BlockEpilogueFinalizeRouting() {}
+    __aicore__ inline BlockEpilogueFinalizeRouting()
+    {
+        if ASCEND_IS_AIV {
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(1);
+        }
+    }
 
     struct Arguments {
 	    GM_ADDR yGMAddr{nullptr};
@@ -62,6 +68,7 @@ public:
         GM_ADDR rowIndexGmAddr{nullptr};
         int32_t baseM = 256;
         int32_t baseN = 256;
+        int32_t batch = 0;
         Arguments() = default;
     };
 
@@ -109,6 +116,7 @@ private:
     uint32_t repeatTimesLine_;
     uint16_t yCrossPingPongID_ = 0;
     uint16_t logitCrossPingPongID_ = 0;
+    int64_t batch_ = 0;
 };
 
 GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -119,6 +127,7 @@ __aicore__ inline void BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_
         return;
     }
     params_ = &params;
+    batch_ = params.batch;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
     // input
     uint32_t afterFirstIn = MAX_SINGLE_MN * sizeof(DataTypeOut);
@@ -172,7 +181,11 @@ __aicore__ inline void BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++)
     {
-        auto outRow = static_cast<uint64_t>(rowIndexGlobal_.GetValue(offsetM + i));
+        auto outRowRaw = static_cast<int64_t>(rowIndexGlobal_.GetValue(offsetM + i));
+        if (unlikely(batch_ <= 0 || outRowRaw < 0 || outRowRaw >= batch_)) {
+            continue;
+        }
+        auto outRow = static_cast<uint64_t>(outRowRaw);
         DataCopyPad(yGlobal_[outRow * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 
@@ -227,11 +240,12 @@ BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARA
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint16_t remainRepeatTimesLogit = (singleMInVec % MAX_OUTPUT_M_UB != 0)
                                     ? singleMInVec % MAX_OUTPUT_M_UB : MAX_OUTPUT_M_UB;
-    auto logitUb = logitCrossPingPongID_ == 0 ? logitUbPing_ : logitUbPong_;
+    uint16_t inputPingPongID = logitCrossPingPongID_;
+    auto logitUb = inputPingPongID == 0 ? logitUbPing_ : logitUbPong_;
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(inputPingPongID);
     CopyInLogit(singleMInVec, logitOffset, logitUb);
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitCrossPingPongID_ );
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitCrossPingPongID_ );
-    logitCrossPingPongID_  = (logitCrossPingPongID_ + 1) & 1;
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(inputPingPongID);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(inputPingPongID);
     uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UB);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
@@ -251,8 +265,8 @@ BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARA
     }
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitCrossPingPongID_);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitCrossPingPongID_);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(inputPingPongID);
+    logitCrossPingPongID_ = (inputPingPongID + 1) & 1;
     return;
 }
 } // namespace Block
