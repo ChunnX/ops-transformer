@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+聽* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+聽* CANN Open Software License Agreement Version 2.0 (the "License").
+聽* Please refer to the License for details. You may not use this file except in compliance with the License.
+聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+聽* See LICENSE in the root of the software repository for the full text of the License.
+聽*/
 
 /*!
  * \file grouped_matmul_finalize_routing.h
@@ -48,11 +48,8 @@ __aicore__ inline void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_
     using weightscaleType = AscendC::fp8_e8m0_t;
     using BiasType = bfloat16_t;
 
-
     using ProblemShape = Cgmct::Gemm::MatmulShape;
-
     using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitScheduler;
-
     using BlockMmadPolicy = Cgmct::Gemm::GMMPerTile<>;
 
     using BlockMmadBuilder =
@@ -61,11 +58,10 @@ __aicore__ inline void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_
                                         Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
 
     using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
-
     using BlockEpilogue = Cgmct::Gemm::Block::BlockEpilogueFinalizeRouting<CType>;
 
     using GmmKernel = Cgmct::Gemm::Kernel::KernelGmmFinalizeRouting<ProblemShape, BlockMmadBuilder, BlockPrologue,
-                                                                  BlockEpilogue, BlockScheduler>;
+                                                                    BlockEpilogue, BlockScheduler>;
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
 
@@ -78,17 +74,13 @@ __aicore__ inline void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_
 
     gmmParams.matmulTiling = &matmulTiling_;
     Params params = {
-        {1, 1, 1, 1}, // problem shape
-        {x, w, w_scale, x_scale, y, group_list,
-         bias}, // BlockMmadParams   {aGmAdd,bGmAddr,cGmAddr,biasGmAddr,groupListGmAddr,bias}
+        {1, 1, 1, 1},
+        {x, w, w_scale, x_scale, y, group_list, bias},
         {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
          gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-         gmmFinalizeRoutingQuantParams_
-             .residualScale}, // prologue
-                              // params{sharedInputGmaddr,yGMAddr,shareInputOffset,shareInputLen,n,batch,residualScale}
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM,
-         matmulTiling_
-             .baseN}, // epilogue params{ygmaddr，x2scalegmaddr，biasgmaddr，logitgmaddr，rowidxgmaddr，baseM，baseN}
+         gmmFinalizeRoutingQuantParams_.residualScale},
+        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
+         static_cast<int32_t>(gmmFinalizeRoutingQuantParams_.batch)},
         gmmParams};
     GmmKernel gmm;
     gmm(params);

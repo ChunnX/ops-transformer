@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+聽* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+聽* CANN Open Software License Agreement Version 2.0 (the "License").
+聽* Please refer to the License for details. You may not use this file except in compliance with the License.
+聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+聽* See LICENSE in the root of the software repository for the full text of the License.
+聽*/
 
 /*!
  * \file grouped_matmul_finalize_routing_pertoken_dequant.h
@@ -47,7 +47,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using weightscaleType = DTYPE_SCALE;
     using BiasType = bfloat16_t;
     using LayoutBias = layout::RowMajor;
-    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>; // matmul output dtype
+    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>;
     using xscaleType = float;
     using rowIndexType = DTYPE_ROW_INDEX;
 
@@ -79,12 +79,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
     gmmParams.matmulTiling = &matmulTiling_;
     Params params = {
-        {1, 1, 1, 1},                // problem shape
-        {x, w, y, bias, group_list}, // BlockMmadParams
+        {1, 1, 1, 1},
+        {x, w, y, bias, group_list},
         {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
          gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-         gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
+         gmmFinalizeRoutingQuantParams_.residualScale},
+        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
+         static_cast<int32_t>(gmmFinalizeRoutingQuantParams_.batch)},
         gmmParams};
     GmmKernel gmm;
     gmm(params);
