@@ -1,0 +1,6 @@
+case_id;tokens_shape;indices_shape;num_out_tokens;padded_mode;dtype
+0;[1,7];[1];1548263338;0;bfloat16
+1;[1,8];[1,234];731288905;0;float16
+2;[15,1];[15];2037151564;0;float32
+3;[17,8];[17];55555;0;bfloat16
+4;[8,19];[8];1205345934;0;bfloat16
