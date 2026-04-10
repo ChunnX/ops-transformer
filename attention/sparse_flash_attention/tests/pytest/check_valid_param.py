@@ -2,9 +2,16 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 import math
+
 import torch
 
 
@@ -15,6 +22,7 @@ SUPPORTED_G = {1, 2, 4, 8, 16, 32, 64, 128}
 
 
 def _check_actual_seq(actual_seq, B, upper_bound, name):
+    # TND/动态有效长场景下，需要保证 actual_seq 与 batch 和长度约束一致。
     if actual_seq is None:
         return
     if len(actual_seq) != B:
@@ -27,7 +35,7 @@ def _check_actual_seq(actual_seq, B, upper_bound, name):
 
 
 def check_valid_param(params):
-    """按 sparse_flash_attention tiling 约束校验测试参数。"""
+    # 按 sparse_flash_attention tiling 约束校验测试参数。
     (Testcase_Name, layout_query, layout_kv, q_type,
      B, S1, S2, N1, N2, D, K,
      scale_value, sparse_block_size, rope_head_dim,
@@ -95,9 +103,8 @@ def check_valid_param(params):
             needed_blocks = sum(math.ceil(int(seq) / block_size) for seq in actual_seq_kv)
             if block_num < needed_blocks:
                 raise ValueError(f"block_num({block_num}) 小于所需物理块数 {needed_blocks}")
-    else:
-        if block_num is not None and int(block_num) <= 0:
-            raise ValueError(f"block_num 若提供则应大于 0，当前: {block_num}")
+    elif block_num is not None and int(block_num) <= 0:
+        raise ValueError(f"block_num 若提供则应大于 0，当前: {block_num}")
 
     if scale_value <= 0:
         raise ValueError(f"scale_value 应大于 0，当前: {scale_value}")
