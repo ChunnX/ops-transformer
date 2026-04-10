@@ -38,6 +38,9 @@ public:
     __aicore__ inline void GatherCopyOut(int64_t progress);
     __aicore__ inline void ScatterCopyOut(int64_t progress);
 
+    //__aicore__ inline void GatherCopyOut(int64_t progress);
+    __aicore__ inline void ScatterSingleSlice(int64_t colsLoop, int64_t perLoopCols_, int64_t curLoopCols, int64_t xSrcOffset, int64_t xDstOffset);
+
 private:
     TPipe *pipe_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> xCopyInQueue_;
@@ -220,7 +223,7 @@ __aicore__ inline void MoeGatherOut<T, EP>::CopyScaleOut(int64_t scaleDstOffset)
     scaleCopyInQueue_.FreeTensor(scaleLocal);
 }
 
-template <typename T, const int EP>
+template <typename T, const int EP, bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
 {
     LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
@@ -270,39 +273,53 @@ __aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
     expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
 }
 
-template <typename T, const int EP>
+template <typename T, const int EP, bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::ScatterCopyOut(int64_t progress)
 {
     int64_t curExpertLoopOffset = progress * curCorePerLoopIndicesElements_;
+    int64_t curIndiceLoopOffset = blockIdx_ * perCoreIndicesElements_;
+    int64_t curIndiceBaseOffset = curExpertLoopOffset + curIndiceLoopOffset;
     LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
+    
+    int64_t completeSlices = colsLoops_ - 1;
+    
     for (int64_t indicesIndex = 0; indicesIndex < curLoopElements_; indicesIndex++) {
         int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
-        int64_t rowOffset = curExpertLoopOffset + indicesIndex + blockIdx_ * perCoreIndicesElements_;
+        int64_t rowOffset = curIndiceBaseOffset + indicesIndex;
         if (activeNum_ > 0 && dropPadMode_ == DROPLESS_MODE && rowOffset >= activeNum_) {
             break;
         }
+
+        int indiceDstLoc = curIndiceBaseOffset + indicesIndex;
         SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-        if (isInputScale_ == 1) {
+        if constexpr (hasQuantScale) {   // (isInputScale_ == 1)
             int64_t scaleSrcOffset = rowIdx / k_;
             CopyScaleIn(scaleSrcOffset);
-            CopyScaleOut(indicesIndex + curExpertLoopOffset + blockIdx_ * perCoreIndicesElements_);
+            CopyScaleOut(indiceDstLoc);
         }
-        int64_t curLoopCols = perLoopCols_;
-        for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-            if (colsLoop == colsLoops_ - 1) {
-                curLoopCols = lastLoopCols_;
-            }
-            int64_t xSrcOffset = rowIdx / k_ * cols_;
-            int64_t xDstOffset = (blockIdx_ * perCoreIndicesElements_ + curExpertLoopOffset + indicesIndex) * cols_;
-            int64_t colsLoopOffset = colsLoop * perLoopCols_;
-            CopyXIn(xSrcOffset + colsLoopOffset, curLoopCols);
-            CopyXOut(xDstOffset + colsLoopOffset, curLoopCols);
+
+        int64_t xSrcOffset = rowIdx / k_ * cols_;
+        int64_t xDstOffset = indiceDstLoc * cols_;
+
+        for (int64_t colsLoop = 0; colsLoop < completeSlices; colsLoop++) {
+            // complete slice procession
+            ScatterSingleSlice(colsLoop, perLoopCols_, perLoopCols_, xSrcOffset, xDstOffset);
+        }
+        if(this->lastLoopCols_ > 0){
+            // tail slice procession
+            ScatterSingleSlice(completeSlices, perLoopCols_, lastLoopCols_, xSrcOffset, xDstOffset);
         }
     }
     expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
 }
 
-template <typename T, const int EP>
+__aicore__ inline void ScatterSingleSlice(int64_t colsLoop, int64_t perLoopCols_, int64_t curLoopCols, int64_t xSrcOffset, int64_t xDstOffset){
+    int64_t colsLoopOffset = colsLoop * perLoopCols_;
+    CopyXIn(xSrcOffset + colsLoopOffset, curLoopCols);
+    CopyXOut(xDstOffset + colsLoopOffset, curLoopCols);
+}
+
+template <typename T, const int EP, bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
@@ -314,10 +331,10 @@ __aicore__ inline void MoeGatherOut<T, EP>::Process()
             CopyExpertIn(loop);
             if constexpr (!EP) {
                 // ep_ = 0
-                GatherCopyOut(loop);
+                GatherCopyOut<hasQuantScale>(loop);
             } else {
                 // ep_ = 1 
-                ScatterCopyOut(loop);
+                ScatterCopyOut<hasQuantScale>(loop);
             }
         }
     }
