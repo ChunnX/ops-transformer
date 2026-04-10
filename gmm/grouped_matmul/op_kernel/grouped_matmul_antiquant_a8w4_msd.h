@@ -152,6 +152,8 @@ private:
     uint32_t vecCount = 0;
     uint32_t xRowSumCount;
     uint32_t withOffset;
+    uint32_t isA8W4MSDPreNZ;
+    
     TPipe *pipe;
     const GMMBaseParams *tiling;
     const TCubeTiling* mmTilingData;
@@ -165,6 +167,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Init(GM_ADDR x, GM_ADDR weight
     tiling = tilingData;
     xRowSumCount = tiling->m;
     withOffset = tiling->withOffset;
+    isA8W4MSDPreNZ = tiling->isA8W4MSDPreNZ; 
 
     xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD>(0, x));
     weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD>(0, weight));
@@ -294,7 +297,20 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
         mm.SetSingleShape(curSingleM, curSingleN, quantGroupSize); // 8, 256, 512 --> 514us
         GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> weightSlice;
         for (uint32_t loopK = 0; loopK < tiling->quantGroupNum; loopK++) {
-            mm.SetTensorA(xGm[xOffset + loopK * quantGroupSize]);
+            //begin
+            // mm.SetTensorA(xGm[xOffset + loopK * quantGroupSize]);
+            GlobalTensor<DTYPE_X_DEV_A8W4MSD> xSlice;
+            if (tiling->isA8W4MSDPreNZ) {
+                // A 矩阵是 NZ 格式
+                uint64_t aOffsetNz = xOffset + loopK * quantGroupSize * 64;
+                xSlice = xGm[aOffsetNz];
+            } else {
+                // A 矩阵是 ND 格式
+                uint64_t aOffset = xOffset + loopK * quantGroupSize;
+                xSlice = xGm[aOffset];
+            }
+            //end
+            mm.SetTensorA(xSlice);
             if constexpr (mmType::BT::format == CubeFormat::NZ) { 
                 weightSlice = weightGm[weightOffset + loopK * quantGroupSize * 64];
             } else {
