@@ -168,7 +168,7 @@ aclnnStatus aclnnNsaCompressWithCache(
             <li>其中T是B和S合轴紧密排列的数据（每个batch的actSeqLen）、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸。</li>
           </ul>
         </td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -347,7 +347,7 @@ aclnnStatus aclnnNsaCompressWithCache(
 
 - 确定性计算：
   - aclnnNsaCompressWithCache默认确定性实现。
-- outputCache的N和D和input一致，而且要满足result_len>(blockNum*pageBlockSize-compressBlockSize)/compressStride。
+- outputCache的N和D与input一致，而且要满足result_len>(blockNum*pageBlockSize-compressBlockSize)/compressStride。
 - page attention场景下input的shape支持[blockNum,pageBlockSize,N,D]，其余场景下input的shape支持[T,N,D]。
 
 ## 调用示例
