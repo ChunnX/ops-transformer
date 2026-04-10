@@ -46,7 +46,7 @@ pytest框架作为一个轻量化精度对比的测试框架，提供了简单�
 ### 前置要求
 
 1. torch_npu安装包下载路径（需及时更换为最新版本）：[torch_npu安装教程](https://gitcode.com/Ascend/pytorch)
-2. CANN包环境配置可参考：[环境部署](../../../../../docs//zh/context/quick_install.md)
+2. CANN包环境配置可参考：[环境部署](../../../../../docs/zh/install/quick_install.md)
 
 ### Custom包调用
 

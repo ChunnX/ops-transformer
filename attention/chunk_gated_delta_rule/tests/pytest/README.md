@@ -22,8 +22,8 @@
 
 #### 前置要求
 
-1、 确认torch_npu为最新版本
-2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
+1. torch_npu安装包下载路径（需及时更换为最新版本）：[torch_npu安装教程](https://gitcode.com/Ascend/pytorch)
+2. CANN包环境配置可参考：[环境部署](../../../../docs/zh/install/quick_install.md)
 
 #### custom包调用
 
