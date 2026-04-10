@@ -14,7 +14,7 @@
 
 -  **功能更新**：（相对于aclnnMlaPrologV2weightNz的差异）
     -  新增Query与Key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
-    -  新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、queryNormFlag、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
+    -  新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
     -  调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
 -  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
     -  首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
@@ -834,8 +834,8 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       std::vector<int64_t> ropeSinShape = {8, 1, 64};             // B,S,Dr
       std::vector<int64_t> ropeCosShape = {8, 1, 64};             // B,S,Dr
       std::vector<int64_t> cacheIndexShape = {8, 1};              // B,S
-      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};      // BolckNum,BlockSize,Nkv,Hckv
-      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};       // BolckNum,BlockSize,Nkv,Dr
+      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};      // BlockNum,BlockSize,Nkv,Hckv
+      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};       // BlockNum,BlockSize,Nkv,Dr
       std::vector<int64_t> dequantScaleXShape = {8, 1};           // B*S, 1
       std::vector<int64_t> dequantScaleWDqShape = {1, 1536};      // 1, Hcq
       std::vector<int64_t> dequantScaleWUqQrShape = {1, 6144};    // 1, N*(D+Dr)
@@ -911,7 +911,6 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       aclTensor* dequantScaleWDkvKr = nullptr;
       aclTensor* quantScaleCkv = nullptr;
       aclTensor* smoothScalesCq = nullptr;
-      bool queryNormFlag = false;
       int64_t weightQuantMode = 2;
       int64_t kvQuantMode = 1;
       int64_t queryQuantMode = 1;
@@ -1228,8 +1227,8 @@ int main() {
     std::vector<int64_t> rmsnormGammaCkvShape = {512};          // Hckv
     std::vector<int64_t> ropeSinShape = {8,1,64};             // B,S,Dr
     std::vector<int64_t> ropeCosShape = {8,1,64};             // B,S,Dr
-    std::vector<int64_t> kvCacheShape = {1,16,1,512};      // BolckNum,BlockSize,Nkv,Hckv
-    std::vector<int64_t> krCacheShape = {1,16,1,64};       // BolckNum,BlockSize,Nkv,Dr
+    std::vector<int64_t> kvCacheShape = {1,16,1,512};      // BlockNum,BlockSize,Nkv,Hckv
+    std::vector<int64_t> krCacheShape = {1,16,1,64};       // BlockNum,BlockSize,Nkv,Dr
     std::vector<int64_t> cacheIndexShape = {8,1};              // B,S
     std::vector<int64_t> dequantScaleXShape = {8,224};           // B*S, 1
     std::vector<int64_t> dequantScaleWDqShape = {1536,224};      // 1, Hcq
@@ -1302,7 +1301,6 @@ int main() {
     aclTensor* dequantScaleWUqQr = nullptr;
     aclTensor* dequantScaleWDkvKr = nullptr;
     aclTensor* quantScaleCkv = nullptr;
-    bool queryNormFlag = false;
     int64_t weightQuantMode = 3;
     int64_t kvQuantMode = 1;
     int64_t queryQuantMode = 1;
