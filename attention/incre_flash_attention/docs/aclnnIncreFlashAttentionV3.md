@@ -222,7 +222,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
       <tr>
         <td>antiquantScale</td>
         <td>输入</td>
-        <td>量化因子。</td>
+        <td>伪量化因子。</td>
         <td><ul><li>支持空Tensor。</li><li>支持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>-</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
         <tr>
         <td>antiquantOffset</td>
         <td>输入</td>
-        <td>输出量化的量化因子。</td>
+        <td>伪量化因子。</td>
         <td><ul><li>支持空Tensor。</li><li>支持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
@@ -274,7 +274,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
         <td>输入</td>
         <td>标识输入query、key、value的数据排布格式。</td>
         <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
