@@ -14,6 +14,7 @@
  */
 #include "matmul_allto_all_tiling_base.h"
 #include "mc2_log.h"
+#include "common/allto_all_tiling_factory.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -77,47 +78,32 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
 
 CutResult MatmulAllToAllTilingBase::GetTilingResult()
 {
-    if (mc2tiling::IsStandardCard4P(contextInfo.args_.rankDim, npuArch_)) {
-        MMAlltoAllFitBalanceTiling alltoallTiling(contextInfo.args_, KernelType::ALL_TO_ALL);
-        return alltoallTiling.GetTiling();
-    } else {
-        SocVersion nowSocVersion = SocVersion::SOC950;
-        std::string socVersionStr = mc2tiling::GetSocVersion(context_);
-        OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
-        if (socVersionStr == "Ascend910_93") {
-            nowSocVersion = SocVersion::SOC910_93;
-        }
-        AlltoAllMM tileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion);
-        tileFormulate.GetTiling();
-        return tileFormulate.tilingM_.cutRes;
+    SocVersion nowSocVersion = SocVersion::SOC950;
+    std::string socVersionStr = mc2tiling::GetSocVersion(context_);
+    if (socVersionStr == "Ascend910_93") {
+        nowSocVersion = SocVersion::SOC910_93;
     }
+    return AlltoAllTilingFactory::CreateTiling(contextInfo.args_, KernelType::ALL_TO_ALL, TopoType::STANDARD_CARD,
+                                               nowSocVersion, npuArch_);
 }
 
 /**
- * @brief :tilingtilingalltoall
+ * @brief 返回具体的切分结果
  *
- * @return ge::graphStatus
  */
 ge::graphStatus MatmulAllToAllTilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
-    // SocVersion nowSocVersion = SocVersion::SOC950;
-    // std::string socVersionStr = mc2tiling::GetSocVersion(context_);
-    // OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
-    // if (socVersionStr == "Ascend910_93") {
-    //     nowSocVersion = SocVersion::SOC910_93;
-    // }
-    // AlltoAllMM tileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion);
-    // tileFormulate.GetTiling();
-    CutResult mCutMMAlltoAll = GetTilingResult();
-    inferredInfo.tileCnt = mCutMMAlltoAll.numLongTile;
-    inferredInfo.tileM = mCutMMAlltoAll.longTileLen;
-    inferredInfo.tailCnt = 0;
-    inferredInfo.tailM = 0;
-    if (mCutMMAlltoAll.numShortTile > 0) {
-        inferredInfo.tailM = mCutMMAlltoAll.shortTileLen;
-        inferredInfo.tailCnt = mCutMMAlltoAll.numShortTile;
-    }
+    const CutResult &cutResult = GetTilingResult();
+
+    // 先算后通: 计算bound长块在前；通信bound短块在前
+    inferredInfo.tileCnt = cutResult.shortTileAtBack ? cutResult.numLongTile : cutResult.numShortTile;
+    inferredInfo.tileM = cutResult.shortTileAtBack ? cutResult.longTileLen : cutResult.shortTileLen;
+
+    // 尾块设置
+    inferredInfo.tailCnt = cutResult.shortTileAtBack ? cutResult.numShortTile : cutResult.numLongTile;
+    inferredInfo.tailM = cutResult.shortTileAtBack ? cutResult.shortTileLen : cutResult.longTileLen;
+
     return ge::GRAPH_SUCCESS;
 }
 
