@@ -16,7 +16,46 @@
 #include "torch_npu/csrc/framework/OpCommand.h"
 #include "op_host/incre_flash_attention_tiling_impl.h"
 #include "op_kernel/incre_flash_attention_arch32.h"
+
+namespace ascend_ops {
 namespace custom {
+TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
+{
+    m.def(R"(npu_fused_infer_attention_score(Tensor query, Tensor key, Tensor value, *, 
+                                            Tensor? query_rope=None, Tensor? key_rope=None, 
+                                            Tensor? pse_shift=None, Tensor? atten_mask=None, 
+                                            Tensor? actual_seq_qlen=None, Tensor? actual_seq_kvlen=None, 
+                                            Tensor? block_table=None, Tensor? dequant_scale_query=None, 
+                                            Tensor? dequant_scale_key=None, Tensor? dequant_offset_key=None, 
+                                            Tensor? dequant_scale_value=None, Tensor? dequant_offset_value=None, 
+                                            Tensor? dequant_scale_key_rope=None, Tensor? quant_scale_out=None, 
+                                            Tensor? quant_offset_out=None, Tensor? learnable_sink=None, 
+                                            Tensor? metadata=None,
+                                            int num_query_heads=1, int num_key_value_heads=0, 
+                                            float softmax_scale=1.0, int pre_tokens=2147483647, 
+                                            int next_tokens=2147483647, str input_layout='BSH', 
+                                            int sparse_mode=0, int block_size=0, 
+                                            int query_quant_mode=0, int key_quant_mode=0, 
+                                            int value_quant_mode=0, int inner_precise=1, 
+                                            bool return_softmax_lse=False, int? query_dtype=None, 
+                                            int? key_dtype=None, int? value_dtype=None, 
+                                            int? query_rope_dtype=None, int? key_rope_dtype=None, 
+                                            int? key_shared_prefix_dtype=None, int? value_shared_prefix_dtype=None, 
+                                            int? dequant_scale_query_dtype=None, int? dequant_scale_key_dtype=None, 
+                                            int? dequant_scale_value_dtype=None, 
+                                            int? dequant_scale_key_rope_dtype=None) -> (Tensor, Tensor))"); 
+
+    m.def(R"(npu_fused_infer_attention_score_metadata(int batch_size,
+                                                    int query_seq_size,
+                                                    int query_head_num,
+                                                    int key_head_num,
+                                                    int head_dim,
+                                                    int block_size,
+                                                    int max_block_num_per_batch,
+                                                    Tensor actual_seq_lengths_kv=None,
+                                                    *,
+                                                    str layout_query='BSND') -> Tensor)");
+}
 
 #define LAUNCH_INCRE_FA(FD, LAYOUT, ANTIQ)                                                                 \
     incre_flash_attention<FD, LAYOUT, ANTIQ><<<blockDim, nullptr, aclstream>>>(                            \
@@ -278,7 +317,13 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
         output, softmax_lse);
 
     IFATiling ifaTiling;
-    ifaTiling.DoSubOpTiling(ifaContext);
+    if (ifaTiling.DoSubOpTiling(ifaContext) == ::custom::graphStatus::GRAPH_FAILED) {
+        throw std::runtime_error(
+            "Tiling operation failed. Please check the logs for more details. "
+            "To enable stdout logging, set: [export ASCEND_SLOG_PRINT_TO_STDOUT=1]"
+        );
+
+    }
     // stream
     int devidx = query.device().index();
     c10_npu::NPUStream stream = c10_npu::getCurrentNPUStream(devidx);
@@ -348,16 +393,18 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_meta(
     at::Tensor softmax_lse = std::get<1>(fia_output);
     return std::tuple<at::Tensor, at::Tensor>(output, softmax_lse);
 }
-} // namespace custom
 
 // 为NPU设备注册前向实现
-TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("npu_fused_infer_attention_score", &custom::npu_fused_infer_attention_score_npu);
 }
 
 // 为META设备注册前向实现
-TORCH_LIBRARY_IMPL(custom, Meta, m)
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
 {
     m.impl("npu_fused_infer_attention_score", &custom::npu_fused_infer_attention_score_meta);
 }
+
+} // namespace custom
+} // namespace ascend_ops

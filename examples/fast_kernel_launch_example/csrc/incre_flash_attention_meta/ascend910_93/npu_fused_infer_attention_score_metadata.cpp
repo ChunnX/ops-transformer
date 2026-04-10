@@ -22,6 +22,7 @@ extern "C" {
     extern __global__ __aicpu__ uint32_t IncreFlashAttentionMetadataKernel(void *args);
 }
 
+namespace ascend_ops {
 namespace custom {
 using namespace at_npu::native;
 
@@ -80,15 +81,19 @@ at::Tensor npu_fused_infer_attention_score_metadata_npu(
     IncreFlashAttentionMetadataKernel<<<1, nullptr, aicpu_stream>>>(&args, sizeof(aicpu::kernels::IncreFlashAttentionMetadataArgs));
     return output;
 }
-}
 
 // step4, 为NPU设备注册前向实现
-TORCH_LIBRARY_IMPL(custom, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m) {
     m.impl("npu_fused_infer_attention_score_metadata", &custom::npu_fused_infer_attention_score_metadata_npu);
 }
 
 
 // step5, 为META设备注册前向实现
-TORCH_LIBRARY_IMPL(custom, Meta, m) {
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m) {
     m.impl("npu_fused_infer_attention_score_metadata", &custom::npu_fused_infer_attention_score_metadata_meta);
 }
+
+} // namespace custom
+} // namespace ascend_ops
+
+

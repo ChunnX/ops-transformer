@@ -142,8 +142,152 @@ custom::graphStatus IFATiling::GetNpuInfo()
     return custom::graphStatus::GRAPH_SUCCESS;
 }
 
+// 该demo支持输入参数的强校验
+custom::graphStatus IFATiling::PreCheck()
+{
+    OP_CHECK_IF(
+        ifaContext_->pseShift.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support pseShift"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->actualSeqLengthsQ.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support actualSeqLengthsQ"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->deqScale1.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support deqScale1"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->quantScale1.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support quantScale1"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->deqScale2.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support deqScale2"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->quantScale2.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support quantScale2"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->antiquantScale.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support antiquantScale"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->antiquantOffset.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support antiquantOffset"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->queryPaddingSize.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support queryPaddingSize"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->kvPaddingSize.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support kvPaddingSize"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->keyAntiquantOffset.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support keyAntiquantOffset"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->valueAntiquantOffset.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support valueAntiquantOffset"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->keySharedPrefix.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support keySharedPrefix"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->valueSharedPrefix.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support valueSharedPrefix"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->actualSharedPrefixLen.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support actualSharedPrefixLen"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->queryRope.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support queryRope"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->keyRope.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support keyRope"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->keyRopeAntiquantScale.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support keyRopeAntiquantScale"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->dequantScaleQuery.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support dequantScaleQuery"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->qStartIdx.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support qStartIdx"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->kvStartIdx.hasValue,
+        OP_LOGE(ifaContext_->opName, "this FA demo does not support kvStartIdx"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->blockSize != 128 && ifaContext_->blockSize != 512,
+        OP_LOGE(ifaContext_->opName, "this FA demo only support blockSize = 128/512"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->innerPrecise != 1,
+        OP_LOGE(ifaContext_->opName, "this FA demo only support innerPrecise = 1"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        ifaContext_->sparseMode != 0 && ifaContext_->sparseMode != 3,
+        OP_LOGE(ifaContext_->opName, "this FA demo only support sparseMode = 0/3"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+
+    OP_CHECK_IF(
+        !ifaContext_->keyAntiquantScale.hasValue,
+        OP_LOGE(ifaContext_->opName, "keyAntiquantScale must be provided"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        !ifaContext_->valueAntiquantScale.hasValue,
+        OP_LOGE(ifaContext_->opName, "valueAntiquantScale must be provided"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    OP_CHECK_IF(
+        !ifaContext_->blockTable.hasValue,
+        OP_LOGE(ifaContext_->opName, "blockTable must be provided"), 
+        return custom::graphStatus::GRAPH_FAILED
+    );
+    return custom::graphStatus::GRAPH_SUCCESS;    
+}
 custom::graphStatus IFATiling::PreProcess()
 {
+    if (PreCheck() != custom::graphStatus::GRAPH_SUCCESS) {
+        return custom::graphStatus::GRAPH_FAILED;
+    }
     if (ProcessBaseInputs() != custom::graphStatus::GRAPH_SUCCESS) {
         return custom::graphStatus::GRAPH_FAILED;
     }

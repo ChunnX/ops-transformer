@@ -83,6 +83,7 @@ public:
     IncreFlashAttentionTilingDataV2* ifaTilingData;
 private:
     custom::graphStatus GetNpuInfo();
+    custom::graphStatus PreCheck();
     custom::graphStatus PreProcess();
     custom::graphStatus ProcessBaseInputs();
     custom::graphStatus ProcessOptionalTensors();

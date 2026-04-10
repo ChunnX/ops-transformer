@@ -60,11 +60,11 @@ class FusedAttentionNetwork(nn.Module):
 
     def forward(self, param: dict):
         # Step 1: Compute metadata
-        metadata = torch.ops.custom.npu_fused_infer_attention_score_metadata(**param['metaParam'])
+        metadata = torch.ops.ascend_ops.npu_fused_infer_attention_score_metadata(**param['metaParam'])
         param['faParam']['metadata'] = metadata
 
         # Step 2: Call fused attention
-        return torch.ops.custom.npu_fused_infer_attention_score(**param['faParam'])
+        return torch.ops.ascend_ops.npu_fused_infer_attention_score(**param['faParam'])
 
 # =============================================
 # 📥 INPUT GENERATION (输入构造独立函数)
