@@ -43,6 +43,7 @@ __global__ __aicore__ void attention_pioneer(__gm__ uint8_t* query, __gm__ uint8
                                                     __gm__ uint8_t* keySharedPrefix, __gm__ uint8_t* valueSharedPrefix,
                                                     __gm__ uint8_t* actualSharedPrefixLen, __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
                                                     __gm__ uint8_t* keyRopeAntiquantScale, __gm__ uint8_t* dequantScaleQuery,
+                                                    __gm__ uint8_t* metaData,
                                                     __gm__ uint8_t* keySink, __gm__ uint8_t* keyRopeSink, __gm__ uint8_t* valueSink,
                                                     __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
