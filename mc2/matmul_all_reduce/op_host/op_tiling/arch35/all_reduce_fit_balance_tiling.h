@@ -38,7 +38,7 @@ public:
     void AdjustLongShortTileLen() override;
     void SetLongTileLen() override;
     void SetCommBoundTile();
-    uint64_t Align256(uint64_t value);
+    uint64_t Align256(uint64_t value) const;
 };
 
 #endif // __ALL_REDUCE_FIT_BALANCE_TILING_H__
