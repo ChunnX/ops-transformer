@@ -574,13 +574,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                                                                     uint32_t lenD, uint32_t i, uint32_t j,
                                                                     uint32_t runBSStart)
 {
-    uint16_t dLoopCnt = (lenD + eleNumPerVf_ - 1) / eleNumPerVf_;
+    uint16_t eleNumPerVf = 64;
+    uint16_t dLoopCnt = (lenD + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<P> sumReg;
         uint32_t offset = (i - runBSStart) * N_ + j;
         for (uint16_t offsetN = 0; offsetN < curLenN; offsetN++) { // x [curLenN, lenD],  hinGrad [1, lenD]
-        MicroAPI::Duplicate(sumReg, ZERO);
+            MicroAPI::Duplicate(sumReg, 0.0f);
             uint32_t curLenD = lenD;
             // x[1, lenD]  hinGrad [1, lenD]   res[1, lenD]
             MicroAPI::RegTensor<T> xInB16Reg, hInGradB16InReg;
@@ -589,11 +590,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLenD);
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, xB16InAddr + offsetN * lenD +
-                                                                                           vfBlockIdx * eleNumPerVf_);
+                                                                                           vfBlockIdx * eleNumPerVf);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    hInGradB16InReg, hInGradB16InAddr + vfBlockIdx * eleNumPerVf_);
+                    hInGradB16InReg, hInGradB16InAddr + vfBlockIdx * eleNumPerVf);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(hInGradFp32Reg, hInGradB16InReg, mask);
 
                 MicroAPI::Mul(mulReg, xFp32Reg, hInGradFp32Reg, mask); // mulReg[1,lenD] 0-63
@@ -780,7 +781,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr,
                                                                   __ubuf__ P *hInGradAddr, uint32_t totalElem)
 {
-    uint16_t loopCnt = Ceil(totalElem, static_cast<uint32_t>(eleNumPerVf_));
+    uint32_t eleNumPerVf = 64;
+    uint16_t loopCnt = Ceil(totalElem, eleNumPerVf);
     uint32_t curElemCnt = totalElem;
     __VEC_SCOPE__
     {
@@ -789,16 +791,16 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0HPreGrad(__ubuf__ P *hP
         MicroAPI::RegTensor<P> oneReg;
         for (uint16_t vfBlockIdx = 0; vfBlockIdx < loopCnt; vfBlockIdx++) {
             MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
-            MicroAPI::Duplicate(oneReg, ONE, mask);
+            MicroAPI::Duplicate(oneReg, 1.0f, mask);
 
-            MicroAPI::LoadAlign(hPreReg, hPreAddr + vfBlockIdx * eleNumPerVf_);
-            MicroAPI::LoadAlign(hInGradReg, hInGradAddr + vfBlockIdx * eleNumPerVf_);
+            MicroAPI::LoadAlign(hPreReg, hPreAddr + vfBlockIdx * eleNumPerVf);
+            MicroAPI::LoadAlign(hInGradReg, hInGradAddr + vfBlockIdx * eleNumPerVf);
             MicroAPI::Adds(s1Reg, hPreReg, -hcEps_, mask);
             MicroAPI::Sub(s2Reg, oneReg, s1Reg, mask);
             MicroAPI::Mul(mulReg, s1Reg, s2Reg, mask);
             MicroAPI::Mul(resReg, mulReg, hInGradReg, mask);
 
-            MicroAPI::StoreAlign(hPreBufS1Addr + vfBlockIdx * eleNumPerVf_, resReg, mask);
+            MicroAPI::StoreAlign(hPreBufS1Addr + vfBlockIdx * eleNumPerVf, resReg, mask);
         }
     }
 }
@@ -1264,7 +1266,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
     __ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr, __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaSrcAddr,
     __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize, uint32_t copySizeND)
 {
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, static_cast<uint32_t>(eleNumPerVf_));
+    uint32_t eleNumPerVf = 64;
+    uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
     __VEC_SCOPE__
     {
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
@@ -1273,7 +1276,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
             MicroAPI::RegTensor<P> xFp32Reg, gammaReg, resultReg;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(lenND);
-                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf_;
+                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, bf16InputAddr + offset);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
@@ -1281,7 +1284,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
                 MicroAPI::StoreAlign(xRsFp32Addr + offset, xFp32Reg, mask); // 后续其他计算需要xFp32
 
                 if constexpr (hasGamma) {
-                    MicroAPI::LoadAlign(gammaReg, gammaSrcAddr + vfBlockIdx * eleNumPerVf_);
+                    MicroAPI::LoadAlign(gammaReg, gammaSrcAddr + vfBlockIdx * eleNumPerVf);
                     if constexpr (isFirstChunk) {
                         MicroAPI::StoreAlign(gammaBroadAddr + offset, gammaReg, mask);
                     }
@@ -1303,7 +1306,8 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, _
                                                     __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize,
                                                     uint32_t copySizeND)
 {
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, static_cast<uint32_t>(eleNumPerVf_));
+    uint32_t eleNumPerVf = 64;
+    uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
     __VEC_SCOPE__
     {
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
@@ -1311,11 +1315,11 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, _
             MicroAPI::RegTensor<P> gammaReg, xRsGradMmReg, resultReg;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(lenND);
-                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf_;
+                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
                 MicroAPI::LoadAlign(xRsGradMmReg, xRsGradMmAddr + offset);
 
                 if constexpr (hasGamma) {
-                    MicroAPI::LoadAlign(gammaReg, gammaBroadAddr + vfBlockIdx * eleNumPerVf_);
+                    MicroAPI::LoadAlign(gammaReg, gammaBroadAddr + vfBlockIdx * eleNumPerVf);
 
                     MicroAPI::Mul(resultReg, gammaReg, xRsGradMmReg, mask); // 逐元素乘：gamma * xRsGradMm
                     MicroAPI::StoreAlign(xRsGradUbAddr + offset, resultReg, mask);
