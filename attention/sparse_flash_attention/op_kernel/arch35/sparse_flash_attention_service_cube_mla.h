@@ -107,10 +107,9 @@ private:
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
-    FaGmTensor<Q_T, Q_FORMAT> queryRopeGm;
-
+ 
     FaGmTensor<KV_T, GmFormat::PA_BnBsND> keyGm;
-    FaGmTensor<KV_T, GmFormat::PA_BnBsND> keyRopeGm;
+    FaGmTensor<KV_T, GmFormat::PA_BnBsND> KeyRopeGm;
     GlobalTensor<int32_t> SparseIndicesGm;
     GlobalTensor<int32_t> blockTableGm;
     FaGmTensor<KV_T, GmFormat::PA_BnBsND> curKvGm;
@@ -153,11 +152,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
-        this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)queryRope);
         InitLocalBuffer();
     }
 }
 
+// wzn add
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key,
     __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
@@ -206,14 +205,10 @@ QSFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ
     if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
-        this->queryRopeGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
-            constInfo.s1Size, constInfo.dSizeRope);
     } else {  // QSFA_LAYOUT::TND
         GlobalTensor<uint64_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
-            actualSeqQLen, constInfo.actualSeqLenSize);
-        this->queryRopeGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
             actualSeqQLen, constInfo.actualSeqLenSize);
     }
 }
@@ -271,7 +266,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         // 左矩阵复用时，sinner循环内不需要MTE2同步等待
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
     }
-
+ 
     inputRightBuf.WaitCrossCore();
     SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
@@ -292,7 +287,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
                      static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
-                     static_cast<uint32_t>(constInfo.dSizeNope + constInfo.dSizeRope),   // singleK
+                     static_cast<uint32_t>(576),   // singleK /*constInfo.dSize*/
                      0,    // isLeftTranspose
                      1     // isRightTranspose
                     };
@@ -336,12 +331,13 @@ __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm2QSFA(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> inputRightBuf = inputLeftBuffers.Get();
     inputRightBuf.WaitCrossCore();
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),   // singleM 64
-                     static_cast<uint32_t>(constInfo.dSizeNope), // singleN 576->512
+                     static_cast<uint32_t>(512), // singleN 576->512
                      static_cast<uint32_t>(runInfo.s2RealSize),  // singleK 128
                      0,    // isLeftTranspose
                      0     // isRightTranspose
