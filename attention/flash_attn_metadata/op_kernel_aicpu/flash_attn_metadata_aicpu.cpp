@@ -122,7 +122,12 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     }
 
     // param
-    groupSize_ = numHeadsQ_ / numHeadsKv_;
+    if (numHeadsKv_ == 0) {
+        numHeadsKv_ = numHeadsQ_;
+        groupSize_ = 1;
+    } else {
+        groupSize_ = numHeadsQ_ / numHeadsKv_;
+    }
     if (layoutQ_ == "TND" || layoutQ_ == "NTD") {
         mBaseSize_ = NUM_512;
     } else {

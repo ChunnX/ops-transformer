@@ -155,12 +155,18 @@ using SquareTable = std::array<std::array<T, N>, N>;
 template<class T>
 inline T CeilDiv(T a, T b)
 {
+    if (b == 0) {                                                                                                                                                                
+        return 0;                                                                                                                                                                
+    }
     return a / b + (a % b != 0);        // avoid overflow
 }
 
 template<class T>
 inline T FloorDiv(T a, T b)
 {
+    if (b == 0) {                                                                                                                                                                
+        return 0;                                                                                                                                                                
+    }
     return a / b;        // avoid overflow
 }
 
