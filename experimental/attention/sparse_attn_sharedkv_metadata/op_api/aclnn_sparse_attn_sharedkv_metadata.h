@@ -48,7 +48,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* oriTopkLengthOptional, const ac
                                 const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
                                 char* layoutQOptional, const aclTensor* sequsedKvOptional, 
                                 const aclTensor* cuSeqLensOriKvOptional, char* layoutKvOptional, 
-                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional);
+                                int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckFeatureSas();

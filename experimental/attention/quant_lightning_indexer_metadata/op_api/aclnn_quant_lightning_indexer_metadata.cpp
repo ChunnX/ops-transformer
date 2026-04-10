@@ -150,6 +150,7 @@ aclnnStatus CheckExistenceQli(char* layoutQueryOptional, char* layoutKeyOptional
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
+    delete[] viewDims;
     return ACLNN_SUCCESS;
 }
 
@@ -163,6 +164,7 @@ int64_t GetQueryBatchSizeQli(const aclTensor* actualSeqLengthsQueryOptional, int
         delete[] viewDims;
         return dimSize;
     }
+    delete[] viewDims;
     return batchSizeOptional;
 }
 
@@ -176,6 +178,7 @@ int64_t GetKvBatchSizeQli(const aclTensor* actualSeqLengthsKeyOptional, int64_t 
         delete[] viewDims;
         return dimSize;
     }
+    delete[] viewDims;
     return batchSizeOptional;
 }
 

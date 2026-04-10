@@ -117,7 +117,7 @@ aclnnStatus ParamsCheckSasN128(const aclTensor* cuSeqLensQOptional, const aclTen
         CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
         CheckConsistencySas(oriTopkLengthOptional, cmpTopkLengthOptional, sequsedQOptional, cuSeqLensQOptional, 
                             layoutQOptional, sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, 
-                            batchSizeOptional, maxSeqlenQOptional) == ACLNN_SUCCESS &&
+                            batchSizeOptional) == ACLNN_SUCCESS &&
         CheckFeatureSas() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
@@ -202,7 +202,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* oriTopkLengthOptional, const ac
                                 const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
                                 char* layoutQOptional, const aclTensor* sequsedKvOptional, 
                                 const aclTensor* cuSeqLensOriKvOptional, char* layoutKvOptional, 
-                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional)
+                                int64_t batchSizeOptional)
 {
     // 校验 q/kv 维度
     int64_t queryBatchSize = GetQueryBatchSizeSas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
@@ -219,29 +219,18 @@ aclnnStatus CheckConsistencySas(const aclTensor* oriTopkLengthOptional, const ac
     // 校验 oriTopkLength 维度
     auto ret = aclGetViewShape(oriTopkLengthOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        // 非 TND 场景
-        if ((strcmp(layoutQOptional, "TND") != 0)) {
+        // TND 场景
+        if ((strcmp(layoutQOptional, "TND") == 0)) {
             // 校验 cmpTopkLength 的维度数量
-            if (viewDimsNum != 2) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is not TND, the dim num of ori_topk_length must be 2, "
+            if (viewDimsNum != 1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of ori_topk_length must be 1, "
                         "but got %ld", viewDimsNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            // 校验 cmpTopkLength 的元素数量是否和q tensor相对应
-            int64_t bsSize = batchSizeOptional * maxSeqlenQOptional;
-            int64_t oriTopkLengthDims = viewDims[0] * viewDims[1];
-            if (oriTopkLengthDims != bsSize) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is not TND, the size of ori_topk_length %ld should be "
-                        "equal with the B*S size %ld", oriTopkLengthDims, bsSize);
-                delete[] viewDims;
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            // 当 cmpTopkLength 的维度为[B,S]时，校验 cmpTopkLength 第一维是否和 batchSize 相等
-            if (viewDims[0] != queryBatchSize) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When the shape of ori_topk_length is [B, S], the first dim of "
-                        "ori_topk_length(B) should be equal with the batch size %ld, but got %ld",
-                        queryBatchSize, viewDims[0]);
-                delete[] viewDims;
+        } else { // BSND 场景
+            if (viewDimsNum != 2) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of ori_topk_length must be 2, "
+                        "but got %ld", viewDimsNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -249,29 +238,18 @@ aclnnStatus CheckConsistencySas(const aclTensor* oriTopkLengthOptional, const ac
     // 校验 cmpTopkLength 维度
     ret = aclGetViewShape(cmpTopkLengthOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        // 非 TND 场景
-        if ((strcmp(layoutQOptional, "TND") != 0)) {
+        // TND 场景
+        if ((strcmp(layoutQOptional, "TND") == 0)) {
             // 校验 cmpTopkLength 的维度数量
-            if (viewDimsNum != 2) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is not TND, the dim num of cmp_topk_length must be 2, "
+            if (viewDimsNum != 1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of cmp_topk_length must be 1, "
                         "but got %ld", viewDimsNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            // 校验 cmpTopkLength 的元素数量是否和q tensor相对应
-            int64_t bsSize = batchSizeOptional * maxSeqlenQOptional;
-            int64_t cmpTopkLengthDims = viewDims[0] * viewDims[1];
-            if (cmpTopkLengthDims != bsSize) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is not TND, the size of cmp_topk_length %ld should be "
-                        "equal with the B*S size %ld", cmpTopkLengthDims, bsSize);
-                delete[] viewDims;
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            // 当 cmpTopkLength 的维度为[B,S]时，校验 cmpTopkLength 第一维是否和 batchSize 相等
-            if (viewDims[0] != queryBatchSize) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When the shape of cmp_topk_length is [B, S], the first dim of "
-                        "cmp_topk_length(B) should be equal with the batch size %ld, but got %ld",
-                        queryBatchSize, viewDims[0]);
-                delete[] viewDims;
+        } else { // BSND 场景
+            if (viewDimsNum != 2) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of cmp_topk_length must be 2, "
+                        "but got %ld", viewDimsNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -297,7 +275,7 @@ aclnnStatus ParamsCheckSasN64(const aclTensor* cuSeqLensQOptional, const aclTens
         CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
         CheckConsistencySas(oriTopkLengthOptional, cmpTopkLengthOptional, sequsedQOptional, cuSeqLensQOptional, 
                             layoutQOptional, sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, 
-                            batchSizeOptional, maxSeqlenQOptional) == ACLNN_SUCCESS && 
+                            batchSizeOptional) == ACLNN_SUCCESS && 
         CheckFeatureSas() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
