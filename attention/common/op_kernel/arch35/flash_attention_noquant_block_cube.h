@@ -485,7 +485,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<is
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     // 计算s1方向偏移
-    coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
+    if (constInfo.isGqa) {
+        coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx;
+    } else {
+        coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
+    }
     if constexpr (isInfer) {
         coordInfo[runInfo.taskIdMod3].s1Coord += runInfo.queryLeftPaddingSize;  // 左padding
         // 推理无效行场景，s1方向起始跳过无效行
