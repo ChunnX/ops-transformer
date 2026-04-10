@@ -33,6 +33,8 @@ using namespace arch35FIA;
 // 公共校验函数
 ge::graphStatus CommonChecker::CheckInputFormat(const FiaTilingInfo &fiaInfo)
 {
+
+    // wmk test tiling
     if (CheckFormatSupport(fiaInfo.opParamInfo.query.desc, "query") != ge::GRAPH_SUCCESS ||
         CheckFormatSupport(fiaInfo.opParamInfo.key.desc, "key") != ge::GRAPH_SUCCESS ||
         CheckFormatSupport(fiaInfo.opParamInfo.value.desc, "value") != ge::GRAPH_SUCCESS ||
