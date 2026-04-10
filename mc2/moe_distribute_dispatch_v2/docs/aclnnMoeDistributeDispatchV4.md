@@ -124,7 +124,11 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+<<<<<<< HEAD
     <td><code>(BS, H)</code>（BS=batch size，H=hidden size）</td>
+=======
+    <td><code>(BS, H)</code>（Bs=batch size，H=hidden size）</td>
+>>>>>>> fd02d036 (mc2 docs fix)
     <td>√</td>
     </tr>
     <tr>
@@ -301,7 +305,11 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
+<<<<<<< HEAD
     <td><br> <li> 各卡BS一致时：<code>globalBs = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡BS最大值。</li></td>
+=======
+    <td><br> <li> 各卡BS一致时：<code>globalBs = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡Bs最大值。</li></td>
+>>>>>>> fd02d036 (mc2 docs fix)
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -691,6 +699,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"
@@ -774,7 +784,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
                         context = %p\n", args.rankId, hcomEpName, args.dispatchV4Stream, args.combineV4Stream,                 \
                         args.context);
 
-            int64_t Bs = 32;
+            int64_t BS = 32;
             int64_t H = 7168;
             int64_t K = 8;
             int64_t expertShardType = 0;
@@ -782,7 +792,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             int64_t sharedExpertRankNum = 0;
             int64_t moeExpertNum = 256;
             int64_t quantMode = 0;
-            int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+            int64_t globalBs = BS * EP_WORLD_SIZE_A2;
             int64_t expertTokenNumsType = 1;
             int64_t outDtype = 0;
             int64_t commQuantMode = 0;
@@ -852,10 +862,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             aclTensor *xOut = nullptr;
 
             //定义当前场景下各变量维度
-            std::vector<int64_t> xShape{Bs, H};
-            std::vector<int64_t> expertIdsShape{Bs, K};
+            std::vector<int64_t> xShape{BS, H};
+            std::vector<int64_t> expertIdsShape{BS, K};
             std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-            std::vector<int64_t> expertScalesShape{Bs, K};
+            std::vector<int64_t> expertScalesShape{BS, K};
 
             std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
             std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
@@ -865,8 +875,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
             std::vector<int64_t> expandScalesShape{A};
 
-            std::vector<int64_t> oriXShape{Bs, H};
-            std::vector<int64_t> xOutShape{Bs, H};
+            std::vector<int64_t> oriXShape{BS, H};
+            std::vector<int64_t> xOutShape{BS, H};
             std::vector<int64_t> performanceInfoShape{EP_WORLD_SIZE_A2};
 
             int64_t xShapeSize = GetShapeSize(xShape);
@@ -1628,7 +1638,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
             ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
             CHECK_RET(ret == ACL_SUCCESS,
-                        LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret); return ret);
+                        LOG_PRINT("[ERROR] HcclCommInitAll TP %d failed, ret %d\n", epId, ret); return ret);
         }
 
         Args args[DEV_NUM];
