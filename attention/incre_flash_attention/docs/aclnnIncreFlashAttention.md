@@ -181,7 +181,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>输入</td>
         <td>标识输入query、key、value的数据排布格式。</td>
         <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
