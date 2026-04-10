@@ -66,22 +66,19 @@ def test_compressor_process(filepath, device_id=0):
     if start_pos is not None: 
         start_pos = torch.tensor(start_pos).to(torch.int32).npu()
     if block_table is not None: 
-        kv_block_table = block_table.npu()
-        score_block_table = block_table.npu()
+        block_table = block_table.npu()
 
     #调用compressor算子
     npu_result, _, _, _, _ = torch.ops.custom.compressor(
                 x.npu(),
                 wkv.npu(),
                 wgate.npu(),
-                npu_kv_state,
-                npu_score_state,
+                torch.cat((npu_kv_state, npu_score_state), dim=-1),
                 ape.npu(),
                 norm_weight.npu(), 
                 rope_sin.npu(),
                 rope_cos.npu(),
-                kv_block_table = kv_block_table,
-                score_block_table = score_block_table,
+                block_table,
                 cu_seqlens = cu_seqlens,
                 seqused = seqused,
                 start_pos = start_pos,
@@ -89,6 +86,7 @@ def test_compressor_process(filepath, device_id=0):
                 cmp_ratio = cmp_ratio,
                 coff = coff,
                 norm_eps = norm_eps,
-                rotary_mode = rotary_mode
+                rotary_mode = rotary_mode,
+                cache_mode = 1,
             )
     return cpu_result, kv_mask_result, npu_result ,cpu_kv_state, npu_kv_state, update_kv, cpu_score_state, npu_score_state, update_score, params
