@@ -98,10 +98,10 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
-    int64_t              pre_tokens,
-    int64_t              next_tokens,
+    int64_t              preTokens,
+    int64_t              nextTokens,
     const aclTensor     *dQueryIndex,
-    const aclTensor     *dKeyKndex,
+    const aclTensor     *dKeyIndex,
     const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
@@ -113,7 +113,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnDenseLightningIndexerGradKLLoss
