@@ -49,6 +49,7 @@ constexpr uint64_t SPLIT_M_W_DIMS = 3UL;
 constexpr uint64_t SPLIT_K_W_DIMS = 2UL;
 constexpr uint64_t X_DIMS = 2UL;
 constexpr uint64_t BIAS_DIMS = 2UL;
+constexpr uint64_t GROUP_LIST_SPARSE_DIMS = 2UL;
 constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
