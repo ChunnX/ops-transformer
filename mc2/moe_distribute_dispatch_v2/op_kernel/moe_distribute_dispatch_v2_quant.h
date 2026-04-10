@@ -59,7 +59,7 @@ public:
     }
 
     __aicore__ inline void QuantInit(uint32_t &hAlignSize_, uint32_t &hOutSize_, uint32_t scaleInBytes_, 
-                                     int32_t &tokenQuantAlign_, uint32_t &hScaleIdxSize_, uint32_t &scaleOutBytes, uint32_t axisH)
+                                     int32_t &hScaleSizeAlign_, uint32_t &hScaleIdxSize_, uint32_t &scaleOutBytes, uint32_t axisH)
     {
         axisH_ = axisH;
         hOutSizeAlign_ = Ceil(hOutSize_, UB_ALIGN) * UB_ALIGN; // scale起始放置偏移
@@ -90,10 +90,11 @@ public:
             scaleOutBytes = Ceil128(axisH_) * sizeof(float); // PERGROUP量化每128个值生成一个scale
         }
         #endif
-        uint32_t hScaleSizeAlign = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN; //保证后面填充三元组的起始地址对齐32
-        tokenQuantAlign_ = hScaleSizeAlign / sizeof(int32_t);
+        // uint32_t hScaleSizeAlign = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN; //保证后面填充三元组的起始地址对齐32
+        // tokenQuantAlign_ = hScaleSizeAlign / sizeof(int32_t);
+        hScaleSizeAlign_ = Ceil(hOutSizeAlign_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; //保证后面填充三元组的起始地址对齐512
         // 实际搬运大小，搬运Align32(token_align + scaleOutBytes) + 3*4B(三元组)
-        hScaleIdxSize_ = hScaleSizeAlign + EXPAND_IDX_INFO * sizeof(int32_t);
+        hScaleIdxSize_ = hScaleSizeAlign_ + EXPAND_IDX_INFO * sizeof(int32_t);
     }
 
     __aicore__ inline void QuantProcess(LocalTensor<XOutType>& outLocal, LocalTensor<XInType>& inLocal,
