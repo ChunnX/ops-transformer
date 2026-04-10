@@ -125,7 +125,7 @@ aclnnStatus aclnnMlaPreprocess(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1750px"><colgroup>
   <col style="width: 151px">
   <col style="width: 121px">
   <col style="width: 301px">
@@ -133,7 +133,7 @@ aclnnStatus aclnnMlaPreprocess(
   <col style="width: 237px">
   <col style="width: 111px">
   <col style="width: 170px">
-  <col style="width: 250px">
+  <col style="width: 300px">
   </colgroup>
   <thead>
     <tr>
