@@ -817,12 +817,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 maskInfo.s1Size = runInfo.actualS1Size;
                 maskInfo.gSize = constInfo.gSize;
                 maskInfo.s2StartIdx = runInfo.s2LoopCount * s2BaseSize;
-                maskInfo.s2dealNum = s2BaseSize;
+                maskInfo.s2dealNum = runInfo.s2RealSize;
                 maskInfo.s2Size = runInfo.actualS2Size;
-                maskInfo.preToken = runInfo.preTokensPerBatch;
-                maskInfo.nextToken = runInfo.nextTokensPerBatch;
+                maskInfo.preToken = attenMaskInfoPtr->preTokens;
+                maskInfo.nextToken = attenMaskInfoPtr->nextTokens;
                 maskInfo.batchIdx = runInfo.boIdx;
-                maskInfo.attenMaskBatchStride = runInfo.boIdx * attenMaskInfoPtr->attenMaskS1Size * attenMaskInfoPtr->attenMaskS2Size;
+                maskInfo.attenMaskBatchStride = attenMaskInfoPtr->attenMaskShapeType == attenMaskBS1S2?
+                    attenMaskInfoPtr->attenMaskS1Size * attenMaskInfoPtr->attenMaskS2Size : 0;
                 maskInfo.attenMaskS1Stride = attenMaskInfoPtr->attenMaskS2Size;
                 maskInfo.attenMaskDstStride = s2BaseSize > Align(maskInfo.s2dealNum, 32U) ?
                     (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32 : 0;
