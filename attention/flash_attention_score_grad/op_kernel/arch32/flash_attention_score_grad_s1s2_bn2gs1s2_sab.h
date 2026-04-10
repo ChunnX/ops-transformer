@@ -280,6 +280,7 @@ public:
                                         const GlobalTensor<float> &out,
                                         const int32_t headDim,
                                         DBParams& dbParam);
+    __aicore__ inline void ReleaseTSCMAllocEventID();
     AscendC::Nd2NzParams commonNd2NzParamsFp32_ {
         1,
         128,
@@ -2425,6 +2426,27 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeM
 }
 
 template <typename FAGT>
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ReleaseTSCMAllocEventID()
+{
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_M>(eventIdMte1AToM);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_M>(eventIdMte1BToM);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID3);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID4);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID5);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID6);
+    GetTPipePtr()->ReleaseEventID<HardEvent::FIX_M>(eventIdFixpipeToM_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::FIX_M>(eventIdFixpipeToM_ID1);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_FIX>(eventIdMToFixpipe_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_FIX>(eventIdMToFixpipe_ID1);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID1);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID2);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID3);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID1);
+}
+
+template <typename FAGT>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL1CustomMMDqkv(
     DBParams& dbParam, int64_t nextBlockId)
 {
@@ -2723,6 +2745,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL
     AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID6);
     AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1);
     AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1);
+    ReleaseTSCMAllocEventID();
     ///////////////////////////////////////////////////////////////
     // Matmal5 dv
     ///////////////////////////////////////////////////////////////
@@ -4278,4 +4301,4 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SyncALLC
     SyncAll();
 }
 
-#endif // _FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2GS1S2_SAMEAB_H_
+ #endif // _FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2GS1S2_SAMEAB_H_
