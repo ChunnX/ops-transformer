@@ -61,7 +61,7 @@
               <td>输入</td>
               <td>公式中的输入 gmmX。</td>
               <td>shape (A, H)。</td>
-              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
+              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
               <td>ND</td>
               <td>2</td>
               <td>x</td>
@@ -72,7 +72,7 @@
               <td>输入</td>
               <td>公式中的输入 gmmWeight。</td>
               <td>shape (e, H, N1)。e 为每卡部署的专家数，H 为 hidden size，N1 为 MoE FFN 中间维度。</td>
-              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
+              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
               <td>ND</td>
               <td>3</td>
               <td>x</td>
@@ -127,7 +127,7 @@
               <td>输入</td>
               <td>公式中的输入 mmX。</td>
               <td>shape (bs, H)。bs 为每卡部署的专家个数，H 为 hidden size。</td>
-              <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
+              <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
               <td>ND</td>
               <td>2</td>
               <td>x</td>
@@ -138,7 +138,7 @@
               <td>输入</td>
               <td>公式中的输入 mmWeight。</td>
               <td>shape (H, N1)。H 为 hidden size，N1 为共享专家 FFN 的中间层维度。</td>
-              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT8_E2M1</li></td>
+              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
               <td>ND</td>
               <td>2</td>
               <td>x</td>
