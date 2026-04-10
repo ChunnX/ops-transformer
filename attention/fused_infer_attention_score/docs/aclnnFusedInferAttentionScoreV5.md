@@ -267,7 +267,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>UINT64、FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a>。</td>
+        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -284,7 +284,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a>。</td>
+        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -302,7 +302,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>UINT64、FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a>。</td>
+        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -319,7 +319,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32、BFLOAT16</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a></td>
+        <td>见<a href="#后量化参数组postquantchecker">后量化参数组中的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
@@ -1358,9 +1358,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 一致性约束
   - 公共
     - 入参 attenMask 的输入维度仅支持 2/3/4
-      - `<term>` Ascend 950PR/Ascend 950DT `</term>`
+      - Ascend 950PR/Ascend 950DT
         - 维度为 2 时，不支持 sparseMode 为 0/1 模式
-      - `<term>` Atlas A3 训练系列产品/Atlas A3 推理系列产品 `</term>` 和 `<term>`Atlas A2 训练系列产品/Atlas A2 推理系列产品 `</term>`
+      - Atlas A3 训练系列产品/Atlas A3 推理系列产品和 Atlas A2 训练系列产品/Atlas A2 推理系列产品
         - 维度为 2 时，支持 sparseMode 为 0/1 模式
     - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S]
     - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048
