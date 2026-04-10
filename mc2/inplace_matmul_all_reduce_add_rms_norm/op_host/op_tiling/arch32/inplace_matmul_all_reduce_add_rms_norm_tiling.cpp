@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file inplace_matmul_all_reduce_add_rms_norm_tiling.cpp
@@ -15,7 +15,7 @@
 #ifndef _INPLACE_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
 #define _INPLACE_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
 
-#include "../../../matmul_all_reduce_add_rms_norm/op_host/op_tiling/matmul_all_reduce_add_rms_norm_tiling.h"
+#include "../../../../matmul_all_reduce_add_rms_norm/op_host/op_tiling/arch32/matmul_all_reduce_add_rms_norm_tiling.h"
 
 using Ops::Transformer::OpTiling::TilingRegistry;
 namespace optiling {

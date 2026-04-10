@@ -6,68 +6,59 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
- * \file quant_matmul_all_reduce_add_rms_norm_tiling.cc
+ * \file weight_quant_matmul_all_reduce_add_rms_norm_tiling.cc
  * \brief
  */
-#ifndef _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
-#define _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
+#ifndef _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
+#define _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
 
-#include "quant_matmul_all_reduce_add_rms_norm_tiling.h"
+#include "weight_quant_matmul_all_reduce_add_rms_norm_tiling.h"
 namespace optiling {
 namespace {
 constexpr char MRN[] = "MatmulAllReduceAddRmsNorm";
 constexpr char IMRN[] = "InplaceMatmulAllReduceAddRmsNorm";
 } // namespace
-QuantMMNTilingTransferHelper::QuantMMNTilingTransferHelper(
-    QuantMatmulAllReduceAddRmsNormTiling& quantMatmulAllReduceAddRmsNormTiling, Mc2Tiling::QuantMatmulAllReduceTilingData& data)
-    : QuantMatmulAllReduceTiling(
-          quantMatmulAllReduceAddRmsNormTiling.context_, &quantMatmulAllReduceAddRmsNormTiling.mrnCtxInfo_.mmrCtxInfo,
-          &data),
-      tilingProcesser_(quantMatmulAllReduceAddRmsNormTiling)
+WeightQuantMMNTilingTransferHelper::WeightQuantMMNTilingTransferHelper(
+    WeightQuantMatmulAllReduceAddRmsNormTiling& weightQuantMatmulAllReduceAddRmsNormTiling,
+    Mc2Tiling::WeightQuantMatmulAllReduceTilingData& data)
+    : WeightQuantMatmulAllReduceTiling(
+          weightQuantMatmulAllReduceAddRmsNormTiling.context_,
+          &weightQuantMatmulAllReduceAddRmsNormTiling.mrnCtxInfo_.mmrCtxInfo, &data),
+      tilingProcesser_(weightQuantMatmulAllReduceAddRmsNormTiling)
 {}
-ge::graphStatus QuantMMNTilingTransferHelper::GetShapeAttrsInfo()
+ge::graphStatus WeightQuantMMNTilingTransferHelper::GetShapeAttrsInfo()
 {
     return MatmulAllReduceTilingBase::AnalyzeShapeAttr();
 }
 
-bool QuantMatmulAllReduceAddRmsNormTiling::HasTail() const
+bool WeightQuantMatmulAllReduceAddRmsNormTiling::HasTail() const
 {
     return hasTail_;
 }
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::CheckMRNInput(const MRNCtxInfo& mrnCtxInfo)
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::CheckMRNInput(const MRNCtxInfo& mrnCtxInfo)
 {
-    // dequantScale数据类型为bf16时, residual为bf16;其他时,residual为fp16
-    auto dequantScaleType = mrnCtxInfo.mmrCtxInfo.dequant_scale->GetDataType();
+    // x1和residual数据类型是否相同
+    auto x1Type = mrnCtxInfo.mmrCtxInfo.x1->GetDataType();
     auto residualType = mrnCtxInfo.arnCtxInfo.x2->GetDataType();
-    if (dequantScaleType == ge::DT_BF16) {
-        OP_TILING_CHECK(
-            residualType != ge::DT_BF16,
-            VECTOR_INNER_ERR_REPORT_TILING(
-                context_->GetNodeName(),
-                "when dequantScaleType = bf16, Expect type of"
-                " residual to be bf16."),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_TILING_CHECK(
-            residualType != ge::DT_FLOAT16,
-            VECTOR_INNER_ERR_REPORT_TILING(
-                context_->GetNodeName(),
-                "when dequantScaleType != bf16, Expect type of"
-                " residual to be fp16"),
-            return ge::GRAPH_FAILED);
-    }
+    OP_TILING_CHECK(
+        x1Type != residualType,
+        VECTOR_INNER_ERR_REPORT_TILING(
+            context_->GetNodeName(),
+            "In the antiquant scenario, type of x1 and residual should be"
+            " same"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
 {
     GE_ASSERT_GRAPH_SUCCESS(helper_->DoOpTiling());
     GE_ASSERT_GRAPH_SUCCESS(CommonAddResNormTiling::CheckAddRmsNormInput(context_, mrnCtxInfo_.arnCtxInfo));
     GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::CheckMRNCtxInfo(context_, mrnCtxInfo_));
     GE_ASSERT_GRAPH_SUCCESS(CheckMRNInput(mrnCtxInfo_));
-    hasTail_ = (tilingData_.quantMatmulAllReduceTilingData.param.tailCnt != 0);
+    hasTail_ = (tilingData_.weightQuantMatmulAllReduceTilingData.param.tailCnt != 0);
     AddRmsNormTilingInputFromMM addRmsNormTilingInputFromMm;
     addRmsNormTilingInputFromMm.m = helper_->tileMValue_;
     addRmsNormTilingInputFromMm.n = helper_->args_.nValue;
@@ -98,7 +89,7 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
 {
     if (strcmp(context_->GetNodeType(), MRN) == 0) {
         GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::AssembleMRNCtxInfoFromMRNCtx(context_, mrnCtxInfo_));
@@ -111,34 +102,34 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
     GE_ASSERT_NOTNULL(helper_);
     return helper_->GetShapeAttrsInfo();
 }
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::GetPlatformInfo()
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetPlatformInfo()
 {
     return helper_->GetPlatformInfo();
 }
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::DoLibApiTiling()
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::DoLibApiTiling()
 {
     return helper_->DoLibApiTiling();
 }
-bool QuantMatmulAllReduceAddRmsNormTiling::IsCapable()
+bool WeightQuantMatmulAllReduceAddRmsNormTiling::IsCapable()
 {
     return helper_->IsCapable();
 }
-QuantMatmulAllReduceAddRmsNormTiling::QuantMatmulAllReduceAddRmsNormTiling(gert::TilingContext* context)
+WeightQuantMatmulAllReduceAddRmsNormTiling::WeightQuantMatmulAllReduceAddRmsNormTiling(gert::TilingContext* context)
     : TilingBaseClass(context)
 {
-    helper_ = std::move(std::unique_ptr<QuantMMNTilingTransferHelper>(
-        new (std::nothrow) QuantMMNTilingTransferHelper(*this, tilingData_.quantMatmulAllReduceTilingData)));
+    helper_ = std::move(std::unique_ptr<WeightQuantMMNTilingTransferHelper>(
+        std::make_unique<WeightQuantMMNTilingTransferHelper>(*this, tilingData_.weightQuantMatmulAllReduceTilingData)));
 }
 
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
 {
     GE_ASSERT_GRAPH_SUCCESS(helper_->GetWorkspaceSize());
     const auto mc2_workspace = helper_->myWorkSpaceSize_;
     GE_ASSERT_TRUE(mc2_workspace >= SYS_WORKSPACE_SIZE);
     if (HasTail()) {
-        GE_ASSERT_EQ(tilingOutAddRmsNormTile_.workSpaceSize, tilingOutAddRmsNormTail_.workSpaceSize);
+        GE_ASSERT_TRUE(tilingOutAddRmsNormTile_.workSpaceSize == tilingOutAddRmsNormTail_.workSpaceSize);
     }
-    // 系统空间用mc2申请的就好了， arn的key减去这部分
+    // 系统空间用mc2申请的就好了， arn的减去这部分
     GE_ASSERT_TRUE(tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
     const auto arn_workspace = tilingOutAddRmsNormTile_.workSpaceSize - SYS_WORKSPACE_SIZE;
     const auto my_workspace = mc2_workspace + arn_workspace;
@@ -149,9 +140,9 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::PostTiling()
+ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::PostTiling()
 {
-    constexpr size_t tilingDataSize = sizeof(Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData);
+    constexpr size_t tilingDataSize = sizeof(Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData);
     OP_LOGD(
         helper_->opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
         context_->GetRawTilingData()->GetCapacity());
@@ -166,7 +157,7 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::PostTiling()
         return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&tilingData_), tilingDataSize);
-    if (ret != EOK){
+    if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
     }
@@ -181,15 +172,16 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::PostTiling()
     // 当前mc2给的aicCoreNum是硬件规格的最大个数, numBlocksOfArn取了尾和非尾的最大值，最大值应该小于等于硬件规格的aiv num
     GE_ASSERT_TRUE(helper_->args_.aicCoreNum * 2 >= numBlocksOfArn);
     context_->SetBlockDim(helper_->args_.aicCoreNum);
-    
+
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
     GE_ASSERT_GRAPH_SUCCESS(ret);
+
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t QuantMatmulAllReduceAddRmsNormTiling::GetTilingKey() const
+uint64_t WeightQuantMatmulAllReduceAddRmsNormTiling::GetTilingKey() const
 {
     const auto mc2_key = helper_->GetTilingKey();
     const auto my_key = mc2_key; // use mc2 key as mrn key
@@ -198,6 +190,6 @@ uint64_t QuantMatmulAllReduceAddRmsNormTiling::GetTilingKey() const
         tilingOutAddRmsNormTile_.tilingKey, tilingOutAddRmsNormTail_.tilingKey);
     return my_key;
 }
-REGISTER_OPS_TILING_TEMPLATE(MatmulAllReduceAddRmsNorm, QuantMatmulAllReduceAddRmsNormTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(MatmulAllReduceAddRmsNorm, WeightQuantMatmulAllReduceAddRmsNormTiling, 1);
 } // namespace optiling
-#endif // _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
+#endif // _WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_

@@ -13,6 +13,12 @@
 # ACLNNEXTRAVERSION 算子版本(ex., v2, v3, v5, etc.)
 # OPTYPE 和 ACLNNTYPE 需一一对应
 
+function(extract_ops_name SOURCE_DIR OUTPUT_VAR)
+  get_filename_component(PARENT_DIR ${SOURCE_DIR} DIRECTORY)
+  get_filename_component(OPS_NAME ${PARENT_DIR} NAME)
+  set(${OUTPUT_VAR} ${OPS_NAME} PARENT_SCOPE)
+endfunction()
+
 # 用于custom自定算子包host侧obj生成
 macro(add_modules_sources)
   set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE)
@@ -161,11 +167,15 @@ macro(add_modules_sources)
 endmacro()
 
 macro(add_modules_sources_with_soc)
-  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR)
+  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE)
   set(multiValueArgs OPTYPE ACLNNTYPE)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
+  if (NOT DEFINED MODULE_OP_MC2_ENABLE)
+    set(MODULE_OP_MC2_ENABLE OFF)
+  endif()
 
   # 该段代码作用为兼容op_api新旧目录结构(旧： 嵌套于op_host下； 新： 与op_host同级)
   if (NOT DEFINED MODULE_OP_API_INDEPENDENT)
@@ -180,6 +190,11 @@ macro(add_modules_sources_with_soc)
     else()
       # 旧结构：op_api嵌套在op_host目录下
       set(OP_API_SRC_DIR "${SOURCE_DIR}/op_api")
+  endif()
+
+  if (MODULE_OP_MC2_ENABLE)
+    set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
+    set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
   endif()
 
   # opapi 默认全部编译
@@ -199,13 +214,25 @@ macro(add_modules_sources_with_soc)
       )
     endif()
   endif()
-  file(GLOB OPAPI_HEADERS ${OP_API_SRC_DIR}/aclnn_*.h)
-  if (OPAPI_HEADERS)
-    target_sources(${OPHOST_NAME}_aclnn_exclude_headers INTERFACE ${OPAPI_HEADERS})
+  if (NOT MODULE_OP_MC2_ENABLE)
+    file(GLOB OPAPI_HEADERS ${OP_API_SRC_DIR}/aclnn_*.h)
+    if (OPAPI_HEADERS)
+      target_sources(${OPHOST_NAME}_aclnn_exclude_headers INTERFACE ${OPAPI_HEADERS})
+    endif()
   endif()
 
   # 是否编译该算子已经由op_add_subdirectory和每个二级目录判断完毕，默认走到这里全编
 
+  extract_ops_name(${SOURCE_DIR} OPS_NAME)
+  if(NOT OPS_NAME)
+      message(WARNING "failed to extract OPS_NAME, SOURCE_DIR: ${SOURCE_DIR}")
+      return()
+  endif()
+  if("${OPS_NAME}" STREQUAL "moe_distribute_dispatch_v2" OR 
+ 	       "${OPS_NAME}" STREQUAL "moe_distribute_combine_v2")
+ 	         list(APPEND ARCH_DIRECTORY arch35)
+ 	         message(STATUS "${OPS_NAME} appended ARCH_DIRECTORY: arch35")
+  endif()
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
   foreach(ARCH ${ARCH_DIRECTORY})
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_infershape*.cpp)
@@ -217,6 +244,9 @@ macro(add_modules_sources_with_soc)
     add_infer_modules()
     target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
   else()
+    if (MODULE_OP_MC2_ENABLE)
+      add_infer_modules()
+    endif()
     if (NOT TARGET ${OPHOST_NAME}_infer_obj)
       add_library(${OPHOST_NAME}_infer_obj OBJECT)
       add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/proto_stub.cpp
@@ -229,12 +259,18 @@ macro(add_modules_sources_with_soc)
   endif()
 
   foreach(ARCH ${ARCH_DIRECTORY})
+  if (MODULE_OP_MC2_ENABLE)
+    file(GLOB_RECURSE files ${SOURCE_DIR}/op_tiling/${ARCH}/*.cpp)
+  else()
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_tiling*.cpp)
-    list(APPEND SUB_OPTILING_SRC ${files})
+  endif()
+  list(APPEND SUB_OPTILING_SRC ${files})
   endforeach()
   file(GLOB OPTILING_SRCS
       ${SOURCE_DIR}/*fallback*.cpp
+      ${SOURCE_DIR}/op_tiling/*.cpp
       ${SOURCE_DIR}/*_tiling*.cpp
+      ${SOURCE_DIR}/op_tiling/common/*.cpp
       ${SOURCE_DIR}/../op_graph/fallback_*.cpp
       ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp)
   if (OPTILING_SRCS OR SUB_OPTILING_SRC)
@@ -242,6 +278,16 @@ macro(add_modules_sources_with_soc)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+  endif()
+
+  if (MODULE_OP_MC2_ENABLE)
+    file(GLOB GENTASK_SRCS
+        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
+    )
+    if(GENTASK_SRCS)
+      add_gentask_modules()
+      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
+    endif()
   endif()
 
   file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)

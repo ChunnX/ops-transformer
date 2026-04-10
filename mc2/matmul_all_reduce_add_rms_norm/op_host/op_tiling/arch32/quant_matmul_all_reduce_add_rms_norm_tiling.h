@@ -6,29 +6,28 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
- * \file matmul_all_reduce_add_rms_norm_tiling.h
+ * \file quant_matmul_all_reduce_add_rms_norm_tiling.h
  * \brief
  */
-
-#ifndef _MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
-#define _MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
-#include "../../../matmul_all_reduce/op_host/op_tiling/arch32/matmul_all_reduce_tiling_910.h"
+#ifndef _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
+#define _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
+#include <memory>
+#include "../../../../matmul_all_reduce/op_host/op_tiling/arch32/quant_matmul_all_reduce_tiling.h"
 #include "common_add_rms_norm_tiling.h"
 #include "context_transfer.h"
-#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-
+#include "../../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 namespace optiling {
-class MMNTilingTransferHelper;
-class MatmulAllReduceAddRmsNormTiling : public TilingBaseClass
-{
-    friend class MMNTilingTransferHelper;
+
+class QuantMMNTilingTransferHelper;
+class QuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass {
+    friend class QuantMMNTilingTransferHelper;
 
 public:
-    explicit MatmulAllReduceAddRmsNormTiling(gert::TilingContext* context);
-    ~MatmulAllReduceAddRmsNormTiling() override = default;
+    explicit QuantMatmulAllReduceAddRmsNormTiling(gert::TilingContext* context);
+    ~QuantMatmulAllReduceAddRmsNormTiling() override = default;
 
 protected:
     ge::graphStatus GetPlatformInfo() override;
@@ -44,24 +43,22 @@ protected:
 private:
     bool HasTail() const;
     MRNCtxInfo mrnCtxInfo_;
-    Mc2Tiling::MatmulAllReduceAddRmsNormTilingData tilingData_;
+    Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData tilingData_;
     bool hasTail_;
     TilingOut tilingOutAddRmsNormTile_;
     TilingOut tilingOutAddRmsNormTail_;
-    std::unique_ptr<MMNTilingTransferHelper> helper_;
+    std::unique_ptr<QuantMMNTilingTransferHelper> helper_;
 };
 
-class MMNTilingTransferHelper : public MatmulAllReduceTiling910
-{
+class QuantMMNTilingTransferHelper : public QuantMatmulAllReduceTiling {
 public:
-    MMNTilingTransferHelper(
-        MatmulAllReduceAddRmsNormTiling& MatmulAllReduceAddRmsNormTiling,
-        Mc2Tiling::MatmulAllReduce910TilingData& data);
+    QuantMMNTilingTransferHelper(
+        QuantMatmulAllReduceAddRmsNormTiling& quantMatmulAllReduceAddRmsNormTiling,
+        Mc2Tiling::QuantMatmulAllReduceTilingData& data);
     ge::graphStatus GetShapeAttrsInfo() override;
 
 private:
-    MatmulAllReduceAddRmsNormTiling& tilingProcesser_;
+    QuantMatmulAllReduceAddRmsNormTiling& tilingProcesser_;
 };
 } // namespace optiling
-
-#endif // _MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_
+#endif // _QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_H_

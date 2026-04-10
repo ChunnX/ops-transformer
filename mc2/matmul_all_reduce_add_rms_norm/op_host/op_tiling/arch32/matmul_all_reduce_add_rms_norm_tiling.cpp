@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file matmul_all_reduce_add_rms_norm_tiling.cpp
@@ -158,7 +158,7 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::PostTiling()
         return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&tilingData_), tilingDataSize);
-    if (ret != EOK){
+    if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
     }

@@ -10,9 +10,9 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include "mc2_tiling_case_executor.h"
-#include "../../../../op_host/op_tiling/quant_matmul_all_reduce_add_rms_norm_tiling.h"
-#include "../../../../op_host/op_tiling/matmul_all_reduce_add_rms_norm_tiling.h"
-#include "../../../../op_host/op_tiling/weight_quant_matmul_all_reduce_add_rms_norm_tiling.h"
+#include "../../../../op_host/op_tiling/arch32/quant_matmul_all_reduce_add_rms_norm_tiling.h"
+#include "../../../../op_host/op_tiling/arch32/matmul_all_reduce_add_rms_norm_tiling.h"
+#include "../../../../op_host/op_tiling/arch32/weight_quant_matmul_all_reduce_add_rms_norm_tiling.h"
 
 using namespace std;
 namespace MatmulAllReduceAddRmsNormUT {

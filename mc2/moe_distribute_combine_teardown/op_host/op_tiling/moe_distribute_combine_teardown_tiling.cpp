@@ -15,17 +15,13 @@
 
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "arch35/moe_distribute_combine_teardown_tiling_arch35.h"
-#include "arch32/moe_distribute_combine_teardown_tiling_arch32.h"
+#include "mc2_log.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;
 using namespace ge;
 
 namespace MC2Tiling {
-
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineTeardown, MoeDistributeCombineTeardownTilingA5, 0);
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineTeardown, MoeDistributeCombineTeardownTilingA3, 1);
 
 ge::graphStatus MoeDistributeCombineTeardownTilingFunc(gert::TilingContext *context)
 {

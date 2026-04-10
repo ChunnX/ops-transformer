@@ -395,6 +395,28 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(
     : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data), tilingProcesser_(quantMatmulAllReduceTiling)
 {}
 
+CutResult QuantMatmulAllReduceTiling::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+        OP_LOGD(opName_, "TileCnt enter comm quant.");
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        quantAllReduceTilingHccl.GetTiling();
+        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
+}
+
+
 //注册带SOC版本Tiling的类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,QuantMatmulAllReduceTiling, \
                                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),0);
