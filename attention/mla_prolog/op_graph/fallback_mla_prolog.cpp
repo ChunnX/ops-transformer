@@ -98,7 +98,7 @@ graphStatus GetMlaPrologAttr(const OpExecuteContext *ctx, MlaPrologFallBackParam
     param.cacheMode = getCacheMode;
 
     OP_LOGD("aclnnFallback", "MlaProlog fallback begin, RmsnormEpsilonCq = %f, RmsnormEpsilonCkv = %f",
-              param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv);
+        param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv);
 
     return GRAPH_SUCCESS;
 }
