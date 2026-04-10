@@ -14,6 +14,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 
@@ -21,11 +22,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale, const char* group,
-    const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn, int64_t antiquantGroupSize,
-    double epsilon, const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
 
 // 根据API定义，需要列出所能支持的所有dtype
@@ -96,7 +92,8 @@ aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2);
     aclnnStatus ret = aclnnInnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, group, reduceOp, transposeX1,
+        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, const_cast<char*>(group),
+        const_cast<char*>(reduceOp), transposeX1,
         transposeX2, commTurn, antiquantGroupSize, epsilon, y, normOut, workspaceSize, executor);
     OP_LOGI(
         "Group %s, reduce op %s, trans flag %u %u, epsilon %lf, ret %d.", group, reduceOp, transposeX1, transposeX2,

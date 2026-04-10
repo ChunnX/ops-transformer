@@ -16,6 +16,7 @@
 #include "external/aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_allto_all_all_gather_batch_mat_mul.h"
 
 using namespace op;
 
@@ -23,17 +24,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(const aclTensor *x, const aclTensor *weight,
-                                                                          const aclTensor *bias, const char *group_ep,
-                                                                          const char *group_tp, int64_t ep_world_size,
-                                                                          int64_t tp_world_size, int64_t x_shard_type,
-                                                                          int64_t act_type, bool transpose_weight,
-                                                                          bool output_y2_flag, bool output_y3_flag,
-                                                                          aclTensor *y1, aclTensor *y2, aclTensor *y3,
-                                                                          uint64_t *workspaceSize,
-                                                                          aclOpExecutor **executor);
-extern aclnnStatus aclnnInnerAlltoAllAllGatherBatchMatMul(void *workspace, uint64_t workspaceSize,
-                                                          aclOpExecutor *executor, aclrtStream stream);
 
 // check nullptr
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
@@ -404,18 +394,14 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize(const aclTensor *x
     }
     if(transposeWeight){
         auto weightTrans = TransTensor(weight);
-        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weightTrans, biasOptional, groupEp, groupTp,
-                                                                             epWorldSize, tpWorldSize, xShardType,
-                                                                             actType, transposeWeight, isY2Out, isY3Out,
-                                                                             y1Out, y2OutOptional, y3OutOptional,
-                                                                             workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weightTrans, biasOptional,
+            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, xShardType, actType,
+            transposeWeight, isY2Out, isY3Out, y1Out, y2OutOptional, y3OutOptional, workspaceSize, executor);
         return ret;
     } else {
-        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weight, biasOptional, groupEp, groupTp,
-                                                                             epWorldSize, tpWorldSize, xShardType,
-                                                                             actType, transposeWeight, isY2Out, isY3Out,
-                                                                             y1Out, y2OutOptional, y3OutOptional,
-                                                                             workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMulGetWorkspaceSize(x, weight, biasOptional,
+            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, xShardType, actType,
+            transposeWeight, isY2Out, isY3Out, y1Out, y2OutOptional, y3OutOptional, workspaceSize, executor);
         return ret;
     }
 }
