@@ -54,9 +54,9 @@ __attribute__((deprecated(
     "We apologize for any inconvenience caused "
     "and appreciate your timely migration to the new interface. ")))
 __attribute__((visibility("default"))) aclnnStatus aclnnMlaProlog(void *workspace,
-                                                                            uint64_t workspaceSize,
-                                                                            aclOpExecutor *executor,
-                                                                            aclrtStream stream);
+    uint64_t workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream stream);
 
 
 #ifdef __cplusplus

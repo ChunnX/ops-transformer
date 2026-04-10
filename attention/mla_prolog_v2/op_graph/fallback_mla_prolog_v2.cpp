@@ -31,7 +31,7 @@ graphStatus GetMlaPrologV2OutputTensor(const OpExecuteContext *ctx, MlaPrologV2F
     OP_CHECK_IF(ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetOutputTensor failed"), return GRAPH_FAILED);
 
     param.dequantScaleQNope = ctx->GetOutputTensor(DEQUANT_SCALE_Q_NOPE_INDEX);
-    OP_CHECK_IF(param.dequantScaleQNope == nullptr, OP_LOGE("aclnnfallback", "dequantScaleQNope is null"), 
+    OP_CHECK_IF(param.dequantScaleQNope == nullptr, OP_LOGE("aclnnfallback", "dequantScaleQNope is null"),
         return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;

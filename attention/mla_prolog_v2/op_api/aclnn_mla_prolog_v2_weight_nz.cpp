@@ -47,7 +47,8 @@ extern aclnnStatus aclnnInnerMlaPrologV2(void *workspace, uint64_t workspaceSize
 
 class TensorHolder {
 public:
-    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName) {
+    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName) 
+    {
         inner_ = nullptr;
         name_ = varName;
         if (output == nullptr) {
@@ -60,14 +61,16 @@ public:
         }
     }
 
-    ~TensorHolder() {
+    ~TensorHolder() 
+    {
         if (inner_) {
             aclDestroyTensor(inner_);
             inner_ = nullptr;
         }
     }
     
-    void CheckTensorConditionalNotNull(bool conditional) const {
+    void CheckTensorConditionalNotNull(bool conditional) const 
+    {
         if (inner_ && conditional) {
             OP_LOGW("Check %s != nullptr failed!", name_.c_str());
         } else if (!inner_ && !conditional) {
@@ -75,7 +78,8 @@ public:
         }
     }
 
-    bool IsTensorNotNull() const {
+    bool IsTensorNotNull() const 
+    {
         return inner_ == nullptr;
     }
 

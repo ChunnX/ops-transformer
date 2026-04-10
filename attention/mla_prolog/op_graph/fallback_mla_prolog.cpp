@@ -40,7 +40,7 @@ graphStatus GetMlaPrologInputTensor(const OpExecuteContext *ctx, MlaPrologFallBa
         return GRAPH_FAILED);
 
     param.rmsnormGammaCkv = ctx->GetRequiredInputTensor(RMSNORM_GAMMA_CKV_INDEX);
-    OP_CHECK_IF(param.rmsnormGammaCkv == nullptr, OP_LOGE("aclnnfallback", "rmsnormGammaCkv is null"), 
+    OP_CHECK_IF(param.rmsnormGammaCkv == nullptr, OP_LOGE("aclnnfallback", "rmsnormGammaCkv is null"),
         return GRAPH_FAILED);
 
     param.ropeSin = ctx->GetRequiredInputTensor(ROPE_SIN_INDEX);

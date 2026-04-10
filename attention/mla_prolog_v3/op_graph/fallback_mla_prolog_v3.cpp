@@ -40,7 +40,7 @@ graphStatus GetMlaPrologV3InputTensor(const OpExecuteContext *ctx, MlaPrologV3Fa
         return GRAPH_FAILED);
 
     param.rmsnormGammaCkv = ctx->GetRequiredInputTensor(RMSNORM_GAMMA_CKV_INDEX_V3);
-    OPS_ERR_IF(param.rmsnormGammaCkv == nullptr, OPS_LOG_E("aclnnfallback", "rmsnormGammaCkv is null"), 
+    OPS_ERR_IF(param.rmsnormGammaCkv == nullptr, OPS_LOG_E("aclnnfallback", "rmsnormGammaCkv is null"),
         return GRAPH_FAILED);
 
     param.ropeSin = ctx->GetRequiredInputTensor(ROPE_SIN_INDEX_V3);
@@ -75,15 +75,15 @@ graphStatus GetMlaPrologV3OutputTensor(const OpExecuteContext *ctx, MlaPrologV3F
     OP_CHECK_IF(ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetOutputTensor failed"), return GRAPH_FAILED);
 
     param.dequantScaleQNope = ctx->GetOutputTensor(DEQUANT_SCALE_Q_NOPE_INDEX);
-    OP_CHECK_IF(param.dequantScaleQNope == nullptr, OP_LOGE("aclnnfallback", "dequantScaleQNope is null"), 
+    OP_CHECK_IF(param.dequantScaleQNope == nullptr, OP_LOGE("aclnnfallback", "dequantScaleQNope is null"),
         return GRAPH_FAILED);
 
     param.queryNorm = ctx->GetOutputTensor(QUERY_NORM_INDEX);
-    OP_CHECK_IF(param.queryNorm == nullptr, OP_LOGE("aclnnfallback", "queryNorm is null"), 
+    OP_CHECK_IF(param.queryNorm == nullptr, OP_LOGE("aclnnfallback", "queryNorm is null"),
         return GRAPH_FAILED);
 
     param.dequantScaleQNorm = ctx->GetOutputTensor(DEQUANT_SCALE_Q_NORM_INDEX);
-    OP_CHECK_IF(param.dequantScaleQNorm == nullptr, OP_LOGE("aclnnfallback", "dequantScaleQNorm is null"), 
+    OP_CHECK_IF(param.dequantScaleQNorm == nullptr, OP_LOGE("aclnnfallback", "dequantScaleQNorm is null"),
         return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
