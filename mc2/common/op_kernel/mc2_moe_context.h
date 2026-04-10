@@ -21,9 +21,7 @@ constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 
 struct Mc2MoeContext {
     uint32_t epRankId;
-    uint32_t tpRankId;
-    uint32_t epRankSize;
-    uint64_t winSize;
+    uint32_t rankSizePerServer;
     uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };

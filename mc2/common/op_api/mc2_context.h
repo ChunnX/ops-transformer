@@ -61,6 +61,9 @@ private:
     T GetHcclLibFunc(void* handle, const std::string& funcName);
 
     void* hcclLibHandle_ = nullptr;
+    uint64_t hcclBuffSize_ = 0;
+    uint32_t epRankSize_ = 0;
+    uint32_t rankSizePerServer_ = 0;
 
     HcclResult (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
