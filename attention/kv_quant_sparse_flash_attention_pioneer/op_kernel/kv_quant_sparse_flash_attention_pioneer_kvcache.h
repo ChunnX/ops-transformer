@@ -109,6 +109,10 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     } else { // 最后一个bn, 从数组下一个元素取值
         runParam.gs1LoopEndIdx = nextGs1Idx == 0 ? gs1LoopEndIdx : nextGs1Idx;
     }
+
+    if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {
+        runParam.gs1LoopStartIdx = runParam.gs1LoopEndIdx;
+    }
 }
 
 TEMPLATE_INTF
