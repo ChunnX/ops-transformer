@@ -33,14 +33,6 @@ using namespace AscendC;
 using namespace matmul;
 using namespace GroupedMatmulFinalizeRouting;
 
-#define GMMFR_LOG_TILING_BRANCH(branchName)                                                                           \
-    do {                                                                                                              \
-        if (GetBlockIdx() == 0) {                                                                                     \
-            AscendC::printf("diag[GMMFR] tiling_key=%llu branch=%s\n",                                                \
-                static_cast<unsigned long long>(TILING_KEY), branchName);                                             \
-        }                                                                                                             \
-    } while (0)
-
 #define GMMFR_A8W8_IMPL(RowIndexDtype, scaleType, groupListType, sharedInputIsNone)                                    \
     do {                                                                                                               \
         TPipe pipe;                                                                                                    \
@@ -127,79 +119,53 @@ extern "C" __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x,
                             offset, logit, row_index, share_input, y,     workspaceGM};
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (TILING_KEY_IS(10000000000000000001UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/float/groupListType0/sharedInput");
         GMMFR_A8W8_IMPL(int64_t, float, false, false);
     } else if (TILING_KEY_IS(10000000000000000011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/float/groupListType0/sharedInput");
         GMMFR_A8W8_IMPL(int32_t, float, false, false);
     } else if (TILING_KEY_IS(10000000000000000101UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/bfloat16/groupListType0/sharedInput");
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, false, false);
     } else if (TILING_KEY_IS(10000000000000000111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/bfloat16/groupListType0/sharedInput");
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, false, false);
     } else if (TILING_KEY_IS(11000000000000000011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/MSD/groupListType0/sharedInput");
         GMMFR_A8W4_IMPL(false, false);
     } else if (TILING_KEY_IS(11000000000000000111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/L1_OPT/groupListType0/sharedInput");
         GMMFR_A8W4_L1_OPT_IMPL(false, false);
     } else if (TILING_KEY_IS(10000000000000001001UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/float/groupListType1/sharedInput");
         GMMFR_A8W8_IMPL(int64_t, float, true, false);
     } else if (TILING_KEY_IS(10000000000000001011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/float/groupListType1/sharedInput");
         GMMFR_A8W8_IMPL(int32_t, float, true, false);
     } else if (TILING_KEY_IS(10000000000000001101UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/bfloat16/groupListType1/sharedInput");
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, true, false);
     } else if (TILING_KEY_IS(10000000000000001111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/bfloat16/groupListType1/sharedInput");
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, true, false);
     } else if (TILING_KEY_IS(11000000000000001011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/MSD/groupListType1/sharedInput");
         GMMFR_A8W4_IMPL(true, false);
     } else if (TILING_KEY_IS(11000000000000001111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/L1_OPT/groupListType1/sharedInput");
         GMMFR_A8W4_L1_OPT_IMPL(true, false);
     } else if (TILING_KEY_IS(10000000000000010001UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/float/groupListType0/noSharedInput");
         GMMFR_A8W8_IMPL(int64_t, float, false, true);
     } else if (TILING_KEY_IS(10000000000000010011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/float/groupListType0/noSharedInput");
         GMMFR_A8W8_IMPL(int32_t, float, false, true);
     } else if (TILING_KEY_IS(10000000000000010101UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/bfloat16/groupListType0/noSharedInput");
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, false, true);
     } else if (TILING_KEY_IS(10000000000000010111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/bfloat16/groupListType0/noSharedInput");
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, false, true);
     } else if (TILING_KEY_IS(11000000000000010011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/MSD/groupListType0/noSharedInput");
         GMMFR_A8W4_IMPL(false, true);
     } else if (TILING_KEY_IS(11000000000000010111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/L1_OPT/groupListType0/noSharedInput");
         GMMFR_A8W4_L1_OPT_IMPL(false, true);
     } else if (TILING_KEY_IS(10000000000000011001UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/float/groupListType1/noSharedInput");
         GMMFR_A8W8_IMPL(int64_t, float, true, true);
     } else if (TILING_KEY_IS(10000000000000011011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/float/groupListType1/noSharedInput");
         GMMFR_A8W8_IMPL(int32_t, float, true, true);
     } else if (TILING_KEY_IS(10000000000000011101UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int64/bfloat16/groupListType1/noSharedInput");
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, true, true);
     } else if (TILING_KEY_IS(10000000000000011111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W8/int32/bfloat16/groupListType1/noSharedInput");
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, true, true);
     } else if (TILING_KEY_IS(11000000000000011011UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/MSD/groupListType1/noSharedInput");
         GMMFR_A8W4_IMPL(true, true);
     } else if (TILING_KEY_IS(11000000000000011111UL)) {
-        GMMFR_LOG_TILING_BRANCH("A8W4/L1_OPT/groupListType1/noSharedInput");
         GMMFR_A8W4_L1_OPT_IMPL(true, true);
-    } else {
-        GMMFR_LOG_TILING_BRANCH("UNKNOWN");
     }
 }
 #endif

@@ -274,7 +274,7 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
         if (unlikely(batch_ <= 0 || outRowRaw < 0 || outRowRaw >= batch_)) {
             if (!hasLoggedInvalidRowIndex_) {
                 AscendC::printf(
-                    "diag[GMMFR] skip invalid rowIndex: block=%u sub=%u offsetM=%llu i=%u raw=%lld batch=%lld yOffset=%llu n=%lld\n",
+                    "zzzlog [GMMFR] skip invalid rowIndex: block=%u sub=%u offsetM=%llu i=%u raw=%lld batch=%lld yOffset=%llu n=%lld\n",
                     GetBlockIdx(), subBlockIdx_, static_cast<unsigned long long>(offsetM), i,
                     static_cast<long long>(outRowRaw), static_cast<long long>(batch_),
                     static_cast<unsigned long long>(yOffset), static_cast<long long>(n_));
