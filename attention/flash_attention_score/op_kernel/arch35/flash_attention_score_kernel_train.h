@@ -159,9 +159,11 @@ __aicore__ inline int64_t FlashAttentionScoreKernelTrain<CubeBlockType, VecBlock
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockType>::Process()
 {
+    AscendC::printf("-----------Process----------\n");
     int64_t multiCoreInnerOffset = 0;
     int64_t multiCoreInnerLimit = 0;
-
+    AscendC::printf("tilingdata : coreNum:%d firstFullLoadS1OuterIdx:%d\n", this->sharedParams.coreNum,
+                this->sharedParams.firstFullLoadS1OuterIdx);
     // 新分核模式
     // 1、非TND场景 S2全量计算的部分，采用顺序分核；
     // 2、非TND场景 S2部分计算的部分，采用对称分核：将N分成一半，上半部分顺序分核，下半部分与上半部分对称分核；
@@ -179,6 +181,8 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
     int64_t varlenCalcTimes = 0;                    // TND场景 需要计算的S1方向上基本块总数
     int64_t varlenCycleCoreNums = this->sharedParams.coreNum * 2; // TND场景 一次循环正序+倒序为两倍核数
 
+
+    AscendC::printf("splitCoreMode %d; multiCoreInnerLimit %d \n", (int32_t)this->sharedParams.splitCoreMode, this->sharedParams.multiCoreInnerLimit);
     if (this->sharedParams.splitCoreMode == 1) {
         if (layout == LayOutTypeEnum::LAYOUT_TND) {
             varlenCalcLoops = this->sharedParams.totalSize / varlenCycleCoreNums;
@@ -219,6 +223,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
         multiCoreInnerOffset = this->sharedParams.multiCoreInnerOffset;
         multiCoreInnerLimit = this->sharedParams.multiCoreInnerLimit;
     }
+    PRINTF("tilingdata : multiCoreInnerOffset:%d multiCoreInnerLimit:%d\n", multiCoreInnerOffset, multiCoreInnerLimit);
 
     // 初始化AxisIdx
     RunParamStr<isInfer> runParam;
@@ -234,11 +239,15 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
     bool notThirdLast = true;
     bool notSecondLast = true;
     bool notLast = true;
-    int64_t thirdLast = multiCoreInnerLimit;
-    int64_t secondLast = multiCoreInnerLimit + 1;
-    int64_t last = multiCoreInnerLimit + 2;
+    int64_t thirdLast = multiCoreInnerLimit;  
+    int64_t secondLast = multiCoreInnerLimit + 1; 
+    int64_t last = multiCoreInnerLimit + 2; 
     multiCoreInnerLimit += 3;
     int64_t realCoreInnerIdx = 0;
+
+    PRINTF("------------multiCoreInnerOffset : %d -----------\n", multiCoreInnerOffset);
+    PRINTF("------------multiCoreInnerLimit : %d -----------\n", multiCoreInnerLimit);
+
     for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit;
          multiCoreInnerIdx++) {
         if (multiCoreInnerIdx == secondLast) {
@@ -289,45 +298,67 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
                 }
             }
         }
+        PRINTF("------------s2LoopLimit : %d -----------\n", s2LoopLimit);
+        PRINTF("------------taskId : %d -----------\n", taskId);
+        // return;
         for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; s2LoopCount++) {
             if (notLastThreeLoop) {
                 RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
+                // return;
                 this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, realCoreInnerIdx);
+                // return;
                 if (this->sharedParams.splitCoreMode == 1) {
                     runInfo1.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
                 }
                 if ASCEND_IS_AIC {
-                    this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
+                    auto &bmm1Buf = this->bmm1Buffers.Get();
+                    this->cubeBlock.IterateBmm1(bmm1Buf, runInfo1, this->constInfo);
+                    // return;
                 }
+                // return;
             }
             if (taskId > 0 && notLastTwoLoop) {
                 if ASCEND_IS_AIV {
                     auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                    this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
+                    auto &bmm1Buf1 = this->bmm1Buffers.Get();
+                    auto &l1xBuf1 = this->l1PBuffers.Get();
+                    this->vecBlock.ProcessVec1(l1xBuf1, bmm1Buf1, runInfo3,
                         this->constInfo);
+                    auto &l1Buf1 = this->l1PBuffers.Get();
                 }
             }
-            if (taskId > 1 && notLast) {
+            if (taskId > 1 && notLast) { // 2    id = 3
                 RunInfo<isInfer> &runInfo2 = runInfo[(taskId + 2) & 3];
                 if ASCEND_IS_AIC {
                     if constexpr (BaseClass::bmm2Write2Ub) {
-                        this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
+                        // return;
+                        auto &bmm2Buf1 = this->bmm2Buffers.Get();
+                        this->cubeBlock.IterateBmm2(bmm2Buf1, this->l1PBuffers, runInfo2,
                             this->constInfo);
                     } else {
                         this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo2,
                             this->constInfo);
                     }
                 }
+                PRINTF("-------cube-----BaseClass::bmm2Write2Ub------taskId: %d--------\n", taskId);
+                // return;
             }
             if (taskId > 2) {
+                // PRINTF("------------taskId > 2--------------\n");
+                // return;
                 if ASCEND_IS_AIV {
                     RunInfo<isInfer> &runInfo3 = runInfo[(taskId + 1) & 3];
                     if constexpr (BaseClass::bmm2Write2Ub) {
+                        // PRINTF("------------BaseClass::bmm2Write2Ub--------------\n");
+                        // return;
                         this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                     } else {
+                        // return;
                         this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
                     }
+                    // return;
                 }
+                // return;
             }
             taskId++;
         }
