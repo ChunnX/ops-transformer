@@ -238,15 +238,18 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::SetHcclTiling()
 uint64_t AllToAllFpMatmulTilingBaseA3::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
-    // 0代表数据类型和x一致(FP16 OR BF16)，1代表FP32
-    uint32_t biasDType = DTYPE_BIAS_SAME_WITH_X;
+    // 0代表数据类型为FP16，2代表FP32
+    uint32_t biasDType = TILINGKEY_TPL_FP16;
     if (contextInfo.args_.geBiasType != contextInfo.args_.geAType) {
-        biasDType = DTYPE_BIAS_FP32;
+        biasDType = TILINGKEY_TPL_FP32;
     }
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS is: [%d,%d,%d], and tilingKey is [%lu].", NON_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        contextInfo.args_.isBias, x2TransposeFlag,
+        TILINGKEY_TPL_NOQUANT, biasDType,
+        SOC_ASCEND910_93);
+    OP_LOGD(opName_, "hasBias,x2TransposeFlag,biasDtype is: [%d,%d,%lu], and tilingKey is [%lu].",
+            contextInfo.args_.isBias, x2TransposeFlag, biasDType, tilingKey);
     return tilingKey;
 }
 
