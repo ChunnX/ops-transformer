@@ -50,9 +50,29 @@ const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MAX_D_LENTH = 16384;
 const constexpr uint32_t D_ALIGN = 64;
 
-REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardBaseTiling, 1000);
+const constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000;
+const constexpr uint32_t LEGAL_N_VALUES[] = {4, 6, 8};
+const constexpr uint32_t LEGAL_N_COUNT = 3;
+const constexpr float DEFAULT_HC_EPS = 1e-6;
 
-ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
+const constexpr uint32_t C0_SET_VALUE = 1;
+const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 3;
+const constexpr uint32_t XR_SGRAD_BUFFER_FACTOR = 1024;
+const constexpr uint32_t XR_S_BUFFER_FACTOR = 128;
+const constexpr uint32_t XR_S_BUFFER_CORE_FACTOR = 2;
+const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
+const constexpr uint32_t WORKSPACE_ALIGN_SIZE = 32;
+const constexpr uint64_t SYSTEM_WORKSPACE_SIZE = 40 * 1024 * 1024;
+const constexpr int32_t SCHEDULE_MODE = 1;
+
+const constexpr uint32_t C0_SET_SHAPE_M = 1024;
+const constexpr uint32_t C0_SET_SHAPE_N = 128;
+const constexpr uint32_t C1_SET_SHAPE_M_BASE = 128;
+const constexpr uint32_t C1_SET_SHAPE_K = 1024;
+
+REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
+
+ge::graphStatus MhcPreBackwardTiling::GetInputShape()
 {
     auto hInGradTensor = context_->GetDynamicInputTensor(H_IN_GRAD_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hInGradTensor);
@@ -115,7 +135,7 @@ ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
         totalLength_ = t;
     }
 
-    static const std::vector<uint64_t> legalN = {4, 6, 8};
+    static const std::vector<uint64_t> legalN(LEGAL_N_VALUES, LEGAL_N_VALUES + LEGAL_N_COUNT);
     if (std::find(legalN.begin(), legalN.end(), N_) == legalN.end()) {
         OP_LOGE(context_->GetNodeName(), "Invalid input shape N=%lu. Expected one of {4,6,8}", N_);
         return ge::GRAPH_FAILED;
@@ -135,9 +155,11 @@ ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreBackwardBaseTiling::ParseInputAndAttr()
+ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
 {
-    uint64_t ubSize, l1Size, l0CSize;
+    uint64_t ubSize;
+    uint64_t l1Size;
+    uint64_t l0CSize;
 
     if (GetInputShape() != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "get input shape failed");
@@ -163,36 +185,36 @@ ge::graphStatus MhcPreBackwardBaseTiling::ParseInputAndAttr()
     if (hcEpsPtr_ != nullptr) {
         hcEps_ = *hcEpsPtr_;
     } else {
-        hcEps_ = 1e-6;
+        hcEps_ = DEFAULT_HC_EPS;
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
 
-void MhcPreBackwardBaseTiling::FillTilingData()
+void MhcPreBackwardTiling::FillTilingData()
 {
     // 矩阵计算剩余部分
     // ProcessC0: M = B*S, N = n*D, K = 2n+n*n
-    tilingData_.matmulTilingC0.set_dbL0C(1);
-    tilingData_.matmulTilingC0.set_stepKa(1);
-    tilingData_.matmulTilingC0.set_stepKb(1);
-    tilingData_.matmulTilingC0.set_depthA1(1);
-    tilingData_.matmulTilingC0.set_depthB1(1);
-    tilingData_.matmulTilingC0.set_stepM(1);
-    tilingData_.matmulTilingC0.set_stepN(1);
+    tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_stepKa(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_stepKb(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_depthA1(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_depthB1(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_stepM(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_stepN(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_baseM(C0_BASE_M);
     tilingData_.matmulTilingC0.set_baseN(C0_BASE_N);
     tilingData_.matmulTilingC0.set_baseK(C0_BASE_K);
 
     // ProcessC1: M = 2n+n*n, N = n*D, K = B*S
-    tilingData_.matmulTilingC1.set_dbL0C(1);
-    tilingData_.matmulTilingC1.set_stepKa(1);
-    tilingData_.matmulTilingC1.set_stepKb(1);
-    tilingData_.matmulTilingC1.set_depthA1(1);
-    tilingData_.matmulTilingC1.set_depthB1(1);
-    tilingData_.matmulTilingC1.set_stepM(1);
-    tilingData_.matmulTilingC1.set_stepN(1);
+    tilingData_.matmulTilingC1.set_dbL0C(C0_SET_VALUE);
+    tilingData_.matmulTilingC1.set_stepKa(C0_SET_VALUE);
+    tilingData_.matmulTilingC1.set_stepKb(C0_SET_VALUE);
+    tilingData_.matmulTilingC1.set_depthA1(C0_SET_VALUE);
+    tilingData_.matmulTilingC1.set_depthB1(C0_SET_VALUE);
+    tilingData_.matmulTilingC1.set_stepM(C0_SET_VALUE);
+    tilingData_.matmulTilingC1.set_stepN(C0_SET_VALUE);
 
     tilingData_.set_coreNum(blockDim_);
     tilingData_.set_vecCoreNum(vecCoreNum_);
@@ -204,27 +226,27 @@ void MhcPreBackwardBaseTiling::FillTilingData()
     tilingData_.set_hcEps(hcEps_);
 }
 
-uint64_t MhcPreBackwardBaseTiling::CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
+uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
                                                           uint64_t elementSize)
 {
-    uint64_t v1Elements = totalLength * fusionSize + // h_mix_grad
-                          3 * coreNum +              // alpha_grad
-                          coreNum * fusionSize +     // bias_grad
-                          totalLength;               // inv_rms_grad
+    uint64_t v1Elements = totalLength * fusionSize +                 // h_mix_grad
+                          ALPHA_GRAD_CORE_FACTOR * coreNum +          // alpha_grad
+                          coreNum * fusionSize +                     // bias_grad
+                          totalLength;                                // inv_rms_grad
 
-    uint32_t v2Elements = 1024 * 128 * coreNum * 2 + // x_rs_grad_mm
-                          1024 * 128 * coreNum * 2 + // x_rs
-                          2 * 1024 * 1024;
-    uint64_t totalElements = ((v1Elements + 32 - 1) / 32 * 32) + v2Elements;
+    uint32_t v2Elements = XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs_grad_mm
+                          XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs
+                          EXTRA_BUFFER_SIZE;
+    uint64_t totalElements = ((v1Elements + WORKSPACE_ALIGN_SIZE - 1) / WORKSPACE_ALIGN_SIZE * WORKSPACE_ALIGN_SIZE) + v2Elements;
     return totalElements * elementSize;
 }
 
-ge::graphStatus MhcPreBackwardBaseTiling::TilingProcess()
+ge::graphStatus MhcPreBackwardTiling::TilingProcess()
 {
     // 计算workspace大小（float32，每个元素4字节）
     size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, matN_, blockDim_, sizeof(float));
 
-    size_t systemWorkspaceSize = 40 * 1024 * 1024; // 10M
+    size_t systemWorkspaceSize = SYSTEM_WORKSPACE_SIZE;
 
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -243,8 +265,8 @@ ge::graphStatus MhcPreBackwardBaseTiling::TilingProcess()
                   false);
     mm0_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     mm0_.SetBias(false);
-    mm0_.SetShape(1024, 128, N_ * N_ + 2 * N_);                // [sM(=BSBlockSize), sN(=NDBlockSize), sK(=N*N + 2*N)]
-    mm0_.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_); // 原始[M(=BS), N(=nD), K(=N*N + 2*N)]
+    mm0_.SetShape(C0_SET_SHAPE_M, C0_SET_SHAPE_N, N_ * N_ + 2 * N_);                // [sM(=BSBlockSize), sN(=NDBlockSize), sK(=N*N + 2*N)]
+    mm0_.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_);                     // 原始[M(=BS), N(=nD), K(=N*N + 2*N)]
     mm0_.SetBufferSpace(-1, -1, -1);
     if (mm0_.GetTiling(tilingData_.matmulTilingC0) == -1) {
         OP_LOGE(context_->GetNodeName(), "ProcessC0 Get Tiling Failed!, m = %lu, n = %lu, k = %lu", totalLength_,
@@ -258,8 +280,8 @@ ge::graphStatus MhcPreBackwardBaseTiling::TilingProcess()
                   false);
     mm1_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     mm1_.SetBias(false);
-    mm1_.SetShape(N_ * N_ + 2 * N_, 128, 1024);                // [sM(=N*N + 2*N), sN(=NDBlockSize), sK(=BSBlockSize)]
-    mm1_.SetOrgShape(N_ * N_ + 2 * N_, N_ * D_, totalLength_); // 原始[M(=N*N + 2*N), N(=nD), K(=BS)]
+    mm1_.SetShape(N_ * N_ + 2 * N_, C1_SET_SHAPE_M_BASE, C1_SET_SHAPE_K);                // [sM(=N*N + 2*N), sN(=NDBlockSize), sK(=BSBlockSize)]
+    mm1_.SetOrgShape(N_ * N_ + 2 * N_, N_ * D_, totalLength_);                         // 原始[M(=N*N + 2*N), N(=nD), K(=BS)]
     mm1_.SetBufferSpace(-1, -1, -1);
     if (mm1_.GetTiling(tilingData_.matmulTilingC1) == -1) {
         OP_LOGE(context_->GetNodeName(), "ProcessC1 Get Tiling Failed!, m = %lu, n = %lu, k = %lu", N_ * N_ + 2 * N_,
@@ -273,7 +295,7 @@ ge::graphStatus MhcPreBackwardBaseTiling::TilingProcess()
 }
 
 
-ge::graphStatus MhcPreBackwardBaseTiling::DoOpTiling()
+ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
 {
     auto inputHInGradDesc = context_->GetInputDesc(0);
     if (inputHInGradDesc == nullptr) {
@@ -296,7 +318,7 @@ ge::graphStatus MhcPreBackwardBaseTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void MhcPreBackwardBaseTiling::PrintTilingData()
+void MhcPreBackwardTiling::PrintTilingData()
 {
     OP_LOGD(context_->GetNodeName(), "blockDim: [%d]", tilingData_.get_coreNum());
     OP_LOGD(context_->GetNodeName(), "totalLength: [%d]", tilingData_.get_totalLength());
@@ -305,12 +327,12 @@ void MhcPreBackwardBaseTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "hcEps: [%d]", tilingData_.get_hcEps());
 }
 
-uint64_t MhcPreBackwardBaseTiling::GetTilingKey() const
+uint64_t MhcPreBackwardTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(MHC_PRE_BACKWARD_DEFAULT));
 }
 
-ge::graphStatus MhcPreBackwardBaseTiling::PostTiling()
+ge::graphStatus MhcPreBackwardTiling::PostTiling()
 {
     OP_CHECK_IF(
         tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
@@ -320,7 +342,7 @@ ge::graphStatus MhcPreBackwardBaseTiling::PostTiling()
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     context_->SetBlockDim(tilingData_.get_coreNum());
-    context_->SetScheduleMode(1);
+    context_->SetScheduleMode(SCHEDULE_MODE);
 
     size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
     OP_CHECK_IF(workspaces == nullptr, OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "workspaces is null"),
