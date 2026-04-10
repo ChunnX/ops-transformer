@@ -163,7 +163,6 @@ def combin_params(enabled_params, pytest_paramset=True):
         print("param_values", param_values)
         for combo in itertools.product(*param_values):
             param_combination_set.append(dict(zip(param_names, combo)))
-        print(param_combination_set)
     return param_combination_set
 
 
@@ -175,13 +174,13 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     layout_kv = param_combination["layout_kv"]
     q_type = param_combination["q_type"]
     kv_dtype = param_combination["kv_dtype"]
-    batch_size = param_combination["B"]
-    seq_q = param_combination["S1"]
-    seq_kv = param_combination["S2"]
-    head_num_q = param_combination["N1"]
-    head_num_kv = param_combination["N2"]
-    head_dim = param_combination["D"]
-    sparse_count = param_combination["K"]
+    B = param_combination["B"]
+    S1 = param_combination["S1"]
+    S2 = param_combination["S2"]
+    N1 = param_combination["N1"]
+    N2 = param_combination["N2"]
+    D = param_combination["D"]
+    K = param_combination["K"]
     scale_value = param_combination["scale_value"]
     key_quant_mode = param_combination["key_quant_mode"]
     value_quant_mode = param_combination["value_quant_mode"]
@@ -199,17 +198,17 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
     testcase_name = (
         f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_"
-        f"{batch_size}_{head_num_q}_{head_num_kv}_{seq_q}_{seq_kv}_{head_dim}_{sparse_count}_{testcase_number:06d}"
+        f"{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
     )
 
     if layout_kv == "PA_BSND" and block_num is None:
         # 未显式给出 block_num 时，按当前实际 kv 长度自动推导。
-        max_kv = max(actual_seq_kv) if actual_seq_kv else seq_kv
-        block_num = math.ceil(max_kv / block_size) * batch_size
+        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
+        block_num = math.ceil(max_kv / block_size) * B
 
     params = (
         testcase_name, layout_query, layout_kv, q_type, kv_dtype,
-        batch_size, seq_q, seq_kv, head_num_q, head_num_kv, head_dim, sparse_count,
+        B, S1, S2, N1, N2, D, K,
         scale_value, key_quant_mode, value_quant_mode, sparse_block_size,
         tile_size, rope_head_dim, sparse_mode, attention_mode, quant_scale_repo_mode,
         block_size, block_num, actual_seq_q, actual_seq_kv,
