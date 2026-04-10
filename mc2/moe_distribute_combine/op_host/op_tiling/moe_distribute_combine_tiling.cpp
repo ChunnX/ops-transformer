@@ -284,12 +284,13 @@ static uint64_t MoeDistributeCombineA2CalcTilingKey(gert::TilingContext *context
 static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingContext *context, const char *nodeName,
                                                           MoeDistributeCombineA2Info &info, bool isLayered)
 {
+    // 为避免兼容性问题，校验失败时不直接返回错误，而是输出警告日志
     auto groupEp = context->GetAttrs()->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     uint64_t hcclBuffSize = 0ULL;
     auto ret = mc2tiling::GetCclBufferSize(groupEp, &hcclBuffSize, nodeName);
     OP_LOGD(nodeName, "HCCL_BUFFSIZE = %lu Bytes (%lu MB).", hcclBuffSize, ops::CeilDiv(hcclBuffSize, MB_SIZE));
-    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Get Ep hcclBuffSize failed.", hcclBuffSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGW(nodeName, "Get Ep hcclBuffSize failed."),
+                    return ge::GRAPH_SUCCESS);
     uint32_t epWorldSize = info.epWorldSize;
     uint32_t localMoeExpertNum = info.moeExpertNum / epWorldSize;
     uint64_t maxBs = static_cast<uint64_t>(info.globalBs) / epWorldSize;
@@ -304,13 +305,12 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
         const uint64_t maxRecvTokenNum = maxBs * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM);
         minHcclBuffSize = maxRecvTokenNum * perTokenSize + flagBuffSize;
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE ((moeExpertNum + epWorldSize / 4) * maxBs "
                     "* (h * 2 + 16 * ((k + 7) / 8 * 8)) / 1MB + 6MB) = %luMB, actual HCCL_BUFFSIZE = %luMB, "
                     "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u.",
                     ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), info.moeExpertNum,
                     maxBs, info.h, info.k);
-            return ge::GRAPH_FAILED;
         }
     } else {
         constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
@@ -318,13 +318,12 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
         const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);
         minHcclBuffSize = BUFFER_NUM * (maxRecvTokenNum * perTokenSize + extraBuffSize);
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE (%lu * (maxBs * epWorldSize * "
                     "min(localMoeExpertNum, k) * h * 2 / 1MB + 2MB)) = %luMB, actual HCCL_BUFFSIZE = %luMB, maxBs = "
                     "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u.",
                     BUFFER_NUM, ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), maxBs,
                     epWorldSize, localMoeExpertNum, info.k, info.h);
-            return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
