@@ -17,11 +17,20 @@
 
 - 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
 - 计算公式：
-$$
-rsOut = ReduceScatterV(expandX)\\
-ataOut = AllToAllV(rsOut)\\
-xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-$$
+    - 不存在TP域通信时：
+
+    $$
+    ataOut = AllToAllV(expandX)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
+
+    - 存在TP域通信时：
+
+    $$
+    rsOut = ReduceScatterV(expandX)\\
+    ataOut = AllToAllV(rsOut)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
 
 > 注意：该接口必须与`aclnnMoeDistributeDispatchV3`配套使用，相当于按`aclnnMoeDistributeDispatchV3`接口收集数据的路径原路返还。
 
@@ -778,6 +787,8 @@ aclnnStatus aclnnMoeDistributeCombineV3(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"

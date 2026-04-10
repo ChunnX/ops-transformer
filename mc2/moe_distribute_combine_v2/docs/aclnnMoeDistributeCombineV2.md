@@ -17,12 +17,20 @@
 
 - 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
 - 计算公式：
+    - 不存在TP域通信时：
 
-$$
-rsOut = ReduceScatterV(expandX)\\
-ataOut = AllToAllV(rsOut)\\
-xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-$$
+    $$
+    ataOut = AllToAllV(expandX)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
+
+    - 存在TP域通信时：
+
+    $$
+    rsOut = ReduceScatterV(expandX)\\
+    ataOut = AllToAllV(rsOut)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
 
 >注意该接口必须与`aclnnMoeDistributeDispatchV2`配套使用，相当于按`MoeDistributeDispatchV2`算子收集数据的路径原路返还。
 

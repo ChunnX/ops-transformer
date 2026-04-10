@@ -22,12 +22,20 @@
     新增采集通信耗时功能，记录每张卡的通信时间，通过传入`performanceInfoOptional`参数使能该特性。该功能推荐结合[DeepXTrace](https://github.com/antgroup/DeepXTrace)工具使用。单次算子调用各卡通信耗时会累加到该Tensor上，用户使用前按需清零。
 
 - 计算公式：
+    - 不存在TP域通信时：
 
-$$
-rsOut = ReduceScatterV(expandX)\\
-ataOut = AllToAllV(rsOut)\\
-xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-$$
+    $$
+    ataOut = AllToAllV(expandX)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
+
+    - 存在TP域通信时：
+
+    $$
+    rsOut = ReduceScatterV(expandX)\\
+    ataOut = AllToAllV(rsOut)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
 
 > 注意：该接口必须与`aclnnMoeDistributeDispatchV4`配套使用，相当于按`aclnnMoeDistributeDispatchV4`接口收集数据的路径原路返还。
 
