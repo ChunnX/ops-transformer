@@ -1,0 +1,13 @@
+case_id;shape;axis;dtype;reduction;idx_size
+0;[32,64];-1;float32;none;16
+1;[64,128];-1;float32;none;32
+2;[32,64];-1;float16;none;16
+3;[128,256];-1;float16;none;64
+4;[32,64];-1;float32;add;16
+5;[64,128];-1;float16;add;32
+6;[32,64];-1;int32;none;16
+7;[64,128];-1;bfloat16;none;32
+8;[32,64];0;float32;none;16
+9;[64,128];0;float16;none;32
+10;[32,64,128];1;float32;none;16
+11;[32,64];-1;bool;none;16
