@@ -107,8 +107,6 @@ private:
     uint64_t alignN_;
     uint64_t vlForFloatNumber_;
     uint32_t repeatTimesLine_;
-    uint16_t yCrossPingPongID_ = 0;
-    uint16_t logitCrossPingPongID_ = 0;
 };
 
 GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -227,32 +225,26 @@ BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARA
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint16_t remainRepeatTimesLogit = (singleMInVec % MAX_OUTPUT_M_UB != 0)
                                     ? singleMInVec % MAX_OUTPUT_M_UB : MAX_OUTPUT_M_UB;
-    auto logitUb = logitCrossPingPongID_ == 0 ? logitUbPing_ : logitUbPong_;
+    // Keep a single input/output buffer here to isolate whether ping-pong scheduling causes the MTE OOB.
+    auto logitUb = logitUbPing_;
     CopyInLogit(singleMInVec, logitOffset, logitUb);
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitCrossPingPongID_ );
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitCrossPingPongID_ );
-    logitCrossPingPongID_  = (logitCrossPingPongID_ + 1) & 1;
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
     uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UB);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
     for (int32_t i = 0;  i < loopNumY;  i++)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yCrossPingPongID_);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UB;
-        __ubuf__ DataTypeOut* outUbAddr =
-            yCrossPingPongID_ == 0 ? (__ubuf__ DataTypeOut*)outUbPing_.GetPhyAddr() : (__ubuf__ DataTypeOut*)outUbPong_.GetPhyAddr();
+        __ubuf__ DataTypeOut* outUbAddr = (__ubuf__ DataTypeOut*)outUbPing_.GetPhyAddr();
         VFDoLogitMuls(i * MAX_OUTPUT_M_UB * alignN_, i * MAX_OUTPUT_M_UB, repeatTimesLine_, repeatTimesRe, outUbAddr, logitUb);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yCrossPingPongID_ );
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yCrossPingPongID_);
-        auto yLocal = yCrossPingPongID_ == 0 ? outUbPing_ : outUbPong_;
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+        auto yLocal = outUbPing_;
         VectorAtomicProcess(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UB, yOffset, yLocal);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yCrossPingPongID_);
-        yCrossPingPongID_= (yCrossPingPongID_+ 1) & 1;
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     }
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitCrossPingPongID_);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitCrossPingPongID_);
     return;
 }
 } // namespace Block
