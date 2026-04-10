@@ -267,7 +267,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>UINT64、FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a>。</td>
+        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -284,7 +284,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a>。</td>
+        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -302,7 +302,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>UINT64、FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a>。</td>
+        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -319,7 +319,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32、BFLOAT16</td>
         <td>ND</td>
-        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a></td>
+        <td>见<a href="#后量化参数组postquantchecker">后量化参数组中的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
