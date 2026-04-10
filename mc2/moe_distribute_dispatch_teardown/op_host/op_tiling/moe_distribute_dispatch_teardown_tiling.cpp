@@ -15,8 +15,7 @@
 
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "arch35/moe_distribute_dispatch_teardown_tiling_arch35.h"
-#include "arch32/moe_distribute_dispatch_teardown_tiling_arch32.h"
+#include "mc2_log.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;
@@ -35,8 +34,6 @@ ge::graphStatus TilingParseForMoeDistributeDispatchTeardown(gert::TilingParseCon
 }
 
 struct MoeDistributeDispatchTeardownCompileInfo {};
-
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatchTeardown, MoeDistributeDispatchTeardownTilingA5, 0);
 IMPL_OP_OPTILING(MoeDistributeDispatchTeardown)
     .Tiling(MoeDistributeDispatchTeardownTilingFunc)
     .TilingParse<MoeDistributeDispatchTeardownCompileInfo>(TilingParseForMoeDistributeDispatchTeardown);

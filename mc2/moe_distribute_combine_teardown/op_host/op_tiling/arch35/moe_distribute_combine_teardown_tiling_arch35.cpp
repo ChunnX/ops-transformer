@@ -15,6 +15,8 @@
 
 #include "mc2_log.h"
 #include "moe_distribute_combine_teardown_tiling_arch35.h"
+#include "register/op_impl_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 namespace {
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
@@ -59,6 +61,8 @@ struct Mc2CcTilingInner {
 } // namespace
 
 namespace MC2Tiling {
+
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineTeardown, MoeDistributeCombineTeardownTilingA5, 0);
 bool MoeDistributeCombineTeardownTilingA5::IsCapable()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());

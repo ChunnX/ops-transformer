@@ -79,6 +79,8 @@ protected:
 
     ge::graphStatus CheckInput() override;
 
+    CutResult GetTilingResult() override;
+
 private:
     ge::graphStatus CheckAxisSize();
     Mc2Tiling::WeightQuantMatmulAllReduceTilingData weightQuantMatmulAllReduceTilingDataSelf_{};
