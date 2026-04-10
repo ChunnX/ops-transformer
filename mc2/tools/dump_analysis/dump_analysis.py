@@ -727,69 +727,73 @@ for filename in os.listdir(os.path.join(floder_path)):
         # 输出
         logging.info("5. 数据归档")
         if (dis_core_num != 0):
-            file_status_list_eixsts = os.path.exists("win_status_list.csv")
-            file_eixsts = os.path.exists("win_data.csv")
-            file_list_eixsts = os.path.exists("win_data_list.csv")
+            file_status_list_exists = os.path.exists("win_status_list.csv")
+            file_exists = os.path.exists("win_data.csv")
+            file_list_exists = os.path.exists("win_data_list.csv")
             dis_core_info = pd.DataFrame([[dis_core_num, dis_moe_num, dis_globalbs, dis_rankid, dis_hccl_rankid, 
                         dis_epworldsize, dis_hccl_epworldsize, dis_bs, k, dis_0_1]],
                                         columns=['使用核数', 'moe专家数', 'globals', 'rankid', 'hccl_rankid', 
                                             'ep_worldsize', 'hccl_ep_worldsize', 'bs', 'k', '0/1标识'], 
                                         index=[f"d{card_num}_dispatch"])
 
-            dis_core_info.to_csv("win_data.csv", index=True, mode='a', header=not file_eixsts, encoding="gbk")
+            dis_core_info.to_csv("win_data.csv", index=True, mode='a', header=not file_exists, encoding="gbk")
             dis_status_list_info = pd.DataFrame([dis_status_list], index=[f"d{card_num}_dispatch各核执行位置数据"])
-            dis_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            dis_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_exists,
+                                        encoding="gbk")
             dis_0_1_list_info = pd.DataFrame([dis_0_1_list], index=[f"d{card_num}_dispatch各核0/1标识区数据"])
-            dis_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            dis_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_exists,
+                                        encoding="gbk")
 
             if dis_0_1 == 0:
                 int32_dis_0_status_info = pd.DataFrame([int32_dis_0_status],
                                                         index=[f"d{card_num}_dispatch 0区状态区数据"])
                 int32_dis_0_status_info.to_csv("win_status_list.csv", index=True, mode='a',
-                                                header=not file_status_list_eixsts, encoding="gbk")
+                                                header=not file_status_list_exists, encoding="gbk")
             else:
                 int32_dis_1_status_info = pd.DataFrame([int32_dis_1_status],
                                                         index=[f"d{card_num}_dispatch 1区状态区数据"])
                 int32_dis_1_status_info.to_csv("win_status_list.csv", index=True, mode='a',
-                                                header=not file_status_list_eixsts, encoding="gbk")
+                                                header=not file_status_list_exists, encoding="gbk")
 
         if (com_core_num != 0):
-            file_status_list_eixsts = os.path.exists("win_status_list.csv")
-            file_eixsts = os.path.exists("win_data.csv")
-            file_list_eixsts = os.path.exists("win_data_list.csv")
+            file_status_list_exists = os.path.exists("win_status_list.csv")
+            file_exists = os.path.exists("win_data.csv")
+            file_list_exists = os.path.exists("win_data_list.csv")
             com_core_info = pd.DataFrame([[com_core_num, com_moe_num, com_globalbs, com_rankid, com_hccl_rankid, 
                         com_epworldsize, com_hccl_epworldsize, com_bs, k, com_0_1]],
                                         columns=['使用核数', 'moe专家数', 'globals', 'rankid', 'hccl_rankid', 
                                             'ep_worldsize', 'hccl_ep_worldsize', 'bs', 'k', '0/1标识'], 
                                         index=[f"d{card_num}_combine"])
-            com_core_info.to_csv("win_data.csv", index=True, mode='a', header=not file_eixsts, encoding="gbk")
+            com_core_info.to_csv("win_data.csv", index=True, mode='a', header=not file_exists, encoding="gbk")
 
             com_status_list_info = pd.DataFrame([com_status_list], index=[f"d{card_num}_combine各核执行位置数据"])
-            com_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            com_status_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_exists,
+                                        encoding="gbk")
             com_0_1_list_info = pd.DataFrame([com_0_1_list], index=[f"d{card_num}_combine各核0/1标识区数据"])
-            com_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=False, encoding="gbk")
+            com_0_1_list_info.to_csv("win_data_list.csv", index=True, mode='a', header=not file_list_exists,
+                                        encoding="gbk")
 
             if com_0_1 == 0:
                 int32_com_0_status_info = pd.DataFrame([int32_com_0_status],
                                                         index=[f"d{card_num}_combine 0区状态区数据"])
                 int32_com_0_status_info.to_csv("win_status_list.csv", index=True, mode='a',
-                                                header=not file_status_list_eixsts, encoding="gbk")
+                                                header=not file_status_list_exists, encoding="gbk")
             else:
                 int32_com_1_status_info = pd.DataFrame([int32_com_1_status],
                                                         index=[f"d{card_num}_combine 1区状态区数据"])
                 int32_com_1_status_info.to_csv("win_status_list.csv", index=True, mode='a',
-                                                header=not file_status_list_eixsts, encoding="gbk")
+                                                header=not file_status_list_exists, encoding="gbk")
 
         logging.info("5. 该卡的dispatch&combine的使用核数、moe专家数、globals、rankid、hccl_rankid、ep_worldsize、"
             "hccl_ep_worldsize、bs、k、0/1标识区数据已归档至win_data.csv")
         logging.info("5. 该卡的中各核的dispatch&combine的执行位置、0/1标识区数据已归档至win_data_list.csv")
         logging.info("5. 该卡的中所使用的dispatch&combine状态区数据已归档至win_status_list.csv")
-        file_error_eixsts = os.path.exists("win_analysis_error.csv")
+        file_error_exists = os.path.exists("win_analysis_error.csv")
         error_rows = [[key, value] for key, value in error_dict.items()]
         df = pd.DataFrame(error_rows, columns=["card_num", "error"])
-        df.to_csv("win_analysis_error.csv", index=True, mode='a', header=not file_error_eixsts, encoding="gbk")
+        df.to_csv("win_analysis_error.csv", index=True, mode='a', header=not file_error_exists, encoding="gbk")
         logging.info("5. 分析出的错误详细信息归档至win_analysis_error.csv\n")
-        file_all_card_dat_eixsts = os.path.exists("win_all_card_data.csv")
+        file_all_card_dat_exists = os.path.exists("win_all_card_data.csv")
 
         all_card_run_num_info = pd.DataFrame([[max_dis_run_num, max_com_run_num, dis_moe_num, com_moe_num, dis_globalbs,
                                              com_globalbs]],
@@ -797,16 +801,16 @@ for filename in os.listdir(os.path.join(floder_path)):
                                     'dispatch_globalbs', 'combine_globalbs'], 
                             index=[f"d{card_num}"])
         all_card_run_num_info.to_csv("win_all_card_data.csv", index=True, mode='a',
-                                    header=not file_all_card_dat_eixsts, encoding="gbk")
+                                    header=not file_all_card_dat_exists, encoding="gbk")
 
-        file_all_card_expandx_eixsts = os.path.exists("win_all_card_expandidx.csv")
+        file_all_card_expandx_exists = os.path.exists("win_all_card_expandidx.csv")
         all_card_expandx_info = pd.DataFrame([[expertids.tolist(), dump_expandidx, dump_epsendcnt,
                                             local_expert_num, dis_com]],
                             columns=['expertids', 'dump数据中读取的expandidx', 'dump数据中读取的epsendcnt',
                                     '本卡专家数', '挂在哪个算子上'], 
                             index=[card_num])
         all_card_expandx_info.to_csv("win_all_card_expandidx.csv", index=True, mode='a',
-                                    header=not file_all_card_expandx_eixsts, encoding="gbk")
+                                    header=not file_all_card_expandx_exists, encoding="gbk")
         # 当分析到最后一张卡时，进行多卡的dispatch、combine数据对比
         if card_num == (all_card_num - 1):
             logging.info("6. 开始多卡的dispatch、combine数据对比")
