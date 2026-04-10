@@ -38,7 +38,7 @@ protected:
 // ==================== 正常测试用例（成功路径） ====================
 
 // TND格式 BF16测试
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_tnd_bf16_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_bf16_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -68,7 +68,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_tnd_bf16_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -78,7 +78,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_tnd_bf16_0)
 }
 
 // BSND格式 FP16测试
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bsnd_fp16_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_fp16_0)
 {
     int64_t b = 2;
     int64_t s = 2;
@@ -109,7 +109,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bsnd_fp16_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -119,7 +119,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bsnd_fp16_0)
 }
 
 // TND格式 无gamma测试
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_tnd_no_gamma_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_no_gamma_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -148,7 +148,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_tnd_no_gamma_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -158,7 +158,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_tnd_no_gamma_0)
 }
 
 // BSND格式 无gamma测试
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bsnd_no_gamma_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_no_gamma_0)
 {
     int64_t b = 2;
     int64_t s = 2;
@@ -188,7 +188,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bsnd_no_gamma_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -200,7 +200,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bsnd_no_gamma_0)
 // ==================== 空指针检查用例（输入参数10个） ====================
 
 // 异常用例: x为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -229,7 +229,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_nullptr_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT((const aclTensor*)nullptr, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT((const aclTensor*)nullptr, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -239,7 +239,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_nullptr_0)
 }
 
 // 异常用例: phi为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -268,7 +268,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_nullptr_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, (const aclTensor*)nullptr, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, (const aclTensor*)nullptr, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -278,7 +278,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_nullptr_0)
 }
 
 // 异常用例: alpha为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -307,7 +307,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_nullptr_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, (const aclTensor*)nullptr, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, (const aclTensor*)nullptr, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -317,7 +317,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_nullptr_0)
 }
 
 // 异常用例: h_in_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -346,7 +346,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_nullpt
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, (const aclTensor*)nullptr, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, (const aclTensor*)nullptr, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -356,7 +356,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_nullpt
 }
 
 // 异常用例: h_post_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -385,7 +385,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_null
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, (const aclTensor*)nullptr, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, (const aclTensor*)nullptr, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -395,7 +395,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_null
 }
 
 // 异常用例: h_res_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -424,7 +424,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_nullp
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, (const aclTensor*)nullptr, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, (const aclTensor*)nullptr, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -434,7 +434,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_nullp
 }
 
 // 异常用例: inv_rms为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_inv_rms_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -463,7 +463,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_inv_rms_nullptr_
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, (const aclTensor*)nullptr, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, (const aclTensor*)nullptr, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -473,7 +473,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_inv_rms_nullptr_
 }
 
 // 异常用例: mm_res为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -502,7 +502,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_nullptr_0
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, (const aclTensor*)nullptr, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, (const aclTensor*)nullptr, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -512,7 +512,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_nullptr_0
 }
 
 // 异常用例: h_pre为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -541,7 +541,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_nullptr_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, (const aclTensor*)nullptr, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, (const aclTensor*)nullptr, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -551,7 +551,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_nullptr_0)
 }
 
 // 异常用例: h_post为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -580,7 +580,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_nullptr_0
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, (const aclTensor*)nullptr, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, (const aclTensor*)nullptr, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -592,7 +592,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_nullptr_0
 // ==================== 空指针检查用例（输出参数5个） ====================
 
 // 异常用例: x_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -621,7 +621,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_nullptr_0
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT((const aclTensor*)nullptr, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -631,7 +631,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_nullptr_0
 }
 
 // 异常用例: hc_weight_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -660,7 +660,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_n
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, (const aclTensor*)nullptr, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -670,7 +670,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_n
 }
 
 // 异常用例: alpha_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -699,7 +699,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_nullp
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, (const aclTensor*)nullptr, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -709,7 +709,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_nullp
 }
 
 // 异常用例: bias_post_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -738,7 +738,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_n
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, (const aclTensor*)nullptr, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -748,7 +748,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_n
 }
 
 // 异常用例: gamma_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_nullptr_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -777,7 +777,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_nullp
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
@@ -789,7 +789,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_nullp
 // ==================== 空tensor检查用例（输入参数10个） ====================
 
 // 异常用例: x为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -819,7 +819,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -829,7 +829,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_empty_0)
 }
 
 // 异常用例: phi为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -859,7 +859,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -869,7 +869,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_empty_0)
 }
 
 // 异常用例: alpha为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -899,7 +899,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -909,7 +909,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_empty_0)
 }
 
 // 异常用例: h_in_grad为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -939,7 +939,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_empty_
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -949,7 +949,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_empty_
 }
 
 // 异常用例: h_post_grad为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -979,7 +979,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_empt
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -989,7 +989,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_empt
 }
 
 // 异常用例: h_res_grad为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1019,7 +1019,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_empty
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1029,7 +1029,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_empty
 }
 
 // 异常用例: inv_rms为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_inv_rms_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1059,7 +1059,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_inv_rms_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1069,7 +1069,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_inv_rms_empty_0)
 }
 
 // 异常用例: mm_res为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1099,7 +1099,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1109,7 +1109,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_empty_0)
 }
 
 // 异常用例: h_pre为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1139,7 +1139,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1149,7 +1149,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_empty_0)
 }
 
 // 异常用例: h_post为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_empty_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1179,7 +1179,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_empty_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1191,7 +1191,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_empty_0)
 // ==================== 维度检查用例 ====================
 
 // 异常用例: x维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1221,7 +1221,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_dim_invalid_0)
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1231,7 +1231,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_dim_invalid_0)
 }
 
 // 异常用例: x_grad维度错误-TND格式下
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dim_invalid_tnd_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_tnd_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1261,7 +1261,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dim_inval
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1271,7 +1271,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dim_inval
 }
 
 // 异常用例: x_grad维度错误-BSND格式下
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dim_invalid_bsnd_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_bsnd_0)
 {
     int64_t b = 2;
     int64_t s = 2;
@@ -1302,7 +1302,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dim_inval
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1314,7 +1314,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dim_inval
 // ==================== Dtype检查用例 ====================
 
 // 异常用例: x dtype错误（FP32不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1344,7 +1344,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_dtype_invalid_
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1354,7 +1354,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_dtype_invalid_
 }
 
 // 异常用例: x_grad dtype不匹配
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dtype_mismatch_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dtype_mismatch_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1384,7 +1384,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dtype_mis
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1396,7 +1396,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_grad_dtype_mis
 // ==================== Format检查用例 ====================
 
 // 异常用例: x格式错误（使用FRACTAL_NZ格式）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_format_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_format_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1426,7 +1426,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_format_invalid
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1438,7 +1438,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_x_format_invalid
 // ==================== Shape检查用例 ====================
 
 // 异常用例: alpha形状错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_shape_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_shape_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1468,7 +1468,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_shape_inva
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1478,7 +1478,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_shape_inva
 }
 
 // 异常用例: hc_weight_grad形状错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_shape_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_shape_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1508,7 +1508,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_s
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1520,7 +1520,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_s
 // ==================== Dtype检查用例（补充） ====================
 
 // 异常用例: phi dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1550,7 +1550,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_dtype_invali
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1560,7 +1560,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_dtype_invali
 }
 
 // 异常用例: h_in_grad dtype错误（FP32不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1590,7 +1590,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_dtype_
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1600,7 +1600,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_in_grad_dtype_
 }
 
 // 异常用例: hc_weight_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1630,7 +1630,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_d
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1640,7 +1640,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_d
 }
 
 // 异常用例: alpha_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1670,7 +1670,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_dtype
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1680,7 +1680,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_dtype
 }
 
 // 异常用例: bias_post_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1710,7 +1710,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_d
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1720,7 +1720,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_d
 }
 
 // 异常用例: gamma_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_dtype_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1750,7 +1750,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_dtype
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1762,7 +1762,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_dtype
 // ==================== 维度检查用例（补充） ====================
 
 // 异常用例: phi维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1790,7 +1790,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_dim_invalid_
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1800,7 +1800,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_phi_dim_invalid_
 }
 
 // 异常用例: gamma维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1818,7 +1818,50 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_dim_invali
     auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+auto gamma = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    double hcEps = 1e-6;
+
+    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gamma_grad = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+
+    auto ut = OP_API_UT(
+        aclnnMhcPreBackward,
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
+        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
+}
+
+// ==================== 可选参数gradXPost测试用例 ====================
+
+// TND格式 BF16测试 - 有gradXPost
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_bf16_with_gradxpost_0)
+{
+    int64_t n = 4;
+    int64_t d = 8;
+    int64_t t = 10;
+    int64_t nD = n * d;
+    int64_t n2_plus_2n = n * n + 2 * n;
+
+    auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
+    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto grad_x_post = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
@@ -1830,17 +1873,140 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_dim_invali
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, grad_x_post, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+}
+
+// BSND格式 FP16测试 - 有gradXPost
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_fp16_with_gradxpost_0)
+{
+    int64_t b = 2;
+    int64_t s = 2;
+    int64_t n = 4;
+    int64_t d = 8;
+    int64_t nD = n * d;
+    int64_t n2_plus_2n = n * n + 2 * n;
+
+    auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
+    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto grad_x_post = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    double hcEps = 1e-6;
+
+    auto x_grad = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+
+    auto ut = OP_API_UT(
+        aclnnMhcPreBackward,
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, grad_x_post, hcEps),
+        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+}
+
+// TND格式 无gamma - 有gradXPost
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_no_gamma_with_gradxpost_0)
+{
+    int64_t n = 4;
+    int64_t d = 8;
+    int64_t t = 10;
+    int64_t nD = n * d;
+    int64_t n2_plus_2n = n * n + 2 * n;
+
+    auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
+    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto grad_x_post = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    double hcEps = 1e-6;
+
+    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+
+    auto ut = OP_API_UT(
+        aclnnMhcPreBackward,
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, grad_x_post, hcEps),
+        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+}
+
+// BSND格式 无gamma - 有gradXPost
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_no_gamma_with_gradxpost_0)
+{
+    int64_t b = 2;
+    int64_t s = 2;
+    int64_t n = 4;
+    int64_t d = 8;
+    int64_t nD = n * d;
+    int64_t n2_plus_2n = n * n + 2 * n;
+
+    auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
+    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto grad_x_post = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    double hcEps = 1e-6;
+
+    auto x_grad = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+
+    auto ut = OP_API_UT(
+        aclnnMhcPreBackward,
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, grad_x_post, hcEps),
+        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
 // 异常用例: h_post_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1870,7 +2036,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_dim_
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1880,7 +2046,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_grad_dim_
 }
 
 // 异常用例: h_res_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1910,7 +2076,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_dim_i
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1920,7 +2086,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_res_grad_dim_i
 }
 
 // 异常用例: mm_res维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1950,7 +2116,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_dim_inval
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -1960,7 +2126,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_mm_res_dim_inval
 }
 
 // 异常用例: h_pre维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1990,7 +2156,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_dim_invali
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -2000,7 +2166,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_pre_dim_invali
 }
 
 // 异常用例: h_post维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2030,7 +2196,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_dim_inval
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -2040,7 +2206,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_h_post_dim_inval
 }
 
 // 异常用例: hc_weight_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2070,7 +2236,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_d
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -2080,7 +2246,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_hc_weight_grad_d
 }
 
 // 异常用例: alpha_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2110,7 +2276,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_dim_i
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -2120,7 +2286,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_alpha_grad_dim_i
 }
 
 // 异常用例: bias_post_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2150,7 +2316,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_d
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
@@ -2160,7 +2326,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_bias_post_grad_d
 }
 
 // 异常用例: gamma_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_dim_invalid_0)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2190,7 +2356,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, Ascend910B_mhc_pre_backward_gamma_grad_dim_i
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, hcEps),
+        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
         OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
 
     uint64_t workspaceSize = 0;
