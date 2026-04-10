@@ -42,8 +42,8 @@ public:
     virtual uint32_t GetKvSeqSize() const = 0;
     virtual uint32_t GetKvSeqSize(uint32_t batchIdx) const = 0;
     virtual SparseMode GetSparseMode() const = 0;
-    virtual uint32_t GetPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const = 0;
-    virtual uint32_t GetNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const = 0;
+    virtual int64_t GetPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const = 0;
+    virtual int64_t GetNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const = 0;
     virtual bool GetIsS1G() const = 0;
     virtual Layout GetQueryLayout() const = 0;
     virtual Layout GetKvLayout() const = 0;
