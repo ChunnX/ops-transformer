@@ -1,0 +1,311 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file test_masked_causal_conv1d_tiling.cpp
+ * \brief Unit tests for MaskedCausalConv1d tiling logic
+ */
+
+#include <iostream>
+#include <gtest/gtest.h>
+#include "../../../op_host/masked_causal_conv1d_tiling_arch35.h"
+#include "tiling_context_faker.h"
+#include "tiling_case_executor.h"
+
+
+using namespace std;
+
+class MaskedCausalConv1dTiling : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "MaskedCausalConv1dTiling SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "MaskedCausalConv1dTiling TearDown" << std::endl;
+    }
+};
+
+// Test 1: BF16 baseline, S=2048 B=4 H=768
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_s2048_b4_h768)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 2048, B = 4, H = 768, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
+
+// Test 2: FP16 dtype → GetTilingKey returns TILING_KEY_FP16 (10001)
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fp16_s2048_b4_h768)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 2048, B = 4, H = 768, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10001, "", {});
+}
+
+// Test 3: Mask absent (empty shape) → isMaskNone_ = 1
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_mask_none_s1024_b2_h128)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BOOL, ge::FORMAT_ND},  // absent optional mask
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
+
+// Test 4: H not divisible by H_REG=64 → CheckInputParams GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_h_not_aligned)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 100, W = 3;  // H=100 not multiple of 64
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 5: Weight K != CONV_WINDOW_SIZE=3 → CheckInputParams GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_wrong_weight_k)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 4;  // W=4 != 3
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 6: Unsupported dtype FP32 → GetInputDtypes GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_invalid_dtype_fp32)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 7: Minimal valid shape S=64 B=1 H=64 (exactly H_REG)
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_min_shape_s64_b1_h64)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 64, B = 1, H = 64, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
+
+// Test 8: Situation A + hUb expansion
+// H=8192 → hCoreCnt_=64, hBlockFactor_=128; small BS fits at hUb=64,
+// then the k-loop expands ubFactorH_ to 128.
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_a_hexpand_s32_b1_h8192)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 32, B = 1, H = 8192, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
+
+// Test 9: Situation B – reduce B
+// coreNum=1 → bBlockFactor_=3, sBlockFactor_=64; ubSize=65536 (net 57344):
+//   calcUsedUb(64,3,64)=68608 > 57344 → Situation B
+//   bUb=2: calcUsedUb(64,2,64)=50176 ≤ 57344 → reduce-B branch taken
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_reduce_b)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 64, B = 3, H = 64, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo,
+        "Ascend910B", /*coreNum=*/1, /*ubSize=*/65536);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
+
+// Test 10: Situation B – cut S
+// coreNum=1 → bBlockFactor_=1, sBlockFactor_=256; ubSize=65536 (net 57344):
+//   calcUsedUb(64,1,256)=133376 > 57344 → Situation B, bUb already 1
+//   → findSUbMax(64,1) → ubFactorS_ < 256 (cut S path)
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_cut_s)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 256, B = 1, H = 64, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo,
+        "Ascend910B", /*coreNum=*/1, /*ubSize=*/65536);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
+
+// Test 11: Irregular core split – non-zero sMainCnt_ and tailBlockLoop* params
+// S=101, B=6, H=128, coreNum=64 → sCoreCnt_=5, sBlockFactor_=21, sBlockTailFactor_=20
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_irregular_split_s101_b6_h128)
+{
+    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 101, B = 6, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+}
