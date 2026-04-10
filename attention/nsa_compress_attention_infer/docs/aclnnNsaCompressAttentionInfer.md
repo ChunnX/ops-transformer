@@ -287,7 +287,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>输入</td>
       <td>输入query、key、value的数据排布格式。</td>
       <td>当前支持取值“TND”和“BSND”。</td>
-      <td>CHAR</td>
+      <td>STRING</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
