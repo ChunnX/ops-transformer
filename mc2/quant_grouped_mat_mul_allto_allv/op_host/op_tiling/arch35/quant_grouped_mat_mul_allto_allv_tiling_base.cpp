@@ -96,8 +96,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::CheckOpInputSingleParamsT
 // quant must support param
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::CheckOpInputSingleParamsTensorSupport()
 {
-    auto gmmXScaleTensorShape = context_->GetInputShape(GMM_X_SCALE_INDEX);
-    auto gmmWeightScaleTensorShape = context_->GetInputShape(GMM_WEIGHT_SCALE_INDEX);
+    auto gmmXScaleTensorShape = context_->GetOptionalInputShape(GMM_X_SCALE_INDEX);
+    auto gmmWeightScaleTensorShape = context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX);
     bool gmmXScaleTensorShapeNull = gmmXScaleTensorShape == nullptr;
     bool gmmWeightScaleTensorShapeNull = gmmWeightScaleTensorShape == nullptr;
     OP_TILING_CHECK(gmmXScaleTensorShapeNull || gmmWeightScaleTensorShapeNull,
