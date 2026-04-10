@@ -633,6 +633,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
     #include <iostream>
     #include <string>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
@@ -1028,12 +1030,9 @@ aclnnStatus aclnnMoeDistributeDispatch(
         }
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
-        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
-        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
 
         args.rankId = rankId;
-        args.epRankId = epRankId;
-        args.tpRankId = tpRankId;
+        args.epRankId = rank_id;
         args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
@@ -1150,7 +1149,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         else if (rank_table_file && first_rank_id) {
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
             EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 1;
+            TP_WORLD_SIZE = 0;
             DEV_NUM = EP_WORLD_SIZE;
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
             std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
