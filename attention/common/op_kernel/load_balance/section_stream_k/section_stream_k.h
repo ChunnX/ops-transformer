@@ -17,7 +17,7 @@
 #define SECTION_STREAM_K_H
 
 #include <vector>
-#include "base_info.h"
+#include "../base_info.h"
 #include "section_stream_k_def.h"
 #include "section_stream_k_impl.h"
 #include "../load_balance_common.h"

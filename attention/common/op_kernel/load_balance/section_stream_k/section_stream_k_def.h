@@ -17,7 +17,7 @@
 #define SECTION_STREAM_K_DEF_H
 
 #include <vector>
-#include "base_info.h"
+#include "../base_info.h"
 #include "../load_balance_common.h"
 
 namespace load_balance {
