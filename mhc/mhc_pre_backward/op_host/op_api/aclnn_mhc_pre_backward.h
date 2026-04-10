@@ -35,7 +35,7 @@ extern "C" {
  * @param [out] xGrad: 输出梯度，数据类型支持：BF16/FP16。
  * @param [out] hcWeightGrad: 输出梯度，数据类型支持：FP32。
  * @param [out] biasPostGrad: 输出梯度，数据类型支持：FP32。
- * @param [out] gamma_grad: 输出梯度，数据类型支持：FP32。
+ * @param [out] gammaGrad: 输出梯度，数据类型支持：FP32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
