@@ -117,16 +117,13 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
     return true;
 }
 
-bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuantMode) {
+bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuantMode)
+{
     std::unordered_map<int64_t, std::unordered_set<int64_t>> supportedKvQuantMode;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         supportedKvQuantMode = {
-            {0LL, {0LL}},
-            {1LL, {0LL, 2LL, 3LL}},
-            {2LL, {0LL, 1LL, 3LL}},
-            {3LL, {0LL, 1LL, 3LL}},
-            {4LL, {0LL, 1LL, 3LL}},
-            {5LL, {0LL, 1LL, 3LL}},
+            {0LL, {0LL}},           {1LL, {0LL, 2LL, 3LL}}, {2LL, {0LL, 1LL, 3LL}},
+            {3LL, {0LL, 1LL, 3LL}}, {4LL, {0LL, 1LL, 3LL}}, {5LL, {0LL, 1LL, 3LL}},
         };
     } else {
         supportedKvQuantMode = {
@@ -156,11 +153,11 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     return true;
 }
 
-bool CheckQueryQuantModeValidity(int64_t queryQuantMode) {
+bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
+{
     std::unordered_set<int64_t> supportedQueryQuantMode = {0LL, 1LL};
     if (supportedQueryQuantMode.find(queryQuantMode) == supportedQueryQuantMode.end()) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                "QueryQuantMode must be within {0, 1}, actually is %lld.", queryQuantMode);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "QueryQuantMode must be within {0, 1}, actually is %lld.", queryQuantMode);
         return false;
     }
     return true;
@@ -194,10 +191,10 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
     };
-    if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)){
+    if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)) {
         return ge::GRAPH_FAILED;
     };
-    if (!CheckQueryQuantModeValidity(queryQuantMode)){
+    if (!CheckQueryQuantModeValidity(queryQuantMode)) {
         return ge::GRAPH_FAILED;
     };
 
