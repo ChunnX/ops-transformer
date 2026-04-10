@@ -201,27 +201,110 @@ K-outer (优化):
 
 **规律**：中等 N（32-64）时加速最高（1.6-1.7×）。最优配置稳定在 M4×N8_bm256。
 
-### 3.3 量化场景 (He=7168, N=128, T=1024)
+### 3.3 量化场景分析 (He=7168, N=128, T=1024)
 
-| 量化模式 | Split-N 基线 (µs) | M-Split (µs) | 加速比 | 说明 |
-|---------|:----------------:|:------------:|:-----:|------|
-| BF16 | 793 | 522 | **1.52×** | 有效 |
-| INT8 (full) | 521 | — | **无收益** | 量化后 B 已减半，MTE2 不再是瓶颈 |
-| FP8 (MXFP8) | 442 | — | **无收益** | 同上 |
+#### 3.3.1 各量化模式的 Matmul 和 Vector 阶段
 
-**关键结论**：M-Split 对 **BF16** 场景有显著收益（1.2-2.0×）。对**量化场景**，权重 B 矩阵已减半，MTE2 不再是瓶颈，M-Split 的 baseM↑ 和 K-outer 优化点不再有效。量化场景应继续使用 Split-N + dequantOpt 流水。
+| 阶段 | BF16 | INT8 (full) | FP8 (MXFP8) |
+|------|:----:|:-----------:|:-----------:|
+| MM1_Cq (µs) | 26.84 | 21.47 | 16.10 |
+| MM2_CkvKr (µs) | 20.65 | 14.04 | 9.64 |
+| MM3_QcQr (µs) | 50.36 | 28.58 | 28.58 |
+| MM4_Qn (µs) | 1.31 | 0.98 | 0.98 |
+| **AIC 总计** | **99.16** | **65.08** | **55.31** |
+| RmsNormCq (µs) | 0.25 | 0.49 (INT32→BF16) | 0.49 |
+| **DequantQc (µs)** | — | **5.24** | **5.24** |
+| RopeQr (µs) | 1.32 | 1.32 | 1.32 |
+| **AIV 总计** | **2.40** | **8.56** | **8.56** |
 
-### 3.4 M-Split + K-Outer 联合预期 (BF16)
+> INT8/FP8 量化使 cube 时间减少 35-44%，但新增 DequantQc 阶段（5.24µs），AIV 总时间增加 3.6×。
+
+#### 3.3.2 M-Split 下的流水掩盖分析
+
+**BF16 M-Split (M4×N8, baseM=256, vec_cores=16)**:
+
+```
+AIC: |---MM1(169µs)---|---MM2(59µs)---|---MM3(258µs)---|MM4|
+AIV:                   |RmsNormCq(1µs)|               |RopeQr(5.7µs)|
+                        ↑ 被MM2掩盖       CkvKr被MM3掩盖  ↑ TAILING
+
+Vector tailing: RopeQr 5.7µs / 494µs = 1.2% ← 可忽略 ✓
+```
+
+**INT8/FP8 M-Split (M4×N8, baseM=256, vec_cores=16)**:
+
+M-Split 下 vec_cores 从 64 减少到 16，DequantQc 数据量随 M_per_core 增大：
+
+| Vector 阶段 | Split-N (64vc) | M-Split (16vc) | 增幅 |
+|-------------|:-----------:|:----------:|:----:|
+| RmsNormCq | 0.49 | 3.9 | 8× |
+| DequantQc | 5.24 | **41.9** | 8× |
+| RopeQr | 1.32 | **10.6** | 8× |
+
+```
+AIC: |---MM1(129µs)---|---MM2(42µs)---|---MM3(165µs)---|wait(53µs)|MM4|
+AIV:                   |RmsNormCq(4µs)|               |DequantQc(42µs)+RopeQr(11µs)|
+                        ↑ 被MM2掩盖       CkvKr被MM3掩盖  ↑ TAILING 53µs!
+
+Vector tailing: DequantQc+RopeQr = 53µs / 390µs = 13.4% ← 需要优化! ✗
+```
+
+**根因**：M-Split 将 vec_cores 从 64 降到 16（因为 n_groups=8，CV 1:2 → 每 m-group 仅 16 个 AIV），但 DequantQc 数据量随 M_per_core=256 线性增长。
+
+#### 3.3.3 解决方案：MM3-DequantQc 交错流水
+
+将 DequantQc 从"MM3 全部完成后串行处理"改为"**与 MM3 的 N-chunk 迭代交错执行**"：
+
+```
+串行流水 (当前设计):
+  AIC: |---MM3 (all 12 N-chunks, 165µs)---|wait 53µs|---MM4---|
+  AIV:                                     |Deq(42µs)+Rope(11µs)|
+  Total: 165 + 53 + 1.8 = 219.8µs
+
+交错流水 (优化设计):
+  AIC: |MM3_c0(14µs)|MM3_c1|...|MM3_c11|last_vec(4.4µs)|MM4|
+  AIV:               |Deq_c0(3.5)+Rope_c0(0.9)|
+                                |Deq_c1(3.5)+Rope_c1(0.9)|
+  
+  MM3/chunk(14µs) > Vec/chunk(4.4µs) → vector 被 cube 完全掩盖!
+  Tailing = 仅最后一个 chunk 的 vector = 4.4µs
+  Total: 165 + 4.4 + 1.8 = 171.2µs (节省 48.6µs, 22%)
+```
+
+**交错流水与 Ping-pong 反压结合**：使用 §4 的 ping-pong 反压机制，确保 SetFlag 不超过硬件限制（≤4 个 in-flight）。
+
+#### 3.3.4 各量化模式的完整收益
+
+| 量化模式 | Split-N 基线 (µs) | M-Split 串行 (µs) | M-Split 交错 (µs) | 串行加速 | 交错加速 |
+|---------|:----------------:|:----------------:|:----------------:|:------:|:------:|
+| BF16 | 793 | 494 | 494 (无需交错) | 1.61× | **1.61×** |
+| INT8 | 521 | 391 | **342** | 1.33× | **1.52×** |
+| FP8 | 442 | 338 | **292** | 1.31× | **1.51×** |
+
+> **交错流水将 INT8/FP8 的 vector tailing 从 13% 降至 <2%**，使量化场景的加速比从 1.3× 恢复到 1.5×，与 BF16 场景持平。
+
+### 3.4 M-Split + K-Outer 联合预期
 
 当 M-Split 与 K-outer 结合时（核内 K-outer matmul + 跨核 M-Split 无 barrier）：
 
-| T | K-Outer alone (µs) | M-Split + K-Outer 预期 (µs) | vs Split-N |
-|:---:|:-----------------:|:-------------------------:|:----------:|
-| 1024 | 283 | ~240 | **3.3×** |
-| 2048 | 496 | ~410 | **3.9×** |
-| 4096 | 923 | ~750 | **4.2×** |
+| T | 量化 | K-Outer alone (µs) | M-Split + K-Outer 预期 (µs) | vs Split-N |
+|:---:|:---:|:-----------------:|:-------------------------:|:----------:|
+| 1024 | BF16 | 283 | ~240 | **3.3×** |
+| 1024 | INT8 | 316 | ~280 | **1.9×** |
+| 2048 | BF16 | 496 | ~410 | **3.9×** |
+| 4096 | BF16 | 923 | ~750 | **4.2×** |
 
-（预期值 = K-outer 计算时间 - stepBatchSize 循环开销）
+### 3.5 流水掩盖总结
+
+| 量化模式 | Vector tailing (串行) | Vector tailing (交错) | 需要交错? |
+|---------|:-------------------:|:-------------------:|:---------:|
+| BF16 | 5.7µs (1.2%) | — | 否 |
+| INT8 | 53µs (13.4%) | 4.4µs (1.3%) | **是** |
+| FP8 | 53µs (14.8%) | 4.4µs (1.5%) | **是** |
+
+**设计决策**：
+- BF16 prefill：串行流水即可（vector 不是瓶颈）
+- INT8/FP8 prefill：**必须使用交错流水** + ping-pong 反压（§4）
 
 ---
 
@@ -326,32 +409,68 @@ for (uint32_t chunk = 0; chunk < nChunks; chunk++) {
 
 ### 5.1 完整流水结构
 
+#### BF16 模式（无 DequantQc）
+
 ```mermaid
 sequenceDiagram
     participant AIC as AIC (Cube)
     participant AIV as AIV (Vector)
 
-    Note over AIC,AIV: MlaPrologPrefill: 每个 m-group 独立, 单次执行
+    Note over AIC,AIV: BF16 Prefill: Vector tailing 仅 1.2%
 
     rect rgb(200, 255, 200, 0.3)
     AIC->>AIC: MM1 K-outer (M_slice tokens)
     AIC-->>AIV: SetFlag(FINISH_MM_CQ)
-    AIV->>AIV: RmsNormCq (核内完整行)
+    AIV->>AIV: RmsNormCq (核内, 被 MM2 掩盖)
     AIV-->>AIC: SetFlag(FINISH_RMSNORM_CQ)
 
     AIC->>AIC: MM2 K-outer (tokenX L2 复用)
     AIC-->>AIV: SetFlag(FINISH_MM_CKVKR)
-    AIV->>AIV: RmsNormCkvKr + RopeKr + Scatter
+    AIV->>AIV: RmsNormCkvKr+RoPE+Scatter (被 MM3 掩盖)
 
     AIC->>AIC: wait(FINISH_RMSNORM_CQ)
-    loop m_block 流水 (per baseM=256 rows)
+    loop m_block (per baseM=256)
         AIC->>AIC: MM3 K-outer (Cube bound)
-        Note over AIC,AIV: Ping-Pong 反压 (§4)
-        AIV->>AIV: DequantQc + RopeQr
+        AIC-->>AIV: SetFlag(FINISH_MM_QCQR)
+        AIV->>AIV: RopeQr (5.7µs tailing)
         AIC->>AIC: MM4
     end
     end
 ```
+
+#### INT8/FP8 模式（交错 DequantQc 流水）
+
+```mermaid
+sequenceDiagram
+    participant AIC as AIC (Cube)
+    participant AIV as AIV (Vector)
+
+    Note over AIC,AIV: INT8/FP8 Prefill: MM3 N-chunk 与 DequantQc 交错
+
+    rect rgb(255, 248, 220, 0.3)
+    AIC->>AIC: MM1 (量化权重, 更快)
+    AIC-->>AIV: SetFlag
+    AIV->>AIV: RmsNormCq (INT32→BF16 dequant+norm)
+    AIV-->>AIC: SetFlag
+
+    AIC->>AIC: MM2 (tokenX L2 复用)
+    AIC-->>AIV: SetFlag
+    AIV->>AIV: RmsNormCkvKr+RoPE+Scatter
+
+    AIC->>AIC: wait(RMSNORM_CQ)
+    loop m_block (per baseM=256)
+        loop N-chunk (per baseN, ping-pong 反压)
+            AIC->>AIC: MM3_chunk (1个N-block, 14µs)
+            AIC-->>AIV: SetFlag(READY[slot])
+            AIV->>AIV: DequantQc_chunk + RopeQr_chunk (4.4µs, 被下个 MM3_chunk 掩盖)
+            AIV-->>AIC: SetFlag(DONE[slot])
+        end
+        AIC->>AIC: MM4
+    end
+    end
+```
+
+**关键差异**：INT8/FP8 模式下 MM3 不是一次性输出全部 N-chunk，而是**逐 chunk 输出并立即触发 DequantQc**。由于 MM3/chunk(14µs) >> Vec/chunk(4.4µs)，vector 被 cube 完全掩盖，tailing 从 13% 降至 <2%。
 
 ### 5.2 核分配: 2D 网格
 
@@ -399,20 +518,34 @@ class MlaPrologPrefill {
             CrossCoreSetFlag<CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
             if (nGroups_ > 1) LocalBarrier(mGroupIdx);
 
-            // Phase 3: MM3 → Dequant → RoPE → MM4 (m_block 流水 + Ping-Pong 反压)
+            // Phase 3: MM3 → [Dequant] → RoPE → MM4
             CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
             for (uint32_t mb = 0; mb < mLoops_; mb++) {
+                uint32_t curMStart = mSliceStart + mb * baseM_;
                 uint32_t curM = min(baseM_, mSliceLen - mb * baseM_);
-                // MM3: K-outer, Cube bound
-                MatmulKOuter(mmQcQrRes, rmsNormCqRes, weightUqQr, ...);
-                if (nGroups_ > 1) LocalBarrier(mGroupIdx);
-                // Ping-Pong 反压 SetFlag (§4.2)
-                uint32_t slot = mb % 2;
-                if (mb >= 2) CrossCoreWaitFlag(DEQUANT_DONE_0 + slot);
-                CrossCoreSetFlag<CUBE_VEC, PIPE_FIX>(DEQUANT_READY_0 + slot);
-                // AIV 处理完后: MM4
-                CrossCoreWaitFlag(FINISH_VEC_ROPE_QR);
-                MatmulQn(mmQnRes, qc, weightUk, ...);
+
+                if constexpr (needDequant) {
+                    // === INT8/FP8: 交错流水 + Ping-Pong 反压 ===
+                    // MM3 按 N-chunk 迭代，每个 chunk 立即触发 DequantQc
+                    for (uint32_t nc = 0; nc < nChunks_; nc++) {
+                        uint32_t slot = nc % 2;
+                        if (nc >= 2) CrossCoreWaitFlag(DEQUANT_DONE_0 + slot);
+                        // MM3: 输出 1 个 N-chunk [curM, baseN]
+                        MatmulQcQrChunk(curMStart, curM, nc);
+                        CrossCoreSetFlag<CUBE_VEC, PIPE_FIX>(DEQUANT_READY_0 + slot);
+                    }
+                    // 等最后一个 chunk 的 DequantQc+RopeQr 完成
+                    CrossCoreWaitFlag(DEQUANT_DONE_0 + (nChunks_ - 1) % 2);
+                } else {
+                    // === BF16: MM3 整体输出，RopeQr 串行 ===
+                    MatmulKOuter(mmQcQrRes, rmsNormCqRes, weightUqQr, curMStart, curM, ...);
+                    if (nGroups_ > 1) LocalBarrier(mGroupIdx);
+                    CrossCoreSetFlag<CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR);
+                    CrossCoreWaitFlag(FINISH_VEC_ROPE_QR);
+                }
+
+                // MM4: Qc → Qn (不依赖 RopeQr 的输出)
+                MatmulQn(mmQnRes, qc, weightUk, curMStart, curM, ...);
             }
         }
 
@@ -429,13 +562,30 @@ class MlaPrologPrefill {
             RopeKr(mSliceStart, mSliceLen);
             ScatterCkvKr(mSliceStart, mSliceLen);
 
-            // m_block 流水 + Ping-Pong 反压
+            // m_block 流水
             for (uint32_t mb = 0; mb < mLoops_; mb++) {
-                uint32_t slot = mb % 2;
-                CrossCoreWaitFlag(DEQUANT_READY_0 + slot);
-                DequantQc(mSliceStart + mb * baseM_, curM);
-                RopeQr(mSliceStart + mb * baseM_, curM);
-                CrossCoreSetFlag<CUBE_VEC, PIPE_MTE3>(DEQUANT_DONE_0 + slot);
+                uint32_t curMStart = mSliceStart + mb * baseM_;
+                uint32_t curM = min(baseM_, mSliceLen - mb * baseM_);
+
+                if constexpr (needDequant) {
+                    // === INT8/FP8: 按 N-chunk 交错接收 DequantQc ===
+                    for (uint32_t nc = 0; nc < nChunks_; nc++) {
+                        uint32_t slot = nc % 2;
+                        CrossCoreWaitFlag(DEQUANT_READY_0 + slot);
+                        DequantQcChunk(curMStart, curM, nc);
+                        RopeQrChunk(curMStart, curM, nc);
+                        CrossCoreSetFlag<CUBE_VEC, PIPE_MTE3>(DEQUANT_DONE_0 + slot);
+                    }
+                } else {
+                    // === BF16: MM3 整体完成后 RopeQr ===
+                    CrossCoreWaitFlag(FINISH_MM_QCQR);
+                    RopeQr(curMStart, curM);
+                    CrossCoreSetFlag<CUBE_VEC, PIPE_MTE3>(FINISH_VEC_ROPE_QR);
+                }
+
+                if constexpr (needQnDynamicQuant) {
+                    DynamicQuantQnAndMulQr(curMStart, curM);
+                }
             }
         }
     }
