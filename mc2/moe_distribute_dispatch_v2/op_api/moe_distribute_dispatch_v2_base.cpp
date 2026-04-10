@@ -20,23 +20,13 @@
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
+#include "aclnnInner_moe_distribute_dispatch_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern aclnnStatus aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
-    const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
-    const aclTensor* xActiveMask, const aclTensor* expertScales,  const aclTensor* elasticInfo,
-    const aclTensor* performanceInfo, const char* groupEp, int64_t epWorldSize,
-    int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
-    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t shareExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char* commAlg,
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, int64_t ydtype, aclTensor* expandX,
-    aclTensor* dynamicScales, aclTensor* assist_info_for_combine, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-    aclTensor* tpRecvCounts, aclTensor* expandScales,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -109,12 +99,12 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     int64_t ydtype = expandXOut->GetDataType();
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
-        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-        elasticInfoOptional, performanceInfoOptionalDispatchV2Temp, groupEp, epWorldSize, epRankId, moeExpertNum,
-        groupTpDispatchV2Temp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg, zeroExpertNum, copyExpertNum,
-        constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-        epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+        performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        const_cast<char*>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+        copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 
     if (NnopbaseSetHcclServerType) {
         if (is910B) {

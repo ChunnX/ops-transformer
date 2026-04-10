@@ -15,6 +15,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "moe_distribute_dispatch_v2_base.h"
+#include "aclnnInner_moe_distribute_dispatch_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -23,9 +24,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize,
-                                                     aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,

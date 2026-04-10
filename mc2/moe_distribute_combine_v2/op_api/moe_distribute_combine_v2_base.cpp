@@ -22,6 +22,7 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
+#include "aclnnInner_moe_distribute_combine_v2.h"
 using namespace Ops::Transformer;
 using namespace op;
 #ifdef __cplusplus
@@ -29,26 +30,6 @@ extern "C" {
 #endif
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
-                                            
-extern aclnnStatus aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
-    const aclTensor* expandX, const aclTensor* expertIds,
-    const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-    const aclTensor* expertScales, const aclTensor* tpSendCounts,
-    const aclTensor* xActiveMask, const aclTensor* activationScale,
-    const aclTensor* weightScale, const aclTensor* groupList,
-    const aclTensor* expandScales, const aclTensor* sharedExpertX,
-    const aclTensor* elasticInfo, const aclTensor* oriX,
-    const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2, 
-    const aclTensor* constExpertV, const aclTensor *performanceInfo,
-    const char* groupEp, int64_t epWorldSize,
-    int64_t epRankId, int64_t moeExpertNum,
-    const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-    int64_t groupListType, const char* commAlg, 
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-    aclTensor* x, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
 
 bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
                          const aclTensor* epSendCounts, const aclTensor* expertScales,
@@ -122,10 +103,11 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
         expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
         tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional,
         expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
-        constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp, groupEp, 
-        epWorldSize, epRankId, moeExpertNum, groupTpCombineV2Temp, tpWorldSize, tpRankId, expertShardType, 
-        sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg,
-        zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
+        constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
+        const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char*>(groupTpCombineV2Temp),
+        tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
+        commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
+        xOut, workspaceSize, executor);
     if (NnopbaseSetHcclServerType) {
         if (is910B) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
