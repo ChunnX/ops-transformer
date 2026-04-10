@@ -16,10 +16,10 @@ PATH1="./excel/*"
 PATH2="./pt_path"
 
 # 脚本路径
-QLI_PT_SAVE_SCRIPT="./batch/quant_lightning_indexer_pt_save.py"
-TEST_QLI_BATCH_SCRIPT="test_quant_lightning_indexer_batch.py"
+QLI_PT_SAVE_SCRIPT="./batch/lightning_indexer_pt_save.py"
+TEST_QLI_BATCH_SCRIPT="test_lightning_indexer_batch.py"
 REPLACE_PATH_SCRIPT="./batch/replace_path.py"
-TEST_QLI_SINGLE_SCRIPT="test_quant_lightning_indexer_single.py"
+TEST_QLI_SINGLE_SCRIPT="test_lightning_indexer_single.py"
 
 # ====================== 执行区======================
 
@@ -33,14 +33,14 @@ run_single() {
 run_batch() {
     echo "===== 执行用例批量生成测试 ====="
 
-    echo -e "\n===== 第一步：执行quant_lightning_indexer_pt_save.py ====="
+    echo -e "\n===== 第一步：执行lightning_indexer_pt_save.py ====="
     python3 $QLI_PT_SAVE_SCRIPT $PATH1 $PATH2
     if [ $? -ne 0 ]; then
-        echo "quant_lightning_indexer_pt_save.py 执行失败，退出"
+        echo "lightning_indexer_pt_save.py 执行失败，退出"
         exit 1
     fi
 
-    echo -e "\n===== 第二步：替换test_quant_lightning_indexer_batch.py中的路径 ====="
+    echo -e "\n===== 第二步：替换test_lightning_indexer_batch.py中的路径 ====="
     python3 $REPLACE_PATH_SCRIPT $TEST_QLI_BATCH_SCRIPT $PATH2
     if [ $? -ne 0 ]; then
         echo "替换路径失败，退出"
@@ -54,7 +54,7 @@ run_batch() {
         exit 1
     fi
 
-    cp test_quant_lightning_indexer_batch.py.bak test_quant_lightning_indexer_batch.py
+    cp test_lightning_indexer_batch.py.bak test_lightning_indexer_batch.py
 
     echo -e "\n=====执行完成！====="
 }
