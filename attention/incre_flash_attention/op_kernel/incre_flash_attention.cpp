@@ -21,11 +21,7 @@
 #endif
 
 #if (__NPU_ARCH__ == 5102)
-#ifdef NOT_DYNAMIC_COMPILE
-#include "../../prompt_flash_attention/op_kernel/arch38/prompt_flash_attention_entry_regbase.h"
-#else
 #include "../prompt_flash_attention/arch38/prompt_flash_attention_entry_regbase.h"
-#endif
 #else
 #include "incre_flash_attention_arch32.h"
 #endif
