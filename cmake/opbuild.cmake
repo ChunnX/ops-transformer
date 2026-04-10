@@ -173,90 +173,26 @@ function(gen_aclnn_with_opdef)
     list(APPEND mc2_aclnn_master_headers ${matching_file})
   endif()
 
-   # 1. 加载 level2 算子列表
-  set(level2_ops_list_file "${CMAKE_CURRENT_SOURCE_DIR}/level2_ops_list")
-  if(EXISTS ${level2_ops_list_file})
-    file(STRINGS ${level2_ops_list_file} level2_ops_list_raw)
-  else()
-    set(level2_ops_list_raw "")
-  endif()
-
-  # 清洗列表数据
-  set(level2_ops_list "")
-  foreach(item IN LISTS level2_ops_list_raw)
-    string(STRIP "${item}" item)
-    if(item)
-      list(APPEND level2_ops_list "${item}")
-    endif()
-  endforeach()
-
-  # 2. 通用安装逻辑 (区分 ENABLE_BUILT_IN)
-  # 这里的逻辑是：主目录总是全量安装。
-  # level2 目录只有在 ENABLE_BUILT_IN 开启时，且文件在列表中时，才安装。
-  
-  # --- 第一步：所有头文件都安装到主目录 ---
-  install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-  install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-  if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
-    install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-  endif()
-
-  # --- 第二步：如果是 ENABLE_BUILT_IN，则根据列表安装到 level2 ---
-  if (ENABLE_BUILT_IN)
-    # 处理 opbuild_out_headers
-    foreach(header_file IN LISTS opbuild_out_headers)
-      get_filename_component(file_name ${header_file} NAME)
-      if(file_name IN_LIST level2_ops_list)
-        install(FILES ${header_file} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-      endif()
-    endforeach()
-
-    # 处理 aclnn_master_header
-    get_filename_component(master_name ${aclnn_master_header} NAME)
-    if(master_name IN_LIST level2_ops_list)
-      install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-    endif()
-
-    # 处理 mc2_aclnn_master_headers
+  # 将头文件安装到packages/vendors/vendor_name/op_api/include
+  if (NOT ENABLE_BUILT_IN)
+    install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
-      foreach(header_file IN LISTS mc2_aclnn_master_headers)
-        get_filename_component(file_name ${header_file} NAME)
-        if(file_name IN_LIST level2_ops_list)
-          install(FILES ${header_file} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-        endif()
-      endforeach()
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    endif()
+  else()
+    install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    if (BUILD_OPEN_PROJECT)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     endif()
   endif()
 
-  # 3. 静态库安装逻辑 (ENABLE_STATIC)
   if (ENABLE_STATIC)
-    # --- 第一步：所有头文件都安装到静态库主目录 ---
     install(FILES ${opbuild_out_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
     if (BUILD_OPEN_PROJECT)
       install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
-    endif()
-
-    # --- 第二步：根据列表安装到静态库 level2 目录 ---
-    foreach(header_file IN LISTS opbuild_out_headers)
-      get_filename_component(file_name ${header_file} NAME)
-      if(file_name IN_LIST level2_ops_list)
-        install(FILES ${header_file} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
-      endif()
-    endforeach()
-
-    get_filename_component(master_name ${aclnn_master_header} NAME)
-    if(master_name IN_LIST level2_ops_list)
-      install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
-    endif()
-
-    if (BUILD_OPEN_PROJECT)
-      foreach(header_file IN LISTS mc2_aclnn_master_headers)
-        get_filename_component(file_name ${header_file} NAME)
-        if(file_name IN_LIST level2_ops_list)
-          install(FILES ${header_file} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
-        endif()
-      endforeach()
     endif()
   endif()
 
