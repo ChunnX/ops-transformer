@@ -286,9 +286,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>-</td>
         </tr>
         <tr>
-            <td>h_in_grad</td>
+            <td>gradHIn</td>
             <td>输入</td>
-            <td>h_in作为Atten/MLP层的输入。正向输出h_in对应的梯度。</td>
+            <td>hIn作为Atten/MLP层的输入。正向输出hIn对应的梯度。</td>
             <td>
             <li>不支持空Tensor。</li>
             </td>
@@ -300,9 +300,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>h_post_grad</td>
+            <td>gradHPost</td>
             <td>输入</td>
-            <td>正向输出h_post对应的梯度。</td>
+            <td>正向输出hPost对应的梯度。</td>
             <td>
             <li>不支持空Tensor。</li>
             </td>
@@ -314,9 +314,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>h_res_grad</td>
+            <td>gradHRes</td>
             <td>输入</td>
-            <td>正向输出h_res对应的梯度。</td>
+            <td>正向输出hRes对应的梯度。</td>
             <td>
             <li>不支持空Tensor。</li>
             <td>FLOAT32</td>
@@ -327,9 +327,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>inv_rms</td>
+            <td>invRms</td>
             <td>输入</td>
-            <td>正向RmsNorm计算的inv\_rms。</td>
+            <td>正向RmsNorm计算的invRms。</td>
             <td>
             <li>不支持空Tensor。</li>
             <td>FLOAT32</td>
@@ -340,7 +340,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>h_mix</td>
+            <td>hMix</td>
             <td>输入</td>
             <td>正向计算流x@phi的结果</td>
             <td>
@@ -353,9 +353,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>h_pre</td>
+            <td>hPre</td>
             <td>输入</td>
-            <td>正向sigmoid计算之后的h_pre矩阵</td>
+            <td>正向sigmoid计算之后的hPre矩阵</td>
             <td>
             <li>不支持空Tensor。</li>
             <td>FLOAT32</td>
@@ -366,9 +366,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>h_post</td>
+            <td>hPost</td>
             <td>输入</td>
-            <td>正向的h_post输出</td>
+            <td>正向的hPost输出</td>
             <td>
             <li>不支持空Tensor。</li>
             <td>FLOAT32</td>
@@ -380,7 +380,7 @@ aclnnStatus aclnnMhcPreBackward(
         </tr>
         <tr>
             <td>gamma</td>
-            <td>输入</td>
+            <td>可选输入</td>
             <td>RmsNorm的缩放系数gamma</td>
             <td>
             <li>不支持空Tensor。</li><li>如果传入nullptr，则表示全1的tensor。</li>
@@ -393,9 +393,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>grad_x_post</td>
-            <td>输入</td>
-            <td>post反向输出的grad_x</td>
+            <td>gradXPostOptional</td>
+            <td>可选输入</td>
+            <td>post反向输出的gradX</td>
             <td>
             <li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li>
             </td>
@@ -407,9 +407,9 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>hc_eps</td>
-            <td>输入</td>
-            <td>H_pre的sigmoid后的eps参数</td>
+            <td>hcEps</td>
+            <td>可选输入</td>
+            <td>HPre的sigmoid后的eps参数</td>
             <td>
            <li>默认值为1e-6
             </td>
@@ -418,7 +418,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>-</td>
         </tr>
         <tr>
-            <td>x_grad</td>
+            <td>gradX</td>
             <td>输出</td>
             <td>x对应的梯度。</td>
             <td>
@@ -432,7 +432,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>phi_grad</td>
+            <td>gradPhi</td>
             <td>输出</td>
             <td>phi对应的梯度。</td>
             <td>
@@ -446,7 +446,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>  
-            <td>alpha_grad</td>
+            <td>gradAlpha</td>
             <td>输出</td>
             <td>alpha对应的梯度。</td>
             <td>
@@ -458,7 +458,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>-</td>
         </tr>
           <tr>
-            <td>bias_grad</td>
+            <td>gradBias</td>
             <td>输出</td>
             <td>bias对应的梯度。</td>
             <td>
@@ -472,8 +472,8 @@ aclnnStatus aclnnMhcPreBackward(
             <td>-</td>
         </tr>
         <tr>
-            <td>gamma_grad</td>
-            <td>输出</td>
+            <td>gradGamma</td>
+            <td>可选输出</td>
             <td>gamma对应的梯度。</td>
             <td>
                 <li>当输入gamma不为nullptr时，此变量才会输出。</li>
@@ -633,8 +633,8 @@ aclnnStatus aclnnMhcPreBackward(
 
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+- <term>Ascend 950PR/Ascend 950DT</term>：
 ```c++
 #include <iostream>
 #include <vector>
