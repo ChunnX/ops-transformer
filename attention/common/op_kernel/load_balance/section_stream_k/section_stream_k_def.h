@@ -9,19 +9,18 @@
  */
 
 /*!
- * \file section_stream_k.h
- * \brief 
+ * \file section_stream_k_def.h
+ * \brief
  */
 
-#ifndef SECTION_STREAM_K_H
-#define SECTION_STREAM_K_H
+#ifndef SECTION_STREAM_K_DEF_H
+#define SECTION_STREAM_K_DEF_H
 
+#include <vector>
 #include "base_info.h"
-#include <memory>
+#include "../load_balance_common.h"
 
 namespace load_balance {
-
-using SectionStreamKBaseInfo = BaseInfo;
 
 struct SectionStreamKParam : GeneralSplitParam {
     uint32_t l2Kb { 128 * 1024U * 1024U };              // L2 size in KB
@@ -68,12 +67,6 @@ struct SectionStreamKResult {
     uint32_t sectionNum { 0U };
     std::vector<SectionStreamKFaResult> sectionFaResult {};
     std::vector<SectionStreamKFdResult> sectionFdResult {};
-};
-
-class SectionStreamK {
-public:
-    static uint32_t Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo, const SectionStreamKParam &param,
-        SectionStreamKResult &result);
 };
 
 }
