@@ -256,7 +256,7 @@ QSFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
 uint32_t QSFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(
-    LocalTensor<KV_T> kvInUb , int64_t startRow, int64_t token0Idx,
+    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx,
     int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t keyOffset0 = GetkeyOffset(token0Idx, runInfo, constInfo);
@@ -906,7 +906,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         if (subBlockIdx == 0) {
             auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
             auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-            #pragma unroll
+#pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
                 *tempTilingSSbuf = *tempTiling;
             }
