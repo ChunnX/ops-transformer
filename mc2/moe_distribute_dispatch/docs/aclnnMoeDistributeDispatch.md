@@ -129,7 +129,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>要求为2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>(Bs, H)（Bs为batch size，H为隐藏层大小）</td>
+    <td>(BS, H)（Bs为batch size，H为隐藏层大小）</td>
     <td>-</td>
     </tr>
     <tr>
@@ -139,7 +139,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>要求为2D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>(Bs, K)</td>
+    <td>(BS, K)</td>
     <td>-</td>
     </tr>
     <tr>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</li></ul></td>
+    <td><ul><li>各rank BS一致时，globalBs = BS * epWorldSize 或 0</li><li>各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -635,6 +635,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
     #include <iostream>
     #include <string>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
@@ -1030,12 +1032,9 @@ aclnnStatus aclnnMoeDistributeDispatch(
         }
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
-        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
-        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
 
         args.rankId = rankId;
-        args.epRankId = epRankId;
-        args.tpRankId = tpRankId;
+        args.epRankId = rank_id;
         args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
@@ -1152,7 +1151,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         else if (rank_table_file && first_rank_id) {
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
             EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 1;
+            TP_WORLD_SIZE = 0;
             DEV_NUM = EP_WORLD_SIZE;
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
             std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
