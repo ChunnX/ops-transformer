@@ -19,7 +19,7 @@
 
 namespace Mc2Aclnn {
 
-static const std::string GetLibPath()
+const std::string Mc2Context::GetLibPath()
 {
     const char* ascendPath = std::getenv("ASCEND_HOME_PATH");
     if (ascendPath == nullptr) {
@@ -37,7 +37,7 @@ static const std::string GetLibPath()
 }
 
 template <typename T>
-static T GetHcclLibFunc(void* handle, const std::string& funcName)
+T Mc2Context::GetHcclLibFunc(void* handle, const std::string& funcName)
 {
     T func = reinterpret_cast<T>(dlsym(handle, funcName.c_str()));
     if (func == nullptr) {
@@ -72,7 +72,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         return ACLNN_SUCCESS;
     }
 
-    const std::string libPath = GetLibPath();
+    const std::string libPath = this->GetLibPath();
     if (libPath.empty()) {
         OP_LOGE(ACLNN_ERR_INNER, "Failed to get HCCL library path");
         return ACLNN_ERR_INNER;
@@ -105,7 +105,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
     };
 
     for (auto& sym : symbols) {
-        *(sym.ptr) = GetHcclLibFunc<void*>(hcclLibHandle_, sym.name);
+        *(sym.ptr) = this->GetHcclLibFunc<void*>(hcclLibHandle_, sym.name);
         if (*(sym.ptr) == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER, "Failed to load %s symbol", sym.name);
             dlclose(hcclLibHandle_);
@@ -460,5 +460,8 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char* groupEp, const char* opN
     OP_LOGD("Get Mc2MoeContext Tensor Success");
     return ACLNN_SUCCESS;
 }
+
+// 模板函数显式实例化
+template void* Mc2Context::GetHcclLibFunc<void*>(void* handle, const std::string& funcName);
 
 } // namespace Mc2Aclnn

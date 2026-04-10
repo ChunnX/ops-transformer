@@ -20,13 +20,10 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
-#include "mc2_moe_context.h"
-// #include "common/op_api/mc2_moe_context_tensor.h"
-#include "common/utils/mc2_hcom_topo_info.h"
+#include "common/op_api/mc2_context.h"
 
 using namespace Ops::Transformer;
 using namespace op;
-// using namespace Mc2Aclnn;
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -191,8 +188,8 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     } else {
         uint64_t hcclBuffSize = 0;
         const char* opName = "moe_distribute_combine_v2";
-        auto ret = Mc2Hcom::MC2HcomTopology::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        CHECK_RET(ret == HCCL_SUCCESS, ret);
+        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
             mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
             activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
