@@ -284,7 +284,7 @@ private:
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
-    uint32_t GetTopkLength(uint32_t bsStride);
+    uint32_t GetTopkLength();
     int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
@@ -332,17 +332,17 @@ private:
 
     // attributes
     int32_t batchSize_ = 0;
-    int32_t querySeqSize_ = 0;
+    int32_t maxSeqlenQ_ = 0;
     int32_t queryHeadNum_ = 0;
-    int32_t kvSeqSize_ = 0;
+    int32_t maxSeqlenK_ = 0;
     int32_t kvHeadNum_ = 0;
     int32_t headDim_ = 0;
     int32_t topK_ = 0;
-    int32_t maskMode_ = 4;
-    int64_t winLeft_ = 127;
-    int64_t winRight_ = 0;
+    int32_t sparseMode_ = 3;
+    int64_t preTokens_ = 9223372036854775807;
+    int64_t nextTokens_ = 9223372036854775807;
     std::string layoutQuery_ = "BSND";
-    std::string layoutKv_ = "PA_BNBD";
+    std::string layoutKv_ = "BSND";
     uint32_t aicCoreNum_ = 24U;
     uint32_t aivCoreNum_ = 48U;
 
@@ -365,9 +365,6 @@ private:
     // input
     actSeqLenQ = 0,
     actSeqLenKv = 1,
-    seqUsedQ = 2,
-    seqUsedKv = 3,
-    topkLength = 4,
     // output
     metaData = 0,
     };

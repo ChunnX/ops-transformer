@@ -241,7 +241,7 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnKvQuantSparseFlashAttentionMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, 
-                                       aclrtStream stream) 
+                                         aclrtStream stream) 
 {
     L2_DFX_PHASE_2(aclnnKvQuantSparseFlashAttentionMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

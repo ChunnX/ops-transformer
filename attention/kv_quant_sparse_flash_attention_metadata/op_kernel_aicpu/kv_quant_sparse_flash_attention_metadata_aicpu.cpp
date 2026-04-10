@@ -43,9 +43,6 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx
     // input
     actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
     actSeqLenKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenKv));
-    seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
-    seqUsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedKv));
-    topkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::topkLength));
     // output
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -61,12 +58,12 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx
 
     // attributes optional
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
-    GetAttrValueOpt(ctx, "max_seqlen_q", querySeqSize_);
-    GetAttrValueOpt(ctx, "max_seqlen_kv", kvSeqSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
+    GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenK_);
     GetAttrValueOpt(ctx, "topk", topK_);
-    GetAttrValueOpt(ctx, "mask_mode", maskMode_);
-    GetAttrValueOpt(ctx, "win_left", winLeft_);
-    GetAttrValueOpt(ctx, "win_right", winRight_);
+    GetAttrValueOpt(ctx, "sparse_mode", sparseMode_);
+    GetAttrValueOpt(ctx, "pre_tokens", preTokens_);
+    GetAttrValueOpt(ctx, "next_tokens", nextTokens_);
     GetAttrValueOpt(ctx, "layout_q", layoutQuery_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
 
@@ -75,22 +72,11 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx
 
 int32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetQueryBatchSize()
 {
-    // 1. 如果seqUsedQ_ 传了，使用seqUsedQ_获取BatchSize
-    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
-        if (seqUsedQ_->GetTensorShape() != nullptr) {
-            return seqUsedQ_->GetTensorShape()->GetDimSize(0);
+    if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
+        if (actSeqLenQ_->GetTensorShape() != nullptr) {
+            return actSeqLenQ_->GetTensorShape()->GetDimSize(0);
         }
     }
-    // 2. seqUsedQ_ 没传，判断 Layout
-    if (layoutQuery_ == "TND") {
-        // 如果是 TND，尝试使用 actSeqLenQ_获取BatchSize
-        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
-            if (actSeqLenQ_->GetTensorShape() != nullptr) {
-                return actSeqLenQ_->GetTensorShape()->GetDimSize(0) - 1;
-            }
-        }
-    }
-    // 3. 如果不是 TND，或者 actSeqLenQ_ 为空，使用batchSize_
     return batchSize_;
 }
 
@@ -106,17 +92,17 @@ ValidSocVersion KvQuantSparseFlashAttentionMetadataCpuKernel::ProcessSocVersion(
 
 void KvQuantSparseFlashAttentionMetadataCpuKernel::CalcMaskMode()
 {
-    if (maskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
+    if (sparseMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
         preToken_ = INT64_MAX;
         nextToken_ = INT64_MAX;
         attentionMode_ = 0;
-    } else if (maskMode_ == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
+    } else if (sparseMode_ == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
         preToken_ = INT64_MAX;
         nextToken_ = 0;
         attentionMode_ = 1;
     } else {  //SparseMode = 4
-        preToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
-        nextToken_ = 0;
+        preToken_ = preTokens_;
+        nextToken_ = nextTokens_;
         attentionMode_ = 1;
     }
 }
@@ -127,7 +113,7 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::ParamsInit()
     CalcMaskMode();
     isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
     groupSize_ = queryHeadNum_ / kvHeadNum_;
-    if ((topkLength_ != nullptr && topkLength_->GetData() != nullptr) || topK_ != 0) {
+    if (topK_ != 0) {
         hasTopk = true;
     }
     if (queryHeadNum_ == 128) {
@@ -152,59 +138,37 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-
-uint32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetTopkLength(uint32_t bIdx)
+uint32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetTopkLength()
 {
-    // 尝试使用 topkLength_
-    if (topkLength_ != nullptr && topkLength_->GetData() != nullptr) {
-    	const int32_t *topkPtr =static_cast<const int32_t*>(topkLength_->GetData());
-    	return static_cast<uint32_t>(topkPtr[bIdx]);
-    }
-
-    // 如果不是 DEFAULT_MASK，使用 topK_
     return static_cast<uint32_t>(topK_);
 }
 
 uint32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
-    // 1. 如果 seqUsedQ_ 传了，直接使用
-    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedQ_->GetData());
-        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    if (actSeqLenQ_ == nullptr || actSeqLenQ_->GetData() == nullptr) {
+        return static_cast<uint32_t>(maxSeqlenQ_);
     }
-    // 2. seqUsedQ_ 没传，判断 Layout
+    const int32_t *s1Ptr = (int32_t*)actSeqLenQ_->GetData();
     if (layoutQuery_ == "TND") {
-        // 如果是 TND，尝试使用 actSeqLenQ_
-        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr =static_cast<const int32_t*>(actSeqLenQ_->GetData());
-            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
-        }
+        return (bIdx == 0) ? static_cast<uint32_t>(s1Ptr[bIdx]) :
+            static_cast<uint32_t>(s1Ptr[bIdx] - s1Ptr[bIdx - 1U]);
+    } else {
+        return static_cast<uint32_t>(s1Ptr[bIdx]);
     }
-    // 3. 如果不是 TND，或者 actSeqLenQ_ 为空，使用 querySeqSize_
-    return static_cast<uint32_t>(querySeqSize_);
 }
 
 uint32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
-    // 如果 seqUsedKv_ 传了，直接使用
-    if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
-        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    if (actSeqLenKv_ == nullptr || actSeqLenKv_->GetData() == nullptr) {
+        return static_cast<uint32_t>(maxSeqlenK_);
     }
-    // seqUsedKv_ 没传，判断 Layout
+    const int32_t *s2Ptr = (int32_t*)actSeqLenKv_->GetData();
     if (layoutKv_ == "TND") {
-        // 如果是 TND，尝试使用 actSeqLenKv_
-        if (actSeqLenKv_ != nullptr && actSeqLenKv_->GetData() != nullptr) {
-            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenKv_->GetData());
-            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
-        }
+        return (bIdx == 0) ? static_cast<uint32_t>(s2Ptr[bIdx]) :
+            static_cast<uint32_t>(s2Ptr[bIdx] - s2Ptr[bIdx - 1U]);
+    } else {
+        return static_cast<uint32_t>(s2Ptr[bIdx]);
     }
-    // 如果max_seqlen_kv没传入，且kv为稀疏的，则尝试从topk中获取
-    if (kvSeqSize_ == 0 && hasTopk) {
-        return UINT32_MAX;
-    }
-    // 使用 max_seqlen_kv
-    return static_cast<uint32_t>(kvSeqSize_);
 }
 
 void KvQuantSparseFlashAttentionMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
@@ -226,7 +190,7 @@ void KvQuantSparseFlashAttentionMetadataCpuKernel::CalcSplitInfo(SplitContext &s
 
 int64_t KvQuantSparseFlashAttentionMetadataCpuKernel::CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
-    auto mode = static_cast<SparseMode>(maskMode_);
+    auto mode = static_cast<SparseMode>(sparseMode_);
     if (mode == SparseMode::BAND) {
         return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + preToken_;
     }
@@ -235,7 +199,7 @@ int64_t KvQuantSparseFlashAttentionMetadataCpuKernel::CalcPreTokenLeftUp(uint32_
 
 int64_t KvQuantSparseFlashAttentionMetadataCpuKernel::CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
-    auto mode = static_cast<SparseMode>(maskMode_);
+    auto mode = static_cast<SparseMode>(sparseMode_);
     switch (mode) {
         case SparseMode::DEFAULT_MASK:
         case SparseMode::ALL_MASK:
@@ -368,7 +332,7 @@ void KvQuantSparseFlashAttentionMetadataCpuKernel::CalcBlockRange(Range<int64_t>
     } else {
         s2FirstToken = Clip(s2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
         s2LastToken = Clip(s2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-        uint32_t topkSize = GetTopkLength(s1GCache.bIdx);
+        uint32_t topkSize = GetTopkLength();
         s2LastTokenSize = hasTopk ? std::min(s2LastToken + 1, static_cast<int64_t>(topkSize)) :
                 (s2LastToken + 1);
         s1GCache.s2Start = 0;
