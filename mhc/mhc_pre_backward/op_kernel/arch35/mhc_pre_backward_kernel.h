@@ -237,12 +237,12 @@ struct WorkspaceBuffer {
 
     __aicore__ inline uint64_t GetXRsGradOffset(uint32_t coreId, uint32_t buffId)
     {
-        return CeilAlign(xRsGradOffset, uint64_t(32)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+        return CeilAlign(xRsGradOffset, uint64_t(CEIL_ALIGN_DEFAULT)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
     }
 
     __aicore__ inline uint64_t GetXRsOffset(uint32_t coreId, uint32_t buffId)
     {
-        return CeilAlign(xRsOffset, uint64_t(32)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+        return CeilAlign(xRsOffset, uint64_t(CEIL_ALIGN_DEFAULT)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
     }
 };
 
@@ -360,7 +360,7 @@ private:
     GlobalTensor<P> biasPostGradGm_; // 输出 bias_post_grad
     GlobalTensor<P> gammaGradGm_;    // 输出 gamma_grad
 
-    /* V1 LocalTensor*/
+    /*V1 LocalTensor*/
     LocalTensor<P> gammaUb;      // gamma
     LocalTensor<T> xRsUb;        // x_rs
     LocalTensor<T> hInGradUb;    // h_in_grad

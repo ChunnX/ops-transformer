@@ -227,17 +227,19 @@ void MhcPreBackwardTiling::FillTilingData()
 }
 
 uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
-                                                          uint64_t elementSize)
+                                                      uint64_t elementSize)
 {
-    uint64_t v1Elements = totalLength * fusionSize +                 // h_mix_grad
-                          ALPHA_GRAD_CORE_FACTOR * coreNum +          // alpha_grad
-                          coreNum * fusionSize +                     // bias_grad
-                          totalLength;                                // inv_rms_grad
+    uint64_t v1Elements = totalLength * fusionSize +         // h_mix_grad
+                          ALPHA_GRAD_CORE_FACTOR * coreNum + // alpha_grad
+                          coreNum * fusionSize +             // bias_grad
+                          totalLength;                       // inv_rms_grad
 
-    uint32_t v2Elements = XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs_grad_mm
-                          XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs
-                          EXTRA_BUFFER_SIZE;
-    uint64_t totalElements = ((v1Elements + WORKSPACE_ALIGN_SIZE - 1) / WORKSPACE_ALIGN_SIZE * WORKSPACE_ALIGN_SIZE) + v2Elements;
+    uint32_t v2Elements =
+        XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs_grad_mm
+        XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs
+        EXTRA_BUFFER_SIZE;
+    uint64_t totalElements =
+        ((v1Elements + WORKSPACE_ALIGN_SIZE - 1) / WORKSPACE_ALIGN_SIZE * WORKSPACE_ALIGN_SIZE) + v2Elements;
     return totalElements * elementSize;
 }
 
@@ -265,8 +267,9 @@ ge::graphStatus MhcPreBackwardTiling::TilingProcess()
                   false);
     mm0_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     mm0_.SetBias(false);
-    mm0_.SetShape(C0_SET_SHAPE_M, C0_SET_SHAPE_N, N_ * N_ + 2 * N_);                // [sM(=BSBlockSize), sN(=NDBlockSize), sK(=N*N + 2*N)]
-    mm0_.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_);                     // 原始[M(=BS), N(=nD), K(=N*N + 2*N)]
+    mm0_.SetShape(C0_SET_SHAPE_M, C0_SET_SHAPE_N,
+                  N_ * N_ + 2 * N_);                           // [sM(=BSBlockSize), sN(=NDBlockSize), sK(=N*N + 2*N)]
+    mm0_.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_); // 原始[M(=BS), N(=nD), K(=N*N + 2*N)]
     mm0_.SetBufferSpace(-1, -1, -1);
     if (mm0_.GetTiling(tilingData_.matmulTilingC0) == -1) {
         OP_LOGE(context_->GetNodeName(), "ProcessC0 Get Tiling Failed!, m = %lu, n = %lu, k = %lu", totalLength_,
@@ -280,8 +283,9 @@ ge::graphStatus MhcPreBackwardTiling::TilingProcess()
                   false);
     mm1_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     mm1_.SetBias(false);
-    mm1_.SetShape(N_ * N_ + 2 * N_, C1_SET_SHAPE_M_BASE, C1_SET_SHAPE_K);                // [sM(=N*N + 2*N), sN(=NDBlockSize), sK(=BSBlockSize)]
-    mm1_.SetOrgShape(N_ * N_ + 2 * N_, N_ * D_, totalLength_);                         // 原始[M(=N*N + 2*N), N(=nD), K(=BS)]
+    mm1_.SetShape(N_ * N_ + 2 * N_, C1_SET_SHAPE_M_BASE,
+                  C1_SET_SHAPE_K);                             // [sM(=N*N + 2*N), sN(=NDBlockSize), sK(=BSBlockSize)]
+    mm1_.SetOrgShape(N_ * N_ + 2 * N_, N_ * D_, totalLength_); // 原始[M(=N*N + 2*N), N(=nD), K(=BS)]
     mm1_.SetBufferSpace(-1, -1, -1);
     if (mm1_.GetTiling(tilingData_.matmulTilingC1) == -1) {
         OP_LOGE(context_->GetNodeName(), "ProcessC1 Get Tiling Failed!, m = %lu, n = %lu, k = %lu", N_ * N_ + 2 * N_,
