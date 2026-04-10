@@ -159,7 +159,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr></thead>
   <tbody>
     <tr>
-      <td class="tg-0pky">key(aclTensor*)</td>
+      <td class="tg-0pky">key（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的key值，当前step多个token的key。</td>
       <td class="tg-0pky"></td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">keyCacheRef(aclTensor*)</td>
+      <td class="tg-0pky">keyCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的key cache，当前layer的key cache。</td>
       <td class="tg-0pky">仅支持4维，当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">slotMapping(aclTensor*)</td>
+      <td class="tg-0pky">slotMapping（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">每个token key或value在cache中的存储偏移。</td>
       <td class="tg-0pky"></td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">value(aclTensor*)</td>
+      <td class="tg-0pky">value（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的value值，当前step多个token的value。</td>
       <td class="tg-0pky">支持0维、3维或4维，非0维下shape与key一致</td>
@@ -199,7 +199,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">valueCacheRef(aclTensor*）</td>
+      <td class="tg-0pky">valueCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的value cache，当前layer的value cache。</td>
       <td class="tg-0pky">支持0维或4维，非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
@@ -209,7 +209,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">compressLensOptional(aclTensor*)</td>
+      <td class="tg-0pky">compressLensOptional（aclTensor*）</td>
       <td class="tg-0pky">可选输入</td>
       <td class="tg-0pky">压缩量。</td>
       <td class="tg-0pky">-</td>
@@ -219,7 +219,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">compressSeqOffsetOptional(aclTensor*)</td>
+      <td class="tg-0pky">compressSeqOffsetOptional（aclTensor*）</td>
       <td class="tg-0pky">可选输入</td>
       <td class="tg-0pky">每个batch每个head的压缩起点。</td>
       <td class="tg-0pky">-</td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">seqLensOptional(aclTensor*)</td>
+      <td class="tg-0pky">seqLensOptional（aclTensor*）</td>
       <td class="tg-0pky">可选输入</td>
       <td class="tg-0pky">每个batch的实际seqLens。</td>
       <td class="tg-0pky">-</td>
@@ -239,7 +239,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">cacheMode(char*)</td>
+      <td class="tg-0pky">cacheModeOptional（char*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示keyCacheRef和valueCacheRef的内存排布格式。</td>
       <td class="tg-0pky">当传空指针或"Norm"时，仅支持ND内存排布格式。当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">scatterMode(char*)</td>
+      <td class="tg-0lax">scatterMode（char*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">表示更新的key和value的状态。</td>
       <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。</td>
@@ -259,7 +259,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">strides(aclIntArray *)</td>
+      <td class="tg-0lax">strides（aclIntArray*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">key和value在非连续状态下的步长。</td>
       <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterMode为"Nct"时生效，分别表示strideK和strideV。</td>
@@ -269,7 +269,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">offsets(aclIntArray *)</td>
+      <td class="tg-0lax">offsets（aclIntArray*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">key和value在非连续状态下的偏移。</td>
       <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterMode为"Nct"时生效，分别表示offsetK和offsetV。</td>
@@ -279,7 +279,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">workspaceSize(uint64_t*)</td>
+      <td class="tg-0lax">workspaceSize（uint64_t*）</td>
       <td class="tg-0lax">输出</td>
       <td class="tg-0lax">返回需要在Device侧申请的workspace大小。</td>
       <td class="tg-0lax">-</td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">executor(aclOpExecutor**）</td>
+      <td class="tg-0lax">executor（aclOpExecutor**）</td>
       <td class="tg-0lax">输出</td>
       <td class="tg-0lax">返回op执行器，包含了算子计算流程。</td>
       <td class="tg-0lax">-</td>
