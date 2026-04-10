@@ -424,14 +424,14 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateOmni()
     // can not fully load
     isFullyLoad_ = NOT_FULLY_LOAD;
     kHandleNumPerLoop_ = inOutMode_ == SINGLE_IN_OUT ? (ubSize_ / dtypeByteSize_) : (ubSize_ / dtypeByteSize_ / DIM2);
-    kHandleNumPerLoop_ = Ops::Base::FloorAlign(kHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_)
+    kHandleNumPerLoop_ = Ops::Base::FloorAlign(kHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_);
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHeadSize_, kHandleNumPerLoop_);
     kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
     kLoopNum_--;
 
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = ubSize_ / dtypeByteSize_ / DIM2;
-        vHandleNumPerLoop_ = Ops::Base::FloorAlign(vHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_)
+        vHandleNumPerLoop_ = Ops::Base::FloorAlign(vHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_);
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
         vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
         vLoopNum_--;
@@ -728,7 +728,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         OP_LOGE(context_, "when dim num of inputKey is 4, compress_lens and seq_lens must not be None.");
         return ge::GRAPH_FAILED;
     }
-    if (params_.templateType == TEMPLATE_NCT) {
+    if (templateType_ == TEMPLATE_NCT) {
         auto attrs = context_->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
         auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);

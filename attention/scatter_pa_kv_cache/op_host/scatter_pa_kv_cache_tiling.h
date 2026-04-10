@@ -101,6 +101,7 @@ protected:
     ge::graphStatus CheckNormal();
     ge::graphStatus CheckRope();
     ge::graphStatus CheckAlibi();
+    ge::graphStatus CheckNz();
     ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
     void SetInputPos();
     void GetCommonTilingInfo();
