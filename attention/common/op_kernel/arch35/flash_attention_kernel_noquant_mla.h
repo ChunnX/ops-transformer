@@ -600,7 +600,20 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN(uint32_t bnStartIdx, uint32_t bnEndIdx)
 {
     if constexpr(layout != LayOutTypeEnum::LAYOUT_TND) {
-        return bnStartIdx == bnEndIdx - 1;
+        if (bnStartIdx == bnEndIdx - 1) {
+            return true;
+        }
+        if (constInfo.isActualLenDimsNull) {
+            return false;
+        } else {
+            for (uint32_t bnIdx = bnStartIdx + 1; bnIdx < bnEndIdx; bnIdx++) {
+                uint32_t boIdx = bnIdx / constInfo.n2Size;
+                if (actualSeqQlenAddr[boIdx] != 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
     // TND
     if (bnStartIdx != bnEndIdx - 1) {
