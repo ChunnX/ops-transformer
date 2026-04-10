@@ -68,7 +68,7 @@ Mc2Context::~Mc2Context()
 aclnnStatus Mc2Context::LoadHcclSymbols()
 {
     OP_LOGD("Start to load HCCL library and symbols");
-    const std::string libPath = this->GetLibPath();
+    const std::string libPath = GetLibPath();
     if (libPath.empty()) {
         OP_LOGE(ACLNN_ERR_INNER, "Failed to get HCCL library path");
         return ACLNN_ERR_INNER;
@@ -89,6 +89,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void**>(&HcomGetCommHandleByGroup), "HcomGetCommHandleByGroup"},
         {reinterpret_cast<void**>(&HcclRankGraphGetLinks), "HcclRankGraphGetLinks"},
         {reinterpret_cast<void**>(&HcclRankGraphGetLayers), "HcclRankGraphGetLayers"},
+        {reinterpret_cast<void**>(&HcclRankGraphGetRankSizeByLayer), "HcclRankGraphGetRankSizeByLayer"},
         {reinterpret_cast<void**>(&HcclChannelAcquire), "HcclChannelAcquire"},
         {reinterpret_cast<void**>(&HcclGetHcclBuffer), "HcclGetHcclBuffer"},
         {reinterpret_cast<void**>(&HcclChannelGetHcclBuffer), "HcclChannelGetHcclBuffer"},
@@ -100,7 +101,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
     };
 
     for (auto& sym : symbols) {
-        *(sym.ptr) = this->GetHcclLibFunc<void*>(hcclLibHandle_, sym.name);
+        *(sym.ptr) = GetHcclLibFunc<void*>(hcclLibHandle_, sym.name);
         if (*(sym.ptr) == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER, "Failed to load %s symbol", sym.name);
             dlclose(hcclLibHandle_);

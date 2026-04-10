@@ -77,6 +77,7 @@ private:
     HcclResult (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
     HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t**, uint32_t*) = nullptr;
+    HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t*) = nullptr;
     HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
     HcclResult (*HcclGetHcclBuffer)(HcclComm, void**, uint64_t*) = nullptr;
     HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void**, uint64_t*) = nullptr;
