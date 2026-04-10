@@ -58,11 +58,14 @@ const static int64_t ATTR_QUANT_MODE_INDEX = 6;
 const static int64_t ATTR_EXPERT_RANGE_INDEX = 7;
 const static int64_t ATTR_ROW_IDX_TYPE_INDEX = 8;
 const static int64_t ATTR_EXPERT_RANGE_DIM = 2;
+// RowIdx tilingKey basis (X000)
 const static int64_t GATHER = 0;
 const static int64_t SCATTER = 1;
+// QuantMode tilingKey basis (X0000)
 const static int64_t UN_QUANT = -1L;
 const static int64_t STATIC_QUANT = 0;
 const static int64_t DYNAMIC_QUANT = 1;
+//
 const static int64_t CUMSUM = 0;
 const static int64_t COUNT = 1;
 const static int64_t KEY_VALUE = 2;
@@ -672,9 +675,14 @@ int64_t MoeInitRountingV3TilingBase::IsGatherFirstFullLoad() {
 }
 
 bool MoeInitRountingV3TilingBase::IsFullLoad() {
+    auto gatherOut_tldat = &moeInitRoutingV3TilingData.gatherOutComputeParamsOp;
+
     int64_t perCoreTokens = 1;
     if (expertStart_ == 0 && expertEnd_ == expertNum_) {
-        ep_ = 0;
+        // Gather must be the optimal MTE3 strategy when expertRange matches expertNum_.
+        ep_ = GATHER;
+        tilingData->set_expandXOutMethod(GATHER);
+
         if (quantMode_ != 1) {
             perCoreTokens = n_ / aivNum;
             int64_t remainder = n_ % aivNum;
@@ -682,8 +690,9 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
             perCoreTokens = remainder <= 1 ? perCoreTokens + 1 : perCoreTokens + NUM_TWO;
         }
     } else {
-        ep_ = 1;
-        perCoreTokens = 1;
+        // TODO: compute optimal ep_ strategy according to expertRange versus expertNum_
+        ep_ = SCATTER;
+        perCoreTokens = DIM_ONE;
     }
     moeInitRoutingV3TilingData.set_ep(ep_);
 
@@ -861,7 +870,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
     Tiling4ExpertTokensCountCompute();
     Tiling4SrcToDstCompute();
     Tiling4SrcToDstDropPadCompute();
-    Tiling4GatherOutCompute();
+    Tiling4GatherOutCompute();          // Init MoeV3GatherOutComputeTilingData
     isFullload_ = IsFullLoad();
     ShowTilingData();
     return ge::GRAPH_SUCCESS;

@@ -53,7 +53,7 @@ private:
     GlobalTensor<int32_t> expertTotalCountGm_;
 
     int64_t blockIdx_;
-    int64_t cols_;
+    int64_t cols_;          // x_shape.GetDim(1), hDim length (H)
     int64_t n_;
     int64_t k_;
     int64_t activeNum_;
@@ -81,6 +81,8 @@ private:
     int64_t rowIdxType_;
     int64_t isInputScale_;
     int64_t coreNum_;
+
+    int64_t expandXOutMethod{0};
 };
 
 template <typename T, const int EP>
@@ -311,8 +313,10 @@ __aicore__ inline void MoeGatherOut<T, EP>::Process()
             }
             CopyExpertIn(loop);
             if constexpr (!EP) {
+                // ep_ = 0
                 GatherCopyOut(loop);
             } else {
+                // ep_ = 1 
                 ScatterCopyOut(loop);
             }
         }

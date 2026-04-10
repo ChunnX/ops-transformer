@@ -63,6 +63,7 @@ TILING_DATA_FIELD_DEF(int64_t, lastCoreLastLoopElements);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeV3ExpertTokensCountTilingDataOp, MoeV3ExpertTokensCountTilingData)
 
+// Specialized tiling module for: MoeGatherOut
 BEGIN_TILING_DATA_DEF(MoeV3GatherOutComputeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
 TILING_DATA_FIELD_DEF(int64_t, perCoreIndicesElements);
@@ -77,6 +78,7 @@ TILING_DATA_FIELD_DEF(int64_t, colsLoops);
 TILING_DATA_FIELD_DEF(int64_t, perLoopCols);
 TILING_DATA_FIELD_DEF(int64_t, lastLoopCols);
 TILING_DATA_FIELD_DEF(int64_t, activeNum);
+TILING_DATA_FIELD_DEF(int64_t, expandXOutMethod);   // built-in flag decides MTE3 method for expandX, which is consistent with the ep_ on default but could variate accordint to exact performance demand.
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeV3GatherOutComputeTilingDataOp, MoeV3GatherOutComputeTilingData)
 
