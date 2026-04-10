@@ -315,7 +315,7 @@ void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
-            tokenCost = s2Size * headDim * GetDataTypeByteSize(DataType::FP16) * 2U;     // 2: k and v
+            tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;     // 2: k and v
             if (IsWithinTolerance(m_param.l2Kb, 0U, tokenSize + tokenCost) || tokenSize == 0U) {
                 tokenSize += tokenCost;
             } else {
