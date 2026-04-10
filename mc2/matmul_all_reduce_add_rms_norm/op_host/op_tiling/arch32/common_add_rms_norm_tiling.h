@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file common_add_rms_norm_tiling.h
@@ -22,7 +22,7 @@
 #include "tiling/tiling_api.h"
 #include "util/math_util.h"
 #include "mc2_log.h"
-#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
+#include "../../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace optiling {
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024; // 16M
@@ -60,8 +60,7 @@ struct AddRMSNormTilingOutput {
 };
 
 namespace CommonAddResNormTiling {
-enum ModeKey : uint32_t
-{
+enum ModeKey : uint32_t {
     K_NORMAL,
     K_SPLIT_D,
     K_MERGE_N,
