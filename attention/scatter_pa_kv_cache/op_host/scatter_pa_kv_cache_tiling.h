@@ -153,6 +153,10 @@ private:
     int64_t inputCompressLens_;
     int64_t inputCompressSeqOffset_;
     int64_t inputSeqLens_;
+    int64_t kStride_= 0;
+    int64_t vStride_ = 0;
+    int64_t kOffset_ = 0;
+    int64_t vOffset_ = 0;
 
     gert::Shape inputKeyShape_;
     gert::Shape inputKeyCacheInShape_;

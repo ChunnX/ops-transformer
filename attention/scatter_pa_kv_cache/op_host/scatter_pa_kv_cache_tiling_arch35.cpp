@@ -733,10 +733,10 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
         auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
         auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
-        params_.kStride = strides->GetData()[0];
-        params_.vStride = strides->GetData()[1];
-        params_.kOffset = offsets->GetData()[0];
-        params_.vOffset = offsets->GetData()[1];
+        kStride_ = strides->GetData()[0];
+        vStride_ = strides->GetData()[1];
+        kOffset_ = offsets->GetData()[0];
+        vOffset_ = offsets->GetData()[1];
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -805,6 +805,10 @@ ge::graphStatus ScatterPaKvCacheTiling::PostTiling()
     tilingData_.set_numHead(numHead_);
     tilingData_.set_numBlocks(numBlocks_);
     tilingData_.set_blockSize(blockSize_);
+    tilingData_.set_kStride(kStride_);
+    tilingData_.set_vStride(vStride_);
+    tilingData_.set_kOffset(kOffset_);
+    tilingData_.set_vOffset(vOffset_);
     GenTilingKey();
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
