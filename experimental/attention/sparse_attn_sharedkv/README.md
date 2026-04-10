@@ -118,7 +118,7 @@
 
     cu_seqlens_q = torch.arange(0, (b + 1) * s1, step=s1).to(torch.int32).npu()
     t = cu_seqlens_q[-1].item()
-    seqused_kv = torch.tensor([s2]*b).to(torch.int32).npu()
+    seqused_kv = torch.tensor([s2_act]*b).to(torch.int32).npu()
 
     cmp_kv_len = s2_act // cmp_ratio
     idxs = random.sample(range(cmp_kv_len - s1 + 1),  k)
@@ -213,7 +213,7 @@
 
     cu_seqlens_q = torch.arange(0, (b + 1) * s1, step=s1).to(torch.int32).npu()
     t = cu_seqlens_q[-1].item()
-    seqused_kv = torch.tensor([s2]*b).to(torch.int32).npu()
+    seqused_kv = torch.tensor([s2_act]*b).to(torch.int32).npu()
 
     cmp_kv_len = s2_act // cmp_ratio
     idxs = random.sample(range(cmp_kv_len - s1 + 1),  k)
