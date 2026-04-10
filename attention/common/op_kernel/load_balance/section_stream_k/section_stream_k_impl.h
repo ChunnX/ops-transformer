@@ -627,11 +627,14 @@ void SectionStreamKImpl::ScheduleFd(SectionStreamKImplResult &result)
         totalFDLoad += result.s2SplitNum[i] * result.mSize[i];
     }
     // 计算每个核处理的load
+    if (result.taskIdx.size() == 0) {                                                                                                                                                
+        return;                                                                                                                                                                      
+    }
     uint64_t averageLoad = (totalFDLoad + result.taskIdx.size() - 1U) / result.taskIdx.size(); //向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < result.fdTaskNum; i++) {
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
-        uint32_t curFDVectorNum = result.s2SplitNum[i] * result.mSize[i] / averageLoad;
+        uint32_t curFDVectorNum = (averageLoad == 0) ? 0 : result.s2SplitNum[i] * result.mSize[i] / averageLoad;
         uint32_t curAvgMSize = CeilDiv(result.mSize[i], curFDVectorNum);   // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         curFDVectorNum = CeilDiv(result.mSize[i], curAvgMSize);             // 重新计算正确的核数，避免因为向上取整导致有核为空
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
@@ -701,7 +704,7 @@ void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeContext, Ass
 
     // TODO: while to for
     while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
-        costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / m_param.faToleranceRatio,
+        (m_param.faToleranceRatio == 0) ? 0 : costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / m_param.faToleranceRatio,
         assignContext.coreCache.cost + assignContext.bN2Cost)) {
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;

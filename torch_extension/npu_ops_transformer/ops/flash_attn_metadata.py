@@ -44,10 +44,10 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
                                           mask_mode: Optional[int] = None, win_left: Optional[int] = None,
                                           win_right: Optional[int] = None, layout_q: Optional[str] = None,
                                           layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
-            batchSize = 1
+            batchSize = 0
             if batch_size != None:
                 batchSize = batch_size
-            elif cu_seqlens_q != None:
+            elif cu_seqlens_q != None and cu_seqlens_q.size() > 0:
                 batchSize = cu_seqlens_q.size() - 1
             elif seqused_q != None:
                 batchSize = seqused_q.size()

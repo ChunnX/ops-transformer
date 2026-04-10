@@ -27,11 +27,15 @@ at::Tensor npu_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q
                                    int64_t max_seqlen_kv, int64_t mask_mode, int64_t win_left, int64_t win_right,
                                    std::string layout_q, std::string layout_kv, std::string layout_out)
 {
-    int64_t batchSize = 1;
+    int64_t batchSize = 0;
     if (batch_size != 0) {
         batchSize = batch_size;
-    } else if (cu_seqlens_q.has_value()) {
-        batchSize = cu_seqlens_q->sizes()[0] - 1;
+    } else if (cu_seqlens_q.has_value()) {                                                                                                                                           
+         if (cu_seqlens_q->sizes()[0] == 0) {                                                                                                                                         
+             batchSize = 0;                                                                                                                                                           
+         } else {                                                                                                                                                                     
+             batchSize = cu_seqlens_q->sizes()[0] - 1;                                                                                                                                
+         }
     } else if (seqused_q.has_value()) {
         batchSize = seqused_q->sizes()[0];
     }

@@ -66,6 +66,9 @@ public:
 
     uint32_t GetGroupSize() const override
     {
+        if (kvHeadNum == 0) {                                                                                                                                                        
+            return 1;                                                                                                                                                                
+        }
         return queryHeadNum / kvHeadNum;
     };
 
@@ -142,7 +145,7 @@ public:
         return static_cast<SparseMode>(sparseMode);
     }
 
-    uint32_t GetPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const override
+    int64_t GetPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const override
     {
         auto mode = GetSparseMode();
         switch (mode) {
@@ -153,7 +156,7 @@ public:
         }
     }
 
-    uint32_t GetNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const override
+    int64_t GetNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const override
     {
         auto mode = GetSparseMode();
         switch (mode) {
