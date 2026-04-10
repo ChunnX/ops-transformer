@@ -423,6 +423,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
     gert::Shape expectBetaShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // out (T, NV, DV)
     gert::Shape expectOutShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dv});
+    // actSeqlensShape (B)
+    gert::Shape expectActSeqlensShape = gert::Shape({tilingData_.b});
     // ssmStateShape (T)
     gert::Shape expectSsmStateShape = gert::Shape({tilingData_.t});
 
@@ -455,6 +457,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
         OP_LOGE(context_->GetNodeName(), "The shape of out parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
             outShape.GetDim(DIM_0), outShape.GetDim(DIM_1), outShape.GetDim(DIM_2),
             expectOutShape.GetDim(DIM_0), expectOutShape.GetDim(DIM_1), expectOutShape.GetDim(DIM_2)),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(actSeqlensShape != expectActSeqlensShape,
+        OP_LOGE(context_->GetNodeName(),
+            "The shape of actual_seq_lengths parameter[%ld] is not expected, Expect [%ld].",
+            actSeqlensShape.GetDim(DIM_0), expectActSeqlensShape.GetDim(DIM_0)),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF(ssmStateShape != expectSsmStateShape,
         OP_LOGE(context_->GetNodeName(), "The shape of ssm_state_indices parameter[%ld] is not expected, Expect [%ld].",
