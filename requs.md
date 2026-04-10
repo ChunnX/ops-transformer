@@ -1,4 +1,0 @@
-# 需求
-## 需求一
-1、attention/sparse_flash_attention/tests/pytest这是sfa算子的pytest框架，我目前要上库，但attention/sparse_flash_attention/tests/pytest下面的文件编码规范不满足要求，请参照attention/kv_quant_sparse_flash_attention/tests/pytest对attention/sparse_flash_attention/tests/pytest进行编程规范整改，必要的地方加上注释。还有attention/sparse_flash_attention/tests/pytest/README.md文档也要改
-2、attention/kv_quant_sparse_flash_attention/tests/pytest中batch模式存在一个bug，就是excel表block_num如果既有空也有整数时，读取到的block_num会为浮点，进而生成用例报错，这一点可以参照attention/sparse_flash_attention/tests/pytest进行修复

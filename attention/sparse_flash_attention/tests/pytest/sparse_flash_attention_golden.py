@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 import math
@@ -33,6 +39,7 @@ def _rand_tensor(shape, dtype, low, high):
 
 
 def _build_sparse_indices(B, S1, N2, K, sparse_block_size, sparse_mode, actual_seq_q, actual_seq_kv):
+    # 这里按 sparse block 粒度生成可见 kv block 索引，未命中的位置统一填 -1。
     q_blocks = math.ceil(S1 / sparse_block_size)
     sparse_indices = np.full((B, q_blocks, N2, K), -1, dtype=np.int32)
     for b in range(B):
