@@ -63,7 +63,7 @@ public:
         Nk_ = sTP_->Nk;
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
-        curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
+        curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
         InitLocalBuffers();
@@ -74,10 +74,9 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE,
-                          chunkSize_ > Dv_ ? chunkSize_ * curDk_ * sizeof(float) : Dv_ * curDk_ * sizeof(float));
-        uint64_t outQueueSize = AscendC::Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(float),
-                                                  (uint64_t)Dv_ * curDk_ * sizeof(float));
+        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(chunkSize_, Dv_) * curDk_ * sizeof(bfloat16_t));
+        uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
+                                         (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
         pipe_->InitBuffer(tmpBuff_,
                           chunkSize_ > Dv_ ? chunkSize_ * curDk_ * sizeof(float) : Dv_ * curDk_ * sizeof(float));
@@ -113,14 +112,12 @@ public:
                     if (GetSubBlockIdx() == 0) {
                         CopyIn(curState, Dv_, Dk_);
                     }
-                    
                     CrossCoreWaitFlag(0x2);
                     CrossCoreSetFlag<0x2, PIPE_MTE2>(0x3);
                     if (GetSubBlockIdx() == 0) {
                         CalGCumExp(finalState, sTP_->gCumExp[nvId * Sp_ + length]);
                         // printf("=========================   nvId * Sp_ + length: %ld \n", nvId * Sp_ + length);
                     }
-
                     CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                     CrossCoreWaitFlag(0x4);
                 }
@@ -152,8 +149,6 @@ public:
                                  CacheLine::SINGLE_CACHE_LINE,
                                  DcciDst::CACHELINE_OUT>(gCumExp[curChunkSize_ - 1]);
         float lastGCumExp = gOptional_? gCumExp.GetValue(curChunkSize_ - 1) : 1.0f;
-        // printf("===================== lastGCumExp %f  \n", lastGCumExp);
-        // printf("=====================  curChunkSize_ %ld  \n", curChunkSize_);
         auto stateIn = inQueue_.DeQue<bfloat16_t>();
         auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
@@ -168,7 +163,7 @@ public:
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
 
         outQueue_.EnQue(stateOut);
-        CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, true);
+        CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
         inQueue_.FreeTensor(stateIn);
     }
 
@@ -233,7 +228,7 @@ public:
         copyParams.blockCount = static_cast<uint16_t>(row);
         copyParams.blockLen = static_cast<uint32_t>(col * sizeof(outType));
         copyParams.srcStride = static_cast<uint32_t>(0);
-        copyParams.dstStride = static_cast<uint32_t>((0) * sizeof(outType));
+        copyParams.dstStride = static_cast<uint32_t>(0);
         if (setAtomic) {
             SetAtomicAdd<outType>();
         }

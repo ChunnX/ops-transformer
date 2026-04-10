@@ -219,7 +219,7 @@ public:
 
         InitMatmul();
         InitMask();
-        InitFinalState();
+        // InitFinalState();
     }
 
     __aicore__ inline void Process()
