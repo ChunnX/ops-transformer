@@ -36,8 +36,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         const char *layoutBName = std::is_same_v<layoutB, Cgmct::Gemm::layout::Nz> ? "Nz" :
                                   (std::is_same_v<layoutB, Cgmct::Gemm::layout::Zn> ? "Zn" : "Other");
         AscendC::printf(
-            "zzzlog [GMMFR][pertoken_dequant] tiling_key=%llu layoutA=RowMajor layoutB=%s groupListType=%u batch=%u hasBias=%u\n",
-            static_cast<unsigned long long>(TILING_KEY), layoutBName,
+            "zzzlog [GMMFR][pertoken_dequant] layoutA=RowMajor layoutB=%s groupListType=%u batch=%u hasBias=%u\n",
+            layoutBName,
             static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.groupListType),
             static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.batch),
             static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.hasBias));
