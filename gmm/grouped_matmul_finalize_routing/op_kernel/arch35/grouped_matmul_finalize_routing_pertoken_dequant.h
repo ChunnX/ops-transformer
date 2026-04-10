@@ -32,6 +32,28 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     REGISTER_TILING_DEFAULT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
 
+    if (GetBlockIdx() == 0) {
+        if constexpr (std::is_same_v<layoutB, Cgmct::Gemm::layout::Nz>) {
+            AscendC::printf(
+                "zzzlog [GMMFR][pertoken_dequant] layoutA=RowMajor layoutB=Nz groupListType=%u batch=%u hasBias=%u\n",
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.groupListType),
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.batch),
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.hasBias));
+        } else if constexpr (std::is_same_v<layoutB, Cgmct::Gemm::layout::Zn>) {
+            AscendC::printf(
+                "zzzlog [GMMFR][pertoken_dequant] layoutA=RowMajor layoutB=Zn groupListType=%u batch=%u hasBias=%u\n",
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.groupListType),
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.batch),
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.hasBias));
+        } else {
+            AscendC::printf(
+                "zzzlog [GMMFR][pertoken_dequant] layoutA=RowMajor layoutB=Other groupListType=%u batch=%u hasBias=%u\n",
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.groupListType),
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.batch),
+                static_cast<unsigned int>(tilingData.gmmFinalizeRoutingDataParams.hasBias));
+        }
+    }
+
     auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
     auto matmulTiling_ = tilingData.matmulTiling;
 
@@ -84,7 +106,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
          gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
          gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
+        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
+         static_cast<int32_t>(gmmFinalizeRoutingQuantParams_.batch)}, // epilogue params + batch for rowIndex guard
         gmmParams};
     GmmKernel gmm;
     gmm(params);

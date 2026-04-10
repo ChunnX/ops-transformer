@@ -78,6 +78,7 @@ public:
         GM_ADDR rowIndexGmAddr{nullptr};
         int32_t baseM = 256;
         int32_t baseN = 256;
+        int32_t batch = 0;
         Params() = default;
     };
 
@@ -155,6 +156,8 @@ private:
     uint16_t yPingPongID_ = 0;
     uint16_t logitPingPongID_ = 0;
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
+    int64_t batch_ = 0;
+    bool hasLoggedInvalidRowIndex_ = false;
 };
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -186,6 +189,7 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
         return;
     }
     params_ = &params;
+    batch_ = params.batch;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
     // input
     uint32_t afterFirstIn = MAX_SINGLE_MNS * sizeof(DataTypeOut);
@@ -266,7 +270,19 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
     SetAtomicAdd<float>();
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        auto outRow = static_cast<uint64_t>(rowIndexGlobal_.GetValue(offsetM + i));
+        auto outRowRaw = static_cast<int64_t>(rowIndexGlobal_.GetValue(offsetM + i));
+        if (unlikely(batch_ <= 0 || outRowRaw < 0 || outRowRaw >= batch_)) {
+            if (!hasLoggedInvalidRowIndex_) {
+                AscendC::printf(
+                    "zzzlog [GMMFR] skip invalid rowIndex: block=%u sub=%u offsetM=%llu i=%u raw=%lld batch=%lld yOffset=%llu n=%lld\n",
+                    GetBlockIdx(), subBlockIdx_, static_cast<unsigned long long>(offsetM), i,
+                    static_cast<long long>(outRowRaw), static_cast<long long>(batch_),
+                    static_cast<unsigned long long>(yOffset), static_cast<long long>(n_));
+                hasLoggedInvalidRowIndex_ = true;
+            }
+            continue;
+        }
+        auto outRow = static_cast<uint64_t>(outRowRaw);
         DataCopyPad(yGlobal_[outRow * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 

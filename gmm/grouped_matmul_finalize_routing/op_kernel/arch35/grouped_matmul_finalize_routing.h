@@ -86,9 +86,8 @@ __aicore__ inline void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_
          gmmFinalizeRoutingQuantParams_
              .residualScale}, // prologue
                               // params{sharedInputGmaddr,yGMAddr,shareInputOffset,shareInputLen,n,batch,residualScale}
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM,
-         matmulTiling_
-             .baseN}, // epilogue params{ygmaddr，x2scalegmaddr，biasgmaddr，logitgmaddr，rowidxgmaddr，baseM，baseN}
+        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
+         static_cast<int32_t>(gmmFinalizeRoutingQuantParams_.batch)}, // epilogue params + batch for rowIndex guard
         gmmParams};
     GmmKernel gmm;
     gmm(params);
