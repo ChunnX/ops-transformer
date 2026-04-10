@@ -44,6 +44,10 @@ private:
     aclnnStatus GetCommHandle(const char* groupEp, HcclComm& hcclHandle);
     aclnnStatus GetHcclCommLink(const HcclComm& hcclHandle, uint32_t netLayers, uint32_t srcRankId,
                                 uint32_t dstRankId, const CommProtocol& protocol, CommLink*& links);
+    aclnnStatus GetNetLayers(const HcclComm& hcclHandle, uint32_t*& netLayerList, uint32_t& netLayerNum);
+    aclnnStatus GetRankSizePerServer(const HcclComm& hcclHandle, uint32_t netLayers);
+    aclnnStatus InitHcclChannel(const HcclComm& hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+                               const CommProtocol& protocol, std::vector<HcclChannelDesc>& channelDesc);
     aclnnStatus GetHcclCommChannel(const HcclComm& hcclHandle, uint32_t rankDim, uint32_t srcRankId,
                                    const CommProtocol& protocol, const CommEngine& engine,
                                    std::vector<ChannelHandle>& channels);
@@ -54,7 +58,12 @@ private:
                                 void*& ctx, Mc2MoeContext* mc2ContextStruct);
     aclnnStatus CreatMc2ContextTensor(void* ctx, aclTensor*& mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm& hcclHandle, uint64_t& hcclBuffSize);
+    aclnnStatus CheckProtocolSupport(const HcclComm& hcclHandle, uint32_t epRankSize, uint32_t netLayer);
     aclnnStatus GetCommProtocol(const HcclComm& hcclHandle, CommProtocol& protocol);
+    aclnnStatus ValidateContextTag(const std::string& mc2ContextTag);
+    aclnnStatus GetOrCreateMc2Context(const HcclComm& hcclHandle, const std::string& mc2ContextTag,
+                                     const CommEngine& engine, const CommProtocol& protocol,
+                                     void*& ctx, uint64_t& ctxSize, uint64_t& hcclBuffSize);
 
     const std::string GetLibPath();
     template <typename T>
