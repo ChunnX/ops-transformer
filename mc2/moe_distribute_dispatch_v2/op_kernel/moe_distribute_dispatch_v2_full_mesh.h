@@ -1691,4 +1691,26 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 } // MoeDistributeDispatchV2FullMeshImpl
+
+// 导出 FullMesh 专用函数模板，供 moe_distribute_dispatch_v2.cpp 调用
+#define TemplateFullMeshDispatchClass typename XType, typename ExpandXOutType, int32_t QuantMode, \
+                                     bool IsSmoothScaleExist, bool IsNeedAllgather
+#define TemplateFullMeshDispatchFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+
+// FullMesh 专用执行函数
+template <TemplateFullMeshDispatchClass>
+__aicore__ inline void ExecMoeDistributeDispatchV2FullMesh(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, info, tilingGM);
+    MoeDistributeDispatchV2FullMeshImpl::MoeDistributeDispatchV2FullMesh<TemplateFullMeshDispatchFunc> op;
+    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut,
+            assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
+    op.Process();
+}
+
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_H
