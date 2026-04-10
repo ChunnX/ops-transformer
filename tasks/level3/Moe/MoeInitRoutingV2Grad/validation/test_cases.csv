@@ -1,0 +1,6 @@
+case_id;grad_expanded_x_shape;expanded_row_idx_shape;top_k;drop_pad_mode;active_num;dtype
+0;[32,89];[32];1;0;0;float16
+1;[96,32];[96];1;0;0;bfloat16
+2;[72,69];[72];1;0;0;float32
+3;[32,32];[32];1;0;0;float32
+4;[32,32];[32];1;0;0;float16
