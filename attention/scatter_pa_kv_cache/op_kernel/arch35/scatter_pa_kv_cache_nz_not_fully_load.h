@@ -21,7 +21,7 @@
 namespace ScatterPaKvCache {
 using namespace AscendC;
 
-template <typename T1, typename T2, typename IndexDtype>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheNormalNzNotFullyLoad {
 public:
     __aicore__ inline ScatterPaKvCacheNormalNzNotFullyLoad(TPipe *pipe,
@@ -47,115 +47,115 @@ private:
     GlobalTensor<IndexDtype> slotMappingGm_;
 
     int64_t blockIdx_{0};
-    uint32_t blockSize_{0};
     uint64_t tokenSizeK_{0};
     uint64_t tokenSizeV_{0};
     int32_t lastDimK_{0};
     int32_t lastDimV_{0};
-    uint32_t maxUbUsed_{0};
-    uint32_t loopHK_{0};
-    uint32_t tailHK_{0};
-    uint32_t loopHV_{0};
-    uint32_t tailHV_{0};
     uint64_t ubSizeK_{0};
     uint64_t ubSizeV_{0};
 };
 
-template <typename T1, typename T2, typename IndexDtype>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::Init(
     GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out, GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
-    blockSize_ = tilingData_->blockSize;
-    tokenSizeK_ = tilingData_->numHead * tilingData_->kHeadSize; // H
+    tokenSizeK_ = tilingData_->numHead * tilingData_->kHeadSize;
     tokenSizeV_ = tilingData_->numHead * tilingData_->vHeadSize;
 
     lastDimK_ = BLOCK_SIZE / sizeof(T1);
     lastDimV_ = BLOCK_SIZE / sizeof(T2);
 
     keyGm_.SetGlobalBuffer((__gm__ T1 *)(key));
-    valueGm_.SetGlobalBuffer((__gm__ T2 *)(value));
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping));
     keyCacheOutGm_.SetGlobalBuffer((__gm__ T1 *)(key_cache_out));
-    valueCacheOutGm_.SetGlobalBuffer((__gm__ T2 *)(value_cache_out));
+    if constexpr (InOutMode == DUAL_IN_OUT) {
+        valueGm_.SetGlobalBuffer((__gm__ T2 *)(value));
+        valueCacheOutGm_.SetGlobalBuffer((__gm__ T2 *)(value_cache_out));
+    }
 
-    maxUbUsed_ = tilingData_->ubSize / BUFFER_NUM;
-    loopHK_ = (tokenSizeK_ * sizeof(T1)) / maxUbUsed_;
-    tailHK_ = (tokenSizeK_ * sizeof(T1)) % maxUbUsed_;
-    loopHV_ = (tokenSizeV_ * sizeof(T2)) / maxUbUsed_;
-    tailHV_ = (tokenSizeV_ * sizeof(T2)) % maxUbUsed_;
-    ubSizeK_ = loopHK_ == 0 ? tokenSizeK_ * sizeof(T1) : maxUbUsed_;
-    ubSizeV_ = loopHV_ == 0 ? tokenSizeV_ * sizeof(T2) : maxUbUsed_;
+    ubSizeK_ = tilingData_->kHandleNumPerCore * sizeof(T1);
+    ubSizeV_ = tilingData_->vHandleNumPerCore * sizeof(T2);
     pipe_->InitBuffer(inputQueue_, BUFFER_NUM, maxUbUsed_);
 }
 
-template <typename T1, typename T2, typename IndexDtype>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::CopyToCacheNzK(uint32_t start,
                                                                                                 uint32_t cacheStart)
 {
-    AscendC::DataCopyParams copyParamsIn{1, static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), 0, 0};
-    AscendC::DataCopyParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), 1, 0,
-                                          static_cast<uint16_t>(blockSize_ - 1)};
-    for (uint32_t i = 0; i < loopHK_; i++) {
+    DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0};
+    DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), BLOCK_SIZE, 0,
+                                          static_cast<uint32_t>(tilingData_->blockSize - 1)}; // dstStride 需要乘blocksize
+    DataCopyPadExtParams<T1> PadParams;
+    PadParams.isPad = 0;
+    PadParams.leftPadding = 0;
+    PadParams.rightPadding = 0;
+    PadParams.paddingValue = 0;
+    for (uint32_t i = 0; i < tilingData_->kLoopNum; i++) {
         // CopyIn
         LocalTensor<T1> input = inputQueue_.AllocTensor<T1>();
-        DataCopy(input, keyGm_[start], copyParamsIn);
+        DataCopyPad(input, keyGm_[start], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T1>();
-        DataCopy(keyCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(keyCacheOutGm_[cacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
         start += (ubSizeK_ / sizeof(T1));
-        cacheStart += static_cast<uint64_t>((ubSizeK_ / sizeof(T1)) * blockSize_);
+        cacheStart += static_cast<uint64_t>((ubSizeK_ / sizeof(T1)) * tilingData_->blockSize);
     }
-    if (tailHK_ > 0) {
+    if (tilingData_->kTailHandleNum > 0) {
         // CopyIn
-        copyParamsIn.blockLen = tailHK_ / BLOCK_SIZE;
-        copyParamsOut.blockCount = tailHK_ / BLOCK_SIZE;
+        copyParamsIn.blockLen = tilingData_->kTailHandleNum / BLOCK_SIZE;
+        copyParamsOut.blockCount = tilingData_->kTailHandleNum / BLOCK_SIZE;
         LocalTensor<T1> input = inputQueue_.AllocTensor<T1>();
-        DataCopy(input, keyGm_[start], copyParamsIn);
+        DataCopyPad(input, keyGm_[start], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T1>();
-        DataCopy(keyCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(keyCacheOutGm_[cacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
     }
 }
 
-template <typename T1, typename T2, typename IndexDtype>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::CopyToCacheNzV(uint32_t start,
                                                                                                 uint32_t cacheStart)
 {
-    AscendC::DataCopyParams copyParamsIn{1, static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), 0, 0};
-    AscendC::DataCopyParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), 1, 0,
-                                          static_cast<uint16_t>(blockSize_ - 1)};
-    for (uint32_t i = 0; i < loopHV_; i++) {
+    DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0};
+    DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), 1, 0,
+                                          static_cast<uint32_t>(tilingData_->blockSize - 1)};
+    DataCopyPadExtParams<T2> PadParams;
+    PadParams.isPad = 0;
+    PadParams.leftPadding = 0;
+    PadParams.rightPadding = 0;
+    PadParams.paddingValue = 0;
+    for (uint32_t i = 0; i < tilingData_->vLoopNum; i++) {
         // CopyIn
         LocalTensor<T2> input = inputQueue_.AllocTensor<T2>();
-        DataCopy(input, valueGm_[start], copyParamsIn);
+        DataCopyPad(input, valueGm_[start], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T2>();
-        DataCopy(valueCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(valueCacheOutGm_[cacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
         start += (ubSizeV_ / sizeof(T2));
-        cacheStart += static_cast<uint64_t>((ubSizeV_ / sizeof(T2)) * blockSize_);
+        cacheStart += static_cast<uint64_t>((ubSizeV_ / sizeof(T2)) * tilingData_->blockSize);
     }
-    if (tailHV_ > 0) {
+    if (tilingData_->vTailHandleNum > 0) {
         // CopyIn
-        copyParamsIn.blockLen = tailHV_ / BLOCK_SIZE;
-        copyParamsOut.blockCount = tailHV_ / BLOCK_SIZE;
+        copyParamsIn.blockLen = tilingData_->vTailHandleNum / BLOCK_SIZE;
+        copyParamsOut.blockCount = tilingData_->vTailHandleNum / BLOCK_SIZE;
         LocalTensor<T2> input = inputQueue_.AllocTensor<T2>();
-        DataCopy(input, valueGm_[start], copyParamsIn);
+        DataCopyPad(input, valueGm_[start], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T2>();
-        DataCopy(valueCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(valueCacheOutGm_[cacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
     }
 }
 
-template <typename T1, typename T2, typename IndexDtype>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
@@ -172,14 +172,16 @@ __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>:
             continue;
         }
         uint64_t startK = (loopToken + startTaskId) * tokenSizeK_;
-        uint64_t startV = (loopToken + startTaskId) * tokenSizeV_;
-        uint64_t blocksIdx = static_cast<uint64_t>(slotValue) / blockSize_;
-        uint64_t blocksOffset = static_cast<uint64_t>(slotValue) - blockSize_ * blocksIdx;
-        uint64_t cacheStartK = blocksIdx * blockSize_ * tokenSizeK_ + blocksOffset * lastDimK_;
-        uint64_t cacheStartV = blocksIdx * blockSize_ * tokenSizeV_ + blocksOffset * lastDimV_;
+        uint64_t blocksIdx = static_cast<uint64_t>(slotValue) / tilingData_->blockSize;
+        uint64_t blocksOffset = static_cast<uint64_t>(slotValue) - tilingData_->blockSize * blocksIdx;
+        uint64_t cacheStartK = blocksIdx * tilingData_->blockSize * tokenSizeK_ + blocksOffset * lastDimK_;
 
         CopyToCacheNzK(startK, cacheStartK);
-        CopyToCacheNzV(startV, cacheStartV);
+        if constexpr (InOutMode == DUAL_IN_OUT) {
+            uint64_t startV = (loopToken + startTaskId) * tokenSizeV_;
+            uint64_t cacheStartV = blocksIdx * tilingData_->blockSize * tokenSizeV_ + blocksOffset * lastDimV_;
+            CopyToCacheNzV(startV, cacheStartV);
+        }
     }
 }
 } // namespace ScatterPaKvCache

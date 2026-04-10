@@ -125,6 +125,7 @@ private:
     int64_t vTailHandleNum_ = 0;
     int64_t numTokens_ = 0;
     int64_t dtypeByteSize_ = 0;
+    int64_t valueDtypeByteSize_ = 0;
     int64_t keyStride0_;
     int64_t keyStride1_;
     int64_t keyStride2_;
