@@ -103,7 +103,9 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
+    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
