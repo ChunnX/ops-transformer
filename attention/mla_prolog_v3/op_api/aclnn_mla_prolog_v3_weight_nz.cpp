@@ -156,6 +156,16 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     return true;
 }
 
+bool CheckQueryQuantModeValidity(int64_t queryQuantMode) {
+    std::unordered_set<int64_t> supportedQueryQuantMode = {0LL, 1LL};
+    if (supportedQueryQuantMode.find(queryQuantMode) == supportedQueryQuantMode.end()) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "QueryQuantMode must be within {0, 1}, actually is %lld.", queryQuantMode);
+        return false;
+    }
+    return true;
+}
+
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
@@ -185,6 +195,9 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     };
     if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)){
+        return ge::GRAPH_FAILED;
+    };
+    if (!CheckQueryQuantModeValidity(queryQuantMode)){
         return ge::GRAPH_FAILED;
     };
 
