@@ -2745,7 +2745,6 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL
     AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID6);
     AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1);
     AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1);
-    ReleaseTSCMAllocEventID();
     ///////////////////////////////////////////////////////////////
     // Matmal5 dv
     ///////////////////////////////////////////////////////////////
@@ -3275,6 +3274,14 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Process(
         taskId++;
         if (blockStartIdx == -1) {
             extraLoopNum -= 1;
+        }
+    }
+    // -----非确定性计算，最后释放L1自主管理InitTscmBuffer分配的eventID-----
+    if constexpr (IS_DTM != ENABLE) {
+        if ASCEND_IS_AIC {
+            if constexpr (DTEMPLATETYPE == DTemplateType::Aligned128) {
+                ReleaseTSCMAllocEventID();
+            }
         }
     }
     // -----确定性计算，最后做一次全核同步，保证所有核的atomicAdd做完-----
