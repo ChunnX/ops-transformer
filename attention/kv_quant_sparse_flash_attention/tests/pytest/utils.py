@@ -35,21 +35,34 @@ STR_MAP_DICT = {
 }
 
 
+def _normalize_numeric_value(value):
+    # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
+    if isinstance(value, list):
+        return [_normalize_numeric_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_normalize_numeric_value(item) for item in value)
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def _parse_excel_cell_value(value):
     # 将 Excel 中的字符串单元格转成 pytest 框架需要的 Python 类型。
     if isinstance(value, str):
         stripped = value.strip()
         if stripped in STR_MAP_DICT:
-            return STR_MAP_DICT[stripped]
+            return _normalize_numeric_value(STR_MAP_DICT[stripped])
         if stripped in ("", "None", "none", "NULL", "null", "NaN", "nan"):
             return None
         if ((stripped.startswith("[") and stripped.endswith("]")) or
                 (stripped.startswith("(") and stripped.endswith(")"))):
             try:
-                return ast.literal_eval(stripped)
+                return _normalize_numeric_value(ast.literal_eval(stripped))
             except (ValueError, SyntaxError):
                 return value
-    return value
+    return _normalize_numeric_value(value)
 
 
 def load_excel_test_cases(excel_file_path, sheet_name):

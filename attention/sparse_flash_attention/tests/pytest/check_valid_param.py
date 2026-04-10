@@ -2,9 +2,16 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 import math
+
 import torch
 
 
@@ -14,22 +21,25 @@ SUPPORTED_Q_TYPE = {torch.float16, torch.bfloat16}
 SUPPORTED_G = {1, 2, 4, 8, 16, 32, 64, 128}
 
 
-def _check_actual_seq(actual_seq, B, upper_bound, name):
+def _check_actual_seq(actual_seq, batch_size, upper_bound, name):
+    # TND/动态有效长场景下，需要保证 actual_seq 与 batch 和长度约束一致。
     if actual_seq is None:
         return
-    if len(actual_seq) != B:
-        raise ValueError(f"{name} 长度应等于 B={B}，当前: {len(actual_seq)}")
-    for i, seq in enumerate(actual_seq):
-        if int(seq) <= 0:
-            raise ValueError(f"{name}[{i}] 应大于 0，当前: {seq}")
-        if upper_bound is not None and int(seq) > upper_bound:
-            raise ValueError(f"{name}[{i}] 不应大于 {upper_bound}，当前: {seq}")
+    if len(actual_seq) != batch_size:
+        raise ValueError(f"{name} 长度应等于 B={batch_size}，当前: {len(actual_seq)}")
+
+    for index, seq in enumerate(actual_seq):
+        seq = int(seq)
+        if seq <= 0:
+            raise ValueError(f"{name}[{index}] 应大于 0，当前: {seq}")
+        if upper_bound is not None and seq > upper_bound:
+            raise ValueError(f"{name}[{index}] 不应大于 {upper_bound}，当前: {seq}")
 
 
 def check_valid_param(params):
-    """按 sparse_flash_attention tiling 约束校验测试参数。"""
-    (Testcase_Name, layout_query, layout_kv, q_type,
-     B, S1, S2, N1, N2, D, K,
+    # 按 sparse_flash_attention tiling 约束校验测试参数。
+    (_, layout_query, layout_kv, q_type,
+     batch_size, seq_len_q, seq_len_kv, num_heads_q, num_heads_kv, head_dim, topk,
      scale_value, sparse_block_size, rope_head_dim,
      sparse_mode, attention_mode, return_softmax_lse,
      block_size, block_num, actual_seq_q, actual_seq_kv) = params
@@ -43,18 +53,21 @@ def check_valid_param(params):
     if layout_kv != "PA_BSND" and layout_kv != layout_query:
         raise ValueError(f"非 PA_BSND 场景下 layout_kv({layout_kv}) 必须等于 layout_query({layout_query})")
 
-    for name, value in (("B", B), ("S1", S1), ("S2", S2), ("N1", N1), ("N2", N2), ("D", D), ("K", K)):
+    for name, value in (
+        ("B", batch_size), ("S1", seq_len_q), ("S2", seq_len_kv),
+        ("N1", num_heads_q), ("N2", num_heads_kv), ("D", head_dim), ("K", topk),
+    ):
         if int(value) <= 0:
             raise ValueError(f"{name} 应大于 0，当前: {value}")
 
-    if N2 != 1:
-        raise ValueError(f"N2 仅支持 1，当前: {N2}")
-    if N1 % N2 != 0:
-        raise ValueError(f"N1({N1}) 必须能被 N2({N2}) 整除")
-    if (N1 // N2) not in SUPPORTED_G:
-        raise ValueError(f"g=N1/N2 仅支持 {sorted(SUPPORTED_G)}，当前: {N1 // N2}")
-    if D != 512:
-        raise ValueError(f"D 仅支持 512，当前: {D}")
+    if num_heads_kv != 1:
+        raise ValueError(f"N2 仅支持 1，当前: {num_heads_kv}")
+    if num_heads_q % num_heads_kv != 0:
+        raise ValueError(f"N1({num_heads_q}) 必须能被 N2({num_heads_kv}) 整除")
+    if (num_heads_q // num_heads_kv) not in SUPPORTED_G:
+        raise ValueError(f"g=N1/N2 仅支持 {sorted(SUPPORTED_G)}，当前: {num_heads_q // num_heads_kv}")
+    if head_dim != 512:
+        raise ValueError(f"D 仅支持 512，当前: {head_dim}")
     if rope_head_dim != 64:
         raise ValueError(f"rope_head_dim 仅支持 64，当前: {rope_head_dim}")
     if attention_mode != 2:
@@ -64,19 +77,15 @@ def check_valid_param(params):
     if sparse_block_size <= 0 or sparse_block_size > 128 or (sparse_block_size & (sparse_block_size - 1)) != 0:
         raise ValueError(f"sparse_block_size 应在 [1, 128] 且为 2 的幂，当前: {sparse_block_size}")
 
-    max_sparse_block_count = math.ceil(S2 / sparse_block_size)
-    if K > max_sparse_block_count:
-        raise ValueError(
-            f"K({K}) 不应大于 ceil(S2 / sparse_block_size)={max_sparse_block_count}"
-        )
+    max_sparse_block_count = math.ceil(seq_len_kv / sparse_block_size)
+    if topk > max_sparse_block_count:
+        raise ValueError(f"K({topk}) 不应大于 ceil(S2 / sparse_block_size)={max_sparse_block_count}")
 
     if layout_query == "TND" or actual_seq_q is not None:
-        _check_actual_seq(actual_seq_q, B, S1, "actual_seq_q")
+        _check_actual_seq(actual_seq_q, batch_size, seq_len_q, "actual_seq_q")
     if layout_kv == "TND" or actual_seq_kv is not None:
-        if layout_kv == "PA_BSND":
-            _check_actual_seq(actual_seq_kv, B, None, "actual_seq_kv")
-        else:
-            _check_actual_seq(actual_seq_kv, B, S2, "actual_seq_kv")
+        upper_bound = None if layout_kv == "PA_BSND" else seq_len_kv
+        _check_actual_seq(actual_seq_kv, batch_size, upper_bound, "actual_seq_kv")
 
     if layout_kv == "PA_BSND":
         if block_size is None or int(block_size) <= 0:
@@ -95,9 +104,8 @@ def check_valid_param(params):
             needed_blocks = sum(math.ceil(int(seq) / block_size) for seq in actual_seq_kv)
             if block_num < needed_blocks:
                 raise ValueError(f"block_num({block_num}) 小于所需物理块数 {needed_blocks}")
-    else:
-        if block_num is not None and int(block_num) <= 0:
-            raise ValueError(f"block_num 若提供则应大于 0，当前: {block_num}")
+    elif block_num is not None and int(block_num) <= 0:
+        raise ValueError(f"block_num 若提供则应大于 0，当前: {block_num}")
 
     if scale_value <= 0:
         raise ValueError(f"scale_value 应大于 0，当前: {scale_value}")

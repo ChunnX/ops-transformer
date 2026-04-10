@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 import ast
@@ -29,9 +35,14 @@ STR_MAP_DICT = {
     "torch.bfloat16": torch.bfloat16,
     "torch.float16": torch.float16,
 }
+RESULT_COLUMNS = [
+    "Testcase_Name", "layout_query", "layout_kv", "q_type", "B", "S1", "S2",
+    "N1", "N2", "D", "K", "scale_value", "sparse_mode", "result", "fulfill_percent",
+]
 
 
 def _normalize_numeric_value(value):
+    # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
     if isinstance(value, list):
         return [_normalize_numeric_value(item) for item in value]
     if isinstance(value, tuple):
@@ -50,6 +61,7 @@ def _as_int_if_not_none(value):
 
 
 def _parse_excel_cell_value(value):
+    # 将 Excel 单元格内容转换成 pytest 框架需要的 Python 类型。
     if isinstance(value, str):
         stripped = value.strip()
         if stripped in STR_MAP_DICT:
@@ -66,6 +78,7 @@ def _parse_excel_cell_value(value):
 
 
 def load_excel_test_cases(excel_file_path, sheet_name):
+    # batch 模式从 Excel 读取原始参数行，并校验字段完整性。
     if sheet_name is None:
         sheet_name = "Sheet1"
     if not os.path.exists(excel_file_path):
@@ -92,8 +105,10 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
+    # 把每个用例的执行结果统一追加到 result.xlsx。
     if result_path is None:
         return
+
     row_data = {
         "Testcase_Name": params[0],
         "layout_query": params[1],
@@ -114,17 +129,18 @@ def save_result(params, result, fulfill_percent, result_path):
 
     if result_path.exists():
         dataframe = pd.read_excel(result_path)
-        if set(dataframe.columns) != set(row_data.keys()):
+        if list(dataframe.columns) != RESULT_COLUMNS:
             raise ValueError(
-                f"Result file columns mismatch, expect {list(row_data.keys())}, got {list(dataframe.columns)}"
+                f"Result file columns mismatch, expect {RESULT_COLUMNS}, got {list(dataframe.columns)}"
             )
         dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     else:
-        dataframe = pd.DataFrame([row_data])
+        dataframe = pd.DataFrame([row_data], columns=RESULT_COLUMNS)
     dataframe.to_excel(result_path, index=False)
 
 
 def combin_params(enabled_params, pytest_paramset=True):
+    # 将参数表展开成 pytest.parametrize 可直接消费的字典列表。
     param_combination_set = []
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
@@ -171,18 +187,19 @@ def combin_params(enabled_params, pytest_paramset=True):
 
 
 def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
+    # single/batch 共用入口：负责参数整理、校验、构造输入和可选执行。
     testcase_prefix = param_combination.get("Testcase_Prefix") or "sparseFlashAttention"
     testcase_number = param_combination.get("Testcase_Number") or case_id
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
     q_type = param_combination["q_type"]
-    B = param_combination["B"]
-    S1 = param_combination["S1"]
-    S2 = param_combination["S2"]
-    N1 = param_combination["N1"]
-    N2 = param_combination["N2"]
-    D = param_combination["D"]
-    K = param_combination["K"]
+    batch_size = param_combination["B"]
+    seq_len_q = param_combination["S1"]
+    seq_len_kv = param_combination["S2"]
+    num_heads_q = param_combination["N1"]
+    num_heads_kv = param_combination["N2"]
+    head_dim = param_combination["D"]
+    topk = param_combination["K"]
     scale_value = param_combination["scale_value"]
     sparse_block_size = param_combination["sparse_block_size"]
     rope_head_dim = param_combination["rope_head_dim"]
@@ -190,25 +207,24 @@ def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     attention_mode = param_combination["attention_mode"]
     return_softmax_lse = param_combination.get("return_softmax_lse", False)
     block_size = param_combination.get("block_size") or 256
-    block_num = param_combination.get("block_num")
+    block_num = _as_int_if_not_none(param_combination.get("block_num"))
     actual_seq_q = param_combination.get("actual_seq_q")
     actual_seq_kv = param_combination.get("actual_seq_kv")
-
-    block_num = _as_int_if_not_none(block_num)
 
     q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
     testcase_name = (
         f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_"
-        f"{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
+        f"{batch_size}_{num_heads_q}_{num_heads_kv}_{seq_len_q}_{seq_len_kv}_{head_dim}_{topk}_{int(testcase_number):06d}"
     )
 
     if layout_kv == "PA_BSND" and block_num is None:
-        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num = math.ceil(max_kv / block_size) * B
+        # 未显式给出 block_num 时，按当前实际 kv 长度自动推导。
+        max_kv = max(actual_seq_kv) if actual_seq_kv else seq_len_kv
+        block_num = math.ceil(max_kv / block_size) * batch_size
 
     params = (
         testcase_name, layout_query, layout_kv, q_type,
-        B, S1, S2, N1, N2, D, K,
+        batch_size, seq_len_q, seq_len_kv, num_heads_q, num_heads_kv, head_dim, topk,
         scale_value, sparse_block_size, rope_head_dim,
         sparse_mode, attention_mode, return_softmax_lse,
         block_size, block_num, actual_seq_q, actual_seq_kv,
@@ -227,6 +243,7 @@ def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
 
 
 def sfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
+    # 回放 NPU 执行，并根据 cpu_output 决定是否做精度对比。
     try:
         npu_result, cpu_result = sparse_flash_attention_process.test_sfa_process_ci(
             test_data, device_id=device_id
