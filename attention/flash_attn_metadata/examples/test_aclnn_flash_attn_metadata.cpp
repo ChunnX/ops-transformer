@@ -58,15 +58,35 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 }
 
 static void DumpMeta(void* data) {
-    
-    SplitCoreMode splitCoreMode = static_cast<SplitCoreMode>(((uint32_t*)data)[0]);
-    printf("splitCoreMode:%u\n", splitCoreMode);
-    if (splitCoreMode == SplitCoreMode::SPLIT_S1OUT_CUBE) {
-        optiling::detail::S1outFaMetaData* metaDataPtr = (optiling::detail::S1outFaMetaData*)(data);
-        for (uint32_t i = 0; i < AIC_CORE_NUM; i++){
-            printf("coreId:%u enable:%d M_stride:%d M_num:%d firstFullLoadS1OuterIdx:%d\n",
-                    i, metaDataPtr->s1outMetadata[i][S1OUT_CORE_ENABLE_INDEX], metaDataPtr->s1outMetadata[i][S1OUT_M_STRIDE_INDEX],
-                    metaDataPtr->s1outMetadata[i][S1OUT_M_NUM_INDEX], metaDataPtr->s1outMetadata[i][S1OUT_FIRST_FULL_LOAD_S1_OUTET_IDX_INDEX]);
+    int32_t sectionNum = static_cast<int32_t>(((int32_t*)data)[0]);
+    optiling::detail::FaMetaData faMetadata(data, sectionNum);
+    printf("sectionNum:%d\n",sectionNum);
+    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
+        // FA Metadata Generate
+        printf("sectionIdx:%d\n",sectionId);
+        for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
+            // printf("bn2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 1U));
+            // FA start
+            // printf("bn2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
+            // printf("m start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
+            // printf("s2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
+            // FA end
+            printf("bn2 end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
+            printf("m end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
+            printf("s2 end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
+            // FA idx
+            printf("first fd data ws idx: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
+        }
+
+        // FD Metadata Generate
+        for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
+            // printf("bn2 start: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 1U));
+            printf("bn2 idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
+            printf("m idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
+            printf("fd workspace idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));
+            printf("fd workspace num: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX));
+            printf("m start: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_START_INDEX));
+            printf("m num: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX));
         }
     }
 }
@@ -114,32 +134,32 @@ int main() {
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
     
     int32_t batchSize = 4; // N
-    int32_t numHeads = 8; // N
+    int32_t numHeads = 32; // N
     int32_t numKeyValueHeads = numHeads;
-    int32_t qS = 1024;
-    int32_t kvS = 1024;
+    int32_t qS = 1;
+    int32_t kvS = 8192;
     int32_t headDim = 128;
     int32_t ropeHeadDim = 0;
-    static const uint32_t aicCoreNum = 32;
- 	static const uint32_t aivCoreNum = 64;
 
-    double scaleValue = 1 / sqrt(headDim); // 1/sqrt(d)
-    double sparse_block_size = 16;
-    int32_t preTokens = 2147483647;
-    int32_t nextTokens = 2147483647;
+    int32_t preTokens = -1;
+    int32_t nextTokens = -1;
     string layout_query = "BSND";
     char layoutQuery[layout_query.length() + 1];
     strcpy(layoutQuery, layout_query.c_str());
     string layout_kv = "BSND";
     char layoutKv[layout_kv.length() + 1];
     strcpy(layoutKv, layout_kv.c_str());
-    int32_t sparseMode = 0;
+    int32_t sparseMode = 3;
     int32_t attentionMode = 0;
     bool return_softmax_lse = false;
 
+
+    int64_t metadataSize = ((36 + 72) * batchSize * numKeyValueHeads + 1) * 16;
+    int64_t alignedSize = ((metadataSize + 4095) / 4096) * 4096;
+
     std::vector<int64_t> actualSeqLengthsQueryShape = {batchSize};
     std::vector<int64_t> actualSeqLengthsKvShape = {batchSize};
-    std::vector<int64_t> metadataShape = {1024};
+    std::vector<int64_t> metadataShape = {alignedSize};
     void *actualSeqLengthsQueryDeviceAddr = nullptr;
     void *actualSeqLengthsKvDeviceAddr = nullptr;
     void *metadataDeviceAddr = nullptr;
@@ -151,7 +171,7 @@ int main() {
     int64_t metadataShapeSize = GetShapeSize(metadataShape);
     std::vector<int32_t> actualSeqLengthsQueryHostData(actualSeqLengthsQueryShapeSize, qS);
     std::vector<int32_t> actualSeqLengthsKvHostData(actualSeqLengthsKvShapeSize, kvS);
-    std::vector<int32_t> metadataHostData(metadataShapeSize, 1);
+    std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
     
 
 
@@ -178,8 +198,12 @@ int main() {
     char socVersion[] = "ascend950";
     printf("start aclnnFlashAttnMetadata\n");
     ret = aclnnFlashAttnMetadataGetWorkspaceSize(
-        actualSeqLengthsQueryTensor, actualSeqLengthsKvTensor, numHeads, numKeyValueHeads,
-        headDim, sparseMode, batchSize, qS, kvS,
+        nullptr, nullptr, 
+        nullptr, nullptr,
+        batchSize, qS, kvS,
+        numHeads, numKeyValueHeads,
+        headDim, sparseMode, preTokens, nextTokens, 
+        "BSND", "BSND", "BSND", 
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
@@ -202,7 +226,7 @@ int main() {
 
     ret = aclrtMemcpy(metadataHostData.data(),
                         metadataHostData.size() * sizeof(metadataHostData[0]), metadataDeviceAddr,
-                        optiling::FA_META_SIZE * sizeof(int32_t),
+                        metadataShapeSize,
                         ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         printf("aclrtMemcpy %d\n", ret);
