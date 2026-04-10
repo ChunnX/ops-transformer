@@ -9,6 +9,8 @@
  */
 #include <cstring>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include "graph/types.h"
 #include "aclnn_mla_prolog_v3_weight_nz.h"
 
@@ -115,6 +117,45 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
     return true;
 }
 
+bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuantMode) {
+    std::unordered_map<int64_t, std::unordered_set<int64_t>> supportedKvQuantMode;
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        supportedKvQuantMode = {
+            {0LL, {0LL}},
+            {1LL, {0LL, 2LL, 3LL}},
+            {2LL, {0LL, 1LL, 3LL}},
+            {3LL, {0LL, 1LL, 3LL}},
+            {4LL, {0LL, 1LL, 3LL}},
+            {5LL, {0LL, 1LL, 3LL}},
+        };
+    } else {
+        supportedKvQuantMode = {
+            {0LL, {0LL}},
+            {1LL, {0LL, 2LL, 3LL}},
+            {2LL, {0LL, 1LL, 3LL}},
+        };
+    }
+    auto it = supportedKvQuantMode.find(weightQuantMode);
+    if (it == supportedKvQuantMode.end()) {
+        return true; // weightQuantMode itself is invalid, already checked by CheckWeightQuantModeValidity
+    }
+    if (it->second.find(kvCacheQuantMode) == it->second.end()) {
+        std::string supportedStr;
+        for (auto mode : it->second) {
+            supportedStr += std::to_string(mode) + ", ";
+        }
+        if (!supportedStr.empty()) {
+            supportedStr.pop_back();
+            supportedStr.pop_back();
+        }
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "When weightQuantMode == %lld, kvCacheQuantMode must be within {%s}, actually is %lld.",
+                weightQuantMode, supportedStr.c_str(), kvCacheQuantMode);
+        return false;
+    }
+    return true;
+}
+
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
@@ -141,6 +182,9 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
+        return ge::GRAPH_FAILED;
+    };
+    if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)){
         return ge::GRAPH_FAILED;
     };
 
