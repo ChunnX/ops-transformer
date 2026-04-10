@@ -1063,8 +1063,11 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
 
     int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
     int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
-    workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
-    OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
+    // [INFO][Deterministic] 为每个核分配独立的loss累加槽位（32字节对齐）
+    int64_t lossWorkspaceSize = (static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) *
+                                 static_cast<int64_t>(sizeof(float)) + 31) / 32 * 32;
+    workspaces[0] = static_cast<size_t>(multicoreTotalsize) + lossWorkspaceSize + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
+    OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld], lossWorkspaceSize:[%ld]", workspaces[0], multicoreTotalsize, lossWorkspaceSize);
     return ge::GRAPH_SUCCESS;
 }
 
