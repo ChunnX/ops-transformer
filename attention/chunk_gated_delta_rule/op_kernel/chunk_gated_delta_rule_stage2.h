@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+  */
 
 /*!
  * \file chunk_gated_delta_rule_stage2.h
@@ -74,7 +74,7 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(chunkSize_, Dv_) * curDk_ * sizeof(bfloat16_t));
+        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
         uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                          (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
@@ -124,20 +124,31 @@ public:
                 if ASCEND_IS_AIC {
                     uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                     uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+                    if (GetSubBlockIdx() == 0) {
+                        // DumpTensor(sTP_->vInner[mm_offset1], 0, 10);
+                        // DumpTensor(sTP_->vInner[mm_offset1 + curChunkSize_ * Dv_ - 10], 0, 10);
+
+                        // DumpTensor(curState, 0, 10);
+                        // DumpTensor(curState[Dv_ * Dk_ - 10], 0, 10);
+                    }
                     CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
                     CalAttnInter(sTP_->qPrime[mm_offset0], curState, sTP_->attnInter[mm_offset1]);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
                     CrossCoreWaitFlag(0x3);
+                    if (GetSubBlockIdx() == 0) {
+                        DumpTensor(sTP_->vInner[mm_offset1], 0, 10);
+                        DumpTensor(sTP_->vInner[mm_offset1 + curChunkSize_ * Dv_ - 10], 0, 10);
+
+                        // DumpTensor(curState, 0, 10);
+                        // DumpTensor(curState[Dv_ * Dk_ - 10], 0, 10);
+                    }
+                    CrossCoreWaitFlag(0x5);
                     CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
-                    CrossCoreWaitFlag(0x5);
                     SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                     WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                 }
-                // if (GetSubBlockIdx() == 0) {
-                //     DumpTensor(finalState, 0, 10);
-                //     DumpTensor(finalState[Dv_ * Dk_ - 8], 0, 8);
-                // }
+
             }
         }
     }
