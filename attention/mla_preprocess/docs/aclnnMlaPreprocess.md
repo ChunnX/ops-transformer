@@ -133,7 +133,7 @@ aclnnStatus aclnnMlaPreprocess(
   <col style="width: 237px">
   <col style="width: 111px">
   <col style="width: 170px">
-  <col style="width: 250px">
+  <col style="width: 150px">
   </colgroup>
   <thead>
     <tr>
