@@ -218,7 +218,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::SetScheduleConfig()
 {
     constexpr uint32_t batchMode = 1U;
     auto ret = context_->SetScheduleMode(batchMode);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "SetScheduleMode failed, ret=%d", ret),
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "SetScheduleMode failed, ret=%u", ret),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
