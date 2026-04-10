@@ -23,8 +23,11 @@ add_library(incre_flash_attention_meta_kernel_objects STATIC
 
 target_include_directories(incre_flash_attention_meta_kernel_objects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    $ENV{ASCEND_HOME_PATH}/include
-    $ENV{ASCEND_HOME_PATH}/x86_64-linux/asc/include/aicpu_api
+    ${ASCEND_HOME}/${SYSTEM_PREFIX}/include
+    ${ASCEND_HOME}/${SYSTEM_PREFIX}/pkg_inc
+    ${ASCEND_HOME}/${SYSTEM_PREFIX}/pkg_inc/base
+    ${ASCEND_HOME}/${SYSTEM_PREFIX}/asc/include/aicpu_api
+    ${ASCEND_HOME}/${SYSTEM_PREFIX}/pkg_inc/aicpu_common/context/utils
 )
 
 target_link_libraries(incre_flash_attention_meta_kernel_objects PRIVATE pthread)
@@ -39,7 +42,13 @@ set_source_files_properties(
 # Create object library
 add_library(incre_flash_attention_meta_objects OBJECT npu_fused_infer_attention_score_metadata.cpp)
 
-target_compile_options(incre_flash_attention_meta_objects PRIVATE ${COMMON_COMPILE_OPTIONS} $<$<COMPILE_LANGUAGE:ASC>: --npu-arch=dav-2201>)
-target_include_directories(incre_flash_attention_meta_objects PRIVATE ${COMMON_INCLUDE_DIRS})
+target_compile_options(incre_flash_attention_meta_objects PRIVATE ${COMPILE_OPTIONS} $<$<COMPILE_LANGUAGE:ASC>: --npu-arch=dav-2201>)
+target_include_directories(incre_flash_attention_meta_objects PRIVATE ${INCLUDE_DIRECTORIES})
 target_link_libraries(incre_flash_attention_meta_objects PRIVATE incre_flash_attention_meta_kernel_objects)
+
+# add target obj to OBJECTS_LIST
+set(TEMP_LIST ${OBJECTS_LIST})
+list(APPEND TEMP_LIST $<TARGET_OBJECTS:incre_flash_attention_meta_objects>) 
+list(APPEND TEMP_LIST $<TARGET_OBJECTS:incre_flash_attention_meta_kernel_objects>) 
+set(OBJECTS_LIST ${TEMP_LIST} CACHE INTERNAL "List of objects" FORCE)
 return()
