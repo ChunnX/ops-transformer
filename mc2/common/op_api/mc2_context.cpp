@@ -432,9 +432,9 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     }
 
     uint32_t netLayer = layerList[HCCL_COMM_LAYERS_UB_MEM];
-    ret = CheckProtocolSupport(hcclHandle, epRankSize, netLayer);
-    if (ret != ACLNN_SUCCESS) {
-        return ret;
+    auto aclnnRet = CheckProtocolSupport(hcclHandle, epRankSize, netLayer);
+    if (aclnnRet != ACLNN_SUCCESS) {
+        return aclnnRet;
     }
 
     protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
