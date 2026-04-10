@@ -39,13 +39,9 @@ def test_qli_process(filepath, device_id=0):
 
     
     weights =test_data['weights'].npu()
-    query_dequant_scale = test_data['query_dequant_scale'].npu()
-    key_dequant_scale = test_data['key_dequant_scale'].npu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
     block_table = test_data['block_table'].npu()
-    query_quant_mode = test_data['query_quant_mode']
-    key_quant_mode = test_data['key_quant_mode']
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     sparse_count = test_data['sparse_count']
@@ -53,20 +49,18 @@ def test_qli_process(filepath, device_id=0):
     cmp_ratio = test_data['cmp_ratio']
 
     #调用SFA算子
-    npu_result = torch_npu.npu_quant_lightning_indexer(query, key, weights, 
-                                                    query_dequant_scale,
-                                                    key_dequant_scale,
+    npu_result,_ = torch_npu.npu_lightning_indexer(query, key, weights, 
                                                     actual_seq_lengths_query=actual_seq_lengths_query,
                                                     actual_seq_lengths_key=actual_seq_lengths_key,
                                                     block_table=block_table,
-                                                    query_quant_mode=query_quant_mode,
-                                                    key_quant_mode=key_quant_mode,
                                                     layout_query=layout_query,
                                                     layout_key=layout_key, 
                                                     sparse_count=sparse_count,
                                                     sparse_mode=sparse_mode,
                                                     pre_tokens = (1<<63)-1,
-                                                    next_tokens = (1<<63)-1)
+                                                    next_tokens = (1<<63)-1,
+                                                    return_value = False
+                                                    )
     
     torch.npu.synchronize()
 
