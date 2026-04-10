@@ -152,8 +152,6 @@ private:
     uint64_t alignN_;
     uint64_t vlForFloatNumber_;
     uint32_t repeatTimesLine_;
-    uint16_t yPingPongID_ = 0;
-    uint16_t logitPingPongID_ = 0;
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
 };
 
@@ -163,7 +161,6 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
 {
     if ASCEND_IS_AIV {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
     }
 }
 
@@ -173,7 +170,6 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
 {
     if ASCEND_IS_AIV {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
     }
 }
 
@@ -522,10 +518,11 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
     uint16_t remainRepeatTimesLogit =
         (singleMInVec % MAX_OUTPUT_M_UBS != 0) ? singleMInVec % MAX_OUTPUT_M_UBS : MAX_OUTPUT_M_UBS;
     blockCoord_ = blockCoord;
-    auto logitUb = logitPingPongID_ == 0 ? logitUbPing_ : logitUbPong_;
-    auto x2ScaleUb = logitPingPongID_ == 0 ? x2ScaleUbPing_ : x2ScaleUbPong_;
-    auto x1ScaleUb = logitPingPongID_ == 0 ? x1ScaleUbPing_ : x1ScaleUbPong_;
-    auto biasUb = logitPingPongID_ == 0 ? biasUbPing_ : biasUbPong_;
+    // Keep a single input/output buffer here to isolate whether ping-pong scheduling causes the MTE OOB.
+    auto logitUb = logitUbPing_;
+    auto x2ScaleUb = x2ScaleUbPing_;
+    auto x1ScaleUb = x1ScaleUbPing_;
+    auto biasUb = biasUbPing_;
     CopyInLogit(singleMInVec, logitOffset, logitUb);
     CopyX2ScaleFromGm2Ub(x2ScaleUb, 0);
     if (params_->x1ScaleGmAddr != nullptr) {
@@ -534,27 +531,23 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
     if (params_->biasGmAddr != nullptr) {
         CopyBiasFromGm2Ub(biasUb);
     }
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
     VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
-    logitPingPongID_ = (logitPingPongID_ + 1) & 1;
     uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UBS);
     for (uint32_t i = 0; i < loopNumY; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UBS;
-        __ubuf__ DataTypeOut *outUbAddr = yPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
-                                                                   (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
+        __ubuf__ DataTypeOut *outUbAddr = (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr();
         VFDoLogitMuls(i * MAX_OUTPUT_M_UBS * alignN_, i * MAX_OUTPUT_M_UBS, repeatTimesLine_, repeatTimesRe, outUbAddr,
                       logitUb);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
-        auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+        auto yLocal = outUbPing_;
         VectorAtomicProcess(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UBS, yOffset, yLocal);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
-        yPingPongID_ = (yPingPongID_ + 1) & 1;
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     }
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
 }
 } // namespace Block
 } // namespace Gemm
