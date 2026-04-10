@@ -277,7 +277,7 @@ private:
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
             qPrime_, vInner_, gCumExp_, kCumDecay_, stateIn, stateOut, kg_,
-            attnInter_, stageWsAddr_, &stage2MT_, pipe_, &cg,
+            out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();

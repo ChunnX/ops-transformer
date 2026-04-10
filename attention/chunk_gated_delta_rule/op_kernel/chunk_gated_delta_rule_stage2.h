@@ -36,7 +36,8 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)
     GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)
     GlobalTensor<bfloat16_t> kg;
-    GlobalTensor<bfloat16_t> attnInter;
+    // GlobalTensor<bfloat16_t> attnInter;
+    GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
     StageTwoMT *mm1;
     TPipe *pipe;
@@ -112,8 +113,8 @@ public:
                     if (GetSubBlockIdx() == 0) {
                         CopyIn(curState, Dv_, Dk_);
                     }
+                    // CrossCoreSetFlag<0x2, PIPE_MTE2>(0x3);
                     CrossCoreWaitFlag(0x2);
-                    CrossCoreSetFlag<0x2, PIPE_MTE2>(0x3);
                     if (GetSubBlockIdx() == 0) {
                         CalGCumExp(finalState, sTP_->gCumExp[nvId * Sp_ + length]);
                         // printf("=========================   nvId * Sp_ + length: %ld \n", nvId * Sp_ + length);
@@ -132,16 +133,28 @@ public:
                         // DumpTensor(curState[Dv_ * Dk_ - 10], 0, 10);
                     }
                     CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
-                    CalAttnInter(sTP_->qPrime[mm_offset0], curState, sTP_->attnInter[mm_offset1]);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
-                    CrossCoreWaitFlag(0x3);
+                    CalAttnInter(sTP_->qPrime[mm_offset0], curState, sTP_->out[nvId * Dv_]);
                     if (GetSubBlockIdx() == 0) {
-                        DumpTensor(sTP_->vInner[mm_offset1], 0, 10);
-                        DumpTensor(sTP_->vInner[mm_offset1 + curChunkSize_ * Dv_ - 10], 0, 10);
+                        // for (int i = 0; i < curChunkSize_; ++i) {
+                        //     DumpTensor(sTP_->out[nvId * Dv_  + i * Nv_* Dv_], i, Dv_);
+                        // }
+                        // sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);    // MNK
+                        // sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
+                        // sTP_->mm1->SetTensorA(sTP_->qPrime[mm_offset0], false);
+                        // sTP_->mm1->SetTensorB(curState, true);
+                        // sTP_->mm1->IterateAll(sTP_->out[nvId * Dv_ ]);
+                        // sTP_->mm1->End();
+                        // for (int i = 0; i < curChunkSize_; ++i) {
+                        //     DumpTensor(sTP_->out[nvId * Dv_  + i * Nv_* Dv_], i, Dv_);
+                        // }
+                        // DumpTensor(sTP_->attnInter[mm_offset1], 0, 10);
+                        // DumpTensor(sTP_->attnInter[mm_offset1 + curChunkSize_ * Dv_ - 10], 0, 10);
 
                         // DumpTensor(curState, 0, 10);
                         // DumpTensor(curState[Dv_ * Dk_ - 10], 0, 10);
                     }
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
+                    // CrossCoreWaitFlag(0x3);
                     CrossCoreWaitFlag(0x5);
                     CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
@@ -180,14 +193,14 @@ public:
 
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
                                         GlobalTensor<bfloat16_t> state,
-                                        GlobalTensor<bfloat16_t> attnInter)
+                                        GlobalTensor<bfloat16_t> out)
     {
         // q_prime @ state.transpose(0, 1)
-        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);    // MNK
-        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
+        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);    // MNKaKbN
+        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);                 // SingleCoreMNK
         sTP_->mm1->SetTensorA(qPrime, false);
         sTP_->mm1->SetTensorB(state, true);
-        sTP_->mm1->IterateAll(attnInter);
+        sTP_->mm1->IterateAll(out);
         sTP_->mm1->End();
     }
 
