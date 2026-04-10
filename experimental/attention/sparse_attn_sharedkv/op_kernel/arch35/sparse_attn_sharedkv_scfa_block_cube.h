@@ -43,6 +43,18 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
     }
 }
 
+template <SAS_LAYOUT KV_LAYOUT_T>
+__aicore__ inline constexpr GmFormat GetKvGmFormat()
+{
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BNBD) {
+        return GmFormat::PA_BNBSND;
+    } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+        return GmFormat::TND;
+    } else { // BSND
+        return GmFormat::BSND;
+    }
+}
+
 TEMPLATES_DEF
 class SCFABlockCube {
 public:
@@ -56,7 +68,7 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, __gm__ uint8_t *query);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ,
-        __gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
+        __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo);
 
     __aicore__ inline void MergeKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         const RunInfo &runInfo, const ConstInfo &constInfo, int32_t startPos);
@@ -80,7 +92,8 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
+        __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo);
     __aicore__ inline void CalcS1Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void CalcS2Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -108,15 +121,18 @@ private:
     TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
+    static constexpr GmFormat KV_FORMAT = GetKvGmFormat<KV_LAYOUT_T>();
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
-    FaGmTensor<KV_T, GmFormat::PA_BNBSND> oriKvGm;
-    FaGmTensor<KV_T, GmFormat::PA_BNBSND> cmpKvGm;
+    FaGmTensor<KV_T, KV_FORMAT> oriKvGm;
+    FaGmTensor<KV_T, KV_FORMAT> cmpKvGm;
     GlobalTensor<int32_t> cmpSparseIndicesGm;
     GlobalTensor<int32_t> oriBlockTableGm;
     GlobalTensor<int32_t> cmpBlockTableGm;
     GlobalTensor<int32_t> blockTableGm;
-    FaGmTensor<KV_T, GmFormat::PA_BNBSND> curKvGm;
+    FaGmTensor<KV_T, KV_FORMAT> curKvGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
+    GlobalTensor<int32_t> cuSeqlensOriKvGm;
+    GlobalTensor<int32_t> cuSeqlensCmpKvGm;
 
     /* =====================运行时变量==================== */
     CubeCoordInfo coordInfo[3];
@@ -155,7 +171,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo)
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
         this->oriKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)oriKv);
@@ -187,7 +203,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
         }
-        InitGmTensor(cuSeqlensQ, constInfo);
+        InitGmTensor(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
     }
 }
 
@@ -208,7 +224,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManag
 
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo)
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
+    __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == SAS_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
@@ -218,11 +235,27 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
             cuSeqlensQGm, constInfo.actualSeqLenSize);
     }
-    this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.oriBlockSize, constInfo.dSize,
-        this->oriBlockTableGm, constInfo.oriMaxBlockNumPerBatch);
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
-        this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.cmpBlockSize, constInfo.dSize,
-            this->cmpBlockTableGm, constInfo.cmpMaxBlockNumPerBatch);
+    if constexpr (TEMPLATE_MODE != SASTemplateMode::ORI_SCFA_TEMPLATE_MODE && \
+        TEMPLATE_MODE != SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
+        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BNBD) {
+            this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.oriBlockSize, constInfo.dSize,
+                this->oriBlockTableGm, constInfo.oriMaxBlockNumPerBatch);
+            if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+                this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.cmpBlockSize, constInfo.dSize,
+                    this->cmpBlockTableGm, constInfo.cmpMaxBlockNumPerBatch);
+            }
+        } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+            cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+            this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
+                cuSeqlensOriKvGm, constInfo.actualSeqLenSize);
+            if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+                this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
+                    cuSeqlensCmpKvGm, constInfo.actualSeqLenSize);
+            }
+        } else {
+            // BSND不需要初始化
+        }
     }
 }
 
@@ -610,7 +643,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
             WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
         } else {
             inputRightBuf.WaitCrossCore();
-            SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
             WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
             LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
             v0ResGm.WaitCrossCore();
@@ -618,7 +650,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
             CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
             SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
             WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-            v0ResGm.SetCrossCore();
         }
     }
 
@@ -684,10 +715,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
         mm2ResL0C.GetTensor<T>(),
         param);
 
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::ORI_SCFA_TEMPLATE_MODE && TEMPLATE_MODE != SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE) {
-        if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // orikv阶段不需要取topk, 核内同步
-            SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-        }
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     }
 
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
@@ -716,7 +745,7 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, __gm__ uint8_t *query) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ,
-        __gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo) {}
+        __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo) {}
 };
 
 template <typename T>
