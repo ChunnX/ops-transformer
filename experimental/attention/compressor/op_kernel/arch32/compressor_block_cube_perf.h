@@ -45,7 +45,7 @@ public:
         __gm__ uint8_t *startPos,
         __gm__ uint8_t *cmpKvOut);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& preMm1ResGm, const GlobalTensor<MM1_OUT_T>& curMm1ResGm);
+    __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm);
     __aicore__ inline void AllocEventID(TPipe *pipe);
     __aicore__ inline void FreeEventID(TPipe *pipe);
     __aicore__ inline void ComputeMm1(const RunInfo &info);
@@ -59,7 +59,7 @@ private:
     __aicore__ inline void CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
         uint32_t hIdx, uint32_t kBase, uint32_t coffId);
     __aicore__ inline void LoadAToL0(const RunInfo &info, LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> xL1Tensor,
-        uint32_t coffId, uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize);
+        uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize);
     __aicore__ inline void LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
         uint32_t kStart, uint32_t kBase);
     __aicore__ inline void MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor,
@@ -74,8 +74,8 @@ private:
     GlobalTensor<X_T> xGm_;
     GlobalTensor<X_T> wkvGm_;
     GlobalTensor<X_T> wgateGm_;
-    GlobalTensor<MM1_OUT_T>preMm1ResGm;
-    GlobalTensor<MM1_OUT_T>curMm1ResGm;
+    GlobalTensor<MM1_OUT_T>kvMm1ResGm;
+    GlobalTensor<MM1_OUT_T>scoreMm1ResGm;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> startPosGm_;
@@ -178,10 +178,10 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::InitBuffers(TPipe *pipe)
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCubePerf<COMP>::InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& preMm1ResGm, const GlobalTensor<MM1_OUT_T>& curMm1ResGm)
+__aicore__ inline void CompressorBlockCubePerf<COMP>::InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm)
 {
-    this->preMm1ResGm = preMm1ResGm;
-    this->curMm1ResGm = curMm1ResGm;
+    this->kvMm1ResGm = kvMm1ResGm;
+    this->scoreMm1ResGm = scoreMm1ResGm;
 }
 
 template <typename COMP>
@@ -224,46 +224,17 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyXGmToL1(const RunInfo &info, LocalTensor<X_T> xL1Tensor,
     uint32_t hIdx, uint32_t kBase)
 {
-    uint32_t preTSeqCnt = tools_.GetTIdxByBatch(info.preBStart) + info.preSStart; // 前序在整个序列中的位置
-    uint32_t preSeqCnt = info.preFirstSeqCnt; // 前序需要拷贝的长度
     uint32_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
     uint32_t copySeqCnt = info.dealSeqCnt; // 此基本块处理的长度
 
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        uint32_t dValue = kBase;  // 拷贝的列数kBase
-        uint32_t srcDValue = constInfo_.hSize;
-        uint32_t dstNzC0Stride = (copySeqCnt + preSeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
-        if (info.bStart == 0 && info.sStart == 0) {
-            // 按照分核所给信息
-            uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
-            uint64_t sIdx = preTSeqCnt;
-            uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
-            uint32_t nValue = preSeqCnt;
-            CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-            // 再从0开始拷贝全部，
-            xL1Offset = preSeqCnt * (32 / sizeof(X_T));
-            sIdx = 0; 
-            gmOffset = sIdx * constInfo_.hSize + hIdx;
-            nValue = copySeqCnt;
-            CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-        } else {
-            // 需拷贝前一个压缩块的尾块
-            uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
-            uint64_t sIdx = preTSeqCnt;
-            uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
-            uint32_t nValue = copySeqCnt + preSeqCnt;
-            CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-        }
-    } else {
-        uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
-        uint64_t sIdx = tStart;    // 起始s在整个T的起始点
-        uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
-        uint32_t nValue = copySeqCnt;
-        uint32_t dValue = kBase;  // 拷贝的列数kBase
-        uint32_t srcDValue = constInfo_.hSize;
-        uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
-        CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-    }
+    uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
+    uint64_t sIdx = tStart;    // 起始s在整个T的起始点
+    uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
+    uint32_t nValue = copySeqCnt;
+    uint32_t dValue = kBase;  // 拷贝的列数kBase
+    uint32_t srcDValue = constInfo_.hSize;
+    uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
+    CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
 template <typename COMP>
@@ -284,16 +255,9 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyWeightGmToL1(LocalTens
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockCubePerf<COMP>::LoadAToL0(const RunInfo &info, LocalTensor<X_T> aL0Tensor,
-    LocalTensor<X_T> xL1Tensor, uint32_t coffId, uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize)
+    LocalTensor<X_T> xL1Tensor, uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize)
 {
     uint32_t mSize = info.dealSeqCnt;
-    // 当Coff=2时，coffId=0时计算的是pre数据，coffId=1时计算的是cur数据
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        if (coffId > 0) {  // 右矩阵需要跳过多搬的长度
-            mStart += info.preFirstSeqCnt;  // 右矩阵需要的偏移量
-        }
-        mSize = info.preFirstSeqCnt + info.dealSeqCnt;
-    }
 
     uint32_t mSizeAlign = Align(mSize, 16U);
     uint32_t xTensorOffset = kStart * mSizeAlign + mStart * (32 / sizeof(X_T));
@@ -336,43 +300,36 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::MatrixMmad(LocalTensor<T> 
     mmadParams.cmatrixInitVal = isInitL0C;
     mmadParams.cmatrixSource = false;
     Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-    AscendC::PipeBarrier<PIPE_M>();
+    PipeBarrier<PIPE_M>();
 }
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor,
     uint32_t coffId, uint32_t mStart, uint32_t mDealSize)
 {
-    uint32_t nDealSize = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+    // coffId=0, 存左矩阵的数据; coffId=1, 存右矩阵的数据
     FixpipeParamsV220 fixParams;
     fixParams.mSize = mDealSize;
-    fixParams.nSize = nDealSize;
+    fixParams.nSize = constInfo_.dBaseSize;
     fixParams.srcStride = (mDealSize + 15) / 16 * 16;   // 需要16对齐
-    fixParams.dstStride = nDealSize;
+    fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
     fixParams.ndNum = 1;
 
-    uint64_t gmOffset = mStart * fixParams.dstStride;
+    uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
+    uint64_t gmOffset = coffId * constInfo_.headDim + constInfo_.dIdx + mStart * fixParams.dstStride + dbOffset;
+    uint32_t kvOffset = 0;
+    uint32_t scoreOffset = (mDealSize + 15) / 16 * 16 * constInfo_.dBaseSize;
 
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        Fixpipe((coffId == 0) ? preMm1ResGm[gmOffset] : curMm1ResGm[gmOffset], cL0Tensor, fixParams);
-    } else {
-        Fixpipe(curMm1ResGm[gmOffset], cL0Tensor, fixParams);
-    }
+    Fixpipe(kvMm1ResGm[gmOffset], cL0Tensor[kvOffset], fixParams);
+    Fixpipe(scoreMm1ResGm[gmOffset], cL0Tensor[scoreOffset], fixParams);
+
 }
 
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockCubePerf<COMP>::GetMSize(const RunInfo &info, uint32_t coffId)
 {
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        if (coffId == 0) {
-            return info.preDealSeqCnt;
-        } else {
-            return info.dealSeqCnt;
-        }
-    } else {
-        return info.dealSeqCnt;
-    }
+    return info.dealSeqCnt;
 }
 
 template <typename COMP>
@@ -423,7 +380,7 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::ComputeMm1(const RunInfo &
                         WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId);
                         LocalTensor<X_T> aL0Tensor = tmpBufL0A.GetWithOffset<X_T>(L0A_PP_SIZE / sizeof(X_T), l0abBufId * L0A_PP_SIZE);
                         LocalTensor<X_T> bL0Tensor = tmpBufL0B.GetWithOffset<X_T>(L0B_PP_SIZE / sizeof(X_T), l0abBufId * L0B_PP_SIZE);
-                        LoadAToL0(info, aL0Tensor, xL1Tensor, coffId, kL0, K_L0_BASE, mL0, actMDealSize);
+                        LoadAToL0(info, aL0Tensor, xL1Tensor, kL0, K_L0_BASE, mL0, actMDealSize);
                         LoadBToL0(bL0Tensor, wL1Tensor, kL0, K_L0_BASE);
                         SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
                         WaitFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);

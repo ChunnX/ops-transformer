@@ -17,7 +17,10 @@
 #define COMPRESSOR_BLOCK_VEC_H
 
 #include "../compressor_comm.h"
-#include "arch32.h"
+#include "compressor_vector_comm.h"
+#include "rms_norm.h"
+#include "rope.h"
+#include "soft_max.h"
 
 using namespace AscendC;
 

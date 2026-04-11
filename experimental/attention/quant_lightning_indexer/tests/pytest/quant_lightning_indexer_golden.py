@@ -440,6 +440,8 @@ class GeneralizedQLI:
         cmp_ratio = self.cmp_ratio
 
         if layout_query == "TND":
+            if len(actual_seq_lengths_query) == batch_size + 1:
+                actual_seq_lengths_query = actual_seq_lengths_query[1:]
             actual_seq_lengths_query = self.trans_tnd_actseq(actual_seq_lengths_query)
             self.actual_seq_lengths_query = torch.tensor(actual_seq_lengths_query)
             actualSeqLengths_q = self.actual_seq_lengths_query
@@ -451,6 +453,8 @@ class GeneralizedQLI:
             q_scale_shape = [batch_size, q_seq, q_head_num]
 
         if layout_key == "TND":
+            if len(actual_seq_lengths_key) == batch_size + 1:
+                actual_seq_lengths_key = actual_seq_lengths_key[1:]
             actual_seq_lengths_key = self.trans_tnd_actseq(actual_seq_lengths_key)
             self.actual_seq_lengths_key = torch.tensor(actual_seq_lengths_key)
             actualSeqLengths_k = self.actual_seq_lengths_key

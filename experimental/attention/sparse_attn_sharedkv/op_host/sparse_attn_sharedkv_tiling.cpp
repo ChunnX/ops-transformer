@@ -303,11 +303,11 @@ ge::graphStatus SASInfoParser::GetSASTemplateMode(SASTilingInfo &sasInfo)
 {
     if (opParamInfo_.oriKv.desc != nullptr) {
         if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-            sasInfo.perfMode = SASTemplateMode::SCFA_TEMPLATE_MODE;
+            perfMode_ = SASTemplateMode::SCFA_TEMPLATE_MODE;
         } else if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
-            sasInfo.perfMode = SASTemplateMode::CFA_TEMPLATE_MODE;
+            perfMode_ = SASTemplateMode::CFA_TEMPLATE_MODE;
         } else if (opParamInfo_.cmpKv.desc == nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
-            sasInfo.perfMode = SASTemplateMode::SWA_TEMPLATE_MODE;
+            perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
         } else {
             OP_LOGE(opName_, "When cmp_sparse_indices is not nullptr, cmp_kv cannot be nullptr.");
             return ge::GRAPH_FAILED;
@@ -726,6 +726,7 @@ void SASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
     sasInfo.oriKvType = oriKvType_;
     sasInfo.cmpKvType = cmpKvType_;
     sasInfo.outputType = outputType_;
+    sasInfo.perfMode = perfMode_;
 
     if (kvLayout_ == SASLayout::PA_ND) {
         sasInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
@@ -1058,9 +1059,6 @@ ge::graphStatus SASTilingCheck::CheckSingleParaOriBlockTable() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaCmpBlockTable() const
 {
-    if (kvLayout_ == SASLayout::BSND) {
-        return ge::GRAPH_SUCCESS; // BSND 场景不需要使用cmpBlockTable
-    }
     if (sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE ||
         sasInfo_.perfMode == optiling::SASTemplateMode::CFA_TEMPLATE_MODE){
             const std::vector<size_t> cmpBlockTableDimNumList = {DIM_NUM_TWO};
