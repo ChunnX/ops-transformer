@@ -119,17 +119,17 @@ public:
                 }
                 CrossCoreSetFlag<0x2, PIPE_MTE3>(0x4);
                 CrossCoreWaitFlag(0x3);
-                if (GetSubBlockIdx() == 0) {
-                    CalAttnOut(sTP_->attnInter[nvId * Sp_ * Dv_ + chunkPos * Dv_],
-                               sTP_->attnOut[chunkPos * Nv_ * Dv_ + nvId * Dv_]);
-                }
+                // if (GetSubBlockIdx() == 0) {
+                //     CalAttnOut(sTP_->attnInter[nvId * Sp_ * Dv_ + chunkPos * Dv_],
+                //                sTP_->attnOut[chunkPos * Nv_ * Dv_ + nvId * Dv_]);
+                // }
             }
 
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag(0x4);
                 AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_],
                            sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
-                           sTP_->attnInter[nvId * Sp_ * Dv_ + chunkPos * Dv_]);
+                           sTP_->attnOut[nvId * Dv_]);
                 CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);
             }
         }
@@ -162,12 +162,12 @@ public:
         Cast(tmpBuffer2_, qkt, RoundMode::CAST_NONE, curChunkSize_ * chunkSize_);
         Muls(tmpBuffer2_, tmpBuffer2_, sTP_->scale, curChunkSize_ * chunkSize_);
         Mul(tmpBuffer2_, tmpBuffer2_, tmpBuffer1_, curChunkSize_ * chunkSize_);
-        inQueue_.FreeTensor(qkt);
         // mask
         Mul(tmpBuffer2_, tmpBuffer2_, maskBuffer_, curChunkSize_ * chunkSize_);
         Cast(scale_qkt, tmpBuffer2_, RoundMode::CAST_RINT, curChunkSize_ * chunkSize_);
         outQueue_.EnQue(scale_qkt);
         AlignedCopyOut(outGM, curChunkSize_, curChunkSize_);
+        inQueue_.FreeTensor(qkt);
     }
 
     template <typename inType>
@@ -216,7 +216,7 @@ public:
                                       GlobalTensor<bfloat16_t>attnInter)
     {
         // masked_qkt @ v_inner
-        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_);    // MNK
+        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_);    // MNK
         sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_); // SingleCoreMNK
         sTP_->mm3->SetTensorA(tmpGM);
         sTP_->mm3->SetTensorB(vInner);
