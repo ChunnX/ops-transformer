@@ -85,12 +85,15 @@ struct IncreFlashAttentionContext {
     const int64_t *queryQuantMode = nullptr;
     const int64_t *pseType = nullptr;
     const int64_t *windowSize = nullptr;
+    const gert::StorageShape *queryRopeInputShape = nullptr;
+    const gert::StorageShape *keyRopeInputShape = nullptr;
 
     size_t *workSpaces = nullptr;
     std::vector<gert::StorageShape *> kCache = {nullptr};
     std::vector<gert::StorageShape *> vCache = {nullptr};
     uint64_t tilingKey = 0;
-    uint32_t blockDim = 0;
+    uint32_t numBlocks = 0;
+    uint32_t transposeLayout = 0;
 };
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_

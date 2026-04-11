@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ----------------------------------------------------------------------------
+<<<<<<< HEAD
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
+=======
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+>>>>>>> upstream/master_950
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -30,7 +34,12 @@ WFLAGS = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
 WMODES = stat.S_IWUSR | stat.S_IRUSR
 SOC_MAP_EXT = {'ascend310p': 'Ascend310P3', 'ascend310b': 'Ascend310B1',
                'ascend910': 'Ascend910A', 'ascend910b': 'Ascend910B1',
+<<<<<<< HEAD
                'ascend910_93': 'Ascend910_9391', 'kirinx90': 'KirinX90'}
+=======
+               'ascend910_93': 'Ascend910_9391', 'kirinx90': 'KirinX90',
+               'kirin9030': 'Kirin9030'}
+>>>>>>> upstream/master_950
 BIN_CMD = 'asc_opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
 --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic\n'
 SET_PLOG_LEVEL_ERROR = "export ASCEND_GLOBAL_LOG_LEVEL=3\n"

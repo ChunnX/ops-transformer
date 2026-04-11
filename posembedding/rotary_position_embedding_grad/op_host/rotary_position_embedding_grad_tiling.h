@@ -102,7 +102,7 @@ END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(RotaryPositionEmbeddingGrad, RotaryPositionEmbeddingGradTilingData)
 
 struct RotaryPositionEmbeddingGradCompileInfo {
-    int64_t blockDim;
+    int64_t numBlocks;
     uint64_t ubSize;
     platform_ascendc::SocVersion socVersion;
     Ops::Base::ReduceOpCompileInfo opInfo;
@@ -250,7 +250,7 @@ protected:
     ge::graphStatus TilingReduce();
     ge::graphStatus SetTilingKeyBlockDim(uint32_t dxTilingKey);
     ge::graphStatus SetRotaryXTilingData();
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910_95;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     const static int64_t MAX_COPY_BLOCK_COUNT = 4095;
     int64_t b_{0};
     int64_t s_{0};

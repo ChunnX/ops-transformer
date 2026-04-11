@@ -97,7 +97,10 @@ private:
 
     // =============== vector 1 functions ==============
     __aicore__ inline void VectorP(SLIGradKLLossRunInfo &runInfo);
+<<<<<<< HEAD
     __aicore__ inline void VectorPWithOutSoftMaxSum(SLIGradKLLossRunInfo &runInfo);
+=======
+>>>>>>> upstream/master_950
     __aicore__ inline void PreloadWeight(SLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void VectorSy(SLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void ReLUGrad(LocalTensor<KV_T> &reluGradOutTensor, LocalTensor<T> &subResTensor,
@@ -643,11 +646,15 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector1(SLIGradKLLos
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
     // 保证 reduceN 轴的S'Y在同一个Vec核内 将P和S'Y任务分割
     if (runInfo.calcP) {
+<<<<<<< HEAD
         if (constInfo.hasSoftmaxInput) {
             VectorP(runInfo);
         } else {
             VectorPWithOutSoftMaxSum(runInfo);
         }
+=======
+        VectorP(runInfo);
+>>>>>>> upstream/master_950
     } else {
         VectorSy(runInfo); // 计算S'Y部分，一直到Softmax
     }
@@ -759,6 +766,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIGrad
         int64_t bS1StartIndex = tilingData->multiCoreParams.bS1Index[idx];
         int64_t bS1EndIndex = idx + 1 < optiling::MAX_CORE_NUM ?
             tilingData->multiCoreParams.bS1Index[idx + 1] : tilingData->multiCoreParams.totalSize;
+<<<<<<< HEAD
         int64_t bIdx, s1Idx;
 
         if (constInfo.cmpRatio == 4) {
@@ -801,6 +809,27 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIGrad
                 bIdx = bS1Index / constInfo.s1Size;
                 s1Idx = bS1Index - bIdx * constInfo.s1Size;
             }
+=======
+        int64_t bS1Index = bS1StartIndex + runInfo.taskId;
+        if (bS1Index >= bS1EndIndex) {
+            continue;
+        }
+        int64_t bIdx, s1Idx;
+        int64_t actualSum = 0;
+        if constexpr (LAYOUT_T == SLILayout::TND) {
+            for (int index = 0; index < constInfo.bSize; index++) {
+                int64_t actualLen = this->actualSeqLengthsQueryGm.GetValue(index);
+                if (bS1Index < actualLen) {
+                    bIdx = index;
+                    break;
+                }
+                actualSum = actualLen;
+            }
+            s1Idx = bS1Index - actualSum;
+        } else {
+            bIdx = bS1Index / constInfo.s1Size;
+            s1Idx = bS1Index - bIdx * constInfo.s1Size;
+>>>>>>> upstream/master_950
         }
 
         GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo);
@@ -1059,7 +1088,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorP(SLIGradKLLossRunInf
                                                     static_cast<uint32_t>(runInfo.nBaseSizeP * sizeof(T)), // 8 * 4 = 32Bytes
                                                     static_cast<uint32_t>(0), 0, 0);
             DataCopyPadExtParams<T> softmaxCopyPadParams(false, 0, 0, 0);
+<<<<<<< HEAD
             
+=======
+>>>>>>> upstream/master_950
             int64_t softmaxInputOffset = 0;
             if constexpr (LAYOUT_T == SLILayout::BSND) {
                 softmaxInputOffset = runInfo.bIdx * (constInfo.s1Size * constInfo.gSizeQuery) +
@@ -1102,6 +1134,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorP(SLIGradKLLossRunInf
     AscendC::DataCopy(psySyncGm, reduceSumPResUb, topKSize);
 }
 
+<<<<<<< HEAD
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorPWithOutSoftMaxSum(SLIGradKLLossRunInfo &runInfo)
 {
@@ -1161,6 +1194,9 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorPWithOutSoftMaxSum(SL
 }
 
 template <typename SLIT>
+=======
+template <typename SLIT> 
+>>>>>>> upstream/master_950
 __aicore__ inline void SLIKLLossVectorService<SLIT>::PreloadWeight(SLIGradKLLossRunInfo &runInfo)
 {
     int64_t weightOffset = 0;
@@ -1543,10 +1579,19 @@ template <typename SLIT>
 template <uint32_t range>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDk(SLIGradKLLossRunInfo &runInfo, int32_t kLoopIdx)
 {
+<<<<<<< HEAD
     if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K){
         VectorDwDqDkLess2k(runInfo);
     } else {
         VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);
+=======
+    if ((runInfo.s1Idx + 1) >= constInfo.cmpRatio) {
+        if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K){
+            VectorDwDqDkLess2k(runInfo);
+        } else {
+            VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);
+        }
+>>>>>>> upstream/master_950
     }
 }
 

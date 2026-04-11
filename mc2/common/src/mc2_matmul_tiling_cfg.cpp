@@ -14,8 +14,12 @@
  */
 
 #include "mc2_matmul_tiling_cfg.h"
+#include "util/math_util.h"
 
 namespace Mc2MatmulHelper {
+
+constexpr int32_t BASEM_ALIGN_SIZE = 16;
+
 void Mc2MatmulTilingCfg::SetMatMulV3TilingData(Mc2MatMulV3TilingData& tilingData)
 {
     mc2MmV3TilingData_ = &tilingData;
@@ -145,7 +149,7 @@ void Mc2MatmulTilingCfg::DealBaseBlock() const
         return;
     } else if ((baseMLimit_ > 0) && (mmv3TilingData_->tCubeTiling.baseM > baseMLimit_)) {
         mc2MmV3TilingData_->tCubeTiling.singleCoreM = baseMLimit_;
-        mc2MmV3TilingData_->tCubeTiling.baseM = baseMLimit_;
+        mc2MmV3TilingData_->tCubeTiling.baseM = Ops::Base::CeilAlign(baseMLimit_, BASEM_ALIGN_SIZE);
     } else {
         mc2MmV3TilingData_->tCubeTiling.singleCoreM = mmv3TilingData_->tCubeTiling.singleCoreM;
         mc2MmV3TilingData_->tCubeTiling.baseM = mmv3TilingData_->tCubeTiling.baseM;

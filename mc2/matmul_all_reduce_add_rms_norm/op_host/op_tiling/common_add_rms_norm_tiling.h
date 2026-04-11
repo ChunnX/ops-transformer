@@ -22,6 +22,7 @@
 #include "tiling/tiling_api.h"
 #include "util/math_util.h"
 #include "mc2_log.h"
+#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace optiling {
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024; // 16M
@@ -38,7 +39,7 @@ struct AddRMSNormTilingDepend {
           arnCtxInfo(info),
           addRmsNormTilingInputFromMm(mm),
           useMmOutputAsX1Input(b),
-          useHalfBlockDim(half){};
+          useHalfNumBlocks(half){};
     const char* nodeName;
     fe::PlatFormInfos& platFormInfos;
     ARNCtxInfo arnCtxInfo;
@@ -46,25 +47,17 @@ struct AddRMSNormTilingDepend {
     bool useMmOutputAsX1Input{false};
     // 全量化场景下，因为mm的核函数认为aic和aiv配比是1：1,
     // 所以使用到vector的addrms的tiling也需要做一下处理，感知到这个配比
-    bool useHalfBlockDim{false};
+    bool useHalfNumBlocks{false};
 };
 struct TilingOut {
     uint32_t tilingKey;
     uint32_t workSpaceSize;
-    uint32_t blockDim;
+    uint32_t numBlocks;
 };
 struct AddRMSNormTilingOutput {
-    MC2AddRMSNormTilingData& addRmsNormTilingData;
+    Mc2Tiling::AddRMSNormTilingData& addRmsNormTilingData;
     TilingOut& tilingOut;
 };
-REGISTER_TILING_DATA_CLASS(AddRMSNormTilingDataOp, MC2AddRMSNormTilingData)
-BEGIN_TILING_DATA_DEF(AddRMSNormTilingeKeyData)
-TILING_DATA_FIELD_DEF(uint32_t, ARNKeyTile);
-TILING_DATA_FIELD_DEF(uint32_t, ARNKeyTail);
-TILING_DATA_FIELD_DEF(uint32_t, ARNBlockDimTile);
-TILING_DATA_FIELD_DEF(uint32_t, ARNBlockDimTail);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(AddRMSNormTilingeKeyDataOp, AddRMSNormTilingeKeyData)
 
 namespace CommonAddResNormTiling {
 enum ModeKey : uint32_t

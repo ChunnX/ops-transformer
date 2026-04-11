@@ -23,6 +23,8 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "pse.h"
+#include "basic_modules/common_header.h"
+#include "basic_modules/cube_op1.h"
 
 using matmul::MatmulType;
 using AscendC::CrossCoreSetFlag;
@@ -397,6 +399,9 @@ protected:
     uint64_t SYNC_C1_V1_FLAG[3] = {4, 5, 6};
     uint64_t SYNC_V1_C2_FLAG[3] = {7, 8, 9};
     uint64_t SYNC_C2_V2_FLAG[3] = {1, 2, 3};
+
+    // 基础API实现MATMUL
+    CUBE_OP1::CubeOp1<INPUT_T, layOutType> cubeOp;
 };
 
 template <ImplModeEnum implMode, LayOutTypeEnum layOutType, bool hasPse, bool hasAtten, bool hasDrop, typename INPUT_T,
@@ -597,6 +602,14 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         this->pipe->InitBuffer(this->softmaxTempBuf, vecS1BaseSize * blockBytes);    // 16k
     }
     this->pipe->InitBuffer(this->stage1PongBuf, stage1PongSize); // i.a 34k
+    if constexpr (mmPolicyType != MmPolicyType::UNSPLITK) {
+        if (this->dSize == 64) {
+            cubeOp.Init(this->n2G,
+                this->tilingData->inputParams.n2Size,
+                this->dSize,
+                this->tilingData->inputParams.bSize);
+        }
+    }
 }
 
 template <ImplModeEnum implMode, LayOutTypeEnum layOutType, bool hasPse, bool hasAtten, bool hasDrop, typename INPUT_T,
@@ -641,7 +654,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     // 计算切分轴的乘积
     this->s2BaseN2D = this->s2BaseSize * this->n2D;
     this->s2BaseNratioSize = this->s2BaseSize * this->tilingData->coreParams.nRatio;
-    
+
     if constexpr (hasRope == true) {
         this->gDRope = this->tilingData->inputParams.gSize * dRopeSize;
         this->n2DRope = this->tilingData->inputParams.n2Size * dRopeSize;
@@ -673,7 +686,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         this->mm1Ka2 = this->bN2GDRope;
         this->mm1Kb1 = this->bN2D;
         this->mm1Kb2 = this->bN2DRope;
-        this->mm1Kb = this->mm1Kb1 + this->mm1Kb2;
+        this->mm1Kb = this->mm1Kb1 + this->mm1Kb2; 
         this->mm2Kb = this->bN2D2;
     } else if constexpr (layOutType == LayOutTypeEnum::LAYOUT_BNSD) {
         // BNSD
@@ -682,7 +695,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         this->s2BaseNratioD = this->s2BaseNratioSize * this->dSize;
         this->mm1Ka1 = this->dSize;
         this->mm1Kb1 = this->dSize;
-        this->mm1Kb = this->mm1Kb1; 
+        this->mm1Kb = this->mm1Kb1;
         this->mm2Kb = this->d2Size;
     }
 
@@ -810,10 +823,32 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
                                                         bmm1Format, mmPolicyType, hasRope>::Process()
 {
     // 确定核内切分起点
-    int64_t multiCoreInnerOffset = this->cubeBlockIdx * this->tilingData->multiCoreParams.splitFactorSize;
-    int64_t multiCoreInnerLimit = multiCoreInnerOffset + this->tilingData->multiCoreParams.splitFactorSize;
-    if (this->tilingData->multiCoreParams.totalSize < multiCoreInnerLimit) {
-        multiCoreInnerLimit = this->tilingData->multiCoreParams.totalSize;
+    int64_t actualUsedAicNum = this->tilingData->multiCoreParams.coreNum / 2;
+    int64_t baseSplitSize = this->tilingData->multiCoreParams.splitFactorSize;
+    int64_t totalSize = this->tilingData->multiCoreParams.totalSize;
+
+    int64_t largerCoreNum = totalSize % actualUsedAicNum;
+    int64_t multiCoreInnerOffset;
+    int64_t multiCoreInnerLimit;
+
+    if (largerCoreNum == 0) {
+        // 能整除的情况
+        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize;
+        multiCoreInnerLimit = multiCoreInnerOffset + baseSplitSize;
+    } else if (this->cubeBlockIdx < largerCoreNum) {
+        // 前 largerCoreNum 个核
+        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize;
+        multiCoreInnerLimit = multiCoreInnerOffset + baseSplitSize;
+    } else {
+        // 后面的核
+        int64_t numSmallCoresBefore = this->cubeBlockIdx - largerCoreNum;
+        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize - numSmallCoresBefore;
+        multiCoreInnerLimit = multiCoreInnerOffset + (baseSplitSize - 1);
+    }
+
+    // 边界检查
+    if (totalSize < multiCoreInnerLimit) {
+        multiCoreInnerLimit = totalSize;
     }
     // 计算sparse场景下s1的循环范围
     this->GetS1LoopRange(multiCoreInnerOffset, multiCoreInnerLimit);
@@ -1150,9 +1185,17 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
     this->Bmm1SetTensorA(extraInfo, bmm1);
     this->SetBmm1TensorB(extraInfo, bmm1);
     if constexpr (mmPolicyType != MmPolicyType::UNSPLITK) {
-        bmm1.template IterateAll<false>(this->mm1Res[extraInfo.taskIdMod2], hasRope, false, true);
-        bmm1.End();
-        return;
+        if (this->dSize != 64)
+        {
+            bmm1.template IterateAll<false>(this->mm1Res[extraInfo.taskIdMod2], hasRope, false, true);
+            bmm1.End();
+            return;
+        } else
+        {
+            cubeOp.Cube1Process(extraInfo.qCoreOffset, extraInfo.kCoreOffset, extraInfo.cubeS1RealSize, extraInfo.s2RealSize, 
+                                this->queryGm, this->keyGm, this->mm1Res[extraInfo.taskIdMod2], extraInfo.needNz2Nd);
+            return;
+        }
     }
 
     int32_t aRowNum = extraInfo.cubeS1RealSize / mm1BaseM;
@@ -2284,12 +2327,19 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         bmm2.SetTensorA(this->stage1Res[extraInfo.taskIdMod2]);
         bmm2.SetTensorB(this->valueGm[vCoreOffset]);
         bmm2.SetTail(extraInfo.cubeS1RealSize, this->d2Size, extraInfo.s2RealSize);
-
-        bmm2.template IterateAll<false>(this->mm2Res[extraInfo.taskIdMod2], false, false, true);
-        bmm2.End();
-        return;
+        if (this->dSize != 64)
+        {
+            bmm2.template IterateAll<false>(this->mm2Res[extraInfo.taskIdMod2], false, false, true);
+            bmm2.End();
+            return;
+        } else {
+            cubeOp.Cube2Process(vCoreOffset, extraInfo.cubeS1RealSize, extraInfo.s2RealSize, 
+                                this->stage1Res[extraInfo.taskIdMod2], this->valueGm[vCoreOffset], 
+                                this->mm2Res[extraInfo.taskIdMod2]);
+            return;
+        }
     }
-
+    
     LocalTensor<INPUT_T> scmATensor;
     LocalTensor<INPUT_T> scmBTensor;
     

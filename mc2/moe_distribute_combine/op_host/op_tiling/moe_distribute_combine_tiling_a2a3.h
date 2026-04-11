@@ -17,7 +17,7 @@
 #define MOE_DISTRIBUTE_COMBINE_TILING_A2A3_H
 
 #include "tiling/moe_tiling_base.h"
-#include "moe_distribute_combine_tiling_helper.h"
+#include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 
 namespace optiling {
 class MoeDistributeCombineTilingA2A3 : public MoeTilingBase {

@@ -36,6 +36,7 @@ struct RGDRInitParams {
     GM_ADDR key;
     GM_ADDR value;
     GM_ADDR gama;
+    GM_ADDR gamaK;
     GM_ADDR beta;
     GM_ADDR initState;
     GM_ADDR cuSeqlens;
@@ -59,6 +60,7 @@ public:
         scale_ = tilingData->scale;
         hasAcceptedTokens_ = (tilingData->hasAcceptedTokens == 1);
         hasGama_ = (tilingData->hasGama == 1);
+        hasGamaK_ = (tilingData->hasGamaK == 1);
         vStep_ = tilingData->vStep;
         restUbSize_ = tilingData->ubRestBytes;
         alignK_ = Ceil(tilingData->dk, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
@@ -85,6 +87,7 @@ public:
         keyGm_.SetGlobalBuffer((__gm__ inType *)initParams.key);
         valueGm_.SetGlobalBuffer((__gm__ inType *)initParams.value);
         gamaGm_.SetGlobalBuffer((__gm__ float *)initParams.gama);
+        gamaKGm_.SetGlobalBuffer((__gm__ float *)initParams.gamaK);
         betaGm_.SetGlobalBuffer((__gm__ inType *)initParams.beta);
         initStateGm_.SetGlobalBuffer((__gm__ inType *)initParams.initState);
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.cuSeqlens);
@@ -106,7 +109,12 @@ public:
         pipe_->InitBuffer(kInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
         pipe_->InitBuffer(vInQueue_, BUFFER_NUM, MAX_MTP * alignV_ * sizeof(inType));
         pipe_->InitBuffer(stateInQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(inType));
-        pipe_->InitBuffer(gamaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(float));
+        if (hasGama_) {
+            pipe_->InitBuffer(gamaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(float));
+        }
+        if (hasGamaK_) {
+            pipe_->InitBuffer(gamaKInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(float));
+        }
         pipe_->InitBuffer(betaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(inType));
         pipe_->InitBuffer(stateOutQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(outType));
         pipe_->InitBuffer(attnOutQueue_, BUFFER_NUM, vStep_ * sizeof(outType));
@@ -178,6 +186,23 @@ private:
                                     static_cast<uint32_t>((NV_ - 1) * realV_ * sizeof(inType)), 0, 0};
         DataCopyPadExtParams<inType> qkPadParams{true, 0, static_cast<uint8_t>(alignK_ - realK_), 0};
         DataCopyPadExtParams<inType> vPadParams{true, 0, static_cast<uint8_t>(alignV_ - realV_), 0};
+        if (hasGamaK_) {
+            uint32_t alignKGamma = Ceil(realK_, FP32_NUM_PER_BLOCK) * FP32_NUM_PER_BLOCK;
+            uint32_t stride = alignKGamma < alignK_ ? 1 : 0;
+            DataCopyExtParams gkInParams{static_cast<uint16_t>(seqLen), static_cast<uint32_t>(realK_ * sizeof(float)),
+                                     static_cast<uint32_t>((NV_ - 1) * realK_ * sizeof(float)), stride, 0};
+            DataCopyPadExtParams<float> gkPadParams{true, 0, static_cast<uint8_t>(alignKGamma - realK_), 0};
+            LocalTensor<float> gamaKLocal = gamaKInQueue_.AllocTensor<float>();
+            Duplicate<float>(gamaKLocal, 0, alignK_ * seqLen);
+            TEventID evevtIdVtoMte2 = GetTPipePtr()->FetchEventID(HardEvent::V_MTE2);
+            SetFlag<HardEvent::V_MTE2>(evevtIdVtoMte2);
+            WaitFlag<HardEvent::V_MTE2>(evevtIdVtoMte2);
+            DataCopyPad(gamaKLocal, gamaKGm_[vOffset / realV_ * realK_], gkInParams, gkPadParams);
+            gamaKInQueue_.EnQue<float>(gamaKLocal);
+            gamaKInUb = gamaKInQueue_.DeQue<float>();
+            Exp(gamaKInUb, gamaKInUb, alignK_ * seqLen);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
         DataCopyPad(qLocal, queryGm_[qkOffset], qkInParams, qkPadParams);
         DataCopyPad(kLocal, keyGm_[qkOffset], qkInParams, qkPadParams);
         DataCopyPad(vLocal, valueGm_[vOffset], vInParams, vPadParams);
@@ -237,6 +262,9 @@ private:
         if (hasGama_) {
             AscendC::PipeBarrier<PIPE_V>();
             Muls(stateInUb, stateInUb, gama_, alignK_ * curSingleV);
+        }
+        if (hasGamaK_) {
+            MatVecMul(stateInUb, gamaKInUb[curQKOffset], stateInUb, curSingleV, false);
         }
         AscendC::PipeBarrier<PIPE_V>();
         MatVecMul(stateInUb, kInUb[curQKOffset], broadTmpInUb, curSingleV, false);
@@ -326,6 +354,9 @@ private:
                 CopyOutState(curStateOutOffset, curSingleV);
             }
         }
+        if (hasGamaK_) {
+            gamaKInQueue_.FreeTensor(gamaKInUb);
+        }
     }
 
     __aicore__ inline bool IsCurrentBlock(int32_t seqlen)
@@ -345,6 +376,7 @@ private:
     GlobalTensor<inType> valueGm_;
     GlobalTensor<inType> betaGm_;
     GlobalTensor<float> gamaGm_;
+    GlobalTensor<float> gamaKGm_;
     GlobalTensor<inType> initStateGm_;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> ssmStateIndicesGm_;
@@ -356,6 +388,7 @@ private:
     TQue<QuePosition::VECIN, 1> kInQueue_;
     TQue<QuePosition::VECIN, 1> vInQueue_;
     TQue<QuePosition::VECIN, 1> gamaInQueue_;
+    TQue<QuePosition::VECIN, 1> gamaKInQueue_;
     TQue<QuePosition::VECIN, 1> betaInQueue_;
     TQue<QuePosition::VECIN, 1> stateInQueue_;
     TQue<QuePosition::VECOUT, 1> attnOutQueue_;
@@ -365,6 +398,7 @@ private:
     LocalTensor<float> kInUb;
     LocalTensor<float> vInUb;
     LocalTensor<float> gamaInUb;
+    LocalTensor<float> gamaKInUb;
     LocalTensor<float> betaInUb;
     LocalTensor<float> deltaInUb;
     LocalTensor<float> broadTmpInUb;

@@ -1,5 +1,7 @@
 # 图模式适配指南
 
+## 概述
+
 自定义算子如需运行图模式，整体流程与算子开发指南（[AI Core算子开发指南](aicore_develop_guide.md)）一致。值得注意的是，**不需要aclnn适配**，只需做如下交付件适配。
 
 ```
@@ -16,7 +18,7 @@ ${op_name}                              # 替换为实际算子名的小写下�
 
 ## Shape与DataType推导
 
-图模式需要完成两个交付件 `${op_name}_graph_infer.cpp` `${op_name}_infershape.cpp`
+图模式需要完成两个交付件 ```${op_name}_graph_infer.cpp``` ```${op_name}_infershape.cpp```
 
 **交付件1：${op_name}_infershape.cpp**
 

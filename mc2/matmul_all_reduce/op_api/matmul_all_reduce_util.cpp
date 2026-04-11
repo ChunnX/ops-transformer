@@ -72,7 +72,7 @@ aclnnStatus MatmulAllReduceCheckParams(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const char* reduceOp,
     int64_t streamMode, const aclTensor* output)
 {
-    const static bool is310P = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P;
+    const static bool is310P = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002;
 
     // 1. 检查参数是否为空指针
     CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
@@ -141,7 +141,8 @@ bool MatmulAllReduceCheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 bool MatmulAllReduceCheckAttr(const char* reduceOp, int64_t streamMode)
 {
-    if (strcmp(reduceOp, REDUCE_OP_SUM)) {
+    bool flag = (strcmp(reduceOp, REDUCE_OP_SUM) == 0);
+    if (!flag) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
         return false;
     }
@@ -222,11 +223,11 @@ bool QuantMatmulAllReduceCheckDtypeValid(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
+    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                           DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
+    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                       DTYPE_SUPPORT_LIST_310P :
                                       DTYPE_SUPPORT_LIST;
 
@@ -301,7 +302,7 @@ bool QuantMatmulAllReduceIsAclnnPreTransposed(const aclTensor* x2)
 {
     auto viewFormat = ge::GetPrimaryFormat(x2->GetViewFormat());
     auto storageFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P &&
+    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 &&
                                 viewFormat == Format::FORMAT_ND && storageFormat == Format::FORMAT_FRACTAL_NZ;
     OP_LOGD("MatmulAllReduce, IsAclnnPreTransposed is %d", isAclnnPreTransposed);
     return isAclnnPreTransposed;
@@ -374,6 +375,13 @@ bool QuantMatmulAllReduceCheckShape(
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1Len - 1, x2Dim1);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
+
+    // 判断output是否为空tensor
+    if (output->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output is empty tensor, output shape is: %s",
+            op::ToString(output->GetViewShape()).GetString());
+        return false;
+    }
     
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
@@ -429,7 +437,8 @@ const aclTensor* QuantMatmulAllReduceTransTensor(const aclTensor* x2)
     aclGetDataType(x2, &dataType);
     std::vector<int64_t> stride(viewDimsNum);
     auto transStride = x2->GetViewStrides();
-    // x2和perblock情形的scale只有二维，已校验
+    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    // transpose the two dimensions
     stride[0] = transStride[1];
     stride[1] = transStride[0];
 
@@ -484,13 +493,18 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     aclTensor* commQuantScale2Optional = nullptr;
     int64_t antiquantGroupSize = 0;
     auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetSocVersion() != op::SocVersion::ASCEND310P &&
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 &&
         QuantMatmulAllReduceIsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
             return ACLNN_ERR_INNER_NULLPTR;
         }
         tempX2 = QuantMatmulAllReduceCopyTensor(x2);
+    }
+    if (NnopbaseSetHcclServerType) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(

@@ -27,6 +27,7 @@ constexpr int32_t FP16_BUF_CNT_MATMUL_ALLREDUCE_INT8 = 4;
 constexpr int32_t FP16_BUF_SPLIT_MN_CNT_MATMUL_ALLREDUCE_INT8 = 6;
 constexpr int32_t BF16_BUF_SPLIT_MN_CNT_MATMUL_ALLREDUCE_INT8 = 10;
 constexpr uint32_t BYTE512_MATMUL_ALLREDUCE_INT8 = 512;
+constexpr uint32_t BYTE32_MATMUL_ALLREDUCE_INT8 = 32;
 constexpr uint32_t SPLIT_M_MATMUL_ALLREDUCE_INT8 = 1;
 constexpr uint32_t SPLIT_MN_MATMUL_ALLREDUCE_INT8 = 2;
 
@@ -167,20 +168,22 @@ public:
     {
         uint32_t calcCnt = blockCntSpiltMN;
         uint16_t copyInUbStride = 0;
+        uint16_t copyOutUbStride = 0;
         uint16_t copyBlockCnt = 1;
         uint32_t copyBlockLen = calcCnt;
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 搬多行
             calcCnt = quantAlginN_ * curBlockCntM;
-            copyInUbStride = (quantAlginN_ - Ceil(quantN_ * sizeof(T), BYTE512_MATMUL_ALLREDUCE_INT8) *
-                                                 BYTE512_MATMUL_ALLREDUCE_INT8 / sizeof(T)) *
-                             sizeof(T) / BYTE512_MATMUL_ALLREDUCE_INT8;
+            copyInUbStride = (quantAlginN_ * sizeof(T) - Ceil(quantN_ * sizeof(T),
+                BYTE32_MATMUL_ALLREDUCE_INT8) * BYTE32_MATMUL_ALLREDUCE_INT8) / BYTE32_MATMUL_ALLREDUCE_INT8;
+            copyOutUbStride = (quantAlginN_ * sizeof(int8_t) - Ceil(quantN_ * sizeof(int8_t),
+                BYTE32_MATMUL_ALLREDUCE_INT8) * BYTE32_MATMUL_ALLREDUCE_INT8) / BYTE32_MATMUL_ALLREDUCE_INT8;
             copyBlockCnt = curBlockCntM;
             copyBlockLen = quantN_;
         }
         DataCopyParams mmOutCopyParams = {
             copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0, copyInUbStride};
         DataCopyParams quantedOutCopyParams = {
-            copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), 0, 0};
+            copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), copyOutUbStride, 0};
         DataCopyParams quantScaleCopyParams = {1, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0, 0};
         DataCopyPadParams padParams = {false, 0, 0, 0};
 

@@ -18,26 +18,8 @@
 #include "../../../matmul_all_reduce/op_host/op_tiling/arch32/weight_quant_matmul_all_reduce_tiling.h"
 #include "common_add_rms_norm_tiling.h"
 #include "context_transfer.h"
+#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 namespace optiling {
-BEGIN_TILING_DATA_DEF(WeightQuantMatmulAllReduceAddRmsNormTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(WeightQuantMatmulAllReduceTilingData, weightQuantMatmulAllReduceTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(MC2AddRMSNormTilingData, addRMSNormTileTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(MC2AddRMSNormTilingData, addRMSNormTailTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(AddRMSNormTilingeKeyData, addRmsNormTilingeKeyData);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_2293772, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_3342348, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_69402636, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_70451212, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_4390924, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_5439500, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_71499788, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_72548364, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_6488076, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_73596940, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_7536652, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_74645516, WeightQuantMatmulAllReduceAddRmsNormTilingData);
-
 class WeightQuantMMNTilingTransferHelper;
 class WeightQuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass
 {
@@ -61,7 +43,7 @@ protected:
 private:
     bool HasTail() const;
     MRNCtxInfo mrnCtxInfo_;
-    WeightQuantMatmulAllReduceAddRmsNormTilingData tilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData tilingData_;
     bool hasTail_;
     TilingOut tilingOutAddRmsNormTile_;
     TilingOut tilingOutAddRmsNormTail_;
@@ -73,7 +55,7 @@ class WeightQuantMMNTilingTransferHelper : public WeightQuantMatmulAllReduceTili
 public:
     WeightQuantMMNTilingTransferHelper(
         WeightQuantMatmulAllReduceAddRmsNormTiling& weightQuantMatmulAllReduceAddRmsNormTiling,
-        WeightQuantMatmulAllReduceTilingData& data);
+        Mc2Tiling::WeightQuantMatmulAllReduceTilingData& data);
     ge::graphStatus GetShapeAttrsInfo() override;
 
 private:

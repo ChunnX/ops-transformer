@@ -54,10 +54,9 @@ public:
     };
 };
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
     FlashAttentionScoreGrad, FlashAttentionScoreGradTilingUnpaddedAttension,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
-                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
     2000);
 
 } // namespace optiling

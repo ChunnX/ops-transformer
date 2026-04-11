@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ constexpr uint32_t thresholdDimM = 1;
 #else
 constexpr uint32_t thresholdDimM = 5;
 #endif
+static constexpr uint32_t MAX_EP_RANK_SIZE = 128U;
+static constexpr uint32_t MAX_EXPERT_PER_EP = 32U;
 
 struct MNConfig {
     uint32_t m;
@@ -33,8 +35,8 @@ struct MNConfig {
     uint32_t baseN;
     uint32_t mIdx;
     uint32_t nIdx;
-    uint32_t blockDimM;
-    uint32_t blockDimN;
+    uint32_t numBlocksM;
+    uint32_t numBlocksN;
     uint32_t singleM;
     uint32_t singleN;
     uint64_t xBaseOffset = 0;
@@ -80,18 +82,18 @@ template <typename ComputeType>
 __aicore__ inline void GMMProcess<ComputeType>::MnBlockIdxCompute(
     MNConfig& mnConfig, const uint32_t curBlock, const uint32_t count, const uint32_t thresholdM_dimN)
 {
-    if (mnConfig.blockDimM <= thresholdDimM || thresholdDimM == 1) {
-        mnConfig.mIdx = (curBlock - count) / mnConfig.blockDimN;
-        mnConfig.nIdx = (curBlock - count) % mnConfig.blockDimN;
+    if (mnConfig.numBlocksM <= thresholdDimM || thresholdDimM == 1) {
+        mnConfig.mIdx = (curBlock - count) / mnConfig.numBlocksN;
+        mnConfig.nIdx = (curBlock - count) % mnConfig.numBlocksN;
     } else {
         uint32_t relativeBlock = curBlock - count;
-        uint32_t curThresholdM = relativeBlock >= AlignDown(mnConfig.blockDimM * mnConfig.blockDimN, thresholdM_dimN) ?
-                                     mnConfig.blockDimM % thresholdBlockNum :
+        uint32_t curThresholdM = relativeBlock >= AlignDown(mnConfig.numBlocksM * mnConfig.numBlocksN, thresholdM_dimN) ?
+                                     mnConfig.numBlocksM % thresholdBlockNum :
                                      thresholdBlockNum;
         uint32_t curThresholdM_thresholdN = curThresholdM * thresholdBlockNum;
         uint32_t curThresholdN =
-            relativeBlock % thresholdM_dimN >= AlignDown(curThresholdM * mnConfig.blockDimN, curThresholdM_thresholdN) ?
-                mnConfig.blockDimN % thresholdBlockNum :
+            relativeBlock % thresholdM_dimN >= AlignDown(curThresholdM * mnConfig.numBlocksN, curThresholdM_thresholdN) ?
+                mnConfig.numBlocksN % thresholdBlockNum :
                 thresholdBlockNum;
 
         uint32_t localRelativeBlock = relativeBlock % thresholdM_dimN % curThresholdM_thresholdN;
@@ -112,7 +114,7 @@ __aicore__ inline void GMMProcess<ComputeType>::Process(
     mnConfig.baseM = baseM;
     mnConfig.baseN = baseN;
 
-    // todo: eIndex 顺序
+    // eIndex 顺序
     mnConfig.k = mmH;
     mnConfig.n = mmN;
 
@@ -128,12 +130,12 @@ __aicore__ inline void GMMProcess<ComputeType>::Process(
             return;
         }
 
-        mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM); // 向上取整
-        mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN); // 向上取整
+        mnConfig.numBlocksM = Ceil(mnConfig.m, mnConfig.singleM); // 向上取整
+        mnConfig.numBlocksN = Ceil(mnConfig.n, mnConfig.singleN); // 向上取整
 
-        uint32_t curCount = count + mnConfig.blockDimM * mnConfig.blockDimN;
+        uint32_t curCount = count + mnConfig.numBlocksM * mnConfig.numBlocksN;
         uint32_t curBlock = blockIdx >= count ? blockIdx : blockIdx + coreNum;
-        uint32_t thresholdM_dimN = thresholdBlockNum * mnConfig.blockDimN;
+        uint32_t thresholdM_dimN = thresholdBlockNum * mnConfig.numBlocksN;
 
         while (curBlock < curCount) {
             MnBlockIdxCompute(mnConfig, curBlock, count, thresholdM_dimN);
@@ -181,11 +183,11 @@ template <class mmType, bool sync>
 __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(MNConfig& mnConfig, uint32_t wIndex, uint16_t rankId)
 {
     uint32_t curSingleN = mnConfig.singleN;
-    if (mnConfig.nIdx == mnConfig.blockDimN - 1) {
+    if (mnConfig.nIdx == mnConfig.numBlocksN - 1) {
         curSingleN = mnConfig.n - mnConfig.nIdx * curSingleN;
     }
     uint32_t curSingleM = mnConfig.singleM;
-    if (mnConfig.mIdx >= mnConfig.blockDimM - 1) {
+    if (mnConfig.mIdx >= mnConfig.numBlocksM - 1) {
         curSingleM = mnConfig.m - mnConfig.mIdx * curSingleM;
     }
 

@@ -15,6 +15,7 @@
 #ifndef __OP_KERNEL_MATMUL_TILING_DATA_H__
 #define __OP_KERNEL_MATMUL_TILING_DATA_H__
 
+#include "../mat_mul_v3_tiling_data.h"
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
@@ -122,4 +123,5 @@ struct Mc2BatchMatMulV3IterBatchBasicTilingData {
     uint32_t baseK = 16;
 };
 #pragma pack(pop)
+
 #endif // __OP_KERNEL_MATMUL_TILING_DATA_H__

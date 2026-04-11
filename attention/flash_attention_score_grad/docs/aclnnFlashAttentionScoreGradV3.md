@@ -2,23 +2,22 @@
 
 ## 产品支持情况
 
-| 产品                                           | 是否支持 |
-|:---------------------------------------------|:----:|
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品</term>|     √      |
-|<term>Atlas A3 推理系列产品</term>|     ×      |
-|<term>Atlas A2 训练系列产品</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>|     ×      |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
--
-接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV3](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)
-的反向计算。该接口相较于[aclnnFlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)
-接口，新增sinkInOptional参数和dsinkOut输出：
+- 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV3](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)的反向计算。**该接口相较于[aclnnFlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)接口，新增sinkInOptional参数和dsinkOut输出**：
 
-    - psetype=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现相同。
-    - psetype=其他取值时，需要先mul再add。
+  - Ascend 950PR/Ascend 950DT产品暂不支持sinkInOptional参数和dsinkOut输出。
+  - pseType=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现相同。
+  - pseType=其他取值时，需要先mul再add。
 
 $$
 Y=Dropout(Softmax(Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask),keep\_prob)V
@@ -121,7 +120,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
 
 ## aclnnFlashAttentionScoreGradV3GetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
     <col style="width: 198px">
     <col style="width: 120px">
@@ -150,7 +149,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输入</td>
         <td>公式中的Q。</td>
         <td>数据类型与keyIn/value一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
@@ -160,7 +159,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输入</td>
         <td>公式中的K。</td>
         <td>数据类型与query/value一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
@@ -170,7 +169,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输入</td>
         <td>公式中的V。</td>
         <td>数据类型与query/keyIn一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
@@ -180,7 +179,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输入</td>
         <td>公式中的dY。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
@@ -190,7 +189,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>可选输入</td>
         <td>公式中的pse。</td>
         <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
         <td>√</td>
@@ -204,6 +203,36 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>ND</td>
         <td>0、1</td>
         <td>√</td>
+      </tr>
+      <tr>
+        <td>paddingMaskOptional</td>
+        <td>输入</td>
+        <td>预留参数，暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>qStartIdxOptional</td>
+        <td>输入</td>
+        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>0、1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>kvStartIdxOptional</td>
+        <td>输入</td>
+        <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>0、1</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>attenMaskOptional</td>
@@ -236,11 +265,21 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>√</td>
       </tr>
       <tr>
+        <td>softmaxInOptional</td>
+        <td>输入</td>
+        <td>注意力正向计算的中间输出。</td>
+        <td>预留参数，暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>attentionInOptional</td>
         <td>可选输入</td>
         <td>注意力正向的最终输出。</td>
         <td>数据类型和shape与query一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
@@ -326,6 +365,16 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>-</td>
       </tr>
       <tr>
+        <td>innerPrecise</td>
+        <td>输入</td>
+        <td>内部计算精度控制。</td>
+        <td>保留参数，暂未使用。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>sparseMode</td>
         <td>输入</td>
         <td>稀疏模式。</td>
@@ -350,7 +399,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输出</td>
         <td>公式中的dQ，query的梯度。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]	</td>
         <td>√</td>
@@ -360,7 +409,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输出</td>
         <td>公式中的dK，keyIn的梯度。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]	</td>
         <td>√</td>
@@ -370,7 +419,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>输出</td>
         <td>公式中的dV，value的梯度。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[BNSD]、[BSND]、[BSH]、[SBH]	</td>
         <td>√</td>
@@ -379,7 +428,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>dpseOut</td>
         <td>输出</td>
         <td>d(pse)梯度。</td>
-        <td>暂未使用。</td>
+        <td>保留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -418,7 +467,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
     </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -430,7 +479,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -454,7 +503,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
 
 ## aclnnFlashAttentionScoreGradV3
 
-- **参数说明：**
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
   <col style="width: 121px">
@@ -490,7 +539,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -511,7 +560,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
     - D：取值范围为1\~768。
     - KeepProb: 取值范围为(0, 1].
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- pseShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
@@ -538,7 +587,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <=
   Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-- pseShiftOptional Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
+- pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
 - sinkInOptional维度为1，长度需要与query的headnum相同。
 
 ## 调用示例

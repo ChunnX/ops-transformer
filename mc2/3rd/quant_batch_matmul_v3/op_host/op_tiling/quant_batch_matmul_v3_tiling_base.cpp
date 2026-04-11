@@ -608,6 +608,12 @@ const gert::Shape Mc2QuantBatchMatmulV3TilingBase::GetX2Shape(const size_t index
 }
 
 // Notice: 修改此函数可能会影响mc2功能，使用isTilingOut_变量判断是否为mc2场景
+const gert::Shape Mc2QuantBatchMatmulV3TilingBase::GetOutputShape(const size_t index)
+{
+    return context_->GetOutputShape(index)->GetOriginShape();
+}
+
+// Notice: 修改此函数可能会影响mc2功能，使用isTilingOut_变量判断是否为mc2场景
 const gert::StorageShape *Mc2QuantBatchMatmulV3TilingBase::GetPertokenShape(const size_t index)
 {
     return context_->GetOptionalInputShape(index);
@@ -699,7 +705,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetPlatformInfoForTiling()
     aicoreParams_.l1Size = compileInfo_.l1Size;
     aicoreParams_.l0aSize = compileInfo_.l0aSize;
     aicoreParams_.l0cSize = compileInfo_.l0cSize;
-    aicoreParams_.blockDim = 0;
+    aicoreParams_.numBlocks = 0;
     return true;
 }
 

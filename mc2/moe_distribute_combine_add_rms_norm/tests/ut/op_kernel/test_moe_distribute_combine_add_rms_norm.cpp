@@ -16,27 +16,21 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_combine_add_rms_norm_tiling_def.h"
-
-extern "C" __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR residualX,
-    GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
-    GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM);
-
-class moe_distribute_combine_add_rms_norm_test : public testing::Test
+#include "../../../op_kernel/moe_distribute_combine_add_rms_norm.cpp"
+class MoeDistributeCombineAddRmsNormTest : public testing::Test
 {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "moe_distribute_combine_add_rms_norm_test SetUp\n" << std::endl;
+        std::cout << "MoeDistributeCombineAddRmsNormTest SetUp\n" << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "moe_distribute_combine_add_rms_norm_test TearDown\n" << std::endl;
+        std::cout << "MoeDistributeCombineAddRmsNormTest TearDown\n" << std::endl;
     }
 };
 
-TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_norm_test_11000)
+TEST_F(MoeDistributeCombineAddRmsNormTest, MoeDistributeCombineAddRmsNormTest11000)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
@@ -46,23 +40,23 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     size_t tilingSize = sizeof(MoeDistributeCombineV2TilingData);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineV2TilingData* tiling_data =
+    MoeDistributeCombineV2TilingData* tilingData =
         reinterpret_cast<MoeDistributeCombineV2TilingData*>(tiling);
-    tiling_data->moeDistributeCombineV2Info.epWorldSize = 8;
-    tiling_data->moeDistributeCombineV2Info.tpWorldSize = 2;
-    tiling_data->moeDistributeCombineV2Info.epRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.tpRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.expertShardType = 0;
-    tiling_data->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
-    tiling_data->moeDistributeCombineV2Info.moeExpertNum = 7;
-    tiling_data->moeDistributeCombineV2Info.globalBs = 64;
-    tiling_data->moeDistributeCombineV2Info.bs = 8;
-    tiling_data->moeDistributeCombineV2Info.k = 7;
-    tiling_data->moeDistributeCombineV2Info.h = 7168;
-    tiling_data->moeDistributeCombineV2Info.aivNum = 48;
-    tiling_data->moeDistributeCombineV2Info.totalUbSize = 196352;
-    tiling_data->moeDistributeCombineV2Info.isTokenMask= false;
-    tiling_data->moeDistributeCombineV2Info.hasSharedExpertX = true;
+    tilingData->moeDistributeCombineV2Info.epWorldSize = 8;
+    tilingData->moeDistributeCombineV2Info.tpWorldSize = 2;
+    tilingData->moeDistributeCombineV2Info.epRankId = 0;
+    tilingData->moeDistributeCombineV2Info.tpRankId = 0;
+    tilingData->moeDistributeCombineV2Info.expertShardType = 0;
+    tilingData->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
+    tilingData->moeDistributeCombineV2Info.moeExpertNum = 7;
+    tilingData->moeDistributeCombineV2Info.globalBs = 64;
+    tilingData->moeDistributeCombineV2Info.bs = 8;
+    tilingData->moeDistributeCombineV2Info.k = 7;
+    tilingData->moeDistributeCombineV2Info.h = 7168;
+    tilingData->moeDistributeCombineV2Info.aivNum = 48;
+    tilingData->moeDistributeCombineV2Info.totalUbSize = 196352;
+    tilingData->moeDistributeCombineV2Info.isTokenMask= false;
+    tilingData->moeDistributeCombineV2Info.hasSharedExpertX = true;
 
     uint8_t* expandX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* residualX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -82,35 +76,59 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     uint8_t* rstdOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* XOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* winAddr = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* assistInfoForCombine = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* elasticInfo = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* oriX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha1 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha2 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertV = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+
 
     ICPU_SET_TILING_KEY(11000);
-    ICPU_RUN_KF(moe_distribute_combine_add_rms_norm, 20, expandX, expertIds, expandIdx, epSendCount, scales, residualX,
-                gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                YOut, rstdOut, XOut, workspace, tiling);
+    auto moeDistributeCombineAddRmsNormWrapper = 
+        [](GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount,GM_ADDR scales, GM_ADDR residualX,
+           GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
+           GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
+           GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_combine_add_rms_norm<true, false, 0, 1>(
+                expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX, gamma, tpSendCount,
+                xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo,
+                oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moeDistributeCombineAddRmsNormWrapper, 20, expandX, expertIds, assistInfoForCombine, epSendCount,
+                scales, residualX,gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales,
+                sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,constExpertV, YOut, rstdOut,
+                XOut, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)expandX);
-    AscendC::GmFree((void*)residualX);
-    AscendC::GmFree((void*)gamma);
-    AscendC::GmFree((void*)xActiveMask);
-    AscendC::GmFree((void*)activationScale);
-    AscendC::GmFree((void*)weightScale);
-    AscendC::GmFree((void*)groupList);
-    AscendC::GmFree((void*)expandScales);
-    AscendC::GmFree((void*)sharedExpertX);
-    AscendC::GmFree((void*)expertIds);
-    AscendC::GmFree((void*)expandIdx);
-    AscendC::GmFree((void*)epSendCount);
-    AscendC::GmFree((void*)tpSendCount);
-    AscendC::GmFree((void*)scales);
-    AscendC::GmFree((void*)YOut);
-    AscendC::GmFree((void*)rstdOut);
-    AscendC::GmFree((void*)XOut);
-    AscendC::GmFree((void*)winAddr);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)expandX);
+    AscendC::GmFree((void *)residualX);
+    AscendC::GmFree((void *)gamma);
+    AscendC::GmFree((void *)xActiveMask);
+    AscendC::GmFree((void *)activationScale);
+    AscendC::GmFree((void *)weightScale);
+    AscendC::GmFree((void *)groupList);
+    AscendC::GmFree((void *)expandScales);
+    AscendC::GmFree((void *)sharedExpertX);
+    AscendC::GmFree((void *)expertIds);
+    AscendC::GmFree((void *)expandIdx);
+    AscendC::GmFree((void *)epSendCount);
+    AscendC::GmFree((void *)tpSendCount);
+    AscendC::GmFree((void *)scales);
+    AscendC::GmFree((void *)YOut);
+    AscendC::GmFree((void *)rstdOut);
+    AscendC::GmFree((void *)XOut);
+    AscendC::GmFree((void *)winAddr);
+    AscendC::GmFree((void *)assistInfoForCombine);
+    AscendC::GmFree((void *)elasticInfo);
+    AscendC::GmFree((void *)oriX);
+    AscendC::GmFree((void *)constExpertAlpha1);
+    AscendC::GmFree((void *)constExpertAlpha2);
+    AscendC::GmFree((void *)constExpertV);
 }
 
-TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_norm_test_10100)
+TEST_F(MoeDistributeCombineAddRmsNormTest, MoeDistributeCombineAddRmsNormTest10100)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
@@ -120,23 +138,23 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     size_t tilingSize = sizeof(MoeDistributeCombineV2TilingData);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineV2TilingData* tiling_data =
+    MoeDistributeCombineV2TilingData* tilingData =
         reinterpret_cast<MoeDistributeCombineV2TilingData*>(tiling);
-    tiling_data->moeDistributeCombineV2Info.epWorldSize = 8;
-    tiling_data->moeDistributeCombineV2Info.tpWorldSize = 2;
-    tiling_data->moeDistributeCombineV2Info.epRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.tpRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.expertShardType = 0;
-    tiling_data->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
-    tiling_data->moeDistributeCombineV2Info.moeExpertNum = 7;
-    tiling_data->moeDistributeCombineV2Info.globalBs = 64;
-    tiling_data->moeDistributeCombineV2Info.bs = 8;
-    tiling_data->moeDistributeCombineV2Info.k = 7;
-    tiling_data->moeDistributeCombineV2Info.h = 7168;
-    tiling_data->moeDistributeCombineV2Info.aivNum = 48;
-    tiling_data->moeDistributeCombineV2Info.totalUbSize = 196352;
-    tiling_data->moeDistributeCombineV2Info.isTokenMask= false;
-    tiling_data->moeDistributeCombineV2Info.hasSharedExpertX = true;
+    tilingData->moeDistributeCombineV2Info.epWorldSize = 16;
+    tilingData->moeDistributeCombineV2Info.tpWorldSize = 1;
+    tilingData->moeDistributeCombineV2Info.epRankId = 0;
+    tilingData->moeDistributeCombineV2Info.tpRankId = 0;
+    tilingData->moeDistributeCombineV2Info.expertShardType = 0;
+    tilingData->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
+    tilingData->moeDistributeCombineV2Info.moeExpertNum = 7;
+    tilingData->moeDistributeCombineV2Info.globalBs = 64;
+    tilingData->moeDistributeCombineV2Info.bs = 8;
+    tilingData->moeDistributeCombineV2Info.k = 7;
+    tilingData->moeDistributeCombineV2Info.h = 7168;
+    tilingData->moeDistributeCombineV2Info.aivNum = 48;
+    tilingData->moeDistributeCombineV2Info.totalUbSize = 196352;
+    tilingData->moeDistributeCombineV2Info.isTokenMask= false;
+    tilingData->moeDistributeCombineV2Info.hasSharedExpertX = true;
 
     uint8_t* expandX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* residualX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -156,11 +174,29 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     uint8_t* rstdOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* XOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* winAddr = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* assistInfoForCombine = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* elasticInfo = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* oriX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha1 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha2 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertV = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+
 
     ICPU_SET_TILING_KEY(10100);
-    ICPU_RUN_KF(moe_distribute_combine_add_rms_norm, 20, expandX, expertIds, expandIdx, epSendCount, scales, residualX,
-                gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                YOut, rstdOut, XOut, workspace, tiling);
+    auto moeDistributeCombineAddRmsNormWrapper = 
+        [](GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount,GM_ADDR scales, GM_ADDR residualX,
+           GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
+           GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
+           GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_combine_add_rms_norm<false, true, 0, 1>(
+                expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX, gamma, tpSendCount,
+                xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo,
+                oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moeDistributeCombineAddRmsNormWrapper, 20, expandX, expertIds, assistInfoForCombine, epSendCount,
+                scales, residualX,gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales,
+                sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,constExpertV, YOut, rstdOut,
+                XOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -182,9 +218,15 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     AscendC::GmFree((void*)rstdOut);
     AscendC::GmFree((void*)XOut);
     AscendC::GmFree((void*)winAddr);
+    AscendC::GmFree((void*)assistInfoForCombine);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)oriX);
+    AscendC::GmFree((void*)constExpertAlpha1);
+    AscendC::GmFree((void*)constExpertAlpha2);
+    AscendC::GmFree((void*)constExpertV);
 }
 
-TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_norm_test_10000)
+TEST_F(MoeDistributeCombineAddRmsNormTest, MoeDistributeCombineAddRmsNormTest10000)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
@@ -194,23 +236,23 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     size_t tilingSize = sizeof(MoeDistributeCombineV2TilingData);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineV2TilingData* tiling_data =
+    MoeDistributeCombineV2TilingData* tilingData =
         reinterpret_cast<MoeDistributeCombineV2TilingData*>(tiling);
-    tiling_data->moeDistributeCombineV2Info.epWorldSize = 8;
-    tiling_data->moeDistributeCombineV2Info.tpWorldSize = 2;
-    tiling_data->moeDistributeCombineV2Info.epRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.tpRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.expertShardType = 0;
-    tiling_data->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
-    tiling_data->moeDistributeCombineV2Info.moeExpertNum = 7;
-    tiling_data->moeDistributeCombineV2Info.globalBs = 64;
-    tiling_data->moeDistributeCombineV2Info.bs = 8;
-    tiling_data->moeDistributeCombineV2Info.k = 7;
-    tiling_data->moeDistributeCombineV2Info.h = 7168;
-    tiling_data->moeDistributeCombineV2Info.aivNum = 48;
-    tiling_data->moeDistributeCombineV2Info.totalUbSize = 196352;
-    tiling_data->moeDistributeCombineV2Info.isTokenMask= false;
-    tiling_data->moeDistributeCombineV2Info.hasSharedExpertX = true;
+    tilingData->moeDistributeCombineV2Info.epWorldSize = 16;
+    tilingData->moeDistributeCombineV2Info.tpWorldSize = 1;
+    tilingData->moeDistributeCombineV2Info.epRankId = 0;
+    tilingData->moeDistributeCombineV2Info.tpRankId = 0;
+    tilingData->moeDistributeCombineV2Info.expertShardType = 0;
+    tilingData->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
+    tilingData->moeDistributeCombineV2Info.moeExpertNum = 7;
+    tilingData->moeDistributeCombineV2Info.globalBs = 64;
+    tilingData->moeDistributeCombineV2Info.bs = 8;
+    tilingData->moeDistributeCombineV2Info.k = 7;
+    tilingData->moeDistributeCombineV2Info.h = 7168;
+    tilingData->moeDistributeCombineV2Info.aivNum = 48;
+    tilingData->moeDistributeCombineV2Info.totalUbSize = 196352;
+    tilingData->moeDistributeCombineV2Info.isTokenMask= false;
+    tilingData->moeDistributeCombineV2Info.hasSharedExpertX = true;
 
     uint8_t* expandX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* residualX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -230,12 +272,27 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     uint8_t* rstdOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* XOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* winAddr = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* assistInfoForCombine = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* elasticInfo = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* oriX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha1 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha2 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertV = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(10000);
-    ICPU_RUN_KF(moe_distribute_combine_add_rms_norm, 20, expandX, expertIds, expandIdx, epSendCount, scales, residualX,
-                gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                YOut, rstdOut, XOut, workspace, tiling);
+    auto moeDistributeCombineAddRmsNormWrapper = [](GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR residualX,
+        GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
+        GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, 
+        GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_distribute_combine_add_rms_norm<false, false, 0, 1>(expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
+        gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, 
+        constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
 
+    };
+    ICPU_RUN_KF(moeDistributeCombineAddRmsNormWrapper, 20, expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
+                gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,
+                constExpertV, YOut, rstdOut, XOut, workspace, tiling);
+                
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
     AscendC::GmFree((void*)expandX);
@@ -256,9 +313,15 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     AscendC::GmFree((void*)rstdOut);
     AscendC::GmFree((void*)XOut);
     AscendC::GmFree((void*)winAddr);
+    AscendC::GmFree((void*)assistInfoForCombine);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)oriX);
+    AscendC::GmFree((void*)constExpertAlpha1);
+    AscendC::GmFree((void*)constExpertAlpha2);
+    AscendC::GmFree((void*)constExpertV);
 }
 
-TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_norm_test_11100)
+TEST_F(MoeDistributeCombineAddRmsNormTest, MoeDistributeCombineAddRmsNormTest11100)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
@@ -268,23 +331,23 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     size_t tilingSize = sizeof(MoeDistributeCombineV2TilingData);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineV2TilingData* tiling_data =
+    MoeDistributeCombineV2TilingData* tilingData =
         reinterpret_cast<MoeDistributeCombineV2TilingData*>(tiling);
-    tiling_data->moeDistributeCombineV2Info.epWorldSize = 8;
-    tiling_data->moeDistributeCombineV2Info.tpWorldSize = 2;
-    tiling_data->moeDistributeCombineV2Info.epRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.tpRankId = 0;
-    tiling_data->moeDistributeCombineV2Info.expertShardType = 0;
-    tiling_data->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
-    tiling_data->moeDistributeCombineV2Info.moeExpertNum = 7;
-    tiling_data->moeDistributeCombineV2Info.globalBs = 64;
-    tiling_data->moeDistributeCombineV2Info.bs = 8;
-    tiling_data->moeDistributeCombineV2Info.k = 7;
-    tiling_data->moeDistributeCombineV2Info.h = 7168;
-    tiling_data->moeDistributeCombineV2Info.aivNum = 48;
-    tiling_data->moeDistributeCombineV2Info.totalUbSize = 196352;
-    tiling_data->moeDistributeCombineV2Info.isTokenMask= false;
-    tiling_data->moeDistributeCombineV2Info.hasSharedExpertX = true;
+    tilingData->moeDistributeCombineV2Info.epWorldSize = 8;
+    tilingData->moeDistributeCombineV2Info.tpWorldSize = 2;
+    tilingData->moeDistributeCombineV2Info.epRankId = 0;
+    tilingData->moeDistributeCombineV2Info.tpRankId = 0;
+    tilingData->moeDistributeCombineV2Info.expertShardType = 0;
+    tilingData->moeDistributeCombineV2Info.sharedExpertRankNum = 0;
+    tilingData->moeDistributeCombineV2Info.moeExpertNum = 7;
+    tilingData->moeDistributeCombineV2Info.globalBs = 64;
+    tilingData->moeDistributeCombineV2Info.bs = 8;
+    tilingData->moeDistributeCombineV2Info.k = 7;
+    tilingData->moeDistributeCombineV2Info.h = 7168;
+    tilingData->moeDistributeCombineV2Info.aivNum = 48;
+    tilingData->moeDistributeCombineV2Info.totalUbSize = 196352;
+    tilingData->moeDistributeCombineV2Info.isTokenMask= false;
+    tilingData->moeDistributeCombineV2Info.hasSharedExpertX = true;
 
     uint8_t* expandX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* residualX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
@@ -304,11 +367,28 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     uint8_t* rstdOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* XOut = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t* winAddr = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* assistInfoForCombine = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* elasticInfo = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* oriX = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha1 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertAlpha2 = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t* constExpertV = (uint8_t*)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
+
+    
     ICPU_SET_TILING_KEY(11100);
-    ICPU_RUN_KF(moe_distribute_combine_add_rms_norm, 20, expandX, expertIds, expandIdx, epSendCount, scales, residualX,
-                gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                YOut, rstdOut, XOut, workspace, tiling);
+    auto moeDistributeCombineAddRmsNormWrapper = [](GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR residualX,
+        GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
+        GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, 
+        GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_distribute_combine_add_rms_norm<true, true, 0, 1>(expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
+        gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, 
+        constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
+
+    };
+    ICPU_RUN_KF(moeDistributeCombineAddRmsNormWrapper, 20, expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
+                gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,
+                constExpertV, YOut, rstdOut, XOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -330,4 +410,10 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
     AscendC::GmFree((void*)rstdOut);
     AscendC::GmFree((void*)XOut);
     AscendC::GmFree((void*)winAddr);
+    AscendC::GmFree((void*)assistInfoForCombine);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)oriX);
+    AscendC::GmFree((void*)constExpertAlpha1);
+    AscendC::GmFree((void*)constExpertAlpha2);
+    AscendC::GmFree((void*)constExpertV);
 }

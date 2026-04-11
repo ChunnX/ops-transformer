@@ -26,6 +26,7 @@ const static std::map<std::string, double> CUBE_CALC_PER_CYCLE_MAP = {
     {"0_1_1_1_2", 8192},
     {"3_1_1_1_2", 8192},
     {"4_1_1_1_2", 8192},
+    {"4_1_1_1_1", 8192}, // socType_calcType_matrixADtype_matrixBDtypeSize_matrixCDtype
 };
 
 const static std::map<std::string, L2CacheEstimateParameters> L2_PARAMETER_MAP = {
@@ -129,10 +130,10 @@ double MatmulPerformanceModel::FindCubeUtilByL2Usage(uint64_t mSize,
       std::min(mBlockNum * nBlockNum, mmShapeInfo_.coreNum) /
       static_cast<double>(mmShapeInfo_.coreNum));
 
-  /*910D
+  /*950
   cube利用率计算公式：两个输入为M、N的调和平均数和K。MN调和平均数的阈值为820，K阈值为1280，小于这个阈值
   认为提供负增益，大于这个阈值认为提供正增益，但是正增益最高不超过1.4倍。乘方函数用来缓和增长率，减慢变化速度*/
-  if (mmShapeInfo_.socType == SocVersion::SOC910_95) {
+  if (mmShapeInfo_.socType == SocVersion::SOC950) {
     double mnharmonicMean =
         static_cast<double>(mSize * rankTileNum * mmShapeInfo_.nValue) /
         static_cast<double>(mSize * rankTileNum + mmShapeInfo_.nValue);
@@ -214,7 +215,7 @@ void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum,
 
   cubeUtil_ = FindCubeUtilByL2Usage(mSize, rankTileNum, maxTileLen);
 
-  if (mmShapeInfo_.socType == SocVersion::SOC910_95) {
+  if (mmShapeInfo_.socType == SocVersion::SOC950) {
     double mnharmonicMean =
         static_cast<double>(mmShapeInfo_.mValue * rankTileNum *
                             mmShapeInfo_.nValue) /
@@ -249,8 +250,8 @@ void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum,
 }
 
 void MatmulPerformanceModel::GetMatmulGradient() {
-  uint64_t tmpN = std::max(mmShapeInfo_.baseM, mmShapeInfo_.nValue);
-  uint64_t tmpK = std::max(mmShapeInfo_.baseM, mmShapeInfo_.kValue);
+  uint64_t tmpN = std::max(mmShapeInfo_.baseN, mmShapeInfo_.nValue);
+  uint64_t tmpK = std::max(mmShapeInfo_.baseK, mmShapeInfo_.kValue);
   matmulGradient_ = (tmpN * tmpK) / (mmShapeInfo_.computesPerCycle *
                                      mmShapeInfo_.cyclePerMicroSec *
                                      mmShapeInfo_.coreNum * cubeUtil_);

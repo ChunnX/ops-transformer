@@ -15,18 +15,18 @@
 #include <cstring>
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../../common/inc/hccl_stub.h"
+#include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 #include "../../../op_kernel/all_gather_matmul_tiling.h"
 
 constexpr uint16_t MAX_TENSOR_CONT = 256;
 constexpr uint16_t MAX_CORE_CONT = 64;
 
-inline void InitAllGatherMatmulTilingData(uint8_t* tiling, AllGatherMatmulTilingData* const_data)
+inline void InitAllGatherMatmulTilingData(uint8_t* tiling, AllGatherMatmulTilingData* constData)
 {
-    memcpy(const_data, tiling, sizeof(AllGatherMatmulTilingData));
+    memcpy(constData, tiling, sizeof(AllGatherMatmulTilingData));
 }
 
-#define GET_TILING_DATA(tiling_data, tiling_arg)                                                        \
-    AllGatherMatmulTilingData tiling_data;                                                 \
-    InitAllGatherMatmulTilingData(tiling_arg, &tiling_data)
+#define GET_TILING_DATA(tilingData, tilingArg)                                                        \
+    AllGatherMatmulTilingData tilingData;                                                 \
+    InitAllGatherMatmulTilingData(tilingArg, &tilingData)
 #endif  // FOREACH_MINIMUM_SCALAR_TILING_DEF_H

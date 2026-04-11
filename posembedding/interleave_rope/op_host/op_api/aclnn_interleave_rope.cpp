@@ -14,6 +14,7 @@
 #include "opdev/op_executor.h"
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "external/aclnn_kernels/aclnn_platform.h"
 #include "posembedding/rotary_position_embedding/op_host/op_api/aclnn_rotary_position_embedding.h"
 
 using namespace op;
@@ -24,11 +25,6 @@ extern "C" {
 
 constexpr int64_t HALF_INTERLEAVE_MODE = 3;
 
-aclnnStatus aclnnInnerRotaryPositionEmbeddingGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* cos, const aclTensor* sin, int64_t mode, aclTensor* out,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
-aclnnStatus aclnnInnerRotaryPositionEmbedding(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 aclnnStatus aclnnInnerInterleaveRopeGetWorkspaceSize(
     const aclTensor* x, const aclTensor* cos, const aclTensor* sin, aclTensor* out, uint64_t* workspaceSize,
     aclOpExecutor** executor);
@@ -39,9 +35,8 @@ aclnnStatus aclnnInterleaveRopeGetWorkspaceSize(
     const aclTensor* x, const aclTensor* cos, const aclTensor* sin, aclTensor* out, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
-    bool useRotaryPositionEmbedding = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95;
-    if (useRotaryPositionEmbedding) {
-        return aclnnInnerRotaryPositionEmbeddingGetWorkspaceSize(
+    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+        return aclnnRotaryPositionEmbeddingGetWorkspaceSize(
             x, cos, sin, HALF_INTERLEAVE_MODE, out, workspaceSize, executor);
     } else {
         return aclnnInnerInterleaveRopeGetWorkspaceSize(x, cos, sin, out, workspaceSize, executor);
@@ -50,9 +45,8 @@ aclnnStatus aclnnInterleaveRopeGetWorkspaceSize(
 
 aclnnStatus aclnnInterleaveRope(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
-    bool useRotaryPositionEmbedding = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95;
-    if (useRotaryPositionEmbedding) {
-        return aclnnInnerRotaryPositionEmbedding(workspace, workspaceSize, executor, stream);
+    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+        return aclnnRotaryPositionEmbedding(workspace, workspaceSize, executor, stream);
     } else {
         return aclnnInnerInterleaveRope(workspace, workspaceSize, executor, stream);
     }

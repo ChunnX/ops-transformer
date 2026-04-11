@@ -112,8 +112,16 @@ bool QuantLightningIndexerMetadataCpuKernel::CheckSingleParam()
         return false;
     }
     // layout_key 校验
-    if (layoutKey_ != "PA_BSND") {
-        KERNEL_LOG_ERROR("For layout_key, layout must be PA_BSND!");
+    if (layoutKey_ != "PA_BSND" && layoutKey_ != "TND" && layoutKey_ != "BSND") {
+    	KERNEL_LOG_ERROR("For layout_key, layout must be PA_BSND/TND/BSND!");
+        return false;
+    }
+    if (layoutQuery_ == "TND" && layoutKey_ == "BSND") {
+    	KERNEL_LOG_ERROR("For layout_query TND, layout_key should be PA_BSND/TND!");
+    	return false;
+    }
+    if (layoutQuery_ == "BSND" && layoutKey_ == "TND") {
+    	KERNEL_LOG_ERROR("For layout_query BSND, layout_key should be PA_BSND/BSND!");
         return false;
     }
     // sparse_mode 校验
@@ -185,8 +193,12 @@ bool QuantLightningIndexerMetadataCpuKernel::CheckConsistency()
 {
     int32_t queryBatchSize = GetQueryBatchSize();
     int32_t kvBatchSize = GetKvBatchSize();
-    if (queryBatchSize != kvBatchSize) {
-        KERNEL_LOG_ERROR("batch_size, the dim of actual_seq_lengths_query and the dim of actual_seq_lengths_key should be equal.");
+    if ((layoutQuery_ == "BSND" || (layoutQuery_ == "TND" && layoutKey_ == "TND")) && queryBatchSize != kvBatchSize) {
+    	KERNEL_LOG_ERROR("For the layout_query is BSND or both layout_query and layout_key are TND, the dim of actual_seq_lengths_query and the dim of actual_seq_lengths_key should be equal.");
+        return false;
+    }
+    if (std::abs(queryBatchSize - kvBatchSize) > 1) {
+    	KERNEL_LOG_ERROR("The difference between the dim of actual_seq_lengths_query and the dim of actual_seq_lengths_key should not be greater than 1.");
         return false;
     }
     return true;
@@ -229,6 +241,9 @@ ValidSocVersion QuantLightningIndexerMetadataCpuKernel::ProcessSocVersion()
 
 bool QuantLightningIndexerMetadataCpuKernel::ParamsInit()
 {
+    int32_t qBatchSize_ = GetQueryBatchSize();
+    int32_t kvBatchSize_ = GetKvBatchSize();
+    isActQBatchPlus = (qBatchSize_ > kvBatchSize_);
     auto mode = static_cast<SparseMode>(sparseMode_);
     if (mode == SparseMode::RIGHT_DOWN_CAUSAL) {
         attentionMode_ = 1;
@@ -239,7 +254,7 @@ bool QuantLightningIndexerMetadataCpuKernel::ParamsInit()
         attentionMode_ = 1;
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
-    batchSize_ = GetQueryBatchSize();
+    batchSize_ = std::min(qBatchSize_, kvBatchSize_);
     validSocVersion_ = ProcessSocVersion();
     if (validSocVersion_ == ValidSocVersion::ASCEND910B){
         s2BaseSize_ = 2048U; // 仅用于A3
@@ -258,6 +273,9 @@ uint32_t QuantLightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
     }
     const int32_t *s1Ptr = (int32_t*)actSeqLenQ_->GetData();
     if (layoutQuery_ == "TND") {
+        if (isActQBatchPlus) {
+            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
+        }
         return (bIdx == 0) ? static_cast<uint32_t>(s1Ptr[bIdx]) :
             static_cast<uint32_t>(s1Ptr[bIdx] - s1Ptr[bIdx - 1U]);
     } else {
@@ -267,19 +285,16 @@ uint32_t QuantLightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 
 uint32_t QuantLightningIndexerMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
-    uint32_t s2Size = 0;
     if (actSeqLenKey_ == nullptr || actSeqLenKey_->GetData() == nullptr) {
-        s2Size = static_cast<uint32_t>(maxSeqlenK_ * cmpRatio_);
-    } else {
-        const int32_t *s2Ptr = (int32_t*)actSeqLenKey_->GetData();
-        if (layoutKey_ == "TND") {
-            s2Size = (bIdx == 0) ? static_cast<uint32_t>(s2Ptr[bIdx]) :
-                static_cast<uint32_t>(s2Ptr[bIdx] - s2Ptr[bIdx - 1U]);
-        } else {
-            s2Size = static_cast<uint32_t>(s2Ptr[bIdx]);
-        }
+        return static_cast<uint32_t>(maxSeqlenK_ * cmpRatio_);
     }
-    return s2Size;
+    const int32_t *s2Ptr = (int32_t*)actSeqLenKey_->GetData();
+    if (layoutKey_ == "TND") {
+        return (bIdx == 0) ? static_cast<uint32_t>(s2Ptr[bIdx]) :
+            static_cast<uint32_t>(s2Ptr[bIdx] - s2Ptr[bIdx - 1U]);
+    } else {
+        return static_cast<uint32_t>(s2Ptr[bIdx]);
+    }
 }
 
 void QuantLightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)

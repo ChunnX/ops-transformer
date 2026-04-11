@@ -21,9 +21,37 @@
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
+#include "tiling_base/tiling_util.h"
 #include "platform/platform_info.h"
 #include "util/math_util.h"
 namespace optiling {
+
+BEGIN_TILING_DATA_DEF(RotateMatrixParams)
+    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
+    TILING_DATA_FIELD_DEF(uint64_t, blockNum);           // baseMN num
+    TILING_DATA_FIELD_DEF(uint64_t, blockNumM);
+    TILING_DATA_FIELD_DEF(uint64_t, blockNumN);
+    TILING_DATA_FIELD_DEF(uint64_t, cvParallNum);        // cv parall num
+    TILING_DATA_FIELD_DEF(uint64_t, tilingMode);         // layout code
+    TILING_DATA_FIELD_DEF(uint64_t, gmLength);           // x dim
+    TILING_DATA_FIELD_DEF(uint64_t, broadcastFirstDim);  // broadcast or not
+    TILING_DATA_FIELD_DEF(uint64_t, broadcastSecondDim); // broadcast or not
+    TILING_DATA_FIELD_DEF(uint64_t, broadcastThirdDim);  // broadcast or not
+    TILING_DATA_FIELD_DEF(uint64_t, dLength);            // D dim length
+    TILING_DATA_FIELD_DEF(uint64_t, baseM);                 
+    TILING_DATA_FIELD_DEF(uint64_t, baseN);                  
+    TILING_DATA_FIELD_DEF(uint64_t, baseK);               
+    TILING_DATA_FIELD_DEF(uint64_t, coreNum);           // baseMN num
+    TILING_DATA_FIELD_DEF(uint64_t, m);
+    TILING_DATA_FIELD_DEF(uint64_t, xFirstDim);              // xFirstDim
+    TILING_DATA_FIELD_DEF(uint64_t, xSecondDim);             // xSecondDim
+    TILING_DATA_FIELD_DEF(uint64_t, xThirdDim);              // xThirdDim
+    TILING_DATA_FIELD_DEF(uint64_t, cosSinFirstDim);            // cosSinFirstDim
+    TILING_DATA_FIELD_DEF(uint64_t, cosSinSecondDim);           // cosSinSecondDim
+    TILING_DATA_FIELD_DEF(uint64_t, cosSinThirdDim);            // cosSinThirdDim
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(RotateMatrixParamsOp, RotateMatrixParams)
+
 
 BEGIN_TILING_DATA_DEF(RotateHalfParams)
 TILING_DATA_FIELD_DEF(uint64_t, tilingMode); // layout code
@@ -87,6 +115,7 @@ END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(RopeInterleavedParamsOp, RopeInterleavedParams)
 
 BEGIN_TILING_DATA_DEF(RotaryPositionEmbeddingTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(RotateMatrixParams, rotateMatrixParams);
 TILING_DATA_FIELD_DEF_STRUCT(RotateHalfParams, rotateHalfParams);
 TILING_DATA_FIELD_DEF_STRUCT(RopeInterleavedParams, ropeInterleavedParams);
 END_TILING_DATA_DEF;
@@ -142,7 +171,7 @@ END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(RotaryPositionEmbedding_20030, RopeRegbaseABTilingData)
 
 struct RotaryPositionEmbeddingCompileInfo {
-    int64_t blockDim;
+    int64_t numBlocks;
     uint64_t ubSize;
     platform_ascendc::SocVersion socVersion;
 };
@@ -269,7 +298,7 @@ protected:
     {
         return true;
     }
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910_95;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     int64_t b_{0};
     int64_t s_{0};
     int64_t n_{0};

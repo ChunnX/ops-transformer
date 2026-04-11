@@ -28,7 +28,8 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
                      uint64_t                       expectTilingKey = 0, 
                      const string&                  expectTilingData = "",
                      const std::vector<size_t>&     expectWorkspaces = {},
-                     uint64_t                       tilingDataReservedLen = 0);
+                     uint64_t                       tilingDataReservedLen = 0,
+                     bool                           useHashTilingData = false);
 
 bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo);
 

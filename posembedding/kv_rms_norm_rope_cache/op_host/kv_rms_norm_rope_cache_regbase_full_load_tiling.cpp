@@ -12,6 +12,7 @@
  * \file kv_rms_norm_rope_cache_regbase_full_load_tiling.cpp
  * \brief
  */
+
 #include "kv_rms_norm_rope_cache_tiling.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -34,9 +35,9 @@ constexpr static int64_t CONST_SEVEN = 7;
 constexpr static int64_t CONST_EIGHT = 8;
 constexpr static int64_t CONST_SIXTY_THREE = 63;
 
-constexpr static int64_t CONST_BRCFLAG_ZERO = 1;
+constexpr static int64_t CONST_BRCFLAG_ZERO = 0;
 constexpr static int64_t CONST_BRCFLAG_ONE = 1;
-constexpr static int64_t CONST_BRCFLAG_TWO = 1;
+constexpr static int64_t CONST_BRCFLAG_TWO = 2;
 
 using namespace Ops::Base;
 
@@ -63,6 +64,41 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckScaleOffsetShape(
         return true;
     }
     return false;
+}
+
+bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckCacheIsQuant(ge::DataType& cacheDtype)
+{
+    std::vector<ge::DataType> cacheQuantDtypesList = {ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8,
+                                                  ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2};
+    for (const auto& cacheQuantDtype : cacheQuantDtypesList) {
+        if (cacheQuantDtype == cacheDtype) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 输入shape为非空
+ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputShapeIsEmpty(){
+    for (int i = KV_INDEX; i <= C_KV_OFFSET_IDX; ++i) {
+        if (i >= K_ROPE_SCALE_IDX) {
+            auto optionalParamShape = context_->GetOptionalInputShape(i);
+            if (optionalParamShape != nullptr) {
+                OP_CHECK_IF(optionalParamShape->GetStorageShape().GetShapeSize() == 0,
+                    OP_LOGE(context_->GetNodeName(), "The optional input of index = %d, can not be empty tensor.", i),
+                     return ge::GRAPH_FAILED);
+            }
+        }
+        else {
+            auto inputParam = context_->GetInputShape(i);
+            OP_CHECK_NULL_WITH_CONTEXT(context_, inputParam);
+            gert::Shape inputParamShape = inputParam->GetStorageShape();
+            OP_CHECK_IF(inputParamShape.GetShapeSize() == 0,
+                OP_LOGE(context_->GetNodeName(), "The input of index = %d, can not be empty tensor.", i),
+                    return ge::GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
@@ -103,10 +139,9 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-    OP_CHECK_IF(
-        ((kcacheDtype != kvDtype) && (kcacheDtype != ge::DT_INT8)),
+    OP_CHECK_IF(((kcacheDtype != kvDtype) && (!CheckCacheIsQuant(kcacheDtype))),
         OP_LOGE(context_->GetNodeName(), "the dtype of k_cache is invalid."), return false);
-    if (kcacheDtype == ge::DT_INT8) {
+    if (CheckCacheIsQuant(kcacheDtype)) {
         // k_rope_scale
         auto kRopeScaleDesc = context_->GetOptionalInputDesc(K_ROPE_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, kRopeScaleDesc);
@@ -128,10 +163,9 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-    OP_CHECK_IF(
-        ((vcacheDtype != kvDtype) && (vcacheDtype != ge::DT_INT8)),
+    OP_CHECK_IF(((vcacheDtype != kvDtype) && (!CheckCacheIsQuant(vcacheDtype))),
         OP_LOGE(context_->GetNodeName(), "the dtype of ckv_cache is invalid."), return false);
-    if (vcacheDtype == ge::DT_INT8) {
+    if (CheckCacheIsQuant(vcacheDtype)) {
         // c_kv_scale
         auto ckvScaleDesc = context_->GetOptionalInputDesc(C_KV_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, ckvScaleDesc);
@@ -161,6 +195,10 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     auto scale2Shape = context_->GetOptionalInputShape(C_KV_SCALE_IDX);
     auto offset1Shape = context_->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
     auto offset2Shape = context_->GetOptionalInputShape(C_KV_OFFSET_IDX);
+
+    OP_CHECK_IF(CheckInputShapeIsEmpty() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "The input param can not be empty"), return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(
         !CheckScaleOffsetShape(scale1Shape, dk_, kScaleType_),
         OP_LOGE(context_->GetNodeName(), "k_rope_scale shape invalid."), return ge::GRAPH_FAILED);
@@ -255,7 +293,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     int64_t ropeWspSize = 2 * vlFp32_ * sizeof(float);
     int64_t rmsNormWspSize = dvAlign * sizeof(float);
     int64_t ubFactor =
-        (ubSize_ - UB_RESERVED_BYTE - kScaleOffsetUbSize - vScaleOffsetUbSize - gammaUbSize - ropeWspSize) /
+        (static_cast<int64_t>(ubSize_) - UB_RESERVED_BYTE - kScaleOffsetUbSize - vScaleOffsetUbSize - gammaUbSize - ropeWspSize) /
         (DOUBLE_BUFFER * inUbSize + DOUBLE_BUFFER * inCosSinUbSize + DOUBLE_BUFFER * outUbSize + rmsNormWspSize);
     OP_CHECK_IF(
         (ubFactor <= 0),
@@ -287,5 +325,5 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("KvRmsNormRopeCache", KvRmsNormRopeCacheRegbaseFullLoadTiling, TEMPLATE_D_FULL_LOAD_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(KvRmsNormRopeCache, KvRmsNormRopeCacheRegbaseFullLoadTiling, TEMPLATE_D_FULL_LOAD_PRIORITY);
 } // namespace optiling

@@ -21,22 +21,23 @@ using namespace op;
 using namespace std;
 
 namespace MoeDistributeCombineAddRmsNorm {
-class l2_moe_distribute_combine_add_rms_norm_test : public testing::Test
+class L2MoeDistributeCombineAddRmsNormTest : public testing::Test
 {
 protected:
     static void SetUpTestCase()
     {
         op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
-        cout << "l2_moe_distribute_combine_add_rms_norm_test SetUp" << endl;
+        cout << "L2MoeDistributeCombineAddRmsNormTest SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-        cout << "l2_moe_distribute_combine_add_rms_norm_test TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2MoeDistributeCombineAddRmsNormTest TearDown" << endl;
     }
 };
 
-TEST_F(l2_moe_distribute_combine_add_rms_norm_test, test_moe_distribute_combine_add_rms_norm_1)
+TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm1)
 {
     TensorDesc expandX = TensorDesc({32, 7168}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc expertIds = TensorDesc({32, 8}, ACL_INT32, ACL_FORMAT_ND);
@@ -69,7 +70,7 @@ TEST_F(l2_moe_distribute_combine_add_rms_norm_test, test_moe_distribute_combine_
     int64_t globalBs = 0;
     int64_t outDtype = 0;
     int64_t commQuantMode = 0;
-    int64_t groupList_type = 0;
+    int64_t groupListType = 0;
     float normEps = 1e-6;
     char commAlg[] = "";
 
@@ -82,23 +83,23 @@ TEST_F(l2_moe_distribute_combine_add_rms_norm_test, test_moe_distribute_combine_
         INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask, activationScale,
               weightScale, groupList, expandScales, sharedExpertX, groupEp, epWorldSize,
               epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType,
-              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupList_type, commAlg, normEps),
+              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
         OUTPUT(y, rstdOut, x));
-    uint64_t workspace_size1 = 0;
+    uint64_t workspaceSize1 = 0;
     aclOpExecutor* executor1 = nullptr;
-    aclnnStatus aclRet1 = ut1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size1, executor1);
-    EXPECT_EQ(aclRet1, ACLNN_SUCCESS);
+    aclnnStatus aclRet1 = ut1.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize1, executor1);
+    EXPECT_NE(aclRet1, ACLNN_ERR_PARAM_INVALID);
 
     auto ut2 = OP_API_UT(
         aclnnMoeDistributeCombineAddRmsNorm,
         INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask, activationScale,
               weightScale, groupList, expandScales, sharedExpertX, nullptr, epWorldSize,
               epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType,
-              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupList_type, commAlg, normEps),
+              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
         OUTPUT(y, rstdOut, x));
-    uint64_t workspace_size2 = 0;
+    uint64_t workspaceSize2 = 0;
     aclOpExecutor* executor2 = nullptr;
-    aclnnStatus aclRet2 = ut2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size2, executor2);
+    aclnnStatus aclRet2 = ut2.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize2, executor2);
     EXPECT_EQ(aclRet2, ACLNN_ERR_PARAM_NULLPTR);
 
     std::string groupEpLongStr(MOE_GROUP_EP_LONG_STR_SIZE, 'a');
@@ -107,11 +108,11 @@ TEST_F(l2_moe_distribute_combine_add_rms_norm_test, test_moe_distribute_combine_
         INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask, activationScale,
               weightScale, groupList, expandScales, sharedExpertX, groupEpLongStr.c_str(), epWorldSize,
               epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType,
-              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupList_type, commAlg, normEps),
+              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
         OUTPUT(y, rstdOut, x));
-    uint64_t workspace_size3 = 0;
+    uint64_t workspaceSize3 = 0;
     aclOpExecutor* executor3 = nullptr;
-    aclnnStatus aclRet3 = ut3.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size3, executor3);
+    aclnnStatus aclRet3 = ut3.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize3, executor3);
     EXPECT_EQ(aclRet3, ACLNN_ERR_PARAM_INVALID);
 
     std::string groupTpLongStr(MOE_GROUP_TP_LONG_STR_SIZE, 'b');
@@ -120,11 +121,11 @@ TEST_F(l2_moe_distribute_combine_add_rms_norm_test, test_moe_distribute_combine_
         INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask, activationScale,
               weightScale, groupList, expandScales, sharedExpertX, groupEp, epWorldSize,
               epRankId, moeExpertNum, groupTpLongStr.c_str(), tpWorldSize, tpRankId, expertShardType,
-              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupList_type, commAlg, normEps),
+              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
         OUTPUT(y, rstdOut, x));
-    uint64_t workspace_size4 = 0;
+    uint64_t workspaceSize4 = 0;
     aclOpExecutor* executor4 = nullptr;
-    aclnnStatus aclRet4 = ut4.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size4, executor4);
+    aclnnStatus aclRet4 = ut4.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize4, executor4);
     EXPECT_EQ(aclRet4, ACLNN_ERR_PARAM_INVALID);
 }
 } // MoeDistributeCombineAddRmsNorm

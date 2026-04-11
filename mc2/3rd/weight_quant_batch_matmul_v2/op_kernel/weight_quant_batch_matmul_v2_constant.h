@@ -14,6 +14,8 @@
  */
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_CONSTANT_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_CONSTANT_H
+
+#include "weight_quant_batch_matmul_v2_tiling_data.h"
 namespace Mc2WeightQuantBatchMatmulV2 {
 using HighPreciseType = int32_t;
 using HighPerformanceType = half;

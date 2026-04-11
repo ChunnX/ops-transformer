@@ -8,20 +8,27 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
-* \file ffn_to_attention.h
-* \brief
-*/
+/*!
+ * \file ffn_to_attention.h
+ * \brief
+ */
+
 #ifndef FFN_TO_ATTENTION_H
 #define FFN_TO_ATTENTION_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "ffn_to_attention_tiling.h"
 #if __has_include("../common/inc/kernel/moe_distribute_base.h")
 #include "../common/inc/kernel/moe_distribute_base.h"
+#include "../common/inc/kernel/mc2_kernel_utils.h"
 #else
 #include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 
 
@@ -31,18 +38,11 @@ constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
 constexpr uint8_t WIN_OFFSET_CNT = 2;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 
-template<AscendC::HardEvent event>
-__aicore__ inline void SyncFunc() {
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
-
-#define TemplateMC2TypeClass typename xType, bool isInputRankTable
-#define TemplateMC2TypeFunc xType, isInputRankTable
+#define TemplateFFNToAttentionTypeClass typename xType, bool isInputRankTable
+#define TemplateFFNToAttentionTypeFunc xType, isInputRankTable
 
 using namespace AscendC;
-template <TemplateMC2TypeClass>
+template <TemplateFFNToAttentionTypeClass>
 class FFNToAttention {
 public:
     __aicore__ inline FFNToAttention() {};
@@ -89,8 +89,8 @@ private:
     __gm__ HcclOpResParam *winContext_{nullptr};
 };
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
+template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
     GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM,
     TPipe *pipe, const FFNToAttentionTilingData *tilingData)
 {
@@ -132,8 +132,8 @@ __aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::Init(GM_ADDR x, GM_A
     winTokenInfoTableSize_ = Ceil(microBatchNum_ * batchSizeSendCnt_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区划分token_info_table在前, 偏移向上取整
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline GM_ADDR FFNToAttention<TemplateMC2TypeFunc>::GetWindowAddr(uint32_t curAttenWorkRank)
+template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline GM_ADDR FFNToAttention<TemplateFFNToAttentionTypeFunc>::GetWindowAddr(uint32_t curAttenWorkRank)
 {
     // 当 userMemType 为 0 时，使用远程设备内存; 当 userMemType 不为 0 时，使用用户自定义内存
     if (winContext_->userMemType == 0) {
@@ -143,8 +143,8 @@ __aicore__ inline GM_ADDR FFNToAttention<TemplateMC2TypeFunc>::GetWindowAddr(uin
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::ReadTokenMetaData(ReadTokenMetaDataStruct& metaDataStruct, uint32_t YOffset)
+template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadTokenMetaData(ReadTokenMetaDataStruct& metaDataStruct, uint32_t YOffset)
 {
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sessionIdsGMTensor_[YOffset]);
     metaDataStruct.curAttenWorkIds = sessionIdsGMTensor_(YOffset);  // 直接去gm取数值 当前token属于哪个attnWork
@@ -165,8 +165,8 @@ __aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::ReadTokenMetaData(Re
     metaDataStruct.curTokenTopkOffset = expertOffsetsGMTensor_(YOffset);  // 直接去gm取数值 当前token属于TopK中的第几个
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::Process()
+template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
         uint32_t calStartTokenId = 0;
@@ -208,10 +208,14 @@ __aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::Process()
             tokenDataGMTensor.SetGlobalBuffer((__gm__ xType*)(curRankWinAddr + winTokenInfoTableSize_ + tokenDataOffset));
             
             // 5. 复制数据到win区
+            if(tokenCnt == 0) {
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
+            }
             xQueue_.EnQue(xTmpTensor_);
             xTmpTensor_ = xQueue_.DeQue<xType>();
             DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams); // 数据搬入token_data位置上
             xQueue_.FreeTensor<xType>(xTmpTensor_);
+            PipeBarrier<PIPE_MTE3>();
             DataCopyPad(tokenInfoTableGMTensor, statusTensor_, dataCopyParams); // 状态位
         }
     }

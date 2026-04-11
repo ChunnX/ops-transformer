@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <set>
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
@@ -278,10 +279,12 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaValue() const
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaPseShift() const
 {
+    const std::vector<size_t> pseShiftDimNumList = {DIM_NUM_FOUR};
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.pseShift.desc, PSE_SHIFT_NAME) ||
-        ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.pseShift.desc, PSE_SHIFT_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
+ 	    ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.pseShift.desc, PSE_SHIFT_NAME) ||
+ 	    ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.pseShift.tensor, pseShiftDimNumList, PSE_SHIFT_NAME)) {
+ 	    return ge::GRAPH_FAILED;
+ 	}
     return ge::GRAPH_SUCCESS;
 }
 
@@ -369,34 +372,32 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaBlockTable() const
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaQueryPaddingSize() const
 {
-    const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeShapeNumList, QUERY_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-
-    const std::vector<size_t> querypaddingsizeDimNumList = {DIM_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeDimNumList, QUERY_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
+    if (fiaInfo_.qPaddingSizeFlag) {
+ 	    const std::vector<size_t> querypaddingsizeDimNumList = {DIM_NUM_ONE};
+ 	    const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+ 	    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeShapeNumList, QUERY_PADDING_SIZE_NAME) ||
+ 	        ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeDimNumList, QUERY_PADDING_SIZE_NAME)) {
+ 	        return ge::GRAPH_FAILED;
+ 	    }
+ 	}
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaKvPaddingSize() const
 {
-    const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeShapeNumList, KV_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.kvPaddingSize.desc, KV_PADDING_SIZE_NAME)) {
         return ge::GRAPH_FAILED;
     }
 
-    const std::vector<size_t> kvpaddingsizeDimNumList = {DIM_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeDimNumList, KV_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
+    if (!fiaInfo_.isLegacyIfa) {
+ 	    const std::vector<size_t> kvpaddingsizeDimNumList = {DIM_NUM_ONE};
+ 	    const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+ 	    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeShapeNumList, KV_PADDING_SIZE_NAME) ||
+ 	        ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeDimNumList, KV_PADDING_SIZE_NAME)) {
+ 	        return ge::GRAPH_FAILED;
+ 	    }
+ 	}
 
     return ge::GRAPH_SUCCESS;
 }

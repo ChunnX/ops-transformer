@@ -15,6 +15,7 @@
 
 #include <iostream>
 #include <vector>
+#include <memory>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_v5.h"
 
@@ -159,18 +160,28 @@ int main() {
 
     // 创建x aclTensorList
     ret = CreateAclTensorList(xShape, xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
+    std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> xTensorPtr(x, aclDestroyTensorList);
+    std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr[0], aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建weight aclTensorList
     ret = CreateAclTensorList(weightShape, weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
+    std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorPtr(weight, aclDestroyTensorList);
+    std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr[0], aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建bias aclTensorList
     ret = CreateAclTensorList(biasShape, biasDeviceAddr, aclDataType::ACL_FLOAT16, &bias);
+    std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> biasTensorPtr(bias, aclDestroyTensorList);
+    std::unique_ptr<void, aclError (*)(void *)> biasDeviceAddrPtr(biasDeviceAddr[0], aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建y aclTensorList
     ret = CreateAclTensorList(yShape, yDeviceAddr, aclDataType::ACL_FLOAT16, &out);
+    std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> outTensorPtr(out, aclDestroyTensorList);
+    std::unique_ptr<void, aclError (*)(void *)> outDeviceAddrPtr(yDeviceAddr[0], aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建group_list aclTensor
     ret = CreateAclTensor_New<int64_t>(groupListData, groupListShape, &groupListDeviceAddr, aclDataType::ACL_INT64, &groupedList);
+    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> groupedListTensorPtr(groupedList, aclDestroyTensor);
+    std::unique_ptr<void, aclError (*)(void *)> groupedListDeviceAddrPtr(groupListDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t workspaceSize = 0;
@@ -206,19 +217,6 @@ int main() {
         }
     }
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-    aclDestroyTensorList(x);
-    aclDestroyTensorList(weight);
-    aclDestroyTensorList(bias);
-    aclDestroyTensorList(out);
-
-    // 7. 释放device资源，需要根据具体API的接口定义修改
-    for (int i = 0; i < 1; i++) {
-        aclrtFree(xDeviceAddr[i]);
-        aclrtFree(weightDeviceAddr[i]);
-        aclrtFree(biasDeviceAddr[i]);
-        aclrtFree(yDeviceAddr[i]);
-    }
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }

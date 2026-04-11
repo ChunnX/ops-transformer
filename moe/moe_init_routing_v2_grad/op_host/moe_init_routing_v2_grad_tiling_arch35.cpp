@@ -17,6 +17,7 @@
 #include "util/platform_util.h"
 #include "util/math_util.h"
 #include "kernel_tiling/kernel_tiling.h"
+#include "tiling_base/tiling_util.h"
 
 namespace optiling {
 #define TILINGKEY_REGBASE_DROPLESS 400001
@@ -45,10 +46,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
-            return false;
-        }
-        return true;
+        return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
 
     // 3、计算数据切分TilingData
@@ -64,7 +62,7 @@ private:
     void SetTilingSplitCore();
     void SetTilingFactor();
 
-    int64_t blockDim = 0;
+    int64_t numBlocks = 0;
     MoeInitRoutingV2GradRegbaseTilingData moeInitRoutingV2GradTilingData;
 };
 
@@ -93,9 +91,9 @@ void MoeInitRoutingV2GradRegbase::SetTilingShapeInfo()
 void MoeInitRoutingV2GradRegbase::SetTilingSplitCore()
 {
     int64_t nBlockFactor = Ops::Base::CeilDiv(N, aivNum); // 单核处理最大token数
-    blockDim = Ops::Base::CeilDiv(N, nBlockFactor);       // 实际使用核数
+    numBlocks = Ops::Base::CeilDiv(N, nBlockFactor);       // 实际使用核数
 
-    moeInitRoutingV2GradTilingData.set_blockDim(blockDim);
+    moeInitRoutingV2GradTilingData.set_numBlocks(numBlocks);
     moeInitRoutingV2GradTilingData.set_nBlockFactor(nBlockFactor);
 }
 
@@ -144,7 +142,7 @@ uint64_t MoeInitRoutingV2GradRegbase::GetTilingKey() const
 
 ge::graphStatus MoeInitRoutingV2GradRegbase::PostTiling()
 {
-    context_->SetBlockDim(blockDim);
+    context_->SetBlockDim(numBlocks);
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     auto tilingData = context_->GetRawTilingData();

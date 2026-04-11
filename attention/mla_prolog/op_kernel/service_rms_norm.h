@@ -132,15 +132,24 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, co
     RmsNormNormal<T, GammaType, C, C>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
     AscendC::PipeBarrier<PIPE_V>();
 #if __CCE_AICORE__ == 310
-    LocalTensor<bfloat16_t> xBf16Local = xFp32Local[cnt].template ReinterpretCast<bfloat16_t>();
-    Cast(xBf16Local, xFp32Local, RoundMode::CAST_ROUND, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
-    LocalTensor<uint16_t> outputScalesLocal = outputScales.template ReinterpretCast<uint16_t>();
-    LocalTensor<int8_t> outLocal = outputLocal.template ReinterpretCast<int8_t>();
-    LocalTensor<uint8_t> tmpLocal = xBf16Local[cnt].template ReinterpretCast<uint8_t>();
-    DynamicQuantCqVf<bfloat16_t, fp8_e4m3fn_t>(outLocal, outputScalesLocal, xBf16Local, tmpLocal, rmsNormParams.row, rmsNormParams.col);
-    LocalTensor<uint8_t> scale = outputScalesLocal.template ReinterpretCast<uint8_t>();
-    AscendC::PipeBarrier<PIPE_V>();
+    if constexpr (std::is_same<O, fp8_e4m3fn_t>::value) {
+        LocalTensor<bfloat16_t> xBf16Local = xFp32Local[cnt].template ReinterpretCast<bfloat16_t>();
+        Cast(xBf16Local, xFp32Local, RoundMode::CAST_ROUND, cnt);
+        AscendC::PipeBarrier<PIPE_V>();
+        LocalTensor<uint16_t> outputScalesLocal = outputScales.template ReinterpretCast<uint16_t>();
+        LocalTensor<int8_t> outLocal = outputLocal.template ReinterpretCast<int8_t>();
+        LocalTensor<uint8_t> tmpLocal = xBf16Local[cnt].template ReinterpretCast<uint8_t>();
+        DynamicQuantPerBlockMxfp8Vf<bfloat16_t, fp8_e4m3fn_t>(outLocal, outputScalesLocal, xBf16Local, tmpLocal, rmsNormParams.row, rmsNormParams.col);
+        LocalTensor<uint8_t> scale = outputScalesLocal.template ReinterpretCast<uint8_t>();
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+    else {
+        if (enableSmoothScalesCq) {
+            Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
+        }
+        DynamicQuantPerTokenVf(outputLocal, outputScales, xFp32Local, rmsNormParams.row, rmsNormParams.col);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
 #else
     if (enableSmoothScalesCq) {
         Mul(xFp32Local, xFp32Local, smoothLocal, cnt);

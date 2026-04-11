@@ -25,7 +25,6 @@
     $$
     Y=Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
     $$
-
   - pseType≠1时，公式如下：
 
     $$
@@ -85,28 +84,28 @@
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的输入K。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>value</td>
       <td>输入</td>
       <td>公式中的输入V。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>dy</td>
       <td>输入</td>
       <td>公式中的输入dY。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -177,6 +176,10 @@
     </tr>
   </tbody>
 </table>
+<ul>
+  <li><term>Atlas A2 训练产品</term>:不支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+  <li><term>Atlas A3 训练产品</term>:不支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+</ul>
 
 ## 约束说明
 
@@ -187,8 +190,9 @@
   -   N：取值范围为1\~256。
   -   S：取值范围为1\~1M。
   -   D：
-      -   Atlas A2 训练系列产品:取值范围为1\~512。
-      -   Atlas A3 训练系列产品:取值范围为1\~512。
+      -   Atlas A2 训练系列产品：取值范围为1\~512。
+      -   Atlas A3 训练系列产品：取值范围为1\~512。
+      -   Ascend 950PR/Ascend 950DT:取值范围为1\~768。
 - keepProb的取值范围为(0, 1]。
 - 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - pseType为2或3的时候，当前只支持Sq和Skv等长。

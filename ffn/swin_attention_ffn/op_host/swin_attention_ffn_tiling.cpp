@@ -106,7 +106,8 @@ ge::graphStatus SAFFNTilingComp::SAFFNTilingTPROLL(const gert::TilingContext* co
     aicNum = static_cast<uint64_t>(acInfo.GetCoreNumAic());
     aicNum = aicNum > USE_CORE_THRESHOLD ? USE_CORE_THRESHOLD : aicNum;
     aivNum = aicNum * 2; // aiv:aic == 2:1 in 910B
-    if (acInfo.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90) {
+    if (acInfo.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90 ||
+        acInfo.GetSocVersion() == platform_ascendc::SocVersion::KIRIN9030) {
         aivNum = static_cast<uint64_t>(acInfo.GetCoreNumAic());
     }
     ubSize = compileInfo->ubSize;

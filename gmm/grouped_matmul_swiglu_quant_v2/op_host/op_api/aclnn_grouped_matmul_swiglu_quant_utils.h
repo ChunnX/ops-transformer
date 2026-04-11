@@ -52,6 +52,8 @@ struct GroupedMatmulSwigluQuantParamsBase {
     int64_t quantDtype = 0;
     int64_t groupListType = 0;
     bool transposeWeight = false;
+    bool isA8W4 = false;
+    bool isA4W4 = false;
 };
 
 class GroupedMatmulSwigluQuantParamsBuilder {
@@ -130,6 +132,23 @@ public:
         return *this;
     }
 
+    GroupedMatmulSwigluQuantParamsBuilder &SetScenario()
+    {
+        p_.isA8W4 = ((this->p_.x->GetDataType() == DataType::DT_INT8 &&
+                    ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT4) ||
+                    (this->p_.x->GetDataType() == DataType::DT_INT8 &&
+                    ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT32));
+        p_.isA4W4 = ((this->p_.x->GetDataType() == DataType::DT_INT4 &&
+                    ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT4) ||
+                    (this->p_.x->GetDataType() == DataType::DT_INT4 &&
+                    ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT32) ||
+                    (this->p_.x->GetDataType() == DataType::DT_INT32 &&
+                    ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT4) ||
+                    (this->p_.x->GetDataType() == DataType::DT_INT32 &&
+                    ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT32));
+        return *this;
+    }
+
     GroupedMatmulSwigluQuantParamsBase Build() const
     {
         return p_;
@@ -188,10 +207,6 @@ protected:
     {
         if ((*gmmDsqParams_.weight)[0]->IsEmpty() || (*gmmDsqParams_.weightScale)[0]->IsEmpty()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The weight or weightScale is an empty container.");
-            return false;
-        }
-        if (gmmDsqParams_.x->IsEmpty() || gmmDsqParams_.xScale->IsEmpty()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x or xScale is an empty container.");
             return false;
         }
         return true;
@@ -298,11 +313,11 @@ protected:
                     "Contiguous weightScale failed.");
 
         gmmDsqParams_.x = l0op::Contiguous(gmmDsqParams_.x, l0Executor_);
-        CHECK_COND(gmmDsqParams_.x  != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous groupList failed.");
+        CHECK_COND(gmmDsqParams_.x != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous groupList failed.");
         gmmDsqParams_.xScale = l0op::Contiguous(gmmDsqParams_.xScale, l0Executor_);
-        CHECK_COND(gmmDsqParams_.xScale  != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous xScale failed.");
+        CHECK_COND(gmmDsqParams_.xScale != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous xScale failed.");
         gmmDsqParams_.groupList = l0op::Contiguous(gmmDsqParams_.groupList, l0Executor_);
-        CHECK_COND(gmmDsqParams_.groupList  != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous groupList failed.");
+        CHECK_COND(gmmDsqParams_.groupList != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous groupList failed.");
 
         return ACLNN_SUCCESS;
     }
@@ -322,6 +337,17 @@ public:
         auto uniqueExecutor = CREATE_EXECUTOR();
         CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
         l0Executor_ = uniqueExecutor.get();
+
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            auto x1MDim = gmmDsqParams_.x->GetViewShape().GetDim(0);
+            auto x2NIndex = (*gmmDsqParams_.weight)[0]->GetViewShape().GetDimNum() - 1;
+            auto x2NDim = (*gmmDsqParams_.weight)[0]->GetViewShape().GetDim(x2NIndex);
+            if (x1MDim == 0 || x2NDim == 0) {
+                *workspaceSize_ = 0ULL;
+                uniqueExecutor.ReleaseTo(executor_);
+                return ACLNN_SUCCESS;
+            }
+        }
         auto ret = CheckParams();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         

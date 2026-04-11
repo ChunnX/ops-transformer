@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file allto _all_all_gather_batch_mat_mul_proto.h
+ * \file allto_all_all_gather_batch_mat_mul_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef ALLTO_ALL_ALL_GATHER_BATCH_MAT_MUL_PROTO_H_
+#define ALLTO_ALL_ALL_GATHER_BATCH_MAT_MUL_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -84,4 +84,4 @@ REG_OP(AlltoAllAllGatherBatchMatMul)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // ALLTO_ALL_ALL_GATHER_BATCH_MAT_MUL_PROTO_H_

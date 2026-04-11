@@ -2,11 +2,16 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-| <term>Ascend 950PR/Ascend 950DT</term> |    √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+| 产品                                                         |  是否支持   |
+| :----------------------------------------------------------- |:-------:|
+| <term>Ascend 950PR/Ascend 950DT</term>                      |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Kirin X90 处理器系列产品</term> | √ |
+| <term>Kirin 9030 处理器系列产品</term> | √ |
 
 ## 功能说明
 
@@ -43,7 +48,7 @@
 
 ## 参数说明
 
-<table style="table-layout: auto; width: 100%">
+  <table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>
@@ -101,6 +106,18 @@
 ## 约束说明
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2](../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
+  - permutedTokens输入等同于aclnnMoeFinalizeRoutingV2接口的expandedX输入。
+  - sortedIndices输入等同于aclnnMoeFinalizeRoutingV2接口的expandedRowIdx输入。
+  - probsOptional输入等同于aclnnMoeFinalizeRoutingV2接口的scalesOptional输入。
+  - paddedMode输入等同于aclnnMoeFinalizeRoutingV2接口的dropPadMode输入。
+  - out输出等同于aclnnMoeFinalizeRoutingV2接口的out输出。
+- <term>Atlas 推理系列产品</term>：
+  - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
+  - topK_num <= 512。
+  - hiddensize是128的倍数且小于10240。
+
 ## 调用说明
 
 | 调用方式   | 样例代码           | 说明                                         |

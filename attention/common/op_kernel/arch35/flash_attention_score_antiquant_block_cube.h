@@ -41,6 +41,8 @@ public:
         TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void SendCrossCoreFlag();
     __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<Q_T> &l1Tensor, const GlobalTensor<Q_T> &gmTensor, 
+        uint32_t ndNum, uint32_t nValue, uint32_t dValue, uint32_t srcNdMatrixStride, uint32_t srcDValue, uint32_t dstNzC0Stride, uint32_t dstNzMatrixStride);
     __aicore__ inline void IterateBmm1(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
         Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm2(const int64_t &subTaskId, const RunInfo<isInfer> &runInfo, Buffer<BufferType::L1> &inputBufA,
@@ -94,6 +96,25 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalB
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyToL1Nd2Nz(
+    const LocalTensor<Q_T> &l1Tensor, const GlobalTensor<Q_T> &gmTensor, 
+    uint32_t ndNum, uint32_t nValue, uint32_t dValue, uint32_t srcNdMatrixStride, uint32_t srcDValue, uint32_t dstNzC0Stride, uint32_t dstNzMatrixStride)
+{
+    Nd2NzParams gm2L1Nd2NzParams;
+
+    gm2L1Nd2NzParams.ndNum = ndNum; // ND矩阵的个数
+    gm2L1Nd2NzParams.nValue = nValue; // 单个ND矩阵的实际行数，单位为元素个数
+    gm2L1Nd2NzParams.dValue = dValue; // 单个ND矩阵的实际列数，单位为元素个数
+    gm2L1Nd2NzParams.srcNdMatrixStride = srcNdMatrixStride; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+    gm2L1Nd2NzParams.srcDValue = srcDValue; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
+    gm2L1Nd2NzParams.dstNzC0Stride = (dstNzC0Stride + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移， 单位为Block个数 15 >> 4 << 4 is Align 16
+    gm2L1Nd2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+    gm2L1Nd2NzParams.dstNzMatrixStride = dstNzMatrixStride; // 两个NZ矩阵，起始地址之间的偏移，单位为元素数量
+    
+    DataCopy(l1Tensor, gmTensor, gm2L1Nd2NzParams);
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm1(
         RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
         Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo)
@@ -103,16 +124,18 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
         mm1A = mm1AL1Buffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用
         LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-        Nd2NzParams Gm2L1Nd2NzParams;
-        Gm2L1Nd2NzParams.ndNum = 1; // ND矩阵的个数
-        Gm2L1Nd2NzParams.nValue = runInfo.s1RealSize; // 单个ND矩阵的实际行数，单位为元素个数
-        Gm2L1Nd2NzParams.dValue = constInfo.dSize; // 单个ND矩阵的实际列数，单位为元素个数
-        Gm2L1Nd2NzParams.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
-        Gm2L1Nd2NzParams.srcDValue = constInfo.mm1Ka; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
-        Gm2L1Nd2NzParams.dstNzC0Stride = (Gm2L1Nd2NzParams.nValue + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移， 单位为Block个数 15 >> 4 << 4 is Align 16
-        Gm2L1Nd2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
-        Gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移，单位为元素数量
-        DataCopy(mm1ATensor, this->queryGm[runParam.tensorQOffset], Gm2L1Nd2NzParams);
+
+        if constexpr (isInfer) {
+            if ((constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND)) && constInfo.isPfaGS1Merge) {
+                CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize, 
+                    constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize, constInfo.gSize * 32 / sizeof(Q_T));
+            } else {
+                CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1, runInfo.s1RealSize, constInfo.dSize, 0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
+            }
+        } else {
+            CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1, runInfo.s1RealSize, constInfo.dSize, 0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
+        }
+        
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else {
         mm1A = mm1AL1Buffers.GetPre();
@@ -157,6 +180,14 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
+
+    if constexpr (isInfer) {
+        bool isS1Odd = constInfo.s1Size % 2 != 0; // BSNGD/TNGD GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
+        if ((constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND)) && constInfo.isPfaGS1Merge && isS1Odd) {
+            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
+        }
+    }
+
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputTensor, mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
 
     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(CV_MM1RES_EVENT[runInfo.taskIdMod2]);  // fixpip将结果搬运到UB后，设置SYNC_C1_V1_FLAG

@@ -50,7 +50,7 @@ TEST_F(aclnnGroupedMatmulSwigluQuantWeightNz_test, ascend910B2_test_opapi_w8a8_n
     TensorDesc x = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
         TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-    TensorDesc weightScale = TensorDesc({e, n}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weightScale = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorDesc xScale = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorDesc groupList = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(bs, bs);
     TensorDesc out1 = TensorDesc({m, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);

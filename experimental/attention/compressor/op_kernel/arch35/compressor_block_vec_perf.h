@@ -75,11 +75,20 @@ public:
     __aicore__ inline CompressorBlockVectorPerf(){};
     // =================================设置参数=================================
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const CompressorTools<COMP> &tools);
-    __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *kvState,
-                                __gm__ uint8_t *scoreState, __gm__ uint8_t *ape, __gm__ uint8_t *normWeight,
-                                __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *kvBlockTable,
-                                __gm__ uint8_t *scoreBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut);
+    __aicore__ inline void Init(
+        __gm__ uint8_t *x,
+        __gm__ uint8_t *wKv,
+        __gm__ uint8_t *wGate,
+        __gm__ uint8_t *stateCache,
+        __gm__ uint8_t *ape,
+        __gm__ uint8_t *normWeight,
+        __gm__ uint8_t *ropeSin,
+        __gm__ uint8_t *ropeCos,
+        __gm__ uint8_t *stateBlockTable,
+        __gm__ uint8_t *cuSeqlens,
+        __gm__ uint8_t *seqUsed,
+        __gm__ uint8_t *startPos,
+        __gm__ uint8_t *cmpKvOut);
     // =================================资源管理=================================
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
@@ -156,11 +165,11 @@ private:
                                              uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void WriteToCacheState(const GlobalTensor<T> &state, const GlobalTensor<int32_t> &blockTableGm,
                                              const LocalTensor<T> &input, uint32_t batchIdx, uint32_t startSeqIdx,
-                                             uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize);
+                                             uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx);
     __aicore__ inline void ReadFromCacheState(const LocalTensor<T> &output, const GlobalTensor<T> &state,
                                               const GlobalTensor<int32_t> &blockTableGm, uint32_t batchIdx,
                                               uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
-                                              uint32_t dDealSize);
+                                              uint32_t dDealSize, uint32_t stateIdx);
     __aicore__ inline void SaveToWorkSpace(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &cacheTcGm,
                                            const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo, uint32_t dStartIdx,
                                            uint32_t dDealSize);
@@ -196,14 +205,14 @@ private:
                                    uint32_t dealRowCount);
     __aicore__ inline void SaveState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
-                                     uint32_t dStartIdx, uint32_t dDealSize);
+                                     uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx);
     template <bool IS_SCORE>
     __aicore__ inline void DuplicateFirstBlock(const LocalTensor<T> &dstLocal, uint32_t duplicateRowCount,
                                                uint32_t duplicateColCount, uint32_t singleRowCount);
     template <bool IS_SCORE>
     __aicore__ inline void ReadState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
-                                     uint32_t dStartIdx, uint32_t dDealSize);
+                                     uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx);
     uint32_t cmpRatio_ = 0U;
     uint32_t coff_ = 0U;
     uint32_t curStartPos_ = 0;
@@ -231,10 +240,8 @@ private:
     GlobalTensor<int32_t> startPosGm_;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
-    GlobalTensor<int32_t> kvBlockTableGm_;
-    GlobalTensor<int32_t> scoreBlockTableGm_;
-    GlobalTensor<T> kvStateGm_;
-    GlobalTensor<T> scoreStateGm_;
+    GlobalTensor<int32_t> stateBlockTableGm_;
+    GlobalTensor<T> stateCacheGm_;
     GlobalTensor<T> apeGm_;
     GlobalTensor<X_T> normWeightGm_;
     GlobalTensor<X_T> ropeSinGm_;
@@ -272,15 +279,22 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitParams(const ConstIn
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::Init(
-    __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *kvState, __gm__ uint8_t *scoreState,
-    __gm__ uint8_t *ape, __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos,
-    __gm__ uint8_t *kvBlockTable, __gm__ uint8_t *scoreBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-    __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+    __gm__ uint8_t *x,
+    __gm__ uint8_t *wKv,
+    __gm__ uint8_t *wGate,
+    __gm__ uint8_t *stateCache,
+    __gm__ uint8_t *ape,
+    __gm__ uint8_t *normWeight,
+    __gm__ uint8_t *ropeSin,
+    __gm__ uint8_t *ropeCos,
+    __gm__ uint8_t *stateBlockTable,
+    __gm__ uint8_t *cuSeqlens,
+    __gm__ uint8_t *seqUsed,
+    __gm__ uint8_t *startPos,
+    __gm__ uint8_t *cmpKvOut)
 {
-    kvBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)kvBlockTable);
-    scoreBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)scoreBlockTable);
-    kvStateGm_.SetGlobalBuffer((__gm__ T *)kvState);
-    scoreStateGm_.SetGlobalBuffer((__gm__ T *)scoreState);
+    stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
+    stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
     normWeightGm_.SetGlobalBuffer((__gm__ X_T *)normWeight);
     ropeSinGm_.SetGlobalBuffer((__gm__ X_T *)ropeSin);
@@ -706,8 +720,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::OverLap(
         AddApeToScore(srcLocal, apeUb, sliceInfo, dDealSize);
         PipeBarrier<PIPE_V>();
     }
-    SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize);
-    ReadState<IS_SCORE>(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize);
+    SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, static_cast<uint32_t>(IS_SCORE));
+    ReadState<IS_SCORE>(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, static_cast<uint32_t>(IS_SCORE));
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
         uint32_t nextC1V1DbIdx = (info.c1v1DbIdx + 1) % constInfo_.dbWorkspaceRatio;
@@ -796,7 +810,7 @@ CompressorBlockVectorPerf<COMP>::LoadFromWorkSpace(const LocalTensor<T> &dstLoca
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(
     const LocalTensor<T> &output, const GlobalTensor<T> &state, const GlobalTensor<int32_t> &blockTableGm,
-    uint32_t batchIdx, uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize)
+    uint32_t batchIdx, uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx)
 {
     uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
     uint32_t curSeqIdx = startSeqIdx;
@@ -810,11 +824,12 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(
         if (copyFinishRowCnt + copyRowCount > seqCnt) {
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
-        uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * coff_ * constInfo_.headDim +
-                               remainRowCnt * coff_ * constInfo_.headDim + dStartIdx;
+        uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * 2 * coff_ * constInfo_.headDim +
+                                remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                stateIdx * coff_ * constInfo_.headDim + dStartIdx;
                                
-        DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount, dDealSize,
-                            coff_ * constInfo_.headDim, coff_ * dDealSize);
+        DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
+                                dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
         copyFinishRowCnt += copyRowCount;
         curSeqIdx += copyRowCount;
     }
@@ -823,7 +838,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(
     const GlobalTensor<T> &state, const GlobalTensor<int32_t> &blockTableGm, const LocalTensor<T> &input,
-    uint32_t batchIdx, uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize)
+    uint32_t batchIdx, uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx)
 {
     uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
     uint32_t curSeqIdx = startSeqIdx;
@@ -838,10 +853,11 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
         if (idInBlockTable != 0) { // 32
-            uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * coff_ * constInfo_.headDim +
-                                   remainRowCnt * coff_ * constInfo_.headDim + dStartIdx;
+            uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * 2 * coff_ * constInfo_.headDim +
+                                    remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
             DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
-                                  dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim);
+                                    dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
         }
 
         copyFinishRowCnt += copyRowCount;
@@ -853,7 +869,7 @@ template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                            const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
-                                           uint32_t dStartIdx, uint32_t dDealSize)
+                                           uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx)
 {
     uint32_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
@@ -861,13 +877,13 @@ CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> &srcLocal, const
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
         WriteToCacheState(stateGm, blockTableGm, srcLocal[srcBaseOffset], sliceInfo.bIdx, startSeqIdx, endSeqIdx,
-                          dStartIdx, dDealSize);
+                          dStartIdx, dDealSize, stateIdx);
         srcBaseOffset += dDealSize;
         dStartIdx += constInfo_.headDim;
     }
 
     WriteToCacheState(stateGm, blockTableGm, srcLocal[srcBaseOffset], sliceInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx,
-                      dDealSize);
+                      dDealSize, stateIdx);
 }
 
 template <typename COMP>
@@ -894,7 +910,7 @@ template <bool IS_SCORE>
 __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &stateGm,
                                            const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
-                                           uint32_t dStartIdx, uint32_t dDealSize)
+                                           uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx)
 {
     // 没有需要压缩的块时, 不需要读state的信息
     if (sliceInfo.compressTcSize == 0) {
@@ -910,7 +926,7 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> &dstLocal, const
             dstBaseOffset += (coff_ - 1) * dDealSize;
         }
         ReadFromCacheState(dstLocal[dstBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
-                           dStartIdx + (coff_ - 1) * constInfo_.headDim, dDealSize);
+                           dStartIdx + (coff_ - 1) * constInfo_.headDim, dDealSize, stateIdx);
     }
 
     // 填充左边
@@ -936,7 +952,7 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> &dstLocal, const
                 dstBaseOffset += constInfo_.cmpRatio * coff_ * dDealSize;
             }
             ReadFromCacheState(dstLocal[dstBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
-                               dStartIdx, dDealSize);
+                               dStartIdx, dDealSize, stateIdx);
         }
     }
 }
@@ -1004,9 +1020,9 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::OverLapScoreKv(
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<true>(scoreLocal, scoreUb, scoreDBMm1ResGm, scoreStateGm_, scoreBlockTableGm_, scoreCacheTcGm_, info,
+        OverLap<true>(scoreLocal, scoreUb, scoreDBMm1ResGm, stateCacheGm_, stateBlockTableGm_, scoreCacheTcGm_, info,
                       overLapSliceInfo, loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
-        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, kvStateGm_, kvBlockTableGm_, kvCacheTcGm_, info, overLapSliceInfo,
+        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_, stateBlockTableGm_, kvCacheTcGm_, info, overLapSliceInfo,
                        loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
         overLapSliceIterator.IteratorSlice();
     }

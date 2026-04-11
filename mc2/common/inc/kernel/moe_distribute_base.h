@@ -16,7 +16,13 @@
 #ifndef MOE_DISTRIBUTE_BASE_H
 #define MOE_DISTRIBUTE_BASE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+#include "adv_api/hccl/hccl.h"
+#include "moe_distribute_comm_ctx.h"
 
 constexpr uint32_t LOCAL_NOTIFY_MAX_NUM = 64;
 constexpr uint32_t CUR_LOCAL_STREAM_MAX_NUM = 40U;
@@ -24,6 +30,12 @@ constexpr uint32_t RES_LOCAL_STREAM_MAX_NUM = 19U;
 constexpr uint32_t AICPU_OP_NOTIFY_MAX_NUM = 2;
 constexpr uint32_t AICPU_MAX_RANK_NUM = 128 * 1024;
 constexpr uint32_t TIME_CYCLE = 50; // 系统cycle数转换成时间的基准单位，固定为50
+constexpr uint32_t MAX_RANK_NUM_A3 = 768;
+constexpr uint32_t MAX_MODULE_DEVICE_NUM = 32;
+
+namespace Mc2Kernel {
+constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
+}
 
 struct HcclSignalInfo {
     uint64_t resId; // 在代表event时为eventid，notify时为notifyid
@@ -178,6 +190,7 @@ struct MemDetails1 {
     uint64_t addr = 0;
     uint32_t key = 0;
 };
+
 struct HcclOpResParam {
     // 本地资源
     HcclMC2WorkSpace mc2WorkSpace;
@@ -215,8 +228,8 @@ struct HcclOpResParam {
     uint64_t zeroCopyHeadPtr;
     uint64_t zeroCopyTailPtr;
     uint64_t zeroCopyRingBuffer;
-    uint64_t zeroCopyIpcPtrs[32];                // 保存集合通信时每个对端的输入输出内存地址
-    uint32_t zeroCopyDevicePhyId[32];            // 保存每个rank对应的物理卡Id
+    uint64_t zeroCopyIpcPtrs[MAX_MODULE_DEVICE_NUM];                // 保存集合通信时每个对端的输入输出内存地址
+    uint32_t zeroCopyDevicePhyId[MAX_MODULE_DEVICE_NUM];            // 保存每个rank对应的物理卡Id
 
     bool utraceStatusFlag;
     OpCounterInfo opCounterInfo;
@@ -228,8 +241,20 @@ struct HcclOpResParam {
     uint64_t aicpuCustomParamAddr;
     uint64_t aicpuCustomParamSize;
 
-    MemDetails1 userMemRes[768];  // 下标为rank id
+    MemDetails1 userMemRes[MAX_RANK_NUM_A3];  // 下标为rank id
     uint32_t userMemType = 0;
+
+    HcclStreamParam aicpuOrderStreamParam; // 按序下发的stream
+    uint64_t aicpuOrderNotifyAddr;
+    uint64_t aicpuOrderNotifySize;
+    // ARS算法属性
+    uint32_t multiSuperPodDiffDeviceNumMode;
+    bool isARSDoubleRing;
+    // 读取HCCL_ENTRY_LOG_ENABLE环境变量，用于增加算子kernel展开信息
+    bool opEntry{false};
+    uint32_t hcclSdmaQos;   // HCCL SDMA QOS TAG
+    uint64_t sizeOfAiRMAInfo = 0; //用于内存校验
+    uint64_t aiRMAInfo = 0; //HcclAiRMAInfo* 单个结构体指针
 };
 
 // Transport 内存类型
@@ -421,4 +446,78 @@ __aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> perf
     int32_t duration = static_cast<int32_t>(endTime - startTime); // int32_t可以表示2^31(us)，约35min在实际场景下满足需要
     performanceInfoU32Tensor.SetValue(rankId * sizeof(int64_t) / sizeof(int32_t), duration); // 使用int32_t是因为atomicAdd不支持int64_t类型，这里只赋值到int64_t的低32位。
 }
+
+namespace Mc2Kernel {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A5 implmentation
+using HcclOpParam = HcclCombinOpParam;
+
+__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam * winContext)
+{
+    return winContext->rankId;
+}
+
+__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam * winContext)
+{
+    return winContext->rankDim;
+}
+
+__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam * winContext)
+{
+    return winContext->winSize;
+}
+
+__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
+{
+    return (GM_ADDR)(winContext->windowsIn[winContext->rankId]);
+}
+
+__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+{
+    return (GM_ADDR)(winContext->windowsIn[rankId] + A5_MTE_STATE_WIN_SIZE);
+}
+
+__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+{
+    return (GM_ADDR)(winContext->windowsIn[rankId]);
+}
+#else // A3 implementation
+using HcclOpParam = HcclOpResParam;
+
+__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam * winContext)
+{
+    return winContext->localUsrRankId;
+}
+
+__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam * winContext)
+{
+    return winContext->rankSize;
+}
+
+__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam * winContext)
+{
+    return winContext->winSize;
+}
+
+__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
+{
+    return (GM_ADDR)(winContext->localWindowsExp);
+}
+
+__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+{
+    if (rankId == curRankId) {
+        return (GM_ADDR)(winContext->localWindowsIn);
+    }
+    return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext->remoteRes[rankId].nextDevicePtr))->windowsIn);
+}
+
+__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+{
+    if (rankId == curRankId) {
+        return (GM_ADDR)(winContext->localWindowsExp);
+    }
+    return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext->remoteRes[rankId].nextDevicePtr))->windowsExp);
+}
+#endif // __NPU_ARCH__ == 3510
+} // Mc2Kernel
 #endif // MOE_DISTRIBUTE_BASE_H

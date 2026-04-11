@@ -697,14 +697,12 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             x,
             wkv,
             wgate,
-            kv_state,
-            score_state,
+            torch.cat((kv_state, score_state), dim=-1),
             ape,
             norm_weight, 
             rope_sin,
             rope_cos,
-            kv_block_table = block_table,
-            score_block_table = block_table,
+            block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos if exist_start_pos else None,
@@ -712,7 +710,8 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             cmp_ratio = cmp_ratio,
             coff = coff,
             norm_eps = norm_eps,
-            rotary_mode = rotary_mode
+            rotary_mode = rotary_mode,
+            cache_mode = 1,
         )
     )
     print(f"x: shape {x.shape}, dtype: {x.dtype}")

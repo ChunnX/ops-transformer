@@ -54,7 +54,10 @@ enum class SLILayout
 
 enum class SLITopKRange
 {
+<<<<<<< HEAD
     TOPK_512 = 512,
+=======
+>>>>>>> upstream/master_950
     TOPK_1k = 1024,
     TOPK_2k = 2048,
     TOPK_3k = 3072,
@@ -137,7 +140,10 @@ struct SLIGradKLLossConstInfo {
     SLISparseMode sparseMode; // 0或者3
     float scaleValue;
     int64_t cmpRatio;
+<<<<<<< HEAD
     int64_t hasSoftmaxInput;
+=======
+>>>>>>> upstream/master_950
     SoftMaxTiling tilingInfo;
     SoftMaxTiling simpleSoftMaxTilingInfo;
 

@@ -31,6 +31,7 @@
 #include "register/op_def_registry.h"
 #include "../op_kernel/mla_prolog_template_tiling_key.h"
 #include "../op_kernel/mla_prolog_tiling_data.h"
+#include "platform/soc_spec.h"
 
 #ifdef ASCENDC_OP_TEST
 #define MLA_EXTERN_C extern "C"
@@ -176,7 +177,8 @@ enum class QUANT_MODE:int8_t {
     PARTIAL_QUANT_KV_QUANT_PER_TILE = 5,
     FULL_QUANT_KV_QUANT_PER_TILE = 6,
     MXFP8_FULL_QUANT_KV_NO_QUANT = 7,
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 8
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 8,
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = 9
 };
 
 enum class WEIGHT_QUANT_MODE:uint8_t {
@@ -329,7 +331,7 @@ private:
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
 
-    platform_ascendc::SocVersion GetSocVersionShortName() const;
+    NpuArch GetCurNpuArch() const;
 
     MlaPrologBaseShapeInfo baseShapeInfo_;
     MlaPrologScenarioInfo scenarioInfo_;

@@ -51,12 +51,20 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("softmax_max")
+<<<<<<< HEAD
             .ParamType(OPTIONAL)
+=======
+            .ParamType(REQUIRED)
+>>>>>>> upstream/master_950
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("softmax_sum")
+<<<<<<< HEAD
             .ParamType(OPTIONAL)
+=======
+            .ParamType(REQUIRED)
+>>>>>>> upstream/master_950
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();

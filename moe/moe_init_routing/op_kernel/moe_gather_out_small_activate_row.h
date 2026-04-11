@@ -118,6 +118,9 @@ __aicore__ inline void MoeGatherOutSmallActiveRow<T>::Init(
 template <typename T>
 __aicore__ inline void MoeGatherOutSmallActiveRow<T>::Process()
 {
+    if (needCoreNum > 1) {
+        AscendC::SyncAll();
+    }
     if (this->blockIdx < this->needCoreNum) {
         int64_t loops = (coreRows + perLoopRows - 1) / perLoopRows;
         int64_t colsLoops = Ceil(cols, maxColsOneLoop);

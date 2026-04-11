@@ -14,8 +14,5 @@ foreach(SUBDIR ${SUBDIRECTORIES})
   # 检查子目录中是否存在 CMakeLists.txt
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${SUBDIR}/CMakeLists.txt)
     add_subdirectory(${SUBDIR})
-    if(DEFINED ${SUBDIR}_depends)
-        set(${SUBDIR}_depends "${${SUBDIR}_depends}" PARENT_SCOPE)
-    endif()
   endif()
 endforeach()

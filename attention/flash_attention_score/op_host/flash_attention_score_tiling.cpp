@@ -71,23 +71,6 @@ static uint32_t Ceil(uint32_t num1, uint32_t num2)
     return (num1 + num2 - 1U) / num2;
 }
 
-class FlashAttentionScoreEmptyInputTiling {
-public:
-    FlashAttentionScoreTilingData tilingData;
-
-    void FlashAttentionScoreSetEmptyInputTilingData(gert::TilingContext *context,
-                                                    FlashAttentionScoreTilingData &faTilingData);
-};
-
-
-void FlashAttentionScoreEmptyInputTiling::FlashAttentionScoreSetEmptyInputTilingData(
-    gert::TilingContext *context, [[maybe_unused]] FlashAttentionScoreTilingData &faTilingData)
-{
-    OP_CHECK_IF(context->GetRawTilingData() == nullptr,
-        OP_LOGE(context, "FlashAttentionScoreSetEmptyInputTilingData occurs nullptr!"),
-        return);
-}
-
 static ge::graphStatus CheckParams(const gert::TilingContext *context)
 {
     if (context->GetAttrs() != nullptr && context->GetInputShape(QUERY_INPUT_INDEX) != nullptr &&
@@ -326,8 +309,8 @@ static bool IsEmptyInput(gert::TilingContext *context)
         |                                   |                             |       |
         |--------n*(blocks/coreNum+1)-------|-----m*(blocks/coreNum)------|<32Byte|
         */
-        FlashAttentionScoreEmptyInputTiling emptyInputTiling;
-        FlashAttentionScoreEmptyInputTilingData* emptyInputTilingData = context->GetTilingData<FlashAttentionScoreEmptyInputTilingData>();
+        FlashAttentionScoreTilingData* emptyInputTiling = context->GetTilingData<FlashAttentionScoreTilingData>();
+        emptyInputTiling->reset();
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"),
                    return false);
@@ -335,18 +318,17 @@ static bool IsEmptyInput(gert::TilingContext *context)
         if (!GetEmptyArgs(emptyArgs, context, compileInfoPtr->aivNum, attentionOutShapeSize, softmaxSumShapeSize)){
             return false;
         }
-        emptyInputTilingData->set_coreNum(emptyArgs.coreNum);
-        emptyInputTilingData->set_attentionOutFormerNum(emptyArgs.attentionOutFormerNum);
-        emptyInputTilingData->set_attentionOutTailNum(emptyArgs.attentionOutTailNum);
-        emptyInputTilingData->set_softmaxMaxFormerNum(emptyArgs.softmaxMaxFormerNum);
-        emptyInputTilingData->set_softmaxMaxTailNum(emptyArgs.softmaxMaxTailNum);
-        emptyInputTilingData->set_attentionOutSingleCoreDataSize(emptyArgs.attentionOutSingleCoreDataSize);
-        emptyInputTilingData->set_attentionOutTailCoreDataSize(emptyArgs.attentionOutTailCoreDataSize);
-        emptyInputTilingData->set_softmaxMaxSingleCoreDataSize(emptyArgs.softmaxMaxSingleCoreDataSize);
-        emptyInputTilingData->set_softmaxMaxTailCoreDataSize(emptyArgs.softmaxMaxTailCoreDataSize);
-        emptyInputTilingData->set_attentionOutLastCoreDataSize(emptyArgs.attentionOutLastCoreDataSize);
-        emptyInputTilingData->set_attentionOutLastCoreIndex(emptyArgs.attentionOutLastCoreIndex);
-        emptyInputTiling.FlashAttentionScoreSetEmptyInputTilingData(context, emptyInputTiling.tilingData);
+        emptyInputTiling->emptyInputTilingData.set_coreNum(emptyArgs.coreNum);
+        emptyInputTiling->emptyInputTilingData.set_attentionOutFormerNum(emptyArgs.attentionOutFormerNum);
+        emptyInputTiling->emptyInputTilingData.set_attentionOutTailNum(emptyArgs.attentionOutTailNum);
+        emptyInputTiling->emptyInputTilingData.set_softmaxMaxFormerNum(emptyArgs.softmaxMaxFormerNum);
+        emptyInputTiling->emptyInputTilingData.set_softmaxMaxTailNum(emptyArgs.softmaxMaxTailNum);
+        emptyInputTiling->emptyInputTilingData.set_attentionOutSingleCoreDataSize(emptyArgs.attentionOutSingleCoreDataSize);
+        emptyInputTiling->emptyInputTilingData.set_attentionOutTailCoreDataSize(emptyArgs.attentionOutTailCoreDataSize);
+        emptyInputTiling->emptyInputTilingData.set_softmaxMaxSingleCoreDataSize(emptyArgs.softmaxMaxSingleCoreDataSize);
+        emptyInputTiling->emptyInputTilingData.set_softmaxMaxTailCoreDataSize(emptyArgs.softmaxMaxTailCoreDataSize);
+        emptyInputTiling->emptyInputTilingData.set_attentionOutLastCoreDataSize(emptyArgs.attentionOutLastCoreDataSize);
+        emptyInputTiling->emptyInputTilingData.set_attentionOutLastCoreIndex(emptyArgs.attentionOutLastCoreIndex);
         context->SetTilingKey(FA_EMPTY_TILING_KEY);
         auto platformInfoPtr = context->GetPlatformInfo();
         OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return false);
@@ -373,19 +355,19 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionScore(gert::TilingContext *
         return ge::GRAPH_FAILED);
  
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
         if (IsEmptyInputRegbase(context)) {
             return ge::GRAPH_SUCCESS;
         }
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
         if (IsEmptyInput(context)) {
             return ge::GRAPH_SUCCESS;
         }
     }
 
-    auto resultCode = TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    auto resultCode = TilingRegistryArch::GetInstance().DoTilingImpl(context);
     return resultCode;
 }
 
@@ -404,6 +386,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScore(gert::Tilin
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+    compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0cSize);

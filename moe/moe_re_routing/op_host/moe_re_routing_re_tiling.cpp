@@ -32,7 +32,7 @@ void MoeReRoutingReTiling::SplitCore()
     int64_t blockFactor = Ops::Base::CeilDiv(rankNums_, coreNum_);
     blockNumR_ = Ops::Base::CeilDiv(rankNums_, blockFactor);
     blockFactorR_ = Ops::Base::CeilDiv(rankNums_, blockNumR_);
-    // todo tokenSum_ == 0时需要判断
+    // tokenSum_ == 0时需要判断
     if (tokenSum_ == 0) {
         blockNumR_ = 1;
     }
@@ -66,6 +66,9 @@ ge::graphStatus MoeReRoutingReTiling::DoOpTiling()
     if (hasScale_) {
         tilingKey_ =
             scaleDtype_ == ge::DT_FLOAT ? MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT : MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
+        if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
+            tilingKey_ = MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
+        }
     } else {
         tilingKey_ = MOE_RE_ROUTING_RE_WITHOUT_SCALE;
     }
@@ -101,7 +104,11 @@ void MoeReRoutingReTiling::PrintTilingData()
 ge::graphStatus MoeReRoutingReTiling::PostTiling()
 {
     tilingData_.set_tokenSize(tokenSize_);
-    tilingData_.set_scaleSize(scaleSize_);
+    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
+        tilingData_.set_scaleSize(scaleSize_ * 4);
+    } else {
+        tilingData_.set_scaleSize(scaleSize_);
+    }
     tilingData_.set_rankNum(rankNums_);
     tilingData_.set_expertNum(expertNum_);
     tilingData_.set_coreNum(blockNum_);

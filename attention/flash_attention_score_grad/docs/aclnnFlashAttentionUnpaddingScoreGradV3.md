@@ -1,13 +1,15 @@
 # aclnnFlashAttentionUnpaddingScoreGradV3
 
 ## 产品支持情况
+
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品</term>|     √      |
-|<term>Atlas A3 推理系列产品</term>|     ×      |
-|<term>Atlas A2 训练系列产品</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>|     ×      |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -119,7 +121,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 
 ## aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
     <col style="width: 198px">
     <col style="width: 120px">
@@ -226,7 +228,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       <tr>
         <td>paddingMaskOptional</td>
         <td>输入</td>
-        <td>预留参数。</td>
+        <td>预留参数，暂未使用。</td>
         <td>调用时需传空。</td>
         <td>-</td>
         <td>-</td>
@@ -287,7 +289,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
         <td>softmaxInOptional</td>
         <td>输入</td>
         <td>正向softmax的中间输出。</td>
-        <td>暂未使用。</td>
+        <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -387,7 +389,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
         <td>dpseOut</td>
         <td>输出</td>
         <td>d(pse)梯度。</td>
-        <td>暂未使用。</td>
+        <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -457,7 +459,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
         <td>innerPrecise</td>
         <td>输入</td>
         <td>内部计算精度控制。</td>
-        <td>暂未使用。</td>
+        <td>保留参数，暂未使用。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -506,7 +508,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
     </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -518,7 +520,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -542,7 +544,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 
 ## aclnnFlashAttentionUnpaddingScoreGradV3
 
--   **参数说明：**
+-   **参数说明**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -578,7 +580,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
     </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -601,19 +603,17 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
-  - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
+  - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
-  - 配置为7时，不支持可选输入realShiftOptional。
-  - 配置为8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional
+  - 配置为7时，不支持可选输入pseShiftOptional。
+  - 配置为8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
-- prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。actualSeqQLenOptional的长度取值范围为1\~2K。当存在prefixOptional输入的时候，其长度最大支持1K。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[T, N, 8\]，注：T=B*S
 - headNum的取值必须和传入的Query中的N值保持一致。
-- pseType只能为0或者1。
+- pseType只能为1。
 - pseShiftOptional必须为空。
 - dropMaskOptional必须为空。
 - attenMaskOptional不能为空。

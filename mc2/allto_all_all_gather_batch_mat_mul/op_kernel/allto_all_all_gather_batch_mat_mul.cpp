@@ -12,7 +12,11 @@
  * \file allto_all_all_gather_batch_mat_mul.cpp
  * \brief
  */
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "allto_all_all_gather_batch_mat_mul.h"
 #include "allto_all_all_gather_batch_mat_mul_shard_h.h"
 #include "allto_all_all_gather_batch_mat_mul_tiling_key.h"
@@ -39,17 +43,19 @@ using DT_BIAS = float;
 
 #define AlltoAllAllGatherBatchMatMul_IMPL_CLASS(...)                                     \
     do {                                                                                 \
-        TPipe pipe;                                                                      \                                                         
+        TPipe pipe;                                                                      \
         AlltoAllAllGatherBatchMatMul<DT_X, DT_BIAS, __VA_ARGS__> op;                     \
-        op.Init(xGM, weightGM, biasGM, y1GM, y2GM, y3GM, workspaceGM, &pipe, &tilingData);  \
+        op.Init(xGM, weightGM, biasGM, y1GM, y2GM, y3GM, workspaceGM, &pipe, &tilingData,\
+            hcclInitTiling, allGatherCcTiling, alltoAllCcTiling);                        \
         op.Process();                                                                    \
     } while (0)
 
 #define AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(...)                                     \
     do {                                                                                 \
-        TPipe pipe;                                                                      \                                                         
+        TPipe pipe;                                                                      \
         AlltoAllAllGatherBatchMatMulShardH<DT_X, DT_BIAS, __VA_ARGS__> op;                     \
-        op.Init(xGM, weightGM, biasGM, y1GM, y2GM, y3GM, workspaceGM, &pipe, &tilingData);  \
+        op.Init(xGM, weightGM, biasGM, y1GM, y2GM, y3GM, workspaceGM, &pipe, &tilingData,\
+            hcclInitTiling, allGatherCcTiling, alltoAllCcTiling);                        \
         op.Process();                                                                    \
     } while (0)
 
@@ -59,6 +65,11 @@ __global__ __aicore__ void allto_all_all_gather_batch_mat_mul(GM_ADDR xGM, GM_AD
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA(tilingData, tilingGM);
+    REGISTER_TILING_DEFAULT(AlltoAllAllGatherBatchMatMulTilingData);
+    auto tiling = (__gm__ AlltoAllAllGatherBatchMatMulTilingData*)tilingGM;
+    __gm__ void* hcclInitTiling = (__gm__ void*)(&(tiling->hcclInitTiling));
+    __gm__ void* allGatherCcTiling = (__gm__ void*)(&(tiling->allGatherCcTiling));
+    __gm__ void* alltoAllCcTiling = (__gm__ void*)(&(tiling->alltoAllCcTiling));
 
     if constexpr (XShard == 1){
         AlltoAllAllGatherBatchMatMul_IMPL_CLASS(XShard, WeightTransPose, IsBias, Y2Need, Y3Need);

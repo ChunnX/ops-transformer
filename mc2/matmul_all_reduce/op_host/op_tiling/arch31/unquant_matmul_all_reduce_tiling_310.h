@@ -19,22 +19,10 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 
 namespace optiling {
-
-BEGIN_TILING_DATA_DEF(UnQuantMatmulAllReduceTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(Mc2Msg, msg);
-TILING_DATA_FIELD_DEF_STRUCT(RCSTiling, param);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulV3TilingData, tilematmulTiling);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulV3TilingData, tailmatmulTiling);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217729, UnQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217985, UnQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217745, UnQuantMatmulAllReduceTilingData);
-
+    
 struct Matmul310TPLParam{
     uint64_t disableMixNd2nz{65535};
 };
-
 class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
 {
     class UnQuantTilingTransferHelper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling
@@ -99,10 +87,7 @@ class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
     };
 
 public:
-    explicit UnQuantMatmulAllReduceTiling310(gert::TilingContext* context) : MatmulAllReduceTilingBase(context)
-    {
-        unquantMatmulAllReduceTilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
-    }
+    explicit UnQuantMatmulAllReduceTiling310(gert::TilingContext* context) : MatmulAllReduceTilingBase(context) {}
     ~UnQuantMatmulAllReduceTiling310() override = default;
 
 protected:
@@ -116,18 +101,18 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
 
-    RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
 
-    TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
 
-    TCubeTiling& MutableTCubeTailTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
 
     ge::graphStatus DoUnQuantTiling();
 
 private:
-    UnQuantMatmulAllReduceTilingData unquantMatmulAllReduceTilingData_;
+    Mc2Tiling::UnQuantMatmulAllReduceTilingData unquantMatmulAllReduceTilingData_{};
     uint64_t myWorkSpaceSize_{0U};
     Matmul310TPLParam matmulTPLParam_;
 };

@@ -28,6 +28,7 @@ struct AllGatherAddTilingData {
     uint32_t tileNum;
     uint32_t addTileElemNum;
     uint32_t gatherTileElemNum;
+    uint32_t addCoresPerRank;
 };
 
 #endif //ALL_GATHER_ADD_TILING_H

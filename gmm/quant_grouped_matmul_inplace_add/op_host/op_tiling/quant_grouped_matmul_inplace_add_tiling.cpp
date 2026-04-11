@@ -147,6 +147,21 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
     }
 
     SetKernelType();
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);   
+    return true;
+}
+
+bool QuantGroupedInplaceAddTiling::CheckCoreNum() const
+{
+    auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
+    auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
+    OP_CHECK_IF(aicNum == 0,
+               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+               return false);
+    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+               OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+               return false);
     return true;
 }
 
@@ -207,7 +222,7 @@ actual is %zu",
             firstDim != inputParams_.groupNum,
             OP_LOGE(inputParams_.opName,
                                       "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-         but the actual is (%lu, ).",
+but the actual is (%lu, ).",
                                       inputParams_.groupNum, inputParams_.groupNum, firstDim),
             return false);
     } else {
@@ -215,7 +230,7 @@ actual is %zu",
             firstDim != inputParams_.groupNum || lastDim != 1,
             OP_LOGE(inputParams_.opName,
                                       "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-         but the actual is (%lu, %lu).",
+but the actual is (%lu, %lu).",
                                       inputParams_.groupNum, inputParams_.groupNum, firstDim, lastDim),
             return false);
     }
@@ -232,7 +247,7 @@ actual is %zu",
     OP_CHECK_IF(firstDim != inputParams_.groupNum || lastDim != inputParams_.nSize,
                OP_LOGE(inputParams_.opName,
                                          "In T-C quant mode, the expected shape of scale2 is (%lu, %lu), \
-         but the actual is (%lu, %lu).",
+but the actual is (%lu, %lu).",
                                          inputParams_.groupNum, inputParams_.nSize, firstDim, lastDim),
                return false);
 
@@ -309,7 +324,7 @@ ge::graphStatus QuantGroupedInplaceAddTiling::PostTiling()
 
 void QuantGroupedInplaceAddTiling::PrintQuantParams()
 {
-    int32_t enable = AlogCheckDebugLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
+    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
     if (enable != 1) {
         return;
     }

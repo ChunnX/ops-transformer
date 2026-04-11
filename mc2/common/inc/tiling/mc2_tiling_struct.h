@@ -56,7 +56,7 @@ BEGIN_TILING_DATA_DEF(MC2HcommCfg)
     TILING_DATA_FIELD_DEF(uint8_t, skipLocalRankCopy);     // 跳过本卡拷贝，在通信结果只需要给MC2内部计算使用或者本卡拷贝由aicore完成时，
                                                            // 可以跳过本卡数据send-recv搬运
     TILING_DATA_FIELD_DEF(uint8_t, skipBufferWindowCopy);  // 跳过hbm到window间搬运 0 不跳过， 1 跳过snd-window， 2 跳过 window-rcv
-    TILING_DATA_FIELD_DEF(uint8_t, stepSize);              // 通信步长，粗粒度融合时填0 
+    TILING_DATA_FIELD_DEF(uint8_t, stepSize);              // 通信步长，粗粒度融合时填0
                                                            // 细粒度融合时连续计算stepsize块数据再commit或wait通信
     TILING_DATA_FIELD_DEF_ARR(char, 13, reserved);         // 保留字段
     TILING_DATA_FIELD_DEF_ARR(char, 128, groupName);       // groupName
@@ -177,6 +177,16 @@ BEGIN_TILING_DATA_DEF(TileL2Tiling)
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(TileL2TilingOp, TileL2Tiling);
 
+// mc2注释
+//
+//
+//
+//
+//
+//
+//
+// mc2注释
+
 BEGIN_TILING_DATA_DEF(TileInfo)
     TILING_DATA_FIELD_DEF(uint64_t, tileCnt);
     TILING_DATA_FIELD_DEF(uint64_t, tileLen);
@@ -197,7 +207,7 @@ BEGIN_TILING_DATA_DEF(MC2MatmulV3TilingData)
   TILING_DATA_FIELD_DEF(uint32_t, isHf32);
   TILING_DATA_FIELD_DEF(uint32_t, aswWindowLen);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(MC2MatmulV3TilingDataOp, MC2MatmulV3TilingData);
+REGISTER_TILING_DATA_CLASS(Mc2MMV3TilingDataOp, MC2MatmulV3TilingData);
 
 } // namespace optiling
 

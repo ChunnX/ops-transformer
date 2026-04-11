@@ -1,15 +1,21 @@
 # aclnnBatchMatMulReduceScatterAlltoAll
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/batch_mat_mul_reduce_scatter_allto_all)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-- **算子功能**：BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
+- **接口功能**：BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
 
 - **计算公式**：大体计算流程为：BatchMatMul计算-->转置（yShardType等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信。计算逻辑如下，其中y为输出
 
@@ -17,16 +23,13 @@ $$
 temp1 = BatchMatMul(x，weight)
 $$
 
-
 $$
 temp2 = ReduceScatter(temp1)
 $$
 
-
 $$
 temp3 = Add(temp2, bias)
 $$
-
 
 $$
 y = AllToAll(temp3)
@@ -61,170 +64,173 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 ## aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
- <col style="width: 120px">
- <col style="width: 120px">
- <col style="width: 160px">
- <col style="width: 150px">
- <col style="width: 80px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>x</td>
-   <td>输入</td>
-   <td>BatchMatMul计算的左矩阵，必须为3维。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>weight</td>
-   <td>输入</td>
-   <td>BatchMatMul计算的右矩阵，数据类型与x保持一致，必须为3维。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>biasOptional</td>
-   <td>输入</td>
-   <td>Add计算的bias，需在ReduceScatter通信后执行Add操作。x为FLOAT16时，biasOptional需为FLOAT16；x为BFLOAT16时，biasOptional需为FLOAT32。支持两维或三维，支持传入空指针。</td>
-   <td>FLOAT16、FLOAT32</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>groupEp</td>
-   <td>输入</td>
-   <td>专家并行的通信域名称，字符串长度需大于0且小于128。</td>
-   <td>STRING</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>groupTp</td>
-   <td>输入</td>
-   <td>Tensor并行的通信域名称，字符串长度需大于0且小于128。</td>
-   <td>STRING</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>epWorldSize</td>
-   <td>输入</td>
-   <td>ep通信域size，支持2、4、8、16、32。</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>tpWorldSize</td>
-   <td>输入</td>
-   <td>tp通信域size，支持2、4、8、16、32。</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>yShardType</td>
-   <td>输入</td>
-   <td>整型，0表示在H维度（BatchMatMul计算结果的第2维，结果共3维，维度索引依次为0、1、2）按tp进行ReduceScatter；1表示在C维度（BatchMatMul计算结果的第1维）按tp进行ReduceScatter。</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>out</td>
-   <td>输出</td>
-   <td>为batch_matmul计算+reduce_scatter计算+all_to_all通信的结果，数据类型与输入x保持一致，必须为3维。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输出</td>
-   <td>返回需要在Device侧申请的workspace大小。</td>
-   <td>UINT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输出</td>
-   <td>返回op执行器，包含了算子的计算流程。</td>
-   <td>aclOpExecutor*</td>
-   <td>ND</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1010px"><colgroup>
+    <col style="width: 185px">
+    <col style="width: 111px">
+    <col style="width: 429px">
+    <col style="width: 160px">
+    <col style="width: 125px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>x</td>
+    <td>输入</td>
+    <td>BatchMatMul计算的左矩阵，必须为3维。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>weight</td>
+    <td>输入</td>
+    <td>BatchMatMul计算的右矩阵，数据类型与x保持一致，必须为3维。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>biasOptional</td>
+    <td>输入</td>
+    <td>Add计算的bias，需在ReduceScatter通信后执行Add操作。x为FLOAT16时，biasOptional需为FLOAT16；x为BFLOAT16时，biasOptional需为FLOAT32。支持两维或三维，支持传入空指针。</td>
+    <td>FLOAT16、FLOAT32</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>groupEp</td>
+    <td>输入</td>
+    <td>专家并行的通信域名称，字符串长度需大于0且小于128。</td>
+    <td>STRING</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>groupTp</td>
+    <td>输入</td>
+    <td>Tensor并行的通信域名称，字符串长度需大于0且小于128。</td>
+    <td>STRING</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>epWorldSize</td>
+    <td>输入</td>
+    <td>ep通信域size，支持2、4、8、16、32。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>tpWorldSize</td>
+    <td>输入</td>
+    <td>tp通信域size，支持2、4、8、16、32。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>yShardType</td>
+    <td>输入</td>
+    <td>整型，0表示在H维度（BatchMatMul计算结果的第2维，结果共3维，维度索引依次为0、1、2）按tp进行ReduceScatter；1表示在C维度（BatchMatMul计算结果的第1维）按tp进行ReduceScatter。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>out</td>
+    <td>输出</td>
+    <td>为batch_matmul计算+reduce_scatter计算+all_to_all通信的结果，数据类型与输入x保持一致，必须为3维。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子的计算流程。</td>
+    <td>aclOpExecutor*</td>
+    <td>ND</td>
+    </tr>
+    </tbody></table>
 
-**返回值**
-第一段接口完成入参校验，出现以下场景时报错：
+- **返回值**
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>返回值</th>
-   <th>错误码</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>ACLNN_ERR_PARAM_NULLPTR</td>
-   <td>161001</td>
-   <td>1. 传入的x、weight、groupEp、groupTp或out是空指针。</td>
-  </tr>
-  <tr>
-   <td>ACLNN_ERR_PARAM_INVALID</td>
-   <td>161002</td>
-   <td>1. groupEp或groupTp字符串长度不合法;<br>2. 输入不支持的数据类型;<br>3. 属性值不合法;<br>4. aclTensor维度不合法;<br>5. aclTensor shape不合法。</td>
-  </tr>
- </tbody></table>
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一段接口完成入参校验，出现以下场景时报错：
+
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
+    <td>1. 传入的x、weight、groupEp、groupTp或out是空指针。</td>
+    </tr>
+    <tr>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
+    <td>1. groupEp或groupTp字符串长度不合法;<br>2. 输入不支持的数据类型;<br>3. 属性值不合法;<br>4. aclTensor维度不合法;<br>5. aclTensor shape不合法。</td>
+    </tr>
+    </tbody></table>
 
 
 ## aclnnBatchMatMulReduceScatterAlltoAll
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>workspace</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace内存地址。</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize</code>获取。</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输入</td>
-   <td>op执行器，包含了算子计算流程。</td>
-  </tr>
-  <tr>
-   <td>stream</td>
-   <td>输入</td>
-   <td>指定执行任务的Stream。</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize</code>获取。</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+    </tr>
+    </tbody></table>
 
-**返回值**
+- **返回值**
 
 返回aclnnStatus状态码，具体参见aclnn返回码。
 
@@ -263,6 +269,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+
 ```Cpp
 #include <thread>
 #include <iostream>

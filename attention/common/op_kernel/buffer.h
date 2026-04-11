@@ -22,11 +22,15 @@
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
-#define MAKE_ID ((++idCounterNum) % 16)
+#define MAKE_ID ((++idCounterNum) % 11)
 
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
 #define AIV0_AIV1_OFFSET 16
 
+#if (__NPU_ARCH__ == 5102)
+#undef ASCEND_IS_AIC
+#define ASCEND_IS_AIC constexpr(true)
+#endif
 enum class BufferType {
     L1 = 0,
     L0A = 1,
@@ -168,6 +172,25 @@ public:
         }
     }
 
+    __aicore__ inline void SetEventID() {
+        if ASCEND_IS_AIC {
+            p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
+            c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
+        }
+    }
+
+    template<HardEvent EventType>
+    __aicore__ inline TEventID GetEventID() {
+        if ASCEND_IS_AIC {
+            if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
+                return p2cEventId_; // 生产者通知消费者已完成生产
+            } else {
+                return c2pEventId_; // 消费者通知生产者已完成消费
+            }
+        }
+    }
+
+    template<bool isReuse = false>
     __aicore__ inline void WaitCrossCore() {
         if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -175,7 +198,11 @@ public:
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_);
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_ + AIV0_AIV1_OFFSET);
             } else {
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+                if constexpr (isReuse) {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
+                } else {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+                }
             }
         } else if constexpr (bufferType == BufferType::L1) {
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
@@ -190,6 +217,7 @@ public:
         }
     }
 
+    template<bool isReuse = false>
     __aicore__ inline void SetCrossCore() {
         if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -197,7 +225,11 @@ public:
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_);
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
             } else {
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                if constexpr (isReuse) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
+                } else {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                }
             }
         } else if constexpr (bufferType == BufferType::L1) {
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV

@@ -14,20 +14,18 @@
 #include <cstring>
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../../common/inc/hccl_stub.h"
+#include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 #include "../../../op_kernel/matmul_reduce_scatter_tiling.h"
-
-#define __aicore__
 
 constexpr uint16_t MAX_TENSOR_CONT = 256;
 constexpr uint16_t MAX_CORE_CONT = 64;
 
-inline void InitMatmulReduceScatterTilingData(uint8_t* tiling, MatmulReduceScatterTilingData* const_data)
+inline void InitMatmulReduceScatterTilingData(uint8_t* tiling, MatmulReduceScatterTilingData* constData)
 {
-    memcpy(const_data, tiling, sizeof(MatmulReduceScatterTilingData));
+    memcpy(constData, tiling, sizeof(MatmulReduceScatterTilingData));
 }
 
-#define GET_TILING_DATA(tiling_data, tiling_arg)                                                        \
-    MatmulReduceScatterTilingData tiling_data;                                                          \
-    InitMatmulReduceScatterTilingData(tiling_arg, &tiling_data)
+#define GET_TILING_DATA(tilingData, tilingArg)                                                        \
+    MatmulReduceScatterTilingData tilingData;                                                          \
+    InitMatmulReduceScatterTilingData(tilingArg, &tilingData)
 #endif  // FOREACH_MINIMUM_SCALAR_TILING_DEF_H

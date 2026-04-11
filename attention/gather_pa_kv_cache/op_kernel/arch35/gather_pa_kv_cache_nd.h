@@ -173,12 +173,14 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
         // 对blockIdx（用来从block_tables中取blockId）循环
         for (uint32_t blockIdx = 0; blockIdx < blockCount; blockIdx++) {
             uint64_t blockTableOffset = blockIdx + seqOffset;
-            int64_t blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + blockTableOffset);
             bool isFilledWithZero;
+            int64_t blockId;
             if ((blockTableOffset >= blockTableWidth_) || (blockTableOffset < 0)) {
                 isFilledWithZero = true;
+                blockId = 0;
             } else {
                 isFilledWithZero = false;
+                blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + blockTableOffset);
             }
 
             uint64_t curBlockSize = cacheBlockSize_;
@@ -222,8 +224,8 @@ GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::CalcKvCoreOffset(i
 {
     LocalTensor<T_INDEX> prefixSumLocal = prefixSumBuffer_.Get<T_INDEX>();
     uint64_t loopTimes = CeilDivision(reduceLen, seqLenAccSize_);
-    DataCopyPadParams padParams{false, 0, 0, 0};
-    DataCopyParams seqLensCopyParams;
+    DataCopyPadExtParams<T_INDEX> padParams = {false, 0, 0, 0};
+    DataCopyExtParams seqLensCopyParams;
     seqLensCopyParams.blockCount = 1;
     seqLensCopyParams.srcStride = 0;
     seqLensCopyParams.dstStride = 0; // 通用设置
@@ -236,7 +238,7 @@ GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::CalcKvCoreOffset(i
         if (i == loopTimes - 1) {
             seqLength = reduceLen - (loopTimes - 1) * seqLenAccSize_;
         }
-        seqLensCopyParams.blockLen = seqLength * sizeof(T_INDEX);
+        seqLensCopyParams.blockLen = static_cast<uint32_t>(seqLength * sizeof(T_INDEX));
         LocalTensor<T_INDEX> seqLenLocal = seqLensQueue_.AllocTensor<T_INDEX>();
         DataCopyPad(seqLenLocal, seqLensGm_[seqOffset], seqLensCopyParams, padParams); // 把数据放入UB
         seqLensQueue_.EnQue<T_INDEX>(seqLenLocal);

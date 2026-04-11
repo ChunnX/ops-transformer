@@ -99,7 +99,10 @@ public:
 
     /// Construct
     __aicore__ inline
-    BlockMmad(Arch::Resource<ArchTag> &resource,uint32_t nDyn, uint32_t kDyn, uint32_t KVStackLen = 512, uint32_t l1BufAddrStart = 0)
+    BlockMmad() {}
+
+    __aicore__ inline
+    void init(Arch::Resource<ArchTag> &resource, uint32_t nDyn, uint32_t kDyn, uint32_t KVStackLen = 512, uint32_t l1BufAddrStart = 0)
     {
         maxKVStackLen = KVStackLen;
         // Allocate L1 memory space

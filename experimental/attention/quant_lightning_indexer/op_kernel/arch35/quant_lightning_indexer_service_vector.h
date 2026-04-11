@@ -107,7 +107,7 @@ private:
     LocalTensor<uint32_t> indicesOutLocal_;
 
     TBuf<TPosition::VECCALC> scoreOutBuf_;
-    LocalTensor<uint16_t> scoreOutLocal_;
+    LocalTensor<SCORE_T> scoreOutLocal_;
 
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;

@@ -24,14 +24,14 @@
 
 #pragma pack(1)
 
-struct MC2AddRMSNormTilingData {
-    uint32_t num_row;
-    uint32_t num_col;
-    uint32_t block_factor;
-    uint32_t row_factor;
-    uint32_t ub_factor;
+struct AddRMSNormTilingData {
+    uint32_t numRow;
+    uint32_t numCol;
+    uint32_t blockFactor;
+    uint32_t rowDactor;
+    uint32_t ubFactor;
     float epsilon;
-    float avg_factor;
+    float avgFactor;
 };
 
 #pragma pack()
@@ -44,13 +44,13 @@ struct MC2AddRMSNormTilingData {
     CONVERT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer);
 
 #define GET_TILING_DATA(tilingData, tilingPointer)                                  \
-    MC2AddRMSNormTilingData tilingData;                                                \
-    INIT_TILING_DATA(MC2AddRMSNormTilingData, tilingDataPointer, tilingPointer);       \
-    (tilingData).num_row = tilingDataPointer->num_row;                              \
-    (tilingData).num_col = tilingDataPointer->num_col;                              \
-    (tilingData).block_factor = tilingDataPointer->block_factor;                    \
-    (tilingData).row_factor = tilingDataPointer->row_factor;                        \
-    (tilingData).ub_factor = tilingDataPointer->ub_factor;                          \
+    AddRMSNormTilingData tilingData;                                                \
+    INIT_TILING_DATA(AddRMSNormTilingData, tilingDataPointer, tilingPointer);       \
+    (tilingData).numRow = tilingDataPointer->numRow;                              \
+    (tilingData).numCol = tilingDataPointer->numCol;                              \
+    (tilingData).blockFactor = tilingDataPointer->blockFactor;                    \
+    (tilingData).rowDactor = tilingDataPointer->rowDactor;                        \
+    (tilingData).ubFactor = tilingDataPointer->ubFactor;                          \
     (tilingData).epsilon = tilingDataPointer->epsilon;                              \
-    (tilingData).avg_factor = tilingDataPointer->avg_factor;
+    (tilingData).avgFactor = tilingDataPointer->avgFactor;
 #endif

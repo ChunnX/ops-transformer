@@ -26,9 +26,9 @@
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
-class QuantGroupedInplaceAddTiling : public GroupedQbmmTiling {
+class QuantGroupedInplaceAddTiling : public GroupedQmmTiling {
 public:
-    explicit QuantGroupedInplaceAddTiling(gert::TilingContext *context) : GroupedQbmmTiling(context)
+    explicit QuantGroupedInplaceAddTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
     {
         Reset();
     }
@@ -36,7 +36,7 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQbmmTiling::Reset(context);
+        GroupedQmmTiling::Reset(context);
         Reset();
     }
 
@@ -60,6 +60,7 @@ private:
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckShapeForTCQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
+    bool CheckCoreNum() const override;
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams tilingData_;
 };
 } // namespace optiling

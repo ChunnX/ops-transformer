@@ -14,7 +14,6 @@ if (BUILD_OPEN_PROJECT)
             mla_preprocess_def.cpp
     )
 
-    message("Debug mla_preprocess -----------------------------")
     add_ops_compile_options(
         OP_NAME MlaPreprocess
         OPTIONS --cce-auto-sync=off

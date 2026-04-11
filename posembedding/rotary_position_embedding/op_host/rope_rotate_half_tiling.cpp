@@ -511,6 +511,10 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
     OP_CHECK_IF(tilingData_.get_isAligned() == 0 &&
                     ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910,
                 OP_LOGE(context, "current soc does not support non aligned calculations."), return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(dLength != 32  && dLength != 64 && dLength != 96 && dLength != 128 &&
+                    ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P,
+                OP_LOGE(context, "current soc only support d = 32/64/96/128."), return ge::GRAPH_FAILED);
 
     ChooseTilingMode(xShape, cosShape);
     OP_CHECK_IF(tilingData_.get_tilingMode() == TILING_MODE_UNKNOWN,

@@ -34,13 +34,11 @@ __aicore__ inline void GQmmEmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, const GM
 
     GlobalTensor<T> yGm;
     GlobalTensor<int64_t> groupListGm;
-    TBuf<TPosition::VECCALC> initBuff;
     LocalTensor<T> initLocal;
     yGm.SetGlobalBuffer(GROUPED_MATMUL::GetTensorAddr<T>(0, y));
     groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupListPtr);
     if (GetSubBlockIdx() == 0) {
-        pipe->InitBuffer(initBuff, QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE);
-        initLocal = initBuff.Get<T>();
+        initLocal = LocalTensor<T>(TPosition::VECCALC, 0, QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE / sizeof(T));
     }
     uint64_t yBaseOffset = 0;
     int32_t preOffset = 0;

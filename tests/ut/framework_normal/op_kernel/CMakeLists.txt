@@ -21,16 +21,19 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     add_library(${OP_KERNEL_MODULE_NAME}_tiling SHARED
             $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>>
             $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
+            $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+            $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
+            $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
             )
     target_link_libraries(${OP_KERNEL_MODULE_NAME}_tiling PRIVATE
             $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
             -Wl,--no-as-needed
-                $<$<TARGET_EXISTS:opsbase>:opsbase>
             -Wl,--as-needed
             -Wl,--whole-archive
                 rt2_registry_static
             -Wl,--no-whole-archive
             tiling_api
+            register
             )
     target_include_directories(${OP_KERNEL_MODULE_NAME}_tiling
             PRIVATE ${OP_TILING_INCLUDE}

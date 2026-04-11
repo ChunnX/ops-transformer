@@ -104,7 +104,7 @@ int main()
 >说明：对于项目内已实现的算子（非自定义算子），可通过根目录下[build.sh](../../../build.sh)直接运行算子，操作请参考[本地验证](./quick_op_invocation.md#本地验证)。
 
 1. 前提条件。
-   请参考本项目[编译执行](./quick_op_invocation.md#编译执行)完成目标算子的编译部署。
+   请参考本项目[源码编译](./quick_op_invocation.md#源码编译)完成目标算子的编译部署。
 
 2. 创建CMakeLists文件。
 
@@ -119,7 +119,7 @@ int main()
    add_compile_options(-std=c++11)
 
    # 设置编译输出目录为当前目录下的bin文件夹
-   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")    
+   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")
 
    # 设置调试和发布模式的编译选项
    set(CMAKE_CXX_FLAGS_DEBUG "-fPIC -O0 -g -Wall")
@@ -278,7 +278,7 @@ int main() {
 >说明：对于项目内已实现的算子（非自定义算子），可通过根目录下[build.sh](../../../build.sh)直接运行算子，操作请参考[本地验证](./quick_op_invocation.md#本地验证)。
 
 1. 前提条件。
-   请参考本项目[编译执行](./quick_op_invocation.md#编译执行)完成目标算子的编译部署。
+   请参考本项目[源码编译](./quick_op_invocation.md#源码编译)完成目标算子的编译部署。
 
 2. 创建CMakeLists文件。
 

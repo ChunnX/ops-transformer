@@ -15,13 +15,30 @@
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "platform/platform_info.h"
+#include "runtime/rt_external_base.h"
+#include "platform/soc_spec.h"
+
 using namespace ge;
 namespace ops {
+
+namespace {
+enum QuantMode {
+    QUANT_MODE_NO_QUANT = 0,
+    QUANT_MODE_STATIC = 1,
+    QUANT_MODE_PERTOKEN = 2,
+    QUANT_MODE_PERGROUP = 3,
+    QUANT_MODE_MX = 4,
+};
+}
+
 static constexpr size_t DIM_ONE = 1UL;
 static constexpr size_t DIM_TWO = 2UL;
 static constexpr int64_t NEG_ONE = -1;
 static constexpr int64_t RANK_NUM_PER_NODE = 8;
 static constexpr int64_t ASSIST_INFO_NUM_PER_A = 128;
+static constexpr int64_t PER_GROUP_SIZE = 128;
+static constexpr int64_t MX_QUANT_SIZE = 32;
+static constexpr int64_t NUM_EVEN = 2;
 
 static constexpr size_t DISPATCH_INPUT_X_INDEX = 0;
 static constexpr size_t DISPATCH_INPUT_EXPERT_IDS_INDEX = 1;
@@ -45,19 +62,58 @@ static constexpr size_t DISPATCH_INPUT_ATTR_SHARED_EXPERT_NUM_INDEX = 8;
 static constexpr size_t DISPATCH_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 static constexpr size_t DISPATCH_INPUT_ATTR_QUANT_MODE_INDEX = 10;
 static constexpr size_t DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX = 11;
+static constexpr size_t DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX = 17;
 
-static bool IsPlatform910B(const gert::InferShapeContext *context) {
-    fe::PlatformInfo platform_info;
-    fe::OptionalInfo optional_info;
-    GE_ASSERT_SUCCESS(fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info));
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info)
-        != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Cannot get platform info!");
+static constexpr uint32_t VERSION_SIZE = 32;
+const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
+const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
+
+static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
+{
+    char versionValVersion[VERSION_SIZE];
+    // rtGetSocSpec获取成功返回值是0，获取失败返回非0
+    if (rtGetSocSpec("version", "Short_SoC_version", versionValVersion, VERSION_SIZE) != RT_ERROR_NONE) {
+        OPS_LOG_E(nodeName, "Cannot get Short_SoC_version info in infershape!");
         return false;
     }
-    static std::set<std::string> supported_soc = {"Ascend910B"};
-    OP_LOGD(context->GetNodeName(), "Get soc version: %s", optional_info.soc_version.c_str());
-    return supported_soc.count(platform_info.str_info.short_soc_version) > 0;
+    OPS_LOG_D(nodeName, "(IsTargetSocVersionInfershape)Get Short_SoC_version %s", versionValVersion);
+    return (targetPlatform.count(versionValVersion) > 0);
+}
+
+static bool IsTargetNpuArchInfershape(const char *nodeName, const std::set<std::string> &targetPlatform) 
+{ 
+    char versionValNpuArch[VERSION_SIZE]; 
+    if (rtGetSocSpec("version", "NpuArch", versionValNpuArch, VERSION_SIZE) != RT_ERROR_NONE) { 
+        OPS_LOG_E(nodeName, "Cannot get npuArch info in infershape!"); 
+        return false; 
+    } 
+    OPS_LOG_D(nodeName, "(IsTargetNpuArchInfershape)Get NpuArch %s", versionValNpuArch); 
+    return (targetPlatform.count(versionValNpuArch) > 0); 
+}
+
+static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, int64_t quantMode, int64_t a, int64_t h)
+{
+    if (quantMode == QuantMode::QUANT_MODE_PERGROUP) {
+        dynamicScalesShape->SetDimNum(DIM_TWO);
+        dynamicScalesShape->SetDim(0U, a);
+        dynamicScalesShape->SetDim(1U, (h + PER_GROUP_SIZE - 1) / PER_GROUP_SIZE);
+    } else if (quantMode == QuantMode::QUANT_MODE_MX) {
+        dynamicScalesShape->SetDimNum(DIM_TWO);
+        dynamicScalesShape->SetDim(0U, a);
+        dynamicScalesShape->SetDim(1U, ((h + MX_QUANT_SIZE - 1) / MX_QUANT_SIZE + 1) / NUM_EVEN * NUM_EVEN);
+    } else {
+        dynamicScalesShape->SetDimNum(DIM_ONE);
+        dynamicScalesShape->SetDim(0U, a);
+    }
+}
+
+static ge::DataType InferDataTypeDynamicScales(int64_t quantMode)
+{
+    ge::DataType dynamicScalesDtype = ge::DT_FLOAT;
+    if (quantMode == QuantMode::QUANT_MODE_MX) {
+        dynamicScalesDtype = ge::DT_FLOAT8_E8M0;
+    }
+    return dynamicScalesDtype;
 }
 
 static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext *context)
@@ -170,7 +226,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         localExpertNum = localMoeExpertNum;
         a = globalBsReal * std::min(localExpertNum, k);
     }
-    if (!IsPlatform910B(context) && elasticInfoShape != nullptr) {
+    if (!IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2) && elasticInfoShape != nullptr) {
         localExpertNum = std::max(static_cast<int64_t>(1), localMoeExpertNum);
         if ((isSharedDefault) || (isNoShared)) {
             a = globalBsReal * std::min(localExpertNum, k);
@@ -192,8 +248,12 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OP_LOGD(context->GetNodeName(), "expandx shape is :%s after infershape.",
         Ops::Base::ToString(*expandXShape).c_str());
 
-    dynamicScalesShape->SetDimNum(DIM_ONE);
-    dynamicScalesShape->SetDim(0U, realA);
+    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
+        InferShapeDynamicScalesA5(dynamicScalesShape, *quantMode, a, h);
+    } else {
+        dynamicScalesShape->SetDimNum(DIM_ONE);
+        dynamicScalesShape->SetDim(0U, realA);
+    }
     OP_LOGD(context->GetNodeName(), "dynamicScalesShape shape is :%s after infershape.",
         Ops::Base::ToString(*dynamicScalesShape).c_str());
 
@@ -208,15 +268,17 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         Ops::Base::ToString(*expertTokenNumsShape).c_str());
 
     epRecvCountShape->SetDimNum(DIM_ONE);
-    if (IsPlatform910B(context)) {
+    if (IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2)) {
         if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE); // 2：globalbs * 2kn memory size, to support different bs in ranks
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * ((*epWorldSize) / RANK_NUM_PER_NODE)); // 2：globalbs * 2kn memory size, to support different bs in ranks
         } else {
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
         if (*tpWorldSize == DIM_TWO)  {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
+        } else if (expertScalesShape != nullptr) {
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -240,6 +302,31 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckQuantMode(gert::InferDataTypeContext *context, const int64_t *quantMode, int64_t yDtype)
+{
+    if (*quantMode == QuantMode::QUANT_MODE_STATIC) {
+        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
+        OP_LOGE(context->GetNodeName(), "when quantmode is static quant, ydtype must be int8 or hifloat8"),
+        return ge::GRAPH_FAILED);
+    } else if (*quantMode == QuantMode::QUANT_MODE_PERTOKEN) {
+        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
+        OP_LOGE(context->GetNodeName(), "when quantmode is dynamic quant, ydtype must be int8 or "
+                "float8_e4m3fn or float8_e5m2"),
+        return ge::GRAPH_FAILED);
+    } else if ((*quantMode == QuantMode::QUANT_MODE_PERGROUP) || (*quantMode == QuantMode::QUANT_MODE_MX)) {
+        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
+        OP_LOGE(context->GetNodeName(), "when quantmode is pergoup or mxfp8 quant, "
+                "ydtype must be float8_e4m3fn or float8_e5m2"),
+        return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMoeDistributeDispatchV2.");
@@ -249,14 +336,26 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     const auto quantMode = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_QUANT_MODE_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantMode);
     const auto scalesType = context->GetOptionalInputDataType(DISPATCH_INPUT_SCALES_IDX_INDEX);
-    bool quantFlag = ((scalesType != ge::DT_UNDEFINED) ? true : false);
-    OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
-    if (quantFlag || (*quantMode != 0)) {
-        context->SetOutputDataType(DISPATCH_OUTPUT_EXPAND_X_INDEX, ge::DT_INT8);
-    } else {
-        context->SetOutputDataType(DISPATCH_OUTPUT_EXPAND_X_INDEX, xDtype);
+    const int64_t *yDtypePtr = nullptr;
+    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
+        yDtypePtr = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX);
     }
-    context->SetOutputDataType(DISPATCH_OUTPUT_DYNAMIC_SCALES_INDEX, ge::DT_FLOAT);
+    bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
+    OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
+    ge::DataType expandXDtype = ge::DT_INT8;
+    if (!quantFlag && (*quantMode == QuantMode::QUANT_MODE_NO_QUANT)) {
+        expandXDtype = xDtype;
+    } else if ((yDtypePtr != nullptr) && (*yDtypePtr != ge::DT_UNDEFINED)) {
+        int64_t yDtype = *yDtypePtr;
+        OP_LOGD(context->GetNodeName(), "specified y_dtype = %lld.", yDtype);
+        OP_CHECK_IF(CheckQuantMode(context, quantMode, yDtype) == ge::GRAPH_FAILED,
+                    OP_LOGE(context->GetNodeName(), "CheckQuantMode fail"),
+                    return ge::GRAPH_FAILED);
+        expandXDtype = static_cast<ge::DataType>(yDtype);
+    }
+    context->SetOutputDataType(DISPATCH_OUTPUT_EXPAND_X_INDEX, expandXDtype);
+    context->SetOutputDataType(DISPATCH_OUTPUT_DYNAMIC_SCALES_INDEX,
+                               InferDataTypeDynamicScales(*quantMode));
     context->SetOutputDataType(DISPATCH_OUTPUT_ASSIST_INFO_IDX_INDEX, ge::DT_INT32);
     context->SetOutputDataType(DISPATCH_OUTPUT_EXPERT_TOKEN_NUMS_INDEX, ge::DT_INT64);
     context->SetOutputDataType(DISPATCH_OUTPUT_EP_RECV_COUNTS_INDEX, ge::DT_INT32);

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file matmul_reduce_scatter_proto.h
  * \brief
  */
-#ifndef MATMUL_REDUCE_SCATTER_H_
-#define MATMUL_REDUCE_SCATTER_H_
+#ifndef MATMUL_REDUCE_SCATTER_PROTO_H_
+#define MATMUL_REDUCE_SCATTER_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -57,4 +57,4 @@ REG_OP(MatmulReduceScatter)
 }  // namespace ge
 
 
-#endif  // MATMUL_REDUCE_SCATTER_H_
+#endif  // MATMUL_REDUCE_SCATTER_PROTO_H_

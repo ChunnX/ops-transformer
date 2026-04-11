@@ -12,8 +12,8 @@
  * \file moe_distribute_combine_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_EXPERIMENT_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_EXPERIMENT_OPS_H_
+#ifndef MOE_DISTRIBUTE_COMBINE_PROTO_H_
+#define MOE_DISTRIBUTE_COMBINE_PROTO_H_
 
 #include "graph/operator_reg.h"
 namespace ge {
@@ -83,4 +83,4 @@ REG_OP(MoeDistributeCombine)
     .ATTR(group_list_type, Int, 0)
     .OP_END_FACTORY_REG(MoeDistributeCombine)
 }  // namespace ge
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_EXPERIMENT_OPS_H_
+#endif  // MOE_DISTRIBUTE_COMBINE_PROTO_H_

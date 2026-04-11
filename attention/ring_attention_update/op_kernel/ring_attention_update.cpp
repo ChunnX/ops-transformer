@@ -38,7 +38,7 @@ extern "C" __global__ __aicore__ void ring_attention_update(
             userWorkspace, tilingData, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(1)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
     KernelRingAttentionUpdate<bfloat16_t> op;
     op.Init(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum,
             curAttnOut, curSoftmaxMax, curSoftmaxSum,
@@ -64,7 +64,7 @@ extern "C" __global__ __aicore__ void ring_attention_update(
             userWorkspace, tilingData, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(11)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
     KernelRingAttentionUpdateTND<bfloat16_t> op;
     op.Init(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum,
             curAttnOut, curSoftmaxMax, curSoftmaxSum,

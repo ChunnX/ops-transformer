@@ -20,17 +20,6 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 
 namespace optiling {
-BEGIN_TILING_DATA_DEF(MatmulAllReduce910TilingData)
-TILING_DATA_FIELD_DEF_STRUCT(Mc2Msg, msg);
-TILING_DATA_FIELD_DEF_STRUCT(RCSTiling, param);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulV3TilingData, tilematmulTiling);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulV3TilingData, tailmatmulTiling);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_16, MatmulAllReduce910TilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_260, MatmulAllReduce910TilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_0, MatmulAllReduce910TilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_256, MatmulAllReduce910TilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce910TilingDataOp, MatmulAllReduce910TilingData);
 
 struct MatmulTPLParam{
     uint64_t disableMixNd2nz{65535};
@@ -44,7 +33,7 @@ class MatmulAllReduceTiling910 : public MatmulAllReduceTilingBase
 
 public:
     explicit MatmulAllReduceTiling910(gert::TilingContext* context);
-    MatmulAllReduceTiling910(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, MatmulAllReduce910TilingData* out);
+    MatmulAllReduceTiling910(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, Mc2Tiling::MatmulAllReduce910TilingData* out);
     ~MatmulAllReduceTiling910() override = default;
 
 protected:
@@ -60,13 +49,13 @@ protected:
 
     ge::graphStatus Do910Tiling();
 
-    Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
 
-    RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
 
-    TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
 
-    TCubeTiling& MutableTCubeTailTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
 
     void DoEmptyTensorTiling() override;
 
@@ -77,8 +66,8 @@ private:
     ge::graphStatus CheckInputDtype();
     ge::graphStatus CheckInputFormat();
     ge::graphStatus CheckInputShape();
-    MatmulAllReduce910TilingData matmulAllReduce910TilingDataSelf_;
-    MatmulAllReduce910TilingData& matmulAllReduce910TilingData_;
+    Mc2Tiling::MatmulAllReduce910TilingData matmulAllReduce910TilingDataSelf_{};
+    Mc2Tiling::MatmulAllReduce910TilingData& matmulAllReduce910TilingData_;
     uint64_t myWorkSpaceSize_{0U};
     MatmulTPLParam matmulTPLParam_;
 };

@@ -28,6 +28,9 @@ public:
     {
         blockIdx = GetBlockIdx();
         blockIdx /= GetTaskRation();
+        if (GetSubBlockIdx() > 0) {
+            return;
+        }
 
         usedCoreNum_ = tilingData->matmulTiling.usedCoreNum;
         if (blockIdx >= usedCoreNum_) {
@@ -47,7 +50,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (blockIdx >= usedCoreNum_) {
+        if (blockIdx >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
 
@@ -174,9 +177,7 @@ private:
 
         if ASCEND_IS_AIV {
             WaitEvent(c2vSyncFlag);
-            if (GetSubBlockIdx() == 0) {
-                BasicDequantCompute(mmOutGm_, basicM, basicN);
-            }
+            BasicDequantCompute(mmOutGm_, basicM, basicN);
             NotifyEvent<PIPE_MTE2>(v2cSyncFlag);
         }
     }

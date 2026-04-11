@@ -21,7 +21,12 @@
 #include "simd.h"
 #include "iterator.h"
 #include "mma.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../ifa_public_define.h"
@@ -235,17 +240,17 @@ public:
         headDim_ = embedding_size;
         round_k = (headDim_ + BLOCK_SIZE_16 - 1) / BLOCK_SIZE_16 * BLOCK_SIZE_16;
 
-        blockDim_ = GetBlockNum();
+        numBlocks_ = GetBlockNum();
         blockIdx_ = GetBlockIdx();
 
         uint32_t dequantKeyPingOffset = 0;
         // 每一次只涉及一个qHead和kvHead, 所以*1
-        uint32_t dequantKeyPongOffset = dequantKeyPingOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
-        uint32_t dequantValuePingOffset = dequantKeyPongOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
-        uint32_t dequantValuePongOffset = dequantValuePingOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
-        uint32_t scoreWsOffset = dequantValuePongOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
-        uint32_t probWsOffset = scoreWsOffset + blockDim_ * TMP_SIZE_64K * sizeof(S_DATA_TYPE);
-        uint32_t outputTmpOffset = probWsOffset + blockDim_ * TMP_SIZE_64K * sizeof(IN_DATA_TYPE);
+        uint32_t dequantKeyPongOffset = dequantKeyPingOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
+        uint32_t dequantValuePingOffset = dequantKeyPongOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
+        uint32_t dequantValuePongOffset = dequantValuePingOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
+        uint32_t scoreWsOffset = dequantValuePongOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(KV_T);
+        uint32_t probWsOffset = scoreWsOffset + numBlocks_ * TMP_SIZE_64K * sizeof(S_DATA_TYPE);
+        uint32_t outputTmpOffset = probWsOffset + numBlocks_ * TMP_SIZE_64K * sizeof(IN_DATA_TYPE);
 
         dequantKeyWsPing_.SetGlobalBuffer(reinterpret_cast<__gm__ KV_T*>(workspace_gm + dequantKeyPingOffset));
         dequantKeyWsPong_.SetGlobalBuffer(reinterpret_cast<__gm__ KV_T*>(workspace_gm + dequantKeyPongOffset));
@@ -307,10 +312,10 @@ public:
                     }
                 }
             }
-            uint32_t targetCoreIdx = process % blockDim_;
+            uint32_t targetCoreIdx = process % numBlocks_;
             if (is_triu_mask) {
-                if ((process / blockDim_) % TASK_ROUND_TWO == 1) { // 第二轮任务: 任务顺序反转一下
-                    targetCoreIdx = blockDim_ - process % blockDim_ - 1;
+                if ((process / numBlocks_) % TASK_ROUND_TWO == 1) { // 第二轮任务: 任务顺序反转一下
+                    targetCoreIdx = numBlocks_ - process % numBlocks_ - 1;
                 }
             }
             if (blockIdx_ != targetCoreIdx) { // core 0, cur_core_idx其他任务跳过
@@ -685,7 +690,7 @@ private:
     uint32_t mask_type;
     uint32_t max_kv;
 
-    uint32_t blockDim_;
+    uint32_t numBlocks_;
     uint32_t blockIdx_;
     uint32_t seqStepQ_;
     uint32_t seqStepKv_;
@@ -1059,19 +1064,19 @@ public:
         headDim_ = embedding_size;
         round_k = (headDim_ + BLOCK_SIZE_16 - 1) / BLOCK_SIZE_16 * BLOCK_SIZE_16;
 
-        blockDim_ = GetBlockNum();
+        numBlocks_ = GetBlockNum();
         // AIV的blockIdx会默认*2, 除掉后和AIC对应上
         blockIdx_ = GetBlockIdx() / AIC_AIV_RATIO;
         subBlockIdx_ = GetSubBlockIdx();
 
         uint32_t dequantKeyPingOffset = 0;
         // 每一次只涉及一个qHead和kvHead, 所以*1
-        uint32_t dequantKeyPongOffset = dequantKeyPingOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
-        uint32_t dequantValuePingOffset = dequantKeyPongOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
-        uint32_t dequantValuePongOffset = dequantValuePingOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
-        uint32_t scoreWsOffset = dequantValuePongOffset + blockDim_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
-        uint32_t probWsOffset = scoreWsOffset + blockDim_ * TMP_SIZE_64K * sizeof(S_DATA_TYPE);
-        uint32_t outputTmpOffset = probWsOffset + blockDim_ * TMP_SIZE_64K * sizeof(P_DATA_TYPE);
+        uint32_t dequantKeyPongOffset = dequantKeyPingOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
+        uint32_t dequantValuePingOffset = dequantKeyPongOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
+        uint32_t dequantValuePongOffset = dequantValuePingOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
+        uint32_t scoreWsOffset = dequantValuePongOffset + numBlocks_ * BLOCKSIZE_CALC_256 * 1 * embedding_size * sizeof(DEQUANT_KV_TYPE);
+        uint32_t probWsOffset = scoreWsOffset + numBlocks_ * TMP_SIZE_64K * sizeof(S_DATA_TYPE);
+        uint32_t outputTmpOffset = probWsOffset + numBlocks_ * TMP_SIZE_64K * sizeof(P_DATA_TYPE);
 
         dequantKeyWsPing_.SetGlobalBuffer(reinterpret_cast<__gm__ DEQUANT_KV_TYPE*>(workspace_gm + dequantKeyPingOffset));
         dequantKeyWsPong_.SetGlobalBuffer(reinterpret_cast<__gm__ DEQUANT_KV_TYPE*>(workspace_gm + dequantKeyPongOffset));
@@ -1134,10 +1139,10 @@ public:
                 }
             }
 
-            uint32_t targetAicIdx = process % blockDim_;
+            uint32_t targetAicIdx = process % numBlocks_;
             if (is_triu_mask) {
-                if ((process / blockDim_) % TASK_ROUND_TWO == 1) {
-                    targetAicIdx = blockDim_ - process % blockDim_ - 1;
+                if ((process / numBlocks_) % TASK_ROUND_TWO == 1) {
+                    targetAicIdx = numBlocks_ - process % numBlocks_ - 1;
                 }
             }
             if (blockIdx_ != targetAicIdx) {
@@ -1904,7 +1909,7 @@ private:
     uint32_t max_kv;
     uint32_t maxNumBlocksPerQuery;
 
-    uint32_t blockDim_;
+    uint32_t numBlocks_;
     uint32_t blockIdx_;
     uint32_t seqStepQ_;
     uint32_t seqStepKv_;

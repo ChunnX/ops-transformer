@@ -54,10 +54,15 @@ private:
 
     __aicore__ inline void MulPertokenScale(uint32_t loopIdx, VecConfig &vecConfig,
                                             WorkSpaceSplitConfig &workspaceSplitConfig);
+
+    __aicore__ inline void ApplySmoothScale(uint32_t loopIdx, VecConfig &vecConfig,
+                                            WorkSpaceSplitConfig &workspaceSplitConfig);
+
     const GMMSwigluQuantV2 *__restrict gmmSwigluQuantV2;
     const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParams;
     GlobalTensor<float> perTokenScaleGM;
     GlobalTensor<int64_t> groupListGM;
+    GlobalTensor<float> smoothScaleGM;
     GlobalTensor<int8_t> quantOutputGM;
     GlobalTensor<float> quantScaleOutputGM;
     GlobalTensor<half> mmOutGM1;
@@ -87,6 +92,7 @@ __aicore__ inline void GMMA4W4PostProcess::Init(const GMAddrParams gmAddrParams,
         mmOutGM2.SetGlobalBuffer(
             (__gm__ half *)((__gm__ int8_t *)gmAddrParams.workSpaceGM + gmAddrParams.workSpaceOffset1));
         perTokenScaleGM.SetGlobalBuffer((__gm__ float *)gmAddrParams.xScaleGM, gmmSwigluQuantV2BaseParams->M);
+        smoothScaleGM.SetGlobalBuffer((__gm__ float *)gmAddrParams.smoothScaleGM);
         quantOutputGM.SetGlobalBuffer((__gm__ int8_t *)gmAddrParams.yGM, gmmSwigluQuantV2BaseParams->M *
                                                                              gmmSwigluQuantV2->tokenLen /
                                                                              SWIGLU_REDUCE_FACTOR);
@@ -125,7 +131,11 @@ __aicore__ inline void GMMA4W4PostProcess::VectorCompute(uint32_t loopIdx, VecCo
     MulPertokenScale(loopIdx, vecConfig, workspaceSplitConfig);
     // 2.Swiglu
     Swiglu(loopIdx, vecConfig);
-    // 3.Quant
+    // 3.ApplySmoothScale（smoothScaleDimNum为0时跳过，表示smoothScale为空指针）
+    if (gmmSwigluQuantV2BaseParams->smoothScaleDimNum != 0) {
+        ApplySmoothScale(loopIdx, vecConfig, workspaceSplitConfig);
+    }
+    // 4.Quant
     Quant(loopIdx, vecConfig);
 }
 
@@ -162,6 +172,58 @@ __aicore__ inline void GMMA4W4PostProcess::Swiglu(uint32_t loopIdx, VecConfig &v
     DataCopy(_inMMLocal[loopIdx * gmmSwigluQuantV2->tokenLen], workspaceLocal, repeatParams);
 
     mmOutQueue.EnQue(_inMMLocal);
+}
+
+__aicore__ inline void GMMA4W4PostProcess::ApplySmoothScale(uint32_t loopIdx, VecConfig &vecConfig,
+                                                                WorkSpaceSplitConfig &workspaceSplitConfig)
+{
+    LocalTensor<float> mmLocal = mmOutQueue.DeQue<float>();
+
+    int64_t smoothScaleDimNum = gmmSwigluQuantV2BaseParams->smoothScaleDimNum;
+    int64_t halfTokenLen = gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR;
+    int64_t currentTokenIdx = workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx + loopIdx;
+
+    // 找到当前token所属的group
+    uint32_t groupIdx = 0;
+    int64_t prevM = 0;
+    int64_t totalTmp = 0;
+    if (gmmSwigluQuantV2BaseParams->groupListType == 1) {
+        for (uint32_t i = 0; i < workspaceSplitConfig.rightMatrixExpertStartIndex; i++) {
+            totalTmp += groupListGM.GetValue(i);
+        }
+    }
+    for (uint32_t i = workspaceSplitConfig.rightMatrixExpertStartIndex;
+         i <= workspaceSplitConfig.rightMatrixExpertEndIndex; i++) {
+        int64_t currM = 0;
+        if (gmmSwigluQuantV2BaseParams->groupListType == 0) {
+            currM = groupListGM.GetValue(i);
+        } else {
+            totalTmp += groupListGM.GetValue(i);
+            currM = totalTmp;
+        }
+        if (currentTokenIdx < currM) {
+            groupIdx = i;
+            break;
+        }
+        prevM = currM;
+    }
+
+    uint64_t preOffset = loopIdx * gmmSwigluQuantV2->tokenLen;
+
+    if (smoothScaleDimNum == NUM_2) {
+        // smoothScale形状为 (E, N/2)，只需要当前group的那一行
+        for (uint32_t j = 0; j < halfTokenLen; j++) {
+            float scale = smoothScaleGM.GetValue(groupIdx * halfTokenLen + j);
+            float val = mmLocal.GetValue(preOffset + j);
+            mmLocal.SetValue(preOffset + j, val * scale);
+        }
+    } else if (smoothScaleDimNum == 1) {
+        // smoothScale形状为 (E,)，需要广播到 (N/2)
+        float scale = smoothScaleGM.GetValue(groupIdx);
+        Muls(mmLocal[preOffset], mmLocal[preOffset], scale, halfTokenLen);
+    }
+
+    mmOutQueue.EnQue(mmLocal);
 }
 
 __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &vecConfig)
@@ -290,7 +352,7 @@ __aicore__ inline void GMMA4W4PostProcess::Process(WorkSpaceSplitConfig &workspa
                 customDataCopyIn(outLoopIdx, mmOutGM, vecConfig, workspaceSplitConfig);
 
                 for (uint32_t innerLoopIdx = 0; innerLoopIdx < vecConfig.innerLoopNum; innerLoopIdx++) {
-                    // 2. 四步vector计算（perToken反量化、Swiglu、Quant）
+                    // 2. 四步vector计算（perToken反量化、Swiglu、SmoothScale、Quant）
                     VectorCompute(innerLoopIdx, vecConfig, workspaceSplitConfig);
                 }
                 int32_t eventIdVToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));

@@ -8,9 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
-
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
         mla_prolog_def.cpp
      )
 
@@ -24,5 +23,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE mla_prolog ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE mla_prolog ACLNNTYPE aclnn_inner)
 endif()

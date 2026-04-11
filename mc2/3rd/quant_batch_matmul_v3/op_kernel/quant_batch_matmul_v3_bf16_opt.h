@@ -29,7 +29,12 @@ public:
                                 const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe)
     {
         blockIdx_ = GetBlockIdx();
-        blockIdx_ /= GetTaskRation();
+        if constexpr (isAllAiv) {
+            blockIdx_ /= GetTaskRation();
+            if (GetSubBlockIdx() > 0) {
+                return;
+            }
+        }
 
         InitTilingData(tilingData);
         if (blockIdx_ >= usedCoreNum_) {
@@ -63,7 +68,7 @@ public:
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR y,
                                             GM_ADDR workSpace)
     {
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
         if (isPerTensor_) {
@@ -99,7 +104,7 @@ public:
         uint32_t batchDim = DequantBmm::CeilDiv(batch_, singleCoreBatch_);
         uint32_t mDim = DequantBmm::CeilDiv(m_, singleCoreM_);
         uint32_t nDim = DequantBmm::CeilDiv(n_, singleCoreN_);
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
 
@@ -586,12 +591,10 @@ protected:
             uint32_t fixpMtimes = DequantBmm::CeilDiv(singleM, baseM_);
             uint32_t fixpNTimes = DequantBmm::CeilDiv(singleN, baseN_);
             // iterateOrder: 0: M-N, 1: N-M
-            if (GetSubBlockIdx() == 0) {
-                if (isMouter_) {
-                    DequantMOuterSplit(singleM, singleN, fixpMtimes, fixpNTimes);
-                } else {
-                    DequantNOuterSplit(singleM, singleN, fixpMtimes, fixpNTimes);
-                }
+            if (isMouter_) {
+                DequantMOuterSplit(singleM, singleN, fixpMtimes, fixpNTimes);
+            } else {
+                DequantNOuterSplit(singleM, singleN, fixpMtimes, fixpNTimes);
             }
         }
     }

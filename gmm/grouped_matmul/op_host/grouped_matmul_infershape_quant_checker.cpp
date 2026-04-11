@@ -18,9 +18,9 @@
 namespace ops {
 
 static const std::unordered_set<ge::DataType> X_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-                                                                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1};
+                                                                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1};
 static const std::unordered_set<ge::DataType> WEIGHT_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
-                                                                    ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1};
+                                                                    ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1};
 static const std::unordered_set<ge::DataType> BIAS_TYPE_SUPPORT_SET = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
                                                                    ge::DT_INT32};
 static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
@@ -73,12 +73,16 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckDtypeValid(const gert::InferData
     auto weightDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_WEIGHT, 0);
     // mandory param dtype check
     OP_CHECK_IF(X_TYPE_SUPPORT_SET.find(xDtype) == X_TYPE_SUPPORT_SET.end(),
-                OP_LOGE(context->GetNodeName(), "Data type [%s] is not supported for x's 1st tensor.",
+                OP_LOGE(context->GetNodeName(),
+                        "Data type [%s] is not supported for x's 1st tensor; supported types are: INT8, "
+                        "FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, and FLOAT4_E2M1.",
                         ge::TypeUtils::DataTypeToAscendString(xDtype).GetString()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(WEIGHT_TYPE_SUPPORT_SET.find(weightDtype) == WEIGHT_TYPE_SUPPORT_SET.end(),
-                OP_LOGE(context->GetNodeName(), "Data type [%s] is not supported for weight.",
+                OP_LOGE(context->GetNodeName(),
+                        "Data type [%s] is not supported for weight; supported types are: INT8, FLOAT8_E4M3FN, "
+                        "FLOAT8_E5M2, HIFLOAT8, and FLOAT4_E2M1.",
                         ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
                 return ge::GRAPH_FAILED);
     if (xDtype == ge::DataType::DT_INT8 || weightDtype == ge::DataType::DT_INT8) {
@@ -109,8 +113,7 @@ x is %s, weight is %s.",
 weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()), 
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E1M2 || xDtype == ge::DataType::DT_FLOAT4_E2M1),
-                       (weightDtype == ge::DataType::DT_FLOAT4_E1M2 || weightDtype == ge::DataType::DT_FLOAT4_E2M1)),
+    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1), (weightDtype == ge::DataType::DT_FLOAT4_E2M1)),
         OP_LOGE(context->GetNodeName(),
             "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, \
 weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
@@ -118,22 +121,28 @@ weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                 return ge::GRAPH_FAILED);
     auto ScaleDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_SCALE, 0);
     OP_CHECK_IF(SCALE_TYPE_SUPPORT_SET.find(ScaleDtype) == SCALE_TYPE_SUPPORT_SET.end(),
-                OP_LOGE(context->GetNodeName(), "Data type [%s] is not supported for scale.",
+                OP_LOGE(context->GetNodeName(),
+                        "Data type [%s] is not supported for scale; supported types are: UINT64, INT64, "
+                        "FLOAT, BF16, and FLOAT8_E8M0.",
                         ge::TypeUtils::DataTypeToAscendString(ScaleDtype).GetString()),
                 return ge::GRAPH_FAILED);
 
     auto biasDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_BIAS, 0);
-    OP_CHECK_IF(BIAS_TYPE_SUPPORT_SET.find(biasDtype) == BIAS_TYPE_SUPPORT_SET.end(),
-                OP_LOGE(context->GetNodeName(), "Data type [%s] is not supported for bias.",
-                        ge::TypeUtils::DataTypeToAscendString(biasDtype).GetString()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        BIAS_TYPE_SUPPORT_SET.find(biasDtype) == BIAS_TYPE_SUPPORT_SET.end(),
+        OP_LOGE(context->GetNodeName(),
+                "Data type [%s] is not supported for bias; supported types are: FLOAT16, BF16, FLOAT, and INT32.",
+                ge::TypeUtils::DataTypeToAscendString(biasDtype).GetString()),
+        return ge::GRAPH_FAILED);
 
     auto pertokenScaleDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_PERTOKEN_SCALE, 0);
     if (pertokenScaleDtype != ge::DT_UNDEFINED) {
-        OP_CHECK_IF(PERTOEKN_SCALE_TYPE_SUPPORT_SET.find(pertokenScaleDtype) == PERTOEKN_SCALE_TYPE_SUPPORT_SET.end(),
-                    OP_LOGE(context->GetNodeName(), "Data type [%s] is not supported for pertokenScale.",
-                            ge::TypeUtils::DataTypeToAscendString(pertokenScaleDtype).GetString()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            PERTOEKN_SCALE_TYPE_SUPPORT_SET.find(pertokenScaleDtype) == PERTOEKN_SCALE_TYPE_SUPPORT_SET.end(),
+            OP_LOGE(context->GetNodeName(),
+                    "Data type [%s] is not supported for pertokenScale; supported types are: FLOAT, and FLOAT8_E8M0.",
+                    ge::TypeUtils::DataTypeToAscendString(pertokenScaleDtype).GetString()),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -182,10 +191,6 @@ tensor of tensor list weight is not empty."),
     OP_CHECK_IF(gmmAttrs.groupType != GMM_SPLIT_M && gmmAttrs.groupType != GMM_SPLIT_K,
                 OP_LOGE(context->GetNodeName(), "Invalid groupType, which can only be one of 0/2, but it is [%ld].",
                         gmmAttrs.groupType),
-                return ge::GRAPH_FAILED);
-    // check activation is null
-    OP_CHECK_IF(gmmAttrs.activeType != static_cast<int64_t>(GMMActType::GMM_ACT_TYPE_NONE),
-                OP_LOGE(context->GetNodeName(), "Activation function is not supported in quant mode now."),
                 return ge::GRAPH_FAILED);
     // non split axis cannot be empty tensor
     OP_CHECK_IF(CheckNotZeroValueForNoneSplitAxis(context, gmmAttrs) != ge::GRAPH_SUCCESS,
@@ -429,7 +434,7 @@ perTokenScale is (g,), which is (%ld,), but the actual shape is (%ld,).",
                 OP_LOGE(
                     context->GetNodeName(),
                     "When perTokenScale dim num is 2 in split k scenario, the expected shape of perTokenScale is (g,m) \
- or (g,1), which is (%ld,%ld) or (%ld,1), but the actual shape is (%ld,%ld).",
+or (g,1), which is (%ld,%ld) or (%ld,1), but the actual shape is (%ld,%ld).",
                     groupNum_, xMDim_, groupNum_, perTokenScaleShape->GetDim(0), perTokenScaleShape->GetDim(1)),
                 return ge::GRAPH_FAILED);
         }
@@ -440,6 +445,9 @@ perTokenScale is (g,), which is (%ld,), but the actual shape is (%ld,).",
 ge::graphStatus GroupedMatmulQuantChecker::CheckShapeForQuantParam(const gert::InferShapeContext *context,
                                                                    const GMMAttrs &gmmAttrs) const
 {
+    if (gmmAttrs.outputDtype == GMM_OUT_DTYPE_INT32) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto scaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0);
     auto perTokenScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_PERTOKEN_SCALE, 0);
     if (IsPerTileQuantMode(context, gmmAttrs)) {
@@ -649,7 +657,7 @@ is not supported, but the acutal x dtype is [%s] and actual scale dtype is [%s].
 equal to per_token_scale's dtype [%s], and be float32/float8_e8m0.",
                     ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
                     ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()), return ge::GRAPH_FAILED);
-    } else if (xDtype == ge::DT_FLOAT4_E1M2 || xDtype == ge::DT_FLOAT4_E2M1) {
+    } else if (xDtype == ge::DT_FLOAT4_E2M1) {
         OP_CHECK_IF(
             scaleDtype != ge::DataType::DT_FLOAT8_E8M0,
             OP_LOGE(context->GetNodeName(), "When data type of x is float4, data type of scale [%s] should be \

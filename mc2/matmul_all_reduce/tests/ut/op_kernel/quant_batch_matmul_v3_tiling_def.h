@@ -20,77 +20,18 @@
 #include <cstring>
 
 #include "kernel_tiling/kernel_tiling.h"
-
+#include "../../../op_kernel/arch32/quant_matmul_all_reduce_tiling_data.h"
 #define __aicore__
 
 constexpr uint16_t MAX_TENSOR_CONT = 256;
 constexpr uint16_t MAX_CORE_CONT = 64;
 
-struct Mc2L2cacheTileParam
+inline void InitQuantMatmulAllReduceTilingData(uint8_t* tiling, Mc2Tiling::QuantMatmulAllReduceTilingData* const_data)
 {
-    uint32_t mTileCntL2;
-    uint32_t nTileCntL2;
-    uint32_t mTileBlock;
-    uint32_t nTileBlock;
-    uint32_t calOrder;
-    uint32_t isBasicTiling = 0;
-};
-
-struct QuantBatchMatmulV3Params
-{
-    uint32_t batchA = 0;
-    uint32_t batchB = 0;
-    uint32_t batchC = 0;
-    uint32_t batchA1 = 0;
-    uint32_t batchA2 = 0;
-    uint32_t batchA3 = 0;
-    uint32_t batchA4 = 0;
-    uint32_t batchB1 = 0;
-    uint32_t batchB2 = 0;
-    uint32_t batchB3 = 0;
-    uint32_t batchB4 = 0;
-    uint32_t batchC1 = 0;
-    uint32_t batchC2 = 0;
-    uint32_t batchC3 = 0;
-    uint32_t batchC4 = 0;
-    uint32_t singleCoreBatch = 0;
-    uint32_t isPerTensor = 0;
-    uint32_t isPertoken = 0;
-    uint32_t isDoubleScale = 0;
-    uint32_t biasThreeDim = 0;  // 整块的个数
-    uint32_t ubCalcM = 0;
-    uint32_t ubCalcN = 0;
-    uint32_t needUbBuffer = 0;
-    uint32_t realSingleCoreM = 0;
-    uint32_t realSingleCoreN = 0;
-    uint32_t biasDtype = 0;
-    uint32_t ubSize = 0;
-    uint32_t isMClash = 0;
-    uint32_t isNClash = 0;
-    uint32_t groupSizeM = 0;
-    uint32_t groupSizeN = 0;
-    uint32_t groupSizeK = 0;
-};
-
-struct Mc2SlidingWindowParam {
-    uint32_t mTailTile = 0;
-    uint32_t nTailTile = 0;
-};
-
-struct QuantBatchMatmulV3TilingData
-{
-    QuantBatchMatmulV3Params params;
-    TCubeTiling matmulTiling;
-    Mc2L2cacheTileParam tileL2cacheTiling;
-    Mc2SlidingWindowParam adaptiveSlidingWin;
-};
-
-inline void InitQuantBatchMatmulV3TilingData(uint8_t* tiling, QuantBatchMatmulV3TilingData* const_data)
-{
-    memcpy(const_data, tiling, sizeof(QuantBatchMatmulV3TilingData));
+    memcpy(const_data, tiling, sizeof(Mc2Tiling::QuantMatmulAllReduceTilingData));
 }
 
 #define GET_TILING_DATA(tiling_data, tiling_arg)                                                        \
-    QuantBatchMatmulV3TilingData tiling_data;                                                 \
-    InitQuantBatchMatmulV3TilingData(tiling_arg, &tiling_data)
+    Mc2Tiling::QuantMatmulAllReduceTilingData tiling_data;                                                 \
+    InitQuantMatmulAllReduceTilingData(tiling_arg, &tiling_data)
 #endif  // QUANT_BATCH_MATMUL_V3_TILING_DEF_H

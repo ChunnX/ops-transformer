@@ -102,10 +102,9 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+        OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
@@ -265,17 +264,29 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         !(inputQueryScaleType_ == inputKeyScaleType_),
         OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
         return ge::GRAPH_FAILED);
+    if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
+               OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."), return ge::GRAPH_FAILED);
+        
+        OP_CHECK_IF(weightsType_ != ge::DT_BF16,
+                OP_LOGE(opName_, "The data types of the input weights must be bfloat16."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(inputQType_ != ge::DT_INT8,
-               OP_LOGE(opName_, "The data types of the input query and key must be int8."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            inputQueryScaleType_ != ge::DT_FLOAT,
+            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float."),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(inputQType_ != ge::DT_INT8,
+                OP_LOGE(opName_, "The data types of the input query and key must be int8."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
-               OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
+                OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        inputQueryScaleType_ != ge::DT_FLOAT16,
-        OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
-        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            inputQueryScaleType_ != ge::DT_FLOAT16,
+            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
+            return ge::GRAPH_FAILED);        
+    }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
@@ -430,10 +441,17 @@ ge::graphStatus QLIInfoParser::GetGSize()
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
-    OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
-               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.", n1Size_, n2Size_),
-               return ge::GRAPH_FAILED);
 
+    if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT_950 && gSize_ != G_SIZE_LIMIT,
+               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64 or 24.", n1Size_, n2Size_),
+               return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
+               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.", n1Size_, n2Size_),
+               return ge::GRAPH_FAILED);        
+    }
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -707,7 +725,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.opName = opName_;
     QLIInfo.platformInfo = platformInfo_;
     QLIInfo.opParamInfo = opParamInfo_;
-    QLIInfo.socVersion = socVersion_;
+    QLIInfo.npuArch = npuArch_;
 
     QLIInfo.bSize = bSize_;
     QLIInfo.n1Size = n1Size_;
@@ -827,6 +845,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout);
     context_->SetTilingKey(tilingKey);
+    context_->SetScheduleMode(1);      // 1: batchmode模式
 
     return ge::GRAPH_SUCCESS;
 }

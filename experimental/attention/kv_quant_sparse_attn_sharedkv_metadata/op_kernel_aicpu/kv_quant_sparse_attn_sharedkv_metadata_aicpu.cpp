@@ -96,19 +96,14 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckSingleParam() {
         KERNEL_LOG_ERROR("max_seqlen_q should not be negative, but got %d", querySeqSize_);
         return false;
     }
-    // num_heads_q 校验
-    if (queryHeadNum_ != 64) {
-        KERNEL_LOG_ERROR("num_heads_q should only be 64, but got %d", queryHeadNum_);
-        return false;
-    }
     // num_heads_kv 校验
     if (kvHeadNum_ != 1) {
         KERNEL_LOG_ERROR("num_heads_kv should only be 1, but got %d", kvHeadNum_);
         return false;
     }
     // ori_mask_mode 校验
-    if (oriMaskMode_ != static_cast<uint32_t>(SparseMode::BAND)) {
-        KERNEL_LOG_ERROR("ori_mask_mode should be 4, but got %d", oriMaskMode_);
+    if (oriMaskMode_ != static_cast<uint32_t>(SparseMode::DEFAULT_MASK) && oriMaskMode_ != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && oriMaskMode_ != static_cast<uint32_t>(SparseMode::BAND)) {
+        KERNEL_LOG_ERROR("ori_mask_mode should be 0, 3 or 4, but got %d", oriMaskMode_);
         return false;
     }
     // ori_win_left 校验
@@ -122,8 +117,17 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckSingleParam() {
         return false;
     }
     // layout_kv 校验
-    if (layoutKv_ != "PA_ND") {
-        KERNEL_LOG_ERROR("layout_kv must be PA_ND!");
+    if (layoutKv_ != "PA_ND" && layoutKv_ != "TND" && layoutKv_ != "BSND") {
+        KERNEL_LOG_ERROR("layout_kv must be TND, BSND or PA_ND!");
+        return false;
+    }
+    // layout交叉校验
+    if (layoutQuery_ == "TND" && layoutKv_ == "BSND") {
+        KERNEL_LOG_ERROR("For layout_query TND, layout_key should be PA_BSND/TND");
+        return false;
+    }
+    if (layoutQuery_ == "BSND" && layoutKv_ == "TND") {
+        KERNEL_LOG_ERROR("For layout_query BSND, layout_key should be PA_BSND/BSND");
         return false;
     }
     return true;
@@ -221,7 +225,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsCheck() {
 
 ValidSocVersion KvQuantSparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion()
 {
-    const std::string ascend950 = "Ascend910_95";
+    const std::string ascend950 = "Ascend950";
     if (socVersion_.find(ascend950) != std::string::npos) {
         return ValidSocVersion::ASCEND950;
     } else {
@@ -233,10 +237,20 @@ ValidSocVersion KvQuantSparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion()
 bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
-    sparseMode_ = oriMaskMode_;
-    preToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
-    nextToken_ = 0;
-    attentionMode_ = 1;
+    auto mode = static_cast<SparseMode>(oriMaskMode_);
+    if (mode == SparseMode::DEFAULT_MASK) {
+        preToken_ = INT64_MAX;
+        nextToken_ = INT64_MAX;
+        attentionMode_ = 0;
+    } else if (mode == SparseMode::RIGHT_DOWN_CAUSAL) {
+        preToken_ = INT64_MAX;
+        nextToken_ = 0;
+        attentionMode_ = 1;
+    } else {//SparseMode = 4
+        preToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
+        nextToken_ = 0;
+        attentionMode_ = 1;
+    }
     isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
     groupSize_ = queryHeadNum_ / kvHeadNum_;
     if (hasCmpKv_) {
@@ -256,7 +270,11 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsInit()
         mBaseSize_ = groupSize_ * s1BlockLen;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950){
-        mBaseSize_ = 64U;
+        if (isSCFA) {
+            mBaseSize_ = 1U * groupSize_;
+        } else {
+            mBaseSize_ = 64U / groupSize_ * groupSize_;
+        }
         s2BaseSize_ = 128U;
     }
     return true;
@@ -321,7 +339,7 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcSplitInfo(SplitContext &spl
 int64_t KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcPreTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
-    auto mode = static_cast<SparseMode>(sparseMode_);
+    auto mode = static_cast<SparseMode>(oriMaskMode_);
     if (mode == SparseMode::BAND) {
         return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + preToken_;
     }
@@ -331,7 +349,7 @@ int64_t KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcPreTokenLeftUp(
 int64_t KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcNextTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
-    auto mode = static_cast<SparseMode>(sparseMode_);
+    auto mode = static_cast<SparseMode>(oriMaskMode_);
     switch (mode) {
         case SparseMode::DEFAULT_MASK:
         case SparseMode::ALL_MASK:

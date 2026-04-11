@@ -1152,8 +1152,8 @@ ge::graphStatus SASTilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() ||
-        (kvLayout_ == SASLayout::PA_ND && ge::GRAPH_SUCCESS != CheckSingleParaOriBlockTable()) ||
-        (kvLayout_ == SASLayout::PA_ND && ge::GRAPH_SUCCESS != CheckSingleParaCmpBlockTable()) ||
+        ge::GRAPH_SUCCESS != CheckSingleParaOriBlockTable() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpBlockTable() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSinks() ||
         ge::GRAPH_SUCCESS != CheckSingleParaMetadata() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
@@ -1163,6 +1163,7 @@ ge::graphStatus SASTilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaOriWinRight()) {
         return ge::GRAPH_FAILED;
     }
+    
     return ge::GRAPH_SUCCESS;
 }
 

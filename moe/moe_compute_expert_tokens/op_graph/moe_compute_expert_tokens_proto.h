@@ -22,11 +22,11 @@ namespace ge {
 /**
  * @brief Binary finds the position of the last row processed by each expert in the sorted_experts array.
  * @par Inputs:
- * @li sorted_experts: An 1D Tensor, sorted expert array. Type is:Int32.
+ * @li sorted_experts: An 1D Tensor, sorted expert array. Type is:Int32. Shape should be less than 2^24.
  * @par Outputs:
  * @li total_rows_before_expert: A Tensor. Type is:Int32.
  * @par Attributes:
- * @li num_experts: Required parameter. Type is:Int. The value must be more than 0 and less than 2147483647.
+ * @li num_experts: Required parameter. Type is:Int. The value must be more than 0 and less than 2048.
  */
 REG_OP(MoeComputeExpertTokens)
     .INPUT(sorted_experts, "T")

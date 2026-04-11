@@ -31,7 +31,12 @@
 #include "./arch32/prompt_flash_attention_var_len_score_sab_baseapi.h"
 #include "./arch32/prompt_flash_attention_empty_tensor.h"
 #else
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "./arch32/unpad_flash_attention_common.h"
 #include "./arch32/prompt_attention_prefill.h"
 #include "./arch32/prompt_flash_attention_s1s2_bns1_x310_base.h"
@@ -500,7 +505,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_arch32(__gm__ uint8_t* query,
         #endif
     #endif
     #endif
-    #if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003) && (ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_KEY != DT_INT4)
+    #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) && (ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_KEY != DT_INT4)
         TILING_KEY_IS(QBF16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING);
         TILING_KEY_IS(QBF16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING);
         TILING_KEY_IS(QBF16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING);

@@ -16,7 +16,3 @@
      add_subdirectory(${SUBDIR})
    endif()
  endforeach()
-
- if (BUILD_OPEN_PROJECT)
-    get_filename_component(CURRENT_DIR_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
-endif()

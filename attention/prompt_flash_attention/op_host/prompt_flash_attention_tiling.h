@@ -542,7 +542,7 @@ public:
     explicit PromptFlashAttentionTiling(gert::TilingContext *context) : FiaTilingBase(context), ascendcPlatform(nullptr) {}
     ~PromptFlashAttentionTiling() override = default;
     ge::graphStatus RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
-                                                uint64_t& tilingKey, uint32_t& blockDimToBeSet,
+                                                uint64_t& tilingKey, uint32_t& numBlocksToBeSet,
                                                 PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus PromptFlashAttentionSetTilingData(gert::TilingContext* context,
                                                     PromptFlashAttentionTilingData& tilingData);
@@ -673,7 +673,7 @@ protected:
                                const gert::StorageShape* valueShape, const gert::StorageShape* outShape, const gert::StorageShape* pseShiftShape,
                                const gert::StorageShape* attenMaskShape);
     ge::graphStatus CheckBaseAPISupportScenarios(ContextParamsForPFATiling& contextKeyParams);
-    size_t GetPFABaseApiWorkSpaceSize(const uint32_t& blockDimToBeSet);
+    size_t GetPFABaseApiWorkSpaceSize(const uint32_t& numBlocksToBeSet);
     ge::graphStatus TilingGetBaseApiTilingKeyAttentionAscendC(uint64_t& tilingKey, ContextParamsForPFATiling& contextKeyParams);
     ge::graphStatus CheckBaseApiRequiredInput(ContextParamsForPFATiling& contextKeyParams);
     ge::graphStatus CheckBaseApiOptionalInput(ContextParamsForPFATiling& contextKeyParams);
@@ -702,7 +702,7 @@ protected:
     ge::graphStatus SetBaseApiAlibiMaskInfo(ContextParamsForPFATiling &contextKeyParams,
                                             const gert::StorageShape *pseShiftShape);
     ge::graphStatus AtbSplitBlock(ContextParamsForPFATiling& contextKeyParams);
-    uint32_t CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const;
+    uint32_t CalcTschNumBlocks(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const;
     void CalcUBSize();
     void SetDataCopyTransposeTiling();
     void SetSoftMaxTiling();

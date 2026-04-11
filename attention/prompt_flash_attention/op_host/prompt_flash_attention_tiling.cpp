@@ -183,6 +183,11 @@ constexpr int64_t ATTEN_MASK_S2_SIZE_DEFAULT_HOST_TILING = 2048;
 constexpr int64_t S1_VEC2_BASE_8_HOST_TILING = 8;
 constexpr int64_t S1_VEC2_MULTIPLIER_2_HOST_TILING = 2;
 
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+
+constexpr uint32_t BATCH_LIMIT_128 = 128;
+constexpr uint32_t BATCH_LIMIT_300 = 300;
+
 inline int32_t ConvertValueToIndexMM(int32_t val, int32_t idxBound)
 {
     return (val > PP_MM[idxBound]) ? idxBound : (val / PP_INDEX - 1);
@@ -499,7 +504,7 @@ size_t PromptFlashAttentionTiling::GetPFAWorkSpaceSize(PromptFlashAttentionTilin
     }
 }
 
-size_t PromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t& blockDimToBeSet) {
+size_t PromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t& numBlocksToBeSet) {
     size_t sysWorkspaceSize, workspaceSize;
     const uint64_t defaultSysWorkspaceSize910B = 16U * 1024U * 1024U;
     if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
@@ -508,7 +513,7 @@ size_t PromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t& bl
     } else {
         sysWorkspaceSize = defaultSysWorkspaceSize910B;
         uint64_t dataLenFloat = sizeof(float);
-        uint64_t workSize = static_cast<uint64_t>(blockDimToBeSet) * static_cast<uint64_t>(PING_PONG_BUFFER_SIZE) * dataLenFloat;
+        uint64_t workSize = static_cast<uint64_t>(numBlocksToBeSet) * static_cast<uint64_t>(PING_PONG_BUFFER_SIZE) * dataLenFloat;
         baseApiTilingData.promptAttentionBaseApiBaseParams.set_workSize(workSize);
         workspaceSize = tilingMod == TilingMod::CVDIFF_BASE_API ? defaultSysWorkspaceSize910B + workSize * 3U : defaultSysWorkspaceSize910B + workSize * 9U;
         return workspaceSize;
@@ -2164,11 +2169,6 @@ bool PromptFlashAttentionTiling::CheckPAWhenBaseApi(ContextParamsForPFATiling& c
         b, maxBlockNumPerBatch, blockTableDim1, blockTableDim2),
         return false);
     int32_t keyDim1 = keyShape->GetStorageShape().GetDim(FIRST_DIM);
-    OP_CHECK_IF((keyDim1 < blockNumValid),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-        "the first dim of key(%d) should not less than valid block num(%ld) when PA enable",
-        keyDim1, blockNumValid),
-        return false);
     PABlockNumSum = keyDim1;
     tmpS2 = maxBlockNumPerBatch * tempBlockSize;
     return true;
@@ -2311,13 +2311,6 @@ bool PromptFlashAttentionTiling::CheckPATypeAndShape(ContextParamsForPFATiling& 
         "block table shape should be [%d, >=%d], now is [%d, %d] when PA enable",
         b, maxBlockNumPerBatch, blockTableDim1, blockTableDim2),
         return false);
-
-    OP_CHECK_IF((keyDim1 < blockNumValid),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-        "the first dim of key(%d) should not less than valid block num(%ld) when PA enable",
-        keyDim1, blockNumValid),
-        return false);
-
     PABlockNumSum = keyDim1;
     tmpS2 = maxBlockNumPerBatch * tempBlockSize;
     return true;
@@ -2970,14 +2963,14 @@ ge::graphStatus PromptFlashAttentionTiling::AtbSplitBlock(ContextParamsForPFATil
     uint32_t startBlk = 0;
     uint32_t endBlk = 0;
 
-    uint32_t blockDim = procNum < nzRealCoreNum ? procNum : nzRealCoreNum;
-    if (blockDim > MAX_BLOCK_DIM) {
+    uint32_t numBlocks = procNum < nzRealCoreNum ? procNum : nzRealCoreNum;
+    if (numBlocks > MAX_BLOCK_DIM) {
         return ge::GRAPH_FAILED;
     }
     std::vector<uint32_t> startBlkArray(MAX_BLOCK_DIM, 0U);
     std::vector<uint32_t> endBlkArray(MAX_BLOCK_DIM, 0U);
 
-    for (uint32_t i = 0; i < blockDim; i++) {
+    for (uint32_t i = 0; i < numBlocks; i++) {
         startBlk = endBlk;
         endBlk = i < tailBlks ? endBlk + procPerBlk + 1U : endBlk + procPerBlk;
         startBlkArray[i] = static_cast<uint32_t>(startBlk);
@@ -3327,7 +3320,7 @@ void PromptFlashAttentionTiling::SetSparseParamsTND()
     coreParams.set_s2SparseValidSize(s2SparseValidSize);
 }
 
-uint32_t PromptFlashAttentionTiling::CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const
+uint32_t PromptFlashAttentionTiling::CalcTschNumBlocks(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const
 {
     uint32_t ration;
     if (aicCoreNum == 0 || aivCoreNum == 0 || aicCoreNum > aivCoreNum) {
@@ -3775,7 +3768,7 @@ ge::graphStatus PromptFlashAttentionTiling::CheckVarLenPreNextToken(ContextParam
 
 ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
     uint64_t& tilingKey,
-    uint32_t& blockDimToBeSet,
+    uint32_t& numBlocksToBeSet,
     PromptFlashAttentionTilingData& tilingData) {
     uint64_t l0CSize;
     uint64_t l1Size;
@@ -3864,12 +3857,12 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
             return ge::GRAPH_FAILED;
         }
         TilingGetBaseApiTilingKeyAttentionAscendC(tilingKey, contextKeyParams);
-        blockDimToBeSet = baseApiTilingData.promptAttentionBaseApiBaseParams.get_headNumSize() * baseApiTilingData.promptAttentionBaseApiBaseParams.get_totalQBlkNum();
-        if (blockDimToBeSet > compileInfoPtr->aicNum) {
-            blockDimToBeSet = compileInfoPtr->aicNum;
+        numBlocksToBeSet = baseApiTilingData.promptAttentionBaseApiBaseParams.get_headNumSize() * baseApiTilingData.promptAttentionBaseApiBaseParams.get_totalQBlkNum();
+        if (numBlocksToBeSet > compileInfoPtr->aicNum) {
+            numBlocksToBeSet = compileInfoPtr->aicNum;
         }
         size_t* workspaces = contextKeyParams.workspaceSize;
-        workspaces[0] = GetPFABaseApiWorkSpaceSize(blockDimToBeSet);
+        workspaces[0] = GetPFABaseApiWorkSpaceSize(numBlocksToBeSet);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -4062,7 +4055,7 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
         PromptAttentionInitOutputParams *initParams = &tilingData.promptAttentionInitOutputParams;
         uint32_t singleCoreSize = initParams->get_singleCoreSize();
         uint32_t actualCore = (singleCoreSize > 0) ? (outShape->GetStorageShape().GetShapeSize() + singleCoreSize - 1) / singleCoreSize : coreNum;
-        blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(actualCore, aicNum, coreNum);
+        numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(actualCore, aicNum, coreNum);
 
         size_t* workspace = contextKeyParams.workspaceSize;
         const size_t sysWorkspaceSize = 16 * 1024 * 1024;  // workspace needs at least this much
@@ -4347,9 +4340,10 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "batch size(%u) should not be larger than 128 when input layout is SH!", b),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((curShortSocName == platform_ascendc::SocVersion::ASCEND310P && b > 128U),
+    size_t batchLimit = (curShortSocName == platform_ascendc::SocVersion::ASCEND310P && inputLayout == InputLayout::BSH) ? BATCH_LIMIT_300 : BATCH_LIMIT_128;
+    OP_CHECK_IF((curShortSocName == platform_ascendc::SocVersion::ASCEND310P && b > batchLimit),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-        "ascend310p platform do not support batch size(%u) more than 128.", b),
+        "ascend310p platform do not support batch size(%u) more than %zu.", b, batchLimit),
         return ge::GRAPH_FAILED);
 
     bool iskvdiff = (seqInnerSize != s);
@@ -4957,16 +4951,16 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
             }
         }
         tilingKey += static_cast<uint32_t>((static_cast<int32_t>(inputLayout) - static_cast<int32_t>(InputLayout::TND)) * INPUT_LAYOUT_TILING_KEY_FACTOR_HOST_TILING);
-        blockDimToBeSet = CalcTschBlockDim(mlaTilingData.PFAmultiCoreParams.get_coreNum(), aicNum, aivNum);
+        numBlocksToBeSet = CalcTschNumBlocks(mlaTilingData.PFAmultiCoreParams.get_coreNum(), aicNum, aivNum);
         return ge::GRAPH_SUCCESS;
     }
 
     // Currently, there will be no D splitting scenario, and split D = 0 is default when splitting.
     if (tilingMod == TilingMod::CVSAME) {
-        OP_CHECK_IF(lenDims > 128,
+        OP_CHECK_IF(lenDims > batchLimit,
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "when D axis size(%u) is unaligend with 32 bytes, batch size(%zu) can not larger than 128.", hDivN, lenDims),
-            return ge::GRAPH_FAILED);
+            "when D axis size(%u) is unaligend with 32 bytes, batch size(%zu) can not larger than %zu.",
+            hDivN, lenDims, batchLimit), return ge::GRAPH_FAILED);
         auto ret = AdjustCVTiling(hDivN, *n, middleActualSeqLengths, ubSize, l1Size, l0CSize, maskElemSize,
             sOuterFactor, sInnerFactor, tilingData);
         OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
@@ -5263,7 +5257,7 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
     OP_CHECK_IF(tilingRet != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Get apiTiling fail"),
         return tilingRet);
-    blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
 
     size_t* workspaces = contextKeyParams.workspaceSize;
     workspaces[0] = GetPFAWorkSpaceSize(tilingData);
@@ -6509,6 +6503,8 @@ PFA_EXTERN_C ge::graphStatus PromptFlashAttentionTiling::DoOpTiling() {
         return ge::GRAPH_FAILED;
     }
     auto platformInfoPtr = context_->GetPlatformInfo();
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
 
     PromptFlashAttentionTilingData tilingData;
     OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
@@ -6517,16 +6513,16 @@ PFA_EXTERN_C ge::graphStatus PromptFlashAttentionTiling::DoOpTiling() {
         return ge::GRAPH_FAILED);
     ContextParamsForPFATiling contextParamsForPFATiling;
     uint64_t tilingKey = 7;  // 7: default tiling key
-    uint32_t blockDimToBeSet;
+    uint32_t numBlocksToBeSet;
     auto ret = ConvertContextToPFAParams(context_, contextParamsForPFATiling);
     OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
         return ge::GRAPH_FAILED);
-        ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, blockDimToBeSet, tilingData);
+        ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, numBlocksToBeSet, tilingData);
         tilingKey += BENCHMARK_TILING_KEY;
         context_->SetTilingKey(tilingKey);
-        context_->SetBlockDim(blockDimToBeSet);
+        context_->SetBlockDim(numBlocksToBeSet);
         PromptFlashAttentionSetTilingData(context_, tilingData);
         return ret;
 }
-REGISTER_TILING_TEMPLATE_FIA(PromptFlashAttention, PromptFlashAttentionTiling, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P), static_cast<int32_t>(platform_ascendc::SocVersion::KIRINX90)}), 91);
+REGISTER_TILING_TEMPLATE_FIA(PromptFlashAttention, PromptFlashAttentionTiling, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201), static_cast<int32_t>(NpuArch::DAV_2002), static_cast<int32_t>(NpuArch::DAV_3003), static_cast<int32_t>(NpuArch::DAV_3113)}), 91);
 }

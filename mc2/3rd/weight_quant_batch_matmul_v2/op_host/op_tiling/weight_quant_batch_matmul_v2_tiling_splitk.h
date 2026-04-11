@@ -16,7 +16,7 @@
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_TILING_SPLITK_H
 
 #include "weight_quant_batch_matmul_v2_tiling.h"
-#include "weight_quant_batch_matmul_v2_tiling_data.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 
 namespace optiling {
 class Mc2WeightQuantBatchMatmulV2TilingSplitK : public Mc2WeightQuantBatchMatmulV2Tiling

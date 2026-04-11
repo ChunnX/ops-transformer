@@ -131,15 +131,18 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_2) {
                           "Intrinsic_data_move_out2l1_nd2nz": false,
                           "UB_SIZE": 253952, "L2_SIZE": 33554432, "L1_SIZE": 524288,
                           "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                          "CORE_NUM": 64, "socVersion": "Ascend910_95"}
+                          "CORE_NUM": 64, "socVersion": "Ascend950"}
                           })";
 
 
     map<string, string> soc_infos;
     map<string, string> aicore_spec;
     map<string, string> intrinsics;
-    std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend910_95"}};
+    map<string, string> version;
+    std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend950"}};
     GetPlatFormInfos(compile_info_string_2.c_str(), soc_infos, aicore_spec, intrinsics);
+    version["Short_SoC_version"] = "Ascend950";
+    version["SoC_version"] = "Ascend910_9589";
 
     // platform info
     fe::PlatFormInfos platform_info;
@@ -195,7 +198,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_2) {
     // workspaces nullptr return failed
     EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
     auto tiling_key = tiling_context->GetTilingKey();
-    ASSERT_EQ(tiling_key, 20011);
+    ASSERT_EQ(tiling_key, 20000);
 }
 
 TEST_F(AttentionUpdateTilingTest, test_tiling_3) {
@@ -207,15 +210,17 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_3) {
                         "Intrinsic_data_move_out2l1_nd2nz": false,
                         "UB_SIZE": 253952, "L2_SIZE": 33554432, "L1_SIZE": 524288,
                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                        "CORE_NUM": 64, "socVersion": "Ascend910_95"}
+                        "CORE_NUM": 64, "socVersion": "Ascend950"}
                         })";
 
 
   map<string, string> soc_infos;
   map<string, string> aicore_spec;
   map<string, string> intrinsics;
-  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend910_95"}};
+  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend950"}};
   GetPlatFormInfos(compile_info_string_2.c_str(), soc_infos, aicore_spec, intrinsics);
+  version["Short_SoC_version"] = "Ascend950";
+  version["SoC_version"] = "Ascend910_9589";
 
   // platform info
   fe::PlatFormInfos platform_info;
@@ -229,7 +234,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_3) {
   std::string op_type("AttentionUpdate");
   ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
   auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
- 
+
 
   // tilingFunc simulate
   auto param = gert::TilingData::CreateCap(4096);
@@ -271,7 +276,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_3) {
   // workspaces nullptr return failed
   EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
   auto tiling_key = tiling_context->GetTilingKey();
-  ASSERT_EQ(tiling_key, 20021);
+  ASSERT_EQ(tiling_key, 20000);
 }
 
 TEST_F(AttentionUpdateTilingTest, test_tiling_4) {
@@ -283,15 +288,17 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_4) {
                         "Intrinsic_data_move_out2l1_nd2nz": false,
                         "UB_SIZE": 253952, "L2_SIZE": 33554432, "L1_SIZE": 524288,
                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                        "CORE_NUM": 64, "socVersion": "Ascend910_95"}
+                        "CORE_NUM": 64, "socVersion": "Ascend950"}
                         })";
 
 
   map<string, string> soc_infos;
   map<string, string> aicore_spec;
   map<string, string> intrinsics;
-  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend910_95"}};
+  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend950"}};
   GetPlatFormInfos(compile_info_string_2.c_str(), soc_infos, aicore_spec, intrinsics);
+  version["Short_SoC_version"] = "Ascend950";
+  version["SoC_version"] = "Ascend910_9589";
 
   // platform info
   fe::PlatFormInfos platform_info;
@@ -305,7 +312,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_4) {
   std::string op_type("AttentionUpdate");
   ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
   auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
- 
+
 
   // tilingFunc simulate
   auto param = gert::TilingData::CreateCap(4096);
@@ -349,7 +356,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_4) {
   // workspaces nullptr return failed
   EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
   auto tiling_key = tiling_context->GetTilingKey();
-  ASSERT_EQ(tiling_key, 20021);
+  ASSERT_EQ(tiling_key, 20000);
 }
 
 TEST_F(AttentionUpdateTilingTest, test_tiling_5) {
@@ -361,14 +368,14 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_5) {
                         "Intrinsic_data_move_out2l1_nd2nz": false,
                         "UB_SIZE": 253952, "L2_SIZE": 33554432, "L1_SIZE": 524288,
                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                        "CORE_NUM": 64, "socVersion": "Ascend910_95"}
+                        "CORE_NUM": 64, "socVersion": "Ascend950"}
                         })";
 
 
   map<string, string> soc_infos;
   map<string, string> aicore_spec;
   map<string, string> intrinsics;
-  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend910_95"}};
+  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend950"}};
   GetPlatFormInfos(compile_info_string_2.c_str(), soc_infos, aicore_spec, intrinsics);
 
   // platform info
@@ -383,7 +390,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_5) {
   std::string op_type("AttentionUpdate");
   ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
   auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
- 
+
 
   // tilingFunc simulate
   auto param = gert::TilingData::CreateCap(4096);
@@ -436,14 +443,14 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_6) {
                         "Intrinsic_data_move_out2l1_nd2nz": false,
                         "UB_SIZE": 253952, "L2_SIZE": 33554432, "L1_SIZE": 524288,
                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                        "CORE_NUM": 64, "socVersion": "Ascend910_95"}
+                        "CORE_NUM": 64, "socVersion": "Ascend950"}
                         })";
 
 
   map<string, string> soc_infos;
   map<string, string> aicore_spec;
   map<string, string> intrinsics;
-  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend910_95"}};
+  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend950"}};
   GetPlatFormInfos(compile_info_string_2.c_str(), soc_infos, aicore_spec, intrinsics);
 
   // platform info
@@ -458,7 +465,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_6) {
   std::string op_type("AttentionUpdate");
   ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
   auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
- 
+
 
   // tilingFunc simulate
   auto param = gert::TilingData::CreateCap(4096);
@@ -512,15 +519,17 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_7) {
                         "Intrinsic_data_move_out2l1_nd2nz": false,
                         "UB_SIZE": 253952, "L2_SIZE": 33554432, "L1_SIZE": 524288,
                         "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,
-                        "CORE_NUM": 64, "socVersion": "Ascend910_95"}
+                        "CORE_NUM": 64, "socVersion": "Ascend950"}
                         })";
 
 
   map<string, string> soc_infos;
   map<string, string> aicore_spec;
   map<string, string> intrinsics;
-  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend910_95"}};
+  std::map<std::string,std::string> soc_version_infos = {{"Short_SoC_version","Ascend950"}};
   GetPlatFormInfos(compile_info_string_2.c_str(), soc_infos, aicore_spec, intrinsics);
+  version["Short_SoC_version"] = "Ascend950";
+  version["SoC_version"] = "Ascend910_9589";
 
   // platform info
   fe::PlatFormInfos platform_info;
@@ -534,7 +543,7 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_7) {
   std::string op_type("AttentionUpdate");
   ASSERT_NE(gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str()), nullptr);
   auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
- 
+
 
   // tilingFunc simulate
   auto param = gert::TilingData::CreateCap(4096);
@@ -578,5 +587,5 @@ TEST_F(AttentionUpdateTilingTest, test_tiling_7) {
   // workspaces nullptr return failed
   EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
   auto tiling_key = tiling_context->GetTilingKey();
-  ASSERT_EQ(tiling_key, 20021);
+  ASSERT_EQ(tiling_key, 20000);
 }
