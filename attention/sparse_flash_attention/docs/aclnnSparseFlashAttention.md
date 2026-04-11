@@ -15,11 +15,11 @@
 
 - 计算公式：
 
-$$
-\text{softmax}(\frac{Q@\tilde{K}^T}{\sqrt{d_k}})@\tilde{V}
-$$
+  $$
+  \text{softmax}(\frac{Q@\tilde{K}^T}{\sqrt{d_k}})@\tilde{V}
+  $$
 
-其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。
+  其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。
 
 ## 函数原型
 
@@ -430,7 +430,6 @@ aclnnStatus aclnnSparseFlashAttention(
 
   第一段接口会完成入参校验，出现以下场景时报错：
   
-
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
     <col style="width: 144px">

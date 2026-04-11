@@ -52,9 +52,9 @@ $$
 
 相较于`MoeDistributeDispatchV3`算子，该算子变更如下：
 
--   新增`context`入参，存入通信域相关信息；
--   新增`ccl_buffer_size`入参，指定当前通信域大小；
--   减少`group_ep`以及`group_tp`通信域名称入参;
+- 新增`context`入参，存入通信域相关信息；
+- 新增`ccl_buffer_size`入参，指定当前通信域大小；
+- 减少`group_ep`以及`group_tp`通信域名称入参;
 
 详细说明请参考以下参数说明。
 

@@ -40,11 +40,11 @@
   $$
   \hat{dS}= dS * dsScale
   $$
-	
+
   $$
   \hat{P}= P * pScale
   $$
-	
+
   $$
   dV=\hat{P}^T\hat{dY} * (dS_{dy} * dS_p)
   $$
@@ -56,8 +56,6 @@
   $$
   dK=\frac{(\hat{(dS)}^T*\hat{Q})}{\sqrt{d}} * (dS_{ds} * dS_q)
   $$
-  
-    
 
 ## 函数原型
 
@@ -80,7 +78,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspace(
   const aclTensor   *dsScale, 
   const aclTensor   *pScale,
   double             scaleValueOptional, 
-  int64_t 			 preTokensOptional,
+  int64_t            preTokensOptional,
   int64_t            nextTokensOptional,
   int64_t            headNum, 
   char              *inputLayout,
@@ -391,8 +389,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tr>
   </tbody>
   </table>
-  
-  
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

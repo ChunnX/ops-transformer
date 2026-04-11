@@ -313,6 +313,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2.h"
@@ -504,4 +505,3 @@ int main() {
   return 0;
 }
 ```
-

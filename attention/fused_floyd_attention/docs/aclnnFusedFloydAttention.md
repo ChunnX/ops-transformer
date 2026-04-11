@@ -23,11 +23,10 @@
     $$
     weights = Softmax(attenMask + scale*(einsum(query, key1^T) + einsum(query, key2^T)))
     $$
-    
+
     $$
     attention\_out = einsum(weights, value1) + einsum(weights, value2)
     $$
-    
 
 ## 函数原型
 
@@ -56,7 +55,6 @@ aclnnStatus aclnnFusedFloydAttention(
     aclOpExecutor    *executor, 
     const aclrtStream stream)
 ```
-
 
 ## aclnnFusedFloydAttentionGetWorkspaceSize
 
@@ -211,7 +209,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
 
-  第一段接口完成入参校验，若出现以下错误码，则对应原因为：
+   第一段接口会完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1146px"><colgroup>
     <col style="width: 283px">

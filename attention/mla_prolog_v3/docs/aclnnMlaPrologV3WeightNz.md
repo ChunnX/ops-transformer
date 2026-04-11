@@ -7,23 +7,23 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+||      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 
--  **功能更新**：（相对于aclnnMlaPrologV2weightNz的差异）
-    -  新增Query与Key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
-    -  新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、queryNormFlag、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
-    -  调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
--  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
-    -  首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
-    -  第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
-    -  第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
-    -  第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
-    -  权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
+- **功能更新**：（相对于aclnnMlaPrologV2weightNz的差异）
+    - 新增Query与Key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
+    - 新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、queryNormFlag、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
+    - 调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
+- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
+    - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
+    - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
+    - 第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
+    - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
+    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
 
--  **计算公式**：
+- **计算公式**：
 
     RmsNorm公式
 
@@ -81,7 +81,6 @@
     q^{N} = {\mathrm{round}(q^{N} / \mathrm{dequantScaleQNope})}
     $$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologV3WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV3WeightNz”接口执行计算。
@@ -136,7 +135,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnMlaPrologV3WeightNzGetWorkspaceSize
 
@@ -208,7 +206,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | workspaceSize | uint64_t         | 在Device侧申请的workspace大小，由第一段接口aclnnMlaPrologV3WeightNzGetWorkspaceSize获取。 |
   | executor      | aclOpExecutor\*  | op执行器，包含了算子计算流程。                                       |
   | stream        | aclrtStream      | 指定执行任务的Stream。                                   |
-      
 
 - **返回值**
 
@@ -236,36 +233,35 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | T            | BS 合轴后的大小                | 取值范围：不限制；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 |
   | Dtile        | kvCache的D维度的大小           | - Per-tile量化场景下，取值固定为656 <br> - 其他场景下，取值固定为Hckv（512）                                                       |
 
--   shape约束
-    - 若tokenX的维度采用BS合轴，即(T, He)
-        - ropeSin和ropeCos的shape为(T, Dr)
-        - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(T)
-        - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(Sum(Ceil(S_i/BlockSize)))，S_i为每个Batch中的S的长度
-        - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，actualSeqLenOptional需要传入，维度为(B)
-        - int8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
-        - queryOut的shape为(T, N, Hckv)
-        - queryRopeOut的shape为(T, N, Dr)
-        - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
-    - 若tokenX的维度不采用BS合轴，即(B, S, He)
-        - ropeSin和ropeCos的shape为(B, S, Dr)
-        - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
-        - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(B,Ceil(S/BlockSize))
-        - int8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
-        - queryOut的shape为(B, S, N, Hckv)
-        - queryRopeOut的shape为(B, S, N, Dr)
-        - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(B\*S, N, 1)，其他场景下为nullptr
-    - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
-        - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
-        - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
-    - 当CacheMode为BSND时
-        - tokenX应不采用BS合轴，即维度为(B, S, He)
-        - kvCache的维度为(B,S,Nkv,Dr)
-    - 当CacheMode为TND时
-        - tokenX应采用BS合轴，即维度为(T, He)
-        - kvCache的维度为(T,Nkv,Dr)
-    - 当ckvkrRepoMode=1时
-        - krCache的维度应包含0，支持维度为(0)
-
+- shape约束
+  - 若tokenX的维度采用BS合轴，即(T, He)
+    - ropeSin和ropeCos的shape为(T, Dr)
+    - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(T)
+    - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(Sum(Ceil(S_i/BlockSize)))，S_i为每个Batch中的S的长度
+    - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，actualSeqLenOptional需要传入，维度为(B)
+    - int8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
+    - queryOut的shape为(T, N, Hckv)
+    - queryRopeOut的shape为(T, N, Dr)
+    - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
+  - 若tokenX的维度不采用BS合轴，即(B, S, He)
+    - ropeSin和ropeCos的shape为(B, S, Dr)
+    - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
+    - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(B,Ceil(S/BlockSize))
+    - int8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
+    - queryOut的shape为(B, S, N, Hckv)
+    - queryRopeOut的shape为(B, S, N, Dr)
+    - int8全量化场景和mxfp8全量化场景下，dequantScaleQNopeOutOptional的shape为(B\*S, N, 1)，其他场景下为nullptr
+  - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
+    - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
+    - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
+  - 当CacheMode为BSND时
+    - tokenX应不采用BS合轴，即维度为(B, S, He)
+    - kvCache的维度为(B,S,Nkv,Dr)
+  - 当CacheMode为TND时
+    - tokenX应采用BS合轴，即维度为(T, He)
+    - kvCache的维度为(T,Nkv,Dr)
+  - 当ckvkrRepoMode=1时
+    - krCache的维度应包含0，支持维度为(0)
 
 - 特殊约束
   - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
@@ -714,9 +710,10 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     </tr>
   </table>
   </div>
+
 ## 调用示例
 
-A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
   ```Cpp
   #include <iostream>

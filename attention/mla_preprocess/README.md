@@ -1,20 +1,23 @@
 # MlaPreprocess
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+
 ## 功能说明
--  **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
-    -  首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
-    -  通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
-    -  通路3后乘以$W^{uk}$后输出$q^N$。
-    -  通路4后经过旋转位置编码后输出$q^R$。
-    -  通路2拆分为通路5和通路6。
-    -  通路5经过RmsNorm后传入Cache中得到$k^N$。
-    -  通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
--  **计算公式**：
+
+- **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
+    - 首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
+    - 通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
+    - 通路3后乘以$W^{uk}$后输出$q^N$。
+    - 通路4后经过旋转位置编码后输出$q^R$。
+    - 通路2拆分为通路5和通路6。
+    - 通路5经过RmsNorm后传入Cache中得到$k^N$。
+    - 通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
+- **计算公式**：
 
     RmsNormQuant公式
 
@@ -51,6 +54,7 @@
     $$
 
 ## 参数说明
+
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
 |----------------------------|-----------|--------------------------------------------------------------------|----------------|------------|
 | input                     | 输入      | Device侧的aclTensor，用于计算Query和Key的x，shape为[tokenNum,hiddenSize] | FLOAT16, BFLOAT16 | ND         |
@@ -78,7 +82,7 @@
 | ctkvScale                  | 输入      | Device侧的aclTensor，输出量化处理中参与计算的系数，仅在cacheMode为2时传入，shape为[1] | FLOAT16, BFLOAT16 | ND         |
 | qNopeScale              | 输出      | Device侧的aclTensor，输出量化处理中参与计算的系数，仅在cacheMode为2时传入，shape为[headNum] | FLOAT16, BFLOAT16       | ND |
 | wdqDim      | 输入      | 表示经过matmul后拆分的dim大小。预留参数，目前只支持1536 | int64_t          | -         |
-| qRopeDim      | 输入      | 表示q传入rope的dim大小。预留参数，目前只支持64。 | int64_t          | -         |
+| qRopeDim      | 输入      | 表示q传入rope的dim大小。预留参数，目前只支持64。 | int64_t          | -       |
 | kRopeDim     | 输入      | 表示k传入rope的dim大小。预留参数，目前只支持64。 | int64_t          | -         |
 | epsilon         | 输入      | 表示加在分母上防止除0 | float          | -          |
 | qRotaryCoeff                  | 输入      | 表示q旋转系数。预留参数，目前只支持2 | int64_t | -         |
@@ -94,11 +98,13 @@
 | kvCacheOut             | 输出      | 表示Key经过ReshapeAndCache后的输出，shape和dtype随cacheMode变化</br><li>cacheMode为0：shape为[blockNum, blockSize, 1, 576] <li> cacheMode为1：shape为[blockNum, blockSize, 1, 512]<li>cacheMode为2：shape为[blockNum, headNum\*512/32, block_size, 32] <li>cacheMode为3：shape为[blockNum, headNum*512/16, block_size, 16] | <li>与input一致<li>与input一致<li>INT8<li>与input一致       | <li>ND<li>ND<li>NZ<li>NZ |
 | qRopeOut             | 输出      | 表示Query经过旋转编码后的输出，shape和dtype随cacheMode变化</br><li>cacheMode为0：不输出<li> cacheMode为1或3：shape为[tokenNum, headNum, 64]<li>cacheMode为2：shape为[tokenNum, headNum, 64] | <li><li>与input一致<li>与input一致       | <li><li>ND<li>ND |
 | krCacheOut             | 输出      | 表示Key经过ROPE和ReshapeAndCache后的输出，shape和dtype随cacheMode变化，</br><li>cacheMode为0：不输出<li> cacheMode为1：shape为[blockNum, blockSize, 1, 64]<li>cacheMode为2或3：shape为[blockNum, headNum*64 / 16 ,block_size, 16] | <li><li>与input一致<li>与input一致       | <li><li>ND<li>NZ |
+
 ## 约束说明
--   shape格式字段含义及约束
-    -  tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    -  hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    -  headNum：表示多头数，取值范围：16、32、64、128
-    -  blockNum：PagedAttention场景下的块数，取值范围：192
-    -  blockSize：PagedAttention场景下的块大小，取值范围：128
-    -  当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144
+
+- shape格式字段含义及约束
+  - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
+  - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
+  - headNum：表示多头数，取值范围：16、32、64、128
+  - blockNum：PagedAttention场景下的块数，取值范围：192
+  - blockSize：PagedAttention场景下的块大小，取值范围：128
+  - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144

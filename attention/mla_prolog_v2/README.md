@@ -10,8 +10,8 @@
 
 ## 功能说明
 
--  **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
--  **计算公式**：
+- **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
+- **计算公式**：
 
     RmsNorm公式
 
@@ -91,26 +91,26 @@
                    
 ## 约束说明
 
--   shape约束
-    -   若token_x的维度采用BS合轴，即(T, He)
-        - rope_sin和rope_cos的shape为(T, Dr)
-        - cache_index的shape为(T,)
-        - dequant_scale_x的shape为(T, 1)
-        - query的shape为(T, N, Hckv)
-        - query_rope的shape为(T, N, Dr)
-        - 全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为(1)
-    - 若token_x的维度不采用BS合轴，即(B, S, He)
-        - rope_sin和rope_cos的shape为(B, S, Dr)
-        - cache_index的shape为(B, S)
-        - dequant_scale_x的shape为(B*S, 1)
-        - query的shape为(B, S, N, Hckv)
-        - query_rope的shape为(B, S, N, Dr)
-        - 全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为(1)
-    -   B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
-        - 如果B、S、T取值为0，则query、query_rope输出空Tensor，kv_cache、kr_cache不做更新。
-        - 如果Skv取值为0，则query、query_rope、dequantScaleQNopeOutOptional正常计算，kv_cache、kr_cache不做更新，即输出空Tensor。
+- shape约束
+  - 若token_x的维度采用BS合轴，即(T, He)
+      - rope_sin和rope_cos的shape为(T, Dr)
+      - cache_index的shape为(T,)
+      - dequant_scale_x的shape为(T, 1)
+      - query的shape为(T, N, Hckv)
+      - query_rope的shape为(T, N, Dr)
+      - 全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为(1)
+  - 若token_x的维度不采用BS合轴，即(B, S, He)
+      - rope_sin和rope_cos的shape为(B, S, Dr)
+      - cache_index的shape为(B, S)
+      - dequant_scale_x的shape为(B*S, 1)
+      - query的shape为(B, S, N, Hckv)
+      - query_rope的shape为(B, S, N, Dr)
+      - 全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为(1)
+  - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
+      - 如果B、S、T取值为0，则query、query_rope输出空Tensor，kv_cache、kr_cache不做更新。
+      - 如果Skv取值为0，则query、query_rope、dequantScaleQNopeOutOptional正常计算，kv_cache、kr_cache不做更新，即输出空Tensor。
 - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k，n）。
--  aclnnMlaPrologV2WeightNz接口支持场景：
+- aclnnMlaPrologV2WeightNz接口支持场景：
     <table style="table-layout: auto;" border="1">
       <tr>
         <th colspan="2">场景</th>
@@ -156,7 +156,7 @@
       </tr>
     </table>
 
--  在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
+- 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
     <div style="overflow-x: auto; width: 100%;">
     <table style="table-layout: auto;" border="1">
       <tr>

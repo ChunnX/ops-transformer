@@ -49,7 +49,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeUpdateExpertGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeUpdateExpert”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeUpdateExpertGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeUpdateExpert”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
@@ -295,6 +295,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
 
 - 示例代码如下，仅供参考
+
     ```Cpp
     #include <thread>
     #include <iostream>

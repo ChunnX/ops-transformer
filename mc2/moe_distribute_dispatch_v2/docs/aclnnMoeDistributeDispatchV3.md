@@ -17,32 +17,33 @@
 
 - 接口功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 
-    相较于`aclnnMoeDistributeDispatchV2`接口，该接口变更如下：
-    - 新增支持特殊专家场景
-        -   zeroExpertNum≠0：通过传入大于0的zeroExpertNum参数使能本特性。
+  相较于`aclnnMoeDistributeDispatchV2`接口，该接口变更如下：
+  - 新增支持特殊专家场景
+    - zeroExpertNum≠0：通过传入大于0的zeroExpertNum参数使能本特性。
 
-            $$Moe(oriXOptional) = 0$$
+      $$Moe(oriXOptional) = 0$$
 
-        -   copyExpertNum≠0：通过传入大于0的copyExpertNum参数使能本特性，同时还需传入有效的oriXOptional参数。
+    - copyExpertNum≠0：通过传入大于0的copyExpertNum参数使能本特性，同时还需传入有效的oriXOptional参数。
 
-            $$Moe(oriXOptional) = oriXOptional$$
+      $$Moe(oriXOptional) = oriXOptional$$
 
-        -   constExpertNum≠0：通过传入大于0的constExpertNum参数使能本特性，同时还需传入有效的oriXOptional、constExpertAlpha1Optional、constExpertAlpha2Optional、constExpertVOptional参数。
+    - constExpertNum≠0：通过传入大于0的constExpertNum参数使能本特性，同时还需传入有效的oriXOptional、constExpertAlpha1Optional、constExpertAlpha2Optional、constExpertVOptional参数。
 
-            $$Moe(oriXOptional) = constExpertAlpha1Optional * oriXOptional + constExpertAlpha2Optional * constExpertVOptional$$
+      $$Moe(oriXOptional) = constExpertAlpha1Optional * oriXOptional + constExpertAlpha2Optional * constExpertVOptional$$
 
-        详细说明请参考以下参数说明。
-        参数oriXOptional、constExpertAlpha1Optional、constExpertAlpha2Optional、constExpertVOptional见aclnnMoeDistributeCombineV3.md文档。
+    详细说明请参考以下参数说明。
+
+    参数oriXOptional、constExpertAlpha1Optional、constExpertAlpha2Optional、constExpertVOptional见aclnnMoeDistributeCombineV3.md文档。
 
 - 计算公式：
 
-    - 情形1：如果不存在TP域通信。
+  - 情形1：如果不存在TP域通信。
 
     $$
     expandXOut = AllToAllV(X)\\
     $$
 
-    - 情形2：如果存在TP域通信。
+  - 情形2：如果存在TP域通信。
 
     $$
     allToAllOut = AllToAllV(X)\\
@@ -55,11 +56,9 @@
 > 说明：
 > `aclnnMoeDistributeCombineV3`、`aclnnMoeDistributeCombineAddRmsNormV2`算子在后续文档中统称为**CombineV3系列算子**。
 
-
-
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeDistributeDispatchV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeDistributeDispatchV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchV3”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(
@@ -622,6 +621,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
 
 - **Shape变量约束**：
+
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
   | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li> <li>对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。<li></ul>|
@@ -662,21 +662,26 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 ## 调用示例
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     本示例支持A2算子运行在卡数为[2, 8]的单机环境中，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
     
     - 编译算子：算子编译命令如下，moe_distribute_dispatch_v2和moe_distribute_combine_v2算子都需要编译，这两个算子需要成对执行。
+
         ```bash
         bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
         ```
-    - 创建A2示例代码：编译完成后请在算子[examples](../examples/)目录下参考已有[test_aclnn_moe_distribute_dispatch_v2.cpp](../examples/test_aclnn_moe_distribute_dispatch_v2.cpp)文件，用A2示例代码新建测试文件test_aclnn_moe_distribute_dispatch_v3.cpp。
+
+    - 创建<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>示例代码：编译完成后请在算子[examples](../examples/)目录下参考已有[test_aclnn_moe_distribute_dispatch_v2.cpp](../examples/test_aclnn_moe_distribute_dispatch_v2.cpp)文件，用A2示例代码新建测试文件test_aclnn_moe_distribute_dispatch_v3.cpp。
 
     - 执行算子样例：示例算子执行命令如下，该命令会执行算子[examples](../examples/)目录下所有的示例代码文件。
+
         ```bash
         bash build.sh --run_example --ops=moe_distribute_dispatch_v2 eager cust
         ```
-    - A2示例代码：
+
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>示例代码：
+
         ```Cpp
         #include <thread>
         #include <iostream>

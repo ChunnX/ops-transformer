@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 * 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**跟[aclnnFlashAttentionVarLenScoreV3](./aclnnFlashAttentionVarLenScoreV3.md)接口的区别是：增加`sinkInOptional`可选输入,保留了[aclnnFlashAttentionVarLenScoreV4](./aclnnFlashAttentionVarLenScoreV4.md)的`softmaxOutLayout`可选输入。**
@@ -38,8 +37,6 @@ $$
 $$
 Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + S^{sink - m}}
 $$
-
-
 
 ## 函数原型
 
@@ -79,6 +76,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   void              *workspace,
@@ -86,7 +84,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   aclOpExecutor     *executor,
   const aclrtStream  stream)
 ```
-
 
 ## aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize
 
@@ -466,8 +463,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </tbody>
   </table>
 
-
-
 ## aclnnFlashAttentionVarLenScoreV5
 
 - **参数说明**
@@ -508,9 +503,9 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </table>
 
 
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -551,7 +546,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
 - attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional，假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
-
 
 ## 调用示例
 

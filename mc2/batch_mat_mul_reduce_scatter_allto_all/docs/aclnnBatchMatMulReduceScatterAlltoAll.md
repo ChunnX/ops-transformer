@@ -37,7 +37,7 @@ $$
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBatchMatMulReduceScatterAlltoAll”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBatchMatMulReduceScatterAlltoAll”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(
@@ -191,7 +191,6 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
     </tr>
     </tbody></table>
 
-
 ## aclnnBatchMatMulReduceScatterAlltoAll
 
 - **参数说明**
@@ -240,6 +239,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
   - aclnnBatchMatMulReduceScatterAlltoAll默认确定性实现。
 
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=epWorldSize，tp=tpWorldSize）
+
 - 按H轴进行ReduceScatter场景，即yShardType为0场景：
   - x: (E/ep, ep*C, M/tp) 
   - weight：(E/ep, M/tp, H)
@@ -266,7 +266,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 

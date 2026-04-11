@@ -39,7 +39,7 @@
   - aclnnWeightQuantMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
   - aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，原非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
 
-- 每个算子分为两段式接口，必须先调用“aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnWeightQuantMatmulAllReduceAddRmsNorm”接口执行计算。
+- 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnWeightQuantMatmulAllReduceAddRmsNorm”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -61,6 +61,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
     void             *workspace,

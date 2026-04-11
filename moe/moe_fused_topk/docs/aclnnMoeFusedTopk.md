@@ -13,46 +13,46 @@
 
 ## 功能说明
 
--   接口功能：MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
--   计算公式：
+- 接口功能：MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
+- 计算公式：
 
-    对输入做sigmoid：
+  对输入做sigmoid：
 
-    $$
-    sigmoidRes=sigmoid(x)
-    $$
+  $$
+  sigmoidRes=sigmoid(x)
+  $$
 
-    加上addNum：
+  加上addNum：
 
-    $$
-    normOut = sigmoidRes + addNum
-    $$
+  $$
+  normOut = sigmoidRes + addNum
+  $$
 
-    对计算结果按照groupNum进行分组，每组按照topN的sum值对group进行排序，取前groupTopk个组：
+  对计算结果按照groupNum进行分组，每组按照topN的sum值对group进行排序，取前groupTopk个组：
 
-    $$
-    groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
-    $$
+  $$
+  groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
+  $$
 
-    根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到indices的结果：
+  根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到indices的结果：
 
-    $$
-    normY,indices=TopK(normOut[groupId, :],k=k)
-    $$
+  $$
+  normY,indices=TopK(normOut[groupId, :],k=k)
+  $$
 
-    根据indices从sigmoidRes中选出y:
+  根据indices从sigmoidRes中选出y:
 
-    $$
-    y = gather(sigmoidRes, indices)
-    $$
+  $$
+  y = gather(sigmoidRes, indices)
+  $$
 
-    如果isNorm为true，对y按照输入的scale参数进行计算，得到y的结果：
+  如果isNorm为true，对y按照输入的scale参数进行计算，得到y的结果：
 
-    $$
-    y = y / (ReduceSum(y, dim=-1))*scale
-    $$
-    
-    如果enableExpertMapping为true，再将indices中的物理专家按照输入的mappingNum和mappingTable映射到逻辑专家，得到输出的indices。
+  $$
+  y = y / (ReduceSum(y, dim=-1))*scale
+  $$
+  
+  如果enableExpertMapping为true，再将indices中的物理专家按照输入的mappingNum和mappingTable映射到逻辑专家，得到输出的indices。
 
 
 ## 函数原型
@@ -376,7 +376,9 @@ aclnnStatus aclnnMoeFusedTopk(
 - groupNum小于等于256。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 ```Cpp
 #include <iostream>
 #include <memory>

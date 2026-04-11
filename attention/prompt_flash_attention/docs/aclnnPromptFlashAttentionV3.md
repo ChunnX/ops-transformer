@@ -17,23 +17,23 @@
 
 - 接口功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
 
--   计算公式：
+- 计算公式：
 
-    self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
+  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
-    self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。公式及算子名称中的"Attention"为"self-attention"的简写。
+  self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。公式及算子名称中的"Attention"为"self-attention"的简写。
 
-    $$
-    Attention(Q,K,V)=Score(Q,K)V
-    $$
+  $$
+  Attention(Q,K,V)=Score(Q,K)V
+  $$
 
-    本算子中Score函数采用Softmax函数，self-attention计算公式为：
+  本算子中Score函数采用Softmax函数，self-attention计算公式为：
 
-    $$
-    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
-    $$
+  $$
+  Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
+  $$
 
-    其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
+  其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
 ## 函数原型
 
@@ -345,14 +345,12 @@ aclnnStatus aclnnPromptFlashAttentionV3(
       </tr>
     </tbody></table>
     </div>
-    
-  
-  
+
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
-  第一段接口完成入参校验，若出现以下错误码，则对应原因为：
+   第一段接口会完成入参校验，出现以下场景时报错：
   
   <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
   <col style="width: 302px">
@@ -423,10 +421,9 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   </tbody>
   </table>
 
+- **返回值**
 
--   **返回值**
-
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

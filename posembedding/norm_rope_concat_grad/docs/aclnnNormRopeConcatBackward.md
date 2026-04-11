@@ -13,12 +13,12 @@
 
 ## 功能说明
 
--   算子功能：（多模态）transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导：
+- 算子功能：（多模态）transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导：
 
-    -   归一化（Norm）当前支持层归一化（LayerNorm）和带仿射变换参数层归一化（AFFINE LayerNorm）类型。
-    -   旋转位置编码（Rope）支持Interleave和Half类型。
+    - 归一化（Norm）当前支持层归一化（LayerNorm）和带仿射变换参数层归一化（AFFINE LayerNorm）类型。
+    - 旋转位置编码（Rope）支持Interleave和Half类型。
 
--   计算公式：
+- 计算公式：
 
     - **LayerNorm反向推导：**
     $$
@@ -618,7 +618,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
   </tbody>
   </table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

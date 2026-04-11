@@ -568,18 +568,20 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
 - innerPrecise: 当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。
   如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - pseType 各个取值含义
+
   | pseType | 含义 | 备注 |
   | ----------- | --------------------------------- | ----------|
   | 0 | 外部传入pse 先mul再add | - |
   | 1 | 外部传入pse 先add再mul | 跟[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现一致。 |
   | 2 | 内部生成pse 先mul再add | - |
   | 3 | 内部生成pse 先mul再add再sqrt | - |
+
 - sparseMode的约束如下:
-    - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
-    - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
-    - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
-    - 用户不特意指定时建议传入0。
-    - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+  - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
+  - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
+  - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
+  - 用户不特意指定时建议传入0。
+  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error）
   ，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[T, N, 8\],注：T=B*S。

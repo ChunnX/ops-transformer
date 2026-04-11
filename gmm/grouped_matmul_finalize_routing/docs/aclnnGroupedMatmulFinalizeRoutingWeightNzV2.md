@@ -18,6 +18,7 @@
 GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为AI处理器亲和数据排布格式(NZ)。
 
 本接口相较于aclnnGroupedMatmulFinalizeRoutingWeightNz，此接口新增：
+
 - 新增入参offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、tuningConfigOptional，其中前三个参数当前为预留参数，暂不生效，传入空指针即可。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增对INT4类型weight矩阵的支持，支持tuningConfigOptional调优参数，数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。请根据实际情况选择合适的接口。
 - <term>Ascend 950PR/Ascend 950DT</term>：新增Pertoken-perchannel和静态pertensor-perchannel量化场景，相关信息参考[量化介绍](../../../docs/zh/context/量化介绍.md)。
@@ -425,7 +426,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     | INT8 | INT8 | FLOAT/BFLOAT16 | BFLOAT16/null    | null    | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64/INT32    | FLOAT |   null             |
     | FLOAT8_E4M3FN |  FLOAT8_E4M3FN | FLOAT/BFLOAT16   | BFLOAT16/null | null | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   null             |
     | HIFLOAT8 |  HIFLOAT8 | FLOAT/BFLOAT16   | BFLOAT16/null | null | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   null             |
-    
 
 ## 调用示例
 

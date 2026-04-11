@@ -11,46 +11,44 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
--   接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScore](../../flash_attention_score/docs/aclnnFlashAttentionScore.md)的反向计算。
--   计算公式：
+- 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScore](../../flash_attention_score/docs/aclnnFlashAttentionScore.md)的反向计算。
+- 计算公式：
 
-    已知注意力的正向计算公式为：
+  已知注意力的正向计算公式为：
 
-    $$
-    Y=Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
-    $$
+  $$
+  Y=Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
+  $$
 
-    为方便表达，以变量$S$和$P$表示计算公式：
+  为方便表达，以变量$S$和$P$表示计算公式：
 
-    $$
-    S=Mask(\frac{QK^T+pse}{\sqrt{d}},atten\_mask)
-    $$
+  $$
+  S=Mask(\frac{QK^T+pse}{\sqrt{d}},atten\_mask)
+  $$
 
-    $$
-    P=Dropout(Softmax(S),keep\_prob)
-    $$
+  $$
+  P=Dropout(Softmax(S),keep\_prob)
+  $$
 
-    $$
-    Y=PV
-    $$
+  $$
+  Y=PV
+  $$
 
-    则注意力的反向计算公式为：
+  则注意力的反向计算公式为：
 
-    $$
-    dV=P^TdY
-    $$
+  $$
+  dV=P^TdY
+  $$
 
-    $$
-    dQ=\frac{((dS)*K)}{\sqrt{d}}
-    $$
+  $$
+  dQ=\frac{((dS)*K)}{\sqrt{d}}
+  $$
 
-    $$
-    dK=\frac{((dS)^T*Q)}{\sqrt{d}}
-    $$
-
+  $$
+  dK=\frac{((dS)^T*Q)}{\sqrt{d}}
+  $$
 
 ## 函数原型
 
@@ -86,6 +84,7 @@ aclnnStatus aclnnFlashAttentionScoreGradGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGrad(
   void             *workspace, 
@@ -93,7 +92,6 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   aclOpExecutor    *executor, 
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGradGetWorkspaceSize
 
@@ -427,7 +425,6 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   </tbody>
   </table>
 
-
 ## aclnnFlashAttentionScoreGrad
 
 - **参数说明**
@@ -481,7 +478,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 - 输入query、key、value、pseShiftOptional的数据类型必须一致。
 - 输入key/value的shape除D外必须一致，在query/key/value的D大小相同的情况下，query/dy的shape必须一致。
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
--   关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
+- 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
@@ -498,13 +495,12 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
--   部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
--   关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]；TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
--   headNum的取值必须和传入的Query中的N值保持一致。
--   band场景，preTokens和nextTokens之间必须要有交集。
--   pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
--   prefixOptional稀疏计算场景，即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-
+- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]；TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
+- headNum的取值必须和传入的Query中的N值保持一致。
+- band场景，preTokens和nextTokens之间必须要有交集。
+- pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
+- prefixOptional稀疏计算场景，即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 
 ## 调用示例
 
@@ -751,4 +747,3 @@ int main() {
   return 0;
 }
 ```
-

@@ -34,7 +34,7 @@
 
 ## 函数原型
 
-算子执行接口为两段式接口，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize(
@@ -300,150 +300,150 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
 ## 约束说明
 
-   - 参数queryIndex、keyIndex的数据类型应保持一致。
+- 参数queryIndex、keyIndex的数据类型应保持一致。
 
-   - 参数weights不为float32时，参数queryIndex、keyIndex、weights的数据类型应保持一致。
+- 参数weights不为float32时，参数queryIndex、keyIndex、weights的数据类型应保持一致。
 
-  - 确定性计算：
-    aclnnDenseLightningIndexerSoftmaxLse默认确定性实现。
+- 确定性计算：
+  aclnnDenseLightningIndexerSoftmaxLse默认确定性实现。
 
-  - 公共约束
-    - 入参为空的场景处理：
-        - queryIndex为空Tensor：直接返回。
-        - SFAG公共约束里入参为空的场景和FAG保持一致。
+- 公共约束
+  - 入参为空的场景处理：
+    - queryIndex为空Tensor：直接返回。
+    - SFAG公共约束里入参为空的场景和FAG保持一致。
 
-    <table style="undefined;table-layout: fixed; width: 901px"><colgroup>
-    <col style="width: 168px">
-    <col style="width: 565px">
-    <col style="width: 168px">
-    </colgroup>
-    <thead>
-     <tr>
-      <th>sparseMode</th>
-      <th>含义</th>
-      <th>备注</th>
-     </tr>
-    </thead>
-    <tbody>
-     <tr>
-      <td>0</td>
-      <td>defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens；如果传入，则需要传入完整的attenmask矩阵，表示preTokens和nextTokens之间的部分需要计算</td>
-      <td>不支持</td>
-     </tr>
-     <tr>
-      <td>1</td>
-      <td>allMask，必须传入完整的attenmask矩阵</td>
-      <td>不支持</td>
-     </tr>
-     <tr>
-      <td>2</td>
-      <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵</td>
-      <td>不支持</td>
-     </tr>
-     <tr>
-      <td>3</td>
-      <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵</td>
-      <td>支持</td>
+  <table style="undefined;table-layout: fixed; width: 901px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 565px">
+  <col style="width: 168px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>sparseMode</th>
+    <th>含义</th>
+    <th>备注</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+    <td>0</td>
+    <td>defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens；如果传入，则需要传入完整的attenmask矩阵，表示preTokens和nextTokens之间的部分需要计算</td>
+    <td>不支持</td>
     </tr>
     <tr>
-      <td>4</td>
-      <td>band模式的mask，需要传入优化后的attenmask矩阵</td>
-      <td>不支持</td>
+    <td>1</td>
+    <td>allMask，必须传入完整的attenmask矩阵</td>
+    <td>不支持</td>
     </tr>
     <tr>
-      <td>5</td>
-      <td>prefix</td>
-      <td>不支持</td>
+    <td>2</td>
+    <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵</td>
+    <td>不支持</td>
     </tr>
     <tr>
-      <td>6</td>
-      <td>global</td>
-      <td>不支持</td>
-    </tr>
-    <tr>
-      <td>7</td>
-      <td>dilated</td>
-      <td>不支持</td>
-    </tr>
-    <tr>
-      <td>8</td>
-      <td>block_local</td>
-      <td>不支持</td>
-    </tr>
-    </tbody>
-    </table>
+    <td>3</td>
+    <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵</td>
+    <td>支持</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>band模式的mask，需要传入优化后的attenmask矩阵</td>
+    <td>不支持</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td>prefix</td>
+    <td>不支持</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td>global</td>
+    <td>不支持</td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td>dilated</td>
+    <td>不支持</td>
+  </tr>
+  <tr>
+    <td>8</td>
+    <td>block_local</td>
+    <td>不支持</td>
+  </tr>
+  </tbody>
+  </table>
 
-  - 规格约束
+- 规格约束
 
-    <table style="undefined;table-layout: fixed; width: 909px"><colgroup>
-    <col style="width: 125px">
-    <col style="width: 182px">
-    <col style="width: 602px">
-    </colgroup>
-    <thead>
-    <tr>
-      <th>规格项</th>
-      <th>规格</th>
-      <th>规格说明</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td>B</td>
-      <td>1~256</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>S1、S2</td>
-      <td>1~128K</td>
-      <td>S1、S2支持不等长，当layout为BSND时，S1<=S2；layout为TND时，actualSeqLengthsQuery小于等于actualSeqLengthsKey相同索引位置的值，且相同索引位置S1<=S2。</td>
-    </tr>
-    <tr>
-      <td>Nidx1</td>
-      <td>8、16、32、64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>Nidx2</td>
-      <td>1</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>D</td>
-      <td>128</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>layout</td>
-      <td>BSND/TND</td>
-      <td>-</td>
-    </tr>
-    </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 909px"><colgroup>
+  <col style="width: 125px">
+  <col style="width: 182px">
+  <col style="width: 602px">
+  </colgroup>
+  <thead>
+  <tr>
+    <th>规格项</th>
+    <th>规格</th>
+    <th>规格说明</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>B</td>
+    <td>1~256</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>S1、S2</td>
+    <td>1~128K</td>
+    <td>S1、S2支持不等长，当layout为BSND时，S1<=S2；layout为TND时，actualSeqLengthsQuery小于等于actualSeqLengthsKey相同索引位置的值，且相同索引位置S1<=S2。</td>
+  </tr>
+  <tr>
+    <td>Nidx1</td>
+    <td>8、16、32、64</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>Nidx2</td>
+    <td>1</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>D</td>
+    <td>128</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>layout</td>
+    <td>BSND/TND</td>
+    <td>-</td>
+  </tr>
+  </tbody>
+  </table>
 
-  - 典型值
-  
-    <table style="undefined;table-layout: fixed; width: 903px"><colgroup>
-    <col style="width: 164px">
-    <col style="width: 739px">
-    </colgroup>
-    <thead>
-    <tr>
-      <th>规格项</th>
-      <th>典型值</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td>queryIndex</td>
-      <td>N1 = 64/32;  D = 128 ; S1 = 64k/128k</td>
-    </tr>
-    <tr>
-      <td>keyIndex</td>
-      <td>D = 128。</td>
-    </tr>
-    </tbody>
-    </table>
+- 典型值
+
+  <table style="undefined;table-layout: fixed; width: 903px"><colgroup>
+  <col style="width: 164px">
+  <col style="width: 739px">
+  </colgroup>
+  <thead>
+  <tr>
+    <th>规格项</th>
+    <th>典型值</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>queryIndex</td>
+    <td>N1 = 64/32;  D = 128 ; S1 = 64k/128k</td>
+  </tr>
+  <tr>
+    <td>keyIndex</td>
+    <td>D = 128。</td>
+  </tr>
+  </tbody>
+  </table>
 
 ## 调用示例
 

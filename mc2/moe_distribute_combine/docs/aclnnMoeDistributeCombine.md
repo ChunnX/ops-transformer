@@ -28,7 +28,7 @@ $$
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 `aclnnMoeDistributeCombineGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMoeDistributeCombine`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 `aclnnMoeDistributeCombineGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMoeDistributeCombine`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineGetWorkspaceSize(
@@ -557,7 +557,6 @@ aclnnStatus aclnnMoeDistributeCombine(
 
 11. 组网约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
-
 
 ## 调用示例
 

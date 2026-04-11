@@ -15,7 +15,6 @@
 
 将Attention节点上token数据发往FFN节点。
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAttentionToFFNGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnAttentionToFFN”接口执行计算。
@@ -42,6 +41,7 @@ aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
     uint64_t           *workspaceSize,
     aclOpExecutor     **executor)
 ```
+
 ```c++
 aclnnStatus aclnnAttentionToFFN(
     void            *workspace,
@@ -306,7 +306,6 @@ aclnnStatus aclnnAttentionToFFN(
     </tbody>
     </table>
 
-
 ## aclnnAttentionToFFN
 
 - **参数说明：**
@@ -345,9 +344,9 @@ aclnnStatus aclnnAttentionToFFN(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -382,7 +381,6 @@ aclnnStatus aclnnAttentionToFFN(
 
 - **通信域使用约束**：
   - AttentionToFFN算子的通信域中不允许有其他算子。
-  
 
 ## 调用示例
 

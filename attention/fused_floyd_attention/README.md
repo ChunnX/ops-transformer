@@ -14,17 +14,15 @@
 
 - 计算公式：
 
-    注意力的正向计算公式如下：
+  注意力的正向计算公式如下：
 
-    $$
-    weights = Softmax(attenMask + scale*(einsum(query, key1^T) + einsum(query, key2^T)))
-    $$
-    
-    $$
-    attention\_out = einsum(weights, value1) + einsum(weights, value2)
-    $$
-    
-
+  $$
+  weights = Softmax(attenMask + scale*(einsum(query, key1^T) + einsum(query, key2^T)))
+  $$
+  
+  $$
+  attention\_out = einsum(weights, value1) + einsum(weights, value2)
+  $$
 
 ## 参数说明
 
@@ -107,7 +105,6 @@
     </tr>
   </tbody>
 </table>
-
 
 ## 约束说明
 

@@ -2,7 +2,6 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute)
 
-
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
@@ -16,36 +15,36 @@
 
 ## 功能说明
 
--   **接口功能**: 根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
--   **计算公式**： 
+- **接口功能**: 根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
+- **计算公式**： 
 
-    - probs非None计算公式如下：
-      
-      $$
-      T[k] = T[S[k]]
-      $$
-      
-      $$
-      T[k] = T[k] * P[i][j]
-      $$
+  - probs非None计算公式如下：
+    
+    $$
+    T[k] = T[S[k]]
+    $$
+    
+    $$
+    T[k] = T[k] * P[i][j]
+    $$
 
-      $$
-      O[i] = \sum_{k=i*topK}^{(i+1)*topK - 1 } T[k]
-      $$
-      
-      其中$i \in {0,1,...,tokens-1}$；$j \in {0,1,...,topK-1}$；$k \in {0,1,...,tokens*topK-1}$；T表示permutedTokens；S表示sortedIndices；P表示probs；O表示out；topK表示topK\_num；tokens表示tokens_num。
+    $$
+    O[i] = \sum_{k=i*topK}^{(i+1)*topK - 1 } T[k]
+    $$
+    
+    其中$i \in {0,1,...,tokens-1}$；$j \in {0,1,...,topK-1}$；$k \in {0,1,...,tokens*topK-1}$；T表示permutedTokens；S表示sortedIndices；P表示probs；O表示out；topK表示topK\_num；tokens表示tokens_num。
 
-    - probs为None时，此时topK\_num=1，计算公式如下：
+  - probs为None时，此时topK\_num=1，计算公式如下：
 
-      $$
-      T[i] = T[S[i]]
-      $$
+    $$
+    T[i] = T[S[i]]
+    $$
 
-      $$
-      O[i] = T[i]
-      $$
+    $$
+    O[i] = T[i]
+    $$
 
-      其中 $i \in {0,1,...,tokens-1}$；T表示permutedTokens；S表示sortedIndices；O表示out；tokens表示tokens_num。
+    其中 $i \in {0,1,...,tokens-1}$；T表示permutedTokens；S表示sortedIndices；O表示out；tokens表示tokens_num。
 
 ## 函数原型
 
@@ -262,7 +261,6 @@ aclnnStatus aclnnMoeTokenUnpermute(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-
 
 - 确定性计算：
   - aclnnMoeTokenUnpermute默认确定性实现。
@@ -483,4 +481,3 @@ int main() {
   return 0;
 }
 ```
-

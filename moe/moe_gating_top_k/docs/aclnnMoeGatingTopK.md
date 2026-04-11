@@ -72,7 +72,6 @@
   y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
   $$
 
-
   **Step 5: Renorm 与缩放**
 
   normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
@@ -97,7 +96,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnMoeGatingTopKGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopK”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeGatingTopKGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopK”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
@@ -596,4 +595,3 @@ int main() {
   return 0;
 }
 ```
-

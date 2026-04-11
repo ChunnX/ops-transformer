@@ -108,6 +108,7 @@
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQkvRmsNormRopeCacheGetWorkspaceSize”接口获得入参并根据流程计算所需workspace大小，再调用“aclnnQkvRmsNormRopeCache”接口执行计算。
+
 ```Cpp
 aclnnStatus aclnnQkvRmsNormRopeCacheGetWorkspaceSize(
   const aclTensor   *qkv,
@@ -489,6 +490,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 ```Cpp
 #include <iostream>
 #include <vector>

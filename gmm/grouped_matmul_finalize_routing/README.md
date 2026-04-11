@@ -11,8 +11,6 @@
 
 - 算子功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作
 
-
-
 ## 参数说明
 
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
@@ -190,7 +188,6 @@
     </tr>
   </tbody>
   </table>
-
 
 ## 约束说明
 

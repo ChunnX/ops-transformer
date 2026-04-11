@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用`aclnnQuantAlltoAllvGroupedMatMulGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnQuantAlltoAllvGroupedMatMul`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnQuantAlltoAllvGroupedMatMulGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnQuantAlltoAllvGroupedMatMul`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantAlltoAllvGroupedMatMulGetWorkspaceSize(
@@ -420,7 +420,8 @@ aclnnStatus aclnnQuantAlltoAllvGroupedMatMul(
   - 当前版本仅支持pertensor量化。
 
 ## 调用示例
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 注意：由于量化接口仅支持Ascend 950PR/Ascend 950DT系列，以下示例基于该系列实现。
 

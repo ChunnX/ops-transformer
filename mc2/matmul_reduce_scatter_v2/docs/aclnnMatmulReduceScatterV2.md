@@ -15,33 +15,33 @@
 
 ## 功能说明
 
--   **接口功能**:
+- **接口功能**:
     aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上,
-    -   <term>Ascend 950PR/Ascend 950DT</term>：
-        -   新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
-    -   <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        -   新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - 新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
--   **计算公式**：
-    -   情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，对入参x1、x2、bias进行matmul计算后，进行ReduceScatter通信。
+- **计算公式**：
+    - 情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，对入参x1、x2、bias进行matmul计算后，进行ReduceScatter通信。
 
         $$
         output=ReduceScatter(x1@x2 + bias_{optional})
         $$
 
-    -   情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行matmul计算和dequant计算后，进行ReduceScatter通信。
+    - 情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行matmul计算和dequant计算后，进行ReduceScatter通信。
 
         $$
         output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
         $$
 
-    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(ceildiv(a0, 128), ceildiv(a1, 128))、x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
+    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(ceildiv(a0, 128), ceildiv(a1, 128))、x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
 
-    -   情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(a0, ceildiv(a1, 64), 2)、x2Scale为(b0, ceildiv(b1, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
+    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(a0, ceildiv(a1, 64), 2)、x2Scale为(b0, ceildiv(b1, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
@@ -49,7 +49,7 @@
     
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用`aclnnMatmulReduceScatterV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulReduceScatterV2`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMatmulReduceScatterV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulReduceScatterV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(
@@ -82,7 +82,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 ## aclnnMatmulReduceScatterV2GetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
@@ -298,7 +298,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
             groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
             $$
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -331,7 +331,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 ## aclnnMatmulReduceScatterV2
 
--   **参数说明：**
+- **参数说明：**
 
     <table style="undefined;table-layout：fixed; width：1166px"> <colgroup>
     <col style="width：173px">
@@ -367,7 +367,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -375,7 +375,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 - 确定性计算：
   - `aclnnMatmulReduceScatterV2`默认采用确定性计算实现。
--   <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -389,9 +389,9 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2的数据类型需要保持一致。
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2的数据可以为其中一种。
     - 支持2、4、8、16、32、64卡。
-    - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+    - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m* n*sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
--   <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -405,7 +405,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
