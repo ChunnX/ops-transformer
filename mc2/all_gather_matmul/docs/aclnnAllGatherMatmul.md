@@ -281,9 +281,9 @@ aclnnStatus aclnnAllGatherMatmul(
 
 - 输入x1为2维，其shape为(m, k)。x2必须是2维，其shape为(k, n)，轴满足MatMul算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
 - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
-    - m为空，k不为空，n不为空；
-    - m不为空，k不为空，n为空；
-    - m为空，k不为空，n为空。
+  - m为空，k不为空，n不为空；
+  - m不为空，k不为空，n为空；
+  - m为空，k不为空，n为空。
 - 输出为2维，其shape为(m*rank_size, n), rank_size为卡数。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。

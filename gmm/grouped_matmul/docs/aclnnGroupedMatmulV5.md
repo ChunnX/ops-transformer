@@ -233,7 +233,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>groupType</td>
           <td>输入</td>
           <td>代表需要分组的轴。</td>
-          <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</a>。</td>
+          <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</td>
           <td>-</td>
           <td>-</td>
           <td>-</td>
@@ -436,6 +436,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
     详见[Ascend 950PR/Ascend 950DT](#ascend_950pr_ascend950dt)
 <a id="计算公式"></a>
+
 - 计算公式
   <a id="非量化场景"></a>
 
@@ -447,7 +448,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   <a id="全量化场景"></a>
 
- - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
+  - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
  
     $$
       y_i=(x_i\times weight_i) * scale_i + offset_i
@@ -513,6 +514,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - 确定性计算：
   - aclnnGroupedMatmulV5默认确定性实现。
+  
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
 

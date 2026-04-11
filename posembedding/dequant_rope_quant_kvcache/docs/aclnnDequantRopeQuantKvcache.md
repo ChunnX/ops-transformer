@@ -312,6 +312,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
         <td>-</td>
         <td>-</td>
     </tr>
+    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>

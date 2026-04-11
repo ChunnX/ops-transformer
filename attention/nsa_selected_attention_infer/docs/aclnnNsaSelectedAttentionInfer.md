@@ -189,9 +189,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>actualQSeqLenOptional</td>
           <td>输入</td>
           <td>表示query的S轴实际长度。</td>
-          <td>
-  		如不使用该功能时可传入nullptr。
-          </td>
+          <td>如不使用该功能时可传入nullptr。</td>
           <td>INT64</td>
           <td>ND</td>
           <td>-</td>

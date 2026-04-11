@@ -298,7 +298,8 @@ $$
 </table>
 
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    * 不支持`expand_scales_out`。
+  * 不支持`expand_scales_out`。
+
 ## 约束说明
 
 - `MoeDistributeDispatchV3`与`CombineV3`系列算子必须配套使用，具体参考调用示例。

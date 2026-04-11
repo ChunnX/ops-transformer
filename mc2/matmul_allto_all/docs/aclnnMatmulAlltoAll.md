@@ -507,6 +507,7 @@ aclnnStatus aclnnMatmulAlltoAll(
         return 0;
     }
     ```
+
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp

@@ -20,7 +20,6 @@ $$
 output=reduce\_scatter\_base(x1@x2+bias)
 $$
 
-
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>

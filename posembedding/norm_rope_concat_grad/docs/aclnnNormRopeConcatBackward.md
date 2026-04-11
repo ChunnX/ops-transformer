@@ -101,6 +101,7 @@ aclnnStatus aclnnNormRopeConcatBackwardGetWorkspaceSize(
     uint64_t        *workspaceSize, 
     aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnNormRopeConcatBackward(
     void          *workspace, 
@@ -108,7 +109,6 @@ aclnnStatus aclnnNormRopeConcatBackward(
     aclOpExecutor *executor, 
     aclrtStream    stream)
 ```
-
 
 ## aclnnNormRopeConcatBackwardGetWorkspaceSize
 
@@ -626,7 +626,6 @@ aclnnStatus aclnnNormRopeConcatBackward(
 
 - 确定性计算：
   - aclnnNormRopeConcatBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
 
 ## 调用示例
 
@@ -1218,4 +1217,3 @@ aclnnStatus aclnnNormRopeConcatBackward(
         return 0;
     }
     ```
-

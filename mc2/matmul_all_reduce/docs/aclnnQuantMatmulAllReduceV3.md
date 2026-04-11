@@ -75,6 +75,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV3(
     void              *workspace,
