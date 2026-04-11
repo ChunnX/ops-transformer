@@ -114,7 +114,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
     </tr></thead>
   <tbody>
     <tr>
-      <td>unpermutedTokensGrad</td>
+      <td>unpermutedTokensGrad（aclTensor）</td>
       <td>输入</td>
       <td>公式中的unpermutedTokensGrad，正向输出unpermutedTokens的梯度。</td>
       <td>tokens_num代表token个数，hidden_size代表token的维度大小。</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>sortedIndices</td>
+      <td>sortedIndices（aclTensor）</td>
       <td>输入</td>
       <td>公式中的sortedIndices。</td>
       <td>索引取值范围[0, tokens_num * topkNum - 1]。</td>
@@ -134,7 +134,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>permutedTokensOptional</td>
+      <td>permutedTokensOptional（aclTensor）</td>
       <td>输入</td>
       <td>公式中的permutedTokensOptional。</td>
       <td>要求topkNum &lt;= 512。</td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>probsOptional</td>
+      <td>probsOptional（aclTensor）</td>
       <td>输入</td>
       <td>公式中的probsOptional。</td>
       <td>当probs传时，topkNum等于probs第2维；当probs不传时，topkNum=1。</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>paddedMode</td>
+      <td>paddedMode（bool）</td>
       <td>输入</td>
       <td>true表示开启paddedMode，false表示关闭paddedMode。paddedMode表示填充模式。</td>
       <td>目前仅支持false。</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>restoreShapeOptional</td>
+      <td>restoreShapeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>公式中的restoreShapeOptional，当paddedMode为true后生效，否则不会对其进行操作。</td>
       <td>当前仅支持nullptr。</td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>rangeOptional</td>
+      <td>rangeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>公式中的rangeOptional，ep切分的有效范围。</td>
       <td>要求rangeOptional[0]代表的起始位置小于rangeOptional[1]代表的结束位置。为空时不生效。</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>topkNum</td>
+      <td>topkNum（int64_t）</td>
       <td>输入</td>
       <td>公式中的topkNum，每个token被选中的专家个数。</td>
       <td>-</td>
@@ -194,7 +194,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>permutedTokensGradOut</td>
+      <td>permutedTokensGradOut（aclTensor）</td>
       <td>输出</td>
       <td>permutedTokens的梯度，公式中的permutedTokensGradOut。</td>
       <td>-</td>
@@ -204,7 +204,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>probsGradOut</td>
+      <td>probsGradOut（aclTensor）</td>
       <td>输出</td>
       <td>公式中的probsGradOut，probs的梯度。</td>
       <td>(tokens_num, topkNum)</td>
@@ -214,7 +214,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -224,7 +224,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>

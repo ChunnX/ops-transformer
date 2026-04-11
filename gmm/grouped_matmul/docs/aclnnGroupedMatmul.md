@@ -102,7 +102,7 @@ aclnnStatus aclnnGroupedMatmul(
     </thead>
     <tbody>
       <tr>
-        <td>x</td>
+        <td>x（aclTensorList）</td>
         <td>输入</td>
         <td>公式中的输入x。</td>
         <td>
@@ -116,7 +116,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>weight</td>
+        <td>weight（aclTensorList）</td>
         <td>输入</td>
         <td>公式中的weight。</td>
         <td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>biasOptional</td>
+        <td>biasOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>公式中的bias。</td>
         <td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>scaleOptional</td>
+        <td>scaleOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表量化参数中的缩放因子。</td>
         <td>
@@ -158,7 +158,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>offsetOptional</td>
+        <td>offsetOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表量化参数中的偏移量。</td>
         <td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantScaleOptional</td>
+        <td>antiquantScaleOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的缩放因子。</td>
         <td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantOffsetOptional</td>
+        <td>antiquantOffsetOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的偏移量。</td>
         <td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>groupListOptional</td>
+        <td>groupListOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表输入和输出M方向的matmul索引情况。</td>
         <td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>splitItem</td>
+        <td>splitItem（int64_t）</td>
         <td>输入</td>
         <td>整数型参数，代表输出是否要做tensor切分。</td>
         <td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>y</td>
+        <td>y（aclTensorList）</td>
         <td>输出</td>
         <td>公式中的输出y。</td>
         <td>
@@ -243,7 +243,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>workspaceSize</td>
+        <td>workspaceSize（uint64_t）</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>executor</td>
+        <td>executor（aclOpExecutor）</td>
         <td>输出</td>
         <td>返回op执行器，包含了算子计算流程。</td>
         <td>-</td>
