@@ -304,7 +304,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>globalBs</td>
     <td>输入</td>
-    <td>EP域全局batch size。</li></td>
+    <td>EP域全局batch size。</td>
     <td><br> <li> 各卡Bs一致时：<code>globalBs = Bs * epWorldSize</code> 或 0；</li> <li> 各卡Bs不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡Bs最大值。</li></td>
     <td>INT64</td>
     <td>-</td>
@@ -622,14 +622,41 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 - **Shape变量约束**：
 
-  | 变量         | 定义与取值范围                                                                 |
-  | :----------- | :----------------------------------------------------------------------------- |
-  | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li> <li>对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。<li></ul>|
-  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[1024, 8192]。</li></ul> |
-  | Bs           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"取值范围为 (0 < Bs ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为 (0 < Bs ≤ 512)；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：0 < Bs ≤512，且当commAlg为"fullmesh_v2"时，需满足0 <Bs ≤256。 </li></ul> |
-  | topK    | 表示选取topK个专家，取值范围为0 < K ≤16，且<code>0 < K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum</code>。<br> <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当commAlg为"fullmesh_v2"时，取值范围为0 < K ≤ 12。|
-  | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量。                                                  |
-  | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：应满足 0 < localExpertNum * epWorldSize ≤ 2048。|
+    <table style="undefined;table-layout: fixed; width: 1189px"><colgroup>
+    <col style="width: 186px">
+    <col style="width: 1003px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>变量</th>
+        <th>定义与取值范围</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+        <td>A</td>
+        <td>表示本卡需要分发的最大token数量，取值范围如下：<ul><li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li><li>对于MoE专家，当globalBs为0时，要满足A &gt;= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A &gt;= globalBs * min(localExpertNum, K)。</li></ul></td>
+    </tr>
+    <tr>
+        <td>H（hidden size）</td>
+        <td>表示hidden size隐藏层大小。<ul><li>Atlas A2 训练系列产品/Atlas A2 推理系列产品：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：取值范围[1024, 8192]。</li></ul></td>
+    </tr>
+    <tr>
+        <td>Bs</td>
+        <td>表示本卡最终输出token数。<ul><li>Atlas A2 训练系列产品/Atlas A2 推理系列产品：依commAlg取值，"fullmesh"取值范围为 (0 &lt; Bs ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为 (0 &lt; Bs ≤ 512)；</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：0 &lt; Bs ≤512，且当commAlg为"fullmesh_v2"时，需满足0 &lt;Bs ≤256。</li></ul></td>
+    </tr>
+    <tr>
+        <td>topK</td>
+        <td>表示选取topK个专家，取值范围为0 &lt; K ≤16，且0 &lt; K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum。<br>Atlas A3 训练系列产品/Atlas A3 推理系列产品：当commAlg为"fullmesh_v2"时，取值范围为0 &lt; K ≤ 12。</td>
+    </tr>
+    <tr>
+        <td>serverNum</td>
+        <td>表示服务器节点数，仅支持2、4、8。<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量。</td>
+    </tr>
+    <tr>
+        <td>localExpertNum</td>
+        <td>本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = moeExpertNum/(epWorldSize-sharedExpertRankNum)，localExpertNum &gt; 1时不支持TP通信。</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：应满足 0 &lt; localExpertNum * epWorldSize ≤ 2048。</li></ul></td>
+    </tr>
+    </tbody></table>
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
@@ -1101,6 +1128,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
             return 0;
         }
         ```
+
 - <term>Ascend 950PR/Ascend 950DT</term> ：请参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
@@ -1108,6 +1136,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
+
     ```Cpp
     #include <thread>
     #include <iostream>

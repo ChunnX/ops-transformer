@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
-
 ## 功能说明
 
 - **接口功能**：[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)的反向传播，完成tokens的加权求和。

@@ -18,7 +18,7 @@
 
   |场景类型|情况概要|
   |:---|:---|
-  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<br><ul><li>qkv 经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li>
+  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<ul><li>qkv 经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
 
 - 计算公式：
 
@@ -173,7 +173,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>qkv</td>
       <td>输入</td>
       <td>用于切分出q、k、v的输入数据，对应计算公式中的qkv。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>qkv</sub> * D<sub>qkv</sub>]。</ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>qkv</sub> * D<sub>qkv</sub>]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>qGamma</td>
       <td>输入</td>
       <td>用于q的rms_norm计算的输入数据，对应计算公式中的gamma。</td>
-      <td><ul><li>不支持空Tensor。<li>与输入qkv的数据类型相同。<li>shape为[D<sub>qkv</sub>]。</li></ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>与输入qkv的数据类型相同。</li><li>shape为[D<sub>qkv</sub>]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>1</td>
@@ -193,7 +193,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>kGamma</td>
       <td>输入</td>
       <td>用于k的rms_norm计算的输入数据，对应计算公式中的gamma。</td>
-      <td><ul><li>不支持空Tensor。<li>与输入qkv的数据类型相同。<li>shape为[D<sub>qkv</sub>]。</li></ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>与输入qkv的数据类型相同。</li><li>shape为[D<sub>qkv</sub>]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>1</td>
@@ -213,7 +213,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>sin</td>
       <td>输入</td>
       <td>用于rope计算的输入数据，对输入张量进行正弦变换，对应计算公式中的sin。</td>
-      <td><ul><li>不支持空Tensor。</li><li>与输入cos的数据类型、格式保持一致。</ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>与输入cos的数据类型、格式保持一致。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2</td>
@@ -263,7 +263,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>kScaleOptional</td>
       <td>输入</td>
       <td>可选参数，当kCache为INT8数据类型时需要存在。对应计算公式中的kScale。</td>
-      <td><ul><li>shape为[N<sub>k</sub>, D<sub>qkv</sub>]。</ul></td>
+      <td>shape为[N<sub>k</sub>, D<sub>qkv</sub>]。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>2</td>
@@ -273,7 +273,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>vScaleOptional</td>
       <td>输入</td>
       <td>可选参数，当vCache为INT8数据类型时需要存在。对应计算公式中的vScale。</td>
-      <td><ul><li>shape为[N<sub>v</sub>, D<sub>qkv</sub>]。</ul></td>
+      <td>shape为[N<sub>v</sub>, D<sub>qkv</sub>]。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>2</td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>qkvSize</td>
       <td>输入</td>
       <td>按[B<sub>qkv</sub>, S<sub>qkv</sub>, N<sub>qkv</sub>, D<sub>qkv</sub>]顺序传入，提供输入参数qkv矩阵的B，S，N，D维度具体尺寸。</td>
-      <td><ul><li>要求N<sub>qkv</sub> = N<sub>q</sub> + N<sub>k</sub> + N<sub>v</sub>。<li>元素数量严格等于4，各元素必须为非零有效正整数。</li></ul></td>
+      <td><ul><li>要求N<sub>qkv</sub> = N<sub>q</sub> + N<sub>k</sub> + N<sub>v</sub>。</li><li>元素数量严格等于4，各元素必须为非零有效正整数。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -313,7 +313,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>headNums</td>
       <td>输入</td>
       <td>按[N<sub>q</sub>, N<sub>k</sub>, N<sub>v</sub>]顺序传入，提供输入参数qkv矩阵中，qkv分量单元中分的N维度具体尺寸。</td>
-      <td><ul><li>[N<sub>q</sub>, N<sub>k</sub>, N<sub>v</sub>]必须为实际原始值，不可进行约化。</ul></td>
+      <td>[N<sub>q</sub>, N<sub>k</sub>, N<sub>v</sub>]必须为实际原始值，不可进行约化。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -323,7 +323,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>epsilon</td>
       <td>输入</td>
       <td>RmsNorm计算中防止除0。对应计算公式中的epsilon。</td>
-      <td><ul><li>建议值为1e-6</ul></td>
+      <td>建议值为1e-6</td>
       <td>FLOAT32</td>
       <td>-</td>
       <td>-</td>
@@ -333,7 +333,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>cacheModeOptional</td>
       <td>输入</td>
       <td>表示cache的格式。</td>
-      <td><ul><li>建议值为"PA_NZ"。</ul></td>
+      <td>建议值为"PA_NZ"。</td>
       <td>CHAR*</td>
       <td>-</td>
       <td>-</td>
@@ -343,7 +343,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>qOutBeforeQuant</td>
       <td>输出</td>
       <td>表示即将写入到qOut中的数据。</td>
-      <td><ul><li>分型、数据类型，需要与输入参数qkv保持一致。<li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>q</sub> * D<sub>qkv</sub>]。</li></ul></td>
+      <td><ul><li>分型、数据类型，需要与输入参数qkv保持一致。</li><li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>q</sub> * D<sub>qkv</sub>]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2</td>
@@ -353,7 +353,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>kOutBeforeQuant</td>
       <td>输出</td>
       <td>表示即将写入到vCache中的数据，在未经量化和Scatter前的中间计算结果。</td>
-      <td><ul><li>分型、数据类型，需要与输入参数qkv保持一致。<li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>q</sub> * D<sub>qkv</sub>]。</li></ul></td>
+      <td><ul><li>分型、数据类型，需要与输入参数qkv保持一致。</li><li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>q</sub> * D<sub>qkv</sub>]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2</td>
@@ -363,7 +363,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
       <td>vOutBeforeQuant</td>
       <td>输出</td>
       <td>表示即将写入到vCache中的数据，在未经量化和Scatter前的中间计算结果。</td>
-      <td><ul><li>分型、数据类型，需要与输入参数qkv保持一致。<li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>q</sub> * D<sub>qkv</sub>]。</li></ul></td>
+      <td><ul><li>分型、数据类型，需要与输入参数qkv保持一致。</li><li>shape为[B<sub>qkv</sub> * S<sub>qkv</sub>, N<sub>q</sub> * D<sub>qkv</sub>]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2</td>

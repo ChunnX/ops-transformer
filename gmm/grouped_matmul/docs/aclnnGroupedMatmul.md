@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
         <td>-</td>
       </tr>
-    <tbody></table>
+    </tbody></table>
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - x、weight支持FLOAT16、BFLOAT16、INT8

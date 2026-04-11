@@ -221,7 +221,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>xActiveMaskOptional</td>
     <td>输入</td>
     <td>标识token是否参与通信。</td>
-    <td><ul><li>可传有效数据或空指针，默认所有token参与通信，1D时shape为 (BS, )，2D时shape为 (BS, K)。</li><li>各卡BS不一致时所有token需有效。</li></td>
+    <td><ul><li>可传有效数据或空指针，默认所有token参与通信，1D时shape为 (BS, )，2D时shape为 (BS, K)。</li><li>各卡BS不一致时所有token需有效。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     <td>-</td>
@@ -431,7 +431,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-    <td><ul><li>各卡Bs一致时：<code>globalBs = Bs*epWorldSize</code> 或 0。</li><li>各卡Bs不一致时：<code>globalBs = maxBs*epWorldSize</code>（maxBs为单卡Bs最大值）。</li></td>
+    <td><ul><li>各卡Bs一致时：<code>globalBs = Bs*epWorldSize</code> 或 0。</li><li>各卡Bs不一致时：<code>globalBs = maxBs*epWorldSize</code>（maxBs为单卡Bs最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -712,6 +712,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调用aclnnMoeDistributeDispatchV3和aclnnMoeDistributeCombineAddRmsNormV2接口，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
+
     ```Cpp
     #include <thread>
     #include <iostream>

@@ -35,6 +35,7 @@ aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnFFNToAttention(
     void           *workspace,

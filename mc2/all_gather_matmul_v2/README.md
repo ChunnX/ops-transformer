@@ -14,6 +14,7 @@
 ## 功能说明
 
 - **算子功能**：
+
   完成AllGather通信与MatMul计算融合。在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，同时也支持低精度数据类型，此时算子在Matmul计算后会做对应的反量化计算，支持的低精度数据类型与量化方式如下：
       
   - <term>Ascend 950PR/Ascend 950DT</term>：

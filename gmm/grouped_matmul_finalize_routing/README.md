@@ -1,6 +1,6 @@
 # GroupedMatmulFinalizeRouting
 
-##  产品支持情况
+## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
@@ -201,8 +201,6 @@
 | INT8 | INT8（NZ） | FLOAT32       | null         | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT   |
 | INT8 | INT4（NZ） | INT64         | FLOAT32      | FLOAT32        | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT   |
 | INT8 | INT4（NZ） | INT64         | FLOAT32      | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT   |
-
-
 
 ## 调用说明
 

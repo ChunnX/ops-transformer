@@ -578,7 +578,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>输入</td>
         <td>是否输出softmax_lse。</td>
           <td><ul><li>支持S轴外切（增加输出）。</li>
-              <li>用户不特意指定时建议传入false。</li></td>
+              <li>用户不特意指定时建议传入false。</li></ul></td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -629,7 +629,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD_TND时，shape必须为[T, N, 1]。</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>
@@ -1276,7 +1275,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - per-channel模式：两个参数的shape可支持(1, N, 1, D)，(1, N, D)，(1, H)。参数数据类型和query数据类型相同，当key、value数据类型为INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN时支持。当key、value数据类型为HIFLOAT8、FLOAT8_E4M3FN时不支持带antiquantOffset。
       - per-tensor模式：两个参数的shape均为(1)，数据类型和query数据类型相同，当key、value数据类型为INT8、INT4(INT32)时支持。
       - per-token模式：两个参数的shape可支持(1, B, S)，( B, S)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4(INT32)时支持。
-       - per-tensor叠加per-head模式：两个参数的shape均为(N)，数据类型和query数据类型相同，当key、value数据类型为INT8、INT4(INT32)时支持。
+      - per-tensor叠加per-head模式：两个参数的shape均为(N)，数据类型和query数据类型相同，当key、value数据类型为INT8、INT4(INT32)时支持。
       - key支持per-channel叠加value支持per-token模式：对于key支持per-channel，两个参数的shape可支持(1, N, 1, D)，(1, N, D)，(1, H)且参数数据类型和query数据类型相同；对于value支持per-token，两个参数的shape均为(1, B, S)且数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4(INT32)时支持。当key、value数据类型为INT8时，query和输出只支持FLOAT16。
       - per-token-group模式：antiquantScale的shape为(1, B, N, S, D/32), 数据类型固定为FLOAT8_E8M0，不支持带antiquantOffset。当key、value数据类型为FLOAT4_E2M1时支持。
       - per-token叠加per-head模式：两个参数的shape均为(B, N, S)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4(INT32)时支持。

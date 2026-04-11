@@ -70,7 +70,6 @@ aclnnStatus aclnnGatherPaKvCache(
 
 - **参数说明**
 
-  </style>
   <table class="tg" style="undefined;table-layout: fixed; width: 1410px"><colgroup>
   <col style="width: 213px">
   <col style="width: 90px">

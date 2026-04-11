@@ -55,6 +55,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
     uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV2(
     void              *workspace,
@@ -275,6 +276,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
