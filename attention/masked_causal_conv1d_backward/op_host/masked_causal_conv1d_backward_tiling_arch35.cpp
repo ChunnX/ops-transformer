@@ -273,11 +273,12 @@ static inline int64_t CalculateBufferSizeHelper(int64_t h, int64_t s_effective, 
     int64_t inputSize = h * s_effective * dtypeSize;
     int64_t weightSize = h * W * dtypeSize;
     int64_t maskSize = 0;
+    int64_t maskBufSize = 0;
     if (hasMask) {
         maskSize = ((s_with_overlap + alignBytes - 1) / alignBytes) * alignBytes;
         int64_t vecBytes = ((s_with_overlap * dtypeSize + (alignBytes - 1)) / alignBytes) * alignBytes;
         int64_t planeBytes = s_with_overlap * h * dtypeSize;
-        maskSize += vecBytes + planeBytes;
+        maskBufSize += vecBytes + planeBytes;
     }
     int64_t gradInputSize = h * s_effective * dtypeSize;
     int64_t gradWeightSize = h * W * dtypeSize;
@@ -288,7 +289,7 @@ static inline int64_t CalculateBufferSizeHelper(int64_t h, int64_t s_effective, 
     int64_t wsSize = W * sCacheLevels * h * static_cast<int64_t>(sizeof(float));
     int64_t totalSize =
         bufferNum * (gradOutputSize + inputSize + weightSize + maskSize + gradInputSize + gradWeightSize) +
-        tempBuffSize + prodBufSize + sumBufSize + wsSize;
+        tempBuffSize + prodBufSize + sumBufSize + wsSize + maskBufSize;
     return totalSize;
 }
 
