@@ -316,18 +316,21 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
     float flag = 0; // 用于计算状态和
     uint32_t statusCnt = hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM; // 一次读rankDim个，按32B对齐
+    AscendC::DumpTensor(selfStatusWinTensor, 320, statusCnt);
     SumParams sumParams{1, statusCnt, statusCnt};
     float minTarget = hcclContext_->rankDim - (float)0.5;
     float maxTarget = hcclContext_->rankDim + (float)0.5;
     // 读取statusCnt个数据求和
-    while ((flag < minTarget) || (flag > maxTarget)) {
+    // while ((flag < minTarget) || (flag > maxTarget)) {
+        AscendC::PRINTF("flag is: %lf", flag);
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
-    }
+    // }
+    AscendC::DumpTensor(selfStatusWinTensor, 333, statusCnt);
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
 }
