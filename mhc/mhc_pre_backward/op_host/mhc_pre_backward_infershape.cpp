@@ -12,11 +12,6 @@
  * \file mhc_pre_backward_infershape.cpp
  * \brief
  */
-
-/* !
- * \file mhc_pre_backward_infershape.cpp
- * \brief
- */
 #include <map>
 #include <string>
 #include <sstream>
@@ -130,9 +125,11 @@ ge::graphStatus InferOutputShapes(gert::Shape *xGradShape, gert::Shape *hcWeight
     biasPostGradShape->SetDimNum(1);
     biasPostGradShape->SetDim(0, n2Plus2n);
 
-    gammaGradShape->SetDimNum(2);
-    gammaGradShape->SetDim(0, numsResidual);
-    gammaGradShape->SetDim(1, dimen);
+    if (gammaGradShape != nullptr) {
+        gammaGradShape->SetDimNum(2);
+        gammaGradShape->SetDim(0, numsResidual);
+        gammaGradShape->SetDim(1, dimen);
+    }
     return GRAPH_SUCCESS;
 }
 

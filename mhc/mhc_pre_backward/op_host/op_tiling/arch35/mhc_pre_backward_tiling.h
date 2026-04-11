@@ -90,8 +90,8 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus GetInputShape();
-    ge::graphStatus GetInputTensors(gert::Tensor *&hInGradTensor, gert::Tensor *&hPostGradTensor,
-                                   gert::Tensor *&hCombBeforeGradTensor);
+    ge::graphStatus GetInputTensors(const gert::Tensor *&hInGradTensor, const gert::Tensor *&hPostGradTensor,
+                                   const gert::Tensor *&hCombBeforeGradTensor);
     ge::graphStatus ValidateInputDims(int64_t hInDims, int64_t hPostDims, int64_t hCombDims);
     ge::graphStatus ParseBSDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
                                 const gert::Tensor *hCombBeforeGradTensor);
@@ -115,20 +115,16 @@ protected:
 
 private:
     MhcPreBackwardTilingData tilingData_;
-    uint32_t blockDim_;   // AIC
-    uint32_t vecCoreNum_; // AIV
-    uint64_t totalLength_;
-    uint64_t m_;
-    uint64_t ubSize_;
-    uint64_t l1Size_;
-    uint64_t matM_;
-    uint64_t matK_;
-    uint64_t matN_;
-    uint64_t nD_;
-    uint64_t N_;
-    uint64_t D_;
-    float hcEps_;
-    uint32_t fusionSize_;
+    uint32_t blockDim_{0};   // AIC
+    uint32_t vecCoreNum_{0}; // AIV
+    uint64_t totalLength_{0};
+    uint64_t matM_{0};
+    uint64_t matK_{0};
+    uint64_t matN_{0};
+    uint64_t N_{0};
+    uint64_t D_{0};
+    float hcEps_{0.0f};
+    uint32_t fusionSize_{0};
 };
 
 } // namespace optiling

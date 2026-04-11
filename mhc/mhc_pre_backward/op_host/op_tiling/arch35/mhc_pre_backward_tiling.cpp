@@ -12,12 +12,6 @@
  * \file mhc_pre_backward_tiling.cpp
  * \brief
  */
-
-/*!
- * \file mhc_pre_backward_tiling.cpp
- * \brief
- */
-
 #include "mhc_pre_backward_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
@@ -290,7 +284,7 @@ uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint
                           coreNum * fusionSize +             // bias_grad
                           totalLength;                       // inv_rms_grad
 
-    uint32_t v2Elements =
+    uint64_t v2Elements =
         XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs_grad_mm
         XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs
         EXTRA_BUFFER_SIZE;
@@ -338,7 +332,7 @@ ge::graphStatus MhcPreBackwardTiling::GetMatmulTiling(matmul_tiling::MatmulApiTi
 
 ge::graphStatus MhcPreBackwardTiling::TilingProcess()
 {
-    size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, matN_, blockDim_, sizeof(float));
+    size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, fusionSize_, blockDim_, sizeof(float));
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE_SIZE;
 
     auto platformInfo = context_->GetPlatformInfo();
@@ -368,9 +362,9 @@ ge::graphStatus MhcPreBackwardTiling::TilingProcess()
 
 ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
 {
-    auto inputHInGradDesc = context_->GetInputDesc(0);
-    if (inputHInGradDesc == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "invalid input pointer: h_in_grad");
+    auto inputXDesc = context_->GetInputDesc(0);
+    if (inputXDesc == nullptr) {
+        OP_LOGE(context_->GetNodeName(), "invalid input pointer: x");
         return ge::GRAPH_FAILED;
     }
 
@@ -392,10 +386,10 @@ ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
 void MhcPreBackwardTiling::PrintTilingData()
 {
     OP_LOGD(context_->GetNodeName(), "blockDim: [%d]", tilingData_.get_coreNum());
-    OP_LOGD(context_->GetNodeName(), "totalLength: [%d]", tilingData_.get_totalLength());
-    OP_LOGD(context_->GetNodeName(), "nD: [%d]", tilingData_.get_nD());
-    OP_LOGD(context_->GetNodeName(), "matN: [%d]", tilingData_.get_fusionSize());
-    OP_LOGD(context_->GetNodeName(), "hcEps: [%d]", tilingData_.get_hcEps());
+    OP_LOGD(context_->GetNodeName(), "totalLength: [%lu]", tilingData_.get_totalLength());
+    OP_LOGD(context_->GetNodeName(), "nD: [%lu]", tilingData_.get_nD());
+    OP_LOGD(context_->GetNodeName(), "matN: [%lu]", tilingData_.get_fusionSize());
+    OP_LOGD(context_->GetNodeName(), "hcEps: [%f]", tilingData_.get_hcEps());
 }
 
 uint64_t MhcPreBackwardTiling::GetTilingKey() const

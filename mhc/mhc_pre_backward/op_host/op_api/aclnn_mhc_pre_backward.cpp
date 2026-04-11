@@ -553,7 +553,7 @@ static bool MhcGradIsPrivateFormat(ge::Format format)
 
 static bool CheckFormat(const aclTensor *tensor, const char *name)
 {
-    if (IsPrivateFormat(tensor->GetViewFormat())) {
+    if (MhcGradIsPrivateFormat(tensor->GetViewFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor format must be ND", name);
         return false;
     }
