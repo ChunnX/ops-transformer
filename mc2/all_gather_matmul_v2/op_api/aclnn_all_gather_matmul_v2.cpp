@@ -160,10 +160,14 @@ static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclT
 
 static bool CheckAIVModeDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
-  OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_DTYPE_SUPPORT_LIST, return false);
-  OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_DTYPE_SUPPORT_LIST, return false);
-  OP_CHECK_DTYPE_NOT_SUPPORT(output, AIV_MODE_OUTPUT_DTYPE_SUPPORT_LIST, return false);
-  return true;
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, AIV_MODE_OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    if (x1->GetDataType() == op::DataType::DT_FLOAT16 || x1->GetDataType() == op::DataType::DT_BF16) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    }
+    return true;
 }
 
 
