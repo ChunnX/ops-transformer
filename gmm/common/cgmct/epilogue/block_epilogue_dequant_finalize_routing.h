@@ -547,7 +547,8 @@ BlockEpilogueDequantFinalizeRouting<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_
         VectorAtomicProcess(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UBS, yOffset, yLocal);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     }
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
 }
 } // namespace Block
 } // namespace Gemm

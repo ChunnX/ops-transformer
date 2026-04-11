@@ -245,6 +245,8 @@ BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_FUNC_LOCAL_PARA
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     }
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
     return;
 }
 } // namespace Block
