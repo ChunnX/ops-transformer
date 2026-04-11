@@ -26,6 +26,8 @@ namespace optiling {
 static const std::string QUERY_NAME = "query";
 static const std::string ORI_KV_NAME = "ori_kv";
 static const std::string CMP_KV_NAME = "cmp_kv";
+
+
 static const std::string ORI_SPARSE_INDICES = "ori_sparse_indices";
 static const std::string CMP_SPARSE_INDICES = "cmp_sparse_indices";
 static const std::string ORI_BLOCK_TABLE_NAME = "ori_block_table";
