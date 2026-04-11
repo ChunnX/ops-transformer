@@ -118,7 +118,7 @@ struct InitParams {
     GM_ADDR gamma_grad;
     GM_ADDR workspace;
     TPipe *tPipeIn;
-    MhcPreBackwardTilingData *tilingData;
+    const MhcPreBackwardTilingData *tilingData;
 };
 
 struct OpRunInfo {
@@ -1375,7 +1375,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 初始化
     // ==========================================================
     uint32_t currentN = offsetND / D_;
-    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE;
+    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
     uint32_t currentBsSize = bsEnd - bsStart;
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
