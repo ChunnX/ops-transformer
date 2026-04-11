@@ -45,20 +45,20 @@ TEST_F(MaskedCausalConv1dBackwardTiling, MaskedCausalConv1dBackward_950)
 
     gert::TilingContextPara tilingContextPara("MaskedCausalConv1dBackward",
                                               {
-                                                  {{{1024, 2, 64}, {1024, 2, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-                                                  {{{1024, 2, 64}, {1024, 2, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-                                                  {{{3, 64}, {3, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 4, 768}, {4096, 4, 768}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 4, 768}, {4096, 4, 768}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{3, 768}, {3, 768}}, ge::DT_BF16, ge::FORMAT_ND},
 
                                               },
                                               {
-                                                  {{{1024, 2, 64}, {1024, 2, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-                                                  {{{3, 64}, {3, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 4, 768}, {4096, 4, 768}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{3, 768}, {3, 768}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               attrs, &compileInfo);
 
     int64_t expectTilingKey = 10000;
     std::string expectTilingData =
-        "";
+        "12 0 64 64 1 0 26 64 64 0 0 158 157 14 12 1 0 26 64 64 0 0 158 157 0 4096 4 768 3 ";
 
     std::vector<size_t> expectWorkspaces = {};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);

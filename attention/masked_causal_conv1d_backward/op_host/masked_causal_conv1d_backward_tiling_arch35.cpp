@@ -66,8 +66,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
     OP_CHECK_IF(S_ <= 0 || S_ > S_MAX, OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(B_ <= 0 || B_ > B_MAX, OP_LOGE(context_->GetNodeName(), "invalid B=%ld", B_), return ge::GRAPH_FAILED);
-    // OP_CHECK_IF(H_ < 384 || H_ > (192 * 128), OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
-    //             return ge::GRAPH_FAILED);
+    OP_CHECK_IF(H_ < H_MIN || H_ > H_MAX, OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
+                return ge::GRAPH_FAILED);
 
     // H 必须按 64 对齐以便 H 方向切分
     OP_CHECK_IF((H_ % DIM_ALIGN_ELEMENT) != 0,
@@ -257,9 +257,46 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeInterCoreSplit()
     return ge::GRAPH_SUCCESS;
 }
 
+// Helper: precise UB buffer size estimation for given h and s_effective (valid output rows)
+static inline int64_t CalculateBufferSizeHelper(
+    int64_t h, int64_t s_effective,
+    int64_t S, int64_t B, int64_t W,
+    int64_t dtypeSize, int hasMask,
+    int64_t alignBytes, int64_t bufferNum)
+{
+    int64_t currentSLoopCnt = (S + s_effective - 1) / s_effective;
+    int64_t sCacheLevels = 1;
+    {
+        int64_t t = currentSLoopCnt;
+        while (t > 1) { ++sCacheLevels; t >>= 1; }
+    }
+
+    int64_t s_with_overlap = s_effective + (W - 1);
+    int64_t gradOutputSize = h * s_with_overlap * dtypeSize;
+    int64_t inputSize = h * s_effective * dtypeSize;
+    int64_t weightSize = h * W * dtypeSize;
+    int64_t maskSize = 0;
+    if (hasMask) {
+        maskSize = ((s_with_overlap + alignBytes - 1) / alignBytes) * alignBytes;
+        int64_t vecBytes   = ((s_with_overlap * dtypeSize + (alignBytes - 1)) / alignBytes) * alignBytes;
+        int64_t planeBytes = s_with_overlap * h * dtypeSize;
+        maskSize += vecBytes + planeBytes;
+    }
+    int64_t gradInputSize = h * s_effective * dtypeSize;
+    int64_t gradWeightSize = h * W * dtypeSize;
+    int64_t tempBuffSize = h * W * B * static_cast<int64_t>(sizeof(float));
+    int64_t prodBufSize = W * s_effective * h * static_cast<int64_t>(sizeof(float));
+    int64_t sumBufSize = h * static_cast<int64_t>(sizeof(float));
+
+    int64_t wsSize = W * sCacheLevels * h * static_cast<int64_t>(sizeof(float));
+    int64_t totalSize = bufferNum * (gradOutputSize + inputSize + weightSize + maskSize +
+                                     gradInputSize + gradWeightSize)
+                        + tempBuffSize + prodBufSize + sumBufSize + wsSize;
+    return totalSize;
+}
+
 ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
 {
-    // UB 预留系统空间
     int64_t availableUbSize = static_cast<int64_t>(ubSize_) - SYSTEM_RESERVED_UB_SIZE;
     OP_LOGI(context_->GetNodeName(), "ubSize is %ld", ubSize_);
     OP_LOGI(context_->GetNodeName(), "availableUbSize is %ld", availableUbSize);
@@ -269,51 +306,18 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     // UB先按H=64(128B)，全载核内BS，核内仅切 S, sUB_ 存储的是有效输出行数（不包含重叠部分）
     int64_t minH = DIM_ALIGN_ELEMENT;  // 64
     int64_t perCoreH = (hMainCoreCnt_ > 0) ? hMainSize_ : hTailSize_;
-
     hUB_ = minH;
 
-    // Buffer占用估算函数
-    // 参数 s_effective 是有效输出行数（不包含重叠部分）
-    auto calculateBufferSize = [&](int64_t h, int64_t s_effective) -> int64_t {
-        int64_t currentSLoopCnt = (S_ + s_effective - 1) / s_effective;
-        int64_t sCacheLevels_ = 1;
-        {
-            int64_t t = currentSLoopCnt;
-            while (t > 1) { ++sCacheLevels_; t >>= 1; }
-        }
-        
-        int64_t s_with_overlap = s_effective + (W_ - 1);
-        int64_t gradOutputSize = h * s_with_overlap * static_cast<int64_t>(dtypeSize_);
-        int64_t inputSize = h * s_effective * static_cast<int64_t>(dtypeSize_);
-        int64_t weightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
-        int64_t maskSize = 0;
-        if (hasMask_) {
-            maskSize = ((s_with_overlap + ALIGN_BYTES - 1) / ALIGN_BYTES) * ALIGN_BYTES;
-            int64_t vecBytes   = ((s_with_overlap * static_cast<int64_t>(dtypeSize_) + (ALIGN_BYTES - 1)) / ALIGN_BYTES) * ALIGN_BYTES;
-            int64_t planeBytes = s_with_overlap * h * static_cast<int64_t>(dtypeSize_);
-            maskSize += vecBytes;
-            maskSize += planeBytes;
-        }
-        int64_t gradInputSize = h * s_effective * static_cast<int64_t>(dtypeSize_);
-        int64_t gradWeightSize = h * W_ * static_cast<int64_t>(dtypeSize_);
-        int64_t tempBuffSize = h * W_ * B_ * sizeof(float);
-        int64_t prodBufSize = W_ * s_effective * h * sizeof(float);
-        int64_t sumBufSize = h * sizeof(float);
-
-        int64_t wsSize = W_ * sCacheLevels_ * h * sizeof(float);
-        int64_t totalSize = BUFFER_NUM * (gradOutputSize + inputSize + weightSize + maskSize +
-                                          gradInputSize + gradWeightSize) + tempBuffSize
-                                          + prodBufSize + sumBufSize + wsSize;
-
-        return totalSize;
-    };
-
-    // 用 calculateBufferSize 作为真实成本函数，执行二分搜索以找到最大 sUB_，避免线性近似误差
+    // 用精确 Buffer 估算函数，执行二分搜索以找到最大 sUB_
     int64_t lowS = 1;
     int64_t highS = std::max<int64_t>(1, S_);
     while (lowS <= highS) {
         int64_t midS = (lowS + highS) / NUM_2;
-        int64_t need = calculateBufferSize(hUB_, midS);
+        int64_t need = CalculateBufferSizeHelper(
+            hUB_, midS,
+            S_, B_, W_,
+            static_cast<int64_t>(dtypeSize_), static_cast<int>(hasMask_),
+            static_cast<int64_t>(ALIGN_BYTES), static_cast<int64_t>(BUFFER_NUM));
         if (need <= availableUbSize) {
             sUB_ = midS;        // 可行，尝试更大
             lowS = midS + 1;
@@ -336,10 +340,10 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     if (sLoopCnt_ <= 0) {
         sLoopCnt_ = 1;
     }
-    ubMainFactorS_ = (S_ + sLoopCnt_ - 1) / sLoopCnt_; // ceil
-    ubTailFactorS_ = (S_ / sLoopCnt_);                  // floor
-    ubMainFactorSCount_ = S_ % sLoopCnt_;                  // 需要分配主块大小的次数
-    ubTailFactorSCount_ = sLoopCnt_ - ubMainFactorSCount_;             // 其余分配尾块大小
+    ubMainFactorS_ = (S_ + sLoopCnt_ - 1) / sLoopCnt_;
+    ubTailFactorS_ = (S_ / sLoopCnt_);
+    ubMainFactorSCount_ = S_ % sLoopCnt_;
+    ubTailFactorSCount_ = sLoopCnt_ - ubMainFactorSCount_;
 
     // 尾核
     if (hTailCoreCnt_ > 0 && hTailSize_ > 0) {
@@ -365,7 +369,11 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         tailCoreUbTailFactorS_ = ubTailFactorS_;
     }
 
-    allUb_ = calculateBufferSize(ubMainFactorH_, ubMainFactorS_);
+    allUb_ = CalculateBufferSizeHelper(
+        ubMainFactorH_, ubMainFactorS_,
+        S_, B_, W_,
+        static_cast<int64_t>(dtypeSize_), static_cast<int>(hasMask_),
+        static_cast<int64_t>(ALIGN_BYTES), static_cast<int64_t>(BUFFER_NUM));
     OP_LOGI(context_->GetNodeName(), "allUb_ = %ld", allUb_);
     return ge::GRAPH_SUCCESS;
 }
@@ -418,7 +426,6 @@ uint64_t MaskedCausalConv1dBackwardTiling::GetTilingKey() const
     } else if (dataType_ == ge::DataType::DT_FLOAT16) {
         return TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16;
     }
-    
 }
 
 ge::graphStatus MaskedCausalConv1dBackwardTiling::GetWorkspaceSize()
@@ -454,7 +461,6 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::PostTiling()
 void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(), "=== MaskedCausalConv1dBackward DumpTilingInfo ===");
-
     OP_LOGI(context_->GetNodeName(), "hMainCoreCnt = %ld", hMainCoreCnt_);
     OP_LOGI(context_->GetNodeName(), "hTailCoreCnt = %ld", hTailCoreCnt_);
     OP_LOGI(context_->GetNodeName(), "hMainSize = %ld", hMainSize_);
@@ -478,7 +484,6 @@ void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "B = %ld", B_);
     OP_LOGI(context_->GetNodeName(), "H = %ld", H_);
     OP_LOGI(context_->GetNodeName(), "W = %ld", W_);
-
 }
 
 

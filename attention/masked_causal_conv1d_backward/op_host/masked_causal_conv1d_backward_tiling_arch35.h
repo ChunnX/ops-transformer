@@ -51,6 +51,8 @@ constexpr int64_t BUFFER_NUM = 2;                     // Double buffering recomm
 constexpr int64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024; // Reserve for system usage
 constexpr int64_t S_MAX = 1 << 15;
 constexpr int64_t B_MAX = 8;
+constexpr int64_t H_MIN = 192 * 2;
+constexpr int64_t H_MAX = 192 * 128;
 
 // Shape dim indices
 constexpr int64_t DIM_0 = 0; // S or W
