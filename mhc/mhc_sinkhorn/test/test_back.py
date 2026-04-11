@@ -27,7 +27,8 @@ def ceildiv(x, y):
 coreTSize_ = ceildiv(T, aivNum) # tNormCore_
 needCoreNum_ = ceildiv(T, coreTSize_) # usedCoreNum_
 TailCoreTSize_ = T - coreTSize_ * (needCoreNum_ - 1) # tTailCore_
-
+if coreTSize_ == TailCoreTSize_:
+    TailCoreTSize_ = 0
 ubAvailableSize = ubSize_ - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER # ubSizeUsed_
 
 corePerLoopMaxTSize = ubAvailableSize // (inputDTypeSize_ * (2 * n * n + 2 * n * align_n + 2 * align_n)) # tUbfactor
