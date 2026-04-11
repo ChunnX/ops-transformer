@@ -3,7 +3,7 @@
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
 #endif
-#include "dispatch_ffn_combine_tiling.h"
+#include "moe_dispatch_ffn_combine_tiling.h"
 #include "gmmsq_base.h"
 enum TaskType {
     TASK_TYPE_0 = 0,
@@ -69,7 +69,7 @@ struct WorkspaceInfo{
     GM_ADDR ptrFlagList;
     GM_ADDR ptrFlagList2;
     int64_t workspaceSize;
-    __aicore__ inline WorkspaceInfo(GM_ADDR base, const DispatchFFNCombineTilingData *tilingData) {
+    __aicore__ inline WorkspaceInfo(GM_ADDR base, const MoeDispatchFFNCombineTilingData *tilingData) {
         workspaceSize = 0;
         ptrA = base;
         workspaceSize += CeilAlign(tilingData->maxOutputSize * tilingData->k * sizeof(int8_t), ALIGN_512);
@@ -100,7 +100,7 @@ struct PeermemInfo {
     GM_ADDR ptrA0;      // initrouting结果，包括data+scale
     GM_ADDR ptrTokenPerExpert;
     GM_ADDR ptrD;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const DispatchFFNCombineTilingData *tilingData) {
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MoeDispatchFFNCombineTilingData *tilingData) {
         int64_t offset = PEERMEM_DATA_OFFSET;
         ptrA0 = base + offset;
         offset += tilingData->m * tilingData->topK * (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
