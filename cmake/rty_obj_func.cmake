@@ -12,8 +12,7 @@
 # ACLNNTYPE 支持类型aclnn/aclnn_inner/aclnn_exclude
 # OPTYPE 和 ACLNNTYPE 需一一对应
 
-# RTY 模式：不编译 infer/tiling/aicpu/gentask/graph_plugin 组件
-# 已删除相关函数定义
+
 
 # 添加opapi object
 function(add_opapi_modules)
@@ -44,11 +43,9 @@ function(add_opapi_modules)
   endif()
 endfunction()
 
-# RTY 模式：不编译 gentask 组件
-# 已删除 add_opmaster_ct_gentask_modules 函数定义
 
-# RTY 模式：不编译 aicpu 组件
-# 已删除 add_aicpu_kernel_modules 函数定义
+
+
 
 # useage: add_aicpu_cust_kernel_modules(target_name)
 # 添加aicpu cust kernel object target
@@ -81,9 +78,6 @@ function(add_aicpu_cust_kernel_modules target_name)
   endif()
 endfunction()
 
-# useage: add_modules_sources(DIR OPTYPE ACLNNTYPE)
-# ACLNNTYPE 支持类型aclnn/aclnn_inner/aclnn_exclude
-# OPTYPE 和 ACLNNTYPE 需一一对应
 macro(add_modules_sources)
   set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR)
   set(multiValueArgs OPTYPE ACLNNTYPE ACLNN_EXTRA_VERSION)
@@ -130,8 +124,7 @@ macro(add_modules_sources)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  # RTY 模式：不编译 infer/tiling/aicpu 组件
-  # 已删除相关代码
+
 
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
@@ -212,8 +205,7 @@ macro(add_modules_sources_with_soc)
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
 
-  # RTY 模式：不编译 infer/tiling/aicpu 组件
-  # 已删除相关代码
+
 
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
@@ -267,10 +259,7 @@ macro(add_mc2_modules_sources)
     target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${OPAPI_SRCS})
   endif()
 
-  # file(GLOB OPAPI_HEADERS ${SOURCE_DIR}/op_api/aclnn_*.h)
-  # if (OPAPI_HEADERS)
-  #   target_sources(${OPHOST_NAME}_aclnn_inner_headers INTERFACE ${OPAPI_HEADERS})
-  # endif()
+
 
   # 获取算子层级目录名称，判断是否编译该算子
   get_filename_component(PARENT_DIR ${SOURCE_DIR} DIRECTORY)
@@ -283,9 +272,6 @@ macro(add_mc2_modules_sources)
   # 记录全局的COMPILED_OPS和COMPILED_OP_DIRS，其中COMPILED_OP_DIRS只记录到算子名，例如transformer/abs
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
-
-  # RTY 模式：不编译 infer/tiling/aicpu/gentask 组件
-  # 已删除相关代码
 
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
@@ -321,8 +307,7 @@ macro(add_mc2_modules_sources)
 endmacro()
 
 # 添加graph plugin object
-# RTY 模式：不编译 graph_plugin 组件
-# 已删除 add_graph_plugin_modules 函数定义
+
 
 # useage: add_graph_plugin_sources()
 macro(add_graph_plugin_sources)
@@ -340,9 +325,6 @@ macro(add_graph_plugin_sources)
       return()
     endif()
   endif()
-
-  # RTY 模式：不编译 graph_plugin 组件
-  # 已删除相关代码
 endmacro()
 
 set(_op_tiling_link_libs
