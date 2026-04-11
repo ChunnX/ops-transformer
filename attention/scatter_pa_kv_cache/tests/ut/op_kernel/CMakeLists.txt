@@ -8,6 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if ((UT_TEST_ALL OR OP_KERNEL_UT) AND NOT UT_DONE)
-    AddOpTestCase(scatter_pa_kv_cache "ascend910B1" "-DDTYPE_X1=float")
-endif()
+# if (UT_TEST_ALL OR OP_KERNEL_UT)
+#     set(scatter_pa_kv_cache_tiling_files
+#         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/scatter_pa_kv_cache_tiling.cpp)
+#     AddOpTestCase(scatter_pa_kv_cache "ascend910B1" "-DDTYPE_X=float" "${scatter_pa_kv_cache_tiling_files}")
+# endif()

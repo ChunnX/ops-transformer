@@ -80,14 +80,9 @@ __aicore__ inline void MoeFullLoad<T>::ArithProgressionPerf(const LocalTensor<in
 {
     // countAlign must be eight aligned
     countAlign = (countAlign + CONSTANT_SEVEN) / BLOCK_B32_SIZE * BLOCK_B32_SIZE;
-    dst.SetValue(0, firstValue);
-    dst.SetValue(1, firstValue + diffValue * 1);
-    dst.SetValue(CONSTANT_TWO, firstValue + diffValue * CONSTANT_TWO);
-    dst.SetValue(CONSTANT_THREE, firstValue + diffValue * CONSTANT_THREE);
-    dst.SetValue(CONSTANT_FOUR, firstValue + diffValue * CONSTANT_FOUR);
-    dst.SetValue(CONSTANT_FIVE, firstValue + diffValue * CONSTANT_FIVE);
-    dst.SetValue(CONSTANT_SIX, firstValue + diffValue * CONSTANT_SIX);
-    dst.SetValue(CONSTANT_SEVEN, firstValue + diffValue * CONSTANT_SEVEN);
+    for (int32_t index = 0; index <= CONSTANT_SEVEN; index++) {
+        dst.SetValue(index, firstValue + diffValue * index);
+    }
     auto eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventID);
     WaitFlag<HardEvent::S_V>(eventID);
@@ -147,9 +142,7 @@ template <typename T> __aicore__ inline void MoeFullLoad<T>::SortCompute()
     int64_t duplicateNum = this->totalLength % ONE_REPEAT_SORT_NUM;
     if (duplicateNum > 0) {
         int duplicateIndex = this->totalLength - duplicateNum;
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
+        uint64_t mask0 = (UINT64_MAX << duplicateNum) & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
         uint64_t mask[2] = {mask0, 0};
         Duplicate(expertIdxLocalFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
     }
@@ -176,9 +169,7 @@ template <typename T> __aicore__ inline void MoeFullLoad<T>::SortCompute()
     ArithProgressionPerf(inLocal[this->sortNum_], 0, 1, this->totalLength);
     if (duplicateNum > 0) {
         int duplicateIndex = this->totalLength - duplicateNum;
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
+        uint64_t mask0 = (UINT64_MAX << duplicateNum) & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
         uint64_t mask[2] = {mask0, 0};
         Duplicate(expandDstToSrcRowLocalFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
     }

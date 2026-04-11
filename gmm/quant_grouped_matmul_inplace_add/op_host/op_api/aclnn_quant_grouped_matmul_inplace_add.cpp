@@ -29,10 +29,10 @@
 #include "opdev/make_op_executor.h"
 
 #include "../../../grouped_matmul/op_host/op_api/aclnn_grouped_matmul_util.h"
-#include "../../../grouped_matmul/op_host/op_api/aclnn_grouped_matmul_910_95_checker.h"
+#include "../../../grouped_matmul/op_host/op_api/aclnn_grouped_matmul_950_checker.h"
 #include "aclnn_quant_grouped_matmul_inplace_add_util.h"
 #include "quant_grouped_matmul_inplace_add.h"
-#include "aclnn_quant_grouped_matmul_inplace_add_910_95_checker.h"
+#include "aclnn_quant_grouped_matmul_inplace_add_950_checker.h"
 
 using namespace op;
 
@@ -146,7 +146,7 @@ static aclnnStatus CheckShape(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
     auto yMDim = params.yRef->GetViewShape().GetDim(1);
     auto yNDim = params.yRef->GetViewShape().GetDim(2);
 
-    CHECK_COND(mDim > 0, ACLNN_ERR_PARAM_INVALID, "The M value[%ld] in x1 should be positive.", mDim);
+    CHECK_COND(mDim >= 0, ACLNN_ERR_PARAM_INVALID, "The M value[%ld] in x1 should be positive.", mDim);
 
     CHECK_COND(aKDim == bKDim, ACLNN_ERR_PARAM_INVALID,
                "The kDimNum of x1/x2 should be equal, but the actual is %ld/%ld.", aKDim, bKDim);
@@ -211,13 +211,13 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     gmmParams.transposeX = true;
     gmmParams.transposeWeight = false;
     if (params.x1->GetDataType() == DataType::DT_HIFLOAT8 && params.x2->GetDataType() == DataType::DT_HIFLOAT8) {
-        auto checkerTC = QGmmInPlaceAdd::AclnnQuantGroupedMatmulInplaceAdd91095Checker<aclTensor>(gmmParams);
+        auto checkerTC = QGmmInPlaceAdd::AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<aclTensor>(gmmParams);
         checkerTC.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
-        CHECK_RET(checkerTC.CheckQuantGroupedMatmulInplaceAdd91095() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(checkerTC.CheckQuantGroupedMatmulInplaceAddDAV3510() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     } else {
-        auto checker = gmm::AclnnGroupedMatmul91095Checker<aclTensor>(gmmParams);
+        auto checker = gmm::AclnnGroupedMatmulDAV3510Checker<aclTensor>(gmmParams);
         checker.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
-        CHECK_RET(checker.CheckGroupedMatmul91095() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(checker.CheckGroupedMatmulDAV3510() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
 }
@@ -294,6 +294,13 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(QGmmI
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto executorPtr = uniqueExecutor.get();
+    auto x1MDim = params.x1->GetViewShape().GetDim(0);
+    auto x2NDim = params.x2->GetViewShape().GetDim(1);
+    if (x1MDim == 0 || x2NDim == 0) {
+        *workspaceSize = 0UL;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
     // 固定写法，参数检查
     auto ret = CheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);

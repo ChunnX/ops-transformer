@@ -21,10 +21,16 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
+constexpr int64_t EXPERT_ID_VALUE_NUM = 2;
+constexpr int64_t CUMSUM_MODE = 0;
+constexpr int64_t COUNT_MODE = 1;
 constexpr int64_t KEY_VALUE_MODE = 2;
 constexpr int64_t KEY_VALUE_MODE_DIM_NUM = 2;
 constexpr int64_t GATHER_SORT_CORE_NUM = 16;
+constexpr int64_t DROP_LESS = 0;
+constexpr int64_t DROP_PAD = 1;
 
+template <const int HISTOGRAMTYPE>
 class ExpertTokensCount {
 public:
     __aicore__ inline ExpertTokensCount(){};
@@ -37,6 +43,7 @@ private:
     __aicore__ inline void CopyIn(int64_t loop, int64_t curLoopElements);
     __aicore__ inline void Compute(int64_t curLoopElements);
     __aicore__ inline void CopyOut();
+    __aicore__ inline void CopyOutExpertTotalCount();
 
     __aicore__ inline void expertCountCopyIn();
     __aicore__ inline void expertCountCompute();
@@ -48,6 +55,7 @@ private:
     GlobalTensor<int64_t> expertTokensCountGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
+    GlobalTensor<int32_t> expertIdxValueGm_;
     TPipe *pipe_;
 
     TQue<QuePosition::VECIN, 1> sortedExpertIdxInQueue_;
@@ -57,6 +65,7 @@ private:
     TQue<QuePosition::VECOUT, 1> expertTotalCountQueue_;
 
     const MoeV3ExpertTokensCountTilingData *expertTokensCountTilingData_;
+    int64_t coreNum_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
     int64_t perCoreElements_;
@@ -69,14 +78,22 @@ private:
     int64_t perCoreLastLoopElements_ = 0;
     int64_t actualExpertTotalNum_ = 0;
     int64_t expertNum_ = 0;
-    int64_t expertTokensNumType_ = 0;
     int64_t expertCountElements_ = 0;
+    bool expertTokensNumFlag_ = false;
+    int64_t dropPadMode_ = 0;
+    int32_t finalExpertId = -1;
+    int32_t expertTokenValue = 0;
+    int64_t ep_ = 0;
+    int64_t rowIdxType_ = 0;
 };
 
+template <const int HISTOGRAMTYPE>
 template <bool CALC_ACTUAL_EXPERT_NUM>
-__aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                               const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void
+ExpertTokensCount<HISTOGRAMTYPE>::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
+                                       const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
 {
+    coreNum_ = tilingData->coreNum;
     pipe_ = tPipe;
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);
     blockIdx_ = GetBlockIdx();
@@ -86,7 +103,10 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     expertEnd_ = tilingData->expertEnd;
     actualExpertNum_ = tilingData->actualExpertNum;
     expertNum_ = tilingData->expertNum;
-    expertTokensNumType_ = tilingData->expertTokensNumType;
+    expertTokensNumFlag_ = tilingData->expertTokensNumFlag;
+    dropPadMode_ = tilingData->dropPadMode;
+    ep_ = tilingData->ep;
+    rowIdxType_ = tilingData->rowIdxType;
 
     if (blockIdx_ == needCoreNum_ - 1) {
         curCoreElements_ = expertTokensCountTilingData_->lastCoreElements;
@@ -123,7 +143,7 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
         perCoreLastLoopElements_ = curCoreElements_ - (coreLoopsNum_ - 1) * perCorePerLoopElements_;
     }
 
-    if (expertTokensNumType_ == KEY_VALUE_MODE) {
+    if constexpr (HISTOGRAMTYPE == KEY_VALUE_MODE) {
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ? (actualExpertNum_ + 1) * KEY_VALUE_MODE_DIM_NUM :
                                                                        expertNum_ * KEY_VALUE_MODE_DIM_NUM;
     } else {
@@ -137,24 +157,35 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
-
+    expertIdxValueGm_.SetGlobalBuffer(
+        (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
+            Align((actualExpertNum_), sizeof(int32_t)) + Align((actualExpertNum_), sizeof(int32_t)),
+        coreNum_ * 2);
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreElements_,
                                       curCoreElements_);
+
     if ((tilingData->rowIdxType == GATHER) && (blockIdx_ < needCoreNum_)) {
         InitGlobalMemory(expandedRowIdxGm_, curCoreElements_, -1);
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     }
-
     int64_t sortedExpertIdxInLen = Max(perCorePerLoopElements_, perCoreLastLoopElements_);
+
     pipe_->InitBuffer(sortedExpertIdxInQueue_, 1, AlignBytes(sortedExpertIdxInLen, sizeof(int32_t)));
     pipe_->InitBuffer(expertCountOutToTempQueue_, 1, AlignBytes(actualExpertNum_, sizeof(int32_t)));
     pipe_->InitBuffer(expertCountTempInQueue_, 1, AlignBytes(actualExpertNum_, sizeof(int32_t)));
 
     pipe_->InitBuffer(expertIdxCountOutQueue_, 1, AlignBytes(expertCountElements_, sizeof(int64_t)));
     pipe_->InitBuffer(expertTotalCountQueue_, 1, AlignBytes(1, sizeof(int32_t)));
+
+    if (blockIdx_ == 0) {
+        InitGlobalMemory(expertTotalCountGm_, 1, 0);
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+    }
+    SyncAll();
 }
 
-__aicore__ inline void ExpertTokensCount::Process()
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         for (int64_t i = 0; i < coreLoopsNum_; i++) {
@@ -163,19 +194,23 @@ __aicore__ inline void ExpertTokensCount::Process()
             Compute(perLoopElements);
             CopyOut();
         }
+        if (ep_ == 1) {
+            CopyOutExpertTotalCount();
+        }
     }
-
-    SyncAll();
+    if (ep_ == 1 || expertTokensNumFlag_ || dropPadMode_ == 1) {
+        SyncAll();
+    }
     /* copy expert tokens count result from worksapce to output GM. */
-    if (blockIdx_ == 0) {
+    if (blockIdx_ == 0 && expertTokensNumFlag_) {
         expertCountCopyIn();
         expertCountCompute();
         expertCountCopyOut();
     }
-    SyncAll();
 }
 
-__aicore__ inline void ExpertTokensCount::CopyIn(int64_t loop, int64_t curLoopElements)
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::CopyIn(int64_t loop, int64_t curLoopElements)
 {
     LocalTensor<int32_t> sortedExpertIdxInLocal = sortedExpertIdxInQueue_.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopElements * sizeof(int32_t)),
@@ -186,56 +221,113 @@ __aicore__ inline void ExpertTokensCount::CopyIn(int64_t loop, int64_t curLoopEl
     sortedExpertIdxInQueue_.EnQue(sortedExpertIdxInLocal);
 }
 
-__aicore__ inline void ExpertTokensCount::Compute(int64_t curLoopElements)
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::Compute(int64_t curLoopElements)
 {
+    // 计算count
     LocalTensor<int32_t> sortedExpertIdxInLocal = sortedExpertIdxInQueue_.DeQue<int32_t>();
     LocalTensor<int32_t> expertCountOutLocal = expertCountOutToTempQueue_.AllocTensor<int32_t>();
     Duplicate(expertCountOutLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
               static_cast<int32_t>(actualExpertNum_));
-    event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIDVToS);
-    WaitFlag<HardEvent::V_S>(eventIDVToS);
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     int64_t i = 0;
     int32_t lastExpertId = sortedExpertIdxInLocal.GetValue(0);
     int32_t lastIndex = 0;
+    int64_t loopTokenCount = 0;
+    int32_t lastlastExpertId = lastExpertId;
+    // 当前处理的元素循环
     for (i = 1; i < curLoopElements; i++) {
         if ((lastExpertId >= expertEnd_) || (lastExpertId < expertStart_)) {
             break;
         }
         int32_t curExpertId = sortedExpertIdxInLocal.GetValue(i);
+        // 当前专家id与上一个专家id不同时才触发写入，lastIndex是当前专家组起始位置
         if (curExpertId != lastExpertId || curExpertId >= expertEnd_) {
-            expertCountOutLocal.SetValue(lastExpertId - expertStart_, i - lastIndex);
+            if constexpr (HISTOGRAMTYPE == COUNT_MODE || HISTOGRAMTYPE == KEY_VALUE_MODE) {
+                expertCountOutLocal.SetValue(lastExpertId - expertStart_, i - lastIndex);
+                loopTokenCount += i - lastIndex;
+            } else {
+                for (int64_t j = lastlastExpertId; j < lastExpertId; j++) {
+                    expertCountOutLocal.SetValue(j - expertStart_, loopTokenCount);
+                }
+                loopTokenCount += i - lastIndex;
+                expertCountOutLocal.SetValue(lastExpertId - expertStart_, loopTokenCount);
+            }
             lastIndex = i;
+            lastlastExpertId = lastExpertId;
             lastExpertId = curExpertId;
         }
     }
+    // 处理最后一个元素时实现最后一个专家id还有对应的token数方便后续的capacity
     if ((i == curLoopElements) && ((lastExpertId >= expertStart_) && (lastExpertId < expertEnd_))) {
-        expertCountOutLocal.SetValue(lastExpertId - expertStart_, i - lastIndex);
+        if constexpr (HISTOGRAMTYPE == COUNT_MODE || HISTOGRAMTYPE == KEY_VALUE_MODE) {
+            expertCountOutLocal.SetValue(lastExpertId - expertStart_, i - lastIndex);
+            loopTokenCount += i - lastIndex;
+        } else {
+            for (int64_t j = lastlastExpertId; j < lastExpertId; j++) {
+                expertCountOutLocal.SetValue(j - expertStart_, loopTokenCount);
+            }
+            loopTokenCount += i - lastIndex;
+            expertCountOutLocal.SetValue(lastExpertId - expertStart_, loopTokenCount);
+            for (int64_t j = lastExpertId; j < expertEnd_; j++) {
+                expertCountOutLocal.SetValue(j - expertStart_, loopTokenCount);
+            }
+        }
+    } else {
+        if constexpr (HISTOGRAMTYPE == EXERPT_TOKENS_CUMSUM) {
+            for (int64_t j = lastlastExpertId; j < expertEnd_; j++) {
+                expertCountOutLocal.SetValue(j - expertStart_, loopTokenCount);
+            }
+        }
     }
+    actualExpertTotalNum_ += loopTokenCount;
+    finalExpertId = lastExpertId;
+    expertTokenValue = (i - lastIndex);
 
-    event_t eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
-    SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-    WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
     expertCountOutToTempQueue_.EnQue<int32_t>(expertCountOutLocal);
     sortedExpertIdxInQueue_.FreeTensor(sortedExpertIdxInLocal);
 }
 
-__aicore__ inline void ExpertTokensCount::CopyOut()
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::CopyOutExpertTotalCount()
+{
+    LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.AllocTensor<int32_t>();
+    DataCopyExtParams copyTotalCountParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+    expertTotalCountLocal.SetValue(0, static_cast<int32_t>(actualExpertTotalNum_));
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    SetAtomicAdd<int32_t>();
+    DataCopyPad(expertTotalCountGm_, expertTotalCountLocal, copyTotalCountParams);
+    SetAtomicNone();
+    expertTotalCountQueue_.FreeTensor(expertTotalCountLocal);
+}
+
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::CopyOut()
 {
     LocalTensor<int32_t> expertCountOutLocal = expertCountOutToTempQueue_.DeQue<int32_t>();
-
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>((actualExpertNum_) * sizeof(int32_t)),
                                  0, 0, 0};
-    SetAtomicAdd<int32_t>();
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    SetAtomicAdd<int32_t>(); // 原子累加
     DataCopyPad(expertCountTempGm_, expertCountOutLocal, copyParams);
     SetAtomicNone();
+
+    // drop = 1 时输出finalExpertId以及expertTokenValue
+    if (dropPadMode_ == DROP_PAD) {
+        expertCountOutLocal.SetValue(0, finalExpertId);
+        expertCountOutLocal.SetValue(1, expertTokenValue);
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(EXPERT_ID_VALUE_NUM * sizeof(int32_t)), 0, 0, 0};
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        DataCopyPad(expertIdxValueGm_[blockIdx_ * EXPERT_ID_VALUE_NUM], expertCountOutLocal, copyParams);
+    }
     expertCountOutToTempQueue_.FreeTensor(expertCountOutLocal);
 }
 
-__aicore__ inline void ExpertTokensCount::expertCountCopyIn()
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::expertCountCopyIn()
 {
     LocalTensor<int32_t> expertCountTempInLocal = expertCountTempInQueue_.AllocTensor<int32_t>();
-
     DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1),
                                      static_cast<uint32_t>((actualExpertNum_) * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams dataCopyPadParams{false, 0, 0, 0};
@@ -243,57 +335,42 @@ __aicore__ inline void ExpertTokensCount::expertCountCopyIn()
     expertCountTempInQueue_.EnQue(expertCountTempInLocal);
 }
 
-__aicore__ inline void ExpertTokensCount::expertCountCompute()
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::expertCountCompute()
 {
     LocalTensor<int32_t> expertCountTempInLocal = expertCountTempInQueue_.DeQue<int32_t>();
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue_.AllocTensor<int64_t>();
-    LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.AllocTensor<int32_t>();
-    event_t eventIDMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-    SetFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
-    WaitFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
-    if (expertTokensNumType_ == KEY_VALUE_MODE) {
+    // 选择不同的模式进行输出
+    if constexpr (HISTOGRAMTYPE == KEY_VALUE_MODE) {
         int64_t expertOffset = 0;
         Duplicate(expertCountOutLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
                   static_cast<int32_t>(expertCountElements_ * KEY_VALUE_MODE));
-        event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(eventIDVToS);
-        WaitFlag<HardEvent::V_S>(eventIDVToS);
+        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
         for (int64_t i = 0; i < actualExpertNum_; i++) {
             int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
             if (expertCount != 0) {
                 expertCountOutLocal.SetValue(expertOffset * KEY_VALUE_MODE_DIM_NUM, i + expertStart_);
                 expertCountOutLocal.SetValue(expertOffset * KEY_VALUE_MODE_DIM_NUM + 1, expertCount);
                 expertOffset++;
-                actualExpertTotalNum_ += expertCount;
             }
         }
     } else {
-        for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
-            expertCountOutLocal.SetValue(i, expertCount);
-            actualExpertTotalNum_ += expertCount;
-        }
+        Cast(expertCountOutLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
     }
-    expertTotalCountLocal.SetValue(0, static_cast<int32_t>(actualExpertTotalNum_));
-    event_t eventIDSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
-    SetFlag<HardEvent::S_MTE3>(eventIDSToMte3);
-    WaitFlag<HardEvent::S_MTE3>(eventIDSToMte3);
+
     expertIdxCountOutQueue_.EnQue<int64_t>(expertCountOutLocal);
-    expertTotalCountQueue_.EnQue<int32_t>(expertTotalCountLocal);
     expertCountTempInQueue_.FreeTensor(expertCountTempInLocal);
 }
 
-__aicore__ inline void ExpertTokensCount::expertCountCopyOut()
+template <const int HISTOGRAMTYPE>
+__aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::expertCountCopyOut()
 {
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue_.DeQue<int64_t>();
-    LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.DeQue<int32_t>();
     DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                  static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
     DataCopyPad(expertTokensCountGm_, expertCountOutLocal, copyParams);
     copyParams.blockLen = sizeof(int32_t);
-    DataCopyPad(expertTotalCountGm_, expertTotalCountLocal, copyParams);
     expertIdxCountOutQueue_.FreeTensor(expertCountOutLocal);
-    expertTotalCountQueue_.FreeTensor(expertTotalCountLocal);
 }
 
 } // namespace MoeInitRoutingV3

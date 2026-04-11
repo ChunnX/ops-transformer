@@ -51,7 +51,7 @@ bool FiaTilingEmptyTensor::IsCapable()
     if (fiaInfo_ == nullptr) {
         return false;
     }
-    if (fiaInfo_->emptyTensorFlag == 1) {
+    if (fiaInfo_->emptyTensorFlag) {
         return true;
     }
     return false;
@@ -77,16 +77,22 @@ void FiaTilingEmptyTensor::FillTiling()
     uint64_t totalLseSize = 0;
     uint64_t singleCoreLseSize = 0;
     uint64_t tSize = static_cast<uint64_t>(fiaInfo_->bSize) * static_cast<uint64_t>(fiaInfo_->s1Size);
-    if (fiaInfo_->isAccumQSeq == true) {
+    if (fiaInfo_->outLayout == FiaLayout::TND || fiaInfo_->outLayout == FiaLayout::NTD) {
         tSize = fiaInfo_->qTSize;
     }
     totalOutputSize = tSize * fiaInfo_->n1Size * fiaInfo_->vHeadDim;
-    singleCoreSize = (totalOutputSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
-    if (fiaInfo_->isOutQuantEnable) {
-        singleCoreSize = (singleCoreSize + 1UL) / 2UL;
+    if (totalOutputSize > fiaInfo_->totalOutputSize) {
+        totalOutputSize = fiaInfo_->totalOutputSize;
     }
+    if (fiaInfo_->isOutQuantEnable) {
+        totalOutputSize = totalOutputSize / 2UL;
+    }
+    singleCoreSize = (totalOutputSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
     if (fiaInfo_->softmaxLseFlag) {
         totalLseSize = tSize * fiaInfo_->n1Size;
+        if (totalLseSize > fiaInfo_->totalLseSize) {
+            totalLseSize = fiaInfo_->totalLseSize;
+        }
         singleCoreLseSize = (totalLseSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
     }
     
@@ -104,14 +110,14 @@ void FiaTilingEmptyTensor::CalcWorkspaceSize()
     workspaceSize_ = 16UL * 1024UL * 1024UL; // 16 * 1024 * 1024:min size required by workspace
 }
 
-void FiaTilingEmptyTensor::CalcBlockDim(uint32_t coreNum)
+void FiaTilingEmptyTensor::CalcNumBlocks(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
     auto aivNum = aicNum * (aivNum_ / aicNum_);
 
-    blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
 ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
@@ -122,11 +128,11 @@ ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
     InitParams();
 
     FillTiling();
-    CalcBlockDim(usedCoreNum_);
+    CalcNumBlocks(usedCoreNum_);
     CalcWorkspaceSize();
     GenTilingKey();
 
-    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS)) {
@@ -141,5 +147,5 @@ ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingEmptyTensor,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B)}), 0);
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 0);
 } // namespace optiling

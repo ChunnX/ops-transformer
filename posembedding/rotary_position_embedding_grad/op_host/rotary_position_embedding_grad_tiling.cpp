@@ -27,7 +27,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
+        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
         aicoreParams_.ubSize = ubSizePlatForm;
@@ -37,7 +37,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetPlatformInfo()
         OP_CHECK_IF(
             compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
             return ge::GRAPH_FAILED);
-        aicoreParams_.blockDim = compileInfoPtr->blockDim;
+        aicoreParams_.numBlocks = compileInfoPtr->numBlocks;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         socVersion_ = compileInfoPtr->socVersion;
     }
@@ -55,7 +55,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
 
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95 &&
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
         (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
         OP_LOGE(context_->GetNodeName(), "only support mode 0 or 1.");
         return ge::GRAPH_FAILED;
@@ -135,12 +135,12 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbeddingGrad(gert::TilingParseCon
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
-    compileInfoPtr->blockDim = ascendcPlatform.GetCoreNumAiv();
+    compileInfoPtr->numBlocks = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     compileInfoPtr->ubSize = ubSizePlatForm;
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
-    if (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         return TilingPrepare4ReduceOp(context, &compileInfoPtr->opInfo);
     }
     return ge::GRAPH_SUCCESS;

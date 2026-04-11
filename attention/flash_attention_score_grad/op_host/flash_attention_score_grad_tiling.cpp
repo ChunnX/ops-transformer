@@ -49,6 +49,7 @@ constexpr uint32_t LAYOUT_ATTR_IDX = 5;
 constexpr uint32_t FAG_EMPTY_TILING_KEY = 0;
 constexpr uint32_t TILING_KEY_1 = 1U;
 constexpr size_t WORKSPACE_SIZE = 100 * 1024 * 1024;
+constexpr uint64_t SMLEST_ROPE_SIZE = 64;
 
 static uint32_t CalculateTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
@@ -194,8 +195,36 @@ public:
             emptyTensorTilingDataRegbase->set_singleCoreDpseNum(dpseNum / aivNum + 1);
             emptyTensorTilingDataRegbase->set_tailCoreDpseNum(dpseNum / aivNum);
         }
- 
-        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, TILING_KEY_1));
+
+        // rope场景清零的处理
+        const gert::StorageShape *dqRopeShape = context->GetOutputShape(OUTPUT_IDX_DQ_ROPE);
+        const gert::StorageShape *dkRopeShape = context->GetOutputShape(OUTPUT_IDX_DK_ROPE);
+        uint64_t dqRopeNum = (dqRopeShape == nullptr) ? 0 : static_cast<uint64_t>(dqRopeShape->GetStorageShape().GetShapeSize());
+        dqRopeNum = (dqRopeNum < SMLEST_ROPE_SIZE) ? 0 : dqRopeNum;
+        if (dqRopeNum % aivNum == 0ULL) {
+            emptyTensorTilingDataRegbase->set_formerDqRopeNum(aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDqRopeNum(dqRopeNum / aivNum);
+            emptyTensorTilingDataRegbase->set_tailCoreDqRopeNum(0);
+        } else {
+            emptyTensorTilingDataRegbase->set_formerDqRopeNum(dqRopeNum % aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDqRopeNum(dqRopeNum / aivNum + 1);
+            emptyTensorTilingDataRegbase->set_tailCoreDqRopeNum(dqRopeNum / aivNum);
+        }
+
+        uint64_t dkRopeNum = (dkRopeShape == nullptr) ? 0 : static_cast<uint64_t>(dkRopeShape->GetStorageShape().GetShapeSize());
+        dkRopeNum = (dkRopeNum < SMLEST_ROPE_SIZE) ? 0 : dkRopeNum;
+        if (dkRopeNum % aivNum == 0ULL) {
+            emptyTensorTilingDataRegbase->set_formerDkRopeNum(aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDkRopeNum(dkRopeNum / aivNum);
+            emptyTensorTilingDataRegbase->set_tailCoreDkRopeNum(0);
+        } else {
+            emptyTensorTilingDataRegbase->set_formerDkRopeNum(dkRopeNum % aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDkRopeNum(dkRopeNum / aivNum + 1);
+            emptyTensorTilingDataRegbase->set_tailCoreDkRopeNum(dkRopeNum / aivNum);
+        }
+        emptyTensorTilingDataRegbase->isRope = (dqRopeNum > 0 || dkRopeNum > 0);
+
+        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, TILING_KEY_1));
         auto sliceNum =
             (dqNum < aivNum && dkNum < aivNum && dpseNum < aivNum) ? std::max(std::max(dqNum, dkNum), dpseNum) : aivNum;
         context->SetBlockDim(CalculateTschBlockDim(sliceNum, aicNum, aivNum));
@@ -321,8 +350,8 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
         OP_LOGE("CheckParams", "context is null."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckAttrs(context) != ge::GRAPH_SUCCESS,
                OP_LOGE(context->GetNodeName(), "invalid attrs"), return ge::GRAPH_FAILED);
-    if ((context->GetInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
-        (context->GetInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
+    if ((context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
+        (context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
         OP_LOGE(context, "input shape Query Rope and Key Rope must be either both defined or both undefined.");
         return ge::GRAPH_FAILED;
     }
@@ -348,21 +377,21 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
     auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
     OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
                return ge::GRAPH_FAILED);
-    auto socVersion = compilePtr->socVersion;
-    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+    auto npuArch = compilePtr->npuArch;
+    if (npuArch == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
         if (IsEmptyOutput(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTilingRegbase(context);
         }
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
         if (IsEmptyOutput(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTiling(context);
         }
     }
-    return TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    return TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::TilingParseContext *context)
@@ -382,7 +411,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::T
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
-    compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+    compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfoPtr->l0aSize);

@@ -4,8 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -145,7 +149,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>PageAttention中KV存储使用的block映射表。</td>
         <td>
           <ul style="list-style-type: circle;">
-            <li>使用该功能可传入nullptr。</li>
+            <li>不使用该功能可传入nullptr。</li>
             <li>blockTableOptional的值不超过blockNum，否则会发生越界。</li>
           </ul>
         </td>
@@ -215,7 +219,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>压缩之后的cache</td>
         <td>数据类型与input保持一致。</td>
         <td>INT64</td>
-        <td>-</td>
+        <td>ND</td>
         <td>[result_len, N, D]</td>
         <td>x</td>
       </tr>
@@ -241,19 +245,19 @@ aclnnStatus aclnnNsaCompressWithCache(
       </tr>
     </tbody>
   </table>
+
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
   第一段接口完成入参校验，出现以下场景时报错：
   
-  <table style="undefined;table-layout: fixed; width: 1030px">
-  <colgroup>
-  <col style="width: 250px">
-  <col style="width: 130px">
-  <col style="width: 650px">
+  <table style="undefined;table-layout: fixed; width: 1153px"><colgroup>
+  <col style="width: 302px">
+  <col style="width: 119px">
+  <col style="width: 732px">
   </colgroup>
-    <table><thead>
+  <thead>
     <tr>
       <th>返回值</th>
       <th>错误码</th>
@@ -266,12 +270,15 @@ aclnnStatus aclnnNsaCompressWithCache(
       <td>计算输入和必选计算输出是空指针。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
+      <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="2">161002</td>
       <td>计算输入和输出的数据类型和格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td rowspan="6">ACLNN_ERR_RUNTIME_ERROR</td>
+      <td>input、weight、outputCache为空tensor。</td>
+    </tr>
+    <tr>
+      <td rowspan="6">ACLNN_ERR_INNER_TILING_ERROR</td>
       <td rowspan="6">561002</td>
       <td>input和weight不满足broadcast关系，即input的第三维大小与weight的第二维大小不相等。</td>
     </tr>
@@ -279,7 +286,7 @@ aclnnStatus aclnnNsaCompressWithCache(
       <td>activeNum、expertNum、expertCapacity的值小于0。</td>
     </tr>
     <tr>
-      <td>compress_block_size、compress_stride 、不是16的整数倍，或者compress_block_size<compress_stride。</td>
+      <td>compress_block_size、compress_stride 、不是16的整数倍，或者compress_block_size</td>
     </tr>
     <tr>
       <td>seq_lens_type!=1或者layout取值不是BSH、SBH、BSND、BNSD、TND中的一个。</td>
@@ -293,11 +300,16 @@ aclnnStatus aclnnNsaCompressWithCache(
   </tbody>
   </table>
 
-## aclnnNsaCompressAttentionInfer
+## aclnnNsaCompressWithCache
 
 - **参数说明**
   
-  <table><thead>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
     <tr>
       <th>参数名</th>
       <th>输入/输出</th>
@@ -326,6 +338,7 @@ aclnnStatus aclnnNsaCompressWithCache(
     </tr>
   </tbody>
   </table>
+  
 - **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

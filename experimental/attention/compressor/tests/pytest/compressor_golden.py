@@ -697,14 +697,12 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             x,
             wkv,
             wgate,
-            kv_state,
-            score_state,
+            torch.cat((kv_state, score_state), dim=-1),
             ape,
             norm_weight, 
             rope_sin,
             rope_cos,
-            kv_block_table = block_table,
-            score_block_table = block_table,
+            block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos if exist_start_pos else None,
@@ -712,7 +710,8 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             cmp_ratio = cmp_ratio,
             coff = coff,
             norm_eps = norm_eps,
-            rotary_mode = rotary_mode
+            rotary_mode = rotary_mode,
+            cache_mode = 1,
         )
     )
     print(f"x: shape {x.shape}, dtype: {x.dtype}")
@@ -749,7 +748,7 @@ if __name__ == "__main__":
     parser.add_argument('--head_dim', required=True, type=int)
     parser.add_argument('--coff', required=True, type=int, choices=[1, 2], help='1:no overlap 2:overlap')
     parser.add_argument('--cmp_ratio', required=True, type=int, choices=[2, 4, 8, 16, 32, 64, 128], help='compress cmp_ratio token to one')
-    parser.add_argument('--bs_combine_flag', required=True, type=bool, help='False: x.shape is [B, S, hidden_size], True: x.shape is [T, hidden_size]')
+    parser.add_argument('--bs_combine_flag', action='store_true', help='Include this flag to set x.shape to [T, hidden_size]')
     parser.add_argument('--S', type=int, default=0, help='cur sequence length dim of x when BSh')
     parser.add_argument('--start_pos', type=int, nargs='*', help='start_pos of every batch, len is B')
     parser.add_argument('--seqused', type=int, nargs='*', help="sequence which is used, len is B")

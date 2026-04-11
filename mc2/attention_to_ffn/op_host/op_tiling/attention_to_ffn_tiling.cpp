@@ -8,6 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file attention_to_ffn_tiling.cpp
+ * \brief
+ */
+
 #include <queue>
 #include <vector>
 #include <dlfcn.h>
@@ -59,6 +64,7 @@ constexpr uint32_t ATTR_FFN_START_RANK_INDEX = 8;
  
 constexpr uint32_t INDEX_TWO = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
+constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;
 constexpr uint64_t MB_SIZE = 1024 * 1024;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 const char* ATTN_FFN_INNER_DEBUG = "AttentionToFFN Tiling Debug";
@@ -441,8 +447,10 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext* context, Att
     int64_t moeExpertNum = static_cast<int64_t>(tilingData.attentionToFFNInfo.moeExpertNum);
  
     OP_TILING_CHECK(xDim0 != 1, OP_LOGE(ATTN_FFN_INNER_DEBUG, "x's dims0(X) only support 1, cur is %d!", xDim0), return false);
-    OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > BS_MAX), OP_LOGE(ATTN_FFN_INNER_DEBUG, "xShape dims1(BS) should be in (0, %ld], but got %ld.", BS_MAX, xDim1), return false);
-    OP_TILING_CHECK((xDim2 < H_MIN) || (xDim2 > H_MAX), OP_LOGE(ATTN_FFN_INNER_DEBUG, "xShape dims2(H) should be in [%ld, %ld], but got %ld.", H_MIN, H_MAX, xDim2), return false);
+    OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > BS_MAX), OP_LOGE(ATTN_FFN_INNER_DEBUG,
+        "xShape dims1(BS) should be in (0, %ld], but got %ld.", BS_MAX, xDim1), return false);
+    OP_TILING_CHECK((xDim2 < H_MIN) || (xDim2 > H_MAX), OP_LOGE(ATTN_FFN_INNER_DEBUG,
+        "xShape dims2(H) should be in [%ld, %ld], but got %ld.", H_MIN, H_MAX, xDim2), return false);
     OP_TILING_CHECK((xDim0 != sessionIdDim0) || (xDim0 != microBatchIdDim0) || (xDim0 != layerIdDim0) || (xDim0 != expertIdsDim0),
         OP_LOGE(ATTN_FFN_INNER_DEBUG, "sessionId's dims0, microBatchId's dims0, layerId's dims0 and expertIds's dims0 only support 1,"
         "but cur is %d, %d, %d, %d!", sessionIdDim0, microBatchIdDim0, layerIdDim0, expertIdsDim0), return false);
@@ -450,8 +458,7 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext* context, Att
     OP_TILING_CHECK((expertIdsDim2 <= 0) || (expertIdsDim2 > K_MAX) || (expertIdsDim2 > moeExpertNum), OP_LOGE(ATTN_FFN_INNER_DEBUG,
         "expertIdShape's dim2(k) should be in (0, min(%ld, moeExpertNum = %ld)], but got expertIdShape's dim2=%ld.",
         K_MAX, moeExpertNum, expertIdsDim2), return false);
-    OP_TILING_CHECK(expertRankTableDim0 != 1, OP_LOGE(ATTN_FFN_INNER_DEBUG, "expertRankTable dim0(L) only support 1, cur is %d!",
-                    expertRankTableDim0), return false);
+    OP_TILING_CHECK(expertRankTableDim0 != 1, OP_LOGE(ATTN_FFN_INNER_DEBUG, "expertRankTable dim0(L) only support 1, cur is %d!", expertRankTableDim0), return false);
     OP_TILING_CHECK((expertRankTableDim1 < moeExpertNum) || (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "expertRankTable dim1 should be in [moeExpertNum = %ld, moeExpertNum + 4 = %ld],"
                     "but cur is %d!", moeExpertNum, moeExpertNum + 4, expertRankTableDim1), return false);
@@ -527,13 +534,16 @@ static uint64_t CalTilingKey(const uint32_t syncFlag, const uint32_t quantMode, 
     return tilingKey;
 }
  
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, AttentionToFFNTilingData *tilingData)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(ATTN_FFN_INNER_DEBUG, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t ffnNum = tilingData->attentionToFFNInfo.worldSize - tilingData->attentionToFFNInfo.attentionWorkerNum;
+    uint32_t ffnNumAlignSize = (ffnNum * sizeof(int32_t) + WORKSPACE_ELEMENT_OFFSET - 1) / WORKSPACE_ELEMENT_OFFSET * WORKSPACE_ELEMENT_OFFSET;
+    workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize() + static_cast<size_t>(ffnNumAlignSize * aivNum);
     return ge::GRAPH_SUCCESS;
 }
  
@@ -550,9 +560,9 @@ static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quan
     uint64_t tokenInfoNeedWinSize = attentionWorkerNum * microBatchNum * infoTableLastDimNum * sizeof(int32_t);
     uint64_t tokenDataNeedWinSize = 0;
     if (quantMode != 0) {
-        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K+sharedExpertNum) * HS; // 量化模式
+        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS; // 量化模式
     } else {
-        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K+sharedExpertNum) * HS * NO_QUANT_MODE_WIN_SIZE; // 非量化模式
+        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS * NO_QUANT_MODE_WIN_SIZE; // 非量化模式
     }
     uint64_t actualNeedWinSize = tokenInfoNeedWinSize + tokenDataNeedWinSize;
     uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
@@ -604,7 +614,7 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext* context)
                     return ge::GRAPH_FAILED);
  
     // Set WorkSpace
-    OP_TILING_CHECK(SetWorkSpace(context) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(ATTN_FFN_INNER_DEBUG, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
  
     // Set HcommCfg
@@ -618,17 +628,17 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext* context)
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "cur case tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
  
-    // Set blockDim
-    uint32_t blockDim = 1U;
+    // Set numBlocks
+    uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(blockDim);
+    numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetBlockDim(numBlocks);
     tilingData->attentionToFFNInfo.totalUbSize = ubSize;
     tilingData->attentionToFFNInfo.aivNum = aivNum;
-    OP_LOGD(ATTN_FFN_INNER_DEBUG, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
+    OP_LOGD(ATTN_FFN_INNER_DEBUG, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
  
     PrintTilingDataInfo(*tilingData);
     OP_LOGD("AttentionToFFN", "tiling process finished successfully!!!");

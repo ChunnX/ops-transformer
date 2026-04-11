@@ -15,9 +15,15 @@
 #ifndef MATMUL_ALL_REDUCE_EMPTY_TENSOR_K_GENERAL_H
 #define MATMUL_ALL_REDUCE_EMPTY_TENSOR_K_GENERAL_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
+#include "weight_quant_matmul_all_reduce_tiling_data.h"
+#include "unquant_matmul_all_reduce_tiling_data.h"
 
 constexpr uint32_t EMPTY_TENSOR_BIAS_UB_FACTOR = 1;
 
@@ -33,9 +39,9 @@ public:
         param_ = &(tilingData->param);
         cOffset_ = (uint64_t)param_->rankN * (uint64_t)param_->rankM;
 #ifdef MC2_WEIGHT_QUANT
-        biasFlag_ = (((WeightQuantMatmulAllReduceTilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
+        biasFlag_ = (((Mc2Tiling::WeightQuantMatmulAllReduceTilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
 #else
-        biasFlag_ = (((MatmulAllReduce910TilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
+        biasFlag_ = (((Mc2Tiling::MatmulAllReduce910TilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
 #endif
     }
 
@@ -139,7 +145,7 @@ private:
     }
 
     MC2GmAddrs* addrs_;
-    RCSTiling* param_;
+    Mc2Tiling::RCSTiling* param_;
     bool biasFlag_{false};
     uint64_t cOffset_;
     TPipe* tPipe_;
@@ -150,10 +156,10 @@ private:
 
 #ifdef MC2_WEIGHT_QUANT
 #define GET_TILING_DATA_FOR_EMPTY_TENSOR() \
-    GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM)
+    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM)
 #else
 #define GET_TILING_DATA_FOR_EMPTY_TENSOR() \
-    GET_TILING_DATA_WITH_STRUCT(MatmulAllReduce910TilingData, tilingData, tilingGM)
+    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingData, tilingData, tilingGM)
 #endif
 
 #define INVOKE_MC2_EMPTY_TENSOR_OP_IMPL()                                                              \

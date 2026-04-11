@@ -27,7 +27,6 @@ using namespace AscendC;
 namespace optiling {
 
 constexpr uint64_t PRE_LOAD_NUM_MLA = 2;
-constexpr uint32_t QK_HEAD_DIM_512 = 512U;
 
 constexpr uint64_t FIA_TILINGKEYOFFSET = uint64_t(100000000000000000UL); // 10^17
 constexpr uint64_t FIA_PERF_MODE_TILINGKEYOFFSET = uint64_t(1000000000000000UL); // 10^15
@@ -81,20 +80,75 @@ ge::graphStatus FiaTilingNonQuantMla::GetPlatformInfo()
 
 bool FiaTilingNonQuantMla::IsCapable()
 {
-    if (fiaInfo_ == nullptr) {
+    // 不支持解析为空或空Tensor
+    if ((fiaInfo_ == nullptr) || (fiaInfo_->emptyTensorFlag)) {
         return false;
     }
 
     ge::DataType qDataType = fiaInfo_->inputQType;
     ge::DataType kDataType = fiaInfo_->inputKvType;
-
-    if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT && fiaInfo_->qkHeadDim == QK_HEAD_DIM_512) {
-        // MLA非量化
-        if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
-            return true;
-        }
+    // 仅支持非量化
+    if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
+        return false;
     }
-    return false;
+
+    // 不支持的特性
+    if (fiaInfo_->learnableSinkFlag || fiaInfo_->sysPrefixFlag || fiaInfo_->pseShiftFlag ||
+        fiaInfo_->qPaddingSizeFlag || fiaInfo_->kvPaddingSizeFlag) {
+        return false;
+    }
+
+    // 不支持后量化
+    if (fiaInfo_->outputType == ge::DT_INT8) {
+        return false;
+    }
+
+    // 不支持TensorList
+    if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
+    // 仅支持ROPE分开传输
+    if (fiaInfo_->ropeMode != RopeMode::ROPE_SPLIT) {
+        return false;
+    }
+
+    // 仅支持Q&K&V的HeadDim为512, ROPE的HeadDim为64
+    constexpr uint32_t QK_HEAD_DIM_512 = 512U;
+    constexpr uint32_t ROPE_HEAD_DIM_64 = 64U;
+    if ((fiaInfo_->qkHeadDim != fiaInfo_->vHeadDim) ||
+        (fiaInfo_->qkHeadDim != QK_HEAD_DIM_512) ||
+        (fiaInfo_->ropeHeadDim != ROPE_HEAD_DIM_64)) {
+        return false;
+    }
+
+    // 仅支持KV_N为1
+    if (fiaInfo_->n2Size != 1U) {
+        return false;
+    }
+
+    // 支持的input_layout范围
+    std::string layout = fiaInfo_->opParamInfo.layOut;
+    const std::vector<std::string> layoutSupportList = {
+        "BSH", "BSND", "BNSD", "TND", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"
+    };
+    if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
+        return false;
+    }
+
+    // 支持的sparse_mode值
+    if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) &&
+        (fiaInfo_->sparseMode != SPARSE_MODE_BAND)) {
+        return false;
+    }
+
+    // 支持的G的取值范围
+    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
+    if (std::find(gSizeSupportList.begin(), gSizeSupportList.end(), fiaInfo_->gSize) == gSizeSupportList.end()) {
+        return false;
+    }
+
+    return true;
 }
 
 void FiaTilingNonQuantMla::GenTilingKey()
@@ -113,7 +167,8 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint8_t cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
 
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U}, {TilingKeyLayout::TND, 3U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U},
+        {TilingKeyLayout::TND, 3U}
     };
 
     const std::map<TilingKeyLayout, uint8_t> qLayoutMap = {
@@ -168,7 +223,7 @@ bool FiaTilingNonQuantMla::DealSameSeqEachBatch() const
     }
 }
 
-void FiaTilingNonQuantMla::ZeroTensorProcess() const
+void FiaTilingNonQuantMla::EmptyTensorProcess() const
 {
     if (fiaInfo_->s2Size == 0) {
         /*
@@ -184,10 +239,10 @@ void FiaTilingNonQuantMla::InitParams()
 {
     perfMode_ = FiaTemplateId::HIGH_PERFORMANCE_MLA;
     coreNum_ = aicNum_;
-    blockDim_ = aicNum_; // Tiling下沉首次Tiling也会校验blockDim_是否为0，为避免拦截报错，将blockDim_设置为aicNum_，实际不生效
+    numBlocks_ = aicNum_; // Tiling下沉首次Tiling也会校验numBlocks_是否为0，为避免拦截报错，将numBlocks_设置为aicNum_，实际不生效
 
     headDimAlign_ = Align(fiaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-    ZeroTensorProcess();
+    EmptyTensorProcess();
 }
 
 void FiaTilingNonQuantMla::CalcInnerSize(uint32_t seqSize)
@@ -274,7 +329,8 @@ void FiaTilingNonQuantMla::CreateSplitInput(BaseInfo &baseInfo, SplitParam &spli
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
-    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND ||
+        fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
     baseInfo.sparseMode = fiaInfo_->sparseMode;
     baseInfo.attenMaskFlag = fiaInfo_->attenMaskFlag;
 
@@ -460,8 +516,8 @@ uint64_t FiaTilingNonQuantMla::CalcNormalWorkspaceSize(uint32_t coreNum, int64_t
     workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mm1ResSize * V1_RES_ELEM_SIZE;
     workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mm2ResSize * MM2_RES_ELEM_SIZE;
     workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mm2ResSize * V2_RES_ELEM_SIZE;
-    workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mBaseSize * N_UPDATE_ELEM_SIZE; //aMla nUpdate, mBaseSize=128
-    workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mBaseSize * SOFTMAX_SUM_ELEM_SIZE; //aMla softmaxSum, mBaseSize=128
+    workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mBaseSize * N_UPDATE_ELEM_SIZE; // aMla nUpdate, mBaseSize=128
+    workspaceSize += PRE_LOAD_NUM_MLA * coreNum * mBaseSize * SOFTMAX_SUM_ELEM_SIZE; // aMla softmaxSum, mBaseSize=128
     return workspaceSize;
 }
 
@@ -491,14 +547,14 @@ void FiaTilingNonQuantMla::CalcMaxWorkspaceSize()
     workspaceSize_ += CalcFlashDecodeWorkspace(aicNum_);
 }
 
-void FiaTilingNonQuantMla::CalcBlockDim(uint32_t coreNum)
+void FiaTilingNonQuantMla::CalcNumBlocks(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
     auto aivNum = aicNum * cvRatio_;
 
-    blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
 void FiaTilingNonQuantMla::CalcScheduleMode()
@@ -519,13 +575,13 @@ ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
     } else {
         Split();
         FillTiling();
-        CalcBlockDim(usedCoreNum_);
+        CalcNumBlocks(usedCoreNum_);
         CalcScheduleMode();
         CalcWorkspaceSize();
         GenTilingKey();
     }
 
-    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
@@ -541,5 +597,5 @@ ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingNonQuantMla,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B)}), 9);
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 9);
 } // namespace optiling

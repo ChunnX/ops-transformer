@@ -16,7 +16,11 @@
 #ifndef FLASH_ATTENTION_SCORE_DROP_MASK_ADAPTER_REGBASE_H
 #define FLASH_ATTENTION_SCORE_DROP_MASK_ADAPTER_REGBASE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 
 class FlashAttentionScoreDropMaskAdapterRegbase {
@@ -98,7 +102,7 @@ __aicore__ inline void FlashAttentionScoreDropMaskAdapterRegbase::Process()
 
     int32_t baseUbCalSize = tilingData->dropmaskParamsRegbase.baseUbCalSize;
     AscendC::LocalTensor<half> dropMaskSelSrc = dropMaskSelSrcTBuf.template Get<half>();
-    AscendC::Duplicate<half>(dropMaskSelSrc, 1.0, baseUbCalSize);
+    AscendC::Duplicate<half>(dropMaskSelSrc, static_cast<half>(1.0), baseUbCalSize);
 
     AscendC::BinaryRepeatParams binaryRepeatParams;
     binaryRepeatParams.src0BlkStride = 1;

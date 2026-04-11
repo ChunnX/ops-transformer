@@ -52,21 +52,21 @@ void SetTilingKey(const uint32_t dtypeKey, uint32_t modeKey, AddRMSNormTilingOut
     uint32_t tilingKey = dtypeKey * 10 + modeKey;
     addRmsNormTilingOutput.tilingOut.tilingKey = tilingKey;
 }
-void SetBlockDim(const uint32_t numRow, const uint32_t blockFactor, AddRMSNormTilingOutput& addRmsNormTilingOutput)
+void SetNumBlocks(const uint32_t numRow, const uint32_t blockFactor, AddRMSNormTilingOutput& addRmsNormTilingOutput)
 {
     uint32_t useCoreNum = Ops::Base::CeilDiv(numRow, blockFactor);
-    addRmsNormTilingOutput.tilingOut.blockDim = useCoreNum;
+    addRmsNormTilingOutput.tilingOut.numBlocks = useCoreNum;
 }
 void SetTilingData(const TilingInfo& tilingInfo, AddRMSNormTilingOutput& addRmsNormTilingOutput)
 {
     auto&& tilingData = addRmsNormTilingOutput.addRmsNormTilingData;
-    tilingData.set_num_row(std::get<NUM_ROW_IDX>(tilingInfo));
-    tilingData.set_num_col(std::get<NUM_COL_IDX>(tilingInfo));
-    tilingData.set_block_factor(std::get<BLOCK_FACTOR_IDX>(tilingInfo));
-    tilingData.set_row_factor(std::get<ROW_FACTOR_IDX>(tilingInfo));
-    tilingData.set_ub_factor(std::get<UB_FACTOR_IDX>(tilingInfo));
-    tilingData.set_epsilon(std::get<EPSILON_IDX>(tilingInfo));
-    tilingData.set_avg_factor(std::get<AVG_FACTOR_IDX>(tilingInfo));
+    tilingData.num_row = std::get<NUM_ROW_IDX>(tilingInfo);
+    tilingData.num_col = std::get<NUM_COL_IDX>(tilingInfo);
+    tilingData.block_factor = std::get<BLOCK_FACTOR_IDX>(tilingInfo);
+    tilingData.row_factor = std::get<ROW_FACTOR_IDX>(tilingInfo);
+    tilingData.ub_factor = std::get<UB_FACTOR_IDX>(tilingInfo);
+    tilingData.epsilon = std::get<EPSILON_IDX>(tilingInfo);
+    tilingData.avg_factor = std::get<AVG_FACTOR_IDX>(tilingInfo);
 }
 ge::graphStatus AssembleX1Shape(const AddRMSNormTilingDepend& addRmsNormTilingDepend, gert::Shape& xShape)
 {
@@ -262,10 +262,10 @@ ge::graphStatus CommonAddResNormTiling::Tiling4AddRmsNorm(
 
     const auto& ascendcPlatform = platform_ascendc::PlatformAscendC(&addRmsNormTilingDepend.platFormInfos);
     uint32_t numCore = ascendcPlatform.GetCoreNumAiv();
-    if (addRmsNormTilingDepend.useHalfBlockDim) {
+    if (addRmsNormTilingDepend.useHalfNumBlocks) {
         numCore /= 2U; // 配比1：1时, 1/2个数
     }
-    OP_LOGD(node, "Core Num: %u, use half %d", numCore, addRmsNormTilingDepend.useHalfBlockDim);
+    OP_LOGD(node, "Core Num: %u, use half %d", numCore, addRmsNormTilingDepend.useHalfNumBlocks);
     uint32_t blockFactor = 1U;
     GE_ASSERT_NOTNULL(addRmsNormTilingDepend.arnCtxInfo.gamma_shape);
     const auto& gammaShape = addRmsNormTilingDepend.arnCtxInfo.gamma_shape->GetStorageShape();
@@ -285,20 +285,20 @@ ge::graphStatus CommonAddResNormTiling::Tiling4AddRmsNorm(
     OP_LOGD(node, "tile num: %u, numRow: %u blockFactor: %u", tileNum, numRow, blockFactor);
 
     // block dim的值小于等于num_core
-    SetBlockDim(numRow, blockFactor, addRmsNormTilingOutput);
+    SetNumBlocks(numRow, blockFactor, addRmsNormTilingOutput);
     SetWorkSpaceSize(addRmsNormTilingOutput);
     GE_ASSERT_GRAPH_SUCCESS(
         SetAddRmsNormTilingData(addRmsNormTilingDepend, numRow, numCol, blockFactor, addRmsNormTilingOutput));
 
     OP_LOGI(node, "Tiling Key: %u", addRmsNormTilingOutput.tilingOut.tilingKey);
-    OP_LOGI(node, "Block Dim: %u", addRmsNormTilingOutput.tilingOut.blockDim);
+    OP_LOGI(node, "Block Dim: %u", addRmsNormTilingOutput.tilingOut.numBlocks);
     OP_LOGI(node, "Workspace: %u", addRmsNormTilingOutput.tilingOut.workSpaceSize);
     OP_LOGI(
         node, "numRow: %d, numCol: %ld, blockFactor: %d, rowFactor: %d, ubFactor: %d, epsilon: %f, avgFactor: %f",
-        numRow, numCol, blockFactor, addRmsNormTilingOutput.addRmsNormTilingData.get_row_factor(),
-        addRmsNormTilingOutput.addRmsNormTilingData.get_ub_factor(),
-        addRmsNormTilingOutput.addRmsNormTilingData.get_epsilon(),
-        addRmsNormTilingOutput.addRmsNormTilingData.get_avg_factor());
+        numRow, numCol, blockFactor, addRmsNormTilingOutput.addRmsNormTilingData.row_factor,
+        addRmsNormTilingOutput.addRmsNormTilingData.ub_factor,
+        addRmsNormTilingOutput.addRmsNormTilingData.epsilon,
+        addRmsNormTilingOutput.addRmsNormTilingData.avg_factor);
 
     return ge::GRAPH_SUCCESS;
 }

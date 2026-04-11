@@ -35,6 +35,17 @@
 #endif
 namespace optiling {
 class IFATiling : public FiaTilingBase {
+struct ValidityConfigFD {
+    std::vector<int32_t> validBatchSizes;
+    std::vector<int32_t> validQSeqSizes;
+    int32_t numHeads;
+    int32_t numKvHeads;
+    int32_t headDim;
+    int32_t headDimV;
+    int32_t sparseMode;
+    int64_t expectedActualSeqLength; // -1 表示范围 [4096, 5120]
+}; 
+
 public:
     explicit IFATiling(gert::TilingContext *context) : FiaTilingBase(context) {};
     ~IFATiling() = default;
@@ -57,7 +68,16 @@ public:
         return !atbRunFlag_;
     }
     uint32_t GetAntiquantSeqLength() const;
-    bool IsBalanceSplitCore() const;
+    bool CheckCommonConditions(const ValidityConfigFD& config) const;
+    bool CheckBatchAndQSeqSize(const std::vector<int32_t>& validBatchSizes, const std::vector<int32_t>& validQSeqSizes) const;
+    bool CheckHeadDimensions(int32_t numHeads, int32_t numKvHeads, int32_t headDim, int32_t headDimV) const;
+    bool CheckQuantizationFlags(int32_t sparseMode) const;
+    bool CheckActualSeqLengths(int64_t expectedActualSeqLength) const;
+    bool IsBalanceSplitCore();
+    void IsFdBalanceCase();
+    bool IsValidFlag3B();
+    bool IsValidFlag560B();
+    bool IsValidFlag();
 
 private:
     ge::graphStatus GetNpuInfo();
@@ -221,9 +241,12 @@ private:
     void FillBalancedSplitCoreInfo(const TilingIndexes &tilingIdx, BalancedSplitTilingInfo &tilingInfo);
     void EndSplitForCurrentCore(const TilingIndexes &tilingIdx, const SeqTilingInfo &seqTilingInfo,
         uint32_t &currKvSplitPart, BalancedSplitTilingInfo &tilingInfo);
+    void SplitBalancedForEachHeadFd(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t s1);
     void SplitBalancedForEachHead(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo);
+    void SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead, uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo);
     ge::graphStatus SplitBalanced();
     ge::graphStatus SplitUnbalanced();
+    ge::graphStatus SplitBalancedFd();
     ge::graphStatus CalcInnerSize(uint32_t seqSize);
     ge::graphStatus SplitBN();
     ge::graphStatus ProcessGqaKvNz() const;
@@ -262,7 +285,7 @@ private:
     std::pair<uint32_t, uint32_t> GetPreLoadNumAndActCoreNum() const;
     void CalcWorkSpaceForBmmAll(const IfaWorkSpaceSizeParams& params, uint32_t preLoadNum, uint32_t actCoreNum);
     ge::graphStatus CalcWorkSpace();
-    ge::graphStatus CalcBlockDim();
+    ge::graphStatus CalcNumBlocks();
     ge::graphStatus GetKvLayoutInfo(KvLayoutInfo &kvLayoutInfo) const;
     ge::graphStatus GetInputLayoutVal(uint8_t &layoutVal) const;
     ge::graphStatus GetInputQueryVal(uint8_t &inputQVal) const;
@@ -293,7 +316,7 @@ private:
 
     ge::graphStatus CalcSysPrefixWorkSpace();
     ge::graphStatus FillSysPrefixTiling();
-    ge::graphStatus CalcSysPrefixBlockDim();
+    ge::graphStatus CalcSysPrefixNumBlocks();
     ge::graphStatus SplitForLseCombine();
 
     void CalcFDWorkSpace(const uint32_t actCoreNum);

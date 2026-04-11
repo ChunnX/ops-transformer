@@ -51,41 +51,41 @@ class Mc2ComputeMatmulTiling
 {
 public:
     static bool GetTiling(
-        TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
+        AscendC::tiling::TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
         const AiCoreParams& aicoreParams, gert::TilingContext* context);
 
 private:
     static bool GetCacheTiling(
-        TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
+        AscendC::tiling::TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
         gert::TilingContext* context);
 
     static void CalcCommonTiling(
-        TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
+        AscendC::tiling::TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
 
-    static void CalcMsdBufferSize(TCubeTiling& matmulTiling, const Mc2MatmulParams& params);
+    static void CalcMsdBufferSize(AscendC::tiling::TCubeTiling& matmulTiling, const Mc2MatmulParams& params);
 
     static bool MsdA16W8CommonTiling(
-        TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
+        AscendC::tiling::TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
         const AiCoreParams& aicoreParams);
 
     static bool SimpleIncreTiling(
-        TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
+        AscendC::tiling::TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
         const AiCoreParams& aicoreParams);
 
     static void Convert2AscendCTiling(
-        const CacheTilingData& tbeTiling, TCubeTiling& matmulTiling, const Mc2MatmulParams& params,
+        const CacheTilingData& tbeTiling, AscendC::tiling::TCubeTiling& matmulTiling, const Mc2MatmulParams& params,
         Mc2MatmulMultiCoreResult& multiCoreResult);
     static MatrixTraverse GetIteratorOrder(
         const CacheTilingData& tbeTiling, int32_t singleCoreM, int32_t singleCoreN, int32_t singleCoreK,
         ge::DataType aDtype);
 
     static bool tryComputeSimpleTiling(
-        TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
+        AscendC::tiling::TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
 
-    static bool tryAFullLoad(TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
+    static bool tryAFullLoad(AscendC::tiling::TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
 
     static bool trySimpleTilingNormalLoad(
-        TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
+        AscendC::tiling::TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams);
 };
 } // namespace optiling
 #endif // WEIGHT_QUANT_BATCH_MATMUL_V2_COMPUTE_MATMUL_TILING_H

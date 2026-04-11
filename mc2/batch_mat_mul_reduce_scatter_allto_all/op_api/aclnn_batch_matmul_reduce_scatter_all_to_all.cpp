@@ -54,7 +54,7 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char
 }
 
 // check dtype
-static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, aclTensor* out)
+static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, const aclTensor* out)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(x, MOE_X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(weight, MOE_X_DTYPE_SUPPORT_LIST, return false);
@@ -81,7 +81,7 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
 
 // check shape dim
 static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias,
-                                  aclTensor* out)
+                                  const aclTensor* out)
 {
     OP_CHECK_WRONG_DIMENSION(x, SUPPORTED_DIMENSIONAL, return false);
     OP_CHECK_WRONG_DIMENSION(weight, SUPPORTED_DIMENSIONAL, return false);
@@ -98,15 +98,9 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
 }
 
 // 维度判断
-static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, int64_t epWorldSize,
-                           int64_t tpWorldSize, int64_t yShardType, aclTensor* out)
+static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weight, int64_t epWorldSize, 
+                                      const aclTensor* out)
 {
-    // 是否为三维判断
-    if (!CheckIfTensorThreeDim(x, weight, bias, out)) {
-        return false;
-    }
-
-    // 公共shape特性
     // E = E/ep * ep, y_0 == x_0 * ep
     if ((x->GetViewShape().GetDim(DIM_0) * epWorldSize) != out->GetViewShape().GetDim(DIM_0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of x multi epSize must equal the first dim of out, "
@@ -128,8 +122,12 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
                 weight->GetViewShape().GetDim(DIM_1));
         return false;
     }
+    return true;
+}
 
-    // 非公共shape特性
+static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weight, int64_t epWorldSize, 
+                                      int64_t tpWorldSize, int64_t yShardType, const aclTensor* out)
+{
     if (yShardType == 0) {
         // H = H/tp * tp, w_2 == y_2 * tp
         if ((out->GetViewShape().GetDim(DIM_2) * tpWorldSize) != weight->GetViewShape().GetDim(DIM_2)) {
@@ -162,8 +160,11 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "yShardType [%ld] is invalid.", yShardType);
         return false;
     }
-    
-    // bias 维度判断
+    return true;
+}
+
+static bool CheckBiasDim(const aclTensor* weight, const aclTensor* bias, const aclTensor* out)
+{
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) ||
             ((bias->GetViewShape().GetDimNum() == SUPPORTED_DIMENSIONAL) &&
@@ -177,6 +178,32 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
             return false;
         }
     }
+    return true;
+}
+
+static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, int64_t epWorldSize,
+                           int64_t tpWorldSize, int64_t yShardType, const aclTensor* out)
+{
+    // 是否为三维判断
+    if (!CheckIfTensorThreeDim(x, weight, bias, out)) {
+        return false;
+    }
+
+    // 公共shape特性
+    if (!CheckTensorDimCommonShape(x, weight, epWorldSize, out)) {
+        return false;
+    }
+
+    // 非公共shape特性
+    if (!CheckTensorDimUniqueShape(x, weight, epWorldSize, tpWorldSize, yShardType, out)) {
+        return false;
+    }
+    
+    // bias 维度判断
+    if (!CheckBiasDim(weight, bias, out)) {
+        return false;
+    }
+    
     return true;
 }
 
@@ -201,7 +228,7 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
 }
 
 // 范围校验
-static bool CheckShapeRange(const aclTensor* x, const aclTensor *weight, aclTensor *out)
+static bool CheckShapeRange(const aclTensor* x, const aclTensor *weight, const aclTensor *out)
 {
     // 暂不支持空tensor场景
     // M/tp in [1, 65535], 空tensor K校验

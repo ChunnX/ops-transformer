@@ -9,11 +9,12 @@
  */
 
 /*!
- * \file flash_attention_interface.cpp
- * \brief
- */
-#include "kernel_operator.h"
+* \file flash_attention_interface.cpp
+* \brief
+*/
+
 #include "flash_attention_regular.h"
+#include <type_traits>
 using namespace NpuArch;
 
 namespace SplitFuse {
@@ -22,14 +23,16 @@ namespace SplitFuse {
         typename InputDtypeKv = half,
         typename IntermCalcPrec = float,
         bool PagedCacheFlag = false,
-        FaiKenel::MaskType maskCategory = FaiKenel::MaskType::NO_MASK,
-        FaiKenel::inputLayout inLayout = FaiKenel::inputLayout::TND,
+        bool IS_FD = false,
+        FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
+        FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
         Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
         Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
     __global__ __aicore__ void FAInfer(
         GM_ADDR q,
         GM_ADDR k,
         GM_ADDR v,
+        GM_ADDR pseShift,
         GM_ADDR mask,
         GM_ADDR blockTables,
         GM_ADDR o,
@@ -49,6 +52,8 @@ namespace SplitFuse {
         using LayoutV = layout::RowMajor;
         using ElementS = IntermCalcPrec;
         using LayoutS = layout::RowMajor;
+        using ElementSink = InputDtypeQ;
+        using LayoutSink = layout::RowMajor;
         using ElementP = InputDtypeQ;
         using LayoutP = layout::RowMajor;
         using ElementO = InputDtypeQ;
@@ -68,14 +73,16 @@ namespace SplitFuse {
         using QType = Gemm::GemmType<ElementQ, LayoutQ>;
         using KType = Gemm::GemmType<ElementK, LayoutK>;
         using SType = Gemm::GemmType<ElementS, LayoutS>;
+        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
         using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                                   QType, KType, SType>;
+                                                QType, KType, SType>;
 
-        using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, IntermCalcPrec>;
+        using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
         using PType = Gemm::GemmType<ElementP, LayoutP>;
         using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
+        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
         using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType, pseShiftType>;
 
         using L1TileShapePV = GemmShape<128, 128, 256>;
         using L0TileShapePV = GemmShape<128, 128, 128>;
@@ -83,7 +90,7 @@ namespace SplitFuse {
         using VType = Gemm::GemmType<ElementV, LayoutV>;
         using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
         using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                                   PType, VType, OTmpType>;
+                                                PType, VType, OTmpType>;
 
         using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
         using OType = Gemm::GemmType<ElementO, LayoutO>;
@@ -93,15 +100,19 @@ namespace SplitFuse {
             Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
 
         using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
-        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
         using EpilogueInitOut =
             Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
 
-        using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
-                                            EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                            PagedCacheFlag, maskCategory, inLayout>;
-        FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+        using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
+        using FAInferKernel_FD = FAInferKernel<BlockMmadQK, BlockMmadPV,
+                                                EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
+                                                PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
+        using FAInferKernel_NonFD = FAInferKernel<BlockMmadQK, BlockMmadPV,
+                                                   EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
+                                                   PagedCacheFlag, maskCategory, inLayout>;
+        using FAInferKernel = std::conditional_t<IS_FD, FAInferKernel_FD, FAInferKernel_NonFD>;
+
+        FAIKernelParams params{q, k, v, pseShift, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
         FAInferKernel flashAttnInfer;
         flashAttnInfer(params);
     }

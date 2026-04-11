@@ -20,6 +20,7 @@
 #include "../../op_kernel/arch35/flash_attention_score_template_tiling_key.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "err/ops_err.h"
+#include "platform/soc_spec.h"
 
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
@@ -38,6 +39,7 @@ static const int64_t NUM_256 = 256L;
 static const int64_t NUM_320 = 320L;
 static const int64_t NUM_384 = 384L;
 static const int64_t NUM_448 = 448L;
+static const int64_t NUM_512 = 512L;
 static const int64_t NUM_768 = 768L;
 static const int64_t NUM_1024 = 1024L;
 static const int64_t MIN_DN_S2 = 256L;
@@ -83,7 +85,8 @@ static const int64_t D_SCALE_DIM_NUM_1 = 1L;
 static const int64_t D_SCALE_DIM_NUM_2 = 2L;
 static const int64_t D_SCALE_DIM_NUM_3 = 3L;
 static const int64_t QUANT_BLOCK_SIZE = 128L;
-static const int64_t QUANT_KV_BLOCK_SIZE = 256L;
+static const int64_t QUANT_K_BLOCK_SIZE = 256L;
+static const int64_t QUANT_V_BLOCK_SIZE = 512L;
 static const int64_t L2_CACHE_SIZE = 128L;
 
 enum class LayoutType : uint8_t {
@@ -409,6 +412,7 @@ protected:
     uint32_t aivNum;
     uint32_t aicNum;
     platform_ascendc::SocVersion socVersion;
+    NpuArch npuArch = NpuArch::DAV_RESV;
 
     matmul_tiling::DataType bmmDtype = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::DataType bmm1OutDtype = matmul_tiling::DataType::DT_FLOAT;

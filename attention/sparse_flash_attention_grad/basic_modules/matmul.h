@@ -30,11 +30,13 @@ static constexpr uint32_t L1_EVENT3 = EVENT_ID5;
 static constexpr uint32_t L1_EVENT4 = EVENT_ID6;
 static constexpr uint32_t L1_EVENT5 = EVENT_ID7;
 static constexpr uint32_t L1_EVENT6 = EVENT_ID1;
+static constexpr uint32_t L1_EVENT7 = EVENT_ID0;
 
-static constexpr uint32_t MM_L1_QUERY_EVENTS[2] = {L1_EVENT0, L1_EVENT1};
-static constexpr uint32_t MM_L1_COMMON_EVENTS[2] = {L1_EVENT2, L1_EVENT3};
-static constexpr uint32_t MM_L1_DY_EVENTS[2] = {L1_EVENT4, L1_EVENT5};
-static constexpr uint32_t MM_L1_DS_EVENT = L1_EVENT6;
+static constexpr uint32_t MM_L1_QUERY_EVENTS = L1_EVENT0;
+static constexpr uint32_t MM_L1_COMMON_EVENTS[2] = {L1_EVENT1, L1_EVENT2};
+static constexpr uint32_t MM_L1_DY_EVENTS = L1_EVENT3;
+static constexpr uint32_t MM_L1_DS_EVENT[2] = {L1_EVENT4, L1_EVENT5};
+static constexpr uint32_t MM_L1_P_EVENT[2] = {L1_EVENT6, L1_EVENT7};
 
 // m <> mte1
 static constexpr uint32_t L0A_EVENTS[2] = {EVENT_ID3, EVENT_ID4};
@@ -67,6 +69,7 @@ __aicore__ inline void AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
+    SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT7);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID3);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID4);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID5);
@@ -85,6 +88,7 @@ __aicore__ inline void FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
+    WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT7);
     WaitFlag<HardEvent::M_MTE1>(EVENT_ID3);
     WaitFlag<HardEvent::M_MTE1>(EVENT_ID4);
     WaitFlag<HardEvent::M_MTE1>(EVENT_ID5);
@@ -238,8 +242,8 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
 }
 
 template <bool needAtomic = false>
-__aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, const GlobalTensor<int32_t> &topkIndicesGm, const LocalTensor<float> &l0cTensor, struct MMParam &mmParam, const int32_t selectedBlockSize, const int32_t blockOffset, const int32_t dimN2, const uint32_t eventId, const int64_t lastBlockSize, const bool isLast)
- {
+__aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, const GlobalTensor<int32_t> &topkIndicesGm, const LocalTensor<float> &l0cTensor, struct MMParam &mmParam, const int32_t selectedBlockSize, const int32_t blockOffset, const int32_t dimN2, const uint32_t eventId)
+{
     SetFlag<HardEvent::M_FIX>(eventId);
     WaitFlag<HardEvent::M_FIX>(eventId);
     FixpipeParamsV220 fixpipeParams;
@@ -259,9 +263,7 @@ __aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, c
         if (topkIdx >= 0) {
             int64_t l0cOffset = mIdx * selectedBlockSize * 16;
             int64_t resOffset = topkIdx * selectedBlockSize * mmParam.dstStride;
-            if (isLast && mIdx == mmParam.singleM / selectedBlockSize - 1) {
-                fixpipeParams.mSize = lastBlockSize;
-            }
+            
             Fixpipe<float, float>(resGm[resOffset], l0cTensor[l0cOffset], fixpipeParams);
         }
     }

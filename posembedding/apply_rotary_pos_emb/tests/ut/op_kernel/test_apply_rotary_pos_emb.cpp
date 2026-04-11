@@ -605,3 +605,255 @@ TEST_F(apply_rotary_pos_emb_test, test_case_7)
     AscendC::GmFree(tiling);
     free(path_);
 }
+
+TEST_F(apply_rotary_pos_emb_test, test_case_8)
+{
+    size_t inputqByteSize = 24 * 13 * 128 * sizeof(float);
+    size_t inputkByteSize = 24 * 13 * 128 * sizeof(float);
+    size_t outputByteSize = 24 * 1 * 64 * sizeof(float);
+    size_t cosByteSize = 24 * 1 * 64 * sizeof(float);
+    size_t tiling_data_size = sizeof(ApplyRotaryPosEmbTilingData);
+    uint8_t* q = (uint8_t*)AscendC::GmAlloc(inputqByteSize);
+    uint8_t* k = (uint8_t*)AscendC::GmAlloc(inputkByteSize);
+    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosByteSize);
+    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(cosByteSize);
+    uint8_t* qout = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* kout = (uint8_t*)AscendC::GmAlloc(inputkByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(4096 * 16);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint32_t blockDim = 40;
+    system(
+        "cp -r ../../../../../posembedding/apply_rotary_pos_emb/tests/ut/op_kernel/apply_rotary_pos_emb_data "
+        "./");
+    system("chmod -R 755 ./apply_rotary_pos_emb_data/");
+    system("cd ./apply_rotary_pos_emb_data/ && rm -rf ./*bin");
+    system("cd ./apply_rotary_pos_emb_data/ && python3 gen_data.py 24 13 128 13 float32");
+
+    char* path_ = get_current_dir_name();
+    string path(path_);
+
+    ApplyRotaryPosEmbTilingData* tilingDatafromBin = reinterpret_cast<ApplyRotaryPosEmbTilingData*>(tiling);
+
+    tilingDatafromBin->useCoreNum = 24;
+    tilingDatafromBin->lastDim = 64;
+    tilingDatafromBin->halfNum = 32;
+    tilingDatafromBin->preCBatchB = 0;
+    tilingDatafromBin->preCBatchL = 0;
+    tilingDatafromBin->lastCBatchL = 0;
+    tilingDatafromBin->comBatchBB = 0;
+    tilingDatafromBin->comBatchBBL = 0;
+    tilingDatafromBin->comBatchBLL = 0;
+    tilingDatafromBin->comBatchLLL = 0;
+    tilingDatafromBin->qPart1Ub = 6656;
+    tilingDatafromBin->q2q1Part1Ub = 6656;
+    tilingDatafromBin->cosPart1Ub = 256;
+    tilingDatafromBin->sin1UbSize = 256;
+    tilingDatafromBin->preCLTimes = 0;
+    tilingDatafromBin->lastCLTimes = 0;
+    tilingDatafromBin->preCBBTimes = 0;
+    tilingDatafromBin->preCBLTimes = 0;
+    tilingDatafromBin->preCLLTimes = 0;
+    tilingDatafromBin->qCoreOffset = 1664;
+    tilingDatafromBin->kCoreOffset = 1664;
+    tilingDatafromBin->cosCoreOffset = 64;
+    tilingDatafromBin->qcdNum = 832;
+    tilingDatafromBin->kcdNum = 832;
+    tilingDatafromBin->coscdNum = 64;
+    tilingDatafromBin->qkcNum = 26;
+    tilingDatafromBin->mulNum = 1664;
+    tilingDatafromBin->qcdHalfNum = 1;
+    tilingDatafromBin->dstRepSBr = 8;
+    tilingDatafromBin->blockLenQ = 4;
+    tilingDatafromBin->srcStrideK = 0;
+    tilingDatafromBin->blockLenq2q1 = 0;
+    tilingDatafromBin->mask = 64;
+    tilingDatafromBin->qcNum = 13;
+    tilingDatafromBin->kcNum = 13;
+    tilingDatafromBin->qDim3 = 128;
+    tilingDatafromBin->kDim3 = 128;
+    tilingDatafromBin->blockMoveQ = 8;
+    ReadFile(path + "/apply_rotary_pos_emb_data/q.bin", inputqByteSize, q, inputqByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/k.bin", inputkByteSize, k, inputkByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/cos.bin", cosByteSize, cos, cosByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/sin.bin", cosByteSize, sin, cosByteSize);
+    ICPU_SET_TILING_KEY(1);
+    ICPU_RUN_KF(apply_rotary_pos_emb, blockDim, q, k, cos, sin, qout, kout, workspace, (uint8_t*)(tilingDatafromBin));
+
+    AscendC::GmFree(q);
+    AscendC::GmFree(k);
+    AscendC::GmFree(cos);
+    AscendC::GmFree(sin);
+    AscendC::GmFree(qout);
+    AscendC::GmFree(kout);
+    AscendC::GmFree(workspace);
+    AscendC::GmFree(tiling);
+    free(path_);
+}
+
+TEST_F(apply_rotary_pos_emb_test, test_case_9)
+{
+    size_t inputqByteSize = 90 * 47 * 128 * sizeof(float);
+    size_t inputkByteSize = 90 * 1 * 128 * sizeof(float);
+    size_t outputByteSize = 90 * 1 * 64 * sizeof(float);
+    size_t cosByteSize = 90 * 1 * 64 * sizeof(float);
+    size_t tiling_data_size = sizeof(ApplyRotaryPosEmbTilingData);
+    uint8_t* q = (uint8_t*)AscendC::GmAlloc(inputqByteSize);
+    uint8_t* k = (uint8_t*)AscendC::GmAlloc(inputkByteSize);
+    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosByteSize);
+    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(cosByteSize);
+    uint8_t* qout = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* kout = (uint8_t*)AscendC::GmAlloc(inputkByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(4096 * 16);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint32_t blockDim = 40;
+    system(
+        "cp -r ../../../../../posembedding/apply_rotary_pos_emb/tests/ut/op_kernel/apply_rotary_pos_emb_data "
+        "./");
+    system("chmod -R 755 ./apply_rotary_pos_emb_data/");
+    system("cd ./apply_rotary_pos_emb_data/ && rm -rf ./*bin");
+    system("cd ./apply_rotary_pos_emb_data/ && python3 gen_data.py 90 47 128 1 float32");
+
+    char* path_ = get_current_dir_name();
+    string path(path_);
+
+    ApplyRotaryPosEmbTilingData* tilingDatafromBin = reinterpret_cast<ApplyRotaryPosEmbTilingData*>(tiling);
+
+    tilingDatafromBin->useCoreNum = 45;
+    tilingDatafromBin->lastDim = 64;
+    tilingDatafromBin->halfNum = 32;
+    tilingDatafromBin->preCBatchB = 2;
+    tilingDatafromBin->preCBatchL = 2;
+    tilingDatafromBin->lastCBatchL = 2;
+    tilingDatafromBin->comBatchBB = 2;
+    tilingDatafromBin->comBatchBBL = 2;
+    tilingDatafromBin->comBatchBLL = 2;
+    tilingDatafromBin->comBatchLLL = 2;
+    tilingDatafromBin->qPart1Ub = 24576;
+    tilingDatafromBin->q2q1Part1Ub = 24576;
+    tilingDatafromBin->cosPart1Ub = 512;
+    tilingDatafromBin->sin1UbSize = 512;
+    tilingDatafromBin->preCLTimes = 0;
+    tilingDatafromBin->lastCLTimes = 0;
+    tilingDatafromBin->preCBBTimes = 0;
+    tilingDatafromBin->preCBLTimes = 0;
+    tilingDatafromBin->preCLLTimes = 0;
+    tilingDatafromBin->qCoreOffset = 12032;
+    tilingDatafromBin->kCoreOffset = 256;
+    tilingDatafromBin->cosCoreOffset = 128;
+    tilingDatafromBin->qcNum = 47;
+    tilingDatafromBin->kcNum = 1;
+    tilingDatafromBin->qcdNum = 3008;
+    tilingDatafromBin->kcdNum = 64;
+    tilingDatafromBin->coscdNum = 64;
+    tilingDatafromBin->qkcNum = 48;
+    tilingDatafromBin->mulNum = 384;
+    tilingDatafromBin->qcdHalfNum = 1504;
+    tilingDatafromBin->dstRepSBr = 8;
+    tilingDatafromBin->blockLenQ = 376;
+    tilingDatafromBin->srcStrideK = 8;
+    tilingDatafromBin->blockLenq2q1 = 4;
+    tilingDatafromBin->mask = 64;
+    tilingDatafromBin->qDim3 = 128;
+    tilingDatafromBin->kDim3 = 128;
+    tilingDatafromBin->blockMoveQ = 8;
+    ReadFile(path + "/apply_rotary_pos_emb_data/q.bin", inputqByteSize, q, inputqByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/k.bin", inputkByteSize, k, inputkByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/cos.bin", cosByteSize, cos, cosByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/sin.bin", cosByteSize, sin, cosByteSize);
+    ICPU_SET_TILING_KEY(4);
+    ICPU_RUN_KF(apply_rotary_pos_emb, blockDim, q, k, cos, sin, qout, kout, workspace, (uint8_t*)(tilingDatafromBin));
+
+    AscendC::GmFree(q);
+    AscendC::GmFree(k);
+    AscendC::GmFree(cos);
+    AscendC::GmFree(sin);
+    AscendC::GmFree(qout);
+    AscendC::GmFree(kout);
+    AscendC::GmFree(workspace);
+    AscendC::GmFree(tiling);
+    free(path_);
+}
+
+TEST_F(apply_rotary_pos_emb_test, test_case_10)
+{
+    size_t inputqByteSize = 9000 * 46 * 64 * sizeof(float);
+    size_t inputkByteSize = 9000 * 48 * 64 * sizeof(float);
+    size_t outputByteSize = 9000 * 1 * 64 * sizeof(float);
+    size_t cosByteSize = 9000 * 1 * 64 * sizeof(float);
+    size_t tiling_data_size = sizeof(ApplyRotaryPosEmbTilingData);
+    uint8_t* q = (uint8_t*)AscendC::GmAlloc(inputqByteSize);
+    uint8_t* k = (uint8_t*)AscendC::GmAlloc(inputkByteSize);
+    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosByteSize);
+    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(cosByteSize);
+    uint8_t* qout = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* kout = (uint8_t*)AscendC::GmAlloc(inputkByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(4096 * 16);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint32_t blockDim = 40;
+    system(
+        "cp -r ../../../../../posembedding/apply_rotary_pos_emb/tests/ut/op_kernel/apply_rotary_pos_emb_data "
+        "./");
+    system("chmod -R 755 ./apply_rotary_pos_emb_data/");
+    system("cd ./apply_rotary_pos_emb_data/ && rm -rf ./*bin");
+    system("cd ./apply_rotary_pos_emb_data/ && python3 gen_data.py 9000 46 64 48 float32");
+
+    char* path_ = get_current_dir_name();
+    string path(path_);
+
+    ApplyRotaryPosEmbTilingData* tilingDatafromBin = reinterpret_cast<ApplyRotaryPosEmbTilingData*>(tiling);
+
+    tilingDatafromBin->useCoreNum = 48;
+    tilingDatafromBin->lastDim = 64;
+    tilingDatafromBin->halfNum = 32;
+    tilingDatafromBin->preCBatchB = 2;
+    tilingDatafromBin->preCBatchL = 2;
+    tilingDatafromBin->lastCBatchL = 2;
+    tilingDatafromBin->comBatchBB = 1;
+    tilingDatafromBin->comBatchBBL = 1;
+    tilingDatafromBin->comBatchBLL = 1;
+    tilingDatafromBin->comBatchLLL = 1;
+    tilingDatafromBin->qPart1Ub = 48128;
+    tilingDatafromBin->q2q1Part1Ub = 24064;
+    tilingDatafromBin->cosPart1Ub = 512;
+    tilingDatafromBin->sin1UbSize = 256;
+    tilingDatafromBin->preCLTimes = 93;
+    tilingDatafromBin->lastCLTimes = 81;
+    tilingDatafromBin->preCBBTimes = 1;
+    tilingDatafromBin->preCBLTimes = 1;
+    tilingDatafromBin->preCLLTimes = 1;
+    tilingDatafromBin->qCoreOffset = 553472;
+    tilingDatafromBin->kCoreOffset = 577536;
+    tilingDatafromBin->cosCoreOffset = 12032;
+    tilingDatafromBin->qcNum = 46;
+    tilingDatafromBin->kcNum = 48;
+    tilingDatafromBin->qcdNum = 2944;
+    tilingDatafromBin->kcdNum = 3072;
+    tilingDatafromBin->coscdNum = 64;
+    tilingDatafromBin->qkcNum = 94;
+    tilingDatafromBin->mulNum = 752;
+    tilingDatafromBin->qcdHalfNum = 1472;
+    tilingDatafromBin->dstRepSBr = 8;
+    tilingDatafromBin->blockLenQ = 368;
+    tilingDatafromBin->srcStrideK = 384;
+    tilingDatafromBin->blockLenq2q1 = 4;
+    tilingDatafromBin->mask = 64;
+    tilingDatafromBin->qDim3 = 64;
+    tilingDatafromBin->kDim3 = 64;
+    tilingDatafromBin->blockMoveQ = 8;
+    ReadFile(path + "/apply_rotary_pos_emb_data/q.bin", inputqByteSize, q, inputqByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/k.bin", inputkByteSize, k, inputkByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/cos.bin", cosByteSize, cos, cosByteSize);
+    ReadFile(path + "/apply_rotary_pos_emb_data/sin.bin", cosByteSize, sin, cosByteSize);
+    ICPU_SET_TILING_KEY(3);
+    ICPU_RUN_KF(apply_rotary_pos_emb, blockDim, q, k, cos, sin, qout, kout, workspace, (uint8_t*)(tilingDatafromBin));
+
+    AscendC::GmFree(q);
+    AscendC::GmFree(k);
+    AscendC::GmFree(cos);
+    AscendC::GmFree(sin);
+    AscendC::GmFree(qout);
+    AscendC::GmFree(kout);
+    AscendC::GmFree(workspace);
+    AscendC::GmFree(tiling);
+    free(path_);
+}

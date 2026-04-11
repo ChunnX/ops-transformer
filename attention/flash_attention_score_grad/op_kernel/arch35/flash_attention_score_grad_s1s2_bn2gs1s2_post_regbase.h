@@ -14,14 +14,25 @@
  */
 #ifndef FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
-template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false, const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0> class FlashAttentionScoreGradS1S2BNGS1S2PostRegbase {
+#define FAG_POST_CLASS_TEMPLATE                                                                                             \
+    template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false, const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0, const bool IS_TND_SWIZZLE = 0> 
+#define FAG_POST_FUNCTION_TEMPLATE                                                                                          \
+    template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND, const bool IS_TND_SWIZZLE>
+#define FAG_POST_FUNCTION_PARAMS_TEMPLATE T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE
+
+FAG_POST_CLASS_TEMPLATE 
+class FlashAttentionScoreGradS1S2BNGS1S2PostRegbase {
 public:
     __aicore__ inline FlashAttentionScoreGradS1S2BNGS1S2PostRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
                                 __gm__ uint8_t *dkRope,__gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData,
+                                FagTilingType ordTilingData,
                                 TPipe *pipe_in);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessBNS2Deter();
@@ -32,7 +43,7 @@ public:
     uint32_t VALUE_DIM = 128;
     uint32_t POST_S_BASE = 96;
     TPipe *pipe;
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict tilingData;
+    FagTilingType tilingData;
     TQue<QuePosition::VECIN, 1> inQueuePing;
     TQue<QuePosition::VECOUT, 1> outQueuePing;
     TQue<QuePosition::VECIN, 1> inQueuePong;
@@ -42,16 +53,16 @@ public:
     GlobalTensor<float> dqkvWorkspace[3];
     GlobalTensor<float> deterGm[2];
     uint32_t vBlockIdx;
-    uint32_t loop;
-    uint32_t inputTotalSize;
-    uint32_t qPostTailNum;
+    uint64_t loop;
+    uint64_t inputTotalSize;
+    uint64_t qPostTailNum;
 };
 
-template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND>::Init(
+FAG_POST_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
     __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData, TPipe *pipe_in)
+    FagTilingType ordTilingData, TPipe *pipe_in)
 {
     vBlockIdx = GetBlockIdx();
     tilingData = ordTilingData;
@@ -82,8 +93,8 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUT
     pipe->InitBuffer(outQueuePong, 1, REGBASE_POST_BASE * sizeof(OUTDTYPE));
 }
 
-template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND>::Process()
+FAG_POST_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Process()
 {
     if (g_coreType != AIV) {
         return;
@@ -101,8 +112,6 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUT
         uint64_t blockCore = loop * REGBASE_POST_BASE;
         uint64_t begin = vBlockIdx * blockCore;
         uint64_t end = begin + blockCore;
-        uint32_t s1BaseTailSize = tilingData->s1s2BNGS1S2BaseParams.s1 % POST_S_BASE;   // 128
-        uint32_t s2BaseTailSize = tilingData->s1s2BNGS1S2BaseParams.s2 % POST_S_BASE;   // 128
 
         if (end > inputTotalSize) {
             end = inputTotalSize;
@@ -112,9 +121,9 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUT
         for (uint64_t pingIdx = begin; pingIdx < end; pingIdx = pingIdx + (REGBASE_POST_BASE << 1)) {
             LocalTensor<float> vecInPing = inQueuePing.AllocTensor<float>();
             uint64_t pongIdx = pingIdx + REGBASE_POST_BASE;
-            uint32_t pingSize = pongIdx < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
+            uint64_t pingSize = pongIdx < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
             uint64_t dqPongGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE; // 96*128
-            uint32_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
+            uint64_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
             DataCopy(vecInPing, dqkvWorkspace[qkvIdx][pingIdx], (pingSize + 7) >> 3 << 3);
             inQueuePing.EnQue(vecInPing);
             inQueuePing.DeQue<float>();
@@ -123,8 +132,8 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUT
             }
             LocalTensor<OUTDTYPE> vecOutPing = outQueuePing.AllocTensor<OUTDTYPE>();
             Cast(vecOutPing, vecInPing, RoundMode::CAST_ROUND, pingSize);
-            uint32_t pongSize;
-            uint32_t seqPongSize;
+            uint64_t pongSize;
+            uint64_t seqPongSize;
             LocalTensor<float> vecInPong;
             bool neeedPong = loop > 1 && pongIdx < end;
             if (neeedPong) {

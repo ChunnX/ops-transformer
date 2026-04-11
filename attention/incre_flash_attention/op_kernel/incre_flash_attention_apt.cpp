@@ -12,7 +12,12 @@
  * \file incre_flash_attention_apt.cpp
  * \brief
  */
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "arch35/incre_flash_attention_template_tiling_key.h"
 #include "arch35/incre_flash_attention_entry_regbase.h"
 #ifdef NOT_DYNAMIC_COMPILE
@@ -57,7 +62,7 @@ incre_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                                             query, key, value, pseShift, attenMask, nullptr, actualSeqLengths, deqScale1,
                                             quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, blocktable, nullptr,
                                             kvPaddingSize, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                            attentionOut, nullptr, workspace, tiling);
+                                            nullptr, attentionOut, nullptr, workspace, tiling);
     } else {
         incre_flash_attention_FIAS<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix>(
                                     query, key, value, pseShift, attenMask, nullptr, actualSeqLengths, deqScale1, quantScale1,

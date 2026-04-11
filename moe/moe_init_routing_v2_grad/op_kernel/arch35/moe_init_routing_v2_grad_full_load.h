@@ -33,7 +33,7 @@ public:
         auto blockIdx = GetBlockIdx();
 
         this->singleN =
-            (blockIdx == td_->blockDim - 1) ? (td_->n - td_->nBlockFactor * (td_->blockDim - 1)) : td_->nBlockFactor;
+            (blockIdx == td_->numBlocks - 1) ? (td_->n - td_->nBlockFactor * (td_->numBlocks - 1)) : td_->nBlockFactor;
         int64_t indexGmOffset = td_->nBlockFactor * blockIdx * td_->k;
         int64_t outputGmOffset = td_->nBlockFactor * blockIdx * td_->h;
         inputGm.SetGlobalBuffer((__gm__ T*)gradExpandedX);
@@ -98,16 +98,16 @@ private:
                     }
                 }
                 int64_t curInputOffset = rowIdx * td_->h + inputOffset;
-                DataCopyPadExtParams<T> dataCopyPadExtParams;
-                dataCopyPadExtParams.isPad = false;
-                dataCopyPadExtParams.leftPadding = 0;
-                dataCopyPadExtParams.rightPadding = 0;
-                dataCopyPadExtParams.paddingValue = 0;
                 DataCopyExtParams copyInParams;
                 copyInParams.blockCount = 1;
                 copyInParams.blockLen = currentH * sizeof(T);
                 copyInParams.srcStride = 0;
                 copyInParams.dstStride = 0;
+                DataCopyPadExtParams<T> dataCopyPadExtParams;
+                dataCopyPadExtParams.isPad = false;
+                dataCopyPadExtParams.leftPadding = 0;
+                dataCopyPadExtParams.rightPadding = 0;
+                dataCopyPadExtParams.paddingValue = 0;
                 DataCopyPad(
                     inputUb[nInputOffset + kIdx * currentHAlign], inputGm[curInputOffset], copyInParams,
                     dataCopyPadExtParams);
@@ -157,7 +157,7 @@ private:
     int64_t activeNum;
     int64_t h;
     int64_t hUbFactor;
-    int64_t blockDim;
+    int64_t numBlocks;
 
     int64_t singleN;
 };

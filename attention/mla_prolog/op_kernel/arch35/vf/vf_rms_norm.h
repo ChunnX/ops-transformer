@@ -92,6 +92,11 @@ __aicore__ inline void RmsNormVF(const LocalTensor<OutType> &outputLocal, const 
     __ubuf__ OutType * outputBuf = (__ubuf__ OutType *)outputLocal.GetPhyAddr();
     
     RmsNormVFImpl<InType, GammaType, C, OutType>(inputBuf, gammaBuf, outputBuf, cnt, repeatTimes, rmsNormParams);
+
+    if (unlikely(rmsNormParams.isScaleEnable)) {
+        AscendC::PipeBarrier<PIPE_V>();
+        Muls(outputLocal, outputLocal, rmsNormParams.scale, cnt);
+    }
 }
 }
 #endif 

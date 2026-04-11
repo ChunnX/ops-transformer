@@ -6,23 +6,28 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-算子功能：在grouped_matmul的基础上实现多卡并行AllReduce功能，实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。根据x、weight、y的Tensor数量支持如下4种场景：
-- x、weight、y的Tensor数量等于组数，即每组的数据对应的Tensor是独立的。
-- x的Tensor数量为1，weight/y的Tensor数量等于组数，此时需要通过可选参数group_list说明x在行上的分组情况，如group_list[0]=10说明x的前10行参与第一组矩阵乘计算。
-- x、weight的Tensor数量等于组数，y的Tensor数量为1，此时每组矩阵乘的结果放在同一个Tensor中连续存放。
-- x、y的Tensor数量为1，weight数量等于组数，属于前两种情况的组合。
+- 算子功能：在grouped_matmul的基础上实现多卡并行AllReduce功能，实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。根据x、weight、y的Tensor数量支持如下4种场景：
+  - x、weight、y的Tensor数量等于组数，即每组的数据对应的Tensor是独立的。
+  - x的Tensor数量为1，weight/y的Tensor数量等于组数，此时需要通过可选参数group_list说明x在行上的分组情况，如group_list[0]=10说明x的前10行参与第一组矩阵乘计算。
+  - x、weight的Tensor数量等于组数，y的Tensor数量为1，此时每组矩阵乘的结果放在同一个Tensor中连续存放。
+  - x、y的Tensor数量为1，weight数量等于组数，属于前两种情况的组合。
 
-计算公式：
-非量化场景：
+- 计算公式：
 
-$$
-y_i=x_i\times weight_i + bias_i
-$$
+  非量化场景：
+
+  $$
+  y_i=x_i\times weight_i + bias_i
+  $$
 
 ## 函数原型
 
@@ -54,180 +59,183 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
 
 ## aclnnGroupedMatMulAllReduceGetWorkspaceSize
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
- <col style="width: 170px">
- <col style="width: 170px">
- <col style="width: 800px">
- <col style="width: 800px">
- <col style="width: 200px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>x</td>
-   <td>输入</td>
-   <td>必选参数，公式中的输入x，支持的最大长度为64个。</td>
-   <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>weight</td>
-   <td>输入</td>
-   <td>必选参数，公式中的weight，支持的最大长度为64个。</td>
-   <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>bias</td>
-   <td>输入</td>
-   <td>可选参数，公式中的bias，支持的最大长度为64个。</td>
-   <td>FLOAT16、FLOAT32（列表内张量数据类型）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>groupListOptional</td>
-   <td>输入</td>
-   <td>可选参数，代表输入和输出M方向的matmul大小分布，支持的最大长度为64个。</td>
-   <td>INT64（数组元素类型）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>splitItem</td>
-   <td>输入</td>
-   <td>可选属性，代表输入和输出是否要做tensor切分：0（默认）=输入输出都不切分；1=输入切分、输出不切分；2=输入不切分、输出切分；3=输入输出都切分。</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>group</td>
-   <td>输入</td>
-   <td>即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
-   <td>STRING</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>reduceOp</td>
-   <td>输入</td>
-   <td>reduce操作类型，当前版本仅支持输入"sum"。</td>
-   <td>STRING</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>commTurn</td>
-   <td>输入</td>
-   <td>通信数据切分数（总数据量/单次通信量），当前版本仅支持输入0。</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>streamMode</td>
-   <td>输入</td>
-   <td>acl流模式的枚举，当前只支持值1。</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>y</td>
-   <td>输出</td>
-   <td>公式中的输出y，支持的最大长度为64个。</td>
-   <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输出</td>
-   <td>返回需要在Device侧申请的workspace大小。</td>
-   <td>UINT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输出</td>
-   <td>返回op执行器，包含了算子的计算流程。</td>
-   <td>aclOpExecutor*</td>
-   <td>ND</td>
-  </tr>
- </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1013px"><colgroup>
+  <col style="width: 160px">
+  <col style="width: 111px">
+  <col style="width: 429px">
+  <col style="width: 188px">
+  <col style="width: 125px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+    <td>x</td>
+    <td>输入</td>
+    <td>公式中的输入x，支持的最大长度为64个。</td>
+    <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>weight</td>
+    <td>输入</td>
+    <td>公式中的weight，支持的最大长度为64个。</td>
+    <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>bias</td>
+    <td>可选输入</td>
+    <td>公式中的bias，支持的最大长度为64个。</td>
+    <td>FLOAT16、FLOAT32（列表内张量数据类型）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>groupListOptional</td>
+    <td>可选输入</td>
+    <td>Host侧的aclIntArray类型，代表输入和输出M方向的matmul大小分布，支持的最大长度为64个。</td>
+    <td>INT64（数组元素类型）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>splitItem</td>
+    <td>输入</td>
+    <td>可选属性，代表输入和输出是否要做tensor切分：0（默认）=输入输出都不切分；1=输入切分、输出不切分；2=输入不切分、输出切分；3=输入输出都切分。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>group</td>
+    <td>输入</td>
+    <td>Host侧标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
+    <td>STRING</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>reduceOp</td>
+    <td>输入</td>
+    <td>reduce操作类型，当前版本仅支持输入"sum"。</td>
+    <td>STRING</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>commTurn</td>
+    <td>输入</td>
+    <td>通信数据切分数（总数据量/单次通信量），当前版本仅支持输入0。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>streamMode</td>
+    <td>输入</td>
+    <td>acl流模式的枚举，当前只支持值1。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>y</td>
+    <td>输出</td>
+    <td>公式中的输出y，支持的最大长度为64个。</td>
+    <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子的计算流程。</td>
+    <td>aclOpExecutor*</td>
+    <td>ND</td>
+    </tr>
+  </tbody></table>
 
-**返回值**
+- **返回值**
 
-第一段接口完成入参校验，出现以下场景时报错：
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-<table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
- <col style="width: 170px">
- <col style="width: 170px">
- <col style="width: 400px">
- </colgroup>
- <thead>
-  <tr>
-   <th>返回值</th>
-   <th>错误码</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>ACLNN_ERR_PARAM_NULLPTR</td>
-   <td>161001</td>
-   <td>1. 传入参数要求是必选输入、输出或者必选属性，但实际传入了空指针。</td>
-  </tr>
-  <tr>
-   <td>ACLNN_ERR_PARAM_INVALID</td>
-   <td>161002</td>
-   <td>1. x、weight、bias、groupListOptional、splitItem、y的数据类型和数据格式不在支持的范围内；<br>2. x的长度不等于1且不等于weight的长度；<br>3. 如bias不为空，bias的长度不等于weight的长度；<br>4. splitItem为1的场景，x的长度不等于1；<br>5. splitItem为2的场景，y的长度不等于1；<br>6. splitItem为1、3的场景，x和y的长度不等于1；<br>7. reduceOp不等于“sum”；<br>8. commTurn不等于0；<br>9. streamMode不等于1。</td>
-  </tr>
- </tbody></table>
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+  <col style="width: 282px">
+  <col style="width: 120px">
+  <col style="width: 747px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
+    <td>1. 传入参数要求是必选输入、输出或者必选属性，但实际传入了空指针。</td>
+    </tr>
+    <tr>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
+    <td>1. x、weight、bias、groupListOptional、splitItem、y的数据类型和数据格式不在支持的范围内；<br>2. x的长度不等于1且不等于weight的长度；<br>3. 如bias不为空，bias的长度不等于weight的长度；<br>4. splitItem为1的场景，x的长度不等于1；<br>5. splitItem为2的场景，y的长度不等于1；<br>6. splitItem为1、3的场景，x和y的长度不等于1；<br>7. reduceOp不等于“sum”；<br>8. commTurn不等于0；<br>9. streamMode不等于1。</td>
+    </tr>
+  </tbody></table>
 
 
 ## aclnnGroupedMatMulAllReduce
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
- <col style="width: 170px">
- <col style="width: 170px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>workspace</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace内存地址。</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatMulAllReduceGetWorkspaceSize获取。</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输入</td>
-   <td>op执行器，包含了算子计算流程。</td>
-  </tr>
-  <tr>
-   <td>stream</td>
-   <td>输入</td>
-   <td>指定执行任务的Stream。</td>
-  </tr>
- </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatMulAllReduceGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
-**返回值**
+- **返回值**
 
-返回aclnnStatus状态码，具体参见aclnn返回码。
+  返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -247,6 +255,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
   - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32最大值（2147483647）。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 ```Cpp

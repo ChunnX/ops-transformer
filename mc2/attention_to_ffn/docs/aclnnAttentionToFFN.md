@@ -4,17 +4,16 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-- 接口功能：将Attention节点上token数据发往FFN节点。
+将Attention节点上token数据发往FFN节点。
 
 
 ## 函数原型
@@ -274,6 +273,7 @@ aclnnStatus aclnnAttentionToFFN(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
+
     <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 280px">
     <col style="width: 100px">
@@ -360,6 +360,7 @@ aclnnStatus aclnnAttentionToFFN(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
 
 - **Shape变量约束**：
+
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
   | X            | 表示micro batch sequence size（token组数），当前版本只支持<code>X = 1</code>。 |
@@ -599,7 +600,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     if (args.rankId < FFN_WORKER_NUM) {  // FFN Worker
         // 等待 Attention Worker 任务执行结束
         LOG_PRINT("[INFO] device_%d is FFN worker, skipping aclnnAttentionToFFN execute.\n", args.rankId);
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(std::chrono::seconds(30));
     } else {    // Attention Worker
         // 调用第二阶段接口
         ret = aclnnAttentionToFFN(attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize,
@@ -703,11 +704,9 @@ int main(int argc, char *argv[])
     }
 
     HcclComm comms[WORLD_SIZE];
-    for (int32_t id = 0; id < WORLD_SIZE; id++) {
-        ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
-        CHECK_RET(ret == ACL_SUCCESS,
-                  LOG_PRINT("[ERROR] HcclCommInitAll ep %d failed, ret %d\n", id, ret); return ret);
-    }
+    ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] HcclCommInitAll failed, ret %d\n", ret); return ret);
 
     Args args[WORLD_SIZE];
     std::vector<std::unique_ptr<std::thread>> threads(WORLD_SIZE);

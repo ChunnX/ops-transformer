@@ -21,7 +21,7 @@
 #include "arch35/moe_gather_out.h"
 #include "arch35/moe_gather_out_small_activate_row.h"
 #include "arch35/moe_init_routing_fullload.h"
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_src_to_dst_simt_op.h"
 #endif
 
@@ -68,7 +68,7 @@ extern "C" __global__ __aicore__ void moe_init_routing(
     }
     sortPipe.Destroy();
 
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     MoeSrcToDstSimtOp srcToDstSimtOp;
     srcToDstSimtOp.Init(expandedRowIdx, userWS, t);
     srcToDstSimtOp.Process();

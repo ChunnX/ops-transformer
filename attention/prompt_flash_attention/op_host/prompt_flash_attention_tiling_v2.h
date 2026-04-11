@@ -29,6 +29,8 @@
 
 namespace optiling {
 namespace v2 {
+#define CHECK_D_LIMITED_SCENARIO(dSize) ((dSize) != 64 && (dSize) != 128)
+
 struct PFAShapeInfo {
     uint32_t b = 0;
     uint32_t n = 0;
@@ -70,7 +72,7 @@ static const std::unordered_map<ge::DataType, std::string> g_strDataTypePfa = {
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},
 };
 
-static std::string GetPfaDataTypeStr(ge::DataType type) {
+static inline std::string GetPfaDataTypeStr(ge::DataType type) {
     ge::DataType findDype = (g_strDataTypePfa.find(type) == g_strDataTypePfa.end()) ? ge::DT_UNDEFINED : type;
     return g_strDataTypePfa.at(findDype);
 }
@@ -90,14 +92,13 @@ public:
     explicit PromptFlashAttentionTilingV2(gert::TilingContext *context) : FiaTilingBase(context) {}
     ~PromptFlashAttentionTilingV2() override = default;
     ge::graphStatus RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
-        uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData);
-    ge::graphStatus PromptFlashAttentionSetTilingData(gert::TilingContext* context,
-        PromptFlashAttentionTilingData& tilingData);
+        uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData);
+    ge::graphStatus PromptFlashAttentionSetTilingData() const;
     bool CheckNonEmptyShapeExceptions(const ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* shape,
         const std::string &sName) const;
     ge::graphStatus DoSubOpTiling(PromptFlashAttentionTilingData& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling);
-    ge::graphStatus ConvertContextToPFAParams(ContextParamsForPFATiling& contextKeyParams);
-    void SetTilingKey(ContextParamsForPFATiling& contextKeyParams);
+    ge::graphStatus ConvertContextToPFAParams(ContextParamsForPFATiling& contextKeyParams) const;
+    void SetTilingKey(ContextParamsForPFATiling& contextKeyParams) const;
 protected:
     void InitializeMaxWorkspace(PFAShapeInfo& queryShapeInfo, PFAShapeInfo& keyShapeInfo,
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV);
@@ -105,8 +106,8 @@ protected:
     bool IsCapable() override {return true;}
     ge::graphStatus DoOpTiling() override;
     void PromptFlashAttentionInitOutputSplit(int64_t totalSize, PromptFlashAttentionTilingData &tilingData);
-    bool CheckEmptyTensor(ContextParamsForPFATiling& contextKeyParams) const;    
-    void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint32_t& blockDimToBeSet,
+    ge::graphStatus CheckEmptyTensor(ContextParamsForPFATiling& contextKeyParams);    
+    void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint32_t& numBlocksToBeSet,
         PromptFlashAttentionTilingData& tilingData);
     bool CheckIODataType(ContextParamsForPFATiling& contextKeyParams);
     bool SetInputLayout(const char* layout);
@@ -119,21 +120,21 @@ protected:
         const std::string inputName, int64_t& b, int64_t& n, int64_t& s, int64_t& d, int64_t& h, int64_t& t) const;
     bool CheckQueryOutParamsConsistency(const ContextParamsForPFATiling& contextKeyParams,
         const gert::StorageShape* queryShape, const gert::StorageShape* outShape) const;
-    bool CheckKVDataType(ContextParamsForPFATiling& contextKeyParams);
+    bool CheckKVDataType(ContextParamsForPFATiling& contextKeyParams) const;
+    bool CheckRopeDataType(ContextParamsForPFATiling& contextKeyParams) const;
     bool CheckKeyValueParamsConsistency(ContextParamsForPFATiling& contextKeyParams,
         const gert::StorageShape* keyShape, const gert::StorageShape* valueShape);
     bool SetAndCheckHeadNumRatio(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData);
-    bool CheckInputDimAndHeadNum(ContextParamsForPFATiling& contextKeyParams, const uint32_t nQ, const uint32_t nKV);
-    bool CheckPostQuantShape(const ContextParamsForPFATiling& contextKeyParams, uint32_t quantD,
-        const gert::StorageShape* quantOffset2Shape, const ge::DataType quantScale2Type, size_t quantScale2Dim, int64_t quantScale2ShapeSize,
-        const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
+    bool CheckInputDimAndHeadNum(ContextParamsForPFATiling& contextKeyParams, const uint32_t nQAttr, const uint32_t nKVAttr);
+    bool CheckPostQuantShape(const ContextParamsForPFATiling &contextKeyParams,
+                             const gert::StorageShape *quantScale2Shape, const gert::StorageShape *quantOffset2Shape,
+                             const PFAShapeInfo &queryShapeInfo, const PFAShapeInfo &valueShapeInfo) const;
     bool CheckPostQuantParams(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
-    bool CheckPerTensorQuantParams(const ContextParamsForPFATiling& contextKeyParams) const;
+    bool CheckPerTensorQuantParams(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo) const;
     bool CheckPerblockQuantParams(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& keyShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
-    bool CheckAntiquantParamsShape(ContextParamsForPFATiling& contextKeyParams);
-    bool GetAndCheckPrefixShape(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo,
-        PFAShapeInfo& prefixShapeInfo,
-        PromptFlashAttentionTilingData& tilingData) const;
+    bool CheckAntiquantParamsShape(ContextParamsForPFATiling& contextKeyParams) const;
+    bool GetAndCheckPrefixShape(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& keyShapeInfo,
+        PFAShapeInfo& prefixShapeInfo) const;
     bool CheckKeyValuePrefixConsistency(ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* keyShape);
     bool CheckActSharedPrefix(ContextParamsForPFATiling& contextKeyParams, const uint32_t sPrefix, const uint32_t sKV);
     bool CheckPAKeyValueShape(ContextParamsForPFATiling& contextKeyParams, int64_t& keyDim1, PFAShapeInfo& queryShapeInfo,
@@ -147,10 +148,9 @@ protected:
         int64_t& attenMaskS1, int64_t& attenMaskS2, bool& checkMask, const uint32_t sQ, const uint32_t sK,
         const uint32_t batchSize, std::string& strMaskShape);
     void SetSparseModeData(ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* attenMaskShape,
-        PromptFlashAttentionTilingData& tilingData, const int32_t* sparseMode, const int64_t* preTokens,
-        const int64_t* nextTokens);
-    bool CheckMaskShapeCrossSparse(ContextParamsForPFATiling& contextKeyParams, const int32_t* sparseMode,
-        uint32_t sQ, const uint32_t sK, const uint32_t batchSize);
+        const int32_t* sparseMode, const int64_t* preTokens, const int64_t* nextTokens);
+    bool CheckMaskShapeCrossSparse(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData,
+        const int32_t* sparseMode, uint32_t sQ, const uint32_t sK, const uint32_t batchSize);
     bool CheckMaskCrossIFAMLA(ContextParamsForPFATiling& contextKeyParams, const int32_t *sparseMode, uint32_t queryS);
     bool CheckIO(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PFAShapeInfo& valueShapeInfo);
     bool CheckKV(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& keyShapeInfo, PFAShapeInfo& valueShapeInfo);
@@ -159,12 +159,13 @@ protected:
     bool CheckPFAMerge(ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo) const;
     bool CheckRope(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo,
         PFAShapeInfo& keyShapeInfo, PFAShapeInfo& queryRopeShapeInfo);
+    bool CheckLayout(ContextParamsForPFATiling& contextKeyParams) const;
     bool CheckIFAMLA(ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo) const;
-    bool CheckQuant(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PFAShapeInfo& keyShapeInfo, const PFAShapeInfo& valueShapeInfo);
-    bool CheckQScaleShape4MLAFullQuant(ContextParamsForPFATiling& contextKeyParams);
-    bool CheckKVScaleShape4MLAFullQuant(ContextParamsForPFATiling& contextKeyParams);
-    bool CheckMLAFullQuant(ContextParamsForPFATiling& contextKeyParams);
-    bool CheckPrefix(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PFAShapeInfo& keyShapeInfo, 
+    bool CheckQuant(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PFAShapeInfo& keyShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
+    bool CheckQScaleShape4MLAFullQuant(ContextParamsForPFATiling& contextKeyParams) const;
+    bool CheckKVScaleShape4MLAFullQuant(ContextParamsForPFATiling& contextKeyParams) const;
+    bool CheckMLAFullQuant(ContextParamsForPFATiling& contextKeyParams) const;
+    bool CheckPrefix(ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo, PFAShapeInfo& keyShapeInfo, 
         PromptFlashAttentionTilingData& tilingData);
     bool CheckActSeq(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo) const;
     bool CheckActSeqLen(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo,
@@ -176,11 +177,14 @@ protected:
     bool CheckInnerPrecise(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData);
     bool CheckMaskTypeAndShape(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData);
     void SetSparseType(uint32_t qS);
-    bool CheckSparseMode(ContextParamsForPFATiling& contextKeyParams, uint32_t qS, PromptFlashAttentionTilingData& tilingData);
+    bool CheckSparseMode(ContextParamsForPFATiling& contextKeyParams, uint32_t qS);
     bool CheckPACrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
     bool CheckMaskCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         PromptFlashAttentionTilingData& tilingData);
     bool CheckTNDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams);
+    bool CheckNTDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
+    bool CheckTransposeLayoutCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
+    bool CheckLearnSink(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
     bool ParseActualSeqLengths(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV);
     bool CheckMultiFeatureCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
@@ -193,12 +197,13 @@ protected:
         PFAShapeInfo& queryRopeShapeInfo, PFAShapeInfo& valueShapeInfo, PromptFlashAttentionTilingData &tilingData);
     void InferTilingMod(const ContextParamsForPFATiling& contextKeyParams, std::vector<int64_t>& actualSeqLengths,
         std::vector<int64_t>& actualSeqLengthsKV, uint32_t actualSeqArrayLen, uint32_t d);
-    int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums);
-    int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter, int64_t token);
+    int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
+    int64_t SumOfArithmeticSeries(int64_t an, int64_t d) const;
+    int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter, int64_t token) const;
     void FixParamWithRowInvalid(int64_t& actualSeqLength, int64_t actualSeqLengthKV, int64_t& preTokensLeftUp,
         int64_t& nextTokensLeftUp) const;
     int64_t GetCalcBlockNumsOneHead(int64_t actualSeqLength, int64_t actualSeqLengthKV, uint32_t sOuterSize,
-        uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp, bool isAttenMaskUsed);
+        uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp, bool isAttenMaskUsed) const;
     void ComputeSplitNBSeq(PromptFlashAttentionTilingData& tilingData, uint32_t batchSize, const size_t tilingElementArrayLen,
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV, uint32_t sOuterSize,
         uint32_t sInnerSize, double coreWightTarget, uint32_t& curCore);
@@ -212,7 +217,7 @@ protected:
     void GetMatMulType(matmul_tiling::DataType &mmInputType, matmul_tiling::DataType &mmOutputType);
     bool EnableMTE2BmmPipe(PromptFlashAttentionTilingData& tilingData, matmul_tiling::MatmulApiTiling& bmm,
         TCubeTiling& bmmTilingData, uint32_t sOuterFactor, uint32_t sInnerFactor);
-    void EnableBmmDoubleBuffer(TCubeTiling& bmmTilingData);
+    void EnableBmmDoubleBuffer(TCubeTiling& bmmTilingData) const;
     bool PromptFlashAttentionCheckBmm1(PromptFlashAttentionTilingData& tilingData, TCubeTiling& bmm1TilingData,
         int64_t l1SizeRemain, int64_t l0CSize, uint32_t sOuterFactor, uint32_t sInnerFactor, bool autoBaseMNK=false);
     bool PromptFlashAttentionCheckBmm2(PromptFlashAttentionTilingData& tilingData, TCubeTiling& bmm2TilingData,
@@ -222,42 +227,35 @@ protected:
         int64_t l1Size, int64_t l0CSize, uint32_t& sOuterFactor, uint32_t &sInnerFactor);
     void GetPreNextTokensLeftUp(PromptFlashAttentionTilingData& tilingData, int64_t actualSeqLength, 
         int64_t actualSeqLengthKV, int64_t& preTokensLeftUp, int64_t& nextTokensLeftUp);
-    void UpdateTilingKeyMaskCfg(PromptFlashAttentionTilingData& tilingData, uint64_t& tilingKey);
-    void UpdateTilingKeyPseCfg(uint64_t& tilingKey);
-    void UpdateTilingSystemPrefix(uint64_t& tilingKey);
-    void UpdateTilingKeyDSizeConst(PromptFlashAttentionTilingData &tilingData, uint64_t& tilingKey);
-    void UpdateTilingKeyValueDSizeConst(PromptFlashAttentionTilingData &tilingData, uint64_t& tilingKey) const;
-    void UpdateTilingKeySInnerConst(PromptFlashAttentionTilingData &tilingData, uint64_t& tilingKey);
-    void UpdateTilingKeySOuterConst(PromptFlashAttentionTilingData &tilingData, uint64_t& tilingKey);
     void PromptFlashAttentionInitSoftmaxLseOutputSplit(int64_t totalSize, PromptFlashAttentionTilingData &tilingData);
-    void UpdateTilingKeyFlag(ContextParamsForPFATiling& contextKeyParams, uint64_t& tilingKey);
     bool TilingGetTilingKeyAttentionAscendC(ContextParamsForPFATiling& contextKeyParams,
         PromptFlashAttentionTilingData &tilingData);
     size_t GetPFAWorkSpaceSize(PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus SetPlatMemoryInfo(ContextParamsForPFATiling& contextKeyParams);
     ge::graphStatus SetAttributeInfo(ContextParamsForPFATiling& contextKeyParams);
     ge::graphStatus CheckTensorInvalid(const ContextParamsForPFATiling& contextKeyParams) const;
-    ge::graphStatus CheckRopeInvalid(const ContextParamsForPFATiling& contextKeyParams) const;
     ge::graphStatus CheckSingleAttribute(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         PFAShapeInfo& keyShapeInfo, PFAShapeInfo& valueShapeInfo, PFAShapeInfo& queryRopeShapeInfo, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus CheckCrossoverAttribute(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo,
         PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus AdjustTilingData(ContextParamsForPFATiling& contextKeyParams,
-        PromptFlashAttentionTilingData& tilingData, const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo);
+        PromptFlashAttentionTilingData& tilingData, const PFAShapeInfo& queryShapeInfo);
     ge::graphStatus ComputeTilingData(ContextParamsForPFATiling& contextKeyParams, std::vector<int64_t>& actualSeqLengths,
         std::vector<int64_t>& actualSeqLengthsKV, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus ComputeTilingKey(ContextParamsForPFATiling& contextKeyParams,
-        uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData);
+        uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData);
     void SetAttenMaskCompressMode();
     void SetLayoutType();
     void PFATilingDataconvert(PromptFlashAttentionTilingData& tilingData);
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
-    bool IsFlashDecode(ContextParamsForPFATiling& contextKeyParams, uint64_t bng);
+    bool IsFlashDecode(ContextParamsForPFATiling& contextKeyParams, uint64_t bng) const;
     ge::graphStatus SplitBNS(PromptFlashAttentionTilingData& tilingData, uint64_t bng);
     bool CheckAlibiPseShiftTypeAndShape(ContextParamsForPFATiling& contextKeyParams, uint32_t n);
     ge::graphStatus SetQKVStartIdx(ContextParamsForPFATiling& contextKeyParams);
     bool CheckAlibiPseCrossover(ContextParamsForPFATiling& contextKeyParams);
     void GetMaxWorkspaceFlag(ContextParamsForPFATiling& contextKeyParams);
+    void GetQueryDimAndOutDim(const gert::StorageShape* queryShape, const gert::StorageShape* outShape,
+        const std::string &layoutStr, int64_t &tmpqueryDim, int64_t &outDim, uint32_t i) const;
 
     void UpdateTilingKeyLayoutType();
     void UpdateTilingKeyConfig(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData);
@@ -322,7 +320,11 @@ protected:
     bool enablePostQuant = false;
     bool enablePertensorQuant = false;
     bool enablePerblockQuant = false;
+    // attention sink
+    bool enableLearnSink = false;
     uint32_t gSize = 1;
+    int64_t t1Size = 0;
+    int64_t t2Size = 0;
     InputLayout inputLayout = InputLayout::BSH;
     ge::DataType inputType{ge::DT_FLOAT16};
     ge::DataType outputType{ge::DT_FLOAT16};
@@ -375,6 +377,7 @@ protected:
     matmul_tiling::PlatformInfo ascendPlatformInfo;
 
     bool isMaxWorkspace = false;
+    bool isQKVDDifferent = false;
     bool faRunFlag_ = true;
     uint8_t attenMaskShapeType = 0; // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
     uint8_t sparseType = 0;

@@ -18,10 +18,10 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
     add_ops_compile_options(
         OP_NAME FusedInferAttentionScore
-        COMPUTE_UNIT ascend910_9599
+        COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
                 --cce-auto-sync=off
                 -Wno-deprecated-declarations
@@ -45,7 +45,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources_with_soc(OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
 endif()
 
-if(NOT BUILD_OPS_RTY_KERNEL) #
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ../../common/op_host/fia_tiling_shape.cpp

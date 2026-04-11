@@ -16,7 +16,12 @@
 #ifndef FIA_KERNEL_NONQUANT_H
 #define FIA_KERNEL_NONQUANT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -239,6 +244,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     constInfo.preToken = tilingData->maskParams.preToken;
     constInfo.nextToken = tilingData->maskParams.nextToken;
     constInfo.isRowInvalid = (tilingData->maskParams.isRowInvalid != 0);
+    constInfo.isExistRowInvalid = (tilingData->maskParams.isExistRowInvalid != 0);
     constInfo.isLegacyIfa = tilingData->baseParams.isLegacyIfa;
     constInfo.softmaxLseFlag = tilingData->baseParams.softmaxLseFlag;
 
@@ -276,14 +282,23 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     constInfo.systemPrefixMaxLen = tilingData->prefixParams.prefixMaxLen;
     constInfo.systemPrefixFlag = tilingData->prefixParams.prefixFlag;
     constInfo.systemPrefixLen = tilingData->prefixParams.prefixLen;
+
+    constInfo.isPostQuantPerChn = tilingData->postquantParams.isPerChnOut;
+    constInfo.isPostQuantTypeBf16 = tilingData->postquantParams.isOutQuantTypeBf16;
 }
 
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::IsInitAttentionOutGm()
 {
-    // TND、NTD场景且无attentionMask,不需要初始化
+    // TND、NTD场景且不存在无效行,不需要初始化
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
-        if (!constInfo.attenMaskFlag) {
+        /*
+         * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
+         * 对于FD场景, 有可能整体是没有无效行的, 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
+         * 就认为可能存在无效行
+         */
+        bool isExistRowInvalid = FLASH_DECODE ? constInfo.attenMaskFlag : constInfo.isExistRowInvalid;
+        if (!isExistRowInvalid) {
             return false;
         }
     }
@@ -301,15 +316,24 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
             tSize = qActSeqLensParser.GetTSize();
         }
-
+        // TND、NTD场景,S1和actualSeq相等,不需要初始化
         if (IsInitAttentionOutGm()) {
             uint64_t totalOutputSize = tSize * constInfo.qHeadNum * constInfo.headDim;
+            if constexpr (IsSameType<OUT_T, int8_t>::value) {
+                totalOutputSize /= 2;
+            }
             uint64_t singleCoreSize = (totalOutputSize + (2 * usedCoreNum) - 1) / (2 * usedCoreNum); // 2 means c:v = 1:2
             uint64_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
             uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             if (tmpBlockIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
-                matmul::InitOutput<OUT_T>(attentionOutGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
+                if constexpr (IsSameType<OUT_T, int8_t>::value) {
+                    GlobalTensor<half> attentionOutTmpGm;
+                    attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
+                    matmul::InitOutput<half>(attentionOutTmpGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
+                } else {
+                    matmul::InitOutput<OUT_T>(attentionOutGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
+                }
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
@@ -471,7 +495,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         if constexpr (FLASH_DECODE) {
             fdService.InitParams(constInfo);
             fdService.InitGlobalTensor(lseMaxFdGm, lseSumFdGm, accumOutGm, attentionOutGm, 
-                                       actualSeqLengthsGmQ, actualSeqLengthsGm);
+                                       actualSeqLengthsGmQ, actualSeqLengthsGm, key, quantScale2, quantOffset2);
             if (constInfo.softmaxLseFlag) {
                 fdService.InitSoftmaxLseGm(softmaxLseGm);
             }
@@ -537,7 +561,6 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     constInfo.headS2Split = false;
     constInfo.tailS2Split = false;
 
-    // xxx
     constInfo.coreStartKVSplitPos = s2SplitStartIdxOfCore[aiCoreIdx];
 }
 
@@ -695,49 +718,47 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 {
     fdService.InitBuffers(pipe);
     AscendC::ICachePreLoad(fdPrefetchLen);
+    #ifdef ASCENDC_CPU_DEBUG
+        const uint32_t *bN2IdxOfFdHead = tilingData->fdParams.bN2IdxOfFdHead;
+        const uint32_t *gS1IdxOfFdHead = tilingData->fdParams.gS1IdxOfFdHead;
+        const uint32_t *s2SplitNumOfFdHead = tilingData->fdParams.s2SplitNumOfFdHead;
+        const uint32_t *gS1IdxEndOfFdHead = tilingData->fdParams.gS1IdxEndOfFdHead;
+        const uint32_t *gS1IdxEndOfFdHeadSplit = tilingData->fdParams.gS1IdxEndOfFdHeadSplit;
+        const uint32_t *gS1SplitNumOfFdHead = tilingData->fdParams.gS1SplitNumOfFdHead;
+        const uint32_t *gS1LastPartSizeOfFdHead = tilingData->fdParams.gS1LastPartSizeOfFdHead;
+    #else
+        uint32_t bN2IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.bN2IdxOfFdHead)];
+        uint32_t gS1IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxOfFdHead)];
+        uint32_t s2SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.s2SplitNumOfFdHead)];
+        uint32_t gS1IdxEndOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHead)];
+        uint32_t gS1IdxEndOfFdHeadSplit[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHeadSplit)];
+        uint32_t gS1SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1SplitNumOfFdHead)];
+        uint32_t gS1LastPartSizeOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1LastPartSizeOfFdHead)];
+        copy_data_align64((uint8_t *)bN2IdxOfFdHead, (uint8_t *)(tilingData->fdParams.bN2IdxOfFdHead),
+                    sizeof(bN2IdxOfFdHead));
+        copy_data_align64((uint8_t *)gS1IdxOfFdHead, (uint8_t *)(tilingData->fdParams.gS1IdxOfFdHead),
+                    sizeof(gS1IdxOfFdHead));
+        copy_data_align64((uint8_t *)s2SplitNumOfFdHead, (uint8_t *)(tilingData->fdParams.s2SplitNumOfFdHead),
+                    sizeof(s2SplitNumOfFdHead));
+        copy_data_align64((uint8_t *)gS1IdxEndOfFdHead, (uint8_t *)(tilingData->fdParams.gS1IdxEndOfFdHead),
+                    sizeof(gS1IdxEndOfFdHead));
+        copy_data_align64((uint8_t *)gS1IdxEndOfFdHeadSplit,
+                    (uint8_t *)(tilingData->fdParams.gS1IdxEndOfFdHeadSplit),
+                    sizeof(gS1IdxEndOfFdHeadSplit));
+        copy_data_align64((uint8_t *)gS1SplitNumOfFdHead, (uint8_t *)(tilingData->fdParams.gS1SplitNumOfFdHead),
+                    sizeof(gS1SplitNumOfFdHead));
+        copy_data_align64((uint8_t *)gS1LastPartSizeOfFdHead,
+                    (uint8_t *)(tilingData->fdParams.gS1LastPartSizeOfFdHead),
+                    sizeof(gS1LastPartSizeOfFdHead));
+    #endif
+    FDparams fdParams = {bN2IdxOfFdHead, gS1IdxOfFdHead, s2SplitNumOfFdHead, gS1SplitNumOfFdHead, gS1LastPartSizeOfFdHead,
+            gS1IdxEndOfFdHead, gS1IdxEndOfFdHeadSplit, tilingData->fdParams.usedVecNumOfFd,
+            tilingData->fdParams.gS1BaseSizeOfFd};
+    fdService.AllocEventID();
+    fdService.InitDecodeParams();
     SyncAll();
-    if ASCEND_IS_AIV {
-        #ifdef ASCENDC_CPU_DEBUG
-            const uint32_t *bN2IdxOfFdHead = tilingData->fdParams.bN2IdxOfFdHead;
-            const uint32_t *gS1IdxOfFdHead = tilingData->fdParams.gS1IdxOfFdHead;
-            const uint32_t *s2SplitNumOfFdHead = tilingData->fdParams.s2SplitNumOfFdHead;
-            const uint32_t *gS1IdxEndOfFdHead = tilingData->fdParams.gS1IdxEndOfFdHead;
-            const uint32_t *gS1IdxEndOfFdHeadSplit = tilingData->fdParams.gS1IdxEndOfFdHeadSplit;
-            const uint32_t *gS1SplitNumOfFdHead = tilingData->fdParams.gS1SplitNumOfFdHead;
-            const uint32_t *gS1LastPartSizeOfFdHead = tilingData->fdParams.gS1LastPartSizeOfFdHead;
-        #else
-            uint32_t bN2IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.bN2IdxOfFdHead)];
-            uint32_t gS1IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxOfFdHead)];
-            uint32_t s2SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.s2SplitNumOfFdHead)];
-            uint32_t gS1IdxEndOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHead)];
-            uint32_t gS1IdxEndOfFdHeadSplit[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHeadSplit)];
-            uint32_t gS1SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1SplitNumOfFdHead)];
-            uint32_t gS1LastPartSizeOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1LastPartSizeOfFdHead)];
-            copy_data_align64((uint8_t *)bN2IdxOfFdHead, (uint8_t *)(tilingData->fdParams.bN2IdxOfFdHead),
-                        sizeof(bN2IdxOfFdHead));
-            copy_data_align64((uint8_t *)gS1IdxOfFdHead, (uint8_t *)(tilingData->fdParams.gS1IdxOfFdHead),
-                        sizeof(gS1IdxOfFdHead));
-            copy_data_align64((uint8_t *)s2SplitNumOfFdHead, (uint8_t *)(tilingData->fdParams.s2SplitNumOfFdHead),
-                        sizeof(s2SplitNumOfFdHead));
-            copy_data_align64((uint8_t *)gS1IdxEndOfFdHead, (uint8_t *)(tilingData->fdParams.gS1IdxEndOfFdHead),
-                        sizeof(gS1IdxEndOfFdHead));
-            copy_data_align64((uint8_t *)gS1IdxEndOfFdHeadSplit,
-                        (uint8_t *)(tilingData->fdParams.gS1IdxEndOfFdHeadSplit),
-                        sizeof(gS1IdxEndOfFdHeadSplit));
-            copy_data_align64((uint8_t *)gS1SplitNumOfFdHead, (uint8_t *)(tilingData->fdParams.gS1SplitNumOfFdHead),
-                        sizeof(gS1SplitNumOfFdHead));
-            copy_data_align64((uint8_t *)gS1LastPartSizeOfFdHead,
-                        (uint8_t *)(tilingData->fdParams.gS1LastPartSizeOfFdHead),
-                        sizeof(gS1LastPartSizeOfFdHead));
-        #endif
-        FDparams fdParams = {bN2IdxOfFdHead, gS1IdxOfFdHead, s2SplitNumOfFdHead, gS1SplitNumOfFdHead, gS1LastPartSizeOfFdHead,
-                gS1IdxEndOfFdHead, gS1IdxEndOfFdHeadSplit, tilingData->fdParams.usedVecNumOfFd,
-                tilingData->fdParams.gS1BaseSizeOfFd};
-        fdService.AllocEventID();
-        fdService.InitDecodeParams();
-        fdService.FlashDecode(fdParams);
-        fdService.FreeEventID();
-    }
+    fdService.FlashDecode(fdParams);
+    fdService.FreeEventID();
 }
 
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
@@ -761,12 +782,15 @@ __aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::DealZeroActSeqLen(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
 {
+    uint32_t n2Idx = GetN2Idx(bN2Cur);
+    uint32_t bIdx = GetBIdx(bN2Cur);
+
     // 对整个batch的结果置0
     if constexpr (POST_QUANT) { // out int8
-  
+        if ASCEND_IS_AIV {
+            vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
+        }
     } else {
-        uint32_t n2Idx = GetN2Idx(bN2Cur);
-        uint32_t bIdx = GetBIdx(bN2Cur);
         if (constInfo.outputLayout == FIA_LAYOUT::BSND || constInfo.outputLayout == FIA_LAYOUT::BSH) {
             OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
             offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize, constInfo.headDim, 
@@ -1084,7 +1108,9 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     }
 
     if constexpr (FLASH_DECODE) {
-        FlashDecode();
+        if ASCEND_IS_AIV {
+            FlashDecode();
+        }
     }
 }
 

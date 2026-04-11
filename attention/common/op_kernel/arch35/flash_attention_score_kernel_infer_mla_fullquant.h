@@ -46,7 +46,7 @@ FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::InitUni
 {
     if constexpr (isFd) {
         this->constInfo.splitKVNum = this->sharedParams.splitKVNum;
-        this->constInfo.sInnerLoopSize = CeilDivision(this->constInfo.s2Size, this->constInfo.splitKVNum);
+        this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
     }
     if constexpr (POST_QUANT) {
         this->constInfo.isPostQuantPerChnl = this->sharedParams.isPostQuantPerChnl;
@@ -71,8 +71,8 @@ FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::InitUni
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
     }
 
-    this->constInfo.isBSNDOut = this->sharedParams.isBSNDOut;
-    if (this->constInfo.isBSNDOut == 1) {
+    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
+    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {
         this->constInfo.attentionOutStride =
             (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
     }

@@ -1,10 +1,17 @@
 # aclnnWeightQuantMatmulAllReduceAddRmsNorm
+
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce_add_rms_norm)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如Bus Error等。
 
@@ -259,10 +266,12 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         </tr>
       </tbody>
     </table>
+
 - **返回值：**
 
-    <p>aclnnStatus：返回状态码，具体参见<a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。</p>
-    <p>第一段接口完成入参校验，出现以下场景报错：</p>
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一阶段接口完成入参校验，出现以下场景报错：
 
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
@@ -291,6 +300,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
     </tr>
     </tbody>
     </table>
+
 ## aclnnWeightQuantMatmulAllReduceAddRmsNorm
 
 - **参数说明：**
@@ -326,6 +336,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
+
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -333,7 +344,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnWeightQuantMatmulAllReduceAddRmsNorm默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnWeightQuantMatmulAllReduceAddRmsNorm默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
 
 - 使用场景同融合算子aclnnWeightQuantMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(s, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，b\*s、s的范围为[1, 2147483647]，k、n的范围为[1, 65535]。bias若非空，bias为一维，其shape为(n)。
@@ -348,6 +359,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp

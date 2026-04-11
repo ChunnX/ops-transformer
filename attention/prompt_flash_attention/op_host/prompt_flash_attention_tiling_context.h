@@ -60,6 +60,9 @@ struct ContextParamsForPFATiling {
     ge::DataType maskDataType = ge::DataType::DT_FLOAT16;
     ge::DataType blockTableType = ge::DataType::DT_FLOAT16;
     ge::DataType outputDataType = ge::DataType::DT_FLOAT16;
+    ge::DataType keySharedPrefixDataType = ge::DataType::DT_FLOAT16;
+    ge::DataType valueSharedPrefixDataType = ge::DataType::DT_FLOAT16;
+    ge::DataType learnableSinkDataType = ge::DataType::DT_FLOAT16;
     const char *opName = nullptr;
     const gert::StorageShape *queryInputShape = nullptr;
     const gert::StorageShape *keyInputShape = nullptr;
@@ -116,6 +119,7 @@ struct ContextParamsForPFATiling {
     uint32_t fromFused = 0;
     uint32_t emptyTensor = 0;
     uint32_t isBSNDOut = 0;
+    uint32_t transposeLayout = 0;
     const bool *softmaxLseFlag = nullptr;
     bool isSoftMaxLseEnable = false;
     uint32_t fromTilingSink = 0; // Flag indicating whether it is the step to enter the workspace calculation from tiling sinking

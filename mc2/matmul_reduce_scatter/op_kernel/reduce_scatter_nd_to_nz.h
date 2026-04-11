@@ -18,13 +18,13 @@
 #define ENALBE_ND2NZ 1
 
 #if defined(__CCE_KT_TEST__)
-#define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
 #define SET_G_CORE_TYPE_IS_AIC thread_local int g_coreType = 1
+#define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
 #define DTYPE_X1 half
 #define DTYPE_Y half
 #else
-#define SET_G_CORE_TYPE_IS_AIV
 #define SET_G_CORE_TYPE_IS_AIC
+#define SET_G_CORE_TYPE_IS_AIV
 #endif
 
 #include "kernel_tiling/kernel_tiling.h"

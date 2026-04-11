@@ -132,11 +132,13 @@ public:
     ge::graphStatus CheckCacheMode() const;
     ge::graphStatus CheckDims() const;
     ge::graphStatus CheckParamByScenario();
+    ge::graphStatus CheckSpecialScenarioParamShape();
     ge::graphStatus CheckCkvkrRepoMode();
+    ge::graphStatus CheckCacheIndexDim();
     ge::graphStatus CheckScenarParam();
     ge::graphStatus CheckAttrs() const;
 
-    platform_ascendc::SocVersion GetSocVersionShortName() const;
+    NpuArch GetCurNpuArch() const;
 
 private:
     bool CheckAttrsNotNull() const;
@@ -167,6 +169,8 @@ private:
     void FillCommonParamInfo();
     void FillRequiredParamShapeWithDims();
     void FillOptionalOutputParamShapeWithDims();
+    void FillOptionalOutputParamShapeWithDimsV2();
+ 	void FillOptionalOutputParamShapeWithDimsV3();
     void FillScenarioParamInfo();
     void FillNonQuantParamInfo();
     void FillPartialQuantParamInfo();
@@ -177,6 +181,7 @@ private:
     void FillFullKVPertileQuantParamInfo();
     void FillMxfp8FullQuantParamInfo();
     void FillMxfp8FullKVQuantParamInfo();
+    void FillMxfp8FullKVPertileParamInfo();
 
     void GenActualParamInfo();
     // =================================全量参数校验=================================

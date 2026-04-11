@@ -295,7 +295,8 @@ private:
     uint32_t mBaseSize_ = 256;
     uint32_t s2BaseSize_ = 0;
     bool isS1G_ = true;
-
+    bool isActQBatchPlus = false;
+    
 private:
     enum class ParamId : uint32_t {
         // input

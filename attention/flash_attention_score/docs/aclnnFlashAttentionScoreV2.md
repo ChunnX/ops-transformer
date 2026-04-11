@@ -4,26 +4,27 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|     √      |
-|<term>Atlas A3 推理系列产品</term>|     ×      |
-|<term>Atlas A2 训练系列产品</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>|     ×      |
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
-- 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**该接口相较于[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)接口，新增psetype参数**：
+- 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**该接口相较于[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)接口，新增pseType参数**：
 
-  -   psetype=1时，与[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)实现相同。
-  -   psetype=其他取值时，需要先mul再add。
+  -   pseType=1时，与[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)实现相同。
+  -   pseType=其他取值时，需要先mul再add。
 
 - 计算公式：
 
    注意力的正向计算公式如下：
 
-   - psetype=1时，与[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)计算公式相同。
+   - pseType=1时，与[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)计算公式相同。
 
-   - psetype=其他取值时，公式如下：
+   - pseType=其他取值时，公式如下：
 
      $$
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
@@ -73,7 +74,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
 
 ## aclnnFlashAttentionScoreV2GetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1452px"><colgroup>
     <col style="width: 174px">
     <col style="width: 121px">
@@ -147,6 +148,16 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>√</td>
       </tr>
       <tr>
+        <td>paddingMaskOptional</td>
+        <td>输入</td>
+        <td>预留参数，暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>attenMaskOptional</td>
         <td>输入</td>
         <td>公式中的atten_mask。</td>
@@ -160,6 +171,26 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>prefixOptional</td>
         <td>输入</td>
         <td>代表prefix稀疏计算场景每个Batch的N值。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>0、1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>qStartIdxOptional</td>
+        <td>输入</td>
+        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>0、1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>kvStartIdxOptional</td>
+        <td>输入</td>
+        <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
@@ -189,7 +220,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
       <tr>
         <td>preTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算 ，表示slides window的左边界。</td>
+        <td>用于稀疏计算，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -199,7 +230,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
       <tr>
         <td>nextTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算，表示slides window的右边界。</td>
+        <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -230,7 +261,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>innerPrecise</td>
         <td>输入</td>
         <td>用于提升精度。</td>
-        <td>-</td>
+        <td>默认配置为0即可。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -277,6 +308,16 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>√</td>
       </tr>
       <tr>
+        <td>softmaxOutOut</td>
+        <td>输入</td>
+        <td>预留参数，暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>attentionOutOut</td>
         <td>输出</td>
         <td>计算公式的最终输出。</td>
@@ -309,7 +350,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
     </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -322,7 +363,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -346,7 +387,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
 
 ## aclnnFlashAttentionScoreV2
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
@@ -382,7 +423,8 @@ aclnnStatus aclnnFlashAttentionScoreV2(
     </tr>
   </tbody>
   </table>
--   **返回值：**
+  
+-   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -402,7 +444,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
     -   S：取值范围为1\~1M。
     -   D：取值范围为1\~768。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
@@ -425,8 +467,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-- realShiftOptional Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
-
+- realShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
 
 ## 调用示例
 

@@ -46,6 +46,20 @@ struct FiaTilingShapeCompareParam {
     std::map<FiaAxis, FiaCompareType> compareTypeMap = {};
 };
 
+static std::string GetShapeStr(gert::Shape shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    if (shape.GetDimNum() > 0) {
+        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
+            oss << shape.GetDim(i) << ", ";
+        }
+        oss << shape.GetDim(shape.GetDimNum() - 1);
+    }
+    oss << "]";
+    return oss.str();
+}
+
 class FiaTilingShape {
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 

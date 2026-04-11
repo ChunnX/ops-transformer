@@ -16,14 +16,14 @@
 #ifndef QGMM_INPLACE_ADD_MIX_ONLNE_DYNAMIC_H
 #define QGMM_INPLACE_ADD_MIX_ONLNE_DYNAMIC_H
 
-#include "../../../common/groupedmatmul_act/block/block_mmad_builder.h"
-#include "../../../common/groupedmatmul_act/block/block_scheduler_gmm_aswt_with_tail_split.h"
-#include "../../../common/groupedmatmul_act/kernel/kernel_qgmm_inplace_add_mix_online_dynamic.h"
+#include "cgmct/block/block_mmad_builder.h"
+#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/kernel/kernel_qgmm_inplace_add_mix_online_dynamic.h"
 #include "qgmm_inplace_add_utils.h"
 #include "quant_grouped_matmul_inplace_add_tiling_data.h"
 
-using namespace Act::Gemm;
-using namespace Act::Gemm::Kernel;
+using namespace Cgmct::Gemm;
+using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddMixAswt(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList, GM_ADDR scale1,
@@ -49,7 +49,7 @@ __aicore__ inline void QGmmInplaceAddMixAswt(GM_ADDR x1, GM_ADDR x2, GM_ADDR sca
     using BlockMmad =
         Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, CType, LayoutC, float, layout::RowMajor, L1TileShape,
                                 L0TileShape, BlockScheduler, MatmulMultiBlock<>,
-                                Tile::TileCopy<Arch::Ascend910_95, Tile::CopyInAndCopyOutSplitMWithParams>>;
+                                Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueDequant<L0TileShape, DTYPE_Y, DTYPE_Y, DTYPE_SCALE2, float, void, false>;
     // 定义shape的形状，tuple保存 m n k batch

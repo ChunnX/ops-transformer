@@ -87,7 +87,7 @@ __aicore__ inline constexpr uint32_t GetVectorRegSize()
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;
-    #endif
+#endif
 }
 
 class Mc2QuantBmmAswBlock {

@@ -16,7 +16,7 @@
 #define PROMPT_FLASH_ATTENTION_S1S2_BNS1_X910_H
 
 #include "prompt_flash_attention_s1s2_bns1_x910_base.h"
-
+#include "adv_api/quantization/ascend_antiquant.h"
 using namespace matmul;
 template<typename PFAT>
 class PromptFlashAttentionS1s2Bns1X910 : public PromptFlashAttentionS1s2Bns1X910Base<PFAT> {

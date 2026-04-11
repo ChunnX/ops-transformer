@@ -60,11 +60,11 @@ public:
             pipe->InitBuffer(expandedXQue, 1, eCHAligned * sizeof(T));
         }
         pipe->InitBuffer(yQue, DOUBLE_BUFFER, rowFactorHAlignedFloat * sizeof(float));
-        if (hasBiasAndExpertIdx) {
-            pipe->InitBuffer(biasQue, 1, eHAligned * sizeof(T));
-        }
         if (hasX1) {
             pipe->InitBuffer(x1Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
+        }
+        if (hasBiasAndExpertIdx) {
+            pipe->InitBuffer(biasQue, 1, eHAligned * sizeof(T));
         }
         if (hasX2) {
             pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
@@ -97,30 +97,7 @@ public:
                                                                        tilingData->tailRowFactorOfFormerBlock;
         for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx += 1) {
             int64_t rowInnerLoop = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : tilingData->rowFactor;
-            if (hasX1) {
-                x1Local = x1Que.AllocTensor<T>();
-                int64_t x1GmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
-                                     rowOuterIdx * tilingData->rowFactor * tilingData->h;
-                CopyIn(x1Gm[x1GmOffset], x1Local, 1, rowInnerLoop * tilingData->h);
-                x1Que.EnQue(x1Local);
-                x1Local = x1Que.DeQue<T>();
-            }
-            if (hasX2) {
-                x2Local = x2Que.AllocTensor<T>();
-                int64_t x2GmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
-                                     rowOuterIdx * tilingData->rowFactor * tilingData->h;
-                CopyIn(x2Gm[x2GmOffset], x2Local, 1, rowInnerLoop * tilingData->h);
-                x2Que.EnQue(x2Local);
-                x2Local = x2Que.DeQue<T>();
-            }
-            if (hasScales) {
-                scalesLocal = scalesQue.AllocTensor<S>();
-                int64_t scaleGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
-                                        rowOuterIdx * tilingData->rowFactor * tilingData->k;
-                CopyIn(scalesGm[scaleGmOffset], scalesLocal, 1, rowInnerLoop * tilingData->k);
-                scalesQue.EnQue(scalesLocal);
-                scalesLocal = scalesQue.DeQue<S>();
-            }
+            ProcessInputWithX(rowOuterIdx, rowInnerLoop);
 
             yLocal = yQue.AllocTensor<float>();
             ProcessX1AndX2(yLocal, x1Local, x2Local, rowInnerLoop * tilingData->h, hasX1, hasX2);
@@ -130,11 +107,11 @@ public:
             if (hasX1) {
                 x1Que.FreeTensor(x1Local);
             }
-            if (hasX2) {
-                x2Que.FreeTensor(x2Local);
-            }
             if (hasScales) {
                 scalesQue.FreeTensor(scalesLocal);
+            }
+            if (hasX2) {
+                x2Que.FreeTensor(x2Local);
             }
             yLocal = yQue.DeQue<float>();
             int64_t yGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
@@ -150,11 +127,39 @@ public:
     }
 
 private:
+    __aicore__ inline void ProcessInputWithX(int64_t rowOuterIdx, int64_t rowInnerLoop)
+    {
+        if (hasX2) {
+            x2Local = x2Que.AllocTensor<T>();
+            int64_t x2GmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
+                                    rowOuterIdx * tilingData->rowFactor * tilingData->h;
+            CopyIn(x2Gm[x2GmOffset], x2Local, 1, rowInnerLoop * tilingData->h);
+            x2Que.EnQue(x2Local);
+            x2Local = x2Que.DeQue<T>();
+        }
+        if (hasScales) {
+            scalesLocal = scalesQue.AllocTensor<S>();
+            int64_t scaleGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
+                                    rowOuterIdx * tilingData->rowFactor * tilingData->k;
+            CopyIn(scalesGm[scaleGmOffset], scalesLocal, 1, rowInnerLoop * tilingData->k);
+            scalesQue.EnQue(scalesLocal);
+            scalesLocal = scalesQue.DeQue<S>();
+        }
+        if (hasX1) {
+            x1Local = x1Que.AllocTensor<T>();
+            int64_t x1GmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
+                                    rowOuterIdx * tilingData->rowFactor * tilingData->h;
+            CopyIn(x1Gm[x1GmOffset], x1Local, 1, rowInnerLoop * tilingData->h);
+            x1Que.EnQue(x1Local);
+            x1Local = x1Que.DeQue<T>();
+        }
+    }
+
     __aicore__ inline void ProcessYWithInput(int64_t rowOuterIdx, int64_t rowInnerLoop)
     {
         for (int64_t rowInnerIdx = 0; rowInnerIdx < rowInnerLoop; rowInnerIdx += 1) {
             for (int64_t kIdx = 0; kIdx < tilingData->k; kIdx += 1) {
-                SetExpandedRowIdxOffset(rowOuterIdx, rowInnerIdx, kIdx);
+                SetOffsetForExpandedRowIdx(rowOuterIdx, kIdx, rowInnerIdx);
                 int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
                 if constexpr (dropPadMode == DROP_PAD_COLUMN || dropPadMode == DROP_PAD_ROW) {
                     if (expandedRowIdxGmValue == INVALID_IDX) {
@@ -184,16 +189,17 @@ private:
         }
     }
 
-    __aicore__ inline void SetExpandedRowIdxOffset(int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kIdx)
+    __aicore__ inline void SetOffsetForExpandedRowIdx(int64_t rowOuterIdx, int64_t kIdx, int64_t rowInnerIdx)
     {
-        if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROP_PAD_COLUMN) {
-            expandedRowIdxOffset = GetBlockIdx() * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor +
-                                   rowInnerIdx + kIdx * tilingData->row;
-        } else {
+        if constexpr (dropPadMode != DROPLESS_COLUMN && dropPadMode != DROP_PAD_COLUMN) {
             expandedRowIdxOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
                                    rowOuterIdx * tilingData->rowFactor * tilingData->k + rowInnerIdx * tilingData->k +
                                    kIdx;
+            return;
         }
+        expandedRowIdxOffset = GetBlockIdx() * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor +
+                               rowInnerIdx + kIdx * tilingData->row; 
+        return;
     }
 
     __aicore__ inline void SetExpertIdxOffset(int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kIdx)
@@ -209,6 +215,14 @@ private:
 private:
     TPipe* pipe;
     const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
+
+    S scale;
+    bool hasX1{false};
+    bool hasX2{false};
+    bool hasBiasAndExpertIdx{false};
+    bool hasScales{false};
+    int64_t biasGmOffset{0};
+
     GlobalTensor<T> expandedXGm;
     GlobalTensor<int32_t> expandedRowIdxGm;
     GlobalTensor<T> x1Gm;
@@ -218,13 +232,6 @@ private:
     GlobalTensor<int32_t> expertIdxGm;
     GlobalTensor<T> yGm;
 
-    LocalTensor<T> expandedXLocal;
-    LocalTensor<T> x1Local;
-    LocalTensor<T> x2Local;
-    LocalTensor<T> biasLocal;
-    LocalTensor<S> scalesLocal;
-    LocalTensor<float> yLocal;
-
     TQue<QuePosition::VECIN, 1> expandedXQue;
     TQue<QuePosition::VECIN, 1> biasQue;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> x1Que;
@@ -232,12 +239,12 @@ private:
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> scalesQue;
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> yQue;
 
-    S scale;
-    bool hasX1{false};
-    bool hasX2{false};
-    bool hasBiasAndExpertIdx{false};
-    bool hasScales{false};
-    int64_t biasGmOffset{0};
+    LocalTensor<T> expandedXLocal;
+    LocalTensor<T> x1Local;
+    LocalTensor<T> x2Local;
+    LocalTensor<T> biasLocal;
+    LocalTensor<S> scalesLocal;
+    LocalTensor<float> yLocal;
 
     int64_t expandedRowIdxOffset{0};
     int64_t expertIdxOffset{0};

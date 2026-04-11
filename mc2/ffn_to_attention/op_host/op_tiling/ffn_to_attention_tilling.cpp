@@ -8,6 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file ffn_to_attention_tilling.cpp
+ * \brief
+ */
+
 #include <queue>
 #include <vector>
 #include <string>
@@ -425,17 +430,17 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext* context)
     OP_LOGD(nodeName, "cur case tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
  
-    // Set blockDim
-    uint32_t blockDim = 1U;
+    // Set numBlocks
+    uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(blockDim);
+    numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetBlockDim(numBlocks);
     tilingData->ffnToAttentionInfo.totalUbSize = ubSize;
     tilingData->ffnToAttentionInfo.aivNum = aivNum;
-    OP_LOGD(nodeName, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
+    OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
  
     PrintTilingDataInfo(nodeName, *tilingData);
     OP_LOGD("FFNToAttention", "tiling process finished successfully!!!");

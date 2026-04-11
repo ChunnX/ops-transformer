@@ -12,11 +12,24 @@ if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         inplace_matmul_all_reduce_add_rms_norm_def.cpp
     )
-    add_mc2_modules_sources(OPTYPE inplace_matmul_all_reduce_add_rms_norm inplace_matmul_all_reduce_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
+    add_modules_sources(
+        OP_API_INDEPENDENT ON 
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
+        OP_MC2_ENABLE ON 
+        OPTYPE inplace_matmul_all_reduce_add_rms_norm inplace_matmul_all_reduce_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(inplace_matmul_all_reduce_add_rms_norm_depends mc2/3rd mc2/common mc2/matmul_all_reduce_add_rms_norm mc2/matmul_all_reduce PARENT_SCOPE)
-    else() # 回黄host
+
+    # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
+    set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+    if("${CONDITION_UNIT}" STREQUAL "ascend910b")
+        add_ops_compile_options(
+            OP_NAME InplaceMatmulAllReduceAddRmsNorm
+            OPTIONS --cce-auto-sync=off
+        )
+    endif()
+else() # 回黄host
     add_mc2_modules_sources(OPTYPE inplace_matmul_all_reduce_add_rms_norm inplace_matmul_all_reduce_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

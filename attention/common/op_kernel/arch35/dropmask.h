@@ -16,6 +16,7 @@
 #ifndef DROPMASK_H
 #define DROPMASK_H
 
+#include "adv_api/math/philox.h"
 #include "util_regbase.h"
 
 using namespace AscendC;
@@ -44,7 +45,6 @@ struct DropMaskInfo {
     uint8_t dropMaskOuter;
     bool boolMode;
 };
-#ifndef __CCE_KT_TEST__
 template <bool hasDrop, bool hasRope = false>
 __aicore__ inline uint64_t ComputeDropOffset(RunInfo<false> &runInfo, ConstInfo<false, hasRope> &constInfo, DropMaskInfo &dropMaskInfo)
 {
@@ -109,7 +109,7 @@ __simd_vf__ inline void GenIndexUnAling(const uint64_t indexVecDstLocalInt, cons
 __aicore__ inline void GenIndexVec(LocalTensor<int32_t> &dropmaskIndexVec, uint32_t rowNums, uint32_t eachRowIndexNum,
                                    uint32_t eachRowOffset)
 {   
-    uint64_t indexVecDstLocalInt = dropmaskIndexVec.GetPhyAddr();
+    uint64_t indexVecDstLocalInt = reinterpret_cast<uint64_t>(dropmaskIndexVec.GetPhyAddr());
     if (eachRowIndexNum % eachRowAlignNum == 0) {
         GenIndexAlign(indexVecDstLocalInt, rowNums, eachRowIndexNum, eachRowOffset);
     } else {
@@ -208,7 +208,7 @@ __aicore__ inline void GenMaskByIndexVec(const LocalTensor<uint8_t> &dstLocal, c
                                          uint8_t probValueUint8Scalar)
 {   
     __ubuf__ uint32_t *mask = (__ubuf__ uint32_t *)dstLocal.GetPhyAddr();
-    uint64_t indexVecLocalInt = indexUb.GetPhyAddr();
+    uint64_t indexVecLocalInt = reinterpret_cast<uint64_t>(indexUb.GetPhyAddr());
     
     // 一次可以生成256个uint32的随机数, 如果不够256，生成的mask后面有一部分脏数据，dropout计算中只使用前面的有效数据
     uint16_t mainLoop = CeilDiv(count, 256);
@@ -351,8 +351,8 @@ __simd_vf__ inline void DropMaskBool2BitVF(const uint64_t srcUb, const uint64_t 
 __aicore__ inline void DropMaskBool2Bit(LocalTensor<uint8_t> &dstTensor, LocalTensor<uint8_t> &srcTensor,
                                         int32_t halfS1RealSize, int64_t s2BaseSize)
 {
-    uint64_t srcUb = srcTensor.GetPhyAddr();
-    uint64_t dstUb = dstTensor.GetPhyAddr();
+    uint64_t srcUb = reinterpret_cast<uint64_t>(srcTensor.GetPhyAddr());
+    uint64_t dstUb = reinterpret_cast<uint64_t>(dstTensor.GetPhyAddr());
     uint16_t rowNumEachLoop = regBytes / static_cast<uint16_t>(s2BaseSize);
     uint16_t halfS1RealSizeLoop = static_cast<uint16_t>(halfS1RealSize) + 1;
     uint16_t loopCount = halfS1RealSizeLoop / rowNumEachLoop;
@@ -384,8 +384,8 @@ __simd_vf__ inline void DropMaskPadDelVF(const uint64_t srcUb, const uint64_t ds
 __aicore__ inline void DropMaskPadDel(LocalTensor<uint8_t> &dstTensor, LocalTensor<uint8_t> &srcTensor,
                                       int32_t halfS1RealSize, int64_t s2BaseSize)
 {
-    uint64_t srcUb = srcTensor.GetPhyAddr();
-    uint64_t dstUb = dstTensor.GetPhyAddr();
+    uint64_t srcUb = reinterpret_cast<uint64_t>(srcTensor.GetPhyAddr());
+    uint64_t dstUb = reinterpret_cast<uint64_t>(dstTensor.GetPhyAddr());
     uint16_t loopCount = (static_cast<uint16_t>(halfS1RealSize) + 1) / 2;
 
     DropMaskPadDelVF(srcUb, dstUb, loopCount);
@@ -417,13 +417,6 @@ __aicore__ inline void CopyInDropOuter(TBuf<> &dropMaskBuf, TQue<QuePosition::VE
         return;
     }
 }
-#else
-template <bool hasDrop, bool hasRope = false>
-__aicore__ inline void GenDropMask(TBuf<> &dropMaskBuf, TBuf<> &maskIndexBuf, RunInfo<false> &runInfo,
-                                   ConstInfo<false, hasRope> &constInfo, DropMaskInfo &dropMaskInfo)
-{
-}
-#endif
 }
 
 #endif // DROPMASK_H

@@ -43,7 +43,7 @@ namespace ge {
  * @attention Constraints:
  * Let (B, S, N, D) represents the shape of the 4-D input "dy". Under this representation, the shape constraints of each
  * parameter can be described as follows:
- * @li The D of "dy", "cos", "sin", "x", "dx", "dcos" and "dsin" must be equal. For Ascend 910_95 AI Processor, D should
+ * @li The D of "dy", "cos", "sin", "x", "dx", "dcos" and "dsin" must be equal. For Ascend 950 AI Processor, D should
  * be less or equal to 1024. For Atlas A2 Training Series Product/ Atlas 800I A2 Inference Product and Atlas A3 Training
  * Series Product, D should be less or equal to 896.
  * @li In half, interleave and interleave-half mode, D must be a multiple of 2. In quarter mode, D must be a multiple

@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_prompt_flash_attention_v2.h"
-#include "aclnn_prompt_flash_attention_inner.h"
+#include "prompt_flash_attention_inner.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/pad.h"
 #include "aclnn_kernels/slice.h"
@@ -18,6 +18,7 @@
 #include "opdev/common_types.h"
 #include "opdev/fast_vector.h"
 #include "opdev/op_executor.h"
+#include "opdev/op_log.h"
 
 using namespace op;
 
@@ -49,6 +50,17 @@ aclnnStatus aclnnPromptFlashAttentionV2GetWorkspaceSize(
     const aclTensor *attentionOut,  // Attention output tensor
     uint64_t *workspaceSize,
     aclOpExecutor **executor) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+            return ACLNN_ERR_RUNTIME_ERROR;
+        }
+        static bool isFirstCall = true;
+        if (isFirstCall) {
+            OP_LOGW("aclnnPromptFlashAttentionV2GetWorkspaceSize is scheduled to be deprecated in December 2026, "
+                    "and will be replaced by the aclnnPromptFlashAttentionV3GetWorkspaceSize. "
+                    "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
+            isFirstCall = false;
+        }
         (void) pseShift;
         int64_t innerPrecise = 1;
         return InnerPromptFlashAttentionGetWorkspaceSize(query, key, value, nullptr, attenMask,
@@ -65,6 +77,17 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     const aclrtStream stream) { // V2 call aclnn inner
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+            return ACLNN_ERR_RUNTIME_ERROR;
+        }
+        static bool isFirstCall = true;
+        if (isFirstCall) {
+            OP_LOGW("aclnnPromptFlashAttentionV2 is scheduled to be deprecated in December 2026, "
+                    "and will be replaced by the aclnnPromptFlashAttentionV3. "
+                    "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
+            isFirstCall = false;
+        }
         return InnerPromptFlashAttention(workspace, workspaceSize, executor, stream);
     }
 

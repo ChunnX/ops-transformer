@@ -16,12 +16,12 @@
 #ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_MXQUANT_H
 #define GROUPED_MATMUL_SWIGLU_QUANT_V2_MXQUANT_H
 
-#include "../../../common/groupedmatmul_act/kernel/kernel_gmm_swiglu_mxquant.h"
-#include "../../../common/groupedmatmul_act/block/block_mx_mm_aic_to_aiv_builder.h"
-#include "../../../common/groupedmatmul_act/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/kernel/kernel_gmm_swiglu_mxquant.h"
+#include "cgmct/block/block_mx_mm_aic_to_aiv_builder.h"
+#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
 
-using namespace Act::Gemm;
-using namespace Act::Gemm::Kernel;
+using namespace Cgmct::Gemm;
+using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
@@ -53,7 +53,7 @@ __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightSc
     using ProblemShape = MatmulShape;
     using BlockMmad = Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
                                                  L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
-                        Tile::TileCopy<Arch::Ascend910_95, Tile::CopyInAndCopyOutSplitMWithParams>>;
+                        Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
     using QGmmKernel =
     Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;

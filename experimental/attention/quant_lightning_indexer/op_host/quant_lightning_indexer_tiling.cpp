@@ -104,8 +104,8 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) && 
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95)) {
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
@@ -227,7 +227,7 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
                     ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) {
+    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
                        SPARSE_LIMIT, *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
@@ -305,7 +305,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
             return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) {
+    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN,
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(
@@ -318,7 +318,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         (socVersion_ == platform_ascendc::SocVersion::ASCEND910_93)) {
         OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
                 OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) {
+    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
                 OP_LOGE(opName_, "The data types of the input weights must be float."), return ge::GRAPH_FAILED);
     }
@@ -507,11 +507,18 @@ ge::graphStatus QLIInfoParser::GetBatchSize()
         GetActualSeqLenSize(bSizeKey, opParamInfo_.actualSeqLengthsK.tensor, "input actual_seq_lengths_key");
         if (kLayout_ == DataLayout::TND) {
             OP_CHECK_IF(bSizeQuery != bSizeKey,
-                OP_LOGE(opName_, "the lengths of actual_seq_lengths_query is %u, %u respectively, they must be same.",
+                OP_LOGE(opName_, "the lengths of actual_seq_lengths_query and actual_seq_lengths_key is %u, %u respectively, they must be same.",
                         bSizeQuery, bSizeKey),
                 return ge::GRAPH_FAILED);
             bSize_ = bSizeQuery;
         } else {
+            if (bSizeQuery == bSizeKey + 1) {
+                batchSupperFlag_ = true;
+            }
+            OP_CHECK_IF((bSizeQuery != bSizeKey) && !batchSupperFlag_,
+                OP_LOGE(opName_, "the lengths of actual_seq_lengths_query and actual_seq_lengths_key is %u, %u respectively, they must be same.",
+                        bSizeQuery, bSizeKey),
+                return ge::GRAPH_FAILED);
             bSize_ = bSizeKey; // Q为TND，batch从Key中获取
         }
         return ge::GRAPH_SUCCESS;
@@ -790,6 +797,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
     QLIInfo.pageAttentionFlag = (kLayout_ == DataLayout::PA_BSND);
+    QLIInfo.batchSupperFlag = batchSupperFlag_;
     QLIInfo.sparseMode = *opParamInfo_.sparseMode;
     QLIInfo.sparseCount = *opParamInfo_.sparseCount;
     QLIInfo.preTokens = *opParamInfo_.preTokens;
@@ -883,6 +891,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_returnValues(tilingInfo->returnValues);
     tilingData_.set_usedCoreNum(blockDim);
+    tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 

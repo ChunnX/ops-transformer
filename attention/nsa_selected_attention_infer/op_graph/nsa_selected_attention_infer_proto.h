@@ -18,7 +18,35 @@
 #include "graph/operator_reg.h"
 
 namespace ge {
-
+/**
+* @brief Function NsaSelectedAttentionInfer.
+*
+* @par Inputs:
+* @li query: A tensor. The type only support float16, bf16.
+* @li key: A tensor. The type only support float16, bf16.
+* @li value: A tensor. The type only support float16, bf16.
+* @li topk_indices: A tensor. The type only support int32.
+* @li atten_mask: A optional tensor. The type only support bool, uint8.
+* @li block_table: A optional tensor. The type only support int32.
+* @li actual_q_seq_lengths: A optional tensor. The type only support int64.
+* @li actual_kv_seq_lengths: A optional tensor. The type only support int64.
+*
+* @par Attributes:
+* @li input_layout: A required String.
+* @li num_heads: A required Int.
+* @li num_key_value_heads: A required Int.
+* @li selected_block_size: A required Int.
+* @li selected_block_count: A required Int.
+* @li block_size: A required Int.
+* @li scale_value: A required Float.
+* @li sparse_mode: A required Int.
+*
+* @par Outputs:
+* @li attention_out: A tensor. The type only support float16, bf16.
+*
+* @platform: KirinX90, Kirin9030
+*
+*/
 REG_OP(NsaSelectedAttentionInfer)
     .INPUT(query, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(key, TensorType({DT_FLOAT16, DT_BF16}))
@@ -28,6 +56,14 @@ REG_OP(NsaSelectedAttentionInfer)
     .OPTIONAL_INPUT(block_table, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(actual_q_seq_lengths, TensorType({DT_INT64}))
     .OPTIONAL_INPUT(actual_kv_seq_lengths, TensorType({DT_INT64}))
+    .ATTR(input_layout, String, "BSND")
+    .ATTR(num_heads, Int, 1)
+    .ATTR(num_key_value_heads, Int, 1)
+    .ATTR(selected_block_size, Int, 1)
+    .ATTR(selected_block_count, Int, 1)
+    .ATTR(block_size, Int, 1)
+    .ATTR(scale_value, Float, 1.0)
+    .ATTR(sparse_mode, Int, 0)
     .OUTPUT(attention_out, TensorType({DT_FLOAT16, DT_BF16}))
     .OP_END_FACTORY_REG(NsaSelectedAttentionInfer)
 

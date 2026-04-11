@@ -106,22 +106,22 @@ bool NeedToConvertBias(const aclTensor* self, const aclTensor* mat1, const aclTe
 // 区别bmm 和 mm, bmm（DimNum==3）返回 1， mm（DimNum==2）返回0
 int64_t GetOffSet(int64_t DimNum);
 
+bool checkBF16MMValid(const aclTensor *&self, const aclTensor *&mat2, const bool &transX2Flag);
+
 aclIntArray* NeedTransPerm(const aclTensor *x, aclOpExecutor *executor);
 
 bool checkBF16SizeValid(const aclTensor *&mat2, const bool &transX2Flag);
-
-bool checkBF16MMValid(const aclTensor *&self, const aclTensor *&mat2, const bool &transX2Flag);
 
 bool IfKEqual1(const aclTensor *&selfInput, const MmOpInfo& mmOpInfo, const bool &transX1Flag, const aclTensor *&bias);
 
 aclnnStatus IfKEqual1SelfToMK(const aclTensor *&selfInput, const aclTensor *&selfReshapeOutput, bool &transX1Flag,
                              aclOpExecutor *executor);
 
-aclnnStatus IfKEqual1Mat2ToKN(const aclTensor *&mat2Input, const aclTensor *&mat2ReshapeOutput, bool &transX2Flag,
-                             aclOpExecutor *executor);
-
 aclnnStatus IfMEqual1SelfToMK(const aclTensor *&selfInput, const aclTensor *&selfReshapeOutput,
                               const op::Format selfInputFormat, bool &transX1Flag, aclOpExecutor *executor);
+
+aclnnStatus IfKEqual1Mat2ToKN(const aclTensor *&mat2Input, const aclTensor *&mat2ReshapeOutput, bool &transX2Flag,
+                             aclOpExecutor *executor);
 
 aclnnStatus IfNEqual1Mat2ToNK(const aclTensor *&mat2Input, const aclTensor *&mat2ReshapeOutput,
                               const op::Format mat2InputFormat, bool &transX2Flag, aclOpExecutor *executor);

@@ -64,7 +64,8 @@ private:
     bool addBias_ = false;
     bool outFlag_ = false;
     int64_t k_ = 0;
-
+    int64_t renorm_ = 0;
+    int64_t normType_ = 0;
     int64_t expertCountAlign_ = 0;
     const MoeGatingTopKTilingData *tilingData_;
 };
@@ -124,11 +125,11 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::ComputeX()
         PipeBarrier<PIPE_V>();
     }
 
-    if (tilingData_->normType == NORM_TYPE_SIGMOID) { // sigmoid
+    if (normType_ == 1) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCount_);
         PipeBarrier<PIPE_V>();
-    } else { // softmax
+    } else if (normType_ == 0) { // softmax
         LocalTensor<float> reduceValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> calcTmp = calcTmpBuf_.Get<float>()[8];
         ReduceMax(reduceValueTensor, xInLocalTensor, calcTmp, expertCount_);
@@ -227,8 +228,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::SelectTopKExpertScore()
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-
-    if (tilingData_->normType == NORM_TYPE_SIGMOID) {
+    bool needRenorm = (normType_ == 1) ||               // 情况1：sigmoid + renorm
+                      (normType_ == 0 && renorm_ == 1); // 情况3：softmax + renorm
+    if (needRenorm == 1) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
         PipeBarrier<PIPE_V>();
@@ -244,6 +246,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::SelectTopKExpertScore()
         PipeBarrier<PIPE_V>();
         Div(yOutTensor, yOutTensor, tmpTensor, k_);
     }
+
     PipeBarrier<PIPE_V>();
     Muls(yOutTensor, yOutTensor, tilingData_->routedScalingFactor, k_);
 
@@ -286,7 +289,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::Init(GM_ADDR x, GM_ADDR bia
     addBias_ = tilingData_->addBias == 1;
     outFlag_ = tilingData_->outFlag == 1;
     k_ = tilingData_->k;
-
+    renorm_ = tilingData_->renorm;
+    normType_ = tilingData_->normType;
     expertCountAlign_ = Ceil(expertCount_, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
 
     // init input gm buf

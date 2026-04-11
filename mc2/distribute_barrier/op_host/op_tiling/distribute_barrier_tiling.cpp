@@ -208,25 +208,20 @@ ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
   // Set HcommCfg
   OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
       OP_LOGE(nodeName, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
-
-  // Set TilingKey
-  uint64_t tilingKey = INIT_TILINGKEY;
-  OPS_LOG_D(A_INNER_DEBUG_BARRIER, "cur case tilingKey is %lu", tilingKey);
-  context->SetTilingKey(tilingKey);
-
-  // Set blockDim
-  uint32_t blockDim = 1U;
+  
+  // Set numBlocks
+  uint32_t numBlocks = 1U;
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
   uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
   uint64_t ubSize = 0UL;
   ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-  blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-  context->SetBlockDim(blockDim);
+  numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+  context->SetBlockDim(numBlocks);
   context->SetScheduleMode(1);  // 设置为batch mode模式，所有核同时启动
   tilingData->distributeBarrierInfo.totalUbSize = ubSize;
   tilingData->distributeBarrierInfo.aivNum = aivNum;
-  OPS_LOG_D(A_INNER_DEBUG_BARRIER, "blockDim=%u, aivNum=%u, ubSize=%lu",
-            blockDim, aivNum, ubSize);
+  OPS_LOG_D(A_INNER_DEBUG_BARRIER, "numBlocks=%u, aivNum=%u, ubSize=%lu",
+            numBlocks, aivNum, ubSize);
 
   PrintTilingDataInfo(*tilingData);
   OPS_LOG_D("DistributeBarrier", "tiling process finished successfully!!!");

@@ -30,7 +30,12 @@ public:
                                 TPipe *tPipe)
     {
         blockIdx_ = GetBlockIdx();
-        blockIdx_ /= GetTaskRation();
+        if constexpr (isAllAiv) {
+            blockIdx_ /= GetTaskRation();
+            if (GetSubBlockIdx() > 0) {
+                return;
+            }
+        }
         InitTilingData(tilingData);
         if (blockIdx_ >= usedCoreNum_) {
             return;
@@ -66,7 +71,7 @@ public:
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR pertokenScale,
                                             GM_ADDR y, GM_ADDR workSpace)
     {
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
         // update global buffer
@@ -105,7 +110,7 @@ public:
         uint32_t batchDim = DequantBmm::CeilDiv(batch_, singleCoreBatch_);
         uint32_t mDim = DequantBmm::CeilDiv(m_, singleCoreM_);
         uint32_t nDim = DequantBmm::CeilDiv(n_, singleCoreN_);
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
 
@@ -131,9 +136,7 @@ public:
                 uint32_t singleM = j == mLoops - 1 ? singleCoreMUpdate - (mLoops - 1) * baseM_ : baseM_;
                 CalcMAxisOffset(j, nLoops);
                 if ASCEND_IS_AIV {
-                    if (GetSubBlockIdx() == 0) {
-                        PertokenGm2Ub(singleM);
-                    }
+                    PertokenGm2Ub(singleM);
                 }
                 // 不同batch复用相同workspace，需设置c等v的搬运同步，避免workspace的读写冲突
                 bool isNotFirst = (i != 0) || (j != 0);
@@ -611,15 +614,11 @@ protected:
 
                 if ASCEND_IS_AIV {
                     LocalTensor<float> broadcastFp32 = broadcastFp32Tmp_.Get<float>();
-                    if (GetSubBlockIdx() == 0) {
-                        PreUbProcess(broadcastFp32, singleM, curAicN);
-                    }
+                    PreUbProcess(broadcastFp32, singleM, curAicN);
 
                     // set cv sync id 4: c -> v
                     WaitEvent(0x4);
-                    if (GetSubBlockIdx() == 0) {
-                        PostUbProcess(broadcastFp32, singleM, curAicN);
-                    }
+                    PostUbProcess(broadcastFp32, singleM, curAicN);
                 }
 
                 ++realFixpInnerIdx;

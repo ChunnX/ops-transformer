@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file moe_v2_expert_token_out_regbase.h
+ * \file moe_v2_expert_token_out.h
  * \brief
  */
 #ifndef MOE_V2_EXPERT_TOKEN_OUT_REGBASE_H
@@ -21,7 +21,7 @@ namespace MoeInitRoutingV2 {
 using namespace AscendC;
 
 constexpr static uint32_t VL_INT32 = static_cast<uint32_t>(GetVRegSize()) / sizeof(int32_t);
-constexpr static int64_t DEFAULT_EXPERT_NUM_ALIGN = 256;
+constexpr static int64_t EXPERT_NUM = 256;
 constexpr static uint32_t FOUR = 4;
 
 constexpr static MicroAPI::CastTrait castTraitS322U8 = {
@@ -266,7 +266,7 @@ __aicore__ inline void MoeV2ExpertTokenOutRegBase::Init(GM_ADDR expertTokensCoun
                                             this->blockIdx * this->srcToDstTilingData->perCoreRows,
                                         Align(this->coreRows, sizeof(int32_t)));
 
-    this->expertNumUbAlign = DEFAULT_EXPERT_NUM_ALIGN;
+    this->expertNumUbAlign = EXPERT_NUM;
     pipe->InitBuffer(copyInQueue, 1, this->perLoopRows * BLOCK_BYTES);
     pipe->InitBuffer(expertTokenIdxCopyInQueue, 1, this->expertNumUbAlign * sizeof(int32_t));
     pipe->InitBuffer(expertTokenIdxCopyOutQueue, 1, this->expertNumUbAlign * sizeof(int32_t));

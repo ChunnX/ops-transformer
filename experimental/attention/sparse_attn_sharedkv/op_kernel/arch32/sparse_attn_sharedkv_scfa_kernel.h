@@ -223,7 +223,6 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::InitTilingData()
     // cmp
     constInfo.cmpRatio = tilingData->cmpParams.cmpRatio;
     constInfo.sparseBlockCount = tilingData->cmpParams.sparseBlockCount;
-    constInfo.sparseBlockCount = 512;
     constInfo.sparseBlockSize = 1; // sparseBlockSize 固定为1
     constInfo.cmpMaskMode = tilingData->cmpParams.cmpMaskMode;
 }

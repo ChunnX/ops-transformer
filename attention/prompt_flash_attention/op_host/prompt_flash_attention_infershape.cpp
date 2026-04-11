@@ -28,6 +28,7 @@ static constexpr int32_t PFA_UNKNOWN_DIMS = -2;
 static constexpr uint32_t PFA_DIM_NUMS_1 = 1;
 static constexpr uint32_t PFA_LAYOUT_BNSD_BSND_DIMS = 4;
 static constexpr uint32_t PFA_LAYOUT_TND_DIMS = 3;
+static constexpr uint32_t PFA_LAYOUT_NTD_DIMS = 3;
 static constexpr uint32_t PFA_LAYOUT_SH_DIMS = 2;
 static constexpr uint32_t PFA_LAYOUT_BSH_DIMS = 3;
 static constexpr uint32_t PFA_LAYOUT_NSD_DIMS = 3;
@@ -111,6 +112,17 @@ static ge::graphStatus InferShapePromptFlashAttention(gert::InferShapeContext *c
         (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM0];
         (*attentionOutShape)[PFA_LAYOUT_DIM1] = (*queryShape)[PFA_LAYOUT_DIM1];
         (*attentionOutShape)[PFA_LAYOUT_DIM2] = outputD;
+    } else if (strcmp(inputLayoutPtr, "NTD") == 0) {
+        if (queryShape->GetDimNum() != PFA_LAYOUT_NTD_DIMS || valueShape->GetDimNum() != PFA_LAYOUT_NTD_DIMS) {
+            OP_LOGE(context->GetNodeName(), "Layout NTD, queryDims(%zu) valueDims(%zu) must be 3!",
+                queryShape->GetDimNum(), valueShape->GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+        int64_t outputD = (*valueShape)[PFA_LAYOUT_DIM2];
+        outputD = (outputD == 0 || (*queryShape)[PFA_LAYOUT_DIM2] == 0) ? (*queryShape)[PFA_LAYOUT_DIM2] : outputD;
+        (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM0];
+        (*attentionOutShape)[PFA_LAYOUT_DIM1] = (*queryShape)[PFA_LAYOUT_DIM1];
+        (*attentionOutShape)[PFA_LAYOUT_DIM2] = outputD;
     } else if (strcmp(inputLayoutPtr, "NTD_TND") == 0) {
         if (queryShape->GetDimNum() != PFA_LAYOUT_TND_DIMS || valueShape->GetDimNum() != PFA_LAYOUT_TND_DIMS) {
             OP_LOGE(context->GetNodeName(), "Layout NTD_TND, queryDims(%zu) valueDims(%zu) must be 3!",
@@ -120,6 +132,15 @@ static ge::graphStatus InferShapePromptFlashAttention(gert::InferShapeContext *c
         (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM1];
         (*attentionOutShape)[PFA_LAYOUT_DIM1] = (*queryShape)[PFA_LAYOUT_DIM0];
         (*attentionOutShape)[PFA_LAYOUT_DIM2] = (*valueShape)[PFA_LAYOUT_DIM2];
+    } else if (strcmp(inputLayoutPtr, "TND_NTD") == 0) {
+ 	    if (queryShape->GetDimNum() != PFA_LAYOUT_TND_DIMS || valueShape->GetDimNum() != PFA_LAYOUT_TND_DIMS) {
+ 	        OP_LOGE(context->GetNodeName(), "Layout TND_NTD, queryDims(%zu) valueDims(%zu) must be 3!",
+ 	            queryShape->GetDimNum(), valueShape->GetDimNum());
+ 	        return ge::GRAPH_FAILED;
+ 	    }
+ 	    (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM1];
+ 	    (*attentionOutShape)[PFA_LAYOUT_DIM1] = (*queryShape)[PFA_LAYOUT_DIM0];
+ 	    (*attentionOutShape)[PFA_LAYOUT_DIM2] = (*valueShape)[PFA_LAYOUT_DIM2];
     } else if (strcmp(inputLayoutPtr, "SH") == 0) {
         if (queryShape->GetDimNum() != PFA_LAYOUT_SH_DIMS) {
             OP_LOGE(context->GetNodeName(), "Layout SH, queryDims(%zu) must be 2!", queryShape->GetDimNum());

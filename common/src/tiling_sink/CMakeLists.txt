@@ -34,6 +34,7 @@ set(src_files
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v2.cpp
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
+  ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
@@ -102,9 +103,12 @@ else ()
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/common
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/utils
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/cpu_proto
+    ${TOP_DIR}/air/inc/graph_metadef/external
+    ${TOP_DIR}/air/inc/graph_metadef
     ${TOP_DIR}/metadef/inc/external
     ${TOP_DIR}/metadef/inc
     ${TOP_DIR}/abl/slog/inc/toolchain
+    ${TOP_DIR}/air/inc/graph_metadef/external/base
     ${TOP_DIR}/metadef/inc/external/base
     ${TOP_DIR}/abl/slog/inc
   )

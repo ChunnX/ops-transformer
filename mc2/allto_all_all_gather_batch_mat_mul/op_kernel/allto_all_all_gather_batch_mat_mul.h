@@ -16,7 +16,14 @@
 #ifndef MC2_ALLTOALL_ALLGATHER_BATCHMATMUL_H
 #define MC2_ALLTOALL_ALLGATHER_BATCHMATMUL_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+#include "adv_api/hccl/hccl.h"
+#include "adv_api/activation/silu.h"
+#include "adv_api/activation/gelu.h"
 #include "lib/matmul_intf.h"
 
 #if __has_include("../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h")
@@ -24,6 +31,7 @@
 #else
 #include "../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
 #endif
+#include "allto_all_all_gather_batch_mat_mul_tiling_struct.h"
 
 constexpr uint32_t MAX_HCCL_HANDLE = 32U;
 constexpr uint32_t SIZE_OF_FLOAT32 = 4U;
@@ -32,6 +40,7 @@ constexpr uint32_t MAX_EP_RANK_SIZE = 32U;
 
 using namespace AscendC;
 using namespace matmul;
+using namespace optiling;
 
 enum class AlltoAllAllGatherBatchMatmulActType : uint32_t {
     ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE = 0,
@@ -49,7 +58,8 @@ class AlltoAllAllGatherBatchMatMul{
 public:
     __aicore__ inline AlltoAllAllGatherBatchMatMul(){};
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM, GM_ADDR y2GM, GM_ADDR y3GM,
-                                GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData* tilingData);
+                                GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData* tilingData,
+                                __gm__ void* hcclInitTiling, __gm__ void* allGatherCcTiling, __gm__ void* alltoAllCcTiling);
     __aicore__ inline void Process();
 private:
     __aicore__ inline void GetTilingData(AlltoAllAllGatherBatchMatMulTilingData *tilingData);
@@ -123,19 +133,19 @@ private:
     GlobalTensor<DataType1> allgatherNonLocalOutGM;
     GlobalTensor<DataType1> transposeOutGM; //每轮地址复用
     GlobalTensor<DataType1> bmmOutGM;
-    NewMc2MatmulTilingData *bmmLocalTiling;
-    NewMc2MatmulTilingData *bmmNonLocalTileTiling;
-    NewMc2MatmulTilingData *bmmNonLocalTailTiling;
+    BMM_Mc2MatmulTilingData *bmmLocalTiling;
+    BMM_Mc2MatmulTilingData *bmmNonLocalTileTiling;
+    BMM_Mc2MatmulTilingData *bmmNonLocalTailTiling;
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hcclAlltoall;
     Hccl<HCCL_SERVER_TYPE_AICPU> hcclAllgather;
     HcclHandle allgatherHandleList[MAX_HCCL_HANDLE];
     HcclDataType hcclDataType;
 
-    TileInfo localE; // 无尾块
-    TileInfo localC;
-    TileInfo nonLocalE; // 无尾块
-    TileInfo nonLocalC;
+    BMM_TileInfo localE; // 无尾块
+    BMM_TileInfo localC;
+    BMM_TileInfo nonLocalE; // 无尾块
+    BMM_TileInfo nonLocalC;
 
     TPipe *tpipe;
     TBuf<> tBuf;
@@ -150,7 +160,8 @@ private:
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias, bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMul<DataType1, DataType2, ShardType, IsTransposeWeight, IsNeedBias, IsNeedY2, IsNeedY3>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM, GM_ADDR y2GM, GM_ADDR y3GM,
-                            GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData* tilingData)
+                            GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData* tilingData,
+                            __gm__ void* hcclInitTiling, __gm__ void* allGatherCcTiling, __gm__ void* alltoAllCcTiling)
 {
     this->tpipe = pipe;
     GetTilingData(tilingData);
@@ -188,8 +199,10 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMul<DataType1, DataType2, ShardT
 
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     auto contextGM1 = AscendC::GetHcclContext<1>();
-    hcclAlltoall.Init(contextGM0);
-    hcclAllgather.Init(contextGM1);
+    hcclAlltoall.Init(contextGM0, hcclInitTiling);
+    hcclAlltoall.SetCcTiling(alltoAllCcTiling);
+    hcclAllgather.Init(contextGM1, hcclInitTiling);
+    hcclAllgather.SetCcTiling(allGatherCcTiling);
 
     if constexpr(AscendC::IsSameType<DataType1, bfloat16_t>::value) {
         hcclDataType = HCCL_DATA_TYPE_BFP16;

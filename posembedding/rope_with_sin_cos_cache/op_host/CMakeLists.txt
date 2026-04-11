@@ -18,6 +18,13 @@ if (BUILD_OPEN_PROJECT)
                 -Wno-deprecated-declarations
                 -Werror
     )
+    if ("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+        OP_NAME RopeWithSinCosCache
+        COMPUTE_UNIT Ascend950PR_9599
+        OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+        )
+    endif()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

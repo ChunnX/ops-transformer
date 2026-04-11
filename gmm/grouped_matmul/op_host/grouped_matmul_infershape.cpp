@@ -25,13 +25,13 @@
 using namespace ge;
 namespace ops {
 
-static std::set<std::string> GmmDavidSupportSoc = {"Ascend910_95"};
+static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
 
 enum class PlatformID : std::uint8_t {
     UNKNOWN,
     ASCEND310P,
     ASCEND910B,
-    ASCEND910_95
+    ASCEND950
 };
 
 struct GMMParamsInfo {
@@ -400,7 +400,8 @@ static ge::graphStatus CheckNonQuant(gert::InferShapeContext* context) {
 
 static ge::graphStatus GetGroupSize(const gert::InferShapeContext* context, GMMParamsInfo& paramsInfo) {
     size_t groupNum = 1;
-    size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_ARRAY;  // init max value
+    // all case allows 1024 in infershape, specific check in tiling
+    size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_TENSOR;
     if (paramsInfo.numX > 1UL) {
         groupNum = paramsInfo.numX;
     } else if (paramsInfo.numWeight > 1UL) {
@@ -409,7 +410,6 @@ static ge::graphStatus GetGroupSize(const gert::InferShapeContext* context, GMMP
         groupNum = paramsInfo.numY;
     } else if (paramsInfo.lenGroupList > 0) {
         groupNum = static_cast<size_t>(paramsInfo.lenGroupList);
-        maxGroupNum = static_cast<size_t>(GMM_MAX_GROUP_LIST_SIZE_TENSOR);  // only this case allows GMM_MAX_GROUP_LIST_SIZE_TENSOR size
     }
     OP_CHECK_IF(groupNum > maxGroupNum,
               OP_LOGE(context->GetNodeName(), "groupNum[%zu] is larger than %zu.",
@@ -711,7 +711,7 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeConte
     }
     // check perGroupSize
     if (w0Desc->GetDataType() == DT_INT4) {
-         OP_CHECK_IF(
+        OP_CHECK_IF(
             CheckGroupedMatmulAntiQuantGroupSize(context, gmmAttrs, paramsInfo, hasAntiquantOffset) != GRAPH_SUCCESS,
             OP_LOGE(context->GetNodeName(), "Invalid antiquant group size."), return GRAPH_FAILED);
     }
@@ -719,6 +719,7 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeConte
               "Detected antiquant, but quant inputs is not empty!"), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
+
 static ge::graphStatus CheckQuantParams(gert::InferShapeContext* context, const GMMAttrs& gmmAttrs, GMMParamsInfo& paramsInfo) {
     auto x0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_X, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, x0Desc);
@@ -762,8 +763,8 @@ static ge::graphStatus CheckFunctionParamsForShape(gert::InferShapeContext* cont
         return GRAPH_SUCCESS;
     } else {
         paramsInfo.platform = (optionalInfo.soc_version.find("310P") != std::string::npos) ?
-                                PlatformID::ASCEND310P : (optionalInfo.soc_version.find("910_95") != std::string::npos) ?
-                                PlatformID::ASCEND910_95 : PlatformID::ASCEND910B;
+                                PlatformID::ASCEND310P : (optionalInfo.soc_version.find("950") != std::string::npos) ?
+                                PlatformID::ASCEND950 : PlatformID::ASCEND910B;
     }
     OP_CHECK_IF(CheckQuantParams(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "CheckQuantParams failed!"),
@@ -889,6 +890,9 @@ static ge::graphStatus IsxSizeEqualWithWeightKAxis(const gert::InferShapeContext
 
 static ge::graphStatus CheckCaseNoSplit(gert::InferShapeContext* context, bool transposeWeight,
                                         const GMMParamsInfo& paramsInfo) {
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optionalInfo;
+    auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
     const size_t& xSize = paramsInfo.numX;
     const size_t& weightSize = paramsInfo.numWeight;
     // check group num
@@ -921,10 +925,12 @@ static ge::graphStatus CheckCaseNoSplit(gert::InferShapeContext* context, bool t
         size_t xDimNum = xShape->GetDimNum();
         // check inner axis of x, which should not be larger than 65535
         int64_t xKDimValue = xShape->GetDim(xDimNum - 1);  // x always is not transposed
-        OP_CHECK_IF(xKDimValue > GMM_MAX_INNER_AXIS,
+        if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
+            OP_CHECK_IF(xKDimValue > GMM_MAX_INNER_AXIS,
                   OP_LOGE(context->GetNodeName(), "x[%lu] dim %lu value %ld should less or equal to %ld.",
                             i, xDimNum - 1, xKDimValue, GMM_MAX_INNER_AXIS),
                   return GRAPH_FAILED);
+        }
         if (weightSize > 1UL) {
             wShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, i);
             weightKDimValue = wShape->GetDim(wKDimIdx);
@@ -939,24 +945,31 @@ static ge::graphStatus CheckCaseNoSplit(gert::InferShapeContext* context, bool t
                             i, xDimNum - 1, xKDimValue, i, weightKDimValue),
                   return GRAPH_FAILED);
         // if weight is not transposed, check N aisx; otherwise, check K axis, which can be skiped
-        OP_CHECK_IF(!transposeWeight && weightNDimValue > GMM_MAX_INNER_AXIS,
+        if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
+            OP_CHECK_IF(!transposeWeight && weightNDimValue > GMM_MAX_INNER_AXIS,
                   OP_LOGE(context->GetNodeName(), "w[%zu] dim %zu value %ld should less or equal to %ld.",
                             i, wNDimIdx, weightNDimValue, GMM_MAX_INNER_AXIS),
                   return GRAPH_FAILED);
+        }
     }
     return GRAPH_SUCCESS;
 }
 
 static ge::graphStatus CheckInnerAxisOfTensorList(const gert::InferShapeContext* context, size_t nodeId,
                                                   int64_t innerAxisDimId, size_t checkNum) {
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optionalInfo;
+    auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
     for (size_t i = 0; i < checkNum; i++) {
         auto shape = context->GetDynamicInputShape(nodeId, i);
         OP_CHECK_NULL_WITH_CONTEXT(context, shape);
         int64_t innerAxisValue = shape->GetDim(innerAxisDimId);
-        OP_CHECK_IF(innerAxisValue > GMM_MAX_INNER_AXIS,
+        if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
+            OP_CHECK_IF(innerAxisValue > GMM_MAX_INNER_AXIS,
                   OP_LOGE(context->GetNodeName(), "Dim %ld value of %zu-th shape should less or equal to %ld, "
                             "but now is %ld.", innerAxisDimId, i, GMM_MAX_INNER_AXIS, innerAxisValue),
                   return GRAPH_FAILED);
+        }
     }
     return GRAPH_SUCCESS;
 }
@@ -964,6 +977,9 @@ static ge::graphStatus CheckInnerAxisOfTensorList(const gert::InferShapeContext*
 static ge::graphStatus CheckShapeSameLengthTensorList(gert::InferShapeContext* context,
                                                       const std::vector<size_t>& dimIds, const int64_t innerAxisDimId,
                                                       const std::vector<std::string> tensorType, uint64_t groupNum) {
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optionalInfo;
+    auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
     std::vector<int64_t> nodeIdx = {0, 0};
     OP_CHECK_IF(TensorType2NodeId(tensorType, nodeIdx) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "TensorType2NodeId failed."),
@@ -979,7 +995,7 @@ static ge::graphStatus CheckShapeSameLengthTensorList(gert::InferShapeContext* c
             auto shape0 = context->GetDynamicInputShape(nodeIdx[0], i);
             OP_CHECK_NULL_WITH_CONTEXT(context, shape0);
             int64_t innerAxisValue = shape0->GetDim(innerAxisDimId);
-            if(innerAxisValue > GMM_MAX_INNER_AXIS){
+            if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0) && innerAxisValue > GMM_MAX_INNER_AXIS) {
                 OP_LOGW(context->GetNodeName(), "Dim %lu value of %s[%lu] should less or equal to %ld,"
                 "but now is %ld.", dimIds[0], tensorType[0].c_str(), i, GMM_MAX_INNER_AXIS, innerAxisValue);
             }
@@ -1006,6 +1022,9 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext* c
                                                       const int64_t innerAxisdimId,
                                                       const std::vector<std::string> tensorType,
                                                       uint64_t groupNum) {
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optionalInfo;
+    auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
     std::vector<int64_t> nodeIdx = {0, 0};
     OP_CHECK_IF(TensorType2NodeId(tensorType, nodeIdx) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "TensorType2NodeId failed."),
@@ -1024,11 +1043,13 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext* c
     // tensorType[2] indicates whether check single tensorList's inner axis(innerAxisDimId)
     if (tensorType[2] == "true" && innerAxisdimId > -1) {
         int64_t dimValue = singleTensor0->GetDim(innerAxisdimId);
-        OP_CHECK_IF(dimValue > GMM_MAX_INNER_AXIS,
+        if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
+            OP_CHECK_IF(dimValue > GMM_MAX_INNER_AXIS,
                   OP_LOGE(context->GetNodeName(),
                             "Dim %ld value of %s[0] should less or equal to %ld, but now is %ld.",
                             innerAxisdimId, tensorType[1].c_str(), GMM_MAX_INNER_AXIS, dimValue),
                   return GRAPH_FAILED);
+        }
     }
     const gert::Shape* longTensor;
     for (uint64_t i = 0; i < groupNum; i++) {
@@ -1225,7 +1246,7 @@ static ge::graphStatus CheckCaseSplitK(gert::InferShapeContext* context, bool tr
     const size_t& weightSize = paramsInfo.numWeight;
     const size_t& ySize = paramsInfo.numY;
     if (xSize == 1UL) {
-        if (paramsInfo.platform == PlatformID::ASCEND910_95) {
+        if (paramsInfo.platform == PlatformID::ASCEND950) {
             return GRAPH_SUCCESS;
         }
         OP_CHECK_IF(!transposeX,
@@ -1439,7 +1460,7 @@ static graphStatus IsDavidQuantGMMByShape(T context) {
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleDesc);
     DataType xDtype = xDesc->GetDataType();
     DataType weightDtype = weightDesc->GetDataType();
-    if (xDtype == ge::DT_FLOAT4_E1M2 || xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_INT4) {
+    if (xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_INT4) {
         return GRAPH_SUCCESS;
     }
     return (GetSizeByDataType(xDtype) == 1 && GetSizeByDataType(weightDtype) == 1) ? GRAPH_SUCCESS : GRAPH_FAILED;
@@ -1612,8 +1633,8 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* conte
         return GRAPH_SUCCESS;
     } else {
         platform = (optionalInfo.soc_version.find("310P") != std::string::npos) ?
-                    PlatformID::ASCEND310P : (optionalInfo.soc_version.find("910_95") != std::string::npos) ?
-                    PlatformID::ASCEND910_95 : PlatformID::ASCEND910B;
+                    PlatformID::ASCEND310P : (optionalInfo.soc_version.find("950") != std::string::npos) ?
+                    PlatformID::ASCEND950 : PlatformID::ASCEND910B;
     }
     DataType xDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_X, 0);
     DataType weightDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_WEIGHT, 0);

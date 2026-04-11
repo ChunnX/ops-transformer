@@ -34,7 +34,7 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
-#include "../../op_kernel/moe_distribute_dispatch_tiling.h"
+#include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 #include "../../op_kernel/moe_distribute_dispatch_tiling_key.h"
 #include "tiling/moe_tiling_base.h"
 #include "moe_distribute_dispatch_tiling_a2a3.h"
@@ -244,14 +244,26 @@ static ge::graphStatus CheckAttrs(gert::TilingContext *context, const char *node
     OP_TILING_CHECK((tpWorldSize > 1) && (localMoeExpertNum > 1), OP_LOGE(nodeName, "Cannot support multi-moeExpert %u "
         "in a rank when tpWorldSize = %u > 1", localMoeExpertNum, tpWorldSize), return ge::GRAPH_FAILED);
 
-    // 检验epWorldSize是否是8的倍数
-    OP_TILING_CHECK(epWorldSize % 8 != 0, OP_LOGE(nodeName,
-        "epWorldSize should be divisible by 8, but got epWorldSize = %u.",
-        epWorldSize), return ge::GRAPH_FAILED);
+    if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
+        // 为支持在 A5 上的验证，放开 epWorldSize 为 2 或 4 的校验
+        // 检验epWorldSize是否是2的倍数
+        OP_TILING_CHECK(epWorldSize % 2 != 0, OP_LOGE(nodeName,
+            "epWorldSize should be divisible by 2, but got epWorldSize = %u.",
+            epWorldSize), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE(nodeName,
-        "epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u.",
-        epWorldSize), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE(nodeName,
+            "epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u.",
+            epWorldSize), return ge::GRAPH_FAILED);
+    } else {
+        // 检验epWorldSize是否是8的倍数
+        OP_TILING_CHECK(epWorldSize % 8 != 0, OP_LOGE(nodeName,
+            "epWorldSize should be divisible by 8, but got epWorldSize = %u.",
+            epWorldSize), return ge::GRAPH_FAILED);
+
+        OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE(nodeName,
+            "epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u.",
+            epWorldSize), return ge::GRAPH_FAILED);
+    }
 
     // 校验输入x的dim 0并设bs
     const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
@@ -400,12 +412,14 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const uint32_t tpWorldSize)
+static uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const uint32_t tpWorldSize, bool isA5)
 {
     bool tp = false;
     uint32_t tilingKeyQuantMode = TILINGKEY_NO_QUANT;
     bool scaleMode = false;   // A2 & A3
+    uint32_t fullMesh = TILINGKEY_NO_FULLMESH;
     uint32_t layeredMode = TILINGKEY_TPL_MTE; // A2
+    uint32_t archTag = isA5 ? TILINGKEY_TPL_A5 : TILINGKEY_TPL_A3;
     
     if (tpWorldSize == MAX_TP_WORLD_SIZE) {
         tp = true;
@@ -413,12 +427,13 @@ static uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, cons
     if (quantMode == STATIC_QUANT_MODE) {
         tilingKeyQuantMode = TILINGKEY_STATIC_QUANT;
     } else if (quantMode == DYNAMIC_QUANT_MODE) {
-        tilingKeyQuantMode = TILINGKEY_DYNAMIC_QUANT;
+        tilingKeyQuantMode = TILINGKEY_PERTOKEN_QUANT;
     }
     if (isScales) {
         scaleMode = true;
     }
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode, layeredMode, TILINGKEY_TPL_A3);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode, 
+                                                    fullMesh, layeredMode, archTag);
     return tilingKey;
 }
 
@@ -450,23 +465,6 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, MoeDistri
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
-{
-    HcclComm hcclComm;
-    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm)
-        != HCCL_SUCCESS, OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
-    if (hcclComm == nullptr) {
-        OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetGroupLocalWindowSize(groupStr, cclBufferSize) != HCCL_SUCCESS,
-            OP_LOGE(nodeName, "GetGroupLocalWindowSize by topoInfo failed"), return ge::GRAPH_FAILED);
-        OP_LOGD(nodeName, "Get cclBufferSize from topoInfo");
-    } else {
-        OP_LOGD(nodeName, "Get cclBufferSize from HCCL");
-    }
-    OP_TILING_CHECK(*cclBufferSize == 0,
-            OP_LOGE(nodeName, "Get cclBufferSize failed, cclBufferSize is 0"), return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
@@ -480,11 +478,11 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistr
     const char *nodeName, uint32_t localMoeExpertNum)
 {
     auto attrs = context->GetAttrs();
+    uint64_t hcclBufferSizeEp = 0;
     uint64_t maxWindowSizeEp = 0;
-    auto groupEpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
-    OP_TILING_CHECK(GetCclBufferSize(groupEpHccl, &maxWindowSizeEp, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Get Ep HcclBufferSizeEP failed, HcclBufferSizeEP is %lu", maxWindowSizeEp),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        mc2tiling::GetEpWinSize(context, nodeName, hcclBufferSizeEp, maxWindowSizeEp, ATTR_GROUP_EP_INDEX, false) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Get EP WinSize failed"), return ge::GRAPH_FAILED);
     uint64_t h = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.h);
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.epWorldSize);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.globalBs) / epWorldSize;
@@ -492,7 +490,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistr
     if (actualSize > maxWindowSizeEp) {
         OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu, localMoeExpertNum = %u,"
             "ep_worldsize * maxBs * h * 2 * 2 * localMoeExpertNum = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize,
-            localMoeExpertNum, actualSize / MB_SIZE + 1UL, maxWindowSizeEp / MB_SIZE);
+            localMoeExpertNum, actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE);
         return ge::GRAPH_FAILED;
     }
     tilingData->moeDistributeDispatchInfo.totalWinSizeEp = maxWindowSizeEp;
@@ -502,7 +500,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistr
     if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         uint64_t maxWindowSizeTp = 0;
         auto groupTpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
-        OP_TILING_CHECK(GetCclBufferSize(groupTpHccl, &maxWindowSizeTp, nodeName) != ge::GRAPH_SUCCESS,
+        OP_TILING_CHECK(mc2tiling::GetCclBufferSize(groupTpHccl, &maxWindowSizeTp, nodeName) != ge::GRAPH_SUCCESS,
             OP_LOGE(nodeName, "Get Ep HcclBufferSizeTP failed, HcclBufferSizeTP is %lu", maxWindowSizeTp),
             return ge::GRAPH_FAILED);
         actualSize = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.a) * (h * 2UL + 128UL) * 2UL;
@@ -516,7 +514,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistr
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeDispatchA3TilingFuncImpl(gert::TilingContext *context)
+static ge::graphStatus MoeDistributeDispatchA3A5TilingFuncImpl(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     MoeDistributeDispatchTilingData *tilingData = context->GetTilingData<MoeDistributeDispatchTilingData>();
@@ -576,19 +574,19 @@ static ge::graphStatus MoeDistributeDispatchA3TilingFuncImpl(gert::TilingContext
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchInfo.tpWorldSize;
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHcommCfg failed."), return ge::GRAPH_FAILED);
-    uint64_t tilingKey = CalTilingKey(isScales, quantMode, tpWorldSize);
+    uint64_t tilingKey = CalTilingKey(isScales, quantMode, tpWorldSize, mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
-    uint32_t blockDim = 1U;
+    uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(blockDim);
+    numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetBlockDim(numBlocks);
     tilingData->moeDistributeDispatchInfo.totalUbSize = ubSize;
     tilingData->moeDistributeDispatchInfo.aivNum = aivNum;
-    OP_LOGD(nodeName, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
+    OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);
     return ge::GRAPH_SUCCESS;
 }
@@ -651,6 +649,8 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(gert::Tiling
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
     info.quantMode = *quantModePtr;
+    info.maxMoeExpertNum = MAX_MOE_EXPERT_NUMS_A2;
+
     if (*globalBsPtr == 0) {
         info.globalBs = *epWorldSizePtr * bs;
     } else {
@@ -668,6 +668,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(gert::Tiling
     OP_LOGD(K_INNER_DEBUG, "tpWorldSize=%d", info.tpWorldSize);
     OP_LOGD(K_INNER_DEBUG, "epRankId=%d", info.epRankId);
     OP_LOGD(K_INNER_DEBUG, "tpRankId=%d", info.tpRankId);
+    OP_LOGD(K_INNER_DEBUG, "maxMoeExpertNum=%d", info.maxMoeExpertNum);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -729,7 +730,6 @@ static ge::graphStatus MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(gert::
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
 
-    // todo boxi debug
     OP_LOGD(K_INNER_DEBUG, "aivNum=%d", info.aivNum);
     OP_LOGD(K_INNER_DEBUG, "ubSize=%lu", info.totalUbSize);
 
@@ -757,6 +757,7 @@ static uint64_t MoeDistributeDispatchA2CalcTilingKey(gert::TilingContext *contex
     bool tp = false;
     uint32_t tilingKeyQuantMode = TILINGKEY_NO_QUANT;
     bool scaleMode = false;   // A2 & A3
+    uint32_t fullMesh = TILINGKEY_NO_FULLMESH;
     uint32_t layeredMode = TILINGKEY_TPL_MTE; // A2
 
     if (isLayered) {
@@ -764,14 +765,70 @@ static uint64_t MoeDistributeDispatchA2CalcTilingKey(gert::TilingContext *contex
     }
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
     scaleMode = (scalesStorageShape != nullptr);
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode, layeredMode, TILINGKEY_TPL_A2);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode, 
+                                            fullMesh, layeredMode, TILINGKEY_TPL_A2);
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
     return tilingKey;
 }
+
+static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingContext *context, const char *nodeName,
+    MoeDistributeDispatchA2Info &info, bool isLayered)
+{
+    auto groupEp = context->GetAttrs()->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
+    uint64_t hcclBuffSize = 0ULL;
+    auto ret = mc2tiling::GetCclBufferSize(groupEp, &hcclBuffSize, nodeName);
+    OP_LOGD(nodeName, "HCCL_BUFFSIZE = %lu Bytes (%lu MB).", hcclBuffSize, ops::CeilDiv(hcclBuffSize, MB_SIZE));
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Get Ep hcclBuffSize failed.", hcclBuffSize),
+                    return ge::GRAPH_FAILED);
+    uint32_t epWorldSize = info.epWorldSize;
+    uint32_t localMoeExpertNum = info.moeExpertNum / epWorldSize;
+    uint64_t maxBs = static_cast<uint64_t>(info.globalBs) / epWorldSize;
+    uint64_t minHcclBuffSize = 0ULL;
+    constexpr uint64_t sizeofDtypeX = 2ULL; // token数据类型为float16/bfloat16，每个元素字节数为2
+    constexpr uint64_t BUFFER_NUM = 2UL;
+    if (isLayered) {
+        constexpr uint64_t flagBuffSize = 6 * MB_SIZE; // 固定6M空间作为存放同步Flag的区域
+        // 每个token发往k个专家时额外需带上专家索引、topk权重、量化系数、到达标志位共4个信息，这些信息对齐到32字节
+        const uint64_t extraTokenInfoSize = 4 * ((info.k + 7) / 8 * 8) * sizeof(uint32_t);
+        const uint64_t perTokenSize = info.h * sizeofDtypeX + extraTokenInfoSize;
+        const uint64_t maxRecvTokenNum = maxBs * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM);
+        minHcclBuffSize = maxRecvTokenNum * perTokenSize + flagBuffSize;
+        if (minHcclBuffSize > hcclBuffSize) {
+            OP_LOGE(nodeName,
+                    "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE ((moeExpertNum + epWorldSize / 4) * maxBs "
+                    "* (h * 2 + 16 * ((k + 7) / 8 * 8)) / 1MB + 6MB) = %luMB, actual HCCL_BUFFSIZE = %luMB, "
+                    "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u.",
+                    ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), info.moeExpertNum,
+                    maxBs, info.h, info.k);
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
+        const uint64_t perTokenSize = info.h * sizeofDtypeX;
+        const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);
+        minHcclBuffSize = BUFFER_NUM * (maxRecvTokenNum * perTokenSize + extraBuffSize);
+        if (minHcclBuffSize > hcclBuffSize) {
+            OP_LOGE(nodeName,
+                    "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE (%lu * (maxBs * epWorldSize * "
+                    "min(localMoeExpertNum, k) * h * 2 / 1MB + 2MB)) = %luMB, actual HCCL_BUFFSIZE = %luMB, maxBs = "
+                    "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u.",
+                    BUFFER_NUM, ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), maxBs,
+                    epWorldSize, localMoeExpertNum, info.k, info.h);
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter MoeDistributeDispatchA2 tiling func.");
+    
+    // 涉及SyncAll，设置batch mode模式，所有核同时启动
+    uint32_t batch_mode = 1U;
+    auto ret = context->SetScheduleMode(batch_mode);
+    GE_ASSERT_GRAPH_SUCCESS(ret);
 
     // 1. tilingData
     MoeDistributeDispatchA2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchA2TilingData>();
@@ -791,13 +848,15 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     OP_TILING_CHECK(MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeDispatchA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeDispatchA2 CheckWinSize Failed"),
+        return ge::GRAPH_FAILED);
 
-    uint32_t blockDim = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(blockDim);
-    context->SetAicpuBlockDim(mc2tiling::AICPU_BLOCK_DIM_A2);
+    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetBlockDim(numBlocks);
+    context->SetAicpuBlockDim(mc2tiling::AICPU_NUM_BLOCKS_A2);
 
     uint64_t tilingKey = MoeDistributeDispatchA2CalcTilingKey(context, isLayered);
     context->SetTilingKey(tilingKey);
@@ -832,7 +891,7 @@ static ge::graphStatus MoeDistributeDispatchTilingFunc(gert::TilingContext* cont
     if (socVersion == "Ascend910B") {
         ret = MoeDistributeDispatchA2TilingFuncImpl(context);
     } else {
-        ret = MoeDistributeDispatchA3TilingFuncImpl(context);
+        ret = MoeDistributeDispatchA3A5TilingFuncImpl(context);
     }
     return ret;
 }
@@ -844,7 +903,8 @@ ge::graphStatus TilingParseForMoeDistributeDispatch(gert::TilingParseContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatch, MoeDistributeDispatchTilingA2A3, 1);
+// A5 采用 MTE 方式通信，复用 A3 tiling
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatch, MoeDistributeDispatchTilingA2A3, 0);
 
 ge::graphStatus MoeDistributeDispatchTilingA2A3::DoOpTiling()
 {

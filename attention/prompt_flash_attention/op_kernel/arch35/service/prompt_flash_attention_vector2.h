@@ -57,7 +57,7 @@ protected:
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float>& softmaxSumTmp, LocalTensor<float>& softmaxMaxTmp,
         TQue<QuePosition::VECOUT, 1>& softmaxLseQueue, const TaskParam& taskParam, const ConstParam& constParam);
 private:
-    GlobalTensor<O> attentionOutGm;  // PFATODO kernel也做了初始化
+    GlobalTensor<O> attentionOutGm;
     event_t attenOutCopyOut;
     GlobalTensor<float> softmaxLseGm;
     LocalTensor<float> lseUb;

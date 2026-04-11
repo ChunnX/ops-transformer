@@ -110,6 +110,8 @@
 ## 约束说明
 * 当前该示例算子仅支持固定shape：a(240, 256)，b(240 * 2, 256)，和固定rank_size = 2。 
 * 所有输入不支持空tensor场景，取值范围在[-5,5]之间。
+* 确定性计算：
+  - allGatherAdd算子默认确定性实现。
 ## 调用说明
 
 调用本算子前，请确保已本地下载代码仓，并安装好如下基础依赖、NPU驱动和固件已安装。
@@ -145,7 +147,7 @@
     ./cann-ops-transformer-${vendor_name}_linux-${arch}.run
     ```
     
-    自定义算子包安装路径为`${ASCEND_HOME_PATH}/opp/vendors`，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/latest/opp。注意自定义算子包不支持卸载。
+    自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/latest/opp。注意自定义算子包不支持卸载。
 
 **本地验证** 
 

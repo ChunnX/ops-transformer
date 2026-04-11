@@ -83,9 +83,13 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
         if (weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT) {
             dequantScaleQNormShape->SetDimNum(DIM_NUM_1);
             dequantScaleQNormShape->SetDim(DIM_INDEX_0, DIM_NUM_0);
+        } else if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT) {
+            dequantScaleQNormShape->SetDimNum(DIM_NUM_2);
+            dequantScaleQNormShape->SetDim(DIM_INDEX_0, shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
+            dequantScaleQNormShape->SetDim(DIM_INDEX_1, shapeParam.Hcq / FP8_E4M3_BLOCK_SIZE);
         } else {
             dequantScaleQNormShape->SetDimNum(DIM_NUM_2);
-            dequantScaleQNormShape->SetDim(DIM_INDEX_0, shapeParam.T);
+            dequantScaleQNormShape->SetDim(DIM_INDEX_0, shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
             dequantScaleQNormShape->SetDim(DIM_INDEX_1, DIM_NUM_1);
         }
     } else {
@@ -135,7 +139,7 @@ ge::graphStatus InferDataTypeMlaPrologV3(gert::InferDataTypeContext *context)
         context->SetOutputDataType(KR_CACHE_OUT_INDEX, context->GetRequiredInputDataType(KR_CACHE_INDEX_V3));
         context->SetOutputDataType(DEQUANT_SCALE_Q_NOPE_INDEX, ge::DT_FLOAT);
         context->SetOutputDataType(QUERY_NORM_INDEX, context->GetRequiredInputDataType(WEIGHT_UQ_QR_INDEX));
-        context->SetOutputDataType(DEQUANT_SCALE_Q_NORM_INDEX, ge::DT_FLOAT);
+        context->SetOutputDataType(DEQUANT_SCALE_Q_NORM_INDEX, ge::DT_FLOAT8_E8M0);
     } else {
         context->SetOutputDataType(QUERY_INDEX, context->GetRequiredInputDataType(WEIGHT_UK_INDEX));
         context->SetOutputDataType(QUERY_ROPE_INDEX, context->GetRequiredInputDataType(WEIGHT_UK_INDEX));

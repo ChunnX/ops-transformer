@@ -68,7 +68,7 @@ private:
 bool RopeRegBaseTilingClassAAndB::IsCapable()
 {
     // 处理全boardcast和不boardcast的情况
-    return (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) &&
+    return (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) &&
            (layout_ == RopeLayout::NO_BROADCAST || layout_ == RopeLayout::BROADCAST_BSN);
 }
 
@@ -87,7 +87,7 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::MergeDim()
 
 ge::graphStatus RopeRegBaseTilingClassAAndB::SplitCore()
 {
-    blockFactorB_ = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.blockDim);
+    blockFactorB_ = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.numBlocks);
     blockNumB_ = Ops::Base::CeilDiv(static_cast<int64_t>(b_), blockFactorB_);
 
     return ge::GRAPH_SUCCESS;

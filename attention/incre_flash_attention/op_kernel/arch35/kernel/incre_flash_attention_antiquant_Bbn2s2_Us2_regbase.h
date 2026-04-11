@@ -16,7 +16,12 @@
 #ifndef INCRE_FLASH_ATTENTION_ANTIQUANT_BBN2S2_US2_H
 #define INCRE_FLASH_ATTENTION_ANTIQUANT_BBN2S2_US2_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -1615,7 +1620,9 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputeScal
     if (softmaxLseFlag) {
         lseOutputUb = softmaxLseOutputQue.template AllocTensor<T>();
     }
-    FaVectorApi::ComputeScaleValue_VF(lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize, softmaxLseFlag);
+    LocalTensor<bfloat16_t> tmpSinkUb;
+    bool learnableSinkFlag = false;
+    FaVectorApi::ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
     if (softmaxLseFlag) {
         softmaxLseOutputQue.template EnQue<T>(lseOutputUb);
         softmaxLseOutputQue.DeQue<T>();

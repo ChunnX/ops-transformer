@@ -14,7 +14,8 @@
  */
 #ifndef _INPLACE_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
 #define _INPLACE_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
-#include "inplace_matmul_all_reduce_add_rms_norm_tiling.h"
+
+#include "../../../matmul_all_reduce_add_rms_norm/op_host/op_tiling/matmul_all_reduce_add_rms_norm_tiling.h"
 
 using Ops::Transformer::OpTiling::TilingRegistry;
 namespace optiling {

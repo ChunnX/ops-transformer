@@ -246,6 +246,11 @@
                 "name": "const_expert_num",
                 "dtype": "int",
                 "value": 0
+            },
+            {
+                "name": "y_dtype",
+                "dtype": "int",
+                "value": 28
             }
             ]
         },
@@ -494,6 +499,11 @@
                 "name": "const_expert_num",
                 "dtype": "int",
                 "value": 0
+            },
+            {
+                "name": "y_dtype",
+                "dtype": "int",
+                "value": 28
             }
             ]
         },
@@ -742,6 +752,11 @@
                 "name": "const_expert_num",
                 "dtype": "int",
                 "value": 0
+            },
+            {
+                "name": "y_dtype",
+                "dtype": "int",
+                "value": 28
             }
             ]
         },
@@ -990,6 +1005,11 @@
                 "name": "const_expert_num",
                 "dtype": "int",
                 "value": 0
+            },
+            {
+                "name": "y_dtype",
+                "dtype": "int",
+                "value": 28
             }
             ]
         }

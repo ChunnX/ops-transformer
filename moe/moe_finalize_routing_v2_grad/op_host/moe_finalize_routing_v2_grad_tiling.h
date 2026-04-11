@@ -23,6 +23,7 @@
 #include "util/math_util.h" 
 #include "op_common/op_host/util/platform_util.h"
 #include "tiling_base/tiling_util.h"
+
 namespace optiling {
 // 基础tiling数据，为保证兼容性，延用旧tiling
 BEGIN_TILING_DATA_DEF(MoeFinalizeRoutingV2GradTilingData)
@@ -129,12 +130,9 @@ protected:
     ge::graphStatus GetAttrInfo();
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckRequiredInput();
-    ge::graphStatus CheckBiasExist();
     ge::graphStatus CheckOptionalInputShape();
     virtual ge::graphStatus CheckOptionalInputDtype();
-    ge::graphStatus CheckExpandedXDims();
     ge::graphStatus CheckOutput();
-    ge::graphStatus CheckScaleExist();
     ge::graphStatus CheckParams();
 
 protected:

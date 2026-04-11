@@ -31,6 +31,16 @@ namespace optiling {
 
 const int64_t tokenDefault = 2147483647; // 2147483647 for token default value
 const int32_t sparseDefault = 0;
+constexpr int64_t mFdBaseSizeMla = 8;
+constexpr uint32_t MAX_SPLIT_RATIO = 2;
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+constexpr uint32_t SEQ_LEN_MIN = 4096;
+constexpr uint32_t SEQ_LEN_MAX = 5120;
+constexpr uint32_t SEQ_LEN_MIN_V2 = 37000;
+constexpr uint32_t SEQ_LEN_MAX_V2 = 65536;
+constexpr uint32_t HEAD_DIM = 512;
+constexpr uint32_t HEAD_DIM_V = 512;
+constexpr uint32_t SPARSE_MODE = 3;
 
 uint64_t PFA_BENCHMARK_TILING_KEY = 1000000000000000000;
 
@@ -154,6 +164,7 @@ ge::graphStatus IFATiling::PreProcess()
     }
 
     SetupPerfMode();
+    IsFdBalanceCase();
     balanceModeFlag_ = IsBalanceSplitCore();
     SetCoreNum();
     UpdateL2CacheOffFlag();
@@ -161,7 +172,128 @@ ge::graphStatus IFATiling::PreProcess()
     return ge::GRAPH_SUCCESS;
 }
 
-bool IFATiling::IsBalanceSplitCore() const {
+bool IFATiling::CheckCommonConditions(const ValidityConfigFD& config) const {
+    return CheckBatchAndQSeqSize(config.validBatchSizes, config.validQSeqSizes) &&
+           CheckHeadDimensions(config.numHeads, config.numKvHeads,
+                               config.headDim, config.headDimV) &&
+           CheckQuantizationFlags(config.sparseMode) &&
+           CheckActualSeqLengths(config.expectedActualSeqLength);
+}
+
+bool IFATiling::CheckBatchAndQSeqSize(const std::vector<int32_t>& validBatchSizes, const std::vector<int32_t>& validQSeqSizes) const {
+    if (std::find(validBatchSizes.begin(), validBatchSizes.end(), batchSize_) == validBatchSizes.end())
+        return false;
+
+    if (std::find(validQSeqSizes.begin(), validQSeqSizes.end(), qSeqSize_) == validQSeqSizes.end())
+        return false;
+
+    return true;
+}
+
+bool IFATiling::CheckHeadDimensions(int32_t numHeads, int32_t numKvHeads, int32_t headDim, int32_t headDimV) const {
+    return (numHeads_ == numHeads &&
+            numKvHeads_ == numKvHeads &&
+            headDim_ == headDim &&
+            headDimV_ == headDimV);
+}
+
+bool IFATiling::CheckQuantizationFlags(int32_t sparseMode) const {
+    if (!quantFlag_)
+        return false;
+
+    if (sparseMode_ != sparseMode)
+        return false;
+
+    if (inputKvLayout_ != IfaLayout::NZ || !pageAttentionFlag_)
+        return false;
+
+    int64_t queryQuantMode = ifaContext_->queryQuantMode ? *ifaContext_->queryQuantMode : 0;
+    int64_t keyAntiQuantMode = ifaContext_->keyAntiquantMode ? *ifaContext_->keyAntiquantMode : 0;
+    int64_t valueAntiQuantMode = ifaContext_->valueAntiquantMode ? *ifaContext_->valueAntiquantMode : 0;
+
+    if (queryQuantMode != DEQUANT_PER_TOKEN_HEAD_MODE ||
+        keyAntiQuantMode != DEQUANT_PER_CHANNEL_MODE ||
+        valueAntiQuantMode != DEQUANT_PER_CHANNEL_MODE)
+        return false;
+
+    return true;
+}
+
+bool IFATiling::CheckActualSeqLengths(int64_t expectedActualSeqLength) const {
+    const int64_t* actualSeqKv = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
+    if (actualSeqKv == nullptr)
+        return false;
+
+    for (uint32_t bIdx = 0U; bIdx < batchSize_; ++bIdx) {
+        int64_t s2 = (actualLenDims_ == 1U) ? actualSeqKv[0] : actualSeqKv[bIdx];
+
+        if (expectedActualSeqLength >= 0) {
+            if (s2 < SEQ_LEN_MIN_V2 || s2 > SEQ_LEN_MAX_V2)
+                return false;
+        } else {
+            if (s2 < SEQ_LEN_MIN || s2 > SEQ_LEN_MAX)
+                return false;
+        }
+    }
+
+    return true;
+}
+
+bool IFATiling::IsValidFlag3B() {
+    ValidityConfigFD cfg{
+        .validBatchSizes = {1, 2, 4}, // 表示有效的BatchSize大小
+        .validQSeqSizes = {4}, // 表示有效的Qseq大小
+        .numHeads = 8,
+        .numKvHeads = 1,
+        .headDim = HEAD_DIM,
+        .headDimV = HEAD_DIM_V,
+        .sparseMode = SPARSE_MODE,
+        .expectedActualSeqLength = -1 // 表示 [4096, 5120]
+    };
+    return CheckCommonConditions(cfg);
+}
+
+bool IFATiling::IsValidFlag560B() {
+    ValidityConfigFD cfg{
+        .validBatchSizes = {4},
+        .validQSeqSizes = {2, 3, 4},
+        .numHeads = 64,
+        .numKvHeads = 1,
+        .headDim = HEAD_DIM,
+        .headDimV = HEAD_DIM_V,
+        .sparseMode = SPARSE_MODE,
+        .expectedActualSeqLength = -1
+    };
+    return CheckCommonConditions(cfg);
+}
+
+bool IFATiling::IsValidFlag() {
+    ValidityConfigFD cfg{
+        .validBatchSizes = {1},
+        .validQSeqSizes = {2},
+        .numHeads = 128,
+        .numKvHeads = 1,
+        .headDim = HEAD_DIM,
+        .headDimV = HEAD_DIM_V,
+        .sparseMode = SPARSE_MODE,
+        .expectedActualSeqLength = 1 // 1表示整网场景下s2范围：[37000,65536]
+    };
+    return CheckCommonConditions(cfg);
+}
+
+void IFATiling::IsFdBalanceCase() {
+    if(IsValidFlag() || IsValidFlag3B() || IsValidFlag560B()) {
+        tilingDataMla_.tndSplitCoreParams.set_FdBalanceFlag(1);
+    } else {
+        tilingDataMla_.tndSplitCoreParams.set_FdBalanceFlag(0);
+    }
+}
+
+bool IFATiling::IsBalanceSplitCore() {
+    if (tilingDataMla_.tndSplitCoreParams.get_FdBalanceFlag() == 1) {
+        return true;
+    }
+
     if (perfMode_ != IfaPerfMode::CUBE_VIEW_MM_MLA) {
         return false;
     }
@@ -282,21 +414,24 @@ ge::graphStatus IFATiling::QKVPreProcess()
     if (GetInOutLayoutAndProcessQInfo(layout, sOfQuery, sOfHeadnum, kDimNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    
-    if (GetRopeAndGqaFlag(sOfQuery, kDimNum, sOfHeadnum, layout) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
     qSeqSize_ = sOfQuery;
-
     if (layout == "TND" || layout == "TND_NTD") {
         if (QKVPreProcess4TND(layout) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-    } else {
-        qSeqSize_ = sOfQuery;
+        sOfQuery = qSeqSize_;
+        if (isWorkspace_ && ifaContext_->blockTable.tensor != nullptr) {
+            uint32_t tndBatchSize = ifaContext_->blockTable.tensor->GetStorageShape().GetDim(0);
+            if (tndBatchSize != 0) {
+                sOfQuery = (tSeqSize_ + tndBatchSize - 1) / tndBatchSize;
+            }
+        }
     }
     s1SplitSize_ = qSeqSize_;
+
+    if (GetRopeAndGqaFlag(sOfQuery, kDimNum, sOfHeadnum, layout) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -405,14 +540,13 @@ ge::graphStatus IFATiling::GetRopeAndGqaFlag(const uint32_t sOfQuery, const uint
         OP_CHECK_IF(sOfQuery > 16, OP_LOGE(ifaContext_->opName, "QueryS(%u) should not be bigger than 16 in MLA.", sOfQuery),
                    return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF(layout == "TND" && headDim_ == 512 && !ropeFlag_, OP_LOGE(ifaContext_->opName,
+        "When D is 512, inputlayout %s q_rope and k_rope should not be null!", layout.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus IFATiling::QKVPreProcess4TND(const std::string layout)
 {
-    OP_CHECK_IF(!ropeFlag_, OP_LOGE(ifaContext_->opName, "When D is 512, inputlayout %s q_rope and k_rope should not be null!", layout.c_str()),
-                return ge::GRAPH_FAILED);
-
     auto qType = ifaContext_->query.desc->GetDataType();
     uint32_t qTypeSize = GetTypeSize(qType);
     if (qTypeSize == NUM_BYTES_UNDEF) {
@@ -445,10 +579,12 @@ ge::graphStatus IFATiling::QKVPreProcess4TND(const std::string layout)
 
         batchSizeQ_ = batchSize_ = ifaContext_->actualSeqLengthsQ.tensor->GetShapeSize();
         tSeqSize_ = ifaContext_->query.shape->GetStorageShape().GetDim(0);
+        uint32_t tKVSeqSize = ifaContext_->key.shape->GetStorageShape().GetDim(0); 
         OP_CHECK_IF((tSeqSize_ > 1024U * 1024U / qTypeSize), // T不大于1M
                    OP_LOGE(ifaContext_->opName, "%s query T should <= 1M", layout.c_str()), return ge::GRAPH_FAILED);
 
         const int64_t *actualSeqQTnd = ifaContext_->actualSeqLengthsQ.tensor->GetData<int64_t>();
+        const int64_t *actualSeqKVTnd = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
         std::vector<int64_t> actualSeqQ(actualLenQDims_);
         int64_t tmpQSeqSize = 0;
 
@@ -463,6 +599,12 @@ ge::graphStatus IFATiling::QKVPreProcess4TND(const std::string layout)
         OP_CHECK_IF((tSeqSize_ != actualSeqQTnd[actualLenQDims_ - 1]),
             OP_LOGE(ifaContext_->opName, "%s T(%u) should be equal to the last element of the query's actual sequence lengths(%ld).", layout.c_str(), tSeqSize_, actualSeqQTnd[actualLenQDims_ - 1]),
             return ge::GRAPH_FAILED);
+
+        if (!pageAttentionFlag_) {
+            OP_CHECK_IF((tKVSeqSize != actualSeqKVTnd[actualLenDims_ - 1]),
+                OP_LOGE(ifaContext_->opName, "%s T(%u) should be equal to the last element of the key/value's actual sequence lengths(%ld).", layout.c_str(), tKVSeqSize, actualSeqKVTnd[actualLenDims_ - 1]),
+                return ge::GRAPH_FAILED);
+        }
 
         qSeqSize_ = static_cast<uint32_t>(tmpQSeqSize);
         OP_LOGI(ifaContext_->opName, "TND MAX actualSeqQ:%u", qSeqSize_);
@@ -761,13 +903,13 @@ ge::graphStatus IFATiling::ProcessOptionalTensors()
 {
     if ((ProcessActualSeqLen() != ge::GRAPH_SUCCESS) ||
         (ProcessPseShift() != ge::GRAPH_SUCCESS) ||
-        (ProcessAttenMask() != ge::GRAPH_SUCCESS) ||
         (ProcessQuant1() != ge::GRAPH_SUCCESS) ||
         (ProcessQuant2() != ge::GRAPH_SUCCESS) ||
         (ProcessDequant1() != ge::GRAPH_SUCCESS) ||
         (ProcessDequant2() != ge::GRAPH_SUCCESS) ||
         (ProcessQuant() != ge::GRAPH_SUCCESS) ||
         (ProcessAntiQuant() != ge::GRAPH_SUCCESS) ||
+        (ProcessAttenMask() != ge::GRAPH_SUCCESS) ||
         (ProcessBlockTable() != ge::GRAPH_SUCCESS) ||
         (ProcessKVPaddingSize() != ge::GRAPH_SUCCESS) ||
         (ProcessMlaRope() != ge::GRAPH_SUCCESS) ||
@@ -1237,6 +1379,9 @@ ge::graphStatus IFATiling::CheckKVAntiQuantMode()
         OP_LOGE(ifaContext_->opName, "antiquantMode value[%u] should be 0 or 1 in GQA KV NZ", antiquantMode_);
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND && antiquantMode_ == DEQUANT_PER_TOKEN_MODE,
+        OP_LOGE(ifaContext_->opName, "Per token antiquant mode is not supported when layout is TND in GQA KV NZ."),
+        return ge::GRAPH_FAILED);
     if ((antiquantMode_ != DEQUANT_PER_CHANNEL_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TOKEN_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TENSOR_HEAD_MODE) &&
@@ -1800,6 +1945,8 @@ ge::graphStatus IFATiling::Split()
             kvSplit_++;
             kvSplitPart_ = aicNum_;
             return ge::GRAPH_SUCCESS;
+        } else if (tilingDataMla_.tndSplitCoreParams.get_FdBalanceFlag() == 1) {
+            return SplitBalancedFd();
         } else {
             return SplitBalanced();
         }
@@ -1909,6 +2056,49 @@ void IFATiling::EndSplitForCurrentCore(const TilingIndexes &tilingIdx,
     tilingInfo.needUpdate = false;
 }
 
+void IFATiling::SplitBalancedForEachHeadFd(
+    uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t s1)
+{
+    uint32_t *balanceFDCoreBArr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreBArr();
+    uint32_t *balanceFDCoreS1Arr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreS1Arr();
+    uint32_t *balanceFDCoreKVSplitArr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreKVSplitArr();
+    uint32_t *balanceFDCoreStartKVSplitNum = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreStartKVSplitNum();
+    balanceFDCoreStartKVSplitNum[0] = 0U;
+    uint32_t *gS1LastPartSizeOfFdHead = tilingDataMla_.tndSplitCoreParams.get_gS1LastPartSizeOfFdHead();
+
+    for (uint32_t s1OuterIdx = 0U; s1OuterIdx < seqTilingInfo.s1OuterNum[bIdx]; s1OuterIdx++) {
+        uint32_t currKvSplitPart = 1U; // [B,N2,S1]确定后，S2被切了几份
+        for (uint32_t s2Idx = 0U; s2Idx < seqTilingInfo.s2OuterNum[bIdx]; s2Idx++) {
+            // 计算当前的目标权重
+            uint64_t targetS2Length = static_cast<uint64_t>(tilingInfo.currCoreIdx + 1U) * seqTilingInfo.avgS2Length;
+            if (tilingInfo.accumS2Length + 1U >= targetS2Length) {
+                EndSplitForCurrentCore(TilingIndexes(bIdx, s1OuterIdx, s2Idx), seqTilingInfo, currKvSplitPart, tilingInfo);
+            } else {
+                tilingInfo.accumS2Length += 1U;
+                tilingInfo.needUpdate = true;
+            }
+        }
+        tilingInfo.maxKvSplitPart = std::max(tilingInfo.maxKvSplitPart, currKvSplitPart);
+        if (currKvSplitPart > 1U) {
+            // S2被切过了，需要规约，记录[B,N,S1]三根轴的idx和切分份数，用于规约
+            balanceFDCoreBArr[tilingInfo.tndFDCoreArrLen] = bIdx;
+            balanceFDCoreS1Arr[tilingInfo.tndFDCoreArrLen] = s1OuterIdx;
+            balanceFDCoreKVSplitArr[tilingInfo.tndFDCoreArrLen] = currKvSplitPart;
+            int64_t gSize = nNumOfQInOneGroup_;
+            int64_t currFdS1gSize = (s1OuterIdx == seqTilingInfo.s1OuterNum[bIdx] - 1) ? 
+                                     s1 * gSize  - (seqTilingInfo.s1OuterNum[bIdx] - 1) * s1SplitSize_ * gSize : s1SplitSize_ * gSize; // 处理尾块
+            int64_t currFdS1gSplitSize = (currFdS1gSize + mFdBaseSizeMla - 1) / mFdBaseSizeMla;
+            int64_t currFdS1gLastPartSize = currFdS1gSize % mFdBaseSizeMla;
+            if (currFdS1gLastPartSize == 0U) {
+                currFdS1gLastPartSize = mFdBaseSizeMla;
+            }
+            gS1SplitNumOfFdHead[tilingInfo.tndFDCoreArrLen] = currFdS1gSplitSize;
+            gS1LastPartSizeOfFdHead[tilingInfo.tndFDCoreArrLen] = currFdS1gLastPartSize;
+            tilingInfo.tndFDCoreArrLen += 1U;
+        }
+    }
+}
+
 void IFATiling::SplitBalancedForEachHead(
     uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo)
 {
@@ -1917,7 +2107,7 @@ void IFATiling::SplitBalancedForEachHead(
     uint32_t *balanceFDCoreKVSplitArr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreKVSplitArr();
     uint32_t *balanceFDCoreStartKVSplitNum = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreStartKVSplitNum();
     balanceFDCoreStartKVSplitNum[0] = 0U;
-
+  
     for (uint32_t s1OuterIdx = 0U; s1OuterIdx < seqTilingInfo.s1OuterNum[bIdx]; s1OuterIdx++) {
         uint32_t currKvSplitPart = 1U; // [B,N2,S1]确定后，S2被切了几份
         for (uint32_t s2Idx = 0U; s2Idx < seqTilingInfo.s2OuterNum[bIdx]; s2Idx++) {
@@ -1939,6 +2129,124 @@ void IFATiling::SplitBalancedForEachHead(
             tilingInfo.tndFDCoreArrLen += 1U;
         }
     }
+}
+
+void IFATiling::SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead, uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo)
+{ 
+    uint32_t *gS1IdxEndOfFdHead = tilingDataMla_.tndSplitCoreParams.get_gS1IdxEndOfFdHead();
+    uint32_t *gS1IdxEndOfFdHeadSplit = tilingDataMla_.tndSplitCoreParams.get_gS1IdxEndOfFdHeadSplit();
+    
+    uint32_t totalFDLoad = 0U;
+    uint32_t totalFDHeadSplit = 0U;
+    
+    for (uint32_t i = 0U; i <  tndFDCoreArrLen; i++) { 
+        totalFDLoad += s2SplitNumOfFdHead[i] * gS1SplitNumOfFdHead[i];
+        totalFDHeadSplit += gS1SplitNumOfFdHead[i];
+    }
+    // 基于FA开核数量，计算每个Vector需要计算的FD数据量
+    uint32_t maxVectorNum = std::min(totalFDHeadSplit, aivCoreNum);  // FD均衡的最小单位为一个归约任务的一个split，所以最多占用totalFDHeadSplit个vector
+    double loadThrOfVector = static_cast<double>(totalFDLoad) / static_cast<double>(maxVectorNum);  // 初始化vector的负载上限
+    int64_t loadOfCurVector = 0;
+    uint32_t curCoreIndex = 0U;
+    uint32_t preTmpFDIndexEndOfFdHead = 0U;
+    uint32_t preTmpFDIndexEndOfFdHeadSplit = 0U;
+
+    for (uint32_t i = 0U; i <  tndFDCoreArrLen; i++) {
+        uint32_t fDKVSplitNum = s2SplitNumOfFdHead[i];
+        for (uint32_t gS1SplitIdx = 0U; gS1SplitIdx < gS1SplitNumOfFdHead[i]; gS1SplitIdx++) {
+            double remainSpace = loadThrOfVector - loadOfCurVector;  // 计算当前vector剩余负载空间
+            // 判断是否放在当前vector的标准是剩余空间是否能容纳一半当前归约块
+            if (fDKVSplitNum > remainSpace * MAX_SPLIT_RATIO) {
+                gS1IdxEndOfFdHead[curCoreIndex] = preTmpFDIndexEndOfFdHead;
+                gS1IdxEndOfFdHeadSplit[curCoreIndex] = preTmpFDIndexEndOfFdHeadSplit;
+                curCoreIndex += 1U;
+                totalFDLoad -= static_cast<uint32_t>(loadOfCurVector);  // 当前未分配的总负载
+                loadThrOfVector = static_cast<double>(totalFDLoad) / static_cast<double>(maxVectorNum - curCoreIndex);  // 根据剩余负载和剩余可用vector更新负载上限，保证最后一个vector能分配所有负载
+                loadOfCurVector = 0;
+            }
+            loadOfCurVector += fDKVSplitNum;
+            preTmpFDIndexEndOfFdHead = i;
+            preTmpFDIndexEndOfFdHeadSplit = gS1SplitIdx;
+        }
+    }
+    gS1IdxEndOfFdHead[curCoreIndex] = preTmpFDIndexEndOfFdHead;
+    gS1IdxEndOfFdHeadSplit[curCoreIndex] = preTmpFDIndexEndOfFdHeadSplit;
+    tilingDataMla_.tndSplitCoreParams.set_usedVecNumOfFd(curCoreIndex + 1U);
+}
+
+ge::graphStatus IFATiling::SplitBalancedFd()
+{
+    CalcInnerSize(seqSize_);
+
+    uint32_t s1gBasicSize = FIA_BALANCE_SG_BASIC_SIZE;
+    uint32_t bSize = batchSize_;
+    uint32_t gSize = nNumOfQInOneGroup_;
+    uint32_t n2Size = numKvHeads_;
+    s1SplitSize_ = s1gBasicSize / gSize; // QS的切分
+    uint32_t souter = s1SplitSize_;
+
+    // 负载均衡场景G轴不切
+    groupSplitSize_ = nNumOfQInOneGroup_;
+    gOuter_ = (nNumOfQInOneGroup_ + groupSplitSize_ - 1U) / groupSplitSize_;
+
+    const int64_t *actualSeqKv = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
+    ActualSeqInfo actualSeqInfo(bSize, actualSeqKv[0]);
+    GetActualSeqInfo(actualSeqKv, actualSeqInfo);
+
+    OP_LOGI(ifaContext_->opName, "bSize:%u, gSize:%u, n2Size:%u, souter:%u\n", bSize, gSize, n2Size, souter);
+    // 分核主流程
+    // 计算线段总长度和平均长度
+    SeqTilingInfo seqTilingInfo(bSize);
+    GetSeqTilingInfo(actualSeqKv, actualSeqInfo, seqTilingInfo);
+    std::vector<int64_t> gS1SplitNumOfFdHead(MAX_AIC_CORE_NUM * 2);
+
+    // 启动分核
+    BalancedSplitTilingInfo tilingInfo(coreNum_);
+    for (uint32_t bIdx = 0U; bIdx < bSize; bIdx++) {
+        uint32_t s1 = actualSeqInfo.actualSeqQ[bIdx];
+        int64_t s2 = actualLenDims_== 1U? actualSeqKv[0] : actualSeqKv[bIdx]; // 线段长度
+        OP_LOGI(ifaContext_->opName, "bIdx:%u, s1:%u, s2:%ld\n", bIdx, s1, s2);
+        for (uint32_t nIdx = 0U; nIdx < n2Size; nIdx++) {
+            SplitBalancedForEachHeadFd(bIdx, seqTilingInfo, tilingInfo, gS1SplitNumOfFdHead, s1);
+        }
+    }
+    uint32_t *gS1SplitNumOfFdHeadMla = tilingDataMla_.tndSplitCoreParams.get_gS1SplitNumOfFdHeadMla();
+    for(uint32_t i = 0U; i < tilingInfo.tndFDCoreArrLen; ++i)
+    {
+        gS1SplitNumOfFdHeadMla[i] = gS1SplitNumOfFdHead[i];
+    }
+    if (tilingInfo.needUpdate) {
+        // 更新最后一个核的End分核信息
+        FillBalancedSplitCoreInfo(TilingIndexes(seqTilingInfo.lastValidBIdx,
+                                                seqTilingInfo.s1OuterNum[seqTilingInfo.lastValidBIdx] - 1U,
+                                                seqTilingInfo.s2OuterNum[seqTilingInfo.lastValidBIdx] - 1U),
+                                  tilingInfo);
+    }
+    uint32_t lastValidBMoreIdx = seqTilingInfo.lastValidBIdx + 1U;
+    if (IsKvZeroBatchSplit(tilingInfo.needUpdate, lastValidBMoreIdx, bSize, seqTilingInfo.s1OuterNum, seqTilingInfo.s2OuterNum)) {
+        FillBalancedSplitCoreInfo(TilingIndexes(lastValidBMoreIdx, 0U, 0U), tilingInfo);
+    }
+
+    usedCoreNum_ = tilingInfo.currCoreIdx;
+    tilingDataMla_.tndSplitCoreParams.set_tndFDCoreArrLen(tilingInfo.tndFDCoreArrLen);
+    OP_LOGI(ifaContext_->opName, "usedCoreNum_:%u", usedCoreNum_);
+    OP_LOGI(ifaContext_->opName, "tnd FD Core Array Length:%u", tilingInfo.tndFDCoreArrLen);
+    OP_LOGI(ifaContext_->opName, "max Kv Split Part:%u", tilingInfo.maxKvSplitPart);
+    OP_LOGI(ifaContext_->opName, "avgerage S2 Length:%lu", seqTilingInfo.avgS2Length);
+    OP_LOGI(ifaContext_->opName, "sInnerSize_:%u", sInnerSize_);
+
+    if (IsFlashDecode(coreNum_, perfMode_)) {
+        splitKVFlag_ = true;
+        kvSplit_++;
+        kvSplitPart_ = tilingInfo.maxKvSplitPart;
+        // 使能fd负载均衡
+        uint32_t *balanceFDCoreS1Arr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreS1Arr();
+        uint32_t *s2SplitNumOfFdHead = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreKVSplitArr();
+        uint32_t aivCoreNumOfFd = (aivNum_ / aicNum_) * usedCoreNum_;        
+        SplitFDMLa(tilingInfo.tndFDCoreArrLen, gS1SplitNumOfFdHead, s2SplitNumOfFdHead, aivCoreNumOfFd, seqTilingInfo); //待补充
+    }
+
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus IFATiling::SplitBalanced()
@@ -2014,7 +2322,7 @@ ge::graphStatus IFATiling::SplitUnbalanced() {
     }
 
     if (ropeFlag_ || gqaMtpFlag_) {
-        if (inputLayout_ == IfaLayout::BSH_BSND) {
+        if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
             s1SplitSize_ = gMax_ / nNumOfQInOneGroup_;
             if (s1SplitSize_ > qSeqSize_) {
                 s1SplitSize_ = qSeqSize_;
@@ -2045,7 +2353,7 @@ ge::graphStatus IFATiling::SplitUnbalanced() {
 ge::graphStatus IFATiling::SplitBN()
 {
     uint32_t bn;
-    if (inputLayout_ == IfaLayout::BSH_BSND) {
+    if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
         bn = batchSize_ * numKvHeads_ * s1Outer_;
     } else {
         bn = batchSize_ * numKvHeads_ * gOuter_;
@@ -2091,7 +2399,7 @@ void IFATiling::GetEstimatedLoad(int64_t &estimatedLoad) const
 std::vector<int64_t> IFATiling::InitSparseValidArray(const int64_t *actualLens) const
 {
     uint32_t outer;
-    if (inputLayout_ == IfaLayout::BSH_BSND) {
+    if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
         outer = s1Outer_;
     } else {
         outer = gOuter_;
@@ -2229,7 +2537,7 @@ void IFATiling::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, 
 ge::graphStatus IFATiling::SplitBN_V0()
 {
     uint32_t bn;
-    if (inputLayout_ == IfaLayout::BSH_BSND) {
+    if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
         bn = batchSize_ * numKvHeads_ * s1Outer_;
     } else {
         bn = batchSize_ * numKvHeads_ * gOuter_;
@@ -2913,6 +3221,7 @@ void IFATiling::FillTilingBaseParamsMla()
     tilingDataMla_.baseParams.set_attenMaskFlag(attenMaskFlag_ ? 1 : 0);
     tilingDataMla_.baseParams.set_attenMaskSize(attenMaskSize_);
     tilingDataMla_.baseParams.set_outputLayout(static_cast<uint32_t>(outputLayout_));
+    tilingDataMla_.baseParams.set_softmaxLseFlag(softmaxLseFlag_ ? 1 : 0);
 }
 
 // for flash decode
@@ -3161,7 +3470,7 @@ ge::graphStatus IFATiling::GenTilingKey() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus IFATiling::CalcBlockDim()
+ge::graphStatus IFATiling::CalcNumBlocks()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(ifaContext_->platformInfo);
     auto aicNum = aicNum_;
@@ -3184,8 +3493,8 @@ ge::graphStatus IFATiling::CalcBlockDim()
             }
         }
     }
-    ifaContext_->blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
-    OP_LOGI(ifaContext_->opName, "IFA block dim: %u aiv Num: %u aic Num: %u.", ifaContext_->blockDim, aivNum, aicNum);
+    ifaContext_->numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
+    OP_LOGI(ifaContext_->opName, "IFA block dim: %u aiv Num: %u aic Num: %u.", ifaContext_->numBlocks, aivNum, aicNum);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -3206,7 +3515,7 @@ ge::graphStatus IFATiling::SharedPrefixTiling()
     (void)SplitForLseCombine();
     (void)CalcSysPrefixWorkSpace();
     (void)FillSysPrefixTiling();
-    (void)CalcSysPrefixBlockDim();
+    (void)CalcSysPrefixNumBlocks();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -3250,12 +3559,12 @@ ge::graphStatus IFATiling::CalcSysPrefixWorkSpace()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus IFATiling::CalcSysPrefixBlockDim()
+ge::graphStatus IFATiling::CalcSysPrefixNumBlocks()
 {
-    uint32_t blockDim0 = ifaContext_->blockDim;
-    CalcBlockDim();
+    uint32_t numBlocks0 = ifaContext_->numBlocks;
+    CalcNumBlocks();
 
-    ifaContext_->blockDim = std::max(blockDim0, ifaContext_->blockDim);
+    ifaContext_->numBlocks = std::max(numBlocks0, ifaContext_->numBlocks);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -3395,7 +3704,7 @@ ge::graphStatus IFATiling::RunBigKernelTiling(IncreFlashAttentionContext &contex
         (Split() != ge::GRAPH_SUCCESS) ||
         (FillTiling() != ge::GRAPH_SUCCESS) ||
         (CalcWorkSpace() != ge::GRAPH_SUCCESS) ||
-        (CalcBlockDim() != ge::GRAPH_SUCCESS)) {
+        (CalcNumBlocks() != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -3510,7 +3819,7 @@ ge::graphStatus IfaStartSimpleTiling(T& tilingType, IncreFlashAttentionContext &
 {
     if (tilingType.RunBigKernelTiling(ifaContext, ifaTilingData) == ge::SUCCESS) {
         context->SetTilingKey(ifaContext.tilingKey);
-        context->SetBlockDim(ifaContext.blockDim);
+        context->SetBlockDim(ifaContext.numBlocks);
         tilingType.IncreFlashAttentionSetTilingData(*context, ifaTilingData);
         return ge::GRAPH_SUCCESS;
     }
@@ -3543,7 +3852,7 @@ ge::graphStatus IFATiling::ProcessCheckAtbFormat()
     aicNum_ = ascendcPlatform.GetCoreNumAic();
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
-    ifaContext_->blockDim = ascendcPlatform.CalcTschBlockDim(aivNum_, aicNum_, aivNum_);
+    ifaContext_->numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum_, aicNum_, aivNum_);
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P) {
         socVersion_ = IfaSocVersion::SOC_ASCEND_310P;
         coreNum_ = aicNum_;
@@ -3710,17 +4019,17 @@ ge::graphStatus IFATiling::AtbSplitBlock() const
     
     if (socVersion_ == IfaSocVersion::SOC_ASCEND_310P) {
         // A2A3切分BS1N1, 在kernel中判断
-        ifaContext_->blockDim = taskNum < ifaContext_->blockDim ? taskNum : ifaContext_->blockDim;
+        ifaContext_->numBlocks = taskNum < ifaContext_->numBlocks ? taskNum : ifaContext_->numBlocks;
     }
-    const uint32_t taskNumPerCore = taskNum / ifaContext_->blockDim;
-    const uint32_t tailTaskNum = taskNum % ifaContext_->blockDim;
+    const uint32_t taskNumPerCore = taskNum / ifaContext_->numBlocks;
+    const uint32_t tailTaskNum = taskNum % ifaContext_->numBlocks;
     uint32_t taskStart = 0U;
     uint32_t taskEnd = 0U;
     std::vector<uint32_t> startBlk(MAX_CORE_NUM, 0U);
     std::vector<uint32_t> endBlk(MAX_CORE_NUM, 0U);
     std::vector<uint32_t> startBatch(MAX_CORE_NUM, 0U);
     std::vector<uint32_t> endBatch(MAX_CORE_NUM, 0U);
-    for (uint32_t blockIdx = 0U; blockIdx < ifaContext_->blockDim; blockIdx++) {
+    for (uint32_t blockIdx = 0U; blockIdx < ifaContext_->numBlocks; blockIdx++) {
         taskStart = taskEnd;
         taskEnd = blockIdx < tailTaskNum ? taskEnd + taskNumPerCore + 1U : taskEnd + taskNumPerCore;
         startBlk[blockIdx] = taskStart;
@@ -3755,7 +4064,7 @@ uint32_t IFATiling::GetTotalWorkspaceSize() const {
         return static_cast<uint32_t>(libapiSize_);
     }
 
-    // 根据实际的blockDim减少下
+    // 根据实际的numBlocks减少下
     uint32_t usrWorkspaceSize = static_cast<uint32_t>(WS_REPEAT_NUM * aivNum_ * BLOCKSIZE_CALC_256 * static_cast<uint32_t>(headDim_) * NUM_BYTES_FLOAT16) + 
                                 static_cast<uint32_t>(WS_REPEAT_NUM * aivNum_ * WS_TMP_SIZE_PER_CORE * NUM_BYTES_FLOAT16);
     return usrWorkspaceSize + static_cast<uint32_t>(libapiSize_);
@@ -3840,7 +4149,7 @@ ge::graphStatus IFATiling::AtbTilingProcess()
     if (ifaContext_->workSpaces) {
         ifaContext_->workSpaces[0] = workspaceSize_;
     }
-    OP_LOGD(ifaContext_->opName, "IFA block dim:%u aivNum:%u aicNum:%u", ifaContext_->blockDim, aivNum_, aicNum_);
+    OP_LOGD(ifaContext_->opName, "IFA block dim:%u aivNum:%u aicNum:%u", ifaContext_->numBlocks, aivNum_, aicNum_);
     OP_LOGD(ifaContext_->opName, "batch Size is: %u", batchSize_);
 
     OP_LOGD(ifaContext_->opName, "headDim_:%d", headDim_);
@@ -3869,10 +4178,12 @@ ge::graphStatus IFATiling::DoSubOpTiling(IncreFlashAttentionContext& ifaContext)
     IncreFlashAttentionTilingDataV2 ifaTilingData;
     if (RunBigKernelTiling(ifaContext, ifaTilingData) == ge::SUCCESS) {
         context_->SetTilingKey(ifaContext.tilingKey);
-        context_->SetBlockDim(ifaContext.blockDim);
+        context_->SetBlockDim(ifaContext.numBlocks);
         IncreFlashAttentionSetTilingData(*context_, ifaTilingData);
         return ge::GRAPH_SUCCESS;
     }
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ge::GRAPH_FAILED;
 }
 
@@ -3880,5 +4191,5 @@ IFA_EXTERN_C ge::graphStatus TilingIncreFlashAttention(gert::TilingContext *cont
 {
     return TilingIncreFlashAttentionAdapter(context);
 }
-REGISTER_TILING_TEMPLATE_FIA(IncreFlashAttention, IFATiling, std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND910B, (int32_t)platform_ascendc::SocVersion::ASCEND310P}), 90);
+REGISTER_TILING_TEMPLATE_FIA(IncreFlashAttention, IFATiling, std::vector<int32_t>({(int32_t)NpuArch::DAV_2201, (int32_t)NpuArch::DAV_2002}), 90);
 } // namespace optiling

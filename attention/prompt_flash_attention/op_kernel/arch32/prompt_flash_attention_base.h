@@ -16,7 +16,16 @@
 #define PROMPT_FLASH_ATTENTION_BASE_H
 
 #include "kernel_tiling/kernel_tiling.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+#include "adv_api/quantization/ascend_quant.h"
+#include "adv_api/activation/softmax.h"
+#include "adv_api/activation/softmaxflash.h"
+#include "adv_api/activation/softmaxflashv2.h"
 #include "lib/matmul_intf.h"
 #include "kernel_data_copy_transpose.h"
 #include "kernel_operator_list_tensor_intf.h"

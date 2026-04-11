@@ -86,18 +86,18 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
                 return;
             }
             std::stringstream ss;
-            ss << "cubeBlockDimN: " << static_cast<uint32_t>(tilingData_->get_cubeBlockDimN())
-               << " cubeBlockDimM: " << static_cast<uint32_t>(tilingData_->get_cubeBlockDimM())
-               << " AL1Pingpong: " << static_cast<uint32_t>(tilingData_->get_AL1Pingpong())
-               << " BL1Pingpong: " << static_cast<uint32_t>(tilingData_->get_BL1Pingpong())
-               << " kAlign: " << tilingData_->get_kAlign() << " nAlign: " << tilingData_->get_nAlign()
-               << " mSize: " << tilingData_->get_mSize() << " kSize: " << tilingData_->get_kSize()
-               << " nSize: " << tilingData_->get_nSize() << " groupSize: " << tilingData_->get_groupSize()
-               << " mAubSize: " << tilingData_->get_mAubSize() << " kAubSize: " << tilingData_->get_kAubSize()
-               << " nBubSize: " << tilingData_->get_nBubSize() << " kBubSize: " << tilingData_->get_kBubSize()
-               << " mCubSize: " << tilingData_->get_mCubSize() << " nCubSize: " << tilingData_->get_nCubSize()
-               << " mAL1Size: " << tilingData_->get_mAL1Size() << " kAL1Size: " << tilingData_->get_kAL1Size()
-               << " nBL1Size: " << tilingData_->get_nBL1Size() << " kBL1Size: " << tilingData_->get_kBL1Size();
+            ss << " cubeNumBlocksN: " << static_cast<uint32_t>(tilingData_->cubeBlockDimN)
+               << " cubeNumBlocksM: " << static_cast<uint32_t>(tilingData_->cubeBlockDimM)
+               << " AL1Pingpong: " << static_cast<uint32_t>(tilingData_->AL1Pingpong)
+               << " BL1Pingpong: " << static_cast<uint32_t>(tilingData_->BL1Pingpong)
+               << " kAlign: " << tilingData_->kAlign << " nAlign: " << tilingData_->nAlign
+               << " mSize: " << tilingData_->mSize << " kSize: " << tilingData_->kSize
+               << " nSize: " << tilingData_->nSize << " groupSize: " << tilingData_->groupSize
+               << " mAubSize: " << tilingData_->mAubSize << " kAubSize: " << tilingData_->kAubSize
+               << " nBubSize: " << tilingData_->nBubSize << " kBubSize: " << tilingData_->kBubSize
+               << " mCubSize: " << tilingData_->mCubSize << " nCubSize: " << tilingData_->nCubSize
+               << " mAL1Size: " << tilingData_->mAL1Size << " kAL1Size: " << tilingData_->kAL1Size
+               << " nBL1Size: " << tilingData_->nBL1Size << " kBL1Size: " << tilingData_->kBL1Size;
 
             int32_t logLevel = debugLevel ? DLOG_DEBUG : DLOG_ERROR;
             OPS_LOG_FULL(logLevel, inputParams_.opName, "tiling data: %s", ss.str().c_str());
@@ -108,20 +108,20 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
         {
             std::stringstream ss;
             auto& matmulTiling = tilingData_->matmulTiling;
-            ss << "usedCoreNum " << matmulTiling.get_usedCoreNum() << " M " << matmulTiling.get_M() << " N "
-               << matmulTiling.get_N() << " Ka " << matmulTiling.get_Ka() << " Kb " << matmulTiling.get_Kb()
-               << " singleCoreM " << matmulTiling.get_singleCoreM() << " singleCoreN " << matmulTiling.get_singleCoreN()
-               << " singleCoreK " << matmulTiling.get_singleCoreK() << " baseM " << matmulTiling.get_baseM()
-               << " baseN " << matmulTiling.get_baseN() << " baseK " << matmulTiling.get_baseK() << " depthA1 "
-               << matmulTiling.get_depthA1() << " depthB1 " << matmulTiling.get_depthB1() << " stepM "
-               << matmulTiling.get_stepM() << " stepN " << matmulTiling.get_stepN() << " isBias "
-               << matmulTiling.get_isBias() << " transLength " << matmulTiling.get_transLength() << " iterateOrder "
-               << matmulTiling.get_iterateOrder() << " shareMode " << matmulTiling.get_shareMode() << " shareL1Size "
-               << matmulTiling.get_shareL1Size() << " shareL0CSize " << matmulTiling.get_shareL0CSize()
-               << " shareUbSize " << matmulTiling.get_shareUbSize() << " batchM " << matmulTiling.get_batchM()
-               << " batchN " << matmulTiling.get_batchN() << " stepKa " << matmulTiling.get_stepKa() << " stepKb "
-               << matmulTiling.get_stepKb() << " dbL0A " << matmulTiling.get_dbL0A() << " dbL0B "
-               << matmulTiling.get_dbL0B() << " dbL0C " << matmulTiling.get_dbL0C();
+            ss << "usedCoreNum " << matmulTiling.usedCoreNum << " M " << matmulTiling.M << " N "
+               << matmulTiling.N << " Ka " << matmulTiling.Ka << " Kb " << matmulTiling.Kb
+               << " singleCoreM " << matmulTiling.singleCoreM << " singleCoreN " << matmulTiling.singleCoreN
+               << " singleCoreK " << matmulTiling.singleCoreK << " baseM " << matmulTiling.baseM
+               << " baseN " << matmulTiling.baseN << " baseK " << matmulTiling.baseK << " depthA1 "
+               << matmulTiling.depthA1 << " depthB1 " << matmulTiling.depthB1 << " stepM "
+               << matmulTiling.stepM << " stepN " << matmulTiling.stepN << " isBias "
+               << matmulTiling.isBias << " transLength " << matmulTiling.transLength << " iterateOrder "
+               << matmulTiling.iterateOrder << " shareMode " << matmulTiling.shareMode << " shareL1Size "
+               << matmulTiling.shareL1Size << " shareL0CSize " << matmulTiling.shareL0CSize
+               << " shareUbSize " << matmulTiling.shareUbSize << " batchM " << matmulTiling.batchM
+               << " batchN " << matmulTiling.batchN << " stepKa " << matmulTiling.stepKa << " stepKb "
+               << matmulTiling.stepKb << " dbL0A " << matmulTiling.dbL0A << " dbL0B "
+               << matmulTiling.dbL0B << " dbL0C " << matmulTiling.dbL0C;
 
             OPS_LOG_FULL(logLevel, inputParams_.opName, "matmul tiling: %s", ss.str().c_str());
         }
@@ -149,10 +149,7 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
     };
 
 public:
-    explicit WeightQuantMatmulAllReduceTiling310P(gert::TilingContext* context) : MatmulAllReduceTilingBase(context)
-    {
-        weightQuantMatmulAllReduceTilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
-    }
+    explicit WeightQuantMatmulAllReduceTiling310P(gert::TilingContext* context) : MatmulAllReduceTilingBase(context) {}
 
     ~WeightQuantMatmulAllReduceTiling310P() override = default;
 
@@ -169,18 +166,18 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
 
-    RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
 
-    TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
 
-    TCubeTiling& MutableTCubeTailTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
 
     ge::graphStatus DoWeightQuantTiling();
 
 private:
-    WeightQuantMatmulAllReduceNzTilingData weightQuantMatmulAllReduceTilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData weightQuantMatmulAllReduceTilingData_{};
     uint64_t myWorkSpaceSize_{0U};
     uint64_t tileTilingKey_{0U};
     WeightQuantMatmul310TPLParam weightQuantMatmul310TPLParam_;

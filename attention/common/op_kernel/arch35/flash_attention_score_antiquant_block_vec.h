@@ -23,6 +23,7 @@
 #include "vf/vf_post_quant.h"
 #include "flash_attention_score_antiquant_processor.h"
 #include "flash_attention_score_tiling_regbase.h"
+#include "util_regbase.h"
 using namespace optiling;
 using namespace FaVectorApi;
 namespace BaseApi {
@@ -88,7 +89,8 @@ public:
     __aicore__ inline FABlockVecAntiquant() {};
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *value, __gm__ uint8_t *attentionOut, 
         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *pse, __gm__ uint8_t *attenMask,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *workspace,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *workspace,
         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
         TPipe *pipe, AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo);
     __aicore__ inline void SendCrossCoreFlag();
@@ -174,6 +176,7 @@ public:
 protected:
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
     GlobalTensor<KV_T> valueGm;
+    GlobalTensor<KV_T> valueSharedPrefixGm;
     T negativeFloatScalar;
     T positiveFloatScalar;
     TQue<QuePosition::VECIN, 1> kvInputQue;
@@ -250,6 +253,7 @@ ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitVecBlock(
     __gm__ uint8_t *value, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *pse, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
     __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
     TPipe *pipe, AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo)
 {
@@ -261,6 +265,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitVecBloc
         this->valueGm.SetGlobalBuffer((__gm__ KV_T *)currentValue);
     } else {
         this->valueGm.SetGlobalBuffer((__gm__ KV_T *)value);
+    }
+    if constexpr (enableKVPrefix) {
+        this->valueSharedPrefixGm.SetGlobalBuffer((__gm__ KV_T *)valueSharedPrefix);
     }
     this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
     if constexpr (POST_QUANT) {
@@ -298,7 +305,7 @@ ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::GetExtremeValue(
     T &negativeScalar, T &positiveScalar)
 {
-    uint32_t tmp1 = NEGATIVE_MIN_VAULE_FP32;
+    uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
     negativeScalar = *((float *)&tmp1);
     if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
         if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
@@ -591,6 +598,15 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     taskParam.s2Idx = runInfo.s2LoopCount;
     if constexpr (isInfer) {
         taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
+        if constexpr (enableKVPrefix) {
+            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
+            if (taskParam.isPrefixLoop) {
+                taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+            } else {
+                taskParam.kvGmOffset = runInfo.keyOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+                taskParam.s2Idx -= constInfo.prefixLoopCount;
+            }
+        }
     }
     keyAntiquantProcessor.ProcessBaseAPI(outBufAntiKey, tempKeyGm, keyAntiqScaleGm,
                               keyAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue, keyAntiqScaleInputQue,
@@ -629,7 +645,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     }
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        AttenMaskCopyIn<hasAtten, isFd>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+        AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
             this->attenMaskGmInt, runInfo, constInfo, attenMaskInfo);
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
     } else {
@@ -866,8 +882,19 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     const RunInfo<isInfer> &runInfo, int64_t &subTaskId, bool &first, RunParamStr<isInfer> &runParam,
     Buffer<BufferType::L1> &outBufAntiValue, ConstInfo<isInfer, hasRope> &constInfo)
 {
-    GlobalTensor<KV_T> tempValueGm = this->valueGm;
-    GetKvByTensorList(runInfo, this->valueGm, tempValueGm, constInfo);
+    GlobalTensor<KV_T> tempValueGm;
+    if constexpr (enableKVPrefix) {
+        taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
+        if (taskParam.isPrefixLoop) {
+            tempValueGm = this->valueSharedPrefixGm;
+        } else {
+            tempValueGm = this->valueGm;
+            GetKvByTensorList(runInfo, this->valueGm, tempValueGm, constInfo);
+        }
+    } else {
+        tempValueGm = this->valueGm;
+        GetKvByTensorList(runInfo, this->valueGm, tempValueGm, constInfo);
+    }
     if(isBeforeHalf) {
         taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize);  // 2 is Vec num
     } else {
@@ -908,6 +935,15 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     taskParam.s2Idx = runInfo.s2LoopCount;
     if constexpr (isInfer) {
         taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
+        if constexpr (enableKVPrefix) {
+            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
+            if (taskParam.isPrefixLoop) {
+                taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+            } else {
+                taskParam.kvGmOffset = runInfo.valueOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+                taskParam.s2Idx -= constInfo.prefixLoopCount;
+            }
+        }
     }
     valueAntiquantProcessor.ProcessBaseAPI(outBufAntiValue, tempValueGm,
                                 valueAntiqScaleGm, valueAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue, valueAntiqScaleInputQue,
@@ -972,6 +1008,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec2
             }
         }
     }
+    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[runInfo.taskIdMod2]);
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
@@ -988,7 +1025,6 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec2
         }
     }
     this->stage2OutQue[0].template FreeTensor(vec2ResUb);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[runInfo.taskIdMod2]);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -1064,7 +1100,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
             attenOutOffset = constInfo.bN2GDv;
         }
         if constexpr (isInfer) {
-            if (constInfo.isBSNDOut == 1) {
+            if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {
                 attenOutOffset = constInfo.n2GDv;
             }
         }
@@ -1117,7 +1153,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(
         for (uint32_t i = 0; i < runInfo.vec2S1RealSize; i++) {
             float maxValue = maxTensor.GetValue(i);
             uint32_t checkValue = *(uint32_t*)&maxValue;
-            if (checkValue == NEGATIVE_MIN_VAULE_FP32) {
+            if (checkValue == NEGATIVE_MIN_VALUE_FP32) {
                 isRowInvalidNeedUpdate = true;
                 break;
             }
@@ -1126,8 +1162,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(
             if constexpr (!POST_QUANT) {
                 RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, runInfo.vec2S1RealSize, constInfo.dSizeV, dSizeAligned64);
             } else {
-                uint32_t dStride = CeilDivision(static_cast<uint32_t>(dSizeAligned64), sizeof(float));
-                uint16_t dSize = CeilDivision(constInfo.dSizeV, sizeof(float)); // w8后量化的处理长度
+                uint32_t dStride = CeilDiv(static_cast<uint32_t>(dSizeAligned64), sizeof(float));
+                uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化的处理长度
                 RowInvalidUpdateVF<float>(*((LocalTensor<float>*)&vec2ResUb), maxTensor, runInfo.vec2S1RealSize, dSize, dStride);
             }
         }
@@ -1182,7 +1218,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PostQuant(C
     uint32_t gRowCount = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;  // s1>1, bn1分核
     if (constInfo.isPostQuantPerChnl) {
         uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + runInfo.vec2S1BaseSize * vec2S1Idx * constInfo.dSizeV +
-                                            constInfo.subBlockIdx * runInfo.firstHalfS1RealSize * constInfo.dSizeV;
+                                            constInfo.subBlockIdx * runInfo.firstHalfS1RealSize * constInfo.dSizeV +
+                                            runInfo.goIdx * constInfo.s1BaseSize * constInfo.dSizeV;
         uint64_t perChannelQuantOffset = constInfo.isGqa ?
                                             perChannelQuantGQAOffset :
                                             runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
@@ -1373,7 +1410,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CombineSpli
     } else {
         gSplitSize = (gSplitSize > constInfo.gSize) ? constInfo.gSize : gSplitSize;
     }
-    uint32_t loopCount = CeilDivision(constInfo.gSize, gSplitSize);
+    uint32_t loopCount = CeilDiv(constInfo.gSize, gSplitSize);
     uint32_t tailSplitSize = constInfo.gSize - (loopCount - 1) * gSplitSize;
     uint64_t lseOffset = 0;
 
@@ -1453,8 +1490,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeScal
     if (constInfo.isSoftmaxLseEnable) {
         lseOutputUb = softmaxLseQueue.template AllocTensor<T>();
     }
-    ComputeScaleValue_VF(lseMaxUb, lseSumUb, lseOutputUb, splitSize, constInfo.actualCombineLoopSize,
-                         constInfo.isSoftmaxLseEnable);
+    LocalTensor<bfloat16_t> tmpSinkUb;
+    ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, constInfo.actualCombineLoopSize,
+                         constInfo.isSoftmaxLseEnable, constInfo.learnableSinkFlag);
     if (constInfo.isSoftmaxLseEnable) {
         softmaxLseQueue.template EnQue<T>(lseOutputUb);
         softmaxLseQueue.DeQue<T>();
@@ -1555,7 +1593,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InvalidLine
         SoftMaxShapeInfo softmaxShapeInfo{
             static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1),
             static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1)};
-        bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VAULE_FP32, softmaxShapeInfo);
+        bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
         if (!res) {
             constInfo.softMaxCheckRes = false;
         } else {
@@ -1651,7 +1689,8 @@ class FABlockVecAntiquantDummy {
 public:
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *value, __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *pse, __gm__ uint8_t *attenMask,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *workspace,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *workspace,
         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
         TPipe *pipe, AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo) {}
     __aicore__ inline void SendCrossCoreFlag() {}

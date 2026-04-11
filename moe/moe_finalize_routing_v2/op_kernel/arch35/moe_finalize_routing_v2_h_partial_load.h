@@ -31,19 +31,20 @@ public:
         GM_ADDR expertIdx, GM_ADDR y, GM_ADDR workspace, const MoeFinalizeRoutingV2RegbaseTilingData* tilingDataPtr,
         TPipe* pipePtr)
     {
-        pipe = pipePtr;
-        tilingData = tilingDataPtr;
-
-        hasX1 = x1 != nullptr;
-        hasX2 = x2 != nullptr;
         hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
         hasScales = scales != nullptr;
+
+        pipe = pipePtr;
+        tilingData = tilingDataPtr;
+        hasX1 = x1 != nullptr;
+        hasX2 = x2 != nullptr;
+
         expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
         expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
-        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
         scalesGm.SetGlobalBuffer((__gm__ S*)scales);
+        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
+        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
         expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
         yGm.SetGlobalBuffer((__gm__ T*)y);
 
@@ -189,12 +190,17 @@ private:
     const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
     GlobalTensor<T> expandedXGm;
     GlobalTensor<int32_t> expandedRowIdxGm;
-    GlobalTensor<T> x1Gm;
-    GlobalTensor<T> x2Gm;
-    GlobalTensor<T> biasGm;
-    GlobalTensor<S> scalesGm;
     GlobalTensor<int32_t> expertIdxGm;
     GlobalTensor<T> yGm;
+    GlobalTensor<T> x1Gm;
+    GlobalTensor<T> x2Gm;
+
+    int64_t expandedRowIdxOffset{0};
+    int64_t expertIdxOffset{0};
+    int64_t scaleOffset{0};
+
+    GlobalTensor<T> biasGm;
+    GlobalTensor<S> scalesGm;
 
     LocalTensor<T> expandedXLocal;
     LocalTensor<T> x1Local;
@@ -213,10 +219,6 @@ private:
     bool hasX2{false};
     bool hasBiasAndExpertIdx{false};
     bool hasScales{false};
-
-    int64_t expandedRowIdxOffset{0};
-    int64_t expertIdxOffset{0};
-    int64_t scaleOffset{0};
 };
 } // namespace MoeFinalizeRoutingV2Regbase
 

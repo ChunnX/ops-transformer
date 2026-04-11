@@ -246,15 +246,19 @@ def check_result(expect, result, topk_value, params):
         act_seq_q = act_seq_q
     else:
         act_seq_q = [int(x.strip()) for x in act_seq_q.split(',')]
-        if layout_query == 'TND':
-            if len(act_seq_q) == batch_size + 1:
-                act_seq_q = act_seq_q[1:]
     if isinstance(act_seq_k, int):
         act_seq_k = [act_seq_k]
     elif isinstance(act_seq_k, list):
         act_seq_k = act_seq_k
     else:
         act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
+
+    if layout_query == 'TND':
+        if len(act_seq_q) == batch_size + 1:
+            act_seq_q = act_seq_q[1:]
+    if layout_key == 'TND':
+        if len(act_seq_k) == batch_size + 1:
+            act_seq_k = act_seq_k[1:]
 
     npu_pass = True
     max_error = 0

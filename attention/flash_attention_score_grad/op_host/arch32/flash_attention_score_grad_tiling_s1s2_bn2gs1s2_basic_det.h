@@ -66,6 +66,14 @@ struct BasicDetBaseInfoParams {
     std::vector<int64_t> actualSeqKvlen;
 };
 
+enum class KernelInputLayout {
+    BNGSD = 0,
+    SBNGD = 1,
+    BSNGD = 2,
+    TND = 3,
+};
+
+
 struct FlashAttentionGradBasicDetCompileInfo {
     uint32_t aivNum;
     uint32_t aicNum;

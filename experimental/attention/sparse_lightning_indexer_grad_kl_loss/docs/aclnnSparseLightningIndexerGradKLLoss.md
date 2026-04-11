@@ -90,7 +90,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     bool                 deterministic,
     int64_t              cmp_ratio,
     const aclTensor     *dQueryIndex,
+<<<<<<< HEAD
     const aclTensor     *dKeyIndex,
+=======
+    const aclTensor     *dKeyKndex,
+>>>>>>> upstream/master_950
     const aclTensor     *dWeights
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
@@ -196,7 +200,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>softmaxMax</td>
             <td>输入</td>
             <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+<<<<<<< HEAD
             <td>可选参数。当不提供时，算子会在内部计算softmax。</td>
+=======
+            <td>-</td>
+>>>>>>> upstream/master_950
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
@@ -206,7 +214,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>softmaxSum</td>
             <td>输入</td>
             <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+<<<<<<< HEAD
             <td>可选参数。当不提供时，算子会在内部计算softmax。</td>
+=======
+            <td>-</td>
+>>>>>>> upstream/master_950
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
@@ -307,7 +319,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>-</td>
         </tr>
         <tr>
+<<<<<<< HEAD
             <td>deterministic</td>
+=======
+        <td>deterministic</td>
+>>>>>>> upstream/master_950
             <td>输入</td>
             <td>确定性计算。</td>
             <td>
@@ -319,6 +335,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
         </tr>
         <tr>
+<<<<<<< HEAD
             <td>cmp_ratio</td>
             <td>输入</td>
             <td>cmp_ratio</td>
@@ -334,6 +351,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
         </tr>
         <tr>
+=======
+>>>>>>> upstream/master_950
             <td>dQueryIndex</td>
             <td>输出</td>
             <td>QueryIndex的梯度。</td>
@@ -463,8 +482,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
         - 公共约束里入参为空的场景和FAG保持一致。
+<<<<<<< HEAD
     - softmaxMax 和 softmaxSum 为可选参数，限制条件：
         - 当同时不提供 softmaxMax 和 softmaxSum 时，必须设置 cmp_ratio = 4。
+=======
+>>>>>>> upstream/master_950
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -545,11 +567,14 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>支持确定性计算</td>
         </tr>
         <tr>
+<<<<<<< HEAD
             <td>cmp_ratio</td>
             <td>int64</td>
             <td>默认值为3，当同时不提供softmaxMax和softmaxSum时必须设置为4</td>
         </tr>
         <tr>
+=======
+>>>>>>> upstream/master_950
             <td>B</td>
             <td>1~256</td>
             <td>-</td>
@@ -728,8 +753,13 @@ int main() {
   std::vector<int64_t> kIndexShape = {8,1,128};
   std::vector<int64_t> weightShape = {4,64};
   std::vector<int64_t> sparseIndicesShape = {1, 2048};
+<<<<<<< HEAD
   std::vector<int64_t> softmaxMaxShape = {4, 64}; // 可选参数
   std::vector<int64_t> softmaxSumShape = {4, 64}; // 可选参数
+=======
+  std::vector<int64_t> softmaxMaxShape = {4, 64};
+  std::vector<int64_t> softmaxSumShape = {4, 64};
+>>>>>>> upstream/master_950
 
   std::vector<int64_t> dQIndexShape = {4,32,128};
   std::vector<int64_t> dKIndexShape = {8,1,128};
@@ -826,7 +856,10 @@ int main() {
   int64_t nextTokens = 65536;
   int64_t sparseMode = 3;
   bool deterministic = false;
+<<<<<<< HEAD
   int64_t cmp_ratio = 3; // 默认值为3，当同时不提供softmaxMax和softmaxSum时必须设置为4
+=======
+>>>>>>> upstream/master_950
 
   char layOut[5] = {'T', 'N', 'D', 0};
 
@@ -837,7 +870,11 @@ int main() {
   // 调用aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize第一段接口
   ret = aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
             q, k, qIndex, kIndex, weight, sparseIndices, softmaxMax, softmaxSum, qRope, kRope, acSeqQLen, acSeqKvLen,
+<<<<<<< HEAD
             scaleValue, layOut, sparseMode, preTokens, nextTokens, deterministic, cmp_ratio, dQIndex, dKIndex, dWeight, loss,
+=======
+            scaleValue, layOut, sparseMode, preTokens, nextTokens, deterministic, dQIndex, dKIndex, dWeight, loss,
+>>>>>>> upstream/master_950
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);

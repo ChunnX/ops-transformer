@@ -48,6 +48,11 @@ struct ApplyRotaryPosEmbTilingData {
     int64_t srcStrideK = 0;
     int64_t blockLenq2q1 = 0;
     int64_t mask = 0;
+    int64_t qcNum = 0;
+    int64_t kcNum = 0;
+    int64_t qDim3 = 0;
+    int64_t kDim3 = 0;
+    int64_t blockMoveQ = 0;
 };
 #define DTYPE_QUERY half
 #define __CCE_UT_TEST__

@@ -10,6 +10,7 @@
 
 #ifndef ACLNN_FUSED_INFER_ATTENTION_SCORE_V3_H_
 #define ACLNN_FUSED_INFER_ATTENTION_SCORE_V3_H_
+#warning "aclnn_fused_infer_attention_score_v3.h is scheduled to be deprecated in December 2026, and will be replaced by the aclnn_fused_infer_attention_score_v5.h. We apologize for any inconvenience caused and appreciate your timely migration to the new interface. "
 #include "aclnn/acl_meta.h"
 
 #ifdef __cplusplus
@@ -20,6 +21,8 @@ extern "C" {
  * @brief The first interface of aclnnFusedInferAttentionScoreV3 calculates the workspace size based on the specific calculation process.
  * @domain aclnn_ops_infer
  */
+__attribute__((deprecated("aclnnFusedInferAttentionScoreV3GetWorkspaceSize is scheduled to be deprecated in December 2026, and will be replaced by the aclnnFusedInferAttentionScoreV5GetWorkspaceSize. "
+ 	                      "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ")))
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value, const aclTensor *pseShiftOptional,
     const aclTensor *attenMaskOptional, const aclIntArray *actualSeqLengthsOptional,
@@ -41,6 +44,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
 /**
  * @brief The second interface of aclnnFusedInferAttentionScoreV3 is used to perform calculations.
  */
+__attribute__((deprecated("aclnnFusedInferAttentionScoreV3 is scheduled to be deprecated in December 2026, and will be replaced by the aclnnFusedInferAttentionScoreV5. "
+ 	                      "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ")))
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScoreV3(void *workspace,
                                                                                    uint64_t workspaceSize,
                                                                                    aclOpExecutor *executor,

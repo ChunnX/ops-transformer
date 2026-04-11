@@ -24,6 +24,7 @@ enum class InputLayout {
     BSND,
     BNSD_BSND,
     TND,
+    NTD,
     NTD_TND,
     NZ,
     BBH,

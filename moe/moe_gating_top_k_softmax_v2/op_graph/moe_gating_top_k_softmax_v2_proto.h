@@ -22,14 +22,14 @@ namespace ge {
 /**
  * @brief compute softmax and topk for moe input.
  * @par Inputs:
- * @li x: A 2D or 3D tensor. Type is:BFloat16, Float16 or Float32. Format support ND.
- * @li finished: An optional tensor. Type is:Bool. Shape is x_shape[:-1]. Format support ND.
+ * @li x: A 2D or 3D tensor, the size of each dimensioin should not exceed the maximum value of int32, which is 2147483647. Type is:BFloat16, Float16 or Float32. Format supports ND.
+ * @li finished: An optional tensor, the size of each dimensioin should not exceed the maximum value of int32, which is 2147483647. Type is:Bool. Shape is x_shape[:-1]. Format supports ND.
  * @par Outputs:
  * @li y: A tensor. Type is:BFloat16, Float16 or Float32. The data type must be the same as that of x.
        The size of the non-1 axis must be the same as that of the corresponding axis of x.
-       The size of the -1 axis must be the same as that of k. Format support ND.
- * @li expert_idx: A tensor. Type is:Int32. The shape must be the same as that of y. Format support ND.
- * @li softmax_result: A tensor. Type is:Float32. The shape must be the same as that of x. Format support ND.
+       The size of the -1 axis must be the same as that of k. Format supports ND.
+ * @li expert_idx: A tensor. Type is:Int32. The shape must be the same as that of y. Format supports ND.
+ * @li softmax_result: A tensor. Type is:Float32. The shape must be the same as that of x. Format supports ND.
  * @par Attributes:
  * @li k: Required parameter. Type is:Int32. The value must greater than 0 and less than or equal to the size
        of the -1 axis of x, and k must not greater than 1024.

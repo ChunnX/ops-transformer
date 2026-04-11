@@ -28,10 +28,10 @@ protected:
 };
 
 // BNSD
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_0)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_0)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {556, 732, 637, 573, 149, 158, 278, 1011, 623, 683, 680, 449, 538, 920, 396, 322, 268, 153, 452, 458, 821, 1001, 744};
     int64_t actual_seq_kvlist[] = {556, 732, 637, 573, 149, 158, 278, 1011, 623, 683, 680, 449, 538, 920, 396, 322, 268, 153, 452, 458, 821, 1001, 744};
     gert::TilingContextPara tilingContextPara(
@@ -63,17 +63,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_0)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 4423156480;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // BSH
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_1)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_1)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t* actual_seq_qlist = nullptr;
     int64_t* actual_seq_kvlist = nullptr;
     gert::TilingContextPara tilingContextPara(
@@ -105,17 +105,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_1)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 266601217;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // BSND
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_2)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_2)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {2048, 2048, 1024, 1024, 2048, 2028, 2048, 1024};
     int64_t actual_seq_kvlist[] = {2048, 1024, 2048, 2048, 2048, 1024, 1024, 1024};
     gert::TilingContextPara tilingContextPara(
@@ -147,17 +147,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_2)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 266601217;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // TND
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_3)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_3)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     
     int64_t actual_seq_qlist[] = {409, 818, 1227, 1636, 2045, 2454, 2863, 3272, 3681, 4090, 4499, 4908, 5317, 5726, 6135, 6544, 6953, 7362, 7771, 8180, 8589,
                 8998, 9407, 9816, 10225, 10634, 11043, 11452, 11861, 12270, 12679, 13088, 13497, 13906, 14315, 14724, 15133, 15542, 15951, 16384};
@@ -192,25 +192,25 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_3)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 266601986;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // BNSD_BSND
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_4)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {37, 42, 2, 63, 6, 56, 40, 42};
     int64_t actual_seq_kvlist[] = {11, 11, 11, 11, 11, 11, 11, 11};
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
         {
-            {{{8, 20, 65, 48}, {8, 20, 65, 48}}, ge::DT_BF16, ge::FORMAT_ND},  // query input0
-            {{{8, 20, 65, 48}, {8, 20, 65, 48}}, ge::DT_BF16, ge::FORMAT_ND},  // key input1
-            {{{8, 20, 65, 48}, {8, 20, 65, 48}}, ge::DT_BF16, ge::FORMAT_ND},  // value input2
+            {{{8, 20, 65, 50}, {8, 20, 65, 50}}, ge::DT_BF16, ge::FORMAT_ND},  // query input0
+            {{{8, 20, 65, 50}, {8, 20, 65, 50}}, ge::DT_BF16, ge::FORMAT_ND},  // key input1
+            {{{8, 20, 65, 50}, {8, 20, 65, 50}}, ge::DT_BF16, ge::FORMAT_ND},  // value input2
             {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},    // pse_shift input3
             {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},    // atten_mask input4
             {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},    // actual_seq_lengths_q
@@ -222,7 +222,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}    // quant_offset2 input9
         },
         {
-            {{{8, 65, 20, 48}, {8, 65, 20, 48}}, ge::DT_BF16, ge::FORMAT_ND}
+            {{{8, 65, 20, 50}, {8, 65, 20, 50}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
@@ -234,17 +234,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 266600960;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // k = 0/v = 0/out = 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_5)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_5)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {2048};
     int64_t actual_seq_kvlist[] = {2048};
     gert::TilingContextPara tilingContextPara(
@@ -276,16 +276,16 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_5)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 2277507072;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_6)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_6)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {2048};
     int64_t actual_seq_kvlist[] = {2048};
     gert::TilingContextPara tilingContextPara(
@@ -317,17 +317,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_6)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 132383488;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // DT_HIFLOAT8
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_7)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_7)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {2048};
     int64_t actual_seq_kvlist[] = {2048};
     gert::TilingContextPara tilingContextPara(
@@ -359,17 +359,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_7)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 132383488;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // num_heads < 0 || num_key_value_heads < 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_8)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {2048};
     int64_t actual_seq_kvlist[] = {2048};
     gert::TilingContextPara tilingContextPara(
@@ -401,17 +401,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 132383488;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // sparse_mode = 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8_1)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_9)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {2048};
     int64_t actual_seq_kvlist[] = {2048};
     gert::TilingContextPara tilingContextPara(
@@ -443,17 +443,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8_1)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 132383488;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 //  enableIFA = true
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_10)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {};
     int64_t actual_seq_kvlist[] = {};
     gert::TilingContextPara tilingContextPara(
@@ -485,17 +485,17 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 1206124800;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 //  enableIFA = true
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9_1)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_11)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
-        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
     int64_t actual_seq_qlist[] = {};
     int64_t actual_seq_kvlist[] = {};
     gert::TilingContextPara tilingContextPara(
@@ -527,9 +527,9 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9_1)
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
-        &compileInfo, "Ascend910_95", 64, 262144, 16384);
+        &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 1206124800;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 

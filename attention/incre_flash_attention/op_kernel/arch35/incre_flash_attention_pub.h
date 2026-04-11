@@ -218,8 +218,7 @@ enum class INPUTKVTYPE {
   INT4 = 4,
   HIF8 = 5,
   FP8E4M3 = 7,
-  FP4E2M1 = 8,
-  FP4E1M2 = 9
+  FP4E2M1 = 8
 };
 
 enum class ANTIQUANTMODE : uint8_t {

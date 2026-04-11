@@ -143,6 +143,7 @@ struct GMAddrParams {
     GM_ADDR xScaleGM;                // 激活scale
     GM_ADDR weightAuxiliaryMatrixGM; // 权重辅助矩阵
     GM_ADDR groupListGM;             // 分组矩阵
+    GM_ADDR smoothScaleGM;           // 平滑缩放因子
     // 输出 GM Tensor
     GM_ADDR yGM;      // 输出量化矩阵
     GM_ADDR yScaleGM; // 输出scale矩阵

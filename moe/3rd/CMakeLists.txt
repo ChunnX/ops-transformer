@@ -28,8 +28,8 @@ if (BUILD_OPEN_PROJECT)
         ${CMAKE_CURRENT_SOURCE_DIR}/moe_inplace_index_add_with_sorted/op_host/moe_inplace_index_add_with_sorted_tiling.cpp
     )
 
- if(MOE_TILING_3RD_SRCS)
-     add_tiling_modules()
-     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${MOE_TILING_3RD_SRCS})
- endif()
+    if(MOE_TILING_3RD_SRCS)
+        add_tiling_modules()
+        target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${MOE_TILING_3RD_SRCS})
+    endif()
 endif()

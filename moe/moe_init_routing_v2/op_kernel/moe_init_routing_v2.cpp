@@ -14,7 +14,7 @@
  */
 
 
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_v2_mrgsort_out.h"
 #include "arch35/moe_v2_mrgsort.h"
 #include "arch35/moe_v2_sort_multi_core.h"
@@ -60,7 +60,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
     }
     auto t = &tilingData;
 
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if (TILING_KEY_IS(10001) || TILING_KEY_IS(11001) || TILING_KEY_IS(10011) || TILING_KEY_IS(11011)) {
         TPipe sortPipe;
         MoeV2SortOneCore<DTYPE_EXPERT_IDX> op;

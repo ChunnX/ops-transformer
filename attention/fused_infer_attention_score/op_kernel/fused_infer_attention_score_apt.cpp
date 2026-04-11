@@ -6,13 +6,18 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */ 
+ */
 
 /*!
  * \file fused_infer_attention_score_apt.cpp 
  * \brief
  */
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 // ifa must include before pfa
 #define FIA_ENABLE_MLA
@@ -52,7 +57,7 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,                                    
                                     keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope,
-                                    dequantScaleQuery, attentionOut, softmaxLse, workspace, tiling);
+                                    dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
     } else {
         //ifa 模板
         incre_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix>(

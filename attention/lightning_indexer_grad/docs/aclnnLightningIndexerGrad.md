@@ -70,11 +70,12 @@ aclnnStatus aclnnLightningIndexerGrad(
   aclOpExecutor    *executor, 
   aclrtStream stream)
 ```
-### aclnnLightningIndexerGradGetWorkspaceSize
 
-- **参数说明：**
+## aclnnLightningIndexerGradGetWorkspaceSize
 
-<table style="undefined;table-layout: fixed; width: 1565px">
+- **参数说明**
+
+  <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
     <col style="width: 135px">
@@ -279,50 +280,53 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>-</td>
     </tr>
   </tbody>
-</table>
+  </table>
 
 
-- **返回值：**
+- **返回值**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
-  </tr>
-  <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="3">161002</td>
-    <td>query、key、weights、sparseIndices、weights的数据类型和数据格式不在支持的范围内。</td>
-  </tr>
-  <tr>
-    <td>input_layout输入的类型不在支持的范围内。</td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
+  第一段接口完成入参校验，出现以下场景时报错：
 
-### aclnnLightningIndexerGrad
-
-- **参数说明：**
-
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
   <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>query、key、weights、sparseIndices、weights的数据类型和数据格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>input_layout输入的类型不在支持的范围内。</td>
+    </tr>
+  </tbody>
+  </table>
+
+
+## aclnnLightningIndexerGrad
+
+- **参数说明**
+
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>
@@ -354,7 +358,7 @@ aclnnStatus aclnnLightningIndexerGrad(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

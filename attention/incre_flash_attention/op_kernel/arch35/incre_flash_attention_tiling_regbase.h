@@ -220,7 +220,7 @@ public:
         }
     }
 
-    uint32_t coreSidxEndRegbase[66] = {0}; // 66:MAX_CORE_NUM of 910_95
+    uint32_t coreSidxEndRegbase[66] = {0}; // 66:MAX_CORE_NUM of Ascend 950
     uint32_t* get_coreSidxEndRegbasePtr() { return coreSidxEndRegbase; }
     void set_coreSidxEndRegbase(const uint32_t* val) {
         for (int i = 0; i < 66; ++i) {
@@ -228,7 +228,7 @@ public:
         }
     }
 
-    uint32_t coreSposStartRegbase[66] = {0}; // 66:MAX_CORE_NUM of 910_95
+    uint32_t coreSposStartRegbase[66] = {0}; // 66:MAX_CORE_NUM of Ascend 950
     uint32_t* get_coreSposStartRegbasePtr() { return coreSposStartRegbase; }
     void set_coreSposStartRegbase(const uint32_t* val) {
         for (int i = 0; i < 66; ++i) {
@@ -354,7 +354,7 @@ public:
     uint64_t get_prefixLen() const { return this->prefixLen; }
     void set_prefixLen(uint64_t prefixLenParam) { this->prefixLen  = prefixLenParam; }
 
-    uint32_t formerCoreNum = 0; // combine 分核参数，参考普通bn分核流程，总数不超过blockdim;
+    uint32_t formerCoreNum = 0; // combine 分核参数，参考普通bn分核流程，总数不超过NumBlocks;
     uint32_t get_formerCoreNum() const { return this->formerCoreNum; }
     void set_formerCoreNum(uint32_t formerCoreNumParam) { this->formerCoreNum = formerCoreNumParam; }
 

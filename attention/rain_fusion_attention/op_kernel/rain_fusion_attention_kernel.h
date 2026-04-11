@@ -107,6 +107,8 @@ namespace RainFusion {
             uint32_t firstQBlockNum = rainFusionAttentionTilingData->firstQBlockNum;
             uint32_t maxQSeqlen = rainFusionAttentionTilingData->maxQSeqlen;
             uint32_t maxKvSeqlen = rainFusionAttentionTilingData->maxKvSeqlen;
+            uint32_t useUniformQSeqlen = rainFusionAttentionTilingData->useUniformQSeqlen;  // 是否使用统一的qseqlen值
+            uint32_t useUniformKvSeqlen = rainFusionAttentionTilingData->useUniformKvSeqlen;  // 是否使用统一的kvseqlen值
 
             // Initialize global tensors
             AscendC::GlobalTensor<ElementQ> gQ;
@@ -238,8 +240,12 @@ namespace RainFusion {
             uint32_t preTotalTaskNum = 0;
             uint32_t preTotalQBlockNum = 0;
             uint32_t curBatch = 0;
-            uint32_t qSeqlen = static_cast<int64_t>(gActualQseqlen.GetValue(curBatch));
-            uint32_t kvSeqlen = static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch));
+            // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
+            uint32_t qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
+                              static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
+            // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
+            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
+                               static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile; // CeilDiv
             uint32_t curQNBlockNum = qNBlockNumPerGroup * kvHeads;
@@ -282,8 +288,12 @@ namespace RainFusion {
                         blockBOffset += maxNumBlocksPerBatch;
                     }
                     
-                    qSeqlen = static_cast<int64_t>(gActualQseqlen.GetValue(curBatch));
-                    kvSeqlen = static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch));
+                    // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
+                    qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
+                             static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
+                    // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
+                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
+                              static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
                     curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
                     qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
                     curQNBlockNum = qNBlockNumPerGroup * kvHeads;

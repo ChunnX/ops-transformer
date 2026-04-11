@@ -15,10 +15,15 @@
 #ifndef VF_BASIC_BLOCK_UTILS_H
 #define VF_BASIC_BLOCK_UTILS_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 namespace FaVectorApi {
 constexpr uint32_t floatRepSize = 64;
+constexpr uint32_t halfRepSize = 128;
 constexpr uint32_t blockBytesU8 = 32;
 constexpr float fp8e4m3MaxValue = 448.0f;
 constexpr float floatEps = 2.220446049250313e-16;

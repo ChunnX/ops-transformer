@@ -12,8 +12,8 @@
  * \file batch_mat_mul_reduce_scatter_allto_all_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_PROTO_H_
+#define BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -72,4 +72,4 @@ REG_OP(BatchMatMulReduceScatterAlltoAll)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_PROTO_H_

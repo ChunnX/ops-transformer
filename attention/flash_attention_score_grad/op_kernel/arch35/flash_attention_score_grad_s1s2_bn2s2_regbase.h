@@ -40,7 +40,7 @@ public:
                                 __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                 __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
                                 __gm__ uint8_t *dpRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData,
+                                FagOldTilingType ordTilingData,
                                 TPipe *pipeIn, TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &dsScmIn,
                                 TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &pScmIn);
     __aicore__ inline void Process();
@@ -95,7 +95,7 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2s2StaticRegbase<FAG_FUNCT
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *deqScaleDy,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
     __gm__ uint8_t *dpse, __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData, TPipe *pipeIn,
+    FagOldTilingType ordTilingData, TPipe *pipeIn,
     TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &dsScmIn, TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> &pScmIn)
 {
     S1S2_TEMPLATE::Init(key, value, dx, query, pseShift, dropMask, attenMask, y, softmaxMax, softmaxSum, prefixN,

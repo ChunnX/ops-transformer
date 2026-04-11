@@ -50,10 +50,11 @@ constexpr uint32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr uint32_t SPARSE_MODE_BAND = 4;
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 constexpr uint32_t MASKDIM_SS = 2;
-constexpr uint32_t MASKDIM_BSS = 3;
-constexpr uint32_t MASKDIM_B1SS = 4;
+constexpr uint32_t MASKDIM_1SS_BSS = 3;
+constexpr uint32_t MASKDIM_11SS_B1SS = 4;
 constexpr uint32_t SPARSE_OPTIMIZE_ATTENTION_SIZE = 2048;
 constexpr int64_t SLOPE_N_DIM_NUM = 1L;
+constexpr int64_t SLIMIT = 20971520;
 
 const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> inOutDtypeSupported = {
   {ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT16},
@@ -61,13 +62,11 @@ const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> inOutDty
   {ge::DT_FLOAT16, ge::DT_HIFLOAT8, ge::DT_FLOAT16},
   {ge::DT_FLOAT16, ge::DT_INT4, ge::DT_FLOAT16},
   {ge::DT_FLOAT16, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT16},
-  {ge::DT_FLOAT16, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT16},
   {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_HIFLOAT8, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_INT4, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_FLOAT4_E2M1, ge::DT_BF16},
-  {ge::DT_BF16, ge::DT_FLOAT4_E1M2, ge::DT_BF16},
   {ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT8},
   {ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN},
   {ge::DT_FLOAT16, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8},
@@ -137,6 +136,7 @@ private:
   ge::graphStatus ProcessBlockTable();
   ge::graphStatus ProcessQPaddingSize();
   ge::graphStatus ProcessKVPaddingSize();
+  ge::graphStatus ProcessPrefix();
   ge::graphStatus VerifyQuantScale2() const;
   bool EnableC1V1() const;
   void UpdatePerfMode();
@@ -145,12 +145,17 @@ private:
   void SetPFASparseType(uint32_t qS);
   void SetfaRunBaseSize();
   void GetMaxWorkspaceFlag();
+  void SetEmptyTensor();
+  void IncreFlashAttentionInitOutputSplit();
+  void IncreFlashAttentionInitSoftmaxLseOutputSplit();
+  bool CheckEmptyTensor();
   ge::graphStatus InitInOutMode();
   ge::graphStatus KvShapePostProcess();
   ge::graphStatus CheckKvCache();
   ge::graphStatus CheckKvCacheValue(uint32_t kDimNum) const;
   ge::graphStatus CheckInputAntiquantFormat() const;
-  ge::graphStatus CheckKVShape() const;
+  ge::graphStatus CheckKVShapePre();
+  ge::graphStatus CheckKVShape(int64_t batchOfQuery);
   ge::graphStatus CheckFormat(ge::Format format, const std::string &sName) const;
   ge::graphStatus CheckQKOutShape() const;
   ge::graphStatus CheckLse() const;
@@ -193,6 +198,7 @@ private:
   void SetSparseModeData(bool& isBandMode, bool enableMask, bool isDefaultSparseMode);
   bool CheckMaskCrossover(const gert::Tensor* maskShape, ge::DataType attenMaskType, bool enableMask, bool isDefaultSparseMode);
   bool CheckMaskShapeCrossSparse(const gert::Tensor* maskShape, bool isDefaultSparseMode);
+  bool CheckMaskShape(bool isDefaultSparseMode, const gert::Tensor* maskShape, std::string& strMaskShape, bool& checkMask);
 
   bool CanChangeToNew() const;
   bool ShapeEqual(const gert::Shape &aShape, const gert::Shape &bShape) const;
@@ -204,6 +210,9 @@ private:
   bool SetQKVStartIdx();
   bool AlibiCheckSeqLength();
   bool CheckPseShiftShape(const gert::Tensor* pseShiftInput);
+  bool GetAndCheckPrefixShape(std::string layoutStr, const gert::Shape keyPrefixShape, const gert::Shape valuePrefixShape, const gert::Shape keyShape);
+  bool CheckKeyValuePrefixConsistency(const gert::Shape keyPrefixShape, const gert::Shape valuePrefixShape, const gert::Shape keyShape);
+  bool CheckActualSharedPrefixLen(const gert::Tensor* actualSharedPrefixLenInput, const gert::Shape keyPrefixShape, uint32_t prefixSSize_);
   bool CheckPFAMerge();
 
   std::string GetShapeStr(const gert::Shape &aShape) const;
@@ -229,10 +238,12 @@ private:
                               int64_t& preTokensLeftUp, int64_t& nextTokensLeftUp);
   int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength,
                             int64_t sInner, int64_t sOuter, int64_t token) const;
-  int64_t GetCalcBlockNumsOneHead(int64_t outerBlockNums, int64_t innerBlockNums, int64_t preTokensLeftUp, int64_t nextTokensLeftUp) const;
+  int64_t SumOfArithmeticSeries(int64_t an, int64_t d) const;
+  int64_t GetCalcBlockNumsOneHead(int64_t outerBlockNums, int64_t innerBlockNums, int64_t sInnerLoopTimesPrefix,
+    int64_t preTokensLeftUp, int64_t nextTokensLeftUp) const;
   int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
   void ComputeSplitNBSeqfaRun(std::vector<int64_t> sOuterLoopTimes, std::vector<int64_t> sInnerLoopTimes,
-    double coreWightTarget, uint32_t& curCore, const size_t tilingElementArrayLen);
+    int64_t sInnerLoopTimesPrefix, double coreWightTarget, uint32_t& curCore, const size_t tilingElementArrayLen);
   void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t actualUsedCoreNum);
   void SetLayoutTypefaRun();
   void SetAttenMaskCompressMode();
@@ -247,7 +258,7 @@ private:
   bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType) const;
 
   ge::graphStatus CalcWorkSpace();
-  ge::graphStatus CalcBlockDim() const;
+  ge::graphStatus CalcNumBlocks() const;
   ge::graphStatus GenTilingKey();
   uint8_t GenAntiquantModeVal() const;
   ge::graphStatus FillTiling();
@@ -295,6 +306,7 @@ private:
   uint32_t sMax_ = 0;
   uint32_t blockTypeSize_ = 0;  // 计算中间量大小
   uint32_t kvSplitPart_ = 1;
+  bool emptyTensor_ = false;
 
   ge::DataType inputQType_ = ge::DT_FLOAT16;
   ge::DataType inputKvType_ = ge::DT_FLOAT16;
@@ -333,7 +345,7 @@ private:
   bool attenMaskFlag_ = false;
   uint32_t attenMaskBatch_ = 1;
   uint32_t attenMaskQSize_ = 0;
-  uint32_t attenMaskSize_ = 0;
+  uint32_t attenMaskKvSize_ = 0;
   uint32_t attenMaskTypeSize_ = 0;
 
   bool antiQuantFlag_ = false;
@@ -399,6 +411,13 @@ private:
   uint32_t l2CacheOffFlag_ = 0;
   // softmaxLse
   bool softmaxLseFlag_ = false;
+
+  // prefix
+  bool enableKVPrefix_ = false;
+  bool actualSharedPrefixLenNullFlag_ = true; // 默认为空
+  uint32_t prefixSeqInnerSize_ = 0;
+  uint32_t prefixSSize_ = 0;
+  uint32_t actualSharedPrefixLen_ = 0;
 
   //伪量化新模板新增
   bool faRunGS_ = false;    //指示是否合轴

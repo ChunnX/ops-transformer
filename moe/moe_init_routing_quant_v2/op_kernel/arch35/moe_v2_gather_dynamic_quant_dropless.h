@@ -31,11 +31,11 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitTilingData(const MoeInitRoutingQuantV2TilingData* tilingData);
     __aicore__ inline void CopyInExpandedRowIdx(int64_t progress);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
-    __aicore__ inline void CopyOutXQuant1H(int64_t progress);
     __aicore__ inline void CopyOutXQuantEH(int64_t progress);
-    __aicore__ inline void Compute(LocalTensor<float>& smoothLocal);
+    __aicore__ inline void CopyOutXQuant1H(int64_t progress);
     __aicore__ inline void CopyOutPartialXQuantEH(int64_t progress);
     __aicore__ inline void CopyOutPartialXQuant1H(int64_t progress);
     __aicore__ inline float ComputeMax(
@@ -43,6 +43,7 @@ private:
         int32_t srcIdx, int32_t expertIdx, int64_t j);
     __aicore__ inline void ComputeScale(
         LocalTensor<float>& inLocal, LocalTensor<float>& tempLocal, float scaleTemp, int64_t dstIndex, int64_t j);
+    __aicore__ inline void Compute(LocalTensor<float>& smoothLocal);
     __aicore__ inline void CopyInZeroIndices(int64_t progress);
     __aicore__ inline void CopyOutZero(int64_t progress);
 
@@ -75,12 +76,12 @@ private:
     int64_t k_;
     int64_t totalLength_;
     int64_t activateRows_;
+    int64_t coreRows_;
+    int64_t rowLoops_;
     int64_t currentLoopRows_;
     int64_t currentLoopRowsAlign_;
-    int64_t coreRows_;
     int64_t perLoopRows_;
     int64_t lastLoopRows_;
-    int64_t rowLoops_;
     int64_t colsTileLength_;
     int64_t perLoopCols_;
     int64_t perLoopColsAlign_;
@@ -132,25 +133,23 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutZero(int64_t p
 {
     LocalTensor<int32_t> indicesLocal = expandedRowIdxIndexCopyInQueue_.DeQue<int32_t>();
     if (blockIdx_ == 0) {
-        int32_t curIndex = 0;
-        int32_t nextIndex = indicesLocal.GetValue(0);
-        int32_t count = nextIndex - curIndex;
+        int32_t count = indicesLocal.GetValue(0);
         if (count > 0) {
-            InitOutput(expandedXGm_[curIndex * cols_], count * cols_, static_cast<int8_t>(0));
-            InitOutput(dynamicQuantScaleGm_[curIndex], count, static_cast<float>(0));
+            InitOutput(expandedXGm_[0], count * cols_, static_cast<int8_t>(0));
+            InitOutput(dynamicQuantScaleGm_[0], count, static_cast<float>(0));
         }
     }
-    for (int i = 0; i < currentLoopRows_; i++) {
-        int32_t curIndex = indicesLocal.GetValue(i) + 1;
+    for (int rowIdx = 0; rowIdx < currentLoopRows_; rowIdx++) {
+        int32_t curIndex = indicesLocal.GetValue(rowIdx) + 1;
         if (activateRows_ <= curIndex) {
             break;
         }
-        int32_t nextIndex;
+        int32_t nextIndex = 0;
         if (blockIdx_ == gatherOutTilingData_->needCoreNum - 1 && progress == rowLoops_ - 1 &&
-            i == currentLoopRows_ - 1) {
+            rowIdx == currentLoopRows_ - 1) {
             nextIndex = activateRows_;
         } else {
-            nextIndex = indicesLocal.GetValue(i + 1);
+            nextIndex = indicesLocal.GetValue(rowIdx + 1);
         }
         int32_t count = nextIndex - curIndex;
         if (count > 0) {
@@ -167,8 +166,8 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Compute(LocalTensor<f
     LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
 
     LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
-    LocalTensor<int8_t> outLocal = inputXOutQueue_.AllocTensor<int8_t>();
     LocalTensor<float> dynamicQuantLocal = scaleOutQueue_.AllocTensor<float>();
+    LocalTensor<int8_t> outLocal = inputXOutQueue_.AllocTensor<int8_t>();
 
     if constexpr (!IsSameType<T, float>::value) {
         Cast(inLocal, inLocal.ReinterpretCast<T>()[perLoopColsAlign_], RoundMode::CAST_NONE, cols_);
@@ -181,7 +180,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Compute(LocalTensor<f
     Abs(tempLocal, inLocal, cols_);
     ReduceMax(dynamicQuantLocal, tempLocal, tempLocal, cols_);
 
-    float maxValue = dynamicQuantLocal.GetValue(0) / 127.0f;
+    float maxValue = dynamicQuantLocal.GetValue(0) / MAX_INT8;
 
     Duplicate<float>(dynamicQuantLocal, maxValue, 8);
     Duplicate<float>(tempLocal, maxValue, cols_);
@@ -203,14 +202,16 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutXQuant1H(int64
     int64_t curLoopRow = 0;
     int64_t currentLoopStartRow = initialRow / k_;
     int64_t currentLoopLastRow = (initialRow + currentLoopRows_ - 1) / k_;
+    DataCopyExtParams smoothParams{1, static_cast<uint32_t>(cols_ * sizeof(float)), 0, 0, 0};
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(cols_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(cols_ * sizeof(int8_t)), 0, 0, 0};
-    DataCopyExtParams smoothParams{1, static_cast<uint32_t>(cols_ * sizeof(float)), 0, 0, 0};
+    DataCopyPadExtParams<float> smoothPadParams{false, 0, 0, 0};
+    DataCopyPadExtParams<T> inputXPadParams{false, 0, 0, 0};
 
     LocalTensor<float> smoothLocal;
     if (smoothType_ == 1) {
         smoothLocal = smoothInQueue_.AllocTensor<float>();
-        DataCopyPad(smoothLocal, quantSmoothGm_, smoothParams, {false, 0, 0, 0});
+        DataCopyPad(smoothLocal, quantSmoothGm_, smoothParams, smoothPadParams);
         smoothInQueue_.EnQue(smoothLocal);
         smoothLocal = smoothInQueue_.DeQue<float>();
     }
@@ -218,9 +219,9 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutXQuant1H(int64
     for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
         LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
         if constexpr (IsSameType<T, float>::value) {
-            DataCopyPad(inLocal, inputXGm_[row * cols_], copyInParams, {false, 0, 0, 0});
+            DataCopyPad(inLocal, inputXGm_[row * cols_], copyInParams, inputXPadParams);
         } else {
-            DataCopyPad(inLocal[perLoopColsAlign_], inputXGm_[row * cols_], copyInParams, {false, 0, 0, 0});
+            DataCopyPad(inLocal[perLoopColsAlign_], inputXGm_[row * cols_], copyInParams, inputXPadParams);
         }
 
         inputXInQueue_.EnQue<T>(inLocal);
@@ -228,8 +229,8 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutXQuant1H(int64
         // 计算quant
         Compute(smoothLocal);
 
-        LocalTensor<float> quantScaleLocal = scaleOutQueue_.DeQue<float>();
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
+        LocalTensor<float> quantScaleLocal = scaleOutQueue_.DeQue<float>();
 
         while (curLoopRow < currentLoopRows_ && initialRow / k_ == row) {
             int32_t outIndex = indicesLocal.GetValue(curLoopRow);
@@ -309,23 +310,24 @@ __aicore__ inline float MoeV2GatherDynamicQuantDropless<T>::ComputeMax(
 {
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
     DataCopyExtParams intriParamsT{1, static_cast<uint32_t>(colsTileLength_ * sizeof(T)), 0, 0, 0};
-    DataCopyExtParams intriParamsFp32{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
-    event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    DataCopyPadExtParams<float> smoothPadParams{false, 0, 0, 0};
+    DataCopyPadExtParams<T> inputXPadParams{false, 0, 0, 0};
 
     if constexpr (!IsSameType<T, float>::value) {
         DataCopyPad(
             inLocal.ReinterpretCast<T>()[perLoopColsAlign_], inputXGm_[srcIdx * cols_ + j * perLoopCols_], intriParamsT,
-            {false, 0, 0, 0});
+            inputXPadParams);
     } else {
-        DataCopyPad(inLocal, inputXGm_[srcIdx * cols_ + j * perLoopCols_], intriParamsT, {false, 0, 0, 0});
+        DataCopyPad(inLocal, inputXGm_[srcIdx * cols_ + j * perLoopCols_], intriParamsT, inputXPadParams);
     }
 
     inputXInQueue_.EnQue<float>(inLocal);
     inLocal = inputXInQueue_.DeQue<float>();
 
+    DataCopyExtParams intriParamsFp32{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
     if (smoothType_ != 0) {
         DataCopyPad(
-            smoothLocal, quantSmoothGm_[expertIdx * cols_ + j * perLoopCols_], intriParamsFp32, {false, 0, 0, 0});
+            smoothLocal, quantSmoothGm_[expertIdx * cols_ + j * perLoopCols_], intriParamsFp32, smoothPadParams);
         smoothInQueue_.EnQue(smoothLocal);
         smoothLocal = smoothInQueue_.DeQue<float>();
     }
@@ -338,6 +340,7 @@ __aicore__ inline float MoeV2GatherDynamicQuantDropless<T>::ComputeMax(
         Mul(inLocal, inLocal, smoothLocal, colsTileLength_);
     }
 
+    event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
     SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
     Abs(tempLocal, inLocal, colsTileLength_);
     ReduceMax(dynamicQuantLocal[8], tempLocal, tempLocal, colsTileLength_);
@@ -354,10 +357,10 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::ComputeScale(
     LocalTensor<float>& inLocal, LocalTensor<float>& tempLocal, float scaleTemp, int64_t dstIndex, int64_t j)
 {
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
-    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(int8_t)), 0, 0, 0};
+    DataCopyPadExtParams<float> copyInPadParams{false, 0, 0, 0};
 
     LocalTensor<int8_t> outLocal = inputXOutQueue_.AllocTensor<int8_t>();
-    DataCopyPad(inLocal, quantSrcGm_[j * perLoopCols_], copyInParams, {false, 0, 0, 0});
+    DataCopyPad(inLocal, quantSrcGm_[j * perLoopCols_], copyInParams, copyInPadParams);
     inputXInQueue_.EnQue<float>(inLocal);
     inLocal = inputXInQueue_.DeQue<float>();
     Duplicate<float>(tempLocal, scaleTemp, colsTileLength_);
@@ -367,6 +370,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::ComputeScale(
 
     inputXOutQueue_.EnQue(outLocal);
     outLocal = inputXOutQueue_.DeQue<int8_t>();
+    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(int8_t)), 0, 0, 0};
     DataCopyPad(expandedXGm_[dstIndex * cols_ + j * perLoopCols_], outLocal, copyOutParams);
 
     inputXOutQueue_.FreeTensor(outLocal);
@@ -386,11 +390,11 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuantE
         int32_t srcIdx = indicesLocal.GetValue(i);
         int32_t expertIdx = indicesLocal.GetValue(currentLoopRowsAlign_ + i);
 
+        uint32_t tmp = INF;
         LocalTensor<float> inLocal = inputXInQueue_.AllocTensor<float>();
         LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
         LocalTensor<float> quantScaleLocal = scaleOutQueue_.AllocTensor<float>();
 
-        uint32_t tmp = 0xFF7FFFFF;
         float reduceMax = *((float*)&tmp);
         for (int64_t j = 0; j < colLoops_; j++) {
             colsTileLength_ = perLoopCols_;
@@ -402,7 +406,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuantE
             reduceMax = (reduceMax > tileMax) ? reduceMax : tileMax;
         }
 
-        float scaleTemp = reduceMax / 127.0f;
+        float scaleTemp = reduceMax / MAX_INT8;
         Duplicate<float>(quantScaleLocal, scaleTemp, 8);
         scaleOutQueue_.EnQue(quantScaleLocal);
         quantScaleLocal = scaleOutQueue_.DeQue<float>();
@@ -439,7 +443,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuant1
         LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
         LocalTensor<float> quantScaleLocal = scaleOutQueue_.AllocTensor<float>();
 
-        uint32_t tmp = 0xFF7FFFFF;
+        uint32_t tmp = INF;
         float reduceMax = *((float*)&tmp);
         for (int64_t j = 0; j < colLoops_; j++) {
             colsTileLength_ = perLoopCols_;
@@ -450,7 +454,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuant1
             reduceMax = (reduceMax > tileMax) ? reduceMax : tileMax;
         }
 
-        float scaleTemp = reduceMax / 127.0f;
+        float scaleTemp = reduceMax / MAX_INT8;
         Duplicate<float>(quantScaleLocal, scaleTemp, 8);
         scaleOutQueue_.EnQue(quantScaleLocal);
         quantScaleLocal = scaleOutQueue_.DeQue<float>();
@@ -464,11 +468,11 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuant1
             }
             DataCopyPad(dynamicQuantScaleGm_[outIndex], quantScaleLocal, {1, 4, 0, 0, 0});
             colsTileLength_ = perLoopCols_;
-            for (int64_t j = 0; j < colLoops_; j++) {
-                if (j == colLoops_ - 1) {
+            for (int64_t loop = 0; loop < colLoops_; loop++) {
+                if (loop == colLoops_ - 1) {
                     colsTileLength_ = lastLoopCols_;
                 }
-                ComputeScale(inLocal, tempLocal, scaleTemp, outIndex, j);
+                ComputeScale(inLocal, tempLocal, scaleTemp, outIndex, loop);
             }
         }
         inputXInQueue_.FreeTensor(inLocal);
@@ -480,18 +484,15 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuant1
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Init(
-    GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR dynamicQuantScale,
-    GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe)
+__aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::InitTilingData(const MoeInitRoutingQuantV2TilingData* tilingData)
 {
-    pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     needCoreNum_ = gatherOutTilingData_->needCoreNum;
     activateRows_ = gatherOutTilingData_->activateRows;
-    cols_ = tilingData->cols;
     n_ = tilingData->n;
     k_ = tilingData->k;
+    cols_ = tilingData->cols;
     totalLength_ = tilingData->n * tilingData->k;
     dropPadMode_ = tilingData->dropPadMode;
     smoothType_ = tilingData->smoothType;
@@ -500,19 +501,28 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Init(
 
     if (blockIdx_ == gatherOutTilingData_->needCoreNum - 1) {
         coreRows_ = gatherOutTilingData_->lastCoreRows;
+        rowLoops_ = gatherOutTilingData_->lastCoreLoops;
         perLoopRows_ = gatherOutTilingData_->lastCorePerLoopRows;
         lastLoopRows_ = gatherOutTilingData_->lastCoreLastLoopRows;
-        rowLoops_ = gatherOutTilingData_->lastCoreLoops;
     } else {
         coreRows_ = gatherOutTilingData_->perCoreRows;
+        rowLoops_ = gatherOutTilingData_->perCoreLoops;
         perLoopRows_ = gatherOutTilingData_->perCorePerLoopRows;
         lastLoopRows_ = gatherOutTilingData_->perCoreLastLoopRows;
-        rowLoops_ = gatherOutTilingData_->perCoreLoops;
     }
+    colLoops_ = gatherOutTilingData_->colLoops;
     perLoopCols_ = gatherOutTilingData_->perLoopCols;
     lastLoopCols_ = gatherOutTilingData_->lastLoopCols;
-    colLoops_ = gatherOutTilingData_->colLoops;
     perLoopColsAlign_ = MoeInitRoutingQuantV2::Align(perLoopCols_, sizeof(T));
+}
+
+template <typename T>
+__aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Init(
+    GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR dynamicQuantScale,
+    GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe)
+{
+    pipe_ = tPipe;
+    InitTilingData(tilingData);
 
     inputXGm_.SetGlobalBuffer((__gm__ T*)inputX);
     expandedXGm_.SetGlobalBuffer((__gm__ int8_t*)expandedX);

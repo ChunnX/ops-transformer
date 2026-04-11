@@ -17,20 +17,10 @@
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_ADAPTIVE_SLIDING_WINDOW_TILING_H
 
 #include "../weight_quant_batch_matmul_v2_tiling.h"
+#include "../../../op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 
 namespace optiling {
 namespace Mc2weight_quant_batch_matmul_v2 {
-
-BEGIN_TILING_DATA_DEF(WeightQuantBatchMatmulV2ASWTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, hasBias); //预留参数，当前不支持有Bias的场景
-    TILING_DATA_FIELD_DEF(uint32_t, mTailTile);
-    TILING_DATA_FIELD_DEF(uint32_t, nTailTile);
-    TILING_DATA_FIELD_DEF(uint32_t, reserved1);
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_3000240000000001100, WeightQuantBatchMatmulV2ASWTilingData)
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_3000240000000002100, WeightQuantBatchMatmulV2ASWTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2ASWTilingDataOp, WeightQuantBatchMatmulV2ASWTilingData)
 
 struct AdaptiveSlidingWindow {
     uint64_t baseM = 0;            // 主窗口基本块大小
@@ -76,6 +66,9 @@ public:
     ~Mc2WeightQuantBatchMatmulV2TilingASW() override = default;
 
 protected:
+    Mc2OptimizationAlgorithmSubCategory algorithmSubCategory_ = Mc2OptimizationAlgorithmSubCategory::ASW;
+    Mc2Mte2Configuration mte2Config_ = Mc2Mte2Configuration::MTE2_INNER_SIZE_512_BUF_NUM_2;
+
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus DoLibApiTiling() override;
     uint64_t GetTilingKey() const override;
@@ -100,9 +93,6 @@ protected:
     void SetTilingData();
 
 private:
-    Mc2OptimizationAlgorithmSubCategory algorithmSubCategory_ = Mc2OptimizationAlgorithmSubCategory::ASW;
-    Mc2Mte2Configuration mte2Config_ = Mc2Mte2Configuration::MTE2_INNER_SIZE_512_BUF_NUM_2;
-
     // 滑窗相关信息
     AdaptiveSlidingWindow adaptiveWin_;
     BasicTiling basicTiling_;

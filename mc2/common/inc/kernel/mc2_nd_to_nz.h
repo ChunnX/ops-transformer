@@ -353,24 +353,24 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
     uint16_t dstRepStride = nBurst;
     uint16_t srcRepStride = 1;
     int VCOPY_MAX_REPEAT = 255;
-    int split_num = widthStep / VCOPY_MAX_REPEAT;
-    int tail_num = widthStep % VCOPY_MAX_REPEAT;
     int dstOffset = 0;
     int srcOffset = 0;
+    int split_num = widthStep / VCOPY_MAX_REPEAT;
+    int tail_num = widthStep % VCOPY_MAX_REPEAT;
 
     for (int i = 0; i < split_num; ++i) {
         dstOffset = VCOPY_MAX_REPEAT * mask_count;
         srcOffset = VCOPY_MAX_REPEAT * c0Size;
-        LocalTensor<uint16_t> dstUb = transUb[i * dstOffset].template ReinterpretCast<uint16_t>();
         LocalTensor<uint16_t> srcUb = tmpUb[i * srcOffset].template ReinterpretCast<uint16_t>();
+        LocalTensor<uint16_t> dstUb = transUb[i * dstOffset].template ReinterpretCast<uint16_t>();
         CopyRepeatParams repeatParams{dstBlkStride, srcBlkStride, dstRepStride, srcRepStride};
         Copy<uint16_t, false>(dstUb, srcUb, MASK_PLACEHOLDER, (uint8_t)VCOPY_MAX_REPEAT, repeatParams);
     }
     if (tail_num != 0) {
         dstOffset = VCOPY_MAX_REPEAT * mask_count * split_num;
         srcOffset = VCOPY_MAX_REPEAT * c0Size * split_num;
-        LocalTensor<uint16_t> dstUb = transUb[dstOffset].template ReinterpretCast<uint16_t>();
         LocalTensor<uint16_t> srcUb = tmpUb[srcOffset].template ReinterpretCast<uint16_t>();
+        LocalTensor<uint16_t> dstUb = transUb[dstOffset].template ReinterpretCast<uint16_t>();
         CopyRepeatParams repeatParams{dstBlkStride, srcBlkStride, dstRepStride, srcRepStride};
         Copy<uint16_t, false>(dstUb, srcUb, MASK_PLACEHOLDER, (uint8_t)tail_num, repeatParams);
     }
@@ -378,8 +378,8 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
     SetFlag<HardEvent::V_MTE3>(0);
     WaitFlag<HardEvent::V_MTE3>(0);
     DataCopyParams copyOutParams;
-    copyOutParams.blockLen = nBurst;
     copyOutParams.blockCount = widthStep;  // 最大4095， 需要切分
+    copyOutParams.blockLen = nBurst;
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = height * 2 - nBurst;  // 分了两个核，所以需要在m方向上跳转一大块
     DataCopy(outputGlobal, transUb, copyOutParams);
@@ -402,10 +402,10 @@ __aicore__ inline void PrePaddingImplNd2Nz(const GlobalTensor<T> &mmWorkspace, c
     uint32_t nBurstTimes = height / nBurst;
     uint32_t nBurstTail = height - nBurstTimes * nBurst;
     uint32_t c0Size;
-    if (sizeof(T) == sizeof(float)) {
-        c0Size = 8;
-    } else if (sizeof(T) == sizeof(int8_t)) {
+    if (sizeof(T) == sizeof(int8_t)) {
         c0Size = 32;
+    } else if (sizeof(T) == sizeof(float)) {
+        c0Size = 8;
     } else {
         c0Size = 16;
     }
@@ -554,10 +554,10 @@ __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TP
     LocalTensor<float> yLocal = fullBf16[Ceil(size, UB_ALIGN_SIZE) * UB_ALIGN_SIZE].template ReinterpretCast<float>();
 
     // 3. GM数据拷贝至UB
-    uint16_t cpInLen = size * sizeof(bfloat16_t);
-    DataCopyParams cpInParams{1, cpInLen, 0, 0};
-    DataCopyPadParams padParams{false, 0, 0, 0}; // 不需要填充数据
-    DataCopyPad(xLocal, gmSrc, cpInParams, padParams);
+    uint32_t cpInLen = size * sizeof(bfloat16_t);
+    DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
+    DataCopyPadExtParams<bfloat16_t> padExtParams{false, 0, 0, 0}; // 不需要填充数据
+    DataCopyPad(xLocal, gmSrc, cpInExtParams, padExtParams);
 
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
@@ -570,9 +570,9 @@ __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TP
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
 
     // 5. UB数据拷贝至GM
-    uint16_t cpOutLen = size * sizeof(float);
-    DataCopyParams cpOutParams{1, cpOutLen, 0, 0};
-    DataCopyPad(gmDst, yLocal, cpOutParams);
+    uint32_t cpOutLen = size * sizeof(float);
+    DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
+    DataCopyPad(gmDst, yLocal, cpOutExtParams);
     CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
 #endif
 }

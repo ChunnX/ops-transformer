@@ -16,6 +16,7 @@
 #define ASCENDC_GROUPED_AUTOTILING_A8W4_H
 
 #include "grouped_matmul_utils.h"
+#include "kernel_operator.h"
 #include "grouped_matmul.h"
 
 //内存设置别名

@@ -116,7 +116,7 @@ struct HcclAicpuOpParam2 {
     uint8_t rank_id;
     uint8_t isLast;    // 是否最后一个下
     uint8_t funID;     // 功能ID，1地址消息；  2开始工作；
-    uint8_t blockDim;  // 等价于启动的msgQueCnt
+    uint8_t numBlocks;  // 等价于启动的msgQueCnt
     uint8_t blockIdx;
     uint8_t sendCnt;  // 发送计数
     uint8_t rcvCnt;
