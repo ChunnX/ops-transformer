@@ -67,6 +67,7 @@ public:
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
+    int32_t i_ = 0;
 private:
 
     uint32_t xNumPerBlock_{0};
@@ -280,9 +281,11 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 {
+    AscendC::PRINTF("xyf --- WriteStatusToWin");
     uint32_t coreOffset = aivId_ * hcclContext_->rankDim; // Win区大小为 aivNum * rankDim, 此处计算核偏移
     // 遍历每一张卡，给每一张卡都要写入状态
     for (uint32_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
+        AscendC::PRINTF("xyf --- for");
         // 写入状态到对端，每个核写一个状态，表示自己的数据块已经写完
         LocalTensor<float> statusTensor = writeStateBuf_.Get<float>();
         DataCopy<float>(statusTensor, stateResetTensor_, FLOAT_UB_ALIGN_NUM); // 先重置statusTensor数据，后面累加需要Tensor内全部数据，防止脏数据
@@ -309,6 +312,7 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
 {
+    AscendC::PRINTF("xyf --- ReadStatus");
     GM_ADDR stateGM = GetWinStatusAddrGm(hcclContext_->rankId, winBufferFlags_); // 获取本卡的状态区用于读取
     GlobalTensor<float> selfStatusWinTensor;
     uint32_t offset = aivId_ * hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM; // 获取当前核所需读取状态位的头地址，状态按32B对齐
@@ -320,13 +324,16 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     float minTarget = hcclContext_->rankDim - (float)0.5;
     float maxTarget = hcclContext_->rankDim + (float)0.5;
     // 读取statusCnt个数据求和
-    while ((flag < minTarget) || (flag > maxTarget)) {
+    while (i_ < 1000) {
+    // while ((flag < minTarget) || (flag > maxTarget)) {
+        AscendC::PRINTF("xyf --- while");
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
+        i_++;
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
