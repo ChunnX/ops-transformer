@@ -55,6 +55,8 @@ protected:
 
     void PrintExtendMatmulTiling(bool isTail) override;
 
+    CutResult GetTilingResult() override;
+    
     ge::graphStatus CheckHCCLSize();
     // When FP8 comm tiling result exceeds HCCL memory limit, re-split M dimension
     ge::graphStatus AdjustHCCLLimit();
