@@ -397,20 +397,22 @@ private:
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<bfloat16_t>& dstGm,
                                         const GlobalTensor<bfloat16_t>& outKgGm, uint32_t subValidRows, bool kgFlag = false)
     {
-        // copyIn
-        DataCopyInBf16WithStride(subValidRows, dk_, srcGm, nk_ * dk_);
         // copyOut
         auto tmpTensor = outQueue_.AllocTensor<bfloat16_t>();
-        // compute
-        LocalTensor<bfloat16_t> bf16Tensor = inQueue_.DeQue<bfloat16_t>();
-        DataCopy(tmpTensor, bf16Tensor, subValidRows * dkAligned_);
+        if (subValidRows > 0){
+            // copyIn
+            DataCopyInBf16WithStride(subValidRows, dk_, srcGm, nk_ * dk_);
+            LocalTensor<bfloat16_t> bf16Tensor = inQueue_.DeQue<bfloat16_t>();
+            DataCopy(tmpTensor, bf16Tensor, subValidRows * dkAligned_);
+            inQueue_.FreeTensor(bf16Tensor);
+        }
+        
         if (subValidRows < halfChunkSize_) {
             Duplicate(tmpTensor[subValidRows * dkAligned_], static_cast<bfloat16_t>(0.0f),
                       (halfChunkSize_ - subValidRows) * dkAligned_);
             PipeBarrier<PIPE_V>();
         }
         outQueue_.EnQue(tmpTensor);
-        inQueue_.FreeTensor(bf16Tensor);
         tmpTensor = outQueue_.DeQue<bfloat16_t>();
 
         uint32_t srcStride = (dkAligned_ - dk_) * sizeof(bfloat16_t) / BLOCK_SIZE;
