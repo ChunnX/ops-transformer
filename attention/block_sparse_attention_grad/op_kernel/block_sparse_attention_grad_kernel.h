@@ -620,7 +620,7 @@ namespace BSA {
                             uint64_t curCoreBatch = curInfo.curBatchIdx;
                             uint64_t curCoreN1Idx = curInfo.curHeadIdx; // 当前q的s1的idx
                             uint64_t curCoreS1Idx = curInfo.curQSeqIdx; // 当前q的s1的idx
-                            uint64_t curT1Idx = 0; // 不需要
+                            uint64_t curT1Idx = 0;
                             uint64_t sOutSize = tilingData->sOutSize;
                             uint64_t dPOutSize = tilingData->dPOutSize;
                             uint64_t dQOutSize = tilingData->dQOutSize;
@@ -641,7 +641,8 @@ namespace BSA {
                             }
 
                             uint64_t vector16Soffset =
-                                (curInfo.sOffset * 2 + WORKSPACE_P16_OFFSET_ELEMENT + coreOffset) * sizeof(ElementInput);
+                                (curInfo.sOffset * 2 + WORKSPACE_P16_OFFSET_ELEMENT + coreOffset) *
+                                sizeof(ElementInput);
                             uint64_t vector32Soffset = (curInfo.sOffset + coreOffset) * sizeof(float);
 
                             GM_ADDR s = params.workspace + vector32Soffset;
