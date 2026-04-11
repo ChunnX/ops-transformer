@@ -211,7 +211,7 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::Process()
         Duplicate(gwAccF32_[0], 0.0f, static_cast<uint32_t>(ubMainHCur_ * B_));
         Duplicate(gwAccF32_[1], 0.0f, static_cast<uint32_t>(ubMainHCur_ * B_));
         Duplicate(gwAccF32_[2], 0.0f, static_cast<uint32_t>(ubMainHCur_ * B_));
-
+        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
         CopyInWeight(hTile, hLenThis);
         LocalTensor<DT> wLocal = weightQ_.DeQue<DT>();
 
