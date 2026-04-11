@@ -850,9 +850,10 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 bool isInValidRowsFlag = fa_base_vector::IsExistInvalidRows(nextTokensPerBatch, preTokensPerBatch, constInfo.sparseMode,
                                           constInfo.attenMaskFlag, constInfo.isRowInvalid);
                 if (isInValidRowsFlag) {
-                    SoftMaxShapeInfo softmaxShapeInfo{
-                    static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(AttentionCommon::FP32_BLOCK_ELEMENT_NUM),
-                    static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(AttentionCommon::FP32_BLOCK_ELEMENT_NUM)};
+                    SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(actualGSplitSize),
+                                                      static_cast<uint32_t>(AttentionCommon::FP32_BLOCK_ELEMENT_NUM),
+                                                      static_cast<uint32_t>(actualGSplitSize),
+                                                      static_cast<uint32_t>(AttentionCommon::FP32_BLOCK_ELEMENT_NUM)};
                     AdjustSoftMaxRes<T, T>(maxLseUb, lseMaxUb, negativeIntScalar, FLOAT_INF, softmaxShapeInfo);
                 }
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
