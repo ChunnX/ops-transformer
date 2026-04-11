@@ -385,7 +385,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         constInfo.bSize = this->sharedParams.bSize;
         constInfo.gSize = this->sharedParams.gSize;
         constInfo.s1Size = this->sharedParams.s1Size;
-        constInfo.dSizeV = 512; // TODO
+        constInfo.dSizeV = 512; //
         constInfo.needInit = this->sharedParams.needInit;
     }
     constInfo.n2Size = sharedParams.n2Size;
