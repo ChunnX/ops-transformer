@@ -112,7 +112,7 @@
          <tr>
            <td>cmp_ratio</td>
            <td>可选属性</td>
-           <td>用于稀疏计算，表示key的压缩倍数。Atlas A3 推理系列产品支持1/2/4/8/16/32/64/128。</td>
+           <td>用于稀疏计算，表示key的压缩倍数。支持1/2/4/8/16/32/64/128。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
@@ -132,7 +132,7 @@
          <tr>
            <td>sparse_count</td>
            <td>可选属性</td>
-           <td>代表topK阶段需要保留的block数量，Atlas A3推理系列产品支持[1, 2048]。</td>
+           <td>代表topK阶段需要保留的block数量，支持[1, 2048]。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
