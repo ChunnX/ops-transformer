@@ -154,7 +154,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
     uint32_t tilingM = tilingData_->quantBmmv3TileTiling.matmulTiling.M / (cfg.rankDim - 1); // 整块M轴大小
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
     uint32_t tailM = tilingData_->quantBmmv3TailTiling.matmulTiling.M / (cfg.rankDim - 1);   // 尾块M轴大小
-
+    // 当x2为空tensor时只做通信
+    if (cfg.rankN == 0) {
+        tilingKa = cfg.rankK;
+    }
 
     uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(tilingKa);    // 整块总共搬运数据个数
     uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(tilingKa);      // 尾块总共搬运数据个数
@@ -289,8 +292,8 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
                                          X2ScaleType, CType, ATrans, BTrans>::QuantMatmulCompute() {
     auto &&cfg = tilingData_->param;
     // 计算本片的块
-    // 未用到的AIC核不需要参与计算
-    if (GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) {
+    // 未用到的AIC核不需要参与计算, N为0的空Tensor不参与计算，只做gatherOut
+    if (GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum && cfg.rankN != 0) {
         QuantMatmulLocalCompute();
     }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
@@ -303,7 +306,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
             hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
         }
     }
-    QuantMatmulGatherCompute();
+    if (cfg.rankN != 0) {
+        QuantMatmulGatherCompute();
+    }
 }
 
 template <
