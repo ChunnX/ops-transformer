@@ -191,7 +191,8 @@ public:
             p16Tensor[i] = resource.ubBuf.template GetBufferByByte<InputDType>(sBufferLen + (p16BufLen / 2) * i);
             lseBrocTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
                 sBufferLen + p16BufLen + (lBrobBufferLen / 2) * i);
-            lseTensor[i] = resource.ubBuf.template GetBufferByByte<float>(sBufferLen + p16BufLen + lBrobBufferLen + (lBufferLen / 2) * i);
+            lseTensor[i] =
+                resource.ubBuf.template GetBufferByByte<float>(sBufferLen + p16BufLen + lBrobBufferLen + (lBufferLen / 2) * i);
 
             // 第二轮 ds 计算空间划分
             dpFp32Tensor[i] = 
@@ -312,8 +313,14 @@ public:
     __aicore__ inline
     void compute(int32_t gmOffset, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
     {
-        struct SimplySoftMaxInfo<InputDType> runSftInfo = {sTensor[ping], lseTensor[ping], lseBrocTensor[ping], pFp32Tensor[ping], p16Tensor[ping], sGm[gmOffset], softmaxLseGm, pWorkspaceGm[gmOffset]};
-        struct CalDsInfo<InputDType> runDsInfo = {dpFp32Tensor[ping], softmaxGradTensor[ping], pFp32Tensor[ping], ds16Tensor[ping], dpGm[gmOffset], softGradworkspaceGm, dsWorkspaceGm[gmOffset]};
+        struct SimplySoftMaxInfo<InputDType> runSftInfo = {
+            sTensor[ping], lseTensor[ping], lseBrocTensor[ping], pFp32Tensor[ping], p16Tensor[ping], sGm[gmOffset],
+                softmaxLseGm, pWorkspaceGm[gmOffset]
+        };
+        struct CalDsInfo<InputDType> runDsInfo = {
+            dpFp32Tensor[ping], softmaxGradTensor[ping], pFp32Tensor[ping], ds16Tensor[ping], dpGm[gmOffset],
+                softGradworkspaceGm, dsWorkspaceGm[gmOffset]
+        };
 
         CalSimplySoft(runSftInfo, row, col, curS1Idx, ping);
         CalDs(runDsInfo, row, col, curS1Idx, ping);
@@ -326,8 +333,8 @@ public:
      * col: 需要计算的列数
      * curS1Idx: 当前计算的query的 s 维度的idx
     */
-    __aicore__ inline
-    void CalSimplySoft(struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
+    __aicore__ inline void CalSimplySoft(
+        struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
     {
         // simply softtmax
         LocalTensor<float> &sLocal = runSftInfo.sTensor;
@@ -348,11 +355,15 @@ public:
         wait_flag(PIPE_MTE3, PIPE_MTE2, eventId);
 
         if (align32Col * sizeof(InputDType) % BLOCK_BYTE_SIZE == 0) {
-            DataCopyPad(sLocal, s, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(float)), 0, 0, 0}, 
-                    {true, 0, static_cast<uint8_t>(align32Col - col), 0});
+            DataCopyPad(sLocal,
+                s,
+                {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(float)), 0, 0, 0},
+                {true, 0, static_cast<uint8_t>(align32Col - col), 0});
         } else {
-            DataCopyPad(sLocal, s, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(float)), 0, 1, 0}, 
-                    {true, 0, static_cast<uint8_t>(align32Col - col), 0});
+            DataCopyPad(sLocal,
+                s,
+                {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(float)), 0, 1, 0},
+                {true, 0, static_cast<uint8_t>(align32Col - col), 0});
         }
 
         LseCopy(lseGm, lse, lseFp32Brc, row, curS1Idx);
@@ -378,7 +389,8 @@ public:
 
         set_flag(PIPE_V, PIPE_MTE3, eventId);
         wait_flag(PIPE_V, PIPE_MTE3, eventId);
-        DataCopyPad(pGm, p16Local, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
+        DataCopyPad(
+            pGm, p16Local, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
     }
 
     /*
@@ -432,7 +444,8 @@ public:
 
         set_flag(PIPE_V, PIPE_MTE3, eventId);
         wait_flag(PIPE_V, PIPE_MTE3, eventId);
-        DataCopyPad(ds, ds16Tensor, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});          
+        DataCopyPad(
+            ds, ds16Tensor, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
 
         set_flag(PIPE_MTE3, PIPE_MTE2, eventId);
     }
@@ -444,7 +457,8 @@ public:
     * dtype float
     */
     __aicore__ inline
-    void LseCopy(GlobalTensor<float> &LseGm, LocalTensor<float> &lse, LocalTensor<float> &lseFp32Brc, uint64_t count, uint64_t curS1Idx)
+    void LseCopy(GlobalTensor<float> &LseGm, LocalTensor<float> &lse, LocalTensor<float> &lseFp32Brc,
+        uint64_t count, uint64_t curS1Idx)
     {
         uint64_t startOffset = 0;
         auto eventId = EVENT_ID5;
@@ -452,16 +466,24 @@ public:
             uint64_t bOffset = n1 * ((__gm__ int64_t *)actualQSeqlen)[curCoreBatch];
             startOffset = bOffset + curS1Idx * n1 + curCoreN1Idx;
             // 对于TND 格式来说， 会进行leis (s n) -> (n s) 的transpose转换
-            DataCopyPad(lseFp32Brc, LseGm[startOffset],
-                    {static_cast<uint16_t>(count), static_cast<uint32_t>(1 * sizeof(float)),
-                    static_cast<uint32_t>(transpseStride), 0, 0},
-                    {false, 0, 0, 0});
+            DataCopyPad(lseFp32Brc,
+                LseGm[startOffset],
+                {static_cast<uint16_t>(count),
+                    static_cast<uint32_t>(1 * sizeof(float)),
+                    static_cast<uint32_t>(transpseStride),
+                    0,
+                    0},
+                {false, 0, 0, 0});
         } else {
             startOffset = curCoreBatch * (n1 * maxQSeqlen) + curCoreN1Idx * maxQSeqlen + curS1Idx;
-            DataCopyPad(lse, LseGm[startOffset],
-                    {static_cast<uint16_t>(1), static_cast<uint32_t>(count * sizeof(float)),
-                    static_cast<uint32_t>(0), 0, 0},
-                    {false, 0, 0, 0});
+            DataCopyPad(lse,
+                LseGm[startOffset],
+                {static_cast<uint16_t>(1),
+                    static_cast<uint32_t>(count * sizeof(float)),
+                    static_cast<uint32_t>(0),
+                    0,
+                    0},
+                {false, 0, 0, 0});
         }
     }
 
@@ -488,8 +510,7 @@ public:
         repeatParams.src0RepStride = col / BLOCK_FP32_NUM;
         repeatParams.src1RepStride = 1;
 
-        for (uint32_t i = 0; i < colLoop; i++)
-        {
+        for (uint32_t i = 0; i < colLoop; i++) {
             if (i == colLoop - 1 && remain != 0) {
                 mask = remain;
             }
@@ -511,9 +532,10 @@ public:
         uint64_t startOffset = 0;
         if constexpr (INPUT_LAYOUT == TND) {
             uint64_t bOffset = n1 * ((__gm__ int64_t *)actualQSeqlen)[curCoreBatch] * BRCB_BASE_NUM;
-            startOffset = bOffset + curS1Idx * n1 * BRCB_BASE_NUM + curCoreN1Idx * BRCB_BASE_NUM;               
+            startOffset = bOffset + curS1Idx * n1 * BRCB_BASE_NUM + curCoreN1Idx * BRCB_BASE_NUM;
         } else {
-            startOffset = curCoreBatch * (n1 * maxQSeqlen * BRCB_BASE_NUM) + curCoreN1Idx * maxQSeqlen * BRCB_BASE_NUM + curS1Idx * BRCB_BASE_NUM;
+            startOffset = curCoreBatch * (n1 * maxQSeqlen * BRCB_BASE_NUM) + curCoreN1Idx * maxQSeqlen * BRCB_BASE_NUM +
+                          curS1Idx * BRCB_BASE_NUM;
         }
         DataCopyPad(dLocal, d[startOffset],
                     {static_cast<uint16_t>(count), static_cast<uint32_t>(BRCB_BASE_NUM * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
