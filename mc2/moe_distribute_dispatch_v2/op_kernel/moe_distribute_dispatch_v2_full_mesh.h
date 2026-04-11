@@ -24,6 +24,7 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
+#include "moe_distribute_dispatch_v2_quant.h"
 #include "../common/op_kernel/mc2_moe_context.h"
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
@@ -79,6 +80,7 @@ constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 using namespace AscendC;
 using namespace Mc2Kernel;
 using namespace MoeDistributeV2Base;
+using namespace Mc2Aclnn;
 template <TemplateMC2TypeFullmeshClass>
 class MoeDistributeDispatchV2FullMesh {
 public:

@@ -78,7 +78,7 @@ public:
     uint8_t gmmTrans = 0;
 
 public:
-    uint64_t GenTilingKey();
+    uint64_t GenTilingKey() const;
 };
 
 class GroupedNoQuantMatmulTiling {

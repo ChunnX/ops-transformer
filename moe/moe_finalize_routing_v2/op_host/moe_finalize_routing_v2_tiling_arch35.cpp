@@ -117,8 +117,8 @@ protected:
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
 {
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
+    auto compileInfoPtr = reinterpret_cast<const MoeFinalizeRoutingCompileInfoV2*>(context_->GetCompileInfo());
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
 
     blockSize_ = Ops::Base::GetUbBlockSize(context_);
     OP_CHECK_IF(
@@ -130,14 +130,12 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
         vlFp32_ == 0, OP_LOGE(context_->GetNodeName(), "Get VL32 failed, VL32: %lu", vlFp32_),
         return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    coreNum_ = ascendcPlatform.GetCoreNumAiv();
+    coreNum_ = static_cast<uint32_t>(compileInfoPtr->aivNum);
     OP_CHECK_IF(
         coreNum_ == 0,
         OP_LOGE(context_->GetNodeName(), "Get core num failed, core num: %u", coreNum_),
         return ge::GRAPH_FAILED);
-    uint64_t ubSize = 0;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    uint64_t ubSize = compileInfoPtr->ubSize;
     OP_CHECK_IF(
         ubSize == 0, OP_LOGE(context_->GetNodeName(), "Get ubSize failed, ubSize: %lu", ubSize),
         return ge::GRAPH_FAILED);

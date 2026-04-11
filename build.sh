@@ -77,6 +77,7 @@ else
     DEFAULT_INSTALL_DIR="/usr/local/Ascend/latest"
 fi
 BISHENG_FLAGS=""
+ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
 
@@ -1083,6 +1084,14 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN=FALSE
         shift
         ;;
+    --aicpu=*)
+        OPTARG=$1
+        shift
+        ;;
+    --aicpu_kernel)
+        ENABLE_AICPU_KERNEL=TRUE
+        shift
+        ;;
     --bisheng_flags=*)
         OPTARG=$1
         BISHENG_FLAGS=${OPTARG#*=}
@@ -1396,6 +1405,12 @@ if [ -n "${ascend_compute_unit}" ];then
 fi
 
 if [ -n "${ascend_op_name}" ];then
+    if [[ "${ascend_op_name}" == *"moe_distribute_combine_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_combine_v3"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_combine_v3"
+    fi
+    if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
@@ -1545,6 +1560,10 @@ CUSTOM_OPTION="${CUSTOM_OPTION} -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}"
 
 if [ -n "${BISHENG_FLAGS}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DBISHENG_FLAGS=${BISHENG_FLAGS}"
+fi
+
+if [ -n "${ENABLE_AICPU_KERNEL}" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}"
 fi
 
 if [[ "$ENABLE_STATIC" == "TRUE" ]]; then

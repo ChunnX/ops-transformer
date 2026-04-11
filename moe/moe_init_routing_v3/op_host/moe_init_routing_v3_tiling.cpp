@@ -93,6 +93,7 @@ const static uint64_t STATIC_QUANT_FULLLOAD_TILINGKEY = 2200000;
 const static uint64_t DYNAMIC_QUANT_FULLLOAD_TILINGKEY = 2300000;
 const static uint64_t DYNAMIC_QUANT_EPFULLLOAD_TILINGKEY = 10000;
 const static uint64_t DYNAMIC_QUANT_SMOOTHTYPE_FULLLOAD_TILINGKEY = 1000;
+const static uint64_t EMPTY_TENSOR_TILINGKEY = 3000000;
 
 const static int64_t PERFORMANCE_MODE_TOP_K = 8;
 const static int64_t PERFORMANCE_MODE_BS_MIN = 384;
@@ -233,6 +234,7 @@ private:
     int64_t rowIdxType_ = -1L;
 
     bool isFullload_ = false;
+    bool isEmptyTensor_ = false;
     int64_t gatherFirstFullload_ = 0;
     int64_t ep_ = 0;
     int64_t smoothType_ = 0;
@@ -407,6 +409,19 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
     moeInitRoutingV3TilingData.set_k(k_);
     moeInitRoutingV3TilingData.set_cols(cols_);
     totalLength_ = n_ * k_;
+
+    // 空tensor场景
+    if (n_ == 0) {
+        isEmptyTensor_ = true;
+        int64_t expertCountElements = 0;
+        if (expertTokensNumType_ == KEY_VALUE) {
+            expertCountElements = expertNum_ * KEY_VALUE_MODE_DIM0_NUM;
+        } else {
+            expertCountElements = expertEnd_ - expertStart_;
+        }
+        moeInitRoutingV3TilingData.set_expertCountElements(expertCountElements);
+    }
+
     if (activeNum_ == 0 || activeNum_ == ACTIVE_NUM_MIN_VALUE) {
         activeNum_ = totalLength_;
     } else {
@@ -828,6 +843,11 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
         return ret;
     }
 
+    // 空tensor快速返回，跳过后续tiling计算
+    if (isEmptyTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
         aivNum = totalLength_;
     }
@@ -854,6 +874,10 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoLibApiTiling()
 
 uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
 {   
+    if (isEmptyTensor_) {
+        return EMPTY_TENSOR_TILINGKEY;
+    }
+
     if (isFullload_) {
         if (quantMode_ == UN_QUANT) {
             return UNQUANTIZED_FULLLOAD_TILINGKEY;
@@ -890,6 +914,10 @@ uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
 ge::graphStatus MoeInitRountingV3TilingBase::GetWorkspaceSize()
 {
     // 计算workspace大小
+    if (isEmptyTensor_) {
+        workspaceSize_ = SIZE_16 * LENGTH_1024 * LENGTH_1024;
+        return ge::GRAPH_SUCCESS;
+    }
     size_t sortWorkspaceSize =
         sizeof(float) * static_cast<size_t>(totalLength_ * NUM_TWO * NUM_THREE); // 排序需要的空间
     size_t coreSyncWorkspaceSize =
@@ -913,7 +941,11 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetWorkspaceSize()
 
 ge::graphStatus MoeInitRountingV3TilingBase::PostTiling()
 {
-    context_->SetBlockDim(aivNum);
+    if (isEmptyTensor_) {
+        context_->SetBlockDim(1);
+    } else {
+        context_->SetBlockDim(aivNum);
+    }
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     moeInitRoutingV3TilingData.SaveToBuffer(context_->GetRawTilingData()->GetData(),

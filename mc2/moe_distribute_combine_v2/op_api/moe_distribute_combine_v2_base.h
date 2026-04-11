@@ -37,6 +37,9 @@ ACLNN_API bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* ex
 ACLNN_API aclnnStatus CombineCheckParams(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* expandIdx,
                                          const aclTensor* epSendCounts, const aclTensor* expertScales, const char* groupEp,
                                          const char* groupTp, aclTensor* x);
+                                         
+ACLNN_API aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                  aclrtStream stream);
 
 ACLNN_API aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     const aclTensor* expandX, const aclTensor* expertIds,

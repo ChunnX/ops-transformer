@@ -6,12 +6,12 @@
 
 | 产品                                                              | 是否支持 |
 | :---------------------------------------------------------------- | :------: |
-| `<term>`Ascend 950PR/Ascend 950DT `</term>`                   |    √    |
-| `<term>`Atlas A3 训练系列产品/Atlas A3 推理系列产品 `</term>` |    ×    |
-| `<term>`Atlas A2 训练系列产品/Atlas A2 推理系列产品 `</term>` |    ×    |
-| `<term>`Atlas 200I/500 A2 推理产品 `</term>`                  |    ×    |
-| `<term>`Atlas 推理系列产品 `</term>`                          |    ×    |
-| `<term>`Atlas 训练系列产品 `</term>`                          |    ×    |
+| <term>Ascend 950PR/Ascend 950DT</term>|    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×    |
+| <term>Atlas 200I/500 A2 推理产品</term>|    ×    |
+| <term>Atlas 推理系列产品</term>                         |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
@@ -348,14 +348,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-        <td>-</td>
     </tr>
     <tr>
         <td>antiquantOffsetOptional</td>
         <td>输入</td>
         <td>伪量化偏移</td>
         <td>不支持</td>
-        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -609,7 +607,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持pse/左padding/公共前缀/后量化。</li>
         </ul>
         </td>
-        <td>BFLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(Q_N)</td>
         <td>×</td>
@@ -790,7 +788,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>输入</td>
         <td>伪量化的方式</td>
         <td>不支持</td>
-        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -1289,7 +1286,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参 pseType 应满足以下条件：
       - pseType 必须为0, 2 或者 3
       - pseType 为 1 不支持 FA 推理场景，仅支持 FA 训练场景
-      - pseType 为 0 且 Q_S=1 时，P_S1 仅支持 1
     - 入参 pseShift 应满足以下条件：
       - tensor 的数据类型应满足以下条件：
         - pseType 为 2 或者 3 时，tensor 的数据类型必须为 FLOAT32
@@ -1330,6 +1326,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持 pse，不能传入 pseShift
     - D 不等长场景下，入参 pseShift 应满足以下条件：
       - 不支持 pse，不能传入 pseShift
+    - 伪量化场景下，当 pseType 为 0 且 Q_S 为 1 时，pseShift 的第三维仅支持 1
 
 #### Attention Mask参数组
 
@@ -1376,8 +1373,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - Decode MLA场景下，sparseMode 仅支持 0/3/4 模式
     - GQA 场景下，当 query，key 及 value 的 head dim 不相等时，sparseMode 仅支持 0/2/3 模式
   - 全量化
-    - Decode MLA场景下，Q_S 等于1时，sparseMode 仅支持 0 模式，且不支持传入 attenMask 矩阵
-    - Decode MLA场景下，Q_S 大于1时，如果query/key/value的类型为 FLOAT8_E4M3FN，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵；如果query/key/value的类型为 INT8，sparseMode 仅支持 3 模式
+    - Decode MLA场景下，如果query/key/value的类型为 INT8，Q_S 等于 1 时，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵；其它 layout 时，sparseMode 仅支持 0 模式，且不传入 attenMask 矩阵
+    - Decode MLA场景下，如果query/key/value的类型为 INT8，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵
+    - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
 
 #### ActualSeqLen参数组
 
@@ -1503,7 +1501,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 无
 - 特性交叉约束
   - 伪量化场景
-    - key/value 的数据类型为 INT8 时，query 的 layout 不支持 TND
+    - inputLayout 仅支持 BSH, BNSD, BSND, BNSD_BSND, TND
+    - key/value 的数据类型为 INT8 时，inputLayout 不支持 TND
+    - 当 Q_S 等于 1 时，inputLayout 不支持 BNSD_BSND
     - Q_S > 1 时：
       - key/value 的数据类型为 INT8 时，keyAntiquantMode 不支持 2，3，4，5
       - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，query 和 output 的数据类型仅支持 BF16
@@ -1519,11 +1519,11 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - per-token-group 模式，shape 的倒数第二维应大于等于 maxBlockNumPerBatch * blockSize
   - 全量化场景
     - Decode MLA 全量化
-      - query、key、value 的dtype为 FLOAT8_E4M3FN/INT8
+      - query、key、value 的dtype为 FLOAT8_E4M3FN/INT8/HIFLOAT8
       - attenOut 的dtype为 BFLOAT16
       - queryRope、keyRope 的dtype为BFLOAT16
-      - 当query/key/value是 FLOAT8_E4M3FN 时, inputLayout 仅支持 BSH、BSND、BNSD、TND；当 query/key/value 类型为 INT8 时, inputLayout 仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
-      - 当 query/key/value 类型为 FLOAT8_E4M3FN 时, Q_N 仅支持32、64、128；当query/key/value类型为INT8时, Q_N 仅支持1、2、4、8、16、32、64、128
+      - 当query/key/value是 FLOAT8_E4M3FN/HIFLOAT8 时, inputLayout 仅支持 BSH、BSND、BNSD、TND；当 query/key/value 类型为 INT8 时, inputLayout 仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
+      - Q_N 支持1、2、4、8、16、32、64、128
       - KV_N必须为1；G 支持 [1, 128]；Q_S 支持[1,16]
       - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery 的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
       - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景
@@ -1585,7 +1585,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 非量化
     - 入参 blockSize 需要满足以下条件：
       - Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024
-      - GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；其他情况下，若Q_S> 1，blockSize 128对齐，最大支持512，若Q_S= 1，blockSize 16对齐，最大支持512
+      - GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512
   - 伪量化
     - 入参 blockSize 需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN 时，blockSize 需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1 时，blockSize 需要64对齐
   - 全量化
@@ -1715,7 +1715,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 特性交叉约束
   - 公共
     - LearnableSink 使能场景下，tensor dtype需要和query dtype保持一致
-    - LearnableSink 使能场景下，Q_N 仅支持 64、128、192
+    - LearnableSink 使能场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
     - LearnableSink 使能场景下，innerPrecise 必须为高精度模式 (0)
     - LearnableSink 不支持左padding场景、不支持公共前缀场景、不支持pse场景、不支持alibi场景
     - LearnableSink 不支持全量化场景、不支持伪量化场景、不支持Decode MLA场景

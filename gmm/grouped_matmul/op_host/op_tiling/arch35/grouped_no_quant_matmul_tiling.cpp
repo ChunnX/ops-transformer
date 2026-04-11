@@ -403,9 +403,6 @@ void GroupedNoQuantMatmulTiling::SetTilingKey(gert::TilingContext *context)
 bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingContext *context, const gert::Shape xShape,
                                                          const gert::Shape wShape)
 {
-    if (isSingleX_ && isSingleWeight_ && isSingleY_) { // split M, s-s-s
-        return SplitMSingleXSingleWeightSingleY(xShape, wShape);
-    }
     if (!isSingleX_ && !isSingleWeight_ && isSingleY_) { // split M, m-m-s
         return SeparatedXSeparatedWeight(context);
     }
@@ -421,6 +418,9 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
     if (!isSingleX_ && isSingleWeight_) { // split M, m-s-m/m-s-s
         return SeparatedXSingleWeight(context, wShape);
     }
+    if (isSingleX_ && isSingleWeight_ && isSingleY_) { // split M, s-s-s
+        return SplitMSingleXSingleWeightSingleY(xShape, wShape);
+    }
     OP_LOGE(context->GetNodeName(),
             "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
             isSingleWeight_, isSingleX_, isSingleY_);
@@ -430,14 +430,14 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
 bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingContext *context, const gert::Shape xShape,
                                                          const gert::Shape wShape)
 {
-    if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
-        return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
-    }
     if (isSingleX_ && !isSingleWeight_ && !isSingleY_) {  // splitK, s-m-m
       return SplitKSingleXSeparatedWeight(context, xShape, wShape);
     }
     if (!isSingleX_ && isSingleWeight_) {  // splitK, m-s-m/m-s-s
       return SeparatedXSingleWeight(context, wShape);
+    }
+    if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
+        return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
     OP_LOGE(context->GetNodeName(),
             "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
@@ -598,7 +598,7 @@ void GroupedNoQuantMatmulTiling::PrintTilingResult(const gert::TilingContext *co
             tilingData_.mmTilingData.depthA1, tilingData_.mmTilingData.depthB1);
 }
 
-uint64_t TilingKeyBuilder::GenTilingKey()
+uint64_t TilingKeyBuilder::GenTilingKey() const
 {
     uint64_t transInfo = static_cast<uint64_t>(this->gmmTrans);
     bool atrans_ = (transInfo == static_cast<uint64_t>(GmmTrans::ATrans)) ||

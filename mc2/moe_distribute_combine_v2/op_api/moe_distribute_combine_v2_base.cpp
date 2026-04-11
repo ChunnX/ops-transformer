@@ -12,8 +12,6 @@
  * \file moe_distribute_combine_v2_base.cpp
  * \brief
  */
-
-
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -22,6 +20,11 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
+#include "aclnnInner_moe_distribute_combine_v2.h"
+#include "aclnnInner_moe_distribute_combine_v3.h"
+#include "common/op_api/mc2_context.h"
+
+
 using namespace Ops::Transformer;
 using namespace op;
 #ifdef __cplusplus
@@ -29,26 +32,8 @@ extern "C" {
 #endif
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
-                                            
-extern aclnnStatus aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
-    const aclTensor* expandX, const aclTensor* expertIds,
-    const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-    const aclTensor* expertScales, const aclTensor* tpSendCounts,
-    const aclTensor* xActiveMask, const aclTensor* activationScale,
-    const aclTensor* weightScale, const aclTensor* groupList,
-    const aclTensor* expandScales, const aclTensor* sharedExpertX,
-    const aclTensor* elasticInfo, const aclTensor* oriX,
-    const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2, 
-    const aclTensor* constExpertV, const aclTensor *performanceInfo,
-    const char* groupEp, int64_t epWorldSize,
-    int64_t epRankId, int64_t moeExpertNum,
-    const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-    int64_t groupListType, const char* commAlg, 
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-    aclTensor* x, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
                          const aclTensor* epSendCounts, const aclTensor* expertScales,
@@ -87,6 +72,32 @@ aclnnStatus CombineCheckParams(const aclTensor* expandX, const aclTensor* expert
     return ACLNN_SUCCESS;
 }
 
+enum class CommType : uint64_t {
+    AIV = 0, // AIV通信设置为0
+    CCU = 1 // ccu通信设置为1
+};
+
+static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool is950, const char *commAlg)
+{
+    if (is950){
+        CommType type = CommType::AIV;
+        if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0){
+            type = CommType::CCU;
+        }
+        void* args = reinterpret_cast<void*>(static_cast<uint64_t>(type));
+        NnopbaseSetUserHandle(executor, args);
+    }
+    if (NnopbaseSetHcclServerType) {
+        if (is910B) {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else if (is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        } else {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        }
+    }
+}
+
 aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     const aclTensor* expandX, const aclTensor* expertIds,
     const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
@@ -105,6 +116,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_LOGD("enter to the  aclnnMoeDistributeCombineBaseGetWorkspaceSize\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
@@ -112,31 +124,60 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     const aclTensor* performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
+    aclTensor *mc2Context = nullptr;
     const char* groupTpCombineV2Temp = groupTp;
     if (is910B) {
         groupTpCombineV2Temp = "";
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
     }
-    aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
-        expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
-        tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional,
-        expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
-        constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp, groupEp, 
-        epWorldSize, epRankId, moeExpertNum, groupTpCombineV2Temp, tpWorldSize, tpRankId, expertShardType, 
-        sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg,
-        zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
-    if (NnopbaseSetHcclServerType) {
-        if (is910B) {
-            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if (is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
-            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        } else {
-            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        }
+    aclnnStatus getWorkspaceSizesRes;
+    aclnnStatus ret;
+    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
+        getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
+            expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
+            xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
+            sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
+            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp, groupEp, epWorldSize,
+            epRankId, moeExpertNum, groupTpCombineV2Temp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum,
+            copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
+    } else {
+        uint64_t hcclBuffSize = 0;
+        const char* opName = "moe_distribute_combine_v2";
+        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
+            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
+            activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
+            elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
+            constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize,
+            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
+            outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
+            xOut, workspaceSize, executor);
     }
+    SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;
 }
+
+// aclnn二段式接口
+aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                          aclrtStream stream)
+{
+    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+    if (is950) {
+        void *arg = NnopbaseGetUserHandle(executor);
+        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+        CommType commType = static_cast<CommType>(handleVal);
+        if (commType == CommType::AIV) {
+            OP_LOGD("aclnn_combine inner v3 start");
+            return aclnnInnerMoeDistributeCombineV3(workspace, workspaceSize, executor, stream);
+        }
+    }
+    OP_LOGD("aclnn_combine inner v2 start");
+    return aclnnInnerMoeDistributeCombineV2(workspace, workspaceSize, executor, stream);
+}
+
 #ifdef __cplusplus
 }
 #endif

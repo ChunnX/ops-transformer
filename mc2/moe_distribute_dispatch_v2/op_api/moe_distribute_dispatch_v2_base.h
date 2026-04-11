@@ -45,6 +45,9 @@ ACLNN_API aclnnStatus DispatchCheckParams(const aclTensor* x, const aclTensor* e
                                           const char* groupEp, const char* groupTp, int64_t quantMode,
                                           aclTensor* expandX, aclTensor* dynamicScales, aclTensor* assistInfoForCombine,
                                           aclTensor* expertTokensNums, aclTensor* epRecvCounts, aclTensor* tpRecvCounts);
+                                          
+ACLNN_API aclnnStatus  aclnnMoeDistributeDispatchBase(
+ 	void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,

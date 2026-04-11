@@ -21,7 +21,7 @@ GroupedMatmul算子实现时还需要考虑如下两个方面：
 说明：
 
 - 非量化指x、weight、y均为浮点数类型，如float16/bfloat16/float32，非量化为纯cube场景，其计算过程由matmul高阶api实现；
-- 量化指x和weight为低精度整数类型，GroupedMatmul支持A8W8场景，包括重量化、per tensor + per channel量化和per token + per channel量化（简称per token量化）；
+- 量化指x和weight为低精度整数类型，GroupedMatmul支持A8W8场景，包括per-tensor + per-channel量化和per-token + per-channel量化（简称per-token量化）；
 - 伪量化指x为浮点数类型，weight为低精度整数类型，GroupedMatmul支持A16W8和A16W4场景。
 
 ## 2.1 per token量化

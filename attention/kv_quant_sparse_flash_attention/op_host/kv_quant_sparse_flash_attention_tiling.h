@@ -166,8 +166,10 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
-
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 END_TILING_DATA_DEF
+
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionBaseParamsMlaOp, KvQuantSparseFlashAttentionBaseParamsMla)
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSingleCoreParamsMla)
@@ -270,6 +272,7 @@ struct QSFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
+    bool actualQSeqLenFlag = false;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;

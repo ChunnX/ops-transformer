@@ -44,6 +44,7 @@ namespace MoeDistributeDispatchV2Impl {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
+using namespace Mc2Aclnn;
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
 public:

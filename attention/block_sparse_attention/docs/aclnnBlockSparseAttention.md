@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -294,10 +294,11 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>输入</td>
       <td>Softmax计算采取的精度级别。</td>
       <td>
-        控制online softmax阶段以及rescale阶段运算使用的数据类型。当前只支持传0或1
+        控制online softmax阶段以及rescale阶段运算使用的数据类型。当前只支持传0或1或4，其中，950PR/950DT产品仅支持配置为4，A2/A3系列产品仅支持配置为0或1
         <ul>
           <li>0：表示online softmax和rescale全部采取fp32数据类型，适合追求计算精度的场景使用。</li>
           <li>1：仅支持输入的query、key、value均为fp16数据类型时配置，表示online softmax和rescale全部采取fp16数据类型，性能更好，但精度较低，且可能发生计算时的数值溢出，使用者需根据值域范围自行判断是否使用。</li>
+          <li>4：表示混合精度运算，在性能与精度上取得一个折中。online softmax采取fp16/bf16数据类型（与query、key、value数据类型相同），rescale采取fp32数据类型，在online softmax阶段可能发生数值溢出。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -340,7 +341,7 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>输入</td>
       <td>是否使能softmaxLse输出的标志位。</td>
       <td>
-        当前只支持传0或1
+        当前只支持传0或1。其中，950PR/950DT硬件仅支持配置为0，A2/A3系列产品支持配置为0或1
         <ul>
           <li>0：表示不输出softmaxLse。</li>
           <li>1：表示输出softmaxLse，相比不输出softmaxLse可能存在性能损失。</li>
@@ -500,7 +501,8 @@ aclnnStatus aclnnBlockSparseAttention(
 - actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
 - actualSeqLengthsOptional与actualSeqLengthsKvOptional当前必须同时配置或同时不配置，仅配置其中之一的行为将被算子拦截。
 - blockTableOptional当前只支持传入nullptr，表示不开启PagedAttention特性。
-- innerPrecise必须为0（float32 softmax）或1（fp16 softmax），query输入为BFLOAT16时，只能配置为0。
+- innerPrecise必须为0或1或4，其中，950PR/950DT硬件仅支持配置为4，A2/A3系列产品仅支持配置为0或1。
+- softmaxLseFlag仅支持配置0或1，分别表示不开启/开启softmaxLse输出。当前，950PR/950DT硬件仅支持配置为0，A2/A3系列产品支持配置为0或1
 - qSeqlen和kvSeqlen不需要被blockShape整除，支持非对齐场景，实际分块数通过向上取整计算。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0。
 - maskType当前只支持输入0，表示不加mask。
