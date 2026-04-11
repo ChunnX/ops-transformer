@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
+完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
 
 ## 函数原型
 
@@ -40,59 +40,80 @@ aclnnStatus aclnnDistributeBarrier(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
-    <col style="width: 120px">
-    <col style="width: 120px">
-    <col style="width: 160px">
+    <table style="undefined;table-layout: fixed; width: 1600px"> <colgroup>
+    <col style="width: 170px">
+    <col style="width: 140px">
+    <col style="width: 350px">
+    <col style="width: 350px">
     <col style="width: 150px">
-    <col style="width: 80px">
+    <col style="width: 120px">
+    <col style="width: 150px">
+    <col style="width: 150px">
     </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
     <th>描述</th>
+    <th>使用说明</th>
     <th>数据类型</th>
     <th>数据格式</th>
+    <th>维度（shape）</th>
+    <th>非连续Tensor</th>
     </tr></thead>
     <tbody>
     <tr>
-    <td>xRef</td>
+    <td>xRef(aclTensor*)</td>
     <td>输入</td>
     <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
-    <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
+    <td>无</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4</td>
     <td>ND</td>
+    <td>0-8</td>
+    <td>√</td>
     </tr>
     <tr>
-    <td>group</td>
+    <td>group(char*)</td>
     <td>输入</td>
     <td>通信域名称，进行所有卡同步的通信域。</td>
+    <td>支持长度：[1,127]</td>
     <td>STRING</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>worldSize</td>
+    <td>worldSize（int64_t）</td>
     <td>输入</td>
     <td>通信域大小。</td>
-    <td>UINT64</td>
-    <td>ND</td>
+    <td>取值范围：[2,384]</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
-    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>返回workspace大小。</td>
+    <td>-</td>
     <td>UINT64</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
     <td>executor</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
-    <td>UINT64</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>aclOpExecutor*</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     </tbody></table>
-
+    
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -119,7 +140,7 @@ aclnnStatus aclnnDistributeBarrier(
     <tr>
     <td>ACLNN_ERR_INNER_TILING_ERROR</td>
     <td>561002</td>
-    <td>参数的取值不在支持的范围。</td>
+    <td>参数的取值不在支持的范围内。</td>
     </tr>
     </tbody></table>
 
@@ -161,9 +182,11 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
+    
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -262,8 +285,6 @@ aclnnStatus aclnnDistributeBarrier(
         ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed, ret %d\n", ret); return -1);
     
         int64_t Bs = 8;
         int64_t H = 7168;
