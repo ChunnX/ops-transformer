@@ -191,8 +191,8 @@ public:
             p16Tensor[i] = resource.ubBuf.template GetBufferByByte<InputDType>(sBufferLen + (p16BufLen / 2) * i);
             lseBrocTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
                 sBufferLen + p16BufLen + (lBrobBufferLen / 2) * i);
-            lseTensor[i] =
-                resource.ubBuf.template GetBufferByByte<float>(sBufferLen + p16BufLen + lBrobBufferLen + (lBufferLen / 2) * i);
+            lseTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
+                sBufferLen + p16BufLen + lBrobBufferLen + (lBufferLen / 2) * i);
 
             // 第二轮 ds 计算空间划分
             dpFp32Tensor[i] = 
@@ -314,12 +314,12 @@ public:
     void compute(int32_t gmOffset, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
     {
         struct SimplySoftMaxInfo<InputDType> runSftInfo = {
-            sTensor[ping], lseTensor[ping], lseBrocTensor[ping], pFp32Tensor[ping], p16Tensor[ping], sGm[gmOffset],
-                softmaxLseGm, pWorkspaceGm[gmOffset]
+            sTensor[ping], lseTensor[ping], lseBrocTensor[ping], pFp32Tensor[ping],
+            p16Tensor[ping], sGm[gmOffset], softmaxLseGm, pWorkspaceGm[gmOffset]
         };
         struct CalDsInfo<InputDType> runDsInfo = {
-            dpFp32Tensor[ping], softmaxGradTensor[ping], pFp32Tensor[ping], ds16Tensor[ping], dpGm[gmOffset],
-                softGradworkspaceGm, dsWorkspaceGm[gmOffset]
+            dpFp32Tensor[ping], softmaxGradTensor[ping], pFp32Tensor[ping], ds16Tensor[ping],
+            dpGm[gmOffset], softGradworkspaceGm, dsWorkspaceGm[gmOffset]
         };
 
         CalSimplySoft(runSftInfo, row, col, curS1Idx, ping);
@@ -514,11 +514,8 @@ public:
             if (i == colLoop - 1 && remain != 0) {
                 mask = remain;
             }
-            AscendC::Sub(ubOut[i * countEachRepeat],
-                         ubIn0[i * countEachRepeat],
-                         ubIn1[0],
-                         mask, repeatTimes, repeatParams
-            );
+            AscendC::Sub(
+                ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
             AscendC::PipeBarrier<PIPE_V>();
         }
     }
