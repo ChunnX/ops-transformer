@@ -1317,6 +1317,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         }
 
         if (curLoopCompressedCnt == 0) {
+            inputQue1.FreeTensor(scoreUb);
             continue;
         }
         for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {
