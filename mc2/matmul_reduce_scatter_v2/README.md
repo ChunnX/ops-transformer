@@ -13,30 +13,30 @@
 
 ## 功能说明
 
--   **算子功能**:
+- **算子功能**:
 
     `aclnnMatmulReduceScatterV2`接口是对`aclnnMatmulReduceScatter`接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，新增功能如下：
     
-    -   <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950PR/Ascend 950DT</term>：
 
-        -   新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock[量化方式](../../docs/zh/context/量化介绍.md)。
+        - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock[量化方式](../../docs/zh/context/量化介绍.md)。
     
-    -   <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         
-        -   新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/量化介绍.md)。
+        - 新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/量化介绍.md)。
 
--   **计算公式**：
+- **计算公式**：
     
-    -   情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，入参x1、x2进行Matmul计算后，进行ReduceScatter通信。
+    - 情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，入参x1、x2进行Matmul计算后，进行ReduceScatter通信。
         $$
         output=ReduceScatter(x1@x2)
         $$
-    -   情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行Matmul计算和dequant计算后，进行ReduceScatter通信。
+    - 情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行Matmul计算和dequant计算后，进行ReduceScatter通信。
 
         $$
         output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
         $$
-    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1为(a0, a1)x2为(b0, b1)时x1Scale为(ceildiv(a0, 128), ceildiv(a1, 128))x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1、x2进行Matmul计算和dequant计算后，再进行ReduceScatter通信。
+    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1为(a0, a1)x2为(b0, b1)时x1Scale为(ceildiv(a0, 128), ceildiv(a1, 128))x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1、x2进行Matmul计算和dequant计算后，再进行ReduceScatter通信。
     
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
@@ -252,14 +252,15 @@
     - 当前仅支持aiv模式，aiv模式下使用AI VECTOR核完成通信任务，commMode当前版本仅支持输入“aiv”。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
-    - x1、x2数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8, x1的shape为[m, k]，x2的shape为[k, n]。在mx量化场景下，当前x2仅支持转置场景。bias数据类型支持FLOAT16、BFLOAT16、FLOAT。如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
-    - x1Scale、x2Scale数据类型支持FLOAT、FLOAT8_E8M0。当x1和x2数据类型为FLOAT16/BFLOAT16时，二者仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，x1Scale的shape为[ceildiv(m, 128), ceildiv(k, 128)]，x2Scale的shape为[ceildiv(k, 128), ceildiv(n, 128)]。在pertensor和perblock场景下，二者数据类型支持FLOAT。在mx量化场景下，数据类型为FLOAT8_E8M0，x1Scale的shape为(m, ceilDiv(k, 64), 2)，x2Scale的shape为(ceilDiv(k, 64), n, 2)，且x2Scale仅支持转置场景。
-    - 当x1Scale/x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合仅支持[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale/x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合仅支持[1, 1, 32]，对应groupSize的值为4295032864；其他场景输入，groupSize当前版本仅支持输入0。
+  - x1、x2数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8, x1的shape为[m, k]，x2的shape为[k, n]。在mx量化场景下，当前x2仅支持转置场景。bias数据类型支持FLOAT16、BFLOAT16、FLOAT。如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
+  - x1Scale、x2Scale数据类型支持FLOAT、FLOAT8_E8M0。当x1和x2数据类型为FLOAT16/BFLOAT16时，二者仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，x1Scale的shape为[ceildiv(m, 128), ceildiv(k, 128)]，x2Scale的shape为[ceildiv(k, 128), ceildiv(n, 128)]。在pertensor和perblock场景下，二者数据类型支持FLOAT。在mx量化场景下，数据类型为FLOAT8_E8M0，x1Scale的shape为(m, ceilDiv(k, 64), 2)，x2Scale的shape为(ceilDiv(k, 64), n, 2)，且x2Scale仅支持转置场景。
+  - 当x1Scale/x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合仅支持[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale/x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合仅支持[1, 1, 32]，对应groupSize的值为4295032864；其他场景输入，groupSize当前版本仅支持输入0。
     - 当前仅支持集合通信单元ccu完成通信任务，commMode当前版本仅支持输入“ccu”。
     - output数据类型支持FLOAT16、BFLOAT16、FLOAT，
 
 ## 约束说明
--   <term>Ascend 950PR/Ascend 950DT</term>：
+
+- <term>Ascend 950PR/Ascend 950DT</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -275,7 +276,7 @@
     - 在perblock场景下， x1的m轴为rank\_size * 128的整数倍。
     - 支持2、4、8、16、32、64卡。
 
--   <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -286,7 +287,6 @@
     - 支持2、4、8卡。
 
 ## 调用说明
-
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |

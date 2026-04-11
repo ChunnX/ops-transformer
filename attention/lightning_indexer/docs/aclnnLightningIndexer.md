@@ -332,32 +332,33 @@ aclnnStatus aclnnLightningIndexer(
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
-
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-    <col style="width: 319px">
-    <col style="width: 144px">
-    <col style="width: 671px">
-    </colgroup>
-        <thead>
-            <th>返回值</th>
-            <th>错误码</th>
-            <th>描述</th>
-        </thead>
-        <tbody>
-            <tr>
-                <td>ACLNN_ERR_PARAM_NULLPTR</td>
-                <td>161001</td>
-                <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
-            </tr>
-            <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
-                <td>query、key、weights、actualSeqLengthsQueryOptional、actualSeqLengthsKeyOptional、layoutQueryOptional、layoutKeyOptional、sparseCount、sparseMode、returnValues、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围内。</td>
-            </tr>
-        </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+      <thead>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+      </thead>
+      <tbody>
+          <tr>
+              <td>ACLNN_ERR_PARAM_NULLPTR</td>
+              <td>161001</td>
+              <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+          </tr>
+          <tr>
+              <td>ACLNN_ERR_PARAM_INVALID</td>
+              <td>161002</td>
+              <td>query、key、weights、actualSeqLengthsQueryOptional、actualSeqLengthsKeyOptional、layoutQueryOptional、layoutKeyOptional、sparseCount、sparseMode、returnValues、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围内。</td>
+          </tr>
+      </tbody>
+  </table>
 
 ## aclnnLightningIndexer
+
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
   <col style="width: 184px">

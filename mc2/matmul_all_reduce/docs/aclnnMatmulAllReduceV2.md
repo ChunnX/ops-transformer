@@ -42,6 +42,7 @@ aclnnStatus aclnnMatmulAllReduceV2GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnMatmulAllReduceV2(
     void              *workspace,
@@ -263,9 +264,9 @@ aclnnStatus aclnnMatmulAllReduceV2(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

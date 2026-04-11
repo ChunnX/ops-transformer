@@ -17,7 +17,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
@@ -235,8 +235,6 @@ aclnnStatus aclnnFFNToAttention(
     </tbody>
     </table>
 
-
-
 ## aclnnFFNToAttention
 
 - **参数说明：**
@@ -277,10 +275,9 @@ aclnnStatus aclnnFFNToAttention(
     </tbody>
     </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
-
+  返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -308,12 +305,10 @@ aclnnStatus aclnnFFNToAttention(
   | attnRankNum    | 表示选取attnRankNum个卡作为AttnWorker，取值范围为<code>0 < attnRankNum < worldSize </code>。 | 
   | sharedExpertNum    | 表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），当前取值范围[0, 4]。 |  
 
-  
 - **通信域使用约束**：
   - FFNToAttention算子的通信域中不允许有其他算子。
 
 ## 调用示例
-
 
 - 文件准备：
   
@@ -321,7 +316,7 @@ aclnnStatus aclnnFFNToAttention(
 
   2.安装cann包，并根据下方指导编译运行FFNtoAttentionDemo。
 
--  FFNtoAttention.sh编译脚本
+- FFNtoAttention.sh编译脚本
 
     ```bash
     #!/bin/bash

@@ -39,7 +39,7 @@
   - aclnnWeightQuantMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
   - aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，原非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
 
-- 每个算子分为两段式接口，必须先调用“aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm”接口执行计算。
+- 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -60,6 +60,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
     void              *workspace,
@@ -266,39 +267,39 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
       </tbody>
     </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>传入的x1、x2、residual、antiquantScale或output是空指针。</td>
-    </tr>
-    <tr>
-        <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
-        <td rowspan="2">161002</td>
-        <td>x1、x2、residual或output的shape不符合约束要求。</td>
-    </tr>
-    <tr>
-        <td>streamMode不在合法范围内。</td>
-    </tr>
-    </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 650px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入的x1、x2、residual、antiquantScale或output是空指针。</td>
+  </tr>
+  <tr>
+      <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="2">161002</td>
+      <td>x1、x2、residual或output的shape不符合约束要求。</td>
+  </tr>
+  <tr>
+      <td>streamMode不在合法范围内。</td>
+  </tr>
+  </tbody>
+  </table>
 
 ## aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm
 
@@ -337,9 +338,9 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -359,6 +360,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp

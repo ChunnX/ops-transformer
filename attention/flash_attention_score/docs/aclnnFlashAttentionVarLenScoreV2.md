@@ -26,7 +26,6 @@
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionVarLenScoreV2”接口执行计算。
@@ -61,6 +60,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV2(
   void              *workspace,
@@ -404,7 +404,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
 
 ## aclnnFlashAttentionVarLenScoreV2
 
--   **参数说明**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -440,9 +440,9 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
     </tbody>
     </table>
 
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
     
 ## 约束说明
 
@@ -454,9 +454,9 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
   - D：Head-Dim必须满足(qD == kD && kD >= vD)。
   - inputLayout必须一致。
 - 关于数据shape的约束，其中：
-    -   T：取值范围为1\~1M。
-    -   N：取值范围为1\~256。
-    -   D：取值范围为1\~768。
+    - T：取值范围为1\~1M。
+    - N：取值范围为1\~256。
+    - D：取值范围为1\~768。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
@@ -464,12 +464,14 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义
+
     | pseType     | 含义                              |      备注   |
     | ----------- | --------------------------------- | ----------|
     | 0           | 外部传入pse 先mul再add              | - |
     | 1           | 外部传入pse 先add再mul              | 跟[FlashAttentionUnpaddingScoreGrad](../../flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGrad.md)实现一致。 |
     | 2           | 内部生成pse 先mul再add              | - |
     | 3           | 内部生成pse 先mul再add再sqrt         | - |
+
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 - innerPrecise：当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - sparseMode的约束如下: 

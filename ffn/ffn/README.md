@@ -19,24 +19,23 @@
 - 计算公式：
 
   - **非量化场景：**
-
-	$$
-    y=activation(x * W1 + b1) * W2 + b2
-	$$
+  
+  $$
+  y=activation(x * W1 + b1) * W2 + b2
+  $$
 
   - **量化场景：**
-
-	$$
-    y=((activation((x * W1 + b1) * deqScale1) * scale + offset) * W2 + b2) * deqScale2
-	$$
+  
+  $$
+  y=((activation((x * W1 + b1) * deqScale1) * scale + offset) * W2 + b2) * deqScale2
+  $$
 
   - **伪量化场景：**
+  $$
+  y=activation(x * ((W1 + antiquantOffset1) * antiquantScale1) + b1) * ((W2 + antiquantOffset2) * antiquantScale2) + b2
+  $$
 
-	$$
-    y=activation(x * ((W1 + antiquantOffset1) * antiquantScale1) + b1) * ((W2 + antiquantOffset2) * antiquantScale2) + b2
-	$$
-
-## 参数说明：
+## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
 <col style="width: 150px">

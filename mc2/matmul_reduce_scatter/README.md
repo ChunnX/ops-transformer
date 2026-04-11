@@ -97,8 +97,6 @@ $$
   </tr>
  </tbody></table>
 
-
-
 ## 约束说明
 
 - 输入x1为2维，其shape为(m, k)，m须为卡数rank_size的整数倍。

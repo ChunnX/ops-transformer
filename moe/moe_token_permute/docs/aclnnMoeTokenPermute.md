@@ -15,32 +15,32 @@
 
 ## 功能说明
 
--   **接口功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
+- **接口功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
 
--   **计算公式**：
-    - paddedMode为`false`时，公式如下，其中topK指一个token选择的专家个数，Indices维度为2时等于Indices最后一维大小，Indices维度为1时topK等于1：
-    
-      $$
-      sortedIndicesFirst=argSort(\text{flatten}(Indices))
-      $$
-    
-      $$
-      sortedIndicesOut=argSort(sortedIndicesFirst)
-      $$
+- **计算公式**：
+  - paddedMode为`false`时，公式如下，其中topK指一个token选择的专家个数，Indices维度为2时等于Indices最后一维大小，Indices维度为1时topK等于1：
+  
+    $$
+    sortedIndicesFirst=argSort(\text{flatten}(Indices))
+    $$
+  
+    $$
+    sortedIndicesOut=argSort(sortedIndicesFirst)
+    $$
 
-      $$
-      permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
-      $$
+    $$
+    permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
+    $$
 
-    - paddedMode为`true`时（暂不支持）：
+  - paddedMode为`true`时（暂不支持）：
 
-      $$
-      permuteTokensOut[i]=tokens[indices[i]]
-      $$
+    $$
+    permuteTokensOut[i]=tokens[indices[i]]
+    $$
 
-      $$
-      sortedIndicesOut=indices
-      $$
+    $$
+    sortedIndicesOut=indices
+    $$
 
 ## 函数原型
 

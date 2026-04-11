@@ -33,7 +33,6 @@
 
   其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\alpha_k \in R^{d_k}$，$\beta_t \in R$，$o \in R^{d_v}$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
@@ -263,7 +262,6 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </tbody>
   </table>
 
-
 ## aclnnRecurrentGatedDeltaRule
 
 - **参数说明**
@@ -307,13 +305,11 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
   aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
   - aclnnRecurrentGatedDeltaRule默认确定性实现。
 - 输入shape大小需满足约束：$L_i \le 8$，$N_k \le 256$，$N_v \le 256$，$D_k \le 256$，$D_v \le 256$。
-
 
 ## 调用示例
 

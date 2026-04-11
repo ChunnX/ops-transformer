@@ -27,7 +27,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnMatmulReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulReduceScatter”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMatmulReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulReduceScatter”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(
@@ -53,7 +53,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## aclnnMatmulReduceScatterGetWorkspaceSize
 
--   **参数说明**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
@@ -184,7 +184,7 @@ aclnnStatus aclnnMatmulReduceScatter(
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - bias：支持输入为非0的场景。
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -222,7 +222,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## aclnnMatmulReduceScatter
 
--   **参数说明**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1166px"> <colgroup>
     <col style="width: 173px">
     <col style="width: 133px">
@@ -257,10 +257,9 @@ aclnnStatus aclnnMatmulReduceScatter(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
 
 ## 约束说明
 

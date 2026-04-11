@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。
@@ -23,7 +22,6 @@
   $$
   attention\_out = Dropout(Softmax(Mask(scale*(pse+query*key^T), atten\_mask)), keep\_prob)*value
   $$
-
 
 ## 函数原型
 
@@ -54,6 +52,7 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionScore(
   void              *workspace, 
@@ -61,7 +60,6 @@ aclnnStatus aclnnFlashAttentionScore(
   aclOpExecutor     *executor, 
   const aclrtStream  stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGetWorkspaceSize
 
@@ -352,7 +350,6 @@ aclnnStatus aclnnFlashAttentionScore(
   </tbody>
   </table>
 
-
 ## aclnnFlashAttentionScore
 
 - **参数说明**
@@ -391,9 +388,9 @@ aclnnStatus aclnnFlashAttentionScore(
   </tbody>
   </table>
 
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

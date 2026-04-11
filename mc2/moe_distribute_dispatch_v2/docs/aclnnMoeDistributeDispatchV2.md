@@ -119,7 +119,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeDistributeDispatchV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeDistributeDispatchV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
@@ -724,9 +724,11 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 - 机器数量设置：
 
     两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
     ```
+
     单机16卡场景则无需修改。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -737,21 +739,25 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     同时，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改launchOneThreadDispatchV2AndCombineV2_A2函数中的moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
 
     算子编译命令如下，moe_distribute_dispatch_v2和moe_distribute_combine_v2算子都需要编译，这两个算子需要成对执行：
+
     ```bash
     bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
     ```
 
     示例算子执行命令如下：
+
     ```bash
     bash build.sh --run_example --ops=moe_distribute_dispatch_v2 eager cust
+    ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
-       
+
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>

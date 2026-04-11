@@ -1,4 +1,5 @@
 # aclnnQuantAllReduce
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -35,7 +36,7 @@
 
 ## 函数原型
 
-该算子分为两段式接口，必须先调用“aclnnQuantAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantAllReduce”接口执行计算。
+该算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantAllReduce”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(
@@ -247,9 +248,10 @@ aclnnStatus aclnnQuantAllReduce(
 - 通信域使用约束：同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子，且该通信域中不允许有其他通信算子。
 - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = b * s * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = b * s * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = b * s * H / 32 * 1 (Byte)`。
 - H范围仅支持[1024, 8192]，要求128对齐。
+
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclCommInitClusterInfoConfig、HcclGetCommName、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha002/API/hcclapiref/hcclcpp_07_0001.html)。
 

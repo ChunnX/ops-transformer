@@ -59,7 +59,6 @@
   dK=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
 
-
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1576px">
@@ -186,13 +185,13 @@
 - 输入query、key、value、pseShiftOptional的数据类型必须一致。
 - 输入query、key、value、dy的input_layout必须一致。
 - 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
-  -   B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
-  -   N：取值范围为1\~256。
-  -   S：取值范围为1\~1M。
-  -   D：
-      -   Atlas A2 训练系列产品：取值范围为1\~512。
-      -   Atlas A3 训练系列产品：取值范围为1\~512。
-      -   Ascend 950PR/Ascend 950DT:取值范围为1\~768。
+  - B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
+  - N：取值范围为1\~256。
+  - S：取值范围为1\~1M。
+  - D：
+      - Atlas A2 训练系列产品：取值范围为1\~512。
+      - Atlas A3 训练系列产品：取值范围为1\~512。
+      - Ascend 950PR/Ascend 950DT:取值范围为1\~768。
 - keepProb的取值范围为(0, 1]。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - pseType为2或3的时候，当前只支持Sq和Skv等长。

@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnGroupedMatmulV5GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulV5”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulV5GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulV5”接口执行计算。
 
 ```c++
 aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
@@ -329,13 +329,11 @@ aclnnStatus aclnnGroupedMatmulV5(
   </tbody>
   </table>
 
-
   - <term>Ascend 950PR/Ascend 950DT</term>：
 
     - 上表数据类型列中的角标“1”代表该系列不支持的数据类型。
     - 输入参数x、weight均不支持INT16类型，且x不支持INT4类型；
     - 输入参数x、weight，输出参数out在非量化场景支持最多1024个tensor，在伪量化支持最多128个tensor，在全量化场景最多支持1个tensor。
-
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
@@ -344,7 +342,6 @@ aclnnStatus aclnnGroupedMatmulV5(
     - 输入参数biasOptional不支持BFLOAT16；
     - 输入参数scaleOptional不支持INT64类型。
     - 输入参数x、weight，输出参数out支持最多128个tensor。
-
 
 - **返回值：**
 
@@ -451,33 +448,47 @@ aclnnStatus aclnnGroupedMatmulV5(
   <a id="全量化场景"></a>
 
  - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
+ 
     $$
       y_i=(x_i\times weight_i) * scale_i + offset_i
     $$
+
     - x为INT8，bias为INT32
+
       $$
         y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
       $$
+
     - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
+
       $$
         y_i=(x_i\times weight_i) * scale_i + bias_i
       $$
+
   - **量化场景（动态量化，T-T && T-C && K-T && K-C量化）：**
+
     $$
      y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
     $$
+
     - x为INT8，bias为INT32
+
       $$
         y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
       $$
+
     - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
+
       $$
         y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
       $$
+
   - **量化场景（动态量化，MX && G-B量化）：**
+
     $$
     y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
     $$
+
     其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
 
   <a id="伪量化场景"></a>
@@ -624,6 +635,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         | 伪量化perchannel | weight多 | $[N_i]$|
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
+
     </details>
 
     <a id="a16w8场景约束"></a>
@@ -714,6 +726,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       | 0 | 多个|多个|单个 | 2/3 | 1）groupListOptional可选；<br> 2）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应；当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应；当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应；<br> 3）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一|1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
       | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维；<br> 3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
       | 2 | 单个|多个|多个 | 0/1 | groupListOptional必须传空 | 1）x必须转置；<br> 2）weight不能转置| 1）x，weight，y中tensor需为2维。<br> 2）weight长度最大支持128，即最多支持128个group；<br> 3）原始shape中weight每个tensor的第一维之和不应超过x第一维；<br> 4）bias必须传空 |
+
     </details>
 
     <a id="grouplistoptional配置示例"></a>
@@ -953,6 +966,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 </details>
 
 ## 调用示例
+
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
   ```c++
