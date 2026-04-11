@@ -289,11 +289,11 @@ bool Mc2AdaptiveSlidingWindowTiling::AnalyseSlidingWinInfo()
     }
     adaptiveWin_.mBlockCnt = ops::CeilDiv(inputParams_.mSize, adaptiveWin_.baseM);
     adaptiveWin_.nBlockCnt = ops::CeilDiv(inputParams_.nSize, adaptiveWin_.baseN);
-    adaptiveWin_.tatolBlockCnt = adaptiveWin_.mBlockCnt * adaptiveWin_.nBlockCnt;
+    adaptiveWin_.totalBlockCnt = adaptiveWin_.mBlockCnt * adaptiveWin_.nBlockCnt;
     adaptiveWin_.mTail = inputParams_.mSize - (adaptiveWin_.mBlockCnt - 1UL) * adaptiveWin_.baseM;
     adaptiveWin_.nTail = inputParams_.nSize - (adaptiveWin_.nBlockCnt - 1UL) * adaptiveWin_.baseN;
-    adaptiveWin_.totalWinCnt = ops::CeilDiv(adaptiveWin_.tatolBlockCnt, aicoreParams_.aicNum);
-    adaptiveWin_.tailWinBlockCnt = (adaptiveWin_.tatolBlockCnt) % aicoreParams_.aicNum;
+    adaptiveWin_.totalWinCnt = ops::CeilDiv(adaptiveWin_.totalBlockCnt, aicoreParams_.aicNum);
+    adaptiveWin_.tailWinBlockCnt = (adaptiveWin_.totalBlockCnt) % aicoreParams_.aicNum;
     IsAFullLoad();
     if (adaptiveWin_.useTailWinLogic) {
         if (isAFullLoad_) {

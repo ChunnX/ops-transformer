@@ -134,11 +134,12 @@ ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2Ma
 {
     tilingCfg.SetRankDim(args_.rankDim - 1);
     tilingCfg.SetMatMulV3TilingData(tilingData);
-    if (args_.nValue != 0)
+    if (args_.nValue != 0) {
         if (Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS) {
             OP_LOGE(opName_, "DoMatmulV3Tiling failed.");
             return ge::GRAPH_FAILED;
         }
+    }
 
     return ge::GRAPH_SUCCESS;
 }
