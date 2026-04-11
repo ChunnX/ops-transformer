@@ -31,7 +31,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)必须先调用“aclnnGroupedMatMulAllReduceGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAllReduce”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatMulAllReduceGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAllReduce”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAllReduceGetWorkspaceSize(
