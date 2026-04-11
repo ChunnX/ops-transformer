@@ -167,6 +167,7 @@ public:
         vBetaUbFloat_ = inverseBuffer_;
         gBKUbFloat_ = inverseBuffer_;
         kgUbFloat_ = inverseBuffer_;
+        kkLocal_ = inverseBuffer_;
         buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
         
         inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
@@ -464,9 +465,9 @@ private:
         PipeBarrier<PIPE_V>();
         // mask
         DataCopyInFp32(ccOffset_, stageOneMask_[GetBlockIdx() * ccOffset_]);
-        kkLocal_ = fp32InQueue_.DeQue<float>();
-        Mul(gammaUbFloat, gammaUbFloat, kkLocal_, ccOffset_);
-        fp32InQueue_.FreeTensor(kkLocal_);
+        auto maskLocal = fp32InQueue_.DeQue<float>();
+        Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
+        fp32InQueue_.FreeTensor(maskLocal);
         PipeBarrier<PIPE_V>();
     }
 
@@ -496,9 +497,9 @@ private:
             Mul(attnUbFloat_, attnUbFloat_, gammaUbFloat[subOffset_ * chunkSize_], curVecLen);
         } else {
             DataCopyInFp32(curVecLen, stageOneMask_[GetBlockIdx() * ccOffset_ + subOffset_ * chunkSize_]);
-            kkLocal_ = fp32InQueue_.DeQue<float>();
-            Mul(attnUbFloat_, attnUbFloat_, kkLocal_, curVecLen);
-            fp32InQueue_.FreeTensor(kkLocal_);
+            auto maskLocal = fp32InQueue_.DeQue<float>();
+            Mul(attnUbFloat_, attnUbFloat_, maskLocal, curVecLen);
+            fp32InQueue_.FreeTensor(maskLocal);
         }
         PipeBarrier<PIPE_V>();
 
