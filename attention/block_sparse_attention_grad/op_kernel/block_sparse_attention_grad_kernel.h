@@ -401,9 +401,23 @@ namespace BSA {
                             LayoutB1 layoutB1(headDim, curInfo.curCalKVSize);
                             LayoutC1 layoutC1(curInfo.curCalQSize, curInfo.curCalKVSize);
                             GemmCoord actualShape1{curInfo.curCalQSize, curInfo.curCalKVSize, headDim};
-                            blockMmad1(gQ[curInfo.qOffset], gK[curInfo.kvOffset], gS[curInfo.sOffset], layoutA1, layoutB1, layoutC1, actualShape1, mmadFlag);
-    
-                            blockMmad1(gDout[curInfo.qOffset], gV[curInfo.kvOffset], gDp[curInfo.sOffset], layoutA1, layoutB1, layoutC1, actualShape1, mmadFlag);
+                            blockMmad1(gQ[curInfo.qOffset],
+                                gK[curInfo.kvOffset],
+                                gS[curInfo.sOffset],
+                                layoutA1,
+                                layoutB1,
+                                layoutC1,
+                                actualShape1,
+                                mmadFlag);
+
+                            blockMmad1(gDout[curInfo.qOffset],
+                                gV[curInfo.kvOffset],
+                                gDp[curInfo.sOffset],
+                                layoutA1,
+                                layoutB1,
+                                layoutC1,
+                                actualShape1,
+                                mmadFlag);
                             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2VEC);
                             if (count > 0) {
                                 AscendC::WaitEvent(VEC2CUBE);
@@ -412,16 +426,37 @@ namespace BSA {
                                 LayoutC2 layoutC2(preTaskInfo.curCalQSize, headDim);
                                 GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
 
-                                blockMmad2(gDs[preTaskInfo.sOffset], gK[preTaskInfo.kvOffset], gDq[preTaskInfo.qOffset], layoutA2, layoutB2, layoutC2, actualShape2, mmadFlag);
+                                blockMmad2(gDs[preTaskInfo.sOffset],
+                                    gK[preTaskInfo.kvOffset],
+                                    gDq[preTaskInfo.qOffset],
+                                    layoutA2,
+                                    layoutB2,
+                                    layoutC2,
+                                    actualShape2,
+                                    mmadFlag);
 
                                 LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
                                 LayoutB3 layoutB3(preTaskInfo.curCalQSize, headDim);
                                 LayoutC3 layoutC3(preTaskInfo.curCalKVSize, headDim);
                                 GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
-                                blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+                                blockMmad3(gP[preTaskInfo.sOffset],
+                                    gDout[preTaskInfo.qOffset],
+                                    gDv[preTaskInfo.kvOffset],
+                                    layoutA3,
+                                    layoutB3,
+                                    layoutC3,
+                                    actualShape3,
+                                    mmadFlag);
 
-                                blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+                                blockMmad3(gDs[preTaskInfo.sOffset],
+                                    gQ[preTaskInfo.qOffset],
+                                    gDk[preTaskInfo.kvOffset],
+                                    layoutA3,
+                                    layoutB3,
+                                    layoutC3,
+                                    actualShape3,
+                                    mmadFlag);
                             }
                             preTaskInfo = curInfo;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
@@ -447,9 +482,30 @@ namespace BSA {
             LayoutC3 layoutC3(preTaskInfo.curCalKVSize, headDim);
             GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
-            blockMmad2(gDs[preTaskInfo.sOffset], gK[preTaskInfo.kvOffset], gDq[preTaskInfo.qOffset], layoutA2, layoutB2, layoutC2, actualShape2, mmadFlag);
-            blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
-            blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+            blockMmad2(gDs[preTaskInfo.sOffset],
+                gK[preTaskInfo.kvOffset],
+                gDq[preTaskInfo.qOffset],
+                layoutA2,
+                layoutB2,
+                layoutC2,
+                actualShape2,
+                mmadFlag);
+            blockMmad3(gP[preTaskInfo.sOffset],
+                gDout[preTaskInfo.qOffset],
+                gDv[preTaskInfo.kvOffset],
+                layoutA3,
+                layoutB3,
+                layoutC3,
+                actualShape3,
+                mmadFlag);
+            blockMmad3(gDs[preTaskInfo.sOffset],
+                gQ[preTaskInfo.qOffset],
+                gDk[preTaskInfo.kvOffset],
+                layoutA3,
+                layoutB3,
+                layoutC3,
+                actualShape3,
+                mmadFlag);
 
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
@@ -539,8 +595,11 @@ namespace BSA {
                 uint64_t beginKVOffset = curInfo.kvOffset;
 
                 // idx, 计算的行数
+                // 一个ai core里的aiv 0执行的行数：actualRow / 2 + actualRow % 2
+                // 一个ai core里的aiv 1执行的行数：actualRow / 2
                 if (vecCoreIdx % 2 != 0) {
-                    vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2, curInfo.curCalQSize / 2);
+                    vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2,
+                        curInfo.curCalQSize / 2);
                 } else {
                     vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
                 }
@@ -581,7 +640,8 @@ namespace BSA {
                                 excuteRow = actualRow / 2;
                             }
 
-                            uint64_t vector16Soffset = (curInfo.sOffset * 2 + 128 * 128 * 2 + coreOffset) * sizeof(ElementInput);
+                            uint64_t vector16Soffset =
+                                (curInfo.sOffset * 2 + WORKSPACE_P16_OFFSET_ELEMENT + coreOffset) * sizeof(ElementInput);
                             uint64_t vector32Soffset = (curInfo.sOffset + coreOffset) * sizeof(float);
 
                             GM_ADDR s = params.workspace + vector32Soffset;
@@ -597,8 +657,23 @@ namespace BSA {
 
                             AscendC::WaitEvent(CUBE2VEC);
 
-                            SfmParams sfmParams(s, softmaxLse, dp, blockSparseMask, actualSeqQlen, actualSeqKvlen, sftmgGm, pWorkspace, dsWorkspace, tiling,
-                                                excuteRow, actualCol, excuteRow *actualCol , curCoreBatch, curCoreN1Idx, curVecCoreS1Idx, curT1Idx);
+                            SfmParams sfmParams(s,
+                                softmaxLse,
+                                dp,
+                                blockSparseMask,
+                                actualSeqQlen,
+                                actualSeqKvlen,
+                                sftmgGm,
+                                pWorkspace,
+                                dsWorkspace,
+                                tiling,
+                                excuteRow,
+                                actualCol,
+                                excuteRow * actualCol,
+                                curCoreBatch,
+                                curCoreN1Idx,
+                                curVecCoreS1Idx,
+                                curT1Idx);
                             sStmOp(sfmParams);
                             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(VEC2CUBE);
 
