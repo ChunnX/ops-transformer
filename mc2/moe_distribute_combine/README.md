@@ -145,7 +145,7 @@
 <tr>
 <td>epRankId</td>
 <td>属性</td>
-<td>EP域本卡Id，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+<td>EP域本卡ID，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -173,7 +173,7 @@
 <tr>
 <td>tpRankId</td>
 <td>可选属性</td>
-<td><li>TP域本卡Id。</li><li>默认值为0。</li></td>
+<td><li>TP域本卡ID。同一个EP通信域中各卡的tpRankId不重复。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -282,7 +282,7 @@
         - `moeExpertNum`：需满足`moeExpertNum` / `epWorldSize` <= 24。
             - 环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，无上述约束。
         - `globalBs`：当每个rank的`BS`数一致时，`globalBs` = `BS` * `epWorldSize` 或 `globalBs` = 0；当每个rank的`BS`数不一致时，`globalBs` = `maxBs` * `epWorldSize`或者`globalBs` = 256 * `epWorldSize`，其中`maxBs`表示表示单rank `BS`最大值，建议按`maxBs` * `epWorldSize`传入，固定按256 * `epWorldSize`传入在后续版本BS支持大于256的场景下会无法支持。
-        - `commQuantMode`：2，开启通信int8量化，仅当`HCCL_INTRA_PCIE_ENABLE`为1且`HCCL_INTRA_ROCE_ENABLE`为0且驱动版本不低于25.0.RC1.1时支持。
+        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
     - 组网约束：多机场景仅支持交换机组网，不支持双机直连组网。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
