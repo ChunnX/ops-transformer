@@ -34,48 +34,33 @@ corePerLoopMaxTSize = ubAvailableSize // (inputDTypeSize_ * (2 * n * n + 2 * n *
 
 corePerLoopMaxTSize = coreTSize_ if coreTSize_ * inputDTypeSize_ <= ubAvailableSize else corePerLoopMaxTSize
 
-corePerLoopMaxTSize_8 = ((corePerLoopMaxTSize + 7) // 8) * 8
+corePerLoopMaxTSize = ((corePerLoopMaxTSize + 7) // 8) * 8
 
 tNormCoreLoop_ = ceildiv(coreTSize_, corePerLoopMaxTSize)  # 整核loop_, 整核的整块大小都是corePerLoopMaxTSize
 tTailCoreLoop_ = ceildiv(TailCoreTSize_, corePerLoopMaxTSize) # 尾核loop_
-loop_ = tNormCore_
+loop_ = tNormCoreLoop_
 
-tUbfactorTail_ = coreTSize_ - (tNormCoreLoop_ - 1) * corePerLoopMaxTSize # 整核尾块
-tUbTailTail_ = TailCoreTSize_ - (tTailCoreLoop_ - 1) * corePerLoopMaxTSize # 尾核尾块
+tUbfactorTail_ = coreTSize_ - (tNormCoreLoop_ - 1) * corePerLoopMaxTSize if tNormCoreLoop_ > 1 else 0 # 整核尾块
+tUbTailTail_ = TailCoreTSize_ - (tTailCoreLoop_ - 1) * corePerLoopMaxTSize if tTailCoreLoop_ > 1 else 0 # 尾核尾块
 
 # if coreTSize_ < MIN_PER_CORE_ELEMENTS and T >= MIN_PER_CORE_ELEMENTS:
 #     coreTSize_ = MIN_PER_CORE_ELEMENTS
 
 # loop_ = (coreTSize_ + corePerLoopMaxTSize - 1) // corePerLoopMaxTSize
 
-# ubSize_ = 248 * 1024
-# SIMD_RESERVED_SIZE = 8 * 1024
-# MASK_BUFFER = 64
-# MAX_BUFFER = 256
-# inputDTypeSize_ = 4
-# aivNum = 16
-# MIN_PER_CORE_ELEMENTS = 32
-# n = 4
-# align_n = 8
-# num_iters = 20
-# T = 2048
-# ubAvailableSize = ubSize_ - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER
-# corePerLoopMaxTSize = ubAvailableSize // (inputDTypeSize_ * (2 * n * n + 2* n * align_n + 2 * align_n))
 
-# coreTSize_ = (T + aivNum - 1) // aivNum
-# print("un8对齐 corePerLoopMaxTSize: ", corePerLoopMaxTSize)
-# corePerLoopMaxTSize_8 = ((corePerLoopMaxTSize + 7) // 8) * 8
-# print("8对齐 corePerLoopMaxTSize_8: ", corePerLoopMaxTSize_8)
+sum_out_global_base_base = torch.zeros([2 * num_iters, needCoreNum_, tNormCoreLoop_, align_n * corePerLoopMaxTSize], dtype=float)
+sum_out_global_base_tail = torch.zeros([2 * num_iters, needCoreNum_, tNormCoreLoop_, align_n * tUbfactorTail_], dtype=float)
+# 整核的shape为[2 * num_iters, needCoreNum_, tNormCoreLoop_, align_n * (corePerLoopMaxTSize + tUbfactorTail_)]
+sum_out_global_base = torch.cat([sum_out_global_base_base, sum_out_global_base_tail], dim=-1)
 
-# corePerLoopMaxTSize = min(corePerLoopMaxTSize_8, coreTSize_)
+sum_out_global_tail_base = torch.zeros([2 * num_iters, needCoreNum_, tTailCoreLoop_, align_n * corePerLoopMaxTSize], dtype=float)
+sum_out_global_tail_tail = torch.zeros([2 * num_iters, needCoreNum_, tTailCoreLoop_, align_n * tUbTailTail_], dtype=float)
+# 尾核的shape为[2 * num_iters, needCoreNum_, tTailCoreLoop_, align_n * (corePerLoopMaxTSize + tUbfactorTail_)]
+sum_out_global_tail = torch.cat([sum_out_global_tail_base, sum_out_global_tail_tail], dim=-1)
 
-# if coreTSize_ < MIN_PER_CORE_ELEMENTS and T >= MIN_PER_CORE_ELEMENTS:
-#     coreTSize_ = MIN_PER_CORE_ELEMENTS
-
-# needCoreNum_ = (T + coreTSize_ - 1) // coreTSize_
-# loop_ = (coreTSize_ + corePerLoopMaxTSize - 1) // corePerLoopMaxTSize
-
-sum_out_global = torch.zeros([2 * num_iters, needCoreNum_, loop_, align_n * corePerLoopMaxTSize], dtype=float)
+# 整个sum_out的shape为[2 * num_iters, needCoreNum_, (tNormCoreLoop_ + tTailCoreLoop_), align_n * (corePerLoopMaxTSize + tUbfactorTail_)]
+sum_out_global = torch.cat([sum_out_global_base, sum_out_global_tail], dim=-2)
 
 
 def softmax(x, dim = -1):
@@ -158,23 +143,63 @@ def convert_to_npu_format(norm_list, sum_list, num_iters):
     for idx, sum_tensor in enumerate(sum_list):
         if sum_tensor is None:
             continue
-        if sum_tensor.shape[-2] == 1:
+        if sum_tensor.shape[-2] == 1: # col
             if padding_size > 0:
                 sum_tensor = F.pad(sum_tensor, (0, padding_size), mode = 'constant', value=0)
             squeezed_tensor = sum_tensor.squeeze(-2)
-            T = squeezed_tensor.shape[0]
-            view_tensor = squeezed_tensor.view(needCoreNum_, loop_, corePerLoopMaxTSize, align_n)
-            view_tensor_golbal = squeezed_tensor.view(needCoreNum_, loop_, corePerLoopMaxTSize, align_n).permute(0, 1, 3, 2).contiguous()
-            sum_out[idx] = view_tensor.flatten(-2)
-            sum_out_global[idx] = view_tensor_golbal.flatten(-2)
-        else:
+            if tNormCoreLoop_ != 0 and corePerLoopMaxTSize != 0:
+                start_idx = 0
+                end_idx = needCoreNum_ * tNormCoreLoop_* corePerLoopMaxTSize
+                sum_out_base_base = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tNormCoreLoop_, corePerLoopMaxTSize, align_n)
+            if tNormCoreLoop_ != 0 and tUbfactorTail_ != 0:
+                start_idx = needCoreNum_ * tNormCoreLoop_* corePerLoopMaxTSize
+                end_idx = needCoreNum_ * tNormCoreLoop_* (corePerLoopMaxTSize + tUbfactorTail_)
+                sum_out_base_tail = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tNormCoreLoop_, tUbfactorTail_, align_n)
+            if tTailCoreLoop_ != 0 and corePerLoopMaxTSize != 0:
+                start_idx = needCoreNum_ * tNormCoreLoop_* (corePerLoopMaxTSize + tUbfactorTail_)
+                end_idx = start_idx + needCoreNum_ * tTailCoreLoop_* corePerLoopMaxTSize
+                sum_out_tail_base = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tTailCoreLoop_, corePerLoopMaxTSize, align_n)
+            if tNormCoreLoop_ != 0 and corePerLoopMaxTSize != 0:
+                start_idx = needCoreNum_ * tNormCoreLoop_* (corePerLoopMaxTSize + tUbfactorTail_) + needCoreNum_ * tTailCoreLoop_* corePerLoopMaxTSize
+                end_idx = len(squeezed_tensor)
+                sum_out_tail_tail = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tTailCoreLoop_, tUbfactorTail_, align_n)
+
+            sum_out_base = torch.cat([sum_out_base_base, sum_out_base_tail], dim=-1)
+            sum_out_tail = torch.cat([sum_out_tail_base, sum_out_tail_tail], dim=-1)
+            sum_out_tensor = torch.cat([sum_out_base, sum_out_tail], dim=-2)
+
+            sum_out_global[idx] = sum_out_tensor.flatten(-2)
+            # sum_out_tensor = sum_out_tensor.permute(0, 1, 3, 2).contiguous()
+            sum_out[idx] = sum_out_tensor.flatten(-2)
+        else: #row
             if padding_size > 0:
                 sum_tensor = F.pad(sum_tensor, (0, 0, 0, padding_size, 0, 0), mode = 'constant', value=0)
             squeezed_tensor = sum_tensor.squeeze(-1)
-            T = squeezed_tensor.shape[0]
-            view_tensor = squeezed_tensor.view(needCoreNum_, loop_, corePerLoopMaxTSize, align_n).permute(0, 1, 3, 2).contiguous()
-            sum_out[idx] = view_tensor.flatten(-2)
-            sum_out_global[idx] = view_tensor.flatten(-2)
+            if tNormCoreLoop_ != 0 and corePerLoopMaxTSize != 0:
+                start_idx = 0
+                end_idx = needCoreNum_ * tNormCoreLoop_* corePerLoopMaxTSize
+                sum_out_base_base = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tNormCoreLoop_, corePerLoopMaxTSize, align_n)
+            if tNormCoreLoop_ != 0 and tUbfactorTail_ != 0:
+                start_idx = needCoreNum_ * tNormCoreLoop_* corePerLoopMaxTSize
+                end_idx = needCoreNum_ * tNormCoreLoop_* (corePerLoopMaxTSize + tUbfactorTail_)
+                sum_out_base_tail = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tNormCoreLoop_, tUbfactorTail_, align_n)
+            if tTailCoreLoop_ != 0 and corePerLoopMaxTSize != 0:
+                start_idx = needCoreNum_ * tNormCoreLoop_* (corePerLoopMaxTSize + tUbfactorTail_)
+                end_idx = start_idx + needCoreNum_ * tTailCoreLoop_* corePerLoopMaxTSize
+                sum_out_tail_base = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tTailCoreLoop_, corePerLoopMaxTSize, align_n)
+            if tTailCoreLoop_ != 0 and tUbfactorTail_ != 0:
+                start_idx = needCoreNum_ * tNormCoreLoop_* (corePerLoopMaxTSize + tUbfactorTail_) + needCoreNum_ * tTailCoreLoop_* corePerLoopMaxTSize
+                end_idx = len(squeezed_tensor)
+                sum_out_tail_tail = squeezed_tensor[start_idx:end_idx].view(needCoreNum_, tTailCoreLoop_, tUbfactorTail_, align_n)
+
+            sum_out_base = torch.cat([sum_out_base_base, sum_out_base_tail], dim=-1)
+            sum_out_tail = torch.cat([sum_out_tail_base, sum_out_tail_tail], dim=-1)
+            sum_out_tensor = torch.cat([sum_out_base, sum_out_tail], dim=-2)
+
+            sum_out_global[idx] = sum_out_tensor.flatten(-2)
+            sum_out_tensor = sum_out_tensor.permute(0, 1, 3, 2).contiguous()
+            sum_out[idx] = sum_out_tensor.flatten(-2)            
+
     sum_out = sum_out.permute(1, 2, 0, 3).contiguous()
 
     return norm_out, sum_out
@@ -209,10 +234,10 @@ def test_sinkhorn_grad_netshape():
         norm_out, sum_out = convert_to_npu_format(norm_list, sum_list, num_iters)
 
         print("=======================================================")
-        print("norm_out.shape: ", norm_out.shape)
+        print("norm_out.shape: ", norm_out.shape) # 16, 1, 40, 4, 128, 8
         # print("norm_out: ", norm_out)
         print("=======================================================")
-        print("sum_out.shape: ", sum_out.shape)
+        print("sum_out.shape: ", sum_out.shape) # 16, 1, 40, 8*128
         # print("sum_out: ", sum_out)
         print("=======================================================")
         print("grad_output.shape: ", grad_output.shape)
