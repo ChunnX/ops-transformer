@@ -225,8 +225,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::GetShapeAttrsInfo()
 
 ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ComputeInterCoreSplit()
 {
-    // 仅沿 H 方向按 64 切分
-    // 核处理的H会比尾核多64(hMainSize = hTailSize + 64)
+    // 沿 H 方向按 64-tile 切分，采用基于 tile 的平均分配：
+    // 每个核心分到 q 或 (q+1) 个 64-tile，其中 q = tiles / usedCoreNum，r = tiles % usedCoreNum
     int64_t tiles = H_ / DIM_ALIGN_ELEMENT;
     OP_CHECK_IF(tiles <= 0, OP_LOGE(context_->GetNodeName(), "H(%ld) < %ld", H_, DIM_ALIGN_ELEMENT),
                 return ge::GRAPH_FAILED);
@@ -234,23 +234,21 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ComputeInterCoreSplit()
     int64_t maxCores = static_cast<int64_t>(totalCoreNum_);
     usedCoreNum_ = std::min<int64_t>(tiles, std::max<int64_t>(1, maxCores));
 
-    if (H_ % usedCoreNum_ == 0) {
-        // H能均分，则认为没有尾核
+    int64_t q = tiles / usedCoreNum_;  // 每核基础 tile 数
+    int64_t r = tiles % usedCoreNum_;  // 需要多 1 个 tile 的核心数量
+
+    if (r == 0) {
+        // 完全均分：只有主核，无尾核；两种块大小相同
+        hMainSize_ = q * DIM_ALIGN_ELEMENT;
+        hTailSize_ = hMainSize_;
         hMainCoreCnt_ = usedCoreNum_;
         hTailCoreCnt_ = 0;
-        hMainSize_ = H_ / usedCoreNum_;
-        hTailSize_ = hMainSize_; // hTailSize仍等于hMainSize
     } else {
-        // 计算主核和尾核的分配
-        int64_t baseTiles = H_ / (usedCoreNum_ * DIM_ALIGN_ELEMENT);
-        hTailSize_ = baseTiles * DIM_ALIGN_ELEMENT;
-        hMainSize_ = hTailSize_ + DIM_ALIGN_ELEMENT; // 主核比尾核多64
-
-        // 计算需要多少主核
-        int64_t totalWithMain = hMainSize_ * usedCoreNum_;
-        int64_t excess = totalWithMain - H_;
-        hTailCoreCnt_ = excess / DIM_ALIGN_ELEMENT;
-        hMainCoreCnt_ = usedCoreNum_ - hTailCoreCnt_;
+        // 非均分：r 个主核分到 (q+1) 个 tile，其余为尾核（q 个 tile）
+        hTailSize_ = q * DIM_ALIGN_ELEMENT;
+        hMainSize_ = (q + 1) * DIM_ALIGN_ELEMENT;
+        hMainCoreCnt_ = r;
+        hTailCoreCnt_ = usedCoreNum_ - r;
     }
 
     return ge::GRAPH_SUCCESS;
