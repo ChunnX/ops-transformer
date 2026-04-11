@@ -73,7 +73,7 @@ const constexpr uint32_t C1_SET_SHAPE_K = 1024;
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
 ge::graphStatus MhcPreBackwardTiling::GetInputTensors(
-    gert::Tensor *&hInGradTensor, gert::Tensor *&hPostGradTensor, gert::Tensor *&hCombBeforeGradTensor)
+    const gert::Tensor *&hInGradTensor, const gert::Tensor *&hPostGradTensor, const gert::Tensor *&hCombBeforeGradTensor)
 {
     hInGradTensor = context_->GetDynamicInputTensor(H_IN_GRAD_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hInGradTensor);
@@ -161,9 +161,9 @@ ge::graphStatus MhcPreBackwardTiling::ValidateShapeParams()
 
 ge::graphStatus MhcPreBackwardTiling::GetInputShape()
 {
-    gert::Tensor *hInGradTensor = nullptr;
-    gert::Tensor *hPostGradTensor = nullptr;
-    gert::Tensor *hCombBeforeGradTensor = nullptr;
+    const gert::Tensor *hInGradTensor = nullptr;
+    const gert::Tensor *hPostGradTensor = nullptr;
+    const gert::Tensor *hCombBeforeGradTensor = nullptr;
 
     auto ret = GetInputTensors(hInGradTensor, hPostGradTensor, hCombBeforeGradTensor);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -219,11 +219,13 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
         return ge::GRAPH_FAILED;
     }
 
-    platform_ascendc::PlatformAscendC ascendcPlatform;
-    auto ret = GetPlatformInfo(ascendcPlatform);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        OP_LOGE(context_->GetNodeName(), "get platform info failed");
+        return ge::GRAPH_FAILED;
     }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    
 
     blockDim_ = ascendcPlatform.GetCoreNumAic();
     vecCoreNum_ = ascendcPlatform.GetCoreNumAiv();

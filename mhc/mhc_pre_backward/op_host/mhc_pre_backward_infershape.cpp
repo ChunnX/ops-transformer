@@ -85,7 +85,7 @@ ge::graphStatus ValidateInputDims(int64_t hInGradDimNum, int64_t hPostGradDimNum
 }
 
 ge::graphStatus InferBSDFormat(const gert::Shape *hInGradShape, const gert::Shape *hPostGradShape,
-    ge::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
+    gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
 {
     uint64_t batch = hInGradShape->GetDim(INDEX_B);
     uint64_t sequence = hInGradShape->GetDim(INDEX_S);
@@ -101,7 +101,7 @@ ge::graphStatus InferBSDFormat(const gert::Shape *hInGradShape, const gert::Shap
 }
 
 ge::graphStatus InferTNDFormat(const gert::Shape *hInGradShape, const gert::Shape *hPostGradShape,
-    ge::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
+    gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
 {
     uint64_t t = hInGradShape->GetDim(INDEX_T);
     dimen = hInGradShape->GetDim(INDEX_D_TND);
@@ -114,8 +114,8 @@ ge::graphStatus InferTNDFormat(const gert::Shape *hInGradShape, const gert::Shap
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferOutputShapes(ge::Shape *xGradShape, ge::Shape *hcWeightGradShape,
-    ge::Shape *alphaGradShape, ge::Shape *biasPostGradShape, ge::Shape *gammaGradShape,
+ge::graphStatus InferOutputShapes(gert::Shape *xGradShape, gert::Shape *hcWeightGradShape,
+    gert::Shape *alphaGradShape, gert::Shape *biasPostGradShape, gert::Shape *gammaGradShape,
     uint64_t numsResidual, uint64_t dimen)
 {
     uint64_t n2Plus2n = (2 * numsResidual) + (numsResidual * numsResidual);

@@ -252,10 +252,16 @@ public:
     __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
     {
     }
+    __aicore__ inline void InitGlobalTensors(InitParams initParams);
+    __aicore__ inline void InitOptionalInputs(InitParams initParams);
+    __aicore__ inline void InitTilingData(InitParams initParams);
+    __aicore__ inline void InitUBBuffers();
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void InitStage2();
     __aicore__ inline void Process();
 
+    __aicore__ inline void InitAlphaGradBuffers(LocalTensor<P> &sumBuf);
+    __aicore__ inline void ReduceAndCopyAlphaGrad(uint32_t coreId, LocalTensor<P> &sumBuf);
     __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t dealBsNum, uint32_t ubOffset,
                                         uint32_t runBSStart, uint32_t runBSEnd);
     __aicore__ inline void ProcessV0Main();
@@ -266,6 +272,10 @@ public:
                                                   uint32_t stepLen);
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
                                      uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
+    __aicore__ inline void ProcessV1BiasGrad(V0V1Buffers<P> &buffers, uint32_t curBSSize, uint32_t coreId);
+    __aicore__ inline void ProcessV1InvRmsGrad(V0V1Buffers<P> &buffers, uint32_t runBSStart, uint32_t curBSSize);
+    __aicore__ inline void ProcessV1MixGrad(V0V1Buffers<P> &buffers, LocalTensor<P> &fp32OutBuf,
+                                         uint32_t runBSStart, uint32_t curBSSize);
     __aicore__ inline void VFDoV1Process(__ubuf__ P *gradHMix, __ubuf__ P *gradInvRmsOut, __ubuf__ P *gradAlphaOut,
                                          __ubuf__ P *gatherIn, __ubuf__ P *hMixIn, __ubuf__ P *invRmsIn,
                                          uint32_t dealBSSize);
@@ -291,9 +301,14 @@ public:
     __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart, uint32_t bsEnd,
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV3();
+    __aicore__ inline void ProcessV3AlphaGrad();
+    __aicore__ inline void ProcessV3BiasGrad();
     __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
     __aicore__ inline void VFDoV3ProcessBiasGrad(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
     __aicore__ inline void VFDoV3ProcessBiasGradForN8(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
+
+    __aicore__ inline void InitProcessV2Buffers(uint32_t offsetND, uint32_t copySizeND);
+    __aicore__ inline void CopyHPreToUB(LocalTensor<P> &hPreUb, uint32_t bsStart, uint32_t currentBsSize);
 
     __aicore__ inline void VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
                                             __ubuf__ T *hInGradB16InAddr, uint16_t curLenN, uint32_t lenD, uint32_t i,
@@ -1453,6 +1468,38 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::CopyHPreToUB(LocalTensor<P> &
     WaitFlag<HardEvent::V_MTE2>(EVENT_ID3);
     DataCopyPad(hPreUb, hPreGm_[bsStart * N_], bsCopyParams, copyPadParams);
 }
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
+                                                             uint32_t bsEnd, LocalTensor<P> &sumBuf, uint32_t buffId)
+{
+    uint32_t currentN = offsetND / D_;
+    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE;
+    uint32_t currentBsSize = bsEnd - bsStart;
+
+    LocalTensor<P> gammaBroadCast;
+    LocalTensor<P> xRsFp32Buf;
+    LocalTensor<P> xGradVec3Buf;
+    LocalTensor<P> xRsGradMmUb;
+    LocalTensor<P> invRmsUb;
+    LocalTensor<P> hPreUb;
+
+    InitProcessV2Buffers(offsetNS, copySizeND, bsStart, bsEnd, sumBuf, buffId, 
+                        gammaBroadCast, xRsFp32Buf, xGradVec3Buf, xRsGradMmUb, invRmsUb, hPreUb);
+
+    auto hInGradFp32Buf = xRsFp32Buf;
+    auto xRsGradInvUb = xRsGradMmUb;
+    
+    DataCopyPadParams copyPadParams;
+    copyPadParams.isPad = false;
+    CopyHPreToUB(hPreUb, bsStart, bsEnd);
+
+    LocalTensor<P> invRmsInBuf;
+    LocalTensor<T> hInGradInBuf;
+    LocalTensor<T> gradXPostInBuf;
+    LocalTensor<P> gammaUb;
+    LocalTensor<P> xRsGradMmInBuf;
+    LocalTensor<P> xRsGradInvBackup;
     for (uint32_t bsChunkStart = bsStart; bsChunkStart < bsEnd; bsChunkStart += chunkSize) {
         uint32_t bsChunkEnd = Min(bsChunkStart + chunkSize, bsEnd);
         uint32_t currentChunkSize = bsChunkEnd - bsChunkStart;

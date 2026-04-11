@@ -257,7 +257,7 @@ bool MhcGradCheckInputOutDims(const AclnnMhcPreBackwardParams &params)
     return MhcGradCheckInputDims(params) && MhcGradCheckOutputDims(params);
 }
 
-bool CheckShapeDim(const ge::Shape &shape, uint32_t index, uint64_t expected, const char *msg)
+bool CheckShapeDim(const gert::Shape &shape, uint32_t index, uint64_t expected, const char *msg)
 {
     if (shape.GetDim(index) != expected) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s", msg);
@@ -402,7 +402,7 @@ bool MhcGradCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, u
     return true;
 }
 
-bool CheckCommonShapeDim(const ge::Shape &shape, uint32_t index, uint64_t expected, const char *msg)
+bool CheckCommonShapeDim(const gert::Shape &shape, uint32_t index, uint64_t expected, const char *msg)
 {
     if (shape.GetDim(index) != expected) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s", msg);
@@ -551,7 +551,7 @@ static bool MhcGradIsPrivateFormat(ge::Format format)
     return false;
 }
 
-bool CheckFormat(const aclTensor *tensor, const char *name)
+static bool CheckFormat(const aclTensor *tensor, const char *name)
 {
     if (IsPrivateFormat(tensor->GetViewFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor format must be ND", name);
@@ -605,7 +605,9 @@ aclnnStatus MhcGradCheckParams(const AclnnMhcPreBackwardParams &params)
 const aclTensor* ConvertToContiguous(const aclTensor* tensor, aclOpExecutor* executor)
 {
     auto result = l0op::Contiguous(tensor, executor);
-    CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (result == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Contiguous result is nullptr");
+    }
     return result;
 }
 

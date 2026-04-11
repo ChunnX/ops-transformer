@@ -19,6 +19,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
 #include "err/ops_err.h"
+#include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
 
 namespace optiling {
@@ -89,9 +90,24 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus GetInputShape();
+    ge::graphStatus GetInputTensors(gert::Tensor *&hInGradTensor, gert::Tensor *&hPostGradTensor,
+                                   gert::Tensor *&hCombBeforeGradTensor);
+    ge::graphStatus ValidateInputDims(int64_t hInDims, int64_t hPostDims, int64_t hCombDims);
+    ge::graphStatus ParseBSDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
+                                const gert::Tensor *hCombBeforeGradTensor);
+    ge::graphStatus ParseTNDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
+                                 const gert::Tensor *hCombBeforeGradTensor);
+    ge::graphStatus ValidateShapeParams();
+    ge::graphStatus GetPlatformInfo(platform_ascendc::PlatformAscendC &platform);
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
+    void SetC0TilingParams();
+    void SetC1TilingParams();
+    void SetCommonTilingParams();
+    void SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm);
+    void SetMatmulC1Tiling(matmul_tiling::MatmulApiTiling &mm);
+    ge::graphStatus GetMatmulTiling(matmul_tiling::MatmulApiTiling &mm, bool isC0);
     ge::graphStatus TilingProcess();
 
     static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
