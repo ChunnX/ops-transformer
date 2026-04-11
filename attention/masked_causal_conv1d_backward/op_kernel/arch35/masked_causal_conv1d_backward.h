@@ -25,44 +25,36 @@ using namespace AscendC;
 using MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35;
 
 template <typename DT>
-class MaskedCausalConv1dBackwardKernel {
+class MaskedCausalConv1dBackward {
 public:
     static constexpr int kW = 3;
     static constexpr int kBufferNum = 2;
     static constexpr int NUM_2 = 2;
     static constexpr int kAlignBytes = 32;
 
-    __aicore__ inline MaskedCausalConv1dBackwardKernel();
+    __aicore__ inline MaskedCausalConv1dBackward();
 
-    __aicore__ inline void Init(GM_ADDR grad_output,
-                                GM_ADDR input,
-                                GM_ADDR weight,
-                                GM_ADDR mask,
-                                GM_ADDR grad_input,
-                                GM_ADDR grad_weight,
-                                const MaskedCausalConv1dBackwardTilingDataV35 *td,
-                                TPipe *pipe);
+    __aicore__ inline void Init(GM_ADDR grad_output, GM_ADDR input, GM_ADDR weight, GM_ADDR mask, GM_ADDR grad_input,
+                                GM_ADDR grad_weight, const MaskedCausalConv1dBackwardTilingDataV35 *td, TPipe *pipe);
 
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                            int64_t sEff, int64_t hLenThis);
-    __aicore__ inline void CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                       int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sEff,
+                                            int64_t hLenThis);
+    __aicore__ inline void CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sLen, int64_t hLenThis);
     __aicore__ inline void CopyInWeight(int64_t hTile, int64_t hLenThis);
     __aicore__ inline void CopyInMask(int64_t bTile, int64_t sTile, int64_t sLen);
-    __aicore__ inline void ApplyMaskToGradOutput(LocalTensor<DT>& goLocal, int64_t sEff, int64_t hLenThis);
-    __aicore__ inline void ComputeGradInputWeight(LocalTensor<DT>& goLocal,
-                                                LocalTensor<DT>& inLocal,
-                                                LocalTensor<DT>& wLocal,
-                                                int64_t sLen, int64_t hLenThis);
-    __aicore__ inline void CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                            int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void ApplyMaskToGradOutput(LocalTensor<DT> &goLocal, int64_t sEff, int64_t hLenThis);
+    __aicore__ inline void ComputeGradInputWeight(LocalTensor<DT> &goLocal, LocalTensor<DT> &inLocal,
+                                                  LocalTensor<DT> &wLocal, int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sLen,
+                                            int64_t hLenThis);
     __aicore__ inline void ReduceSTile(int64_t sTile, int64_t sLen, int64_t hLenThis);
     __aicore__ inline void ReduceWsTile(int64_t bTile, int64_t hLenThis);
     __aicore__ inline void ReduceBTileAndCopyOut(int64_t hTile, int64_t hLenThis);
-    __aicore__ inline void AccumulateLevels(uint32_t kIdx, int64_t hLenThis, uint32_t wsBase, uint32_t wsStrideBytes, LocalTensor<float>& sumUb);
+    __aicore__ inline void AccumulateLevels(uint32_t kIdx, int64_t hLenThis, uint32_t wsBase, uint32_t wsStrideBytes,
+                                            LocalTensor<float> &sumUb);
 
     template <HardEvent event>
     __aicore__ inline void SetWaitFlag(HardEvent evt)
@@ -73,7 +65,6 @@ private:
     }
 
 private:
-
     TPipe *pipe_;
     const MaskedCausalConv1dBackwardTilingDataV35 *td_;
     TQue<QuePosition::VECIN, kBufferNum> gradOutQ_;
@@ -93,14 +84,14 @@ private:
     GlobalTensor<bool> maskGm_;
     LocalTensor<float> gwAccF32_[kW];
 
-    int64_t hMainCoreCnt_{0};           // h维度主核核数
-    int64_t hTailCoreCnt_{0};           // h维度尾核核数
-    int64_t hMainSize_{0};              // h维度主核处理的大小
-    int64_t hTailSize_{0};              // h维度尾核处理的大小
-    int64_t hasMask_{0};                // 1，有mask；0，无mask
-    int64_t S_{0};                      // S维度大小
-    int64_t B_{0};                      // B维度大小
-    int64_t H_{0};                      // H维度大小
+    int64_t hMainCoreCnt_{0}; // h维度主核核数
+    int64_t hTailCoreCnt_{0}; // h维度尾核核数
+    int64_t hMainSize_{0};    // h维度主核处理的大小
+    int64_t hTailSize_{0};    // h维度尾核处理的大小
+    int64_t hasMask_{0};      // 1，有mask；0，无mask
+    int64_t S_{0};            // S维度大小
+    int64_t B_{0};            // B维度大小
+    int64_t H_{0};            // H维度大小
     int64_t hStart_{0}, hLen_{0};
 
     // loop counts and UB factors
@@ -120,29 +111,27 @@ private:
 
 
 template <typename DT>
-__aicore__ inline MaskedCausalConv1dBackwardKernel<DT>::MaskedCausalConv1dBackwardKernel() {}
+__aicore__ inline MaskedCausalConv1dBackward<DT>::MaskedCausalConv1dBackward()
+{
+}
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_output,
-                                                           GM_ADDR input,
-                                                           GM_ADDR weight,
-                                                           GM_ADDR mask,
-                                                           GM_ADDR grad_input,
-                                                           GM_ADDR grad_weight,
-                                                           const MaskedCausalConv1dBackwardTilingDataV35 *td,
-                                                           TPipe *pipe)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::Init(GM_ADDR grad_output, GM_ADDR input, GM_ADDR weight,
+                                                            GM_ADDR mask, GM_ADDR grad_input, GM_ADDR grad_weight,
+                                                            const MaskedCausalConv1dBackwardTilingDataV35 *td,
+                                                            TPipe *pipe)
 {
     pipe_ = pipe;
     td_ = td;
 
     hMainCoreCnt_ = td->hMainCoreCnt;
     hTailCoreCnt_ = td->hTailCoreCnt;
-    hMainSize_ = td->hMainSize;      
-    hTailSize_ = td->hTailSize;      
-    hasMask_ = td->hasMask;          
-    S_ = td->S;                      
-    B_ = td->B;                      
-    H_ = td->H;                      
+    hMainSize_ = td->hMainSize;
+    hTailSize_ = td->hTailSize;
+    hasMask_ = td->hasMask;
+    S_ = td->S;
+    B_ = td->B;
+    H_ = td->H;
 
     int64_t blkIdx = GetBlockIdx();
     isMainCore_ = (blkIdx < hMainCoreCnt_);
@@ -178,7 +167,8 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     pipe_->InitBuffer(weightQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * kW * sizeof(DT)));
     if (hasMask_) {
         uint32_t sEffMax = static_cast<uint32_t>(ubMainSCur_ + NUM_2);
-        uint32_t vecBytes   = static_cast<uint32_t>(((sEffMax * sizeof(DT) + (kAlignBytes - 1)) / kAlignBytes) * kAlignBytes);
+        uint32_t vecBytes =
+            static_cast<uint32_t>(((sEffMax * sizeof(DT) + (kAlignBytes - 1)) / kAlignBytes) * kAlignBytes);
         uint32_t planeBytes = static_cast<uint32_t>(sEffMax * ubMainHCur_ * sizeof(DT));
         pipe_->InitBuffer(maskBuf_, vecBytes + planeBytes);
         uint32_t maskBytes = static_cast<uint32_t>(ubMainSCur_ + NUM_2);
@@ -191,10 +181,13 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
     // Layout in bytes: [accBytes | p2Plane | p1Plane | p0Plane | wsBytes | sumBytes]
     uint32_t accBytes = static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float));
     uint32_t planeBytesCap = static_cast<uint32_t>(kW * ubMainSCur_ * ubMainHCur_ * sizeof(float));
-    sCacheLevels_ = 1;     // Binary reduction cache levels: floor(log2(sLoopCntCur_)) + 1
+    sCacheLevels_ = 1; // Binary reduction cache levels: floor(log2(sLoopCntCur_)) + 1
     {
         int64_t t = sLoopCntCur_;
-        while (t > 1) { ++sCacheLevels_; t >>= 1; }
+        while (t > 1) {
+            ++sCacheLevels_;
+            t >>= 1;
+        }
     }
     uint32_t wsBytes = static_cast<uint32_t>(kW * static_cast<uint32_t>(sCacheLevels_) * ubMainHCur_ * sizeof(float));
     uint32_t sumBytes = static_cast<uint32_t>(ubMainHCur_ * sizeof(float));
@@ -209,7 +202,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Init(GM_ADDR grad_o
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Process()
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::Process()
 {
     // Accumulate grad_weight in fp32 across all (b,s) tiles per h-tile, then cast+store once per h-tile
     for (int64_t hTile = 0; hTile < hLoopCntCur_; ++hTile) {
@@ -249,44 +242,44 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::Process()
 
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ComputeGradInputWeight(
-    LocalTensor<DT>& goLocal,
-    LocalTensor<DT>& inLocal,
-    LocalTensor<DT>& wLocal,
-    int64_t sLen,
-    int64_t hLenThis)
+__aicore__ inline void
+MaskedCausalConv1dBackward<DT>::ComputeGradInputWeight(LocalTensor<DT> &goLocal, LocalTensor<DT> &inLocal,
+                                                       LocalTensor<DT> &wLocal, int64_t sLen, int64_t hLenThis)
 {
     LocalTensor<DT> giLocal = gradInQ_.AllocTensor<DT>();
 
     uint32_t planeBytesCap = static_cast<uint32_t>(ubMainSCur_ * ubMainHCur_ * sizeof(float));
     uint32_t baseOff = static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float)); // accBytes region size
     LocalTensor<float> p2Ub = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff);
-    LocalTensor<float> p1Ub = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + planeBytesCap);
-    LocalTensor<float> p0Ub = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + 2U * planeBytesCap);
+    LocalTensor<float> p1Ub =
+        tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + planeBytesCap);
+    LocalTensor<float> p0Ub =
+        tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + 2U * planeBytesCap);
 
-    AggHiddenGradVF::DoGradInputWeight<DT>(goLocal, wLocal, inLocal, giLocal,
-                                           p0Ub, p1Ub, p2Ub,
+    AggHiddenGradVF::DoGradInputWeight<DT>(goLocal, wLocal, inLocal, giLocal, p0Ub, p1Ub, p2Ub,
                                            static_cast<uint32_t>(sLen), static_cast<uint32_t>(hLenThis));
     gradInQ_.EnQue<DT>(giLocal);
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
-    int64_t sTile, int64_t sLen, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceSTile(int64_t sTile, int64_t sLen, int64_t hLenThis)
 {
     uint32_t planeBytesCap = static_cast<uint32_t>(ubMainSCur_ * ubMainHCur_ * sizeof(float));
     uint32_t baseOff = static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float)); // accBytes region size
-    uint32_t wsBase  = baseOff + kW * planeBytesCap; // start of Ws region
+    uint32_t wsBase = baseOff + kW * planeBytesCap;                                  // start of Ws region
     uint32_t wsStrideBytes = static_cast<uint32_t>(hLenThis * sizeof(float));
-    uint32_t wsBytesThisHTile = static_cast<uint32_t>(kW * static_cast<uint32_t>(sCacheLevels_) * hLenThis * sizeof(float));
+    uint32_t wsBytesThisHTile =
+        static_cast<uint32_t>(kW * static_cast<uint32_t>(sCacheLevels_) * hLenThis * sizeof(float));
     uint32_t sumOff = wsBase + wsBytesThisHTile; // sum buffer placed after Ws region
     LocalTensor<float> sumUb = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis), sumOff);
 
     uint32_t srcShape[2] = {static_cast<uint32_t>(sLen), static_cast<uint32_t>(hLenThis)};
 
     LocalTensor<float> p2Ub = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff);
-    LocalTensor<float> p1Ub = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + planeBytesCap);
-    LocalTensor<float> p0Ub = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + 2U * planeBytesCap);
+    LocalTensor<float> p1Ub =
+        tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + planeBytesCap);
+    LocalTensor<float> p0Ub =
+        tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + 2U * planeBytesCap);
 
     // k=2
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, p2Ub, srcShape, false);
@@ -294,13 +287,18 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
     {
         int64_t level = 0;
         while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
-            LocalTensor<float> ws2_lvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
-                static_cast<uint32_t>(wsBase + (0U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
+            LocalTensor<float> ws2_lvl =
+                tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
+                                             static_cast<uint32_t>(wsBase + (0U * static_cast<uint32_t>(sCacheLevels_) +
+                                                                             static_cast<uint32_t>(level)) *
+                                                                                wsStrideBytes));
             Add(sumUb, sumUb, ws2_lvl, static_cast<uint32_t>(hLenThis));
             ++level;
         }
-        LocalTensor<float> ws2_lvl_dst = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
-            static_cast<uint32_t>(wsBase + (0U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
+        LocalTensor<float> ws2_lvl_dst = tmpBuf_.GetWithOffset<float>(
+            static_cast<uint32_t>(hLenThis),
+            static_cast<uint32_t>(wsBase + (0U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) *
+                                               wsStrideBytes));
         DataCopy(ws2_lvl_dst, sumUb, static_cast<uint32_t>(hLenThis));
     }
 
@@ -310,13 +308,18 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
     {
         int64_t level = 0;
         while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
-            LocalTensor<float> ws1_lvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
-                static_cast<uint32_t>(wsBase + (1U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
+            LocalTensor<float> ws1_lvl =
+                tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
+                                             static_cast<uint32_t>(wsBase + (1U * static_cast<uint32_t>(sCacheLevels_) +
+                                                                             static_cast<uint32_t>(level)) *
+                                                                                wsStrideBytes));
             Add(sumUb, sumUb, ws1_lvl, static_cast<uint32_t>(hLenThis));
             ++level;
         }
-        LocalTensor<float> ws1_lvl_dst = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
-            static_cast<uint32_t>(wsBase + (1U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
+        LocalTensor<float> ws1_lvl_dst = tmpBuf_.GetWithOffset<float>(
+            static_cast<uint32_t>(hLenThis),
+            static_cast<uint32_t>(wsBase + (1U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) *
+                                               wsStrideBytes));
         DataCopy(ws1_lvl_dst, sumUb, static_cast<uint32_t>(hLenThis));
     }
 
@@ -326,27 +329,32 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceSTile(
     {
         int64_t level = 0;
         while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
-            LocalTensor<float> ws0_lvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
-                static_cast<uint32_t>(wsBase + (2U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
+            LocalTensor<float> ws0_lvl =
+                tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
+                                             static_cast<uint32_t>(wsBase + (2U * static_cast<uint32_t>(sCacheLevels_) +
+                                                                             static_cast<uint32_t>(level)) *
+                                                                                wsStrideBytes));
             Add(sumUb, sumUb, ws0_lvl, static_cast<uint32_t>(hLenThis));
             ++level;
         }
-        LocalTensor<float> ws0_lvl_dst = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
-            static_cast<uint32_t>(wsBase + (2U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) * wsStrideBytes));
+        LocalTensor<float> ws0_lvl_dst = tmpBuf_.GetWithOffset<float>(
+            static_cast<uint32_t>(hLenThis),
+            static_cast<uint32_t>(wsBase + (2U * static_cast<uint32_t>(sCacheLevels_) + static_cast<uint32_t>(level)) *
+                                               wsStrideBytes));
         DataCopy(ws0_lvl_dst, sumUb, static_cast<uint32_t>(hLenThis));
     }
     PipeBarrier<PIPE_V>();
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceWsTile(
-    int64_t bTile, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceWsTile(int64_t bTile, int64_t hLenThis)
 {
     uint32_t planeBytesCap = static_cast<uint32_t>(ubMainSCur_ * ubMainHCur_ * sizeof(float));
     uint32_t baseOff = static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float));
-    uint32_t wsBase  = baseOff + kW * planeBytesCap;
+    uint32_t wsBase = baseOff + kW * planeBytesCap;
     uint32_t wsStrideBytes = static_cast<uint32_t>(hLenThis * sizeof(float));
-    uint32_t wsBytesThisHTile = static_cast<uint32_t>(kW * static_cast<uint32_t>(sCacheLevels_) * hLenThis * sizeof(float));
+    uint32_t wsBytesThisHTile =
+        static_cast<uint32_t>(kW * static_cast<uint32_t>(sCacheLevels_) * hLenThis * sizeof(float));
     uint32_t sumOff = wsBase + wsBytesThisHTile;
     LocalTensor<float> sumUb = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis), sumOff);
 
@@ -367,14 +375,18 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceWsTile(
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::AccumulateLevels(
-    uint32_t kIdx, int64_t hLenThis, uint32_t wsBase, uint32_t wsStrideBytes, LocalTensor<float>& sumUb)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::AccumulateLevels(uint32_t kIdx, int64_t hLenThis,
+                                                                        uint32_t wsBase, uint32_t wsStrideBytes,
+                                                                        LocalTensor<float> &sumUb)
 {
     Duplicate(sumUb, 0.0f, static_cast<uint32_t>(hLenThis));
     PipeBarrier<PIPE_V>();
     for (uint32_t lvl = 0U; lvl < static_cast<uint32_t>(sCacheLevels_); ++lvl) {
-        if (((static_cast<uint32_t>(sLoopCntCur_) >> lvl) & 1U) == 0U) { continue; }
-        LocalTensor<float> wsLvl = tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(hLenThis),
+        if (((static_cast<uint32_t>(sLoopCntCur_) >> lvl) & 1U) == 0U) {
+            continue;
+        }
+        LocalTensor<float> wsLvl = tmpBuf_.GetWithOffset<float>(
+            static_cast<uint32_t>(hLenThis),
             static_cast<uint32_t>(wsBase + (kIdx * static_cast<uint32_t>(sCacheLevels_) + lvl) * wsStrideBytes));
         Add(sumUb, sumUb, wsLvl, static_cast<uint32_t>(hLenThis));
         PipeBarrier<PIPE_V>();
@@ -382,23 +394,24 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::AccumulateLevels(
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ApplyMaskToGradOutput(
-    LocalTensor<DT>& goLocal, int64_t sEff, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::ApplyMaskToGradOutput(LocalTensor<DT> &goLocal, int64_t sEff,
+                                                                             int64_t hLenThis)
 {
     LocalTensor<bool> mRawBool = maskQ_.DeQue<bool>();
     LocalTensor<uint8_t> mRaw = mRawBool.template ReinterpretCast<uint8_t>();
     uint32_t sEffU = static_cast<uint32_t>(sEff);
     uint32_t hU = static_cast<uint32_t>(hLenThis);
-    uint32_t vecBytesAligned = static_cast<uint32_t>(((sEffU * sizeof(DT) + (kAlignBytes - 1)) / kAlignBytes) * kAlignBytes);
+    uint32_t vecBytesAligned =
+        static_cast<uint32_t>(((sEffU * sizeof(DT) + (kAlignBytes - 1)) / kAlignBytes) * kAlignBytes);
 
     // Regions in maskBuf_:
     // [0, vecBytesAligned): vector (DT)
     // [vecBytesAligned, vecBytesAligned + planeBytes): plane (DT)
-    LocalTensor<DT>   maskVecDT    = maskBuf_.Get<DT>();
-    LocalTensor<DT>   maskPlaneDT  = maskBuf_.GetWithOffset<DT>(static_cast<uint32_t>(sEffU * hU), vecBytesAligned);
+    LocalTensor<DT> maskVecDT = maskBuf_.Get<DT>();
+    LocalTensor<DT> maskPlaneDT = maskBuf_.GetWithOffset<DT>(static_cast<uint32_t>(sEffU * hU), vecBytesAligned);
 
     // Step1: u8 -> half
-    LocalTensor<half> maskHalfVec  = maskBuf_.Get<half>();
+    LocalTensor<half> maskHalfVec = maskBuf_.Get<half>();
     Cast(maskHalfVec, mRaw, RoundMode::CAST_NONE, sEffU);
     PipeBarrier<PIPE_V>();
 
@@ -409,7 +422,8 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ApplyMaskToGradOutp
         PipeBarrier<PIPE_V>();
         uint32_t srcShape[2] = {sEffU, 1U};
         uint32_t dstShape[2] = {sEffU, hU};
-        Broadcast<half, 2, 1>(maskPlaneDT.template ReinterpretCast<half>(), maskVecDT.template ReinterpretCast<half>(), dstShape, srcShape);
+        Broadcast<half, 2, 1>(maskPlaneDT.template ReinterpretCast<half>(), maskVecDT.template ReinterpretCast<half>(),
+                              dstShape, srcShape);
     } else {
         // bf16 path
         Cast(maskVecDT, maskHalfVec, RoundMode::CAST_RINT, sEffU);
@@ -428,15 +442,15 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ApplyMaskToGradOutp
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceBTileAndCopyOut(int64_t hTile, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceBTileAndCopyOut(int64_t hTile, int64_t hLenThis)
 {
     // Reduce across B in fp32 using ReduceSum, cast to DT, then write to GM
     int64_t hOff = hTile * ubMainHCur_;
-    int64_t baseH = hStart_ + hOff;    
+    int64_t baseH = hStart_ + hOff;
 
     LocalTensor<DT> gwCast = gradWeightQ_.AllocTensor<DT>();
-    LocalTensor<DT> out0 = gwCast;                                      // k=0 slice at offset 0
-    LocalTensor<DT> out1 = gwCast[static_cast<uint32_t>(ubMainHCur_)];  // k=1 slice
+    LocalTensor<DT> out0 = gwCast;                                         // k=0 slice at offset 0
+    LocalTensor<DT> out1 = gwCast[static_cast<uint32_t>(ubMainHCur_)];     // k=1 slice
     LocalTensor<DT> out2 = gwCast[static_cast<uint32_t>(2 * ubMainHCur_)]; // k=2 slice
 
     uint32_t accBytes = static_cast<uint32_t>(kW * ubMainHCur_ * B_ * sizeof(float));
@@ -458,11 +472,9 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceBTileAndCopyO
     AggHiddenGradVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out2);
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-    DataCopyExtParams outParams{static_cast<uint16_t>(kW), 
-                                static_cast<uint32_t>(hLenThis * sizeof(DT)), 
+    DataCopyExtParams outParams{static_cast<uint16_t>(kW), static_cast<uint32_t>(hLenThis * sizeof(DT)),
                                 static_cast<uint32_t>((ubMainHCur_ - hLenThis) * sizeof(DT)),
-                                static_cast<uint32_t>((H_ - hLenThis) * sizeof(DT)),
-                                0};
+                                static_cast<uint32_t>((H_ - hLenThis) * sizeof(DT)), 0};
     DataCopyPad(gradWeightGm_[baseH], gwCast, outParams);
 
     gradWeightQ_.FreeTensor(gwCast);
@@ -470,12 +482,14 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::ReduceBTileAndCopyO
 
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                                                       int64_t sEff, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile,
+                                                                        int64_t sEff, int64_t hLenThis)
 {
     LocalTensor<DT> goLocal = gradOutQ_.AllocTensor<DT>();
 
-    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) : (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_); // piecewise start
+    int64_t sStart = (sTile < sMainCntCur_) ?
+                         (sTile * ubMainSCur_) :
+                         (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_); // piecewise start
     int64_t bStart = bTile;
     int64_t hOff = hTile * ubMainHCur_;
     DataCopyPadExtParams<DT> padParams{false, 0, 0, 0};
@@ -499,12 +513,13 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInGradOutput(in
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                                                  int64_t sLen, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile,
+                                                                   int64_t sLen, int64_t hLenThis)
 {
     LocalTensor<DT> inLocal = inputQ_.AllocTensor<DT>();
 
-    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) : (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
+    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) :
+                                              (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
     int64_t bStart = bTile;
     int64_t hOff = hTile * ubMainHCur_;
     DataCopyPadExtParams<DT> padParams{false, 0, 0, 0};
@@ -519,7 +534,7 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInInput(int64_t
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInWeight(int64_t hTile, int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInWeight(int64_t hTile, int64_t hLenThis)
 {
     LocalTensor<DT> wLocal = weightQ_.AllocTensor<DT>();
     DataCopyExtParams inParams{static_cast<uint16_t>(kW), static_cast<uint32_t>(hLenThis * sizeof(DT)),
@@ -532,14 +547,14 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInWeight(int64_
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInMask(int64_t bTile, int64_t sTile,
-                                                                 int64_t sEff)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInMask(int64_t bTile, int64_t sTile, int64_t sEff)
 {
     LocalTensor<bool> mLocal = maskQ_.AllocTensor<bool>();
     // bool is 1B on Ascend: mask has shape [B,S] with 1 byte per element
-    DataCopyExtParams inParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sEff),
-                               static_cast<uint32_t>(S_ - sEff), 0, 0};
-    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) : (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
+    DataCopyExtParams inParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sEff), static_cast<uint32_t>(S_ - sEff),
+                               0, 0};
+    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) :
+                                              (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
     int64_t bStart = bTile;
     int64_t base = bStart * S_ + sStart;
     DataCopyPadExtParams<bool> padParams{false, 0, 0, 0};
@@ -548,20 +563,20 @@ __aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyInMask(int64_t 
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackwardKernel<DT>::CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
-                                                                       int64_t sLen,
-                                                                       int64_t hLenThis)
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
+                                                                        int64_t sLen, int64_t hLenThis)
 {
     LocalTensor<DT> giLocal = gradInQ_.DeQue<DT>();
 
-    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) : (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
+    int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) :
+                                              (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
     int64_t bStart = bTile;
     int64_t hOff = hTile * ubMainHCur_;
 
     int64_t base = ((sStart * B_ + bStart) * H_) + (hStart_ + hOff);
     LocalTensor<DT> srcBlock = giLocal[0];
-    DataCopyExtParams outParams{static_cast<uint16_t>(sLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
-                               0, static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0};
+    DataCopyExtParams outParams{static_cast<uint16_t>(sLen), static_cast<uint32_t>(hLenThis * sizeof(DT)), 0,
+                                static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0};
     DataCopyPad(gradInGm_[base], srcBlock, outParams);
     gradInQ_.FreeTensor(giLocal);
 }

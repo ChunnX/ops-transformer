@@ -61,9 +61,9 @@ constexpr int64_t DIM_2 = 2; // H
 constexpr int64_t NUM_2 = 2;
 constexpr int64_t NUM_3 = 3;
 
-class MaskedCausalConv1dBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MaskedCausalConv1dBackwardTilingArch35 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MaskedCausalConv1dBackwardTiling(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit MaskedCausalConv1dBackwardTilingArch35(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
 
@@ -129,8 +129,8 @@ private:
     // 主核UB切块参数（有效输出大小，不包含重叠）
     int64_t ubMainFactorH_ = 0;
     int64_t ubTailFactorH_ = 0;
-    int64_t ubMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
-    int64_t ubTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
+    int64_t ubMainFactorS_ = 0; // 有效输出行数，不包含重叠部分
+    int64_t ubTailFactorS_ = 0; // 有效输出行数，不包含重叠部分
     int64_t ubMainFactorSCount_ = 0;
     int64_t ubTailFactorSCount_ = 0;
 
@@ -140,8 +140,8 @@ private:
 
     int64_t tailCoreUbMainFactorH_ = 0;
     int64_t tailCoreUbTailFactorH_ = 0;
-    int64_t tailCoreUbMainFactorS_ = 0;  // 有效输出行数，不包含重叠部分
-    int64_t tailCoreUbTailFactorS_ = 0;  // 有效输出行数，不包含重叠部分
+    int64_t tailCoreUbMainFactorS_ = 0; // 有效输出行数，不包含重叠部分
+    int64_t tailCoreUbTailFactorS_ = 0; // 有效输出行数，不包含重叠部分
 
     MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35 tilingData_{};
 };

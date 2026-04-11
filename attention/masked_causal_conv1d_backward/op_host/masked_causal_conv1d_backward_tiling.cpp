@@ -23,7 +23,7 @@ namespace optiling {
 
 static ge::graphStatus TilingMaskedCausalConv1dBackward(gert::TilingContext *context)
 {
-    MaskedCausalConv1dBackwardTiling tiling(context);
+    MaskedCausalConv1dBackwardTilingArch35 tiling(context);
     return tiling.DoTiling();
 }
 

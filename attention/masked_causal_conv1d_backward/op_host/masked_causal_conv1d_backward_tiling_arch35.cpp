@@ -21,12 +21,12 @@ namespace optiling {
 
 using MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35;
 
-bool MaskedCausalConv1dBackwardTiling::IsCapable()
+bool MaskedCausalConv1dBackwardTilingArch35::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::GetPlatformInfo()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -45,11 +45,11 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::GetPlatformInfo()
                     return ge::GRAPH_FAILED);
         ubSize_ = static_cast<uint64_t>(ubSize);
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputShape()
 {
     auto shape = context_->GetInputShape(GRAD_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, shape);
@@ -63,8 +63,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
     B_ = static_cast<int64_t>(origin.GetDim(DIM_1));
     H_ = static_cast<int64_t>(origin.GetDim(DIM_2));
 
-    OP_CHECK_IF(S_ <= 0 || S_ > S_MAX, OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(S_ <= 0 || S_ > S_MAX, OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_), return ge::GRAPH_FAILED);
     OP_CHECK_IF(B_ <= 0 || B_ > B_MAX, OP_LOGE(context_->GetNodeName(), "invalid B=%ld", B_), return ge::GRAPH_FAILED);
     OP_CHECK_IF(H_ < H_MIN || H_ > H_MAX, OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
                 return ge::GRAPH_FAILED);
@@ -77,7 +76,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateInputShape()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateInputShape()
 {
     auto goShape = context_->GetInputShape(GRAD_OUTPUT_INDEX)->GetOriginShape();
 
@@ -96,7 +95,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateWeightShape()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateWeightShape()
 {
     auto wShape = context_->GetInputShape(WEIGHT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
@@ -118,7 +117,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateWeightShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskShape()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateMaskShape()
 {
     auto maskShape = context_->GetOptionalInputShape(MASK_INDEX);
     if (maskShape == nullptr) {
@@ -142,7 +141,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputType()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputType()
 {
     dataType_ = context_->GetInputDesc(GRAD_OUTPUT_INDEX)->GetDataType();
     OP_CHECK_IF(dataType_ != ge::DataType::DT_FLOAT16 && dataType_ != ge::DataType::DT_BF16,
@@ -153,7 +152,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateGradOutputType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateInputType()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateInputType()
 {
     auto t = context_->GetInputDesc(INPUT_INDEX)->GetDataType();
     OP_CHECK_IF(t != dataType_,
@@ -163,7 +162,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateInputType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateWeightType()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateWeightType()
 {
     auto t = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
     OP_CHECK_IF(t != dataType_,
@@ -173,7 +172,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateWeightType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskType()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateMaskType()
 {
     auto desc = context_->GetOptionalInputDesc(MASK_INDEX);
     if (desc == nullptr) {
@@ -187,7 +186,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ValidateMaskType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::CheckInputParams()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::CheckInputParams()
 {
     // Shapes
     OP_CHECK_IF(ValidateGradOutputShape() != ge::GRAPH_SUCCESS,
@@ -212,7 +211,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::CheckInputParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::GetShapeAttrsInfo()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("MaskedCausalConv1dBackward", "context is null"), return ge::GRAPH_FAILED);
 
@@ -224,7 +223,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeInterCoreSplit()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ComputeInterCoreSplit()
 {
     // 仅沿 H 方向按 64 切分
     // 核处理的H会比尾核多64(hMainSize = hTailSize + 64)
@@ -240,12 +239,12 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeInterCoreSplit()
         hMainCoreCnt_ = usedCoreNum_;
         hTailCoreCnt_ = 0;
         hMainSize_ = H_ / usedCoreNum_;
-        hTailSize_ = hMainSize_;  // hTailSize仍等于hMainSize
+        hTailSize_ = hMainSize_; // hTailSize仍等于hMainSize
     } else {
         // 计算主核和尾核的分配
         int64_t baseTiles = H_ / (usedCoreNum_ * DIM_ALIGN_ELEMENT);
         hTailSize_ = baseTiles * DIM_ALIGN_ELEMENT;
-        hMainSize_ = hTailSize_ + DIM_ALIGN_ELEMENT;  // 主核比尾核多64
+        hMainSize_ = hTailSize_ + DIM_ALIGN_ELEMENT; // 主核比尾核多64
 
         // 计算需要多少主核
         int64_t totalWithMain = hMainSize_ * usedCoreNum_;
@@ -258,17 +257,17 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeInterCoreSplit()
 }
 
 // Helper: precise UB buffer size estimation for given h and s_effective (valid output rows)
-static inline int64_t CalculateBufferSizeHelper(
-    int64_t h, int64_t s_effective,
-    int64_t S, int64_t B, int64_t W,
-    int64_t dtypeSize, int hasMask,
-    int64_t alignBytes, int64_t bufferNum)
+static inline int64_t CalculateBufferSizeHelper(int64_t h, int64_t s_effective, int64_t S, int64_t B, int64_t W,
+                                                int64_t dtypeSize, int hasMask, int64_t alignBytes, int64_t bufferNum)
 {
     int64_t currentSLoopCnt = (S + s_effective - 1) / s_effective;
     int64_t sCacheLevels = 1;
     {
         int64_t t = currentSLoopCnt;
-        while (t > 1) { ++sCacheLevels; t >>= 1; }
+        while (t > 1) {
+            ++sCacheLevels;
+            t >>= 1;
+        }
     }
 
     int64_t s_with_overlap = s_effective + (W - 1);
@@ -278,7 +277,7 @@ static inline int64_t CalculateBufferSizeHelper(
     int64_t maskSize = 0;
     if (hasMask) {
         maskSize = ((s_with_overlap + alignBytes - 1) / alignBytes) * alignBytes;
-        int64_t vecBytes   = ((s_with_overlap * dtypeSize + (alignBytes - 1)) / alignBytes) * alignBytes;
+        int64_t vecBytes = ((s_with_overlap * dtypeSize + (alignBytes - 1)) / alignBytes) * alignBytes;
         int64_t planeBytes = s_with_overlap * h * dtypeSize;
         maskSize += vecBytes + planeBytes;
     }
@@ -289,13 +288,13 @@ static inline int64_t CalculateBufferSizeHelper(
     int64_t sumBufSize = h * static_cast<int64_t>(sizeof(float));
 
     int64_t wsSize = W * sCacheLevels * h * static_cast<int64_t>(sizeof(float));
-    int64_t totalSize = bufferNum * (gradOutputSize + inputSize + weightSize + maskSize +
-                                     gradInputSize + gradWeightSize)
-                        + tempBuffSize + prodBufSize + sumBufSize + wsSize;
+    int64_t totalSize =
+        bufferNum * (gradOutputSize + inputSize + weightSize + maskSize + gradInputSize + gradWeightSize) +
+        tempBuffSize + prodBufSize + sumBufSize + wsSize;
     return totalSize;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ComputeIntraCoreUbTiling()
 {
     int64_t availableUbSize = static_cast<int64_t>(ubSize_) - SYSTEM_RESERVED_UB_SIZE;
     OP_LOGI(context_->GetNodeName(), "ubSize is %ld", ubSize_);
@@ -304,7 +303,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
                 return ge::GRAPH_FAILED);
 
     // UB先按H=64(128B)，全载核内BS，核内仅切 S, sUB_ 存储的是有效输出行数（不包含重叠部分）
-    int64_t minH = DIM_ALIGN_ELEMENT;  // 64
+    int64_t minH = DIM_ALIGN_ELEMENT; // 64
     int64_t perCoreH = (hMainCoreCnt_ > 0) ? hMainSize_ : hTailSize_;
     hUB_ = minH;
 
@@ -313,20 +312,19 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
     int64_t highS = std::max<int64_t>(1, S_);
     while (lowS <= highS) {
         int64_t midS = (lowS + highS) / NUM_2;
-        int64_t need = CalculateBufferSizeHelper(
-            hUB_, midS,
-            S_, B_, W_,
-            static_cast<int64_t>(dtypeSize_), static_cast<int>(hasMask_),
-            static_cast<int64_t>(ALIGN_BYTES), static_cast<int64_t>(BUFFER_NUM));
+        int64_t need = CalculateBufferSizeHelper(hUB_, midS, S_, B_, W_, static_cast<int64_t>(dtypeSize_),
+                                                 static_cast<int>(hasMask_), static_cast<int64_t>(ALIGN_BYTES),
+                                                 static_cast<int64_t>(BUFFER_NUM));
         if (need <= availableUbSize) {
-            sUB_ = midS;        // 可行，尝试更大
+            sUB_ = midS; // 可行，尝试更大
             lowS = midS + 1;
         } else {
-            highS = midS - 1;  // 不可行，缩小范围
+            highS = midS - 1; // 不可行，缩小范围
         }
     }
     // 保护：不超过 S_
-    if (sUB_ > S_) sUB_ = S_;
+    if (sUB_ > S_)
+        sUB_ = S_;
 
     // 循环次数
     hLoopCnt_ = (perCoreH + hUB_ - 1) / hUB_;
@@ -353,11 +351,10 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         tailSLoopCnt_ = sLoopCnt_;
 
         tailCoreUbMainFactorH_ = hUB_;
-        tailCoreUbTailFactorH_ = (tailHLoopCnt_ == 1) ? hUB_ :
-                                 (tailCoreH % hUB_ == 0 ? hUB_ : tailCoreH % hUB_);
+        tailCoreUbTailFactorH_ = (tailHLoopCnt_ == 1) ? hUB_ : (tailCoreH % hUB_ == 0 ? hUB_ : tailCoreH % hUB_);
 
-        tailCoreUbMainFactorS_ = ubMainFactorS_;  // 有效输出大小，不包含重叠
-        tailCoreUbTailFactorS_ = ubTailFactorS_;  // 有效输出大小，不包含重叠
+        tailCoreUbMainFactorS_ = ubMainFactorS_; // 有效输出大小，不包含重叠
+        tailCoreUbTailFactorS_ = ubTailFactorS_; // 有效输出大小，不包含重叠
     } else {
         // 没有尾核，或尾核参数与主核相同
         tailHLoopCnt_ = hLoopCnt_;
@@ -369,17 +366,15 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::ComputeIntraCoreUbTiling()
         tailCoreUbTailFactorS_ = ubTailFactorS_;
     }
 
-    allUb_ = CalculateBufferSizeHelper(
-        ubMainFactorH_, ubMainFactorS_,
-        S_, B_, W_,
-        static_cast<int64_t>(dtypeSize_), static_cast<int>(hasMask_),
-        static_cast<int64_t>(ALIGN_BYTES), static_cast<int64_t>(BUFFER_NUM));
+    allUb_ = CalculateBufferSizeHelper(ubMainFactorH_, ubMainFactorS_, S_, B_, W_, static_cast<int64_t>(dtypeSize_),
+                                       static_cast<int>(hasMask_), static_cast<int64_t>(ALIGN_BYTES),
+                                       static_cast<int64_t>(BUFFER_NUM));
     OP_LOGI(context_->GetNodeName(), "allUb_ = %ld", allUb_);
     return ge::GRAPH_SUCCESS;
 }
 
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::DoOpTiling()
 {
     OP_CHECK_IF(ComputeInterCoreSplit() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"), return ge::GRAPH_FAILED);
@@ -402,7 +397,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
     tilingData_.tailCoreUbMainFactorH = tailCoreUbMainFactorH_;
     tilingData_.tailCoreUbTailFactorH = tailCoreUbTailFactorH_;
     tilingData_.ubMainFactorSCount = ubMainFactorSCount_;
-    tilingData_.ubTailFactorSCount = ubTailFactorSCount_;    
+    tilingData_.ubTailFactorSCount = ubTailFactorSCount_;
     tilingData_.tailCoreUbMainFactorS = tailCoreUbMainFactorS_;
     tilingData_.tailCoreUbTailFactorS = tailCoreUbTailFactorS_;
     tilingData_.hasMask = hasMask_;
@@ -414,12 +409,12 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::DoLibApiTiling()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MaskedCausalConv1dBackwardTiling::GetTilingKey() const
+uint64_t MaskedCausalConv1dBackwardTilingArch35::GetTilingKey() const
 {
     if (dataType_ == ge::DataType::DT_BF16) {
         return TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16;
@@ -428,7 +423,7 @@ uint64_t MaskedCausalConv1dBackwardTiling::GetTilingKey() const
     }
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::GetWorkspaceSize()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
     uint32_t sysWorkspaceSize = 0;
@@ -441,7 +436,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTiling::PostTiling()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::PostTiling()
 {
     context_->SetBlockDim(static_cast<uint32_t>(usedCoreNum_));
 
@@ -458,7 +453,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void MaskedCausalConv1dBackwardTiling::DumpTilingInfo()
+void MaskedCausalConv1dBackwardTilingArch35::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(), "=== MaskedCausalConv1dBackward DumpTilingInfo ===");
     OP_LOGI(context_->GetNodeName(), "hMainCoreCnt = %ld", hMainCoreCnt_);
