@@ -13,13 +13,8 @@
  * \brief
  */
 
-/*!
- * \file mhc_pre_backward.cpp
- * \brief
- */
-
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#include "arch35/mhc_pre_backward.h"
+#include "arch35/mhc_pre_backward_kernel.h"
 #include "arch35/mhc_pre_backward_tiling_key.h"
 
 using namespace AscendC;
