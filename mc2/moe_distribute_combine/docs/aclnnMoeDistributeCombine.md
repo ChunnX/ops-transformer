@@ -397,7 +397,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - `moeExpertNum`还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
         - `groupTp`当前版本不支持，传空字符即可。
         - `tpWorldSize`、`tpRankId`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`当前版本不支持，传0即可。
-        - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize 或 256 * epWorldSize（maxBs为单rank BS最大值，建议按maxBs * epWorldSize传入）。
+        - 各rank BS一致时，`globalBs` = BS * epWorldSize 或 0；各rank BS不一致时，globalBs = maxBs * epWorldSize 或 256 * epWorldSize（maxBs为单rank BS最大值，建议按maxBs * epWorldSize传入）。
         - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
@@ -411,7 +411,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
         - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
-        - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
+        - 各rank BS一致时，`globalBs` = BS * epWorldSize 或 0；各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
         - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -425,7 +425,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
         - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
-        - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
+        - 各rank BS一致时，`globalBs` = BS * epWorldSize 或 0；各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
         - `commQuantMode`当前版本仅支持0，0表示通信不量化。
 
 - **返回值**
