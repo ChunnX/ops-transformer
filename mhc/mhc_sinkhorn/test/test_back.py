@@ -145,7 +145,7 @@ def sinkhorn_grad_with_saved_tensors(grad_output, norm_out, sum_out, num_iters):
     return grad_input
 
 def convert_to_npu_format(norm_list, sum_list, num_iters):
-    #构建norm_out: [2*num_iters, T, n, n] -> [needCoreNum_, loop_, 2 * num_iters, n, corePerLoopMaxTSize, align_n]
+    # 构建norm_out: [2*num_iters, T, n, n] -> [needCoreNum_, loop_, 2 * num_iters, n, corePerLoopMaxTSize, align_n]
     norm_out = torch.zeros([2 * num_iters, needCoreNum_, loop_, n, corePerLoopMaxTSize, align_n], dtype=norm_list[0].dtype, device=norm_list[0].device)
     for idx, norm_tensor in enumerate(norm_list):
         if padding_size > 0:
@@ -153,6 +153,7 @@ def convert_to_npu_format(norm_list, sum_list, num_iters):
         norm_out[idx] = norm_tensor.view(needCoreNum_, loop_, corePerLoopMaxTSize, n, align_n).permute(0, 1, 3, 2, 4).contiguous()
     norm_out = norm_out.permute(1, 2, 0, 3, 4, 5).contiguous()
 
+    # 构建sum_out: [T, 1, n] 或 [T, n, 1]
     sum_out = torch.zeros([2 * num_iters, needCoreNum_, loop_, align_n * corePerLoopMaxTSize], dtype=norm_list[0].dtype, device=norm_list[0].device)
     for idx, sum_tensor in enumerate(sum_list):
         if sum_tensor is None:
