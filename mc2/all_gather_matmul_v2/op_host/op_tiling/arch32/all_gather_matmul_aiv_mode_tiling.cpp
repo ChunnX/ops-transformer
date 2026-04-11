@@ -341,6 +341,12 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
         N = cShape->GetOriginShape().GetDim(1);
     }
 
+    const auto aType = context->GetInputTensor(A_INDEX)->GetDataType();
+    if (aType == ge::DT_INT4) {
+        OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+            "When the data types of inputs x1 and x2 are int4, n and k must be divisible by 2."), return GRAPH_FAILED);
+    }
+
     const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
     OP_TILING_CHECK(matrixBias != nullptr,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "AivMode, bias must be nullptr."), return GRAPH_FAILED);
