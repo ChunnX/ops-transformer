@@ -79,19 +79,26 @@ public:
             localComputeOp.Process(0);
             SyncAll<false>();
         }
-        if (isMxSceneFlag_) {
-            commOp.LaunchScaleBeforeCompute(0, e_);
-        }
-        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            commOp.Launch(expertIdx, 1);
-        }
-        if (isMxSceneFlag_) {
-            commOp.WaitScale(0);
-        }
-        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            commOp.Wait(expertIdx);
-            SyncAll<false>();
-            computeOp.Process(expertIdx);
+        uint32_t max_hccl_handle_num = isMxSceneFlag_ ? 31U : 63U;
+        uint32_t totalRound = (e_ + max_hccl_handle_num) / max_hccl_handle_num;
+        for (uint32_t roundIdx = 0; roundIdx < totalRound; roundIdx++) {
+            uint32_t startExpertIdx = roundIdx * max_hccl_handle_num;
+            uint32_t endExpertIdx = (roundIdx + 1) * max_hccl_handle_num;
+            endExpertIdx = endExpertIdx > e_ ? e_ : endExpertIdx;
+            for (uint32_t expertIdx = startExpertIdx; expertIdx < endExpertIdx; expertIdx++) {
+                if (isMxSceneFlag_) {
+                    commOp.LaunchScaleBeforeCompute(expertIdx, 1);
+                }
+                commOp.Launch(expertIdx, 1);
+            }
+            for (uint32_t expertIdx = startExpertIdx; expertIdx < endExpertIdx; expertIdx++) {
+                if (isMxSceneFlag_) {
+                    commOp.WaitScale(expertIdx);
+                }
+                commOp.Wait(expertIdx);
+                SyncAll<false>();
+                computeOp.Process(expertIdx);
+            }
         }
         this->End();
     }

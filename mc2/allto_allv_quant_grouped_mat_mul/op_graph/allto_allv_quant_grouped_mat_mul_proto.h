@@ -60,17 +60,17 @@ namespace ge {
 * @par Outputs:
 * @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
 * @li mm_y: A matrix tensor of shape [BS, N2] containing result of matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true. The data type of elements supports float16, bfloat16 or hifloat8; the format supports ND.
+* @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true. The data type of elements supports hifloat8, float8_e4m3fn or float8_e5m2; the format supports ND.
 */
 REG_OP(AlltoAllvQuantGroupedMatMul)
       .INPUT(gmm_x, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
       .INPUT(gmm_weight, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+      .INPUT(gmm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+      .INPUT(gmm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
       .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT64}))
       .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT64}))
       .OPTIONAL_INPUT(mm_x, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
       .OPTIONAL_INPUT(mm_weight, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
-      .INPUT(gmm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-      .INPUT(gmm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
       .OPTIONAL_INPUT(mm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
       .OPTIONAL_INPUT(mm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
       .OUTPUT(gmm_y, TensorType({DT_FLOAT16, DT_BF16}))
@@ -80,11 +80,11 @@ REG_OP(AlltoAllvQuantGroupedMatMul)
       .REQUIRED_ATTR(ep_world_size, Int)
       .REQUIRED_ATTR(send_counts, ListInt)
       .REQUIRED_ATTR(recv_counts, ListInt)
+      .REQUIRED_ATTR(gmm_x_quant_mode, Int)
+      .REQUIRED_ATTR(gmm_weight_quant_mode, Int)
       .ATTR(trans_gmm_weight, Bool, false)
       .ATTR(trans_mm_weight, Bool, false)
       .ATTR(permute_out_flag, Bool, false)
-      .REQUIRED_ATTR(gmm_x_quant_mode, Int)
-      .REQUIRED_ATTR(gmm_weight_quant_mode, Int)
       .ATTR(mm_x_quant_mode, Int, 0)
       .ATTR(mm_weight_quant_mode, Int, 0)
       .ATTR(group_size, Int, 0)
