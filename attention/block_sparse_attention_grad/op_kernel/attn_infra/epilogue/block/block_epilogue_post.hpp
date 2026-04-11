@@ -69,7 +69,7 @@ public:
     };
 
     NpuArch::Arch::Resource<ArchTag> resource;
-    constexpr static uint32_t BUFFER_NUM = 1;
+    constexpr static uint32_t BUFFER_NUM = 2;
     constexpr static uint64_t INPUT_NUM = 2;
     constexpr static uint64_t BNSD = 1; // g = q_n1 / kv_n2
     constexpr static uint64_t TND = 0;
