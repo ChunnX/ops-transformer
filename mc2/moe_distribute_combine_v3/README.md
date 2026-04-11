@@ -257,7 +257,7 @@
   <tr>
    <td>global_bs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank Bs一致时，global_bs = Bs * ep_world_size 或 0；各rank Bs不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size 或 0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -334,8 +334,8 @@
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `Bs` * `ep_world_size` * `shared_expert_num` / `shared_expert_num`。
-        - 对于MoE专家，当`global_bs`为0时，要满足`A` >= `Bs` * `ep_world_size` * min(`local_expert_num`, `K`)；当`global_bs`非0时，要满足`A` >= `global_bs` * min(`local_expert_num`, `K`)。
+        - 对于共享专家，要满足`A` = `BS` * `ep_world_size` * `shared_expert_num` / `shared_expert_num`。
+        - 对于MoE专家，当`global_bs`为0时，要满足`A` >= `BS` * `ep_world_size` * min(`local_expert_num`, `K`)；当`global_bs`非0时，要满足`A` >= `global_bs` * min(`local_expert_num`, `K`)。
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`。
     - `local_expert_num`：表示本卡专家数量。
         - 对于共享专家卡，`local_expert_num` = 1
@@ -345,7 +345,7 @@
     - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
     - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
     - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
-    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需与`expand_x`保持一致。
+    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`BS`, `H`)，数据类型需与`expand_x`保持一致。
     - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
     - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
     - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需与`expand_x`保持一致。
@@ -359,7 +359,7 @@
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `Bs`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
+        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
     - 参数约束：
         - `ep_world_size`：取值支持8、16、32、64、128、144、256、288。
         - `moe_expert_num`：取值范围(0, 1024]。
