@@ -16,6 +16,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "posembedding/rotary_position_embedding/op_host/op_api/aclnn_rotary_position_embedding.h"
+#include "aclnnInner_interleave_rope.h"
 
 using namespace op;
 
@@ -25,11 +26,11 @@ extern "C" {
 
 constexpr int64_t HALF_INTERLEAVE_MODE = 3;
 
-aclnnStatus aclnnInnerInterleaveRopeGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* cos, const aclTensor* sin, aclTensor* out, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
-aclnnStatus aclnnInnerInterleaveRope(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+// aclnnStatus aclnnInnerInterleaveRopeGetWorkspaceSize(
+//     const aclTensor* x, const aclTensor* cos, const aclTensor* sin, aclTensor* out, uint64_t* workspaceSize,
+//     aclOpExecutor** executor);
+// aclnnStatus aclnnInnerInterleaveRope(
+//     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnInterleaveRopeGetWorkspaceSize(
     const aclTensor* x, const aclTensor* cos, const aclTensor* sin, aclTensor* out, uint64_t* workspaceSize,

@@ -80,6 +80,8 @@ BISHENG_FLAGS=""
 ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
+export ASCEND_SLOG_PRINT_TO_STDOUT=1
+export ASCEND_GLOBAL_LOG_LEVEL=1
 
 dotted_line="---------------------------------------------------------------------------------------------------------------------"
 ########################################################################################################################
