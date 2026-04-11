@@ -163,7 +163,7 @@ template <typename CubeBlockType, typename VecBlockType>
         constInfo.bSize = this->sharedParams.bSize;
         constInfo.gSize = this->sharedParams.gSize;
         constInfo.s1Size = this->sharedParams.s1Size;
-        constInfo.dSizeV = 576; // TODO dSize = dSizeV = 512+64 = 576
+        constInfo.dSizeV = 512; // TODO dSize = dSizeV = 512+64 = 576
         constInfo.needInit = this->sharedParams.needInit;
     }
     vecBlock.CleanOutput(attentionOut, constInfo);

@@ -260,7 +260,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
             runInfo.mRealSize, 512, 512); // 64 constInfo.dSize constInfo.mm1Ka
 
         CopyToL1Nd2Nz<Q_T>(inputLeftTensor[runInfo.mRealSize * 512],
-            this->queryRopeGm.gmTensor[runInfo.queryOffset], runInfo.mRealSize,
+            this->queryRopeGm.gmTensor[0], runInfo.mRealSize,
             64, 64); // constInfo.dSize constInfo.mm1Ka
 
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
