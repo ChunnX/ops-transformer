@@ -201,7 +201,7 @@
   <tr>
    <td>epRankId</td>
    <td>属性</td>
-   <td>EP域本卡Id，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+   <td>EP域本卡ID，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -229,7 +229,7 @@
   <tr>
    <td>tpRankId</td>
    <td>可选属性</td>
-   <td><li>TP域本卡Id，无TP域通信时传0即可。</li><li>默认值为0。</li></td>
+   <td><li>TP域本卡ID，无TP域通信时传0即可。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -329,6 +329,11 @@
     
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
+
+- <term>Ascend 950PR/Ascend 950DT</term>：
+    * 不支持`expandScalesOptional`。
+    * 不支持`commAlg`。
+    * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出为无效内容。
 
 ## 约束说明
 
