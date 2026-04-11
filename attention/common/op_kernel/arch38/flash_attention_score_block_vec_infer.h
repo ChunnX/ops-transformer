@@ -60,8 +60,8 @@ public:
     TQue<QuePosition::VECIN, 1> accumOutInputQue;
     TQue<QuePosition::VECIN, 1> softmaxMaxInputQue; // FD
     TQue<QuePosition::VECIN, 1> softmaxSumInputQue; // FD
-    TQue<QuePosition::VECIN, 1> postQuantScaleQue;; // postQuant
-    TQue<QuePosition::VECIN, 1> postQuantOffsetQue;; // postQuant
+    TQue<QuePosition::VECIN, 1> postQuantScaleQue; // postQuant
+    TQue<QuePosition::VECIN, 1> postQuantOffsetQue; // postQuant
 
     __aicore__ inline FABlockVecInfer() {};
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
@@ -160,10 +160,6 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedParams(
  
     if constexpr (isFd) {
         sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
-    }
-    if constexpr (POST_QUANT) {
-        sharedParams.isPostQuantPerChnl = inputParamsRegbase.isPostQuantPerChnl;
-        sharedParams.isPostQuantBF16 = inputParamsRegbase.isPostQuantBF16;
     }
     sharedParams.isBSNDOut = inputParamsRegbase.isBSNDOut;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
@@ -690,78 +686,14 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::ReduceFDDataCopyOut(Const
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-template <typename POSTQUANT_PARAMS_T, typename VEC2_RES_T>
-__aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::PostQuantPerChnl(
-    ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb,
-    uint64_t perChannelQuantOffset, uint32_t gSplitSize, uint32_t s1RowCount, uint32_t splitOffset, int64_t dSizeAligned64,
-    GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm, GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm)
-{
-    DataCopyExtParams copyInParams;
-    DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyInPadParams;
-    copyInParams.blockCount = gSplitSize;
-    copyInParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
-    copyInParams.srcStride = 0;
-    copyInParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));  // 32: datablock size
-
-    LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
-        this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-    DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyInParams, copyInPadParams);
-    this->postQuantScaleQue.template EnQue(postQuantScaleUb);
-    this->postQuantScaleQue.template DeQue<POSTQUANT_PARAMS_T>();
-    if (constInfo.isPostQuantOffsetExist) {
-        LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb =
-            this->postQuantOffsetQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-        DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyInParams, copyInPadParams);
-        this->postQuantOffsetQue.template EnQue(postQuantOffsetUb);
-        this->postQuantOffsetQue.template DeQue<POSTQUANT_PARAMS_T>();
-        PostQuantPerChnlVF<T, OUTPUT_T, POSTQUANT_PARAMS_T>(
-            attenOut[splitOffset], vec2ResUb[splitOffset], postQuantScaleUb, postQuantOffsetUb, gSplitSize, s1RowCount,
-            constInfo.dSizeV, dSizeAligned64);
-        this->postQuantOffsetQue.FreeTensor(postQuantOffsetUb);
-    } else {
-        PostQuantPerChnlVF<T, OUTPUT_T, POSTQUANT_PARAMS_T>(
-            attenOut[splitOffset], vec2ResUb[splitOffset], postQuantScaleUb, gSplitSize, s1RowCount, constInfo.dSizeV, dSizeAligned64);
-    }
-    this->postQuantScaleQue.FreeTensor(postQuantScaleUb);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInfer, hasRope> &constInfo,
-                                                                      RunInfo<isInfer> &runInfo, LocalTensor<OUTPUT_T> &attenOut,
-                                                                      LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                                                      int64_t vec2S1Idx, int64_t dSizeAligned64)
+__aicore__ inline void
+FABlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInfer, hasRope> &constInfo, RunInfo<isInfer> &runInfo,
+                                          LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                          int64_t vec2S1Idx, int64_t dSizeAligned64)
 {
-    uint32_t s1RowCount = constInfo.isGqa ? 1U : runInfo.vec2S1RealSize; // s1=1, gS合轴, bn2分核
-    uint32_t gRowCount = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;  // s1>1, bn1分核
-    if (constInfo.isPostQuantPerChnl) {
-        uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + runInfo.vec2S1BaseSize * vec2S1Idx * constInfo.dSizeV +
-                                            constInfo.subBlockIdx * runInfo.firstHalfS1RealSize * constInfo.dSizeV;
-        uint64_t perChannelQuantOffset = constInfo.isGqa ?
-                                             perChannelQuantGQAOffset :
-                                             runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
-        uint32_t gSplitSize = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
-                                                          (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
-        gSplitSize = gSplitSize > gRowCount ? gRowCount : gSplitSize;
-        uint32_t loopCount = (gRowCount + gSplitSize - 1) / gSplitSize;
-        uint32_t tailSplitSize = gRowCount - (loopCount - 1) * gSplitSize;
-        for (uint32_t i = 0; i < loopCount; i++) {
-            uint32_t startRow = i * gSplitSize;
-            if (i + 1 == loopCount) {
-                gSplitSize = tailSplitSize;
-            }
-            uint32_t splitOffset = startRow * dSizeAligned64;
-            if (constInfo.isPostQuantBF16) {
-                PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                 gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
-            } else {
-                PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                 gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleGm, postQuantOffsetGm);
-            }
-        }
-    } else {
-        AscendQuant(attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, runInfo.vec2S1RealSize * constInfo.dSizeV);
-    }
+    AscendQuant(attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue,
+                runInfo.vec2S1RealSize * constInfo.dSizeV);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -771,19 +703,9 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::FDPostQuant(ConstInfo<isI
                                                                    uint64_t perChannelQuantOffset,
                                                                    uint32_t dealRowCount, uint32_t dSizeAligned64)
 {
-    if (constInfo.isPostQuantPerChnl) {
-        if (constInfo.isPostQuantBF16) {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U, dSizeAligned64,
-                             postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
-        } else {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U, dSizeAligned64,
-                             postQuantScaleGm, postQuantOffsetGm);
-        }
-    } else {
-        PostQuantPerTensorVF<T, OUTPUT_T, true>(
-            attenOut, accumOutLocal, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, dealRowCount,
-            constInfo.dSizeV, dSizeAligned64);
-    }
+    PostQuantPerTensorVF<T, OUTPUT_T, true>(attenOut, accumOutLocal, constInfo.postQuantScaleValue,
+                                            constInfo.postQuantOffsetValue, dealRowCount, constInfo.dSizeV,
+                                            dSizeAligned64);
 }
 }
 #endif // FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_H_

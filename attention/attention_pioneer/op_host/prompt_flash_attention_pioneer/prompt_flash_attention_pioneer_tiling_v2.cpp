@@ -3834,7 +3834,9 @@ int64_t PromptFlashAttentionPioneerTilingV2::GetCalcBlockNumsForS1G(int64_t actu
     for (uint32_t i = 0; i < outerBlockNums; i ++) {
         int64_t cubeSOuterOffset = i * static_cast<int64_t>(sOuterSize);
         sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize, 0, actualSeqLengthKV);
-        sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sInnerSize), static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
+        sInnerLastToken = ClipSInnerToken(CeilDivision(
+            static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
+            static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
         s2BlockNum += (sInnerLastToken + sInnerSize - 1) / sInnerSize - sInnerFirstToken / sInnerSize; 
     }
     return s2BlockNum;
@@ -3937,11 +3939,17 @@ void PromptFlashAttentionPioneerTilingV2::ComputeSplitNBSeq(PromptFlashAttention
                 // 当前这一行有多少基本块需要计算
                 int64_t actualInnerBlockNums = 0;
                 int64_t sInnerFirstToken = 0;
+                int64_t sInnerLastToken = 0;
                 if (enableIFAMLA) {
-                    sInnerFirstToken = ClipSInnerToken((sOuterIndex * sInnerSize - preTokensLeftUp) / gSize, 0, actualSeqLengthKV)
-                                    / static_cast<int64_t>(sInnerSize);
-                    int64_t sInnerLastToken = ClipSInnerToken(CeilDivision(static_cast<int64_t>(sOuterIndex * sInnerSize + nextTokensLeftUp + sInnerSize), static_cast<int64_t>(gSize)), 0, actualSeqLengthKV);
-                    actualInnerBlockNums = (sInnerLastToken + sInnerSize - 1) / sInnerSize - sInnerFirstToken;
+                    int64_t cubeSOuterOffset = sOuterIndex * sOuterSize;
+                    sInnerFirstToken = ClipSInnerToken((cubeSOuterOffset - preTokensLeftUp) / gSize,
+                        0, actualSeqLengthKV);
+                    sInnerLastToken = ClipSInnerToken(CeilDivision(
+                        static_cast<int64_t>(cubeSOuterOffset + nextTokensLeftUp + sOuterSize),
+                        static_cast<int64_t>(gSize)),
+                        0, actualSeqLengthKV);
+                    actualInnerBlockNums = (sInnerLastToken + sInnerSize - 1) / sInnerSize -
+                        sInnerFirstToken / sInnerSize;
                     if (sinkLength > 0) {
                         actualInnerBlockNums += sinkBlockNumberPerS1g;
                     }
@@ -4053,7 +4061,7 @@ void PromptFlashAttentionPioneerTilingV2::PromptFlashAttentionPioneerSplitNBSeq(
     uint32_t curIndx = 0;
     ComputeSplitNBSeq(tilingData, batchSize, tilingElementArrayLen, actualSeqLengths, actualSeqLengthsKV, sOuterSize,
         sInnerSize, coreWightTarget, curIndx);
-
+    if (curIndx > curCoreNum -1) curIndx = curCoreNum - 1;
     uint32_t actualCoreNums = (splitCoreMode == SplitCoreMode::SPLIT_NBS_CUBE) ? (curIndx + 1) * CV_RATIO : curIndx + 1;
     singleCoreParams->set_actualCoreNums(actualCoreNums);
     int64_t sinnerBlocknum = (baseParams->get_seqInnerSize() + sInnerSize - 1) / sInnerSize;

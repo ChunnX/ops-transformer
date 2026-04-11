@@ -16,6 +16,7 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
+#include "aclnnInner_moe_distribute_combine_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -23,9 +24,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeDistributeCombineV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    aclrtStream stream);
 
 
 aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(

@@ -103,7 +103,7 @@ void FusedInferAttentionScoreTilingImpl::SetIsIFA(const FiaTilingInfo &fiaInfo)
 
 void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.s1Size <= 16) {
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         gsMergeFlag_ = true;
         return;
     }
@@ -575,6 +575,14 @@ bool FusedInferAttentionScoreTilingImpl::CheckS1OutSplit(const FiaTilingInfo &fi
 
     if (fiaInfo.sparseMode == SPARSE_MODE_BAND ||
        (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag)) {
+        return false;
+    }
+
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         return false;
     }
 

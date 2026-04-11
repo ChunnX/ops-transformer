@@ -152,6 +152,7 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs got from ge is nullptr"),
                return ge::GRAPH_FAILED);
+    int64_t defaultValue = -1;
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
@@ -165,8 +166,8 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX);
     opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKENS_INDEX);
     opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
-    opParamInfo_.keyBlockStride = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_BLOCK_STRIDE_INDEX));
-    opParamInfo_.keyDequantScaleBlockStride = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_DEQUANT_SCALE_BLOCK_STRIDE_INDEX));
+    opParamInfo_.keyBlockStride = defaultValue;
+    opParamInfo_.keyDequantScaleBlockStride = defaultValue;
 
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
@@ -217,6 +218,12 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
     OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= 2048, but now sparse_count is %u",
                        *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
+    if (npuArch_ == NpuArch::DAV_3510) {
+        auto queryType = opParamInfo_.query.desc->GetDataType();
+        OP_CHECK_IF((queryType == ge::DT_HIFLOAT8) && (*opParamInfo_.sparseCount != SPARSE_LIMIT),
+                OP_LOGE(opName_, "When query type is hifloat8, sparse_count must be 2048, but now sparse_count is %u",
+                        *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
                 OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3, but now sparseMode is %u.",
                        *opParamInfo_.sparseMode), return ge::GRAPH_FAILED);

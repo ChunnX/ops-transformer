@@ -239,9 +239,12 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
             if constexpr (IsSameType<T2, int8_t>::value) {
                 USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp_even, vreg_rowmax_p, preg_all);
                 USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp_odd, vreg_rowmax_p, preg_all);
-            } else {
+            } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
                 USE_MLA_FULLQUANT_V1_P(vreg_exp_even, vreg_rowmax_p, preg_all);
                 USE_MLA_FULLQUANT_V1_P(vreg_exp_odd, vreg_rowmax_p, preg_all);
+            } else {
+                USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp_even, vreg_rowmax_p, preg_all);
+                USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp_odd, vreg_rowmax_p, preg_all);
             }
         }
 

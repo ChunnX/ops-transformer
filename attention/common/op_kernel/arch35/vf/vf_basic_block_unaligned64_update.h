@@ -201,8 +201,10 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
             LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_rowmax_p, pScaleUb + i);
             if constexpr (IsSameType<T2, int8_t>::value) {
                 USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, preg_ori_src_n);
-            } else {
+            } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
                 USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, preg_ori_src_n);
+            } else {
+                USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, preg_ori_src_n);
             }
         }
         

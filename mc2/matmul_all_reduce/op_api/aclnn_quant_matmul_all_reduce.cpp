@@ -14,6 +14,7 @@
  */
 #include "aclnn_quant_matmul_all_reduce.h"
 
+#include "aclnnInner_matmul_all_reduce.h"
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"
 
@@ -23,8 +24,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);

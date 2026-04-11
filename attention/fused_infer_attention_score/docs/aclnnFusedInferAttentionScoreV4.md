@@ -997,7 +997,10 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td rowspan="2">PagedAttention</td>
             <td>blockSize</td>
-            <td>在使能PagedAttention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。</td>
+            <td>在使能PagedAttention场景下，blockSize需要传入非0值。在非量化场景下有以下约束：<br>
+            Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024;<br>
+            GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；<br>
+            其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512。</td>
             <td>blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。</td>
         </tr>
         <tr>
@@ -1138,6 +1141,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <li>query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。</li>
                 <li>P_S1需大于等于query的S长度，P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
                 <li>P_S2建议padding到32对齐，提升性能</li>
+                <li>伪量化场景下，当query的S为1时不支持该场景</li>
                 </ul>
                 </td>
             </tr>

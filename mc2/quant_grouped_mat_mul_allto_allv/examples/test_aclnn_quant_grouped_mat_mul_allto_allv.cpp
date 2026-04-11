@@ -245,6 +245,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
             return ret);
+    LOG_PRINT("[INFO] device_%d aclnnQuantGroupedMatMulAlltoAllv execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (args.rankId == 0) {
         size_t size = A * N1 * sizeof(int16_t);

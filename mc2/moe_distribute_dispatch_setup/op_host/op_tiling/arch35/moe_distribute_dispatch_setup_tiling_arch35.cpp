@@ -16,6 +16,8 @@
 #include "moe_distribute_dispatch_setup_tiling_arch35.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "register/op_def_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 
 namespace {
 
@@ -39,7 +41,8 @@ struct Mc2CcTilingInner {
 } // namespace
 
 namespace optiling {
-    
+
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatchSetup, MoeDistributeDispatchSetupTilingA5, 0);
 void MoeDistributeDispatchSetupTilingA5::SetHcommCfg()
 {
     OP_LOGD(nodeName_, "MoeDistributeCombineSetup groupEp = %s", groupEp_.c_str());

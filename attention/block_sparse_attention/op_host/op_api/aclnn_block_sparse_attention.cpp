@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -191,8 +191,8 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise,
                                             uint64_t *workspaceSize,
                                             aclOpExecutor **executor)
 {
-    if (innerPrecise != 0 && innerPrecise != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 0 (float32 softmax) or 1 (fp16 softmax), got %ld.",
+    if (innerPrecise != 0 && innerPrecise != 1 && innerPrecise != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 0 or 1 or 4, got %ld.",
                 innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
