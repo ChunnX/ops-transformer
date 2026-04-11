@@ -39,43 +39,35 @@ public:
 
     __aicore__ inline
     void init(Arch::Resource<ArchTag> &resource) {
-        // UB Memory Allocation
         constexpr uint32_t LL_UB_OFFSET = 0;
         constexpr uint32_t LM_UB_OFFSET = 1 * STAGE2_UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t BROADCAST_OFFSET = 2 * STAGE2_UB_UINT8_BLOCK_SIZE;  // broadCastTensor & broadCastScaleTensor 复用
+        constexpr uint32_t BROADCAST_OFFSET = 2 * STAGE2_UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t TL_UB_OFFSET = 3 * STAGE2_UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t RS_UB_OFFSET = 4 * STAGE2_UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t TS_UB_OFFSET = 5 * STAGE2_UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t GL_UB_OFFSET = 6 * STAGE2_UB_UINT8_BLOCK_SIZE;
-
-        // Phase2 O计算区 (offset 7起, 每块UB_UINT8_LINE_SIZE=32768字节)
         constexpr uint32_t BROADCASTO_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t GO_UB_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE + 1 * UB_UINT8_LINE_SIZE;
         constexpr uint32_t GO16_UB_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE + 2 * UB_UINT8_LINE_SIZE;
-
-        // ReduceMax/ReduceSum顺序执行，共享同一块临时空间
         constexpr uint32_t TEMP_REDUCE_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE + 3 * UB_UINT8_LINE_SIZE;
 
-        // Buffer Init
         llUbTensor = resource.ubBuf.template GetBufferByByte<float>(LL_UB_OFFSET);
         lmUbTensor = resource.ubBuf.template GetBufferByByte<float>(LM_UB_OFFSET);
         broadCastTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCAST_OFFSET);
         tlUbTensor = resource.ubBuf.template GetBufferByByte<float>(TL_UB_OFFSET);
         rsUbTensor = resource.ubBuf.template GetBufferByByte<float>(RS_UB_OFFSET);
         tsUbTensor = resource.ubBuf.template GetBufferByByte<float>(TS_UB_OFFSET);
-        broadCastScaleTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCAST_OFFSET);  // 复用BROADCAST_OFFSET
+        broadCastScaleTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCAST_OFFSET);
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(GL_UB_OFFSET);
         broadCastOTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCASTO_OFFSET);
         toUbTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCASTO_OFFSET);
         goUbTensor = resource.ubBuf.template GetBufferByByte<float>(GO_UB_OFFSET);
         loFloatUbTensor = resource.ubBuf.template GetBufferByByte<float>(GO16_UB_OFFSET);
         go16UbTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(GO_UB_OFFSET);
-
         tempReduceMax = resource.ubBuf.template GetBufferByByte<uint8_t>(TEMP_REDUCE_OFFSET);
-        tempReduceSum = resource.ubBuf.template GetBufferByByte<uint8_t>(TEMP_REDUCE_OFFSET);  // 复用同一块空间
+        tempReduceSum = resource.ubBuf.template GetBufferByByte<uint8_t>(TEMP_REDUCE_OFFSET);
 
     }
-
 
     __aicore__ inline void operator()(
         uint32_t qHeads,
@@ -144,10 +136,8 @@ public:
             int32_t lseCount = lseBlockAlign * headSizeV;
             int32_t oCount_vector = sum * headSizeV;
 
-
             AscendC::Duplicate(llUbTensor, std::numeric_limits<float>::lowest(), calcLen);
             AscendC::Duplicate(tlUbTensor, 0.0f, calcLen);
-
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
 
             // Copy LSE from GM to UB
@@ -194,13 +184,11 @@ public:
             AscendC::BroadCast<float, 2, 0>(broadCastScaleTensor, tsUbTensor, dstShapeBroadcast, srcShapeBroadcast, tempReduceSum);
             AscendC::PipeBarrier<PIPE_V>();
 
-
             AscendC::Sub(glUbTensor, llUbTensor, broadCastScaleTensor, count);
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Exp(glUbTensor, glUbTensor, count);
             AscendC::PipeBarrier<PIPE_V>();
-
 
             uint32_t tokenTile = UB_UINT8_LINE_SIZE / (headSizeV * sizeof(float));
 
