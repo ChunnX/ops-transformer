@@ -74,7 +74,6 @@
   unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
 
-
   (3)probs为None,padMode为true时:
 
   $$
@@ -178,7 +177,7 @@
 
 ## 约束说明
 
--   topkNum <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
+topkNum <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
 
 ## 调用说明
 

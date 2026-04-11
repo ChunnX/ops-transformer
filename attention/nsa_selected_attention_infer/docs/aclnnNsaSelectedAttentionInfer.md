@@ -267,9 +267,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">selectBlockCount</td>
           <td>输入</td>
           <td>代表topK阶段需要保留的block数量。</td>
-          <td>
-  		selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualSelKvSeqLenOptional)。
-          </td>
+          <td>selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualSelKvSeqLenOptional)。</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -279,9 +277,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">pageBlockSize</td>
           <td>输入</td>
           <td>代表paged attention的block大小。</td>
-          <td>
-  		在kv cache取数时使用。
-          </td>
+          <td>在kv cache取数时使用。</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -291,9 +287,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">scaleValue</td>
           <td>输入</td>
           <td>公式中d开根号的倒数，代表缩放系数。</td>
-          <td>
-  		作为计算流中Muls的scalar值。
-          </td>
+          <td>作为计算流中Muls的scalar值。</td>
           <td>DOUBLE</td>
           <td>-</td>
           <td>-</td>
@@ -303,9 +297,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">sparseMode</td>
           <td>输入</td>
           <td>表示sparse的模式，控制有attentionMask输入时的稀疏计算。</td>
-          <td>
-  		预留参数，暂未使用。
-          </td>
+          <td>预留参数，暂未使用。</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -315,9 +307,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">output</td>
           <td>输出</td>
           <td>公式中attention的输出。</td>
-          <td>
-  		预留参数，暂未使用。
-          </td>
+          <td>预留参数，暂未使用。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>-</td>
@@ -390,13 +380,11 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 - **参数说明**
   
   <div style="overflow-x: auto;">
-      <table style="undefined;table-layout: fixed; width: 1030px">
-    	<colgroup>
+      <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
           <col style="width: 250px">
           <col style="width: 130px">
           <col style="width: 650px">
-      </colgroup>
-      <thead>
+      </colgroup><thead>
         <tr>
           <th>参数名</th>
           <th>输入/输出</th>

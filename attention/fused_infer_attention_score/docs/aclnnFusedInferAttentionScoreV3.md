@@ -37,7 +37,6 @@
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV3GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV3”接口执行计算。
@@ -728,7 +727,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -1028,7 +1026,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - softmaxLseFlag为True时，一般情况下,shape必须为[B,N,Q_S,1]，当inputLayout为TND/NTD_TND时，shape必须为[T,N,1]。
   - softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。
 
-
 - **当Q_S大于1时**：
 
   - query，key，value输入，功能使用限制如下：
@@ -1245,8 +1242,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - page attention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
     - page attention使能场景下，当输入kv cache排布格式为BnBsH，且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为BnNBsD解决。
     - page attention不支持tensorlist场景，不支持左padding场景。
-        -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
-        -  <term>Ascend 950PR/Ascend 950DT</term>：支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+        - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+        - <term>Ascend 950PR/Ascend 950DT</term>：支持Q为BF16/FP16、KV为INT4（INT32）的场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
     - page attention的使能场景下，以下场景输入S需要大于等于blockTable的第二维 * blockSize。
@@ -1503,4 +1500,3 @@ int main() {
   return 0;
 }
 ```
-

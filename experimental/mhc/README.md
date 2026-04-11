@@ -38,6 +38,7 @@ x_{l+1} = H_res · x_l + H_post^T · F(H_pre · x_l, W_l)
 ## 实现范围
 
 权重张量（`h_pre`、`h_post`、`h_res`）为**逐层静态参数**:
+
 - 形状: `[num_streams]` 或 `[num_streams, num_streams]`
 - 在 batch 与序列维度上共享
 - 与 [tokenbender/mHC](https://github.com/tokenbender/mHC-manifold-constrained-hyper-connections) 开源实现保持一致

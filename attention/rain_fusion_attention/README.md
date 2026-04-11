@@ -197,4 +197,3 @@ bash build.sh --soc=Ascend910B3
 ## 版本历史
 
 - v1.0.0: 初始版本,从catlass 32_sparse_attention_infer迁移
-

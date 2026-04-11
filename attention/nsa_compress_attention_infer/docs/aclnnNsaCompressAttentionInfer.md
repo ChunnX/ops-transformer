@@ -141,10 +141,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>
         <ul style="list-style-type: circle;">
           <li>value的N和numKeyValueHeads值相等。</li>
-          <li>value的D(H/numKeyValueHeads)和output的D值相等。</li>
-  	  <li>value的D轴小于等于128。</li>
-          <li>value中的blockSize和pageBlockSize值相等。</li>
-          <li>value的S轴小于等于8192。</li>
+          <li>value的D(H/numKeyValueHeads)和output的D值相等。</li><li>value的D轴小于等于128。</li><li>value中的blockSize和pageBlockSize值相等。</li><li>value的S轴小于等于8192。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -439,6 +436,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 
 - 确定性计算：
   - aclnnNsaCompressAttentionInfer默认确定性实现。
+
 * 参数query仅支持TND、BSND输入。T是B和S合轴紧密排列的数据（每个batch的actualQSeqLenOptional）、B（batch）表示输入样本批量大小、S（qSeqlen）表示输入样本序列长度、N（numHeads）表示多头数、D（headDimsQK）表示隐藏层最小的单元尺寸。
 * 压缩前的kvSeqlen的上限可以表示为：actualSelKvSeqLenCeil=(actualCmpKvSeqLenOptional-1)*compressBlockStride+compressBlockSize，需要满足actualSelKvSeqLenCeil/selectBlockSize<=4096，且需要满足selectBlockCount<=actualSelKvSeqLenCeil/selectBlockSize。如果actualSelKvSeqLenOptional不满足actualCmpKvSeqLenOptional=(actualSelKvSeqLenOptional-compressBlockSize)/compressBlockStride+1，或者actualCmpKvSeqLenOptional的长度和blockTableOptional的batch维度不同，则会默认进入单token推理场景。
 * 多token推理场景下，actualQSeqLenOptional参数必须传入，actualQSeqLenOptional的长度必须和blockTableOptional的batch维度相等，仅支持query的S轴最大等于4，并且此时要求每个batch单独的actualQSeqLenOptional<=actualSelKvSeqLenOptional。如果actualQSeqLenOptional的长度和blockTableOptional的batch维度不同，或者actualQSeqLenOptional的值小于1或者大于4，则会默认进入单token推理场景。

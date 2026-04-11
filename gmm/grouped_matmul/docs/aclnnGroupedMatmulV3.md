@@ -353,9 +353,10 @@ aclnnStatus aclnnGroupedMatmulV3(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnGroupedMatmulV3默认确定性实现。
 - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1。

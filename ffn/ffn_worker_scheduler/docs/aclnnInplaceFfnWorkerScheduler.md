@@ -79,6 +79,7 @@
         style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
         style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
     ```
+
     3. 完成数据整理后，后续可供FFNWorkerBatching算子使用。
 
 - 计算公式：

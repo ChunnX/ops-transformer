@@ -1,4 +1,5 @@
 # MlaPrologV3
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
@@ -9,9 +10,9 @@
 
 ## 功能说明
 
--  **功能更新**：（相对与aclnnMlaPrologV2weightNz的差异）
-    -  新增query与key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
-    -  新增可选输入与参数，将cache_mode由必选改为可选。具体包括：
+- **功能更新**：（相对与aclnnMlaPrologV2weightNz的差异）
+    - 新增query与key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
+    - 新增可选输入与参数，将cache_mode由必选改为可选。具体包括：
         - actualSeqLenOptional：用于BS合轴且CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，指定当前batch中实际的序列长度。
         - kNopeClipAlphaOptional：表示对kv_cache做clip操作时的缩放因子。
         - queryNormFlag：表示是否输出query_norm，以及量化场景下的dequant_scale_q_norm。
@@ -23,59 +24,61 @@
         - tileSize：表示per-tile量化时每个tile的大小。
         - queryNormOptional：公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$）。
         - dequantScaleQNormOptional：query_norm的输出tensor的量化参数。
-    -  调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
--  **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
--  **计算公式**：
+    - 调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
+- **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
+- **计算公式**：
 
-    RmsNorm公式
+  RmsNorm公式
 
-    $$
-    \mathrm{RmsNorm}(x) = \gamma \cdot \frac{x_i}{\mathrm{RMS}(x)}
-    $$
+  $$
+  \mathrm{RmsNorm}(x) = \gamma \cdot \frac{x_i}{\mathrm{RMS}(x)}
+  $$
 
-    $$
-    \mathrm{RMS}(x) = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2 + \epsilon}
-    $$
+  $$
+  \mathrm{RMS}(x) = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2 + \epsilon}
+  $$
 
-    Query计算公式，包括下采样，RmsNorm和两次上采样
+  Query计算公式，包括下采样，RmsNorm和两次上采样
 
-    $$
-    c^Q = \alpha_q\cdot\mathrm{RmsNorm}(x \cdot W^{DQ})
-    $$
+  $$
+  c^Q = \alpha_q\cdot\mathrm{RmsNorm}(x \cdot W^{DQ})
+  $$
 
-    $$
-    q^C = c^Q \cdot W^{UQ}
-    $$
+  $$
+  q^C = c^Q \cdot W^{UQ}
+  $$
 
-    $$
-    q^N = q^C \cdot W^{UK}
-    $$
-    其中 $\alpha_q$ 是 Query 的尺度矫正参数。
+  $$
+  q^N = q^C \cdot W^{UK}
+  $$
 
-    对Query进行ROPE旋转位置编码
+  其中 $\alpha_q$ 是 Query 的尺度矫正参数。
 
-    $$
-    q^R = \mathrm{ROPE}(c^Q \cdot W^{QR})
-    $$
+  对Query进行ROPE旋转位置编码
 
-    Key计算公式，包括下采样和RmsNorm，将计算结果存入cache
+  $$
+  q^R = \mathrm{ROPE}(c^Q \cdot W^{QR})
+  $$
 
-    $$
-    c^{KV} = \alpha_{kv}\cdot\mathrm{RmsNorm}(x \cdot W^{DKV})
-    $$
+  Key计算公式，包括下采样和RmsNorm，将计算结果存入cache
 
-    $$
-    k^C = \mathrm{Cache}(c^{KV})
-    $$
-    其中 $\alpha_{kv}$ 是 Key 的尺度矫正参数。
+  $$
+  c^{KV} = \alpha_{kv}\cdot\mathrm{RmsNorm}(x \cdot W^{DKV})
+  $$
 
-    对Key进行ROPE旋转位置编码，并将结果存入cache
+  $$
+  k^C = \mathrm{Cache}(c^{KV})
+  $$
+  其中 $\alpha_{kv}$ 是 Key 的尺度矫正参数。
 
-    $$
-    k^R = \mathrm{Cache}(\mathrm{ROPE}(x \cdot W^{KR}))
-    $$
+  对Key进行ROPE旋转位置编码，并将结果存入cache
+
+  $$
+  k^R = \mathrm{Cache}(\mathrm{ROPE}(x \cdot W^{KR}))
+  $$
 
 ## 参数说明
+
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
 |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|
 | token_x                     | 输入      | 公式中计算Query和Key的输入tensor | INT8, BF16 | ND         |
@@ -119,8 +122,8 @@
                    
 ## 约束说明
 
--   shape约束
-    -   若token_x的维度采用BS合轴，即(T, He)
+- shape约束
+    - 若token_x的维度采用BS合轴，即(T, He)
         - rope_sin和rope_cos的shape为(T, Dr)
         - cache_index的shape为(T,)
         - dequant_scale_x的shape为(T, 1)
@@ -134,14 +137,14 @@
         - query的shape为(B, S, N, Hckv)
         - query_rope的shape为(B, S, N, Dr)
         - 全量化场景下，dequant_scale_q_nope的shape为(B*S, N, 1)，其他场景下为(1)
-    -   B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
+    - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
         - 如果B、S、T取值为0，则query、query_rope输出空Tensor，kv_cache、kr_cache不做更新。
         - 如果Skv取值为0，则query、query_rope、dequant_scale_q_nope正常计算，kv_cache、kr_cache不做更新，即输出空Tensor。
--   特殊约束
+- 特殊约束
     - per-tile量化模式下，ckvkr_repo_mode和quant_scale_repo_mode必须同时为1；其他量化模式以及非量化场景下，ckvkr_repo_mode和quant_scale_repo_mode必须同时为0。
     - per-tile量化模式下，cache_mode只支持PA_BSND, BSND和TND。
     - 当ckvkr_repo_mode值为1时，kr_cache必须为空Tensor（即shape的乘积为0）。
--  aclnnMlaPrologV3WeightNz接口支持场景：
+- aclnnMlaPrologV3WeightNz接口支持场景：
     <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>

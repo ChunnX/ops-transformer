@@ -13,11 +13,10 @@
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
-
 ## 功能说明
 
--   **算子功能**：实现quant + reduceScatter融合计算。
--   **计算公式**：
+- **算子功能**：实现quant + reduceScatter融合计算。
+- **计算公式**：
 
     $$
     output=Reduce(AllToAllScales * AllToAllData)
@@ -34,7 +33,7 @@
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
     $$
 
--   **参数说明：**
+- **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">

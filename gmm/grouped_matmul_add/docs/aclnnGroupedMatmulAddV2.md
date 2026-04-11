@@ -12,6 +12,7 @@
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+
 ## 功能说明
 
 - 接口功能：实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。基本功能为矩阵乘，如$y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i]+y_i[m_i,n_i], i=1...g$，其中g为分组个数，$m_i/k_i/n_i$为对应shape。输入输出数据类型均为aclTensor，K轴分组。
@@ -42,6 +43,7 @@ aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnGroupedMatmulAddV2(
     void          *workspace,
@@ -272,6 +274,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性说明：aclnnGroupedMatmulAddV2默认确定性实现。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
 - 支持的输入类型组合为：
@@ -279,6 +282,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
   - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++

@@ -394,8 +394,6 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 </tbody>
 </table>
 
-
-
 * **返回值**：
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -475,10 +473,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
   </tbody>
   </table>
 
-
-
-
 * **返回值：**
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -488,7 +484,6 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足 N1 >= N2 且 N1 % N2 == 0。(例如：在 BNSD 布局下，N1 对应 query 的第 2 维，N2 对应 key/value 的第 2 维)
 * headdim=128。
 * 当前只支持 BNSD 和 MHA(N1==N2)。
-
 
 ## 调用示例
 

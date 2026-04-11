@@ -155,6 +155,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV4(
     void              *workspace,
@@ -466,6 +467,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     $$
 
 输入和输出支持以下数据类型组合
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     <table>
     <thead>

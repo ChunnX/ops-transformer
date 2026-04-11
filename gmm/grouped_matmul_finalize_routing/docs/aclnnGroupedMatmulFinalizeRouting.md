@@ -377,11 +377,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
   - aclnnGroupedMatmulFinalizeRouting默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - **伪量化场景支持类型**
+
   输入和输出支持以下数据类型组合：
   
   | x    | w    | scale | bias    | pertokenScale | groupList | sharedInput | logit   | rowIndex | out     |
   |------|------|-------|---------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
+
     - 在该场景中，scaleOptional代表per-channel和per-group离线融合的结果。
     - 在该场景中，biasOptional代表离线计算的辅助结果，值要求为$8 \times w \times scaleOptional$，并在第一维累加。
 

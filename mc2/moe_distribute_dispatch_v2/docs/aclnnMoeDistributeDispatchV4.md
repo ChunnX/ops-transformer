@@ -41,7 +41,6 @@
 
   说明：`aclnnMoeDistributeCombineV4`、`aclnnMoeDistributeCombineAddRmsNormV2`算子在后续文档中统称为**CombineV4系列算子**。
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeDistributeDispatchV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchV4”接口执行计算。
@@ -621,6 +620,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
 
 - **Shape变量约束**：
+
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
   | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li> <li>对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。|
@@ -641,7 +641,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
         - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
         - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。
-        - 当commAlg为"hierarchy"时：要求取值满足 (moeExpertNum * maxBs * (H * 2 + (3 * (K + 7) / 8 * 8)) * 4 + 64) + 404 * 1024 * 1024。
+        - 当commAlg为"hierarchy"时：要求取值满足 (moeExpertNum*maxBs*(H*2+(3* (K+7)/8*8))*4+64) + 404*1024*1024。
 
   - **HCCL_INTRA_PCIE_ENABLE**和**HCCL_INTRA_ROCE_ENABLE**：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。
