@@ -32,8 +32,12 @@
 #include "../common/op_kernel/mc2_moe_context.h"
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
-#else 
+#else
 #include "../../common/op_kernel/moe_distribute_base.h"
+#endif
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#include "arch35/moe_distribute_dispatch_arch35.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -63,10 +67,10 @@ public:
     using XOutType = ExpandXOutType;
 #endif
     __aicore__ inline MoeDistributeDispatchV2() {};
-    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, 
-                                GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, 
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo,
+                                GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
                                 GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
-                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
+                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2Info *info);
     __aicore__ inline void Process();
 
 private:
@@ -305,20 +309,20 @@ template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init(
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, 
     GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, 
-    GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
+    GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2Info *info)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #endif
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
-    epRankId_ = tilingData->moeDistributeDispatchV2Info.epRankId;
-    epRankIdOriginal_ = tilingData->moeDistributeDispatchV2Info.epRankId;
+    epRankId_ = info->epRankId;
+    epRankIdOriginal_ = info->epRankId;
 
     // 检查hcclwinsize是否越界
-    totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    totalWinSizeTp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeTp);
-    if (tilingData->moeDistributeDispatchV2Info.isMc2Context) {
+    totalWinSizeEp_ = static_cast<uint64_t>(info->totalWinSizeEp);
+    totalWinSizeTp_ = static_cast<uint64_t>(info->totalWinSizeTp);
+    if (info->isMc2Context) {
         isMc2Context_ = true;
         mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
     } else {
@@ -332,17 +336,17 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         }
     }
 
-    axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
-    axisH_ = tilingData->moeDistributeDispatchV2Info.h;
-    epWorldSizeOriginal_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-    hasElasticInfoFlag_ = tilingData->moeDistributeDispatchV2Info.hasElasticInfo;
-    isPerformanceFlag_ = tilingData->moeDistributeDispatchV2Info.isPerformance;
-    epWorldSize_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-    sharedExpertRankNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum;
-    moeExpertNum_ = tilingData->moeDistributeDispatchV2Info.moeExpertNum;
-    globalBS_ = tilingData->moeDistributeDispatchV2Info.globalBs;
-    scaleInBytes_ = tilingData->moeDistributeDispatchV2Info.scalesCol * tilingData->moeDistributeDispatchV2Info.scalesTypeSize;
-    scalesCount_ = tilingData->moeDistributeDispatchV2Info.scalesCount;
+    axisBS_ = info->bs;
+    axisH_ = info->h;
+    epWorldSizeOriginal_ = info->epWorldSize;
+    hasElasticInfoFlag_ = info->hasElasticInfo;
+    isPerformanceFlag_ = info->isPerformance;
+    epWorldSize_ = info->epWorldSize;
+    sharedExpertRankNum_ = info->sharedExpertRankNum;
+    moeExpertNum_ = info->moeExpertNum;
+    globalBS_ = info->globalBs;
+    scaleInBytes_ = info->scalesCol * info->scalesTypeSize;
+    scalesCount_ = info->scalesCount;
 
     copyInAxisH_ = axisH_;
     copyOutAxisH_ = axisH_;
@@ -387,22 +391,22 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     }
 
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
-    sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
+    sharedExpertNum_ = info->sharedExpertNum;
     if (sharedExpertNum_ > 0) {
         rankNumPerSharedExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
     }
-    expertTokenNumsType_ = tilingData->moeDistributeDispatchV2Info.expertTokenNumsType;
-    zeroComputeExpertNum_ = tilingData->moeDistributeDispatchV2Info.zeroComputeExpertNum;
+    expertTokenNumsType_ = info->expertTokenNumsType;
+    zeroComputeExpertNum_ = info->zeroComputeExpertNum;
     moeExpertRankNum_ = epWorldSize_ - sharedExpertRankNum_;
     moeExpertNumPerRank_ = moeExpertNum_ / moeExpertRankNum_;
 
-    tpRankId_ = tilingData->moeDistributeDispatchV2Info.tpRankId;
+    tpRankId_ = info->tpRankId;
     tpGatherRankId_ = ((tpRankId_ == 0) ? 1 : 0);
-    isTokenMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isTokenMask;
-    isExpertMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isExpertMask;
-    axisK_ = tilingData->moeDistributeDispatchV2Info.k;
-    aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
-    tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
+    isTokenMaskFlag_ = info->isTokenMask;
+    isExpertMaskFlag_ = info->isExpertMask;
+    axisK_ = info->k;
+    aivNum_ = info->aivNum;
+    tpWorldSize_ = info->tpWorldSize;
     xGMTensor_.SetGlobalBuffer((__gm__ XInType*)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool*)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertIds);
@@ -476,7 +480,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     winDataSizeOffsetEp_ = dataState_ * (totalWinSizeEp_ / 2)
                          + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
     winDataSizeOffsetTp_ = dataState_ * (totalWinSizeTp_ / 2)
-                         + tilingData->moeDistributeDispatchV2Info.a * hSizeAlignCombine;
+                         + info->a * hSizeAlignCombine;
     
     windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
@@ -1484,5 +1488,69 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         }
     }
 }
+
+// Exported helper function template for v3 kernel (with mc2Context)
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchV2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
+                                                    GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+                                                    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+                                                    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+                                                    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, info, tilingGM);
+    MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc> op;
+    op.Init(mc2Context, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut,
+            assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
+    op.Process();
+}
+
+// Overload for v2 kernel (without mc2Context, pass nullptr)
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchV2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
+                                                    GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+                                                    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+                                                    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+                                                    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, info, tilingGM);
+    MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc> op;
+    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut,
+            assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
+    op.Process();
+}
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+// A5 CCU 路径专用函数模板
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchA5Ccu(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
+    MoeDistributeDispatchA5Impl::MoeDistributeDispatchA5<TemplateDispatchV2TypeFunc> op;
+    op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &tilingData);
+    op.Process();
+}
+
+// A5 MTE Non-FullMesh 路径专用函数模板
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchV2A5Mte(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, info, tilingGM);
+    MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc> op;
+    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut,
+            assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
+    op.Process();
+}
+#endif // __NPU_ARCH__ == 3510
 } // MoeDistributeDispatchV2Impl
+
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_H
