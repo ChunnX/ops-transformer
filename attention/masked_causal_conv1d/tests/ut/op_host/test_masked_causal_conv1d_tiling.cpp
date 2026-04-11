@@ -38,7 +38,7 @@ protected:
 // Test 1: BF16 baseline, S=2048 B=4 H=768
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_s2048_b4_h768)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 2048, B = 4, H = 768, W = 3;
@@ -55,14 +55,16 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_s2048_b4_h76
         },
         attrs,
         &compileInfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "2048 4 768 8 4 128 64 4 0 1 1 2 0 1024 1024 64 1 480 2 64 1 1 3 64 1 64 1 1 3 64 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 2: FP16 dtype → GetTilingKey returns TILING_KEY_FP16 (10001)
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fp16_s2048_b4_h768)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 2048, B = 4, H = 768, W = 3;
@@ -80,13 +82,16 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fp16_s2048_b4_h76
         attrs,
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10001, "", {});
+    int64_t expectTilingKey = 10001;
+    std::string expectTilingData = "2048 4 768 8 4 128 64 4 0 1 1 2 0 1024 1024 64 1 480 2 64 1 1 3 64 1 64 1 1 3 64 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 3: Mask absent (empty shape) → isMaskNone_ = 1
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_mask_none_s1024_b2_h128)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 1024, B = 2, H = 128, W = 3;
@@ -104,13 +109,16 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_mask_none_s1
         attrs,
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "1024 2 128 2 0 64 64 2 0 1 1 16 0 64 64 64 1 64 1 64 1 1 1 64 1 64 1 1 1 64 64 1 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 4: H not divisible by H_REG=64 → CheckInputParams GRAPH_FAILED
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_h_not_aligned)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 1024, B = 2, H = 100, W = 3;  // H=100 not multiple of 64
@@ -134,7 +142,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_h_not_aligne
 // Test 5: Weight K != CONV_WINDOW_SIZE=3 → CheckInputParams GRAPH_FAILED
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_wrong_weight_k)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 1024, B = 2, H = 128, W = 4;  // W=4 != 3
@@ -158,7 +166,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_wrong_weight
 // Test 6: Unsupported dtype FP32 → GetInputDtypes GRAPH_FAILED
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_invalid_dtype_fp32)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 1024, B = 2, H = 128, W = 3;
@@ -182,7 +190,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_invalid_dtyp
 // Test 7: Minimal valid shape S=64 B=1 H=64 (exactly H_REG)
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_min_shape_s64_b1_h64)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 64, B = 1, H = 64, W = 3;
@@ -200,7 +208,10 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_min_shape_s6
         attrs,
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "64 1 64 1 0 64 64 1 0 1 1 64 0 1 1 64 1 1 1 64 1 1 1 1 1 64 1 1 1 1 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 8: Situation A + hUb expansion
@@ -208,7 +219,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_min_shape_s6
 // then the k-loop expands ubFactorH_ to 128.
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_a_hexpand_s32_b1_h8192)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 32, B = 1, H = 8192, W = 3;
@@ -226,7 +237,10 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_a_
         attrs,
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "32 1 8192 64 0 128 128 1 0 1 1 1 0 32 32 128 1 32 1 128 1 1 1 32 1 128 1 1 1 32 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 9: Situation B – reduce B
@@ -235,7 +249,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_a_
 //   bUb=2: calcUsedUb(64,2,64)=50176 ≤ 57344 → reduce-B branch taken
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_reduce_b)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 64, B = 3, H = 64, W = 3;
@@ -251,10 +265,12 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_
             {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
         },
         attrs,
-        &compileInfo,
-        "Ascend910B", /*coreNum=*/1, /*ubSize=*/65536);
+        &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "64 3 64 1 0 64 64 2 1 2 1 32 0 2 2 64 2 2 1 64 1 2 1 2 1 64 1 1 1 2 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 10: Situation B – cut S
@@ -263,7 +279,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_
 //   → findSUbMax(64,1) → ubFactorS_ < 256 (cut S path)
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_cut_s)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 256, B = 1, H = 64, W = 3;
@@ -279,17 +295,19 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_situation_b_
             {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
         },
         attrs,
-        &compileInfo,
-        "Ascend910B", /*coreNum=*/1, /*ubSize=*/65536);
+        &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "256 1 64 1 0 64 64 1 0 1 1 64 0 4 4 64 1 4 1 64 1 1 1 4 1 64 1 1 1 4 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // Test 11: Irregular core split – non-zero sMainCnt_ and tailBlockLoop* params
 // S=101, B=6, H=128, coreNum=64 → sCoreCnt_=5, sBlockFactor_=21, sBlockTailFactor_=20
 TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_irregular_split_s101_b6_h128)
 {
-    struct FusedCausalConv1dCutBSHCompileInfo {} compileInfo;
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
     int64_t S = 101, B = 6, H = 128, W = 3;
@@ -307,5 +325,8 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_irregular_sp
         attrs,
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "", {});
+    int64_t expectTilingKey = 10000;
+    std::string expectTilingData = "101 6 128 2 0 64 64 4 2 2 1 8 5 13 12 64 2 13 1 64 1 2 1 13 1 64 1 1 1 12 64 0 ";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
