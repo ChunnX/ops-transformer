@@ -54,11 +54,6 @@ T Mc2Context::GetHcclLibFunc(void *handle, const std::string &funcName)
     return func;
 }
 
-Mc2Context::Mc2Context()
-{
-    OP_LOGI("Init Mc2Context Success.");
-}
-
 Mc2Context &Mc2Context::GetInstance()
 {
     static Mc2Context instance;
