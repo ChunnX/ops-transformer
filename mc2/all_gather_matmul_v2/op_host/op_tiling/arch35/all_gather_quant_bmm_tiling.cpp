@@ -655,30 +655,40 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
 {
     // local块切分
     args_.mValue = args_.orgMValue;
-    AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
-    GE_ASSERT_GRAPH_SUCCESS(mmLocalTile.DoTiling());
+    if (args_.orgNValue != 0) { // 当n=0时，只做通信不做matmul tiling
+        AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
+        GE_ASSERT_GRAPH_SUCCESS(mmLocalTile.DoTiling());
+    }
+
+    // tile块切分
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
         (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) : tileMValue_;
-    AllGatherQuantBmmHelper mmTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3TileTiling, false);
-
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    if (args_.orgNValue != 0 ) {
+        AllGatherQuantBmmHelper mmTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3TileTiling, false);
+        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTileTilingData().M = tileMValue_;
     } else {
         MutableTCubeTileTilingData().M = tileMValue_ * (args_.rankDim - 1);
     }
+
+    // tail块切分
     if (MutableRCSTilingDataA5().tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
         (tailMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tailCnt)) : tailMValue_;
-    AllGatherQuantBmmHelper mmTail(*this, allGatherMatmulTilingDataFp8_->quantBmmv3TailTiling, false);
-    GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    if (args_.orgNValue != 0 ) {
+        AllGatherQuantBmmHelper mmTail(*this, allGatherMatmulTilingDataFp8_->quantBmmv3TailTiling, false);
+        GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTailTilingData().M = tailMValue_;
     } else {
         MutableTCubeTailTilingData().M = tailMValue_ * (args_.rankDim - 1);
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
