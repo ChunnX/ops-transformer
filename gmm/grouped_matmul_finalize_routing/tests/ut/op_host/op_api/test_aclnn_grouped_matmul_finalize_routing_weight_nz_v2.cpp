@@ -323,10 +323,6 @@ struct GroupedMatmulFinalizeRoutingWeightNzV2Case {
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         }
 
-        if (tuningConfigPtr != nullptr) {
-            aclDestroyIntArray(tuningConfigPtr);
-        }
-
         if (ParseBool(checkRet)) {
             EXPECT_EQ(ret, ParseStatus(expectRet));
         }
