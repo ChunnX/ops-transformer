@@ -12,11 +12,6 @@
  * \file mhc_pre_backward_def.cpp
  * \brief
  */
-
-/*!
- * \file mhc_pre_backward_def.cpp.cpp
- * \brief
- */
 #include "register/op_def_registry.h"
 
 namespace ops {

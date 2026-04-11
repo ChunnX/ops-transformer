@@ -19,6 +19,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
 #include "err/ops_err.h"
+#include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
 
 namespace optiling {
@@ -89,9 +90,24 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus GetInputShape();
+    ge::graphStatus GetInputTensors(const gert::Tensor *&hInGradTensor, const gert::Tensor *&hPostGradTensor,
+                                   const gert::Tensor *&hCombBeforeGradTensor);
+    ge::graphStatus ValidateInputDims(int64_t hInDims, int64_t hPostDims, int64_t hCombDims);
+    ge::graphStatus ParseBSDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
+                                const gert::Tensor *hCombBeforeGradTensor);
+    ge::graphStatus ParseTNDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
+                                 const gert::Tensor *hCombBeforeGradTensor);
+    ge::graphStatus ValidateShapeParams();
+    ge::graphStatus GetPlatformInfo(platform_ascendc::PlatformAscendC &platform);
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
+    void SetC0TilingParams();
+    void SetC1TilingParams();
+    void SetCommonTilingParams();
+    void SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm);
+    void SetMatmulC1Tiling(matmul_tiling::MatmulApiTiling &mm);
+    ge::graphStatus GetMatmulTiling(matmul_tiling::MatmulApiTiling &mm, bool isC0);
     ge::graphStatus TilingProcess();
 
     static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
@@ -99,20 +115,16 @@ protected:
 
 private:
     MhcPreBackwardTilingData tilingData_;
-    uint32_t blockDim_;   // AIC
-    uint32_t vecCoreNum_; // AIV
-    uint64_t totalLength_;
-    uint64_t m_;
-    uint64_t ubSize_;
-    uint64_t l1Size_;
-    uint64_t matM_;
-    uint64_t matK_;
-    uint64_t matN_;
-    uint64_t nD_;
-    uint64_t N_;
-    uint64_t D_;
-    float hcEps_;
-    uint32_t fusionSize_;
+    uint32_t blockDim_{0};   // AIC
+    uint32_t vecCoreNum_{0}; // AIV
+    uint64_t totalLength_{0};
+    uint64_t matM_{0};
+    uint64_t matK_{0};
+    uint64_t matN_{0};
+    uint64_t N_{0};
+    uint64_t D_{0};
+    float hcEps_{0.0f};
+    uint32_t fusionSize_{0};
 };
 
 } // namespace optiling

@@ -118,7 +118,7 @@ struct InitParams {
     GM_ADDR gamma_grad;
     GM_ADDR workspace;
     TPipe *tPipeIn;
-    MhcPreBackwardTilingData *tilingData;
+    const MhcPreBackwardTilingData *tilingData;
 };
 
 struct OpRunInfo {
@@ -237,12 +237,12 @@ struct WorkspaceBuffer {
 
     __aicore__ inline uint64_t GetXRsGradOffset(uint32_t coreId, uint32_t buffId)
     {
-        return CeilAlign(xRsGradOffset, uint64_t(32)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+        return CeilAlign(xRsGradOffset, uint64_t(CEIL_ALIGN_DEFAULT)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
     }
 
     __aicore__ inline uint64_t GetXRsOffset(uint32_t coreId, uint32_t buffId)
     {
-        return CeilAlign(xRsOffset, uint64_t(32)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+        return CeilAlign(xRsOffset, uint64_t(CEIL_ALIGN_DEFAULT)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
     }
 };
 
@@ -360,7 +360,7 @@ private:
     GlobalTensor<P> biasPostGradGm_; // 输出 bias_post_grad
     GlobalTensor<P> gammaGradGm_;    // 输出 gamma_grad
 
-    /* V1 LocalTensor*/
+    /*V1 LocalTensor*/
     LocalTensor<P> gammaUb;      // gamma
     LocalTensor<T> xRsUb;        // x_rs
     LocalTensor<T> hInGradUb;    // h_in_grad
@@ -1375,7 +1375,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 初始化
     // ==========================================================
     uint32_t currentN = offsetND / D_;
-    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE;
+    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
     uint32_t currentBsSize = bsEnd - bsStart;
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
