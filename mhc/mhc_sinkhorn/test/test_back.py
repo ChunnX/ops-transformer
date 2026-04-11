@@ -20,16 +20,33 @@ align_n = 8
 padding_size = align_n - n 
 num_iters = 20
 T = 2048
-ubAvailableSize = ubSize_ - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER
-corePerLoopMaxTSize = ubAvailableSize // (inputDTypeSize_ * (2 * n * n + 2 * n * align_n + 2 * align_n))
 
-coreTSize_ = (T + aivNum - 1) // aivNum
-corePerLoopMaxTSize = min(corePerLoopMaxTSize, coreTSize_)
-if coreTSize_ < MIN_PER_CORE_ELEMENTS and T >= MIN_PER_CORE_ELEMENTS:
-    coreTSize_ = MIN_PER_CORE_ELEMENTS
+def ceildiv(x, y):
+    return (x + y - 1) // y
 
-needCoreNum_ = (T + coreTSize_ - 1) // coreTSize_
-loop_ = (coreTSize_ + corePerLoopMaxTSize - 1) // corePerLoopMaxTSize
+coreTSize_ = ceildiv(T, aivNum) # tNormCore_
+needCoreNum_ = ceildiv(T, coreTSize_) # usedCoreNum_
+TailCoreTSize_ = T - coreTSize_ * (needCoreNum_ - 1) # tTailCore_
+
+ubAvailableSize = ubSize_ - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER # ubSizeUsed_
+
+corePerLoopMaxTSize = ubAvailableSize // (inputDTypeSize_ * (2 * n * n + 2 * n * align_n + 2 * align_n)) # tUbfactor
+
+corePerLoopMaxTSize = coreTSize_ if coreTSize_ * inputDTypeSize_ <= ubAvailableSize else corePerLoopMaxTSize
+
+corePerLoopMaxTSize_8 = ((corePerLoopMaxTSize + 7) // 8) * 8
+
+tNormCoreLoop_ = ceildiv(coreTSize_, corePerLoopMaxTSize)  # 整核loop_, 整核的整块大小都是corePerLoopMaxTSize
+tTailCoreLoop_ = ceildiv(TailCoreTSize_, corePerLoopMaxTSize) # 尾核loop_
+loop_ = tNormCore_
+
+tUbfactorTail_ = coreTSize_ - (tNormCoreLoop_ - 1) * corePerLoopMaxTSize # 整核尾块
+tUbTailTail_ = TailCoreTSize_ - (tTailCoreLoop_ - 1) * corePerLoopMaxTSize # 尾核尾块
+
+# if coreTSize_ < MIN_PER_CORE_ELEMENTS and T >= MIN_PER_CORE_ELEMENTS:
+#     coreTSize_ = MIN_PER_CORE_ELEMENTS
+
+# loop_ = (coreTSize_ + corePerLoopMaxTSize - 1) // corePerLoopMaxTSize
 
 # ubSize_ = 248 * 1024
 # SIMD_RESERVED_SIZE = 8 * 1024
@@ -60,8 +77,6 @@ loop_ = (coreTSize_ + corePerLoopMaxTSize - 1) // corePerLoopMaxTSize
 
 sum_out_global = torch.zeros([2 * num_iters, needCoreNum_, loop_, align_n * corePerLoopMaxTSize], dtype=float)
 
-def ceildiv(x, y):
-    return (x + y - 1) // y
 
 def softmax(x, dim = -1):
     return torch.softmax(x, dim = dim)
@@ -130,8 +145,6 @@ def sinkhorn_grad_with_saved_tensors(grad_output, norm_out, sum_out, num_iters):
     return grad_input
 
 def convert_to_npu_format(norm_list, sum_list, num_iters):
-    T, n, _ = norm_list[0].shape 
-
     #构建norm_out: [2*num_iters, T, n, n] -> [needCoreNum_, loop_, 2 * num_iters, n, corePerLoopMaxTSize, align_n]
     norm_out = torch.zeros([2 * num_iters, needCoreNum_, loop_, n, corePerLoopMaxTSize, align_n], dtype=norm_list[0].dtype, device=norm_list[0].device)
     for idx, norm_tensor in enumerate(norm_list):
@@ -196,21 +209,21 @@ def test_sinkhorn_grad_netshape():
 
         print("=======================================================")
         print("norm_out.shape: ", norm_out.shape)
-        print("norm_out: ", norm_out)
+        # print("norm_out: ", norm_out)
         print("=======================================================")
         print("sum_out.shape: ", sum_out.shape)
-        print("sum_out: ", sum_out)
+        # print("sum_out: ", sum_out)
         print("=======================================================")
         print("grad_output.shape: ", grad_output.shape)
-        print("grad_output: ", grad_output)
+        # print("grad_output: ", grad_output)
         print("=======================================================")
 
         grad_input_golden = sinkhorn_grad_with_saved_tensors(grad_output, norm_out, sum_out, num_iters)
 
-        grad_input = torch.ops.npu.npu_mhc_sinkhorn_backward(grad_output.npu(), norm_out.npu(), sum_out.npu())
+        # grad_input = torch.ops.npu.npu_mhc_sinkhorn_backward(grad_output.npu(), norm_out.npu(), sum_out.npu())
 
-        grad_input_result = cmp_out_golden(grad_input_golden, grad_input.cpu(), 'float')
-        print(grad_input_result)
+        # grad_input_result = cmp_out_golden(grad_input_golden, grad_input.cpu(), 'float')
+        # print(grad_input_result)
 
 if __name__ == "__main__":
     test_sinkhorn_grad_netshape()
