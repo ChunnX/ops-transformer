@@ -549,6 +549,17 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &f
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus PagedAttentionChecker::CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo)
+{
+    uint32_t kDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF((kDimNum == DIM_NUM_4 && fiaInfo.inputLayout != TilingKeyLayout::BNSD &&
+                fiaInfo.inputLayout != TilingKeyLayout::TND),
+            OP_LOGE(fiaInfo.opName, "When Page Attention is enabled, and KV cache dimensions are 4-dimensional, "
+                    "inputLayout must be BNSD or BNSD_BSND or TND."),
+            return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
@@ -590,7 +601,8 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
     }
     if (enableAntiQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckFeatureQueryS(fiaInfo)) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureQueryS(fiaInfo) ||
+            ge::GRAPH_SUCCESS != CheckFeatureInputLayoutForAntiquant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
