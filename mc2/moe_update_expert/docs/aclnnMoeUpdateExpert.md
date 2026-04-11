@@ -127,7 +127,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>activeMaskOptional</td>
     <td>输入</td>
-    <td>表示token是否参与通信，可传有效数据或空指针：<br><ul><li> 传有效数据时，expertScalesOptional和pruningThresholdOptional必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。<br><li> 传空指针时，默认所有token参与通信。<br>要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</li></ul></td>
+    <td>表示token是否参与通信，可传有效数据或空指针：<ul><li> 传有效数据时，expertScalesOptional和pruningThresholdOptional必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。</li><li> 传空指针时，默认所有token参与通信。<br>要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     </tr>
@@ -148,7 +148,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>balanceMode</td>
     <td>输入</td>
-    <td>均衡规则，默认值为0：<br><ul><li> 0：按rank分发；<br><li> 1：按token分发；<br>取值范围[0, 1]。</li></ul></td>
+    <td>均衡规则，默认值为0：<br><ul><li> 0：按rank分发；</li><li> 1：按token分发；<br>取值范围[0, 1]。</li></ul></td>
     <td>INT64</td>
     <td>ND</td>
     </tr>

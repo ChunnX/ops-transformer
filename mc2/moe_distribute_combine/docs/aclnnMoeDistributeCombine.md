@@ -518,6 +518,7 @@ aclnnStatus aclnnMoeDistributeCombine(
 5. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 6. 参数说明里shape格式说明：
+
     - **A**：表示本卡需要分发的最大token数量，取值范围如下：
       - 对于共享专家，需满足 (A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
       - 对于MoE专家，当`globalBs`为0时，需满足 (A >= BS * epWorldSize * min(localExpertNum, K))；当`globalBs`非0时，需满足 (A >= globalBs * min(localExpertNum, K))。
@@ -538,6 +539,7 @@ aclnnStatus aclnnMoeDistributeCombine(
 7. **HCCL_BUFFSIZE**：
 
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
+
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - 设置大小要求 (≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
@@ -551,11 +553,13 @@ aclnnStatus aclnnMoeDistributeCombine(
 9. 本文公式中的“/”表示整除。
 
 10. 通信域使用约束：
+
    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 11. 组网约束：
+
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
 ## 调用示例
@@ -589,27 +593,30 @@ aclnnStatus aclnnMoeDistributeCombine(
         ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
         export ENV_DEV_NUM=16
         ```
-    
+
     - 机器数量设置：
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
 
         ```Cpp
         const uint32_t MACHINE_NUM = 2;
         ```
+
         单机16卡场景则无需修改。
 
     - 算子编译执行：
         在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+
         ```bash
         bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
         ```
 
         在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
+
         ```bash
         bash build.sh --run_example --ops=moe_distribute_combine eager cust
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
- 
+
     - 环境变量配置：
 
         ```bash
@@ -621,6 +628,7 @@ aclnnStatus aclnnMoeDistributeCombine(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>

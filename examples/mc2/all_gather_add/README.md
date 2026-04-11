@@ -108,10 +108,12 @@
   </tbody></table>
 
 ## 约束说明
+
 * 当前该示例算子仅支持固定shape：a(240, 256)，b(240 * 2, 256)，和固定rank_size = 2。 
 * 所有输入不支持空tensor场景，取值范围在[-5,5]之间。
 * 确定性计算：
   - allGatherAdd算子默认确定性实现。
+
 ## 调用说明
 
 调用本算子前，请确保已本地下载代码仓，并安装好如下基础依赖、NPU驱动和固件已安装。
@@ -131,14 +133,17 @@
     # 执行命令示例：（在910b环境下编译all_gather_add算子
     # bash build.sh --pkg --soc=ascend910b --ops=all_gather_add
     ```
+
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas A2 推理系列产品使用"ascend910b"（默认），Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
     - --ops：填写本示例算子名称 all_gather_add。
      
     若提示如下信息，说明编译成功。
+
     ```bash
     Self-extractable archive "cann-ops-transformer-${vendor_name}_linux-${arch}.run" successfully created.
     ```
+
     编译成功后，run包存放于项目根目录的build_out目录下。
     
 2. **安装自定义算子包**
@@ -167,6 +172,7 @@
       本示例的算子执行样例代码：[test_aclnn_all_gather_add.cpp](examples/test_aclnn_all_gather_add.cpp)。该代码首先按照固定shape随机生成测试数据作为输入，同时在cpu侧对输入数据进行拼接和相加来模拟AllGather、Add的运算并生成golden数据，然后将生成的测试数据转化为Tensor拷贝到设备侧，最后依次调用[本示例aclnn文件](../all_gather_add/op_host/op_api/aclnn_all_gather_add.h)中的两段式接口完成单算子API调用。
 
       完成自定义算子包的安装和算子执行代码的编写后，执行如下命令：
+
         ```bash
         bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}]
         # 执行命令示例:
@@ -180,7 +186,7 @@
 
         算子执行结束后，测试样例会将算子的执行结果拷贝到主机侧与golden进行精度对比，本示例算子的精度要求为千分之一。
         运行结果示例如下：
-    
+
         ```
         device_0 aclnnAllGatherAdd execute successfully.
         device_1 aclnnAllGatherAdd execute successfully.
@@ -189,20 +195,23 @@
         ```
 
 - **注意事项**
+
     - 本示例算子仅接受固定shape的tensor为参数，且仅支持在2个昇腾AI处理器上执行。
 
       本算子执行代码[test_aclnn_all_gather_add.cpp](examples/test_aclnn_all_gather_add.cpp)中的rankId为昇腾AI处理器的逻辑ID，代码中的rankId被赋值为0，1使得算子在ID为：0、1的昇腾AI处理器上执行算子，实际执行过程中可能存在多个进程竞争处理器0、1的问题，导致如下错误：
+
         ```bash
         [ERROR] HcclCommInit failed. ret = 4
         ```
 
       此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
-      
+
         ```bash
         # 查看各Device运行情况
         npu-smi info
         # 若处理器6，7空闲，则指定仅6，7对当前进程可见：
         export ASCEND_RT_VISIBLE_DEVICES=6,7 
         ```
+
         此时，当前进程仅可见6，7两个处理器，则6，7对于当前进程的逻辑ID为0，1。
         重新执行算子即可。

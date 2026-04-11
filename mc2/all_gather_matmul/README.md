@@ -17,7 +17,6 @@
     y=AllGather(x1)@x2+bias
     $$
 
-
     $$
     gatherOut=AllGather(x1)
     $$

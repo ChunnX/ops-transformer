@@ -51,8 +51,8 @@
 | cacheMode                     | 输入 | 表示输入的数据排布格式，支持Norm、PA_NZ | String      | ND         |
 | isSeqLensCumsum                     | 输入 | 表示seqLens是否为累加和。false表示非累加和 | BOOL       | ND         |
 
-
 ## 约束说明
+
 无
 
 ## 调用说明

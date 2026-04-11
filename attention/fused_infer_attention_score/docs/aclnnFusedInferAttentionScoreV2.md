@@ -582,7 +582,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>4</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>

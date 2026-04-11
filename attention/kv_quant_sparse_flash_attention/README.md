@@ -259,4 +259,3 @@ torch_npu.npu_kv_quant_sparse_flash_attention(query, key, value, sparse_indices,
             [ -256.0000,  256.0000, 596.0000,  ...,  92.0000,  -736.0000, 0.0000]]]],
             device='npu:0', dtype=torch.bfloat16) torch.Size([1, 1, 128, 512])
     ```
-

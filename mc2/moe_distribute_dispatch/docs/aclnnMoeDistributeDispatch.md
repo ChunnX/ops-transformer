@@ -372,6 +372,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>-</td>
     <td>-</td>
     </tr>
+    <tr>
     <td>workspaceSize</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
@@ -449,11 +450,11 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <tr><td>参数的取值不在支持的范围。</td></tr>
     </tbody>
     </table>
-​    
+
 ## aclnnMoeDistributeDispatch
 
 - **参数说明：**
-    
+
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 168px">
     <col style="width: 128px">
@@ -628,6 +629,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>

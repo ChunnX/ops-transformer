@@ -3,6 +3,7 @@
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
 
 ## 产品支持情况
+
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
@@ -14,101 +15,101 @@
 
 ## 功能说明
 
-  - **接口功能**：实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。基本功能为矩阵乘，如$y_i[m_i,n_i]=x_i[m_i,k_i] times weight_i[k_i,n_i], i=1...g$，其中g为分组个数，$m_i/k_i/n_i$为对应shape。输入输出数据类型均为aclTensorList，对应的功能为：
+- **接口功能**：实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。基本功能为矩阵乘，如$y_i[m_i,n_i]=x_i[m_i,k_i] times weight_i[k_i,n_i], i=1...g$，其中g为分组个数，$m_i/k_i/n_i$为对应shape。输入输出数据类型均为aclTensorList，对应的功能为：
 
-      - k轴分组：$k_i$各不相同，但$m_i/n_i$每组相同，此时$x_i/weight_i$可以在$k_i$上拼接。
-      - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接。
+  - k轴分组：$k_i$各不相同，但$m_i/n_i$每组相同，此时$x_i/weight_i$可以在$k_i$上拼接。
+  - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接。
 
-    **与[GroupedMatmulV5](aclnnGroupedMatmulV5.md)接口对比新增功能**：
+  **与[GroupedMatmulV5](aclnnGroupedMatmulV5.md)接口对比新增功能**：
 
-      - 输入的weight的数据格式支持AI处理器亲和数据排布格式（FRACTAL_NZ）。
-      - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
-      - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
+  - 输入的weight的数据格式支持AI处理器亲和数据排布格式（FRACTAL_NZ）。
+  - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
+  - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
 
-  - **计算公式**：
+- **计算公式**：
 
-      <a id="非量化场景"></a>
+  <a id="非量化场景"></a>
 
-      - **非量化场景：**
+  - **非量化场景：**
 
-        $$
-        y_i=x_i \times weight_i + bias_i
-        $$
+    $$
+    y_i=x_i \times weight_i + bias_i
+    $$
 
-      <a id="量化场景"></a>
+  <a id="量化场景"></a>
 
-      - **量化场景（无perTokenScaleOptional）：**
+  - **量化场景（无perTokenScaleOptional）：**
 
-        - x为INT8，bias为INT32
+    - x为INT8，bias为INT32
 
-          $$
-          y_i=(x_i \times weight_i + bias_i) * scale_i + offset_i
-          $$
+      $$
+      y_i=(x_i \times weight_i + bias_i) * scale_i + offset_i
+      $$
 
-        - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
+    - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
 
-          $$
-          y_i=(x_i \times weight_i) * scale_i + bias_i
-          $$
+      $$
+      y_i=(x_i \times weight_i) * scale_i + bias_i
+      $$
 
-      - **量化场景（有perTokenScaleOptional）：**
+  - **量化场景（有perTokenScaleOptional）：**
 
-        - x为INT8，bias为INT32
+    - x为INT8，bias为INT32
 
-          $$
-          y_i=(x_i \times weight_i + bias_i) * scale_i * per\_token\_scale_i
-          $$
+      $$
+      y_i=(x_i \times weight_i + bias_i) * scale_i * per\_token\_scale_i
+      $$
 
-        - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
+    - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
 
-          $$
-          y_i=(x_i \times weight_i) * scale_i * per\_token\_scale_i  + bias_i
-          $$
+      $$
+      y_i=(x_i \times weight_i) * scale_i * per\_token\_scale_i  + bias_i
+      $$
 
-      - **量化场景 (mx量化，当前无bias无激活层)：**
+  - **量化场景 (mx量化，当前无bias无激活层)：**
 
-        $$
-        y_i=(x_i * per\_token\_scale_i) \times (weight_i * scale_i)
-        $$
+    $$
+    y_i=(x_i * per\_token\_scale_i) \times (weight_i * scale_i)
+    $$
 
-      <a id="反量化场景"></a>
+  <a id="反量化场景"></a>
 
-      - **反量化场景：**
+  - **反量化场景：**
 
-        $$
-        y_i=(x_i \times weight_i + bias_i) * scale_i
-        $$
+    $$
+    y_i=(x_i \times weight_i + bias_i) * scale_i
+    $$
 
-      <a id="伪量化场景"></a>
+  <a id="伪量化场景"></a>
 
-      - **伪量化(perchannel、pergroup)场景：**
+  - **伪量化(perchannel、pergroup)场景：**
 
-        $$
-        y_i=x_i \times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-        $$
+    $$
+    y_i=x_i \times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+    $$
 
-      - **伪量化(mx)场景：**
+  - **伪量化(mx)场景：**
 
-        x为BFLOAT16/FLOAT16输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1输入
+    x为BFLOAT16/FLOAT16输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1输入
 
-        $$
-        y_i=x_i \times (weight_i  * antiquant\_scale_i) + bias_i
-        $$
+    $$
+    y_i=x_i \times (weight_i  * antiquant\_scale_i) + bias_i
+    $$
 
-        x为FLOAT8_E4M3FN输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1输入
+    x为FLOAT8_E4M3FN输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1输入
 
-        $$
-        y_i=(x_i * per\_token\_scale_i) \times (weight_i  * antiquant\_scale_i) + bias_i
-        $$
+    $$
+    y_i=(x_i * per\_token\_scale_i) \times (weight_i  * antiquant\_scale_i) + bias_i
+    $$
 
-      - **伪量化(K-CG)场景：**
+  - **伪量化(K-CG)场景：**
 
-        $$
-        y_i=(x_i \times (weight_i * antiquant\_scale_i)) * scale_i * per\_token\_scale_i + bias_i
-        $$
+    $$
+    y_i=(x_i \times (weight_i * antiquant\_scale_i)) * scale_i * per\_token\_scale_i + bias_i
+    $$
 
-        其中antiquant\_scale_i为weight矩阵pergroup量化参数，scale_i为weight矩阵perchannel量化参数，per\_token\_scale_i为
-        pertoken量化参数。
+    其中antiquant\_scale_i为weight矩阵pergroup量化参数，scale_i为weight矩阵perchannel量化参数，per\_token\_scale_i为
+    pertoken量化参数。
 
 ## 函数原型
 
@@ -311,7 +312,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   <td>groupType</td>
   <td>输入</td>
   <td>代表需要分组的轴。</td>
-  <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</a></td>
+  <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</td>
   <td>INT64</td>
   <td>-</td>
   <td>-</td>
@@ -611,6 +612,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT32         |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize/2, 2) |(g, N, K/8) |(g, N, K/groupSize/2, 2) |null   |(g, N) |
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |BFLOAT16 |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
+      
     - 约束说明：
       - 当x为FLOAT8_E4M3FN/FLOAT16/BFLOAT16，weight为FLOAT4_E2M1/FLOAT32的场景， groupSize只支持32。
       - 当x为INT8， weight为INT4/INT32的场景， groupSize只支持128、192、256、512。
@@ -627,7 +629,9 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |0|INT8     |INT8     |INT32/null    | UINT64/INT64  |BFLOAT16/FLOAT16|
       |0|INT8     |INT8     |INT32/BFLOAT16/FLOAT32/null    | BFLOAT16/FLOAT32  |BFLOAT16|
       |0|INT8     |INT8     |INT32/FLOAT16/FLOAT32/null    | FLOAT32  |FLOAT16|
+
     - scaleOptional要满足下表（其中g为matmul组数即分组数）：
+
       |groupType| 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
       |0|weight单tensor|perchannel场景：每个tensor 2维， shape为（g, N）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,）|

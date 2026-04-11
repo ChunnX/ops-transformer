@@ -689,14 +689,41 @@ aclnnStatus aclnnMoeDistributeCombineV3(
 
 - **Shape变量约束**：
 
-  | 变量         | 定义与取值范围                                                                 |
-  | :----------- | :----------------------------------------------------------------------------- |
-  | A            | 本卡需分发的最大token数，取值范围如下: <ul><li>对于共享专家，要满足<code>A = Bs * epWorldSize \* sharedExpertNum / sharedExpertRankNum</code>。</li><li>对于MoE专家，当globalBs为0时，要满足<code>A >= Bs * epWorldSize * min(localExpertNum, K)</code>；当globalBs非0时，要满足<code>A >= globalBs * min(localExpertNum, K)</code>。
-  | H            |表示hidden size隐藏层大小:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：[1024, 8192]。 |
-  | Bs           | 本卡最终输出token数:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 256]；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 512]；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：0 < Bs ≤512。 |
-  | K            |表示选取topK个专家:<br> 0 < K ≤16，且0 < K ≤ <code>moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum</code>。 |
-  | serverNum    | 服务器节点数:<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量，仅支持2、4、8。
-  | localExpertNum | 本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：应满足 0 < localExpertNum * epWorldSize ≤ 2048。|
+    <table style="undefined;table-layout: fixed; width: 1189px"><colgroup>
+    <col style="width: 186px">
+    <col style="width: 1003px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>变量</th>
+        <th>定义与取值范围</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+        <td>A</td>
+        <td>本卡需分发的最大token数，取值范围如下:<ul><li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li><li>对于MoE专家，当globalBs为0时，要满足A &gt;= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A &gt;= globalBs * min(localExpertNum, K)。</li></ul></td>
+    </tr>
+    <tr>
+        <td>H</td>
+        <td>表示hidden size隐藏层大小:<ul><li>Atlas A2 训练系列产品/Atlas A2 推理系列产品：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：[1024, 8192]。</li></ul></td>
+    </tr>
+    <tr>
+        <td>Bs</td>
+        <td>本卡最终输出token数:<ul><li>Atlas A2 训练系列产品/Atlas A2 推理系列产品：依commAlg取值，"fullmesh"支持(0, 256]；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 512]；</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：0 &lt; Bs ≤512。</li></ul></td>
+    </tr>
+    <tr>
+        <td>K</td>
+        <td>表示选取topK个专家:<br>0 &lt; K ≤16，且0 &lt; K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum。</td>
+    </tr>
+    <tr>
+        <td>serverNum</td>
+        <td>服务器节点数:<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量，仅支持2、4、8。</td>
+    </tr>
+    <tr>
+        <td>localExpertNum</td>
+        <td>本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = moeExpertNum/(epWorldSize-sharedExpertRankNum)，localExpertNum &gt; 1时不支持TP通信。</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：应满足 0 &lt; localExpertNum * epWorldSize ≤ 2048。</li></ul></td>
+    </tr>
+    </tbody></table>
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
@@ -742,6 +769,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
         ```bash
         bash build.sh --run_example --ops=moe_distribute_combine_v2 eager cust
         ```
+
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>示例代码：
 
         ```Cpp

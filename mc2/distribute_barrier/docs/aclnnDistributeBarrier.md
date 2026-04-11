@@ -123,7 +123,6 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
-
 ## aclnnDistributeBarrier
 
 - **参数说明**

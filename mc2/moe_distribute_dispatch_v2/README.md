@@ -101,7 +101,6 @@ $$
 
 其中，$emax$表示该类型最大正规数对应的指数部分的值。
 
-
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
 
@@ -391,7 +390,6 @@ $$
 - 通信域使用约束：
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
-
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数约束：

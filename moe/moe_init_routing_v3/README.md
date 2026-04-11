@@ -221,7 +221,7 @@
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。</li></td>
+        <td>输出量化计算过程中scaleOptional的中间值。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>

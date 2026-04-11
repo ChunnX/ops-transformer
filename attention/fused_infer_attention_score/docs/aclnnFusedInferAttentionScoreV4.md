@@ -568,7 +568,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
-        <td>(Q_N)</a></td>
+        <td>(Q_N)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -1311,7 +1311,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                         </ul>
                     </ul>
                 </td>
-            <tr>
+            </tr>
         </tbody>
     </table>
 
@@ -1461,7 +1461,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>代表per-token-group模式</td>
                 <td>-</td>
             </tr>
-        <tbody>
+        </tbody>
     </table>
 
 </details>
@@ -2039,7 +2039,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、RingAttention或者D非32Byte对齐的场景。</li>
                     </ul>
                 </td>
-            <tr>
+            </tr>
         </tbody>
     </table>
 
@@ -2151,6 +2151,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
         </tbody>
     </table>
+
 </details>
 
 ## 调用示例

@@ -265,35 +265,37 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
 ## 约束说明
 
-  - 确定性说明：aclnnQuantGroupedMatmulInplaceAdd默认确定性实现。
-  - x1和x2的每一维大小在32字节对齐后都应小于int32的最大值2147483647，且内轴大小需小于2097152。
-    - 动态量化（T-C量化）场景支持的输入类型为：
-      - 不为空的参数支持的数据类型组合要满足下表：
-      
-        | x1       | x2  | scale2 | scale1Optional |yRef     |
-        |:-------:|:-------:| :------      | :------   | :------ |
-        |HIFLOAT8  |HIFLOAT8| FLOAT32    | FLOAT32   | FLOAT32 |
-      - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数）：
-        | 参数 | shape限制 |
-        |:---------:| :------ |
-        |scale1Optional| 2维tensor或1维tensor，shape为(g, 1)或(g,)|
-        |scale2| 2维tensor，shape为(g, N)|
+- 确定性说明：aclnnQuantGroupedMatmulInplaceAdd默认确定性实现。
+- x1和x2的每一维大小在32字节对齐后都应小于int32的最大值2147483647，且内轴大小需小于2097152。
+  - 动态量化（T-C量化）场景支持的输入类型为：
+    - 不为空的参数支持的数据类型组合要满足下表：
 
-    - 动态量化（mx量化）场景支持的数据类型为：
-      - 数据类型组合要满足下表：
+      | x1       | x2  | scale2 | scale1Optional |yRef     |
+      |:-------:|:-------:| :------      | :------   | :------ |
+      |HIFLOAT8  |HIFLOAT8| FLOAT32    | FLOAT32   | FLOAT32 |
 
-        | x1       | x2  |  scale2  | scale1Optional |yRef     |
-        |:-------:|:-------:| :-------    | :------   | :------ |
-        |FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| FLOAT8_E8M0   | FLOAT8_E8M0    | FLOAT32 |
+    - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数）：
 
-      - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
+      | 参数 | shape限制 |
+      |:---------:| :------ |
+      |scale1Optional| 2维tensor或1维tensor，shape为(g, 1)或(g,)|
+      |scale2| 2维tensor，shape为(g, N)|
 
-        | 参数 | shape限制 |
-        |:---------:| :------ |
-        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2, 依此类推|
-        |scale2| 3维tensor，shape为((K / 64) + g, N, 2), 起始地址偏移与scale1Optional同理|
+  - 动态量化（mx量化）场景支持的数据类型为：
+    - 数据类型组合要满足下表：
 
-  - groupList第1维最大支持1024，即最多支持1024个group。
+      | x1       | x2  |  scale2  | scale1Optional |yRef     |
+      |:-------:|:-------:| :-------    | :------   | :------ |
+      |FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| FLOAT8_E8M0   | FLOAT8_E8M0    | FLOAT32 |
+
+    - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
+
+      | 参数 | shape限制 |
+      |:---------:| :------ |
+      |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2, 依此类推|
+      |scale2| 3维tensor，shape为((K / 64) + g, N, 2), 起始地址偏移与scale1Optional同理|
+
+- groupList第1维最大支持1024，即最多支持1024个group。
 
 ## 调用示例
 
