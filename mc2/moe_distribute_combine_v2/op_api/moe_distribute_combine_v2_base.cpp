@@ -21,10 +21,13 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
+<<<<<<< HEAD
 #include "aclnnInner_moe_distribute_combine_v3.h"
 #include "common/op_api/mc2_context.h"
 
 
+=======
+>>>>>>> origin/master
 using namespace Ops::Transformer;
 using namespace op;
 #ifdef __cplusplus
@@ -32,8 +35,11 @@ extern "C" {
 #endif
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
+<<<<<<< HEAD
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
+=======
+>>>>>>> origin/master
 
 bool CombineCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
                          const aclTensor* epSendCounts, const aclTensor* expertScales,
@@ -131,6 +137,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
     }
+<<<<<<< HEAD
     aclnnStatus getWorkspaceSizesRes;
     aclnnStatus ret;
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
@@ -155,6 +162,25 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
             outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
+=======
+    aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
+        expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
+        tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional,
+        expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
+        constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
+        const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char*>(groupTpCombineV2Temp),
+        tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
+        commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
+        xOut, workspaceSize, executor);
+    if (NnopbaseSetHcclServerType) {
+        if (is910B) {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else if (is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        } else {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        }
+>>>>>>> origin/master
     }
     SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;

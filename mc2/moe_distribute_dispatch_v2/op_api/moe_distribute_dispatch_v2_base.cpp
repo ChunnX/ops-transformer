@@ -21,8 +21,11 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
+<<<<<<< HEAD
 #include "aclnnInner_moe_distribute_dispatch_v3.h"
 #include "common/op_api/mc2_context.h"
+=======
+>>>>>>> origin/master
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -133,6 +136,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
+<<<<<<< HEAD
     if(!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { //ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
@@ -168,6 +172,23 @@ aclnnStatus  aclnnMoeDistributeDispatchBase(void* workspace, uint64_t workspaceS
         if(commType == CommType::AIV) {
             OP_LOGD("enter to the  aclnnInnerMoeDistributeDispatchV2Extend");
             return aclnnInnerMoeDistributeDispatchV3(workspace, workspaceSize, executor, stream); //mte走新模版
+=======
+    aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
+        x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+        performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        const_cast<char*>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+        copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+
+    if (NnopbaseSetHcclServerType) {
+        if (is910B) {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else if (is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        } else {
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+>>>>>>> origin/master
         }
     }
     return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
