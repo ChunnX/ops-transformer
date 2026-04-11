@@ -32,8 +32,12 @@
 #include "../common/op_kernel/mc2_moe_context.h"
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
-#else 
+#else
 #include "../../common/op_kernel/moe_distribute_base.h"
+#endif
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#include "arch35/moe_distribute_dispatch_arch35.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -1514,6 +1518,39 @@ __aicore__ inline void ExecMoeDistributeDispatchV2(GM_ADDR x, GM_ADDR expertIds,
             assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
     op.Process();
 }
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+// A5 CCU 路径专用函数模板
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchA5Ccu(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
+    MoeDistributeDispatchA5Impl::MoeDistributeDispatchA5<TemplateDispatchV2TypeFunc> op;
+    op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &tilingData);
+    op.Process();
+}
+
+// A5 MTE Non-FullMesh 路径专用函数模板
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void ExecMoeDistributeDispatchV2A5Mte(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, AscendC::TPipe *pipePtr)
+{
+    GET_TILING_DATA_MEMBER(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info, info, tilingGM);
+    MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc> op;
+    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut,
+            assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, pipePtr, &info);
+    op.Process();
+}
+#endif // __NPU_ARCH__ == 3510
 } // MoeDistributeDispatchV2Impl
 
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_H
