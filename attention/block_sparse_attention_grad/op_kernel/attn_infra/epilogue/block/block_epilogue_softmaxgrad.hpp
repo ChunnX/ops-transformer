@@ -209,7 +209,7 @@ public:
     __aicore__ inline
     void operator()<AscendC::AIV>(uint64_t startIdx, uint64_t singleCoreRowCount)
     {
-        if (cBlockIdx >= usedCoreNums) {
+        if (cBlockIdx >= usedCoreNums || singleCoreRowCount <= 0) {
             return;
         }
 
