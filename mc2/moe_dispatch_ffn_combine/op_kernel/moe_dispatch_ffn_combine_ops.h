@@ -1,18 +1,18 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  */
-#ifndef DISPATCH_FFN_COMBINE_OPS_H
-#define DISPATCH_FFN_COMBINE_OPS_H
+#ifndef MOE_DISPATCH_FFN_COMBINE_OPS_H
+#define MOE_DISPATCH_FFN_COMBINE_OPS_H
 
 #include "kernel_operator.h"
 #include "gmmsq_base.h"
 #include "workspace_info.h"
 #include "hccl_shmem.h"
-#include "dispatch_ffn_combine_tiling.h"
+#include "moe_dispatch_ffn_combine_tiling.h"
 
 using namespace AscendC;
 
-namespace DispatchFFNCombineImpl {
+namespace MoeDispatchFFNCombineImpl {
 
 struct Mc2MoeContext {
     uint32_t epRankId;
@@ -33,7 +33,7 @@ struct Params {
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     HcclShmem shmem;
-    const DispatchFFNCombineTilingData *tilingData;
+    const MoeDispatchFFNCombineTilingData *tilingData;
     Params() = default;
 };
 
@@ -227,16 +227,10 @@ __aicore__ inline void FinalizeRouting(
 }
 
 template <typename ElementC>
-__aicore__ inline void CombineTokensToPeermem(
-    LocalTensor<ElementC>& l0cOutUb,
-    GemmCoord& actualShape,
-    uint32_t mLoc,
-    uint32_t nLoc,
-    const Params& params,
-    GlobalTensor<int32_t>& tokenPerExpert,
-    GlobalTensor<int32_t>& preSumBeforeRank,
-    GlobalTensor<int32_t>& cumsumMM,
-    uint32_t groupIdx)
+template <typename ElementC>
+__aicore__ inline void Combine(
+    uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t groupIdx,
+    LocalTensor<ElementC>& l0cOutUbGMM2, GemmCoord& actualShape, const Params& params)
 {
     if constexpr(g_coreType != AscendC::AIV) {
         return;
@@ -317,6 +311,6 @@ __aicore__ inline void ResetTokenPerExpert(
     }
 }
 
-}  // namespace DispatchFFNCombineImpl
+}  // namespace MoeDispatchFFNCombineImpl
 
-#endif  // DISPATCH_FFN_COMBINE_OPS_H
+#endif  // MOE_DISPATCH_FFN_COMBINE_OPS_H

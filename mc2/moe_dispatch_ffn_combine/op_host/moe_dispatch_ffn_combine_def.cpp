@@ -11,9 +11,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class DispatchFFNCombine : public OpDef {
+class MoeDispatchFFNCombine : public OpDef {
 public:
-  explicit DispatchFFNCombine(const char* name) : OpDef(name) {
+  explicit MoeDispatchFFNCombine(const char* name) : OpDef(name) {
     this->Input("context")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
@@ -107,6 +107,6 @@ public:
   }
 };
 
-OP_ADD(DispatchFFNCombine);
+OP_ADD(MoeDispatchFFNCombine);
 
 } // namespace ops

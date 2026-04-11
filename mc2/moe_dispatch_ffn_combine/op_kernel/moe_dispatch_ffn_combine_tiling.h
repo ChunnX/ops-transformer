@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file dispatch_ffn_combine_tiling.h
+ * \file moe_dispatch_ffn_combine_tiling.h
  * \brief
  */
 
-#ifndef DISPATCH_FFN_COMBINE_TILING_H
-#define DISPATCH_FFN_COMBINE_TILING_H
+#ifndef MOE_DISPATCH_FFN_COMBINE_TILING_H
+#define MOE_DISPATCH_FFN_COMBINE_TILING_H
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-struct DispatchFFNCombineInfo {
+struct MoeDispatchFFNCombineInfo {
     // 原有字段
     uint32_t epWorldSize;
     uint32_t moeExpertNum;
@@ -52,10 +52,10 @@ struct DispatchFFNCombineInfo {
     bool transW2;                  // W2转置标志
 };
 
-struct DispatchFFNCombineTilingData {
+struct MoeDispatchFFNCombineTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-    DispatchFFNCombineInfo megaMoeInfo;
+    MoeDispatchFFNCombineInfo megaMoeInfo;
 };
 
 #endif

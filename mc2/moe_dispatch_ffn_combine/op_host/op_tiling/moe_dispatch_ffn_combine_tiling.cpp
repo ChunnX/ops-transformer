@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file dispatch_ffn_combine_tiling.cpp
+ * \file moe_dispatch_ffn_combine_tiling.cpp
  * \brief
  */
 
@@ -40,7 +40,7 @@ using namespace ge;
 
 
 namespace optiling {
-static ge::graphStatus DispatchFFNCombineTilingFunc(gert::TilingContext* context)
+static ge::graphStatus MoeDispatchFFNCombineTilingFunc(gert::TilingContext* context)
 {
     // Input indices: context=0, x=1, expert_ids=2, expert_scales=3, weight1=4(dynamic), weight2=5(dynamic),
     //                scales=6(optional), x_active_mask=7(optional), weight_scales1=8(dynamic), weight_scales2=9(dynamic)
@@ -49,22 +49,22 @@ static ge::graphStatus DispatchFFNCombineTilingFunc(gert::TilingContext* context
     //               dispatch_quant_out_type=7, combine_quant_mode=8, comm_alg=9, global_bs=10
 
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "Enter DispatchFFNCombine tiling");
+    OP_LOGD(nodeName, "Enter MoeDispatchFFNCombine tiling");
 
     // TODO: Implement tiling logic
 
     return ge::GRAPH_SUCCESS;
 }
 
-struct DispatchFFNCombineCompileInfo {};
-static ge::graphStatus TilingParseForDispatchFFNCombine(gert::TilingParseContext *context)
+struct MoeDispatchFFNCombineCompileInfo {};
+static ge::graphStatus TilingParseForMoeDispatchFFNCombine(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(DispatchFFNCombine)
-    .Tiling(DispatchFFNCombineTilingFunc)
-    .TilingParse<DispatchFFNCombineCompileInfo>(TilingParseForDispatchFFNCombine);
+IMPL_OP_OPTILING(MoeDispatchFFNCombine)
+    .Tiling(MoeDispatchFFNCombineTilingFunc)
+    .TilingParse<MoeDispatchFFNCombineCompileInfo>(TilingParseForMoeDispatchFFNCombine);
 
 } // namespace optiling

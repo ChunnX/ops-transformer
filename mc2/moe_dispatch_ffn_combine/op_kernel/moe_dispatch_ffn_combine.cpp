@@ -14,13 +14,13 @@
 #include "kernel_operator.h"
 #endif
 
-#include "dispatch_ffn_combine_tiling.h"
-#include "dispatch_ffn_combine.h"
+#include "moe_dispatch_ffn_combine_tiling.h"
+#include "moe_dispatch_ffn_combine.h"
 
 using namespace AscendC;
-using namespace DispatchFFNCombineImpl;
+using namespace MoeDispatchFFNCombineImpl;
 
-__global__ __aicore__ void dispatch_ffn_combine(
+__global__ __aicore__ void moe_dispatch_ffn_combine(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
     GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -28,10 +28,10 @@ __global__ __aicore__ void dispatch_ffn_combine(
     GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingData);
+    REGISTER_TILING_DEFAULT(MoeDispatchFFNCombineTilingData);
     // 模板参数: XType, WeightType, WeightScaleType, GMM1OutType, OutputType, QuantMode
     // 当前配置: FP8输入, FP8权重, bfloat16(SwiGLU输出), bfloat16(最终输出), per-block量化
-    DispatchFFNCombine<fp8_e4m3fn_t, fp8_e4m3fn_t, fp8_e8m0_t, bfloat16_t, bfloat16_t, 2> op;
+    MoeDispatchFFNCombine<fp8_e4m3fn_t, fp8_e4m3fn_t, fp8_e8m0_t, bfloat16_t, bfloat16_t, 2> op;
     op.Init(context, x, topkIds, topkWeights, weight1, weight2,
             xActiveMask, weightScales1, weightScales2,
             scales, yOut, expertTokenNumsOut,
