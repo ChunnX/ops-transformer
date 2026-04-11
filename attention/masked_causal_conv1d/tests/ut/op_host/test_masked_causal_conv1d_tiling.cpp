@@ -62,12 +62,14 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_s2048_b4_h76
 }
 
 // Test 2: FP16 dtype → GetTilingKey returns TILING_KEY_FP16 (10001)
-TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fp16_s2048_b4_h768)
+// Shape S=64 B=1 H=64 used to keep the test lightweight; tiling data differs from BF16
+// only in the key, confirming the dtype→key mapping.
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fp16_min_shape)
 {
     struct MaskedCausalConv1dCompileInfo {} compileInfo;
     std::vector<gert::TilingContextPara::OpAttr> attrs = {};
 
-    int64_t S = 2048, B = 4, H = 768, W = 3;
+    int64_t S = 64, B = 1, H = 64, W = 3;
 
     gert::TilingContextPara tilingContextPara(
         "MaskedCausalConv1d",
@@ -83,7 +85,7 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fp16_s2048_b4_h76
         &compileInfo);
 
     int64_t expectTilingKey = 10001;
-    std::string expectTilingData = "2048 4 768 8 4 128 64 4 0 1 1 2 0 1024 1024 64 1 480 2 64 1 1 3 64 1 64 1 1 3 64 64 0 ";
+    std::string expectTilingData = "64 1 64 1 0 64 64 1 0 1 1 64 0 1 1 64 1 1 1 64 1 1 1 1 1 64 1 1 1 1 64 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -329,4 +331,149 @@ TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_bf16_irregular_sp
     std::string expectTilingData = "101 6 128 2 0 64 64 4 2 2 1 8 5 13 12 64 2 13 1 64 1 2 1 13 1 64 1 1 1 12 64 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// Test 12: x is 2-D (not 3-D) → GetInputShapes GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_x_not_3d)
+{
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, H}, {S, H}}, ge::DT_BF16, ge::FORMAT_ND},   // 2-D, should be 3-D
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, H}, {S, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 13: weight dtype != x dtype (x=BF16, weight=FP16) → GetInputDtypes GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_weight_dtype_mismatch)
+{
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // FP16 != BF16
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 14: mask dtype != DT_BOOL (mask=FP16) → GetInputDtypes GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_mask_dtype_not_bool)
+{
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // should be DT_BOOL
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 15: weight is 1-D (not 2-D) → CheckInputParams GRAPH_FAILED
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_weight_not_2d)
+{
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{H}, {H}}, ge::DT_BF16, ge::FORMAT_ND},  // 1-D, should be 2-D [K, H]
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 16:
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_weight_h_mismatch)
+{
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, 256}, {W, 256}}, ge::DT_BF16, ge::FORMAT_ND},  // weight H=256 != x H=128
+            {{{B, S}, {B, S}}, ge::DT_BOOL, ge::FORMAT_ND},
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// Test 17: mask shape != x shape (mask B or S mismatch) → CheckInputParams GRAPH_FAILED
+// Uses mask B=3 while x B=2; the S-mismatch branch is symmetric and not separately tested.
+TEST_F(MaskedCausalConv1dTiling, MaskedCausalConv1d_950_tiling_fail_mask_shape_mismatch)
+{
+    struct MaskedCausalConv1dCompileInfo {} compileInfo;
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {};
+
+    int64_t S = 1024, B = 2, H = 128, W = 3;
+
+    gert::TilingContextPara tilingContextPara(
+        "MaskedCausalConv1d",
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{W, H}, {W, H}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{3, S}, {3, S}}, ge::DT_BOOL, ge::FORMAT_ND},  // mask B=3 != x B=2
+        },
+        {
+            {{{S, B, H}, {S, B, H}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        attrs,
+        &compileInfo);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
 }

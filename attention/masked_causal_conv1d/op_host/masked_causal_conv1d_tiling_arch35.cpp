@@ -115,6 +115,29 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputDtypes()
         return ge::GRAPH_FAILED;
     }
     xDtypeSize_ = GetSizeByDataType(xType_);
+
+    // weight dtype must match x dtype
+    OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(INPUT_WEIGHT_INDEX));
+    ge::DataType weightType = context_->GetInputDesc(INPUT_WEIGHT_INDEX)->GetDataType();
+    if (weightType != xType_) {
+        OP_LOGE(context_->GetNodeName(), "weight dtype must match x dtype, got x=%d weight=%d",
+                static_cast<int>(xType_), static_cast<int>(weightType));
+        return ge::GRAPH_FAILED;
+    }
+
+    // mask dtype must be DT_BOOL (only when mask is present)
+    if (isMaskNone_ == 0) {
+        auto maskDesc = context_->GetOptionalInputDesc(INPUT_MASK_INDEX);
+        if (maskDesc != nullptr) {
+            ge::DataType maskType = maskDesc->GetDataType();
+            if (maskType != ge::DataType::DT_BOOL) {
+                OP_LOGE(context_->GetNodeName(), "mask dtype must be DT_BOOL, got %d",
+                        static_cast<int>(maskType));
+                return ge::GRAPH_FAILED;
+            }
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -129,11 +152,43 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CheckInputParams()
         OP_LOGE(context_->GetNodeName(), "H=%lu must be multiple of H_REG=%lu", H_, H_REG);
         return ge::GRAPH_FAILED;
     }
-    uint64_t wK = weightShape_.GetDimNum() >= 1 ? static_cast<uint64_t>(weightShape_.GetDim(DIM_0)) : 0;
+
+    // weight shape: [K, H], K must equal CONV_WINDOW_SIZE, H must equal x's H
+    if (weightShape_.GetDimNum() != 2) {
+        OP_LOGE(context_->GetNodeName(), "weight must be 2-D [K, H], got %lu dims",
+                weightShape_.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    uint64_t wK = static_cast<uint64_t>(weightShape_.GetDim(DIM_0));
     if (wK != CONV_WINDOW_SIZE) {
         OP_LOGE(context_->GetNodeName(), "weight K=%lu must be %lu", wK, CONV_WINDOW_SIZE);
         return ge::GRAPH_FAILED;
     }
+    uint64_t wH = static_cast<uint64_t>(weightShape_.GetDim(DIM_1));
+    if (wH != H_) {
+        OP_LOGE(context_->GetNodeName(), "weight H=%lu must equal x H=%lu", wH, H_);
+        return ge::GRAPH_FAILED;
+    }
+
+    // mask shape: [B, S] when present
+    if (isMaskNone_ == 0) {
+        if (maskShape_.GetDimNum() != 2) {
+            OP_LOGE(context_->GetNodeName(), "mask must be 2-D [B, S], got %lu dims",
+                    maskShape_.GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+        uint64_t mB = static_cast<uint64_t>(maskShape_.GetDim(DIM_0));
+        uint64_t mS = static_cast<uint64_t>(maskShape_.GetDim(DIM_1));
+        if (mB != B_) {
+            OP_LOGE(context_->GetNodeName(), "mask B=%lu must equal x B=%lu", mB, B_);
+            return ge::GRAPH_FAILED;
+        }
+        if (mS != S_) {
+            OP_LOGE(context_->GetNodeName(), "mask S=%lu must equal x S=%lu", mS, S_);
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
