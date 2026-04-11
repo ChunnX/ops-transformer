@@ -653,6 +653,12 @@ DequantBmm::Mc2SlidingWindowParams &AllGatherQuantBmmTiling::MutableTCubeTailTil
 
 ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
 {
+    // 当n=0时，只做通信不做matmul tiling
+    if (args_.nValue == 0) {
+        OP_LOGI(opName_, "nValue is 0, skip matmul tiling, only do gather communication.");
+        return ge::GRAPH_SUCCESS;
+    }
+
     // local块切分
     args_.mValue = args_.orgMValue;
     AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
