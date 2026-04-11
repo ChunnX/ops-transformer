@@ -1133,11 +1133,13 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                                     <li>数据格式均仅支持ND</li>
                                 </ul>
                 </td>
-                <td rowspan="2">无限制</td>
-                <td rowspan="2">支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND</td>
+                <td>无限制</td>
+                <td>支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND</td>
             </tr>
             <tr>
                 <td>Prefill MLA</td>
+                <td>无限制</td>
+                <td>支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND</td>
             </tr>
             <tr>
                 <td>Decode MLA</td>
