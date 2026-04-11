@@ -67,6 +67,7 @@ public:
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
+    int32_t i_ = 0;
 private:
 
     uint32_t xNumPerBlock_{0};
@@ -97,12 +98,14 @@ private:
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitHcclContext()
 {
+    AscendC::PRINTF("InitHcclContext");
     hcclContext_ = (__gm__ Mc2Kernel::HcclOpParam*)GetHcclContext<HCCL_GROUP_ID_0>();
 }
 
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitParams()
 {
+    AscendC::PRINTF("InitParams");
     aivId_ = GetBlockIdx(); // 获取当前核Id
     scaleNumsPerBlcok_ = SCALE_BLCOK_BYTES / sizeof(ScalesType); // 一块scale固定32B, 计算包含多少个数据
     assignedBlockNums_ = aivId_ < tailBlockNums_ ? round_ + 1 : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
@@ -114,6 +117,7 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t xSize, uint64_t winSpaceGmSize)
 {
+    AscendC::PRINTF("InitGMTensor");
     // 入参相关数据的GMTensor
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     scalesGMTensor_.SetGlobalBuffer((__gm__ ScalesType*)scales);
@@ -123,12 +127,19 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
     // Win区OOM检测适配，告知OOM框架Win区地址和大小
     #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
         for(uint64_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
-            OOMCheckAddrRange(GetWinAddrGm(curRank), winSpaceGmSize);
+            uint32_t curRankId = hcclContext_->rankId;
+            GM_ADDR winAddr;
+            if (curRank == curRankId) {
+                winAddr = hcclContext_->localWindowsIn;
+            } else {
+                winAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[curRank].nextDevicePtr))->windowsIn);
+            }
+            OOMCheckAddrRange(winAddr, winSpaceGmSize);
         }
     #endif
 
     //  处理 0/1 分区 标志位
-    uint64_t currCoreFlagOffset = 2UL * SINGLE_STATE_REGION_SIZE + aivId_ * WIN_ADDR_ALIGN; // 计算当前核的标志位在Win区的偏移
+    uint64_t currCoreFlagOffset = STATE_WIN_SIZE + aivId_ * WIN_ADDR_ALIGN; // 计算当前核的标志位在Win区的偏移
     selfWinFlagGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)GetWinAddrGm(hcclContext_->rankId, currCoreFlagOffset));
     LocalTensor<uint32_t> winFlagLocalTensor = winFlagsBuf_.Get<uint32_t>();
     DataCopy(winFlagLocalTensor, selfWinFlagGMTensor_, UB_ALIGN_BYTES / sizeof(uint32_t)); // GM -> UB
@@ -148,6 +159,7 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
 {
+    AscendC::PRINTF("InitBuffer");
     tPipe->InitBuffer(xQueue_, BUFFER_NUM, X_BLOCK_BYTES);    
     tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, UB_ALIGN_BYTES);     
     tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 用于输出的OutPutTensor
@@ -170,6 +182,7 @@ __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum)
 {
+    AscendC::PRINTF("SetBlockSize");
     xNumPerBlock_ = elementsPerBlock;
     aivNum_ = aivNum;
     tailXNums_ = lastBlockNum;
@@ -186,6 +199,7 @@ __aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t ele
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::ComputeTailAivId(uint64_t totalAivCount)
 {
+    AscendC::PRINTF("ComputeTailAivId");
     if (round_ == 0) {
         // 小数据量时，如果只有一轮搬运，负责尾块的aiv由此时计算的总块数决定
         lastAivId_ = tailBlockNums_ - 1;
@@ -209,6 +223,7 @@ __aicore__ inline void MTECommunication<TemplateType>::ComputeTailAivId(uint64_t
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t count)
 {
+    AscendC::PRINTF("CopyDataBlock");
     // 先拷贝data数据， 再拷贝scales
     /* x 从 GM -> UB -> Win */
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
@@ -243,6 +258,7 @@ template <TemplateTypeClass>
 template <bool isReduceScatter>
 __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xSliceSizeNums, uint64_t scaleSliceNums)
 {
+    AscendC::PRINTF("CopyDataToWin");
     // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 计算现在搬第几个x
@@ -281,8 +297,12 @@ template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 {
     uint32_t coreOffset = aivId_ * hcclContext_->rankDim; // Win区大小为 aivNum * rankDim, 此处计算核偏移
+    AscendC::PRINTF("WriteStatusToWin");
+    AscendC::PRINTF("winBufferFlags_");
     // 遍历每一张卡，给每一张卡都要写入状态
     for (uint32_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
+        AscendC::PRINTF("for");
+        AscendC::PRINTF("winBufferFlags_");
         // 写入状态到对端，每个核写一个状态，表示自己的数据块已经写完
         LocalTensor<float> statusTensor = writeStateBuf_.Get<float>();
         DataCopy<float>(statusTensor, stateResetTensor_, FLOAT_UB_ALIGN_NUM); // 先重置statusTensor数据，后面累加需要Tensor内全部数据，防止脏数据
@@ -320,13 +340,19 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     float minTarget = hcclContext_->rankDim - (float)0.5;
     float maxTarget = hcclContext_->rankDim + (float)0.5;
     // 读取statusCnt个数据求和
-    while ((flag < minTarget) || (flag > maxTarget)) {
+    AscendC::PRINTF("ReadStatus");
+    AscendC::PRINTF("winBufferFlags_");
+    while (i_ < 1000) {
+    // while ((flag < minTarget) || (flag > maxTarget)) {
+        AscendC::PRINTF("while");
+        AscendC::PRINTF("winBufferFlags_");
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
+        i_++;
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
@@ -342,6 +368,7 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count)
 {
+    AscendC::PRINTF("CopyResultToOutput");
     // 将计算好的数据拷贝到输出tensor，如果是非float数据类型需要先转换成目标数据类型
     xOutTensor_ = xOutQueue_.AllocTensor<OutputType>();
     if constexpr (AscendC::IsSameType<OutputType, float>::value) {
@@ -359,27 +386,41 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64
 template <TemplateTypeClass>
 __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinAddrGm(uint32_t rankId, uint64_t offset)
 {
-    return (GM_ADDR)(hcclContext_->windowsIn[rankId] + offset);
+    AscendC::PRINTF("GetWinAddrGm");
+    uint32_t curRankId = hcclContext_->rankId;
+    GM_ADDR baseAddr;
+    if (rankId == curRankId) {
+        baseAddr = (GM_ADDR)(hcclContext_->localWindowsIn);
+    } else {
+        baseAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[rankId].nextDevicePtr))->windowsIn);
+    }
+    return baseAddr + offset;
 }
 
 // 根据0/1分区标志位，获取对应rank的Win区数据区的地址
 template <TemplateTypeClass>
 __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag)
-{   
+{
+    AscendC::PRINTF("GetWinDataAddrGm");
     if (winFlag == 0U) {
         // 若使用 0 分区, 加上状态区的偏移
         return GetWinAddrGm(rankId, STATE_WIN_SIZE);
     }
     else {
         // 若使用 1 分区，即WinOut
-        return (GM_ADDR)(hcclContext_->windowsOut[rankId]);
+        uint32_t curRankId = hcclContext_->rankId;
+        if (rankId == curRankId) {
+            return (GM_ADDR)(hcclContext_->localWindowsOut);
+        }
+        return (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[rankId].nextDevicePtr))->windowsOut);
     }
 }
 
 // 根据0/1分区标志位，获取对应rank的Win区状态区的地址
 template <TemplateTypeClass>
 __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinStatusAddrGm(uint32_t rankId, uint32_t winFlag)
-{   
+{
+    AscendC::PRINTF("GetWinStatusAddrGm");
     if (winFlag == 0U) {
         // 若使用 0 分区, 即无偏移
         return GetWinAddrGm(rankId);
