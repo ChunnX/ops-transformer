@@ -39,11 +39,6 @@ constexpr MicroAPI::CastTrait castTraitB322B16 = {
 constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float); // 64 floats per vector reg
 
-// Fused VF: compute grad_input and per-row products in a single pass over grad_output
-// gi[row,:] = go[row,:]*w2 + go[row+1,:]*w1 + go[row+2,:]*w0
-// p2[row,:] = go[row,:]   * in[row,:]
-// p1[row,:] = go[row+1,:] * in[row,:]
-// p0[row,:] = go[row+2,:] * in[row,:]
 template <typename T>
 __simd_vf__ void GradInputAndWeightNoTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *inAddr, __ubuf__ T *giAddr,
                                           __ubuf__ float *p0Addr, __ubuf__ float *p1Addr, __ubuf__ float *p2Addr,
@@ -54,7 +49,6 @@ __simd_vf__ void GradInputAndWeightNoTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr,
     uint32_t dimOff = 0;
 
     for (uint32_t dl = 0; dl < dimLoopNum; ++dl) {
-        // Load weights once per dim chunk
         MicroAPI::RegTensor<T> w0B16, w1B16, w2B16;
         MicroAPI::RegTensor<float> w0B32, w1B32, w2B32;
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(w0B16, wAddr + 0 * dimLen + dimOff);
@@ -148,7 +142,6 @@ __simd_vf__ void GradInputAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAdd
     uint32_t dimOff = 0;
 
     for (uint32_t dl = 0; dl < dimLoopNum; ++dl) {
-        // Load weights once per dim chunk
         MicroAPI::RegTensor<T> w0B16, w1B16, w2B16;
         MicroAPI::RegTensor<float> w0B32, w1B32, w2B32;
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(w0B16, wAddr + 0 * dimLen + dimOff);
@@ -158,7 +151,6 @@ __simd_vf__ void GradInputAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAdd
         MicroAPI::Cast<float, T, castTraitB162B32>(w1B32, w1B16, fullMask);
         MicroAPI::Cast<float, T, castTraitB162B32>(w2B32, w2B16, fullMask);
 
-        // main pairs
         for (uint32_t si = 0; si < sMain; ++si) {
             uint32_t r0 = (si << 1);
             uint32_t r1 = r0 + 1U;
@@ -224,7 +216,7 @@ __simd_vf__ void GradInputAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAdd
                                                                             fullMask);
         }
 
-        // Tail row (unconditional; this variant is called only when sLen is odd)
+        // Tail row
         uint32_t r = (sMain << 1); // last row index
         MicroAPI::RegTensor<T> go0B16, go1B16, go2B16, inB16;
         MicroAPI::RegTensor<float> go0B32, go1B32, go2B32, inB32, yB32, tmp0B32, tmp1B32, tmp2B32;
