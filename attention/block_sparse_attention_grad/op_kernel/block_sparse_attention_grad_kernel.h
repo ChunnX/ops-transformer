@@ -42,6 +42,8 @@ namespace BSA {
 
     constexpr int32_t PRE_LAUNCH = 2;
     constexpr uint64_t WORKSPACE_BLOCK_SIZE = 128 * 128 * 2;
+    constexpr uint64_t WORKSPACE_P16_OFFSET_ELEMENT = 128 * 128 * 2; // dp P 的在worksapce相对起始地址后偏移元素个数
+    constexpr uint64_t WORKSPACE_P16_OFFSET = 128 * 128 * 4; // dp P 的在worksapce相对起始地址后偏移字节字数
     constexpr uint64_t WORKSPACE_BLOCK_SIZE_DB = 128 * 128 * 2 * 2;
     constexpr uint64_t L1_SIZE_OFFSET = 131072;
     constexpr uint32_t PINGPONG_OFFSET_2 = 2;
@@ -339,11 +341,11 @@ namespace BSA {
             AscendC::GlobalTensor<float> gS;
             gS.SetGlobalBuffer((__gm__ float *)params.workspace);
             AscendC::GlobalTensor<ElementInput> gP;
-            gP.SetGlobalBuffer((__gm__ ElementInput *)params.workspace); // 和 S 复用
+            gP.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + WORKSPACE_P16_OFFSET)); // 和 S 复用
             AscendC::GlobalTensor<float> gDp;
             gDp.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize));
             AscendC::GlobalTensor<ElementInput> gDs;
-            gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + sOutSize)); // 和 dp 复用
+            gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + sOutSize + WORKSPACE_P16_OFFSET)); // 和 dp 复用
             AscendC::GlobalTensor<float> gDq;
             gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize));
             AscendC::GlobalTensor<float> gDk;
@@ -536,7 +538,12 @@ namespace BSA {
                 TaskInfo curInfo = taskInfoVec[i % 2];
                 uint64_t beginKVOffset = curInfo.kvOffset;
 
-                vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize);
+                // idx, 计算的行数
+                if (vecCoreIdx % 2 != 0) {
+                    vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2, curInfo.curCalQSize / 2);
+                } else {
+                    vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
+                }
 
                 for (uint32_t idx = 0; idx < kvBlockNum; idx++) {
                     // BlcokSpaseMask shape : [batch, numhead, CeilDiv(maxQSeqlen, blockShapeX), CeilDiv(maxKvSeqlen, blockShapeY)]
@@ -552,8 +559,8 @@ namespace BSA {
                             uint64_t actualCol = curInfo.curCalKVSize;
                             uint64_t processNums = curInfo.curCalQSize * curInfo.curCalKVSize;
                             uint64_t curCoreBatch = curInfo.curBatchIdx;
-                            uint64_t curCoreN1Idx = curInfo.curHeadIdx;
-                            uint64_t curCoreS1Idx = curInfo.curQSeqIdx;
+                            uint64_t curCoreN1Idx = curInfo.curHeadIdx; // 当前q的s1的idx
+                            uint64_t curCoreS1Idx = curInfo.curQSeqIdx; // 当前q的s1的idx
                             uint64_t curT1Idx = 0; // 不需要
                             uint64_t sOutSize = tilingData->sOutSize;
                             uint64_t dPOutSize = tilingData->dPOutSize;
@@ -561,18 +568,26 @@ namespace BSA {
                             uint64_t dKOutSize = tilingData->dKOutSize;
                             uint64_t dVOutSize = tilingData->dVOutSize;
 
-                            uint64_t coreOffset = 0; // ai core 的每个vectore 的偏移
+                            // 默认一个ai core里的aiv 0的实际计算的行数和偏移地址
+                            uint64_t excuteRow = actualRow / 2 + actualRow % 2;
+                            uint64_t coreOffset = 0; // ai core 的每个veccore 的偏移
+                            uint64_t curVecCoreS1Idx = curCoreS1Idx;
+
+                            // 一个ai core里的aiv 0执行的行数：actualRow / 2 + actualRow % 2
+                            // 一个ai core里的aiv 1执行的行数：actualRow / 2
                             if (vecCoreIdx % 2 != 0) {
                                 coreOffset += (actualRow / 2 + actualRow % 2) * actualCol;
+                                curVecCoreS1Idx += (actualRow / 2 + actualRow % 2);
+                                excuteRow = actualRow / 2;
                             }
-                            uint64_t vector16Soffset = (curInfo.sOffset * 2 + coreOffset) * sizeof(ElementInput);
+
+                            uint64_t vector16Soffset = (curInfo.sOffset * 2 + 128 * 128 * 2 + coreOffset) * sizeof(ElementInput);
                             uint64_t vector32Soffset = (curInfo.sOffset + coreOffset) * sizeof(float);
-    
+
                             GM_ADDR s = params.workspace + vector32Soffset;
                             GM_ADDR softmaxLse = params.softmaxLse;
                             GM_ADDR dp = params.workspace + sOutSize + vector32Soffset;
-                            // GM_ADDR dp = s; // 测试用
-                            GM_ADDR blockSparseMask = softmaxLse; // 不需要
+                            GM_ADDR blockSparseMask = softmaxLse;
                             GM_ADDR actualSeqQlen = params.actualQseqlen;
                             GM_ADDR actualSeqKvlen = params.actualKvseqlen;
                             GM_ADDR sftmgGm = params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize;
@@ -582,12 +597,9 @@ namespace BSA {
 
                             AscendC::WaitEvent(CUBE2VEC);
 
-                            if (vecCoreIdx % 2 == 0) {
-                                SfmParams sfmParams(s, softmaxLse, dp, blockSparseMask, actualSeqQlen, actualSeqKvlen, sftmgGm, pWorkspace, dsWorkspace, tiling,
-                                                    actualRow, actualCol, processNums, curCoreBatch, curCoreN1Idx, curCoreS1Idx, curT1Idx);
-                                sStmOp(sfmParams);
-                            }
-
+                            SfmParams sfmParams(s, softmaxLse, dp, blockSparseMask, actualSeqQlen, actualSeqKvlen, sftmgGm, pWorkspace, dsWorkspace, tiling,
+                                                excuteRow, actualCol, excuteRow *actualCol , curCoreBatch, curCoreN1Idx, curVecCoreS1Idx, curT1Idx);
+                            sStmOp(sfmParams);
                             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(VEC2CUBE);
 
                             preTaskInfo = curInfo;
