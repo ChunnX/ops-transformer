@@ -1,571 +1,685 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- */
 #ifndef DISPATCH_FFN_COMBINE_H
 #define DISPATCH_FFN_COMBINE_H
-
+ 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "dispatch_ffn_combine_tiling.h"
-
+ 
 #include "gmmsq_base.h"
 #include "workspace_info.h"
 #include "hccl_shmem.h"
 #include "block_epilogue_swiglu_mx_quant.h"
-
+ 
 #include "dispatch_ffn_combine_catlass_impl.h"
-
+ 
 using namespace AscendC;
-
+using namespace tla;
+ 
 namespace DispatchFFNCombineImpl {
-
+ 
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-
-constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-
+struct Mc2MoeContext {
+    uint32_t epRankId;
+    uint32_t epRankSize;
+    uint64_t winSize;
+    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
+};
+ 
 // 模板参数定义
 // XType: 输入X的数据类型 (fp8_e4m3fn_t, bf16等)
-// WeightType: 权重的数据类型 (fp8_e4m3fn_t等)
-// WeightScaleType: 权重量化的scale类型 (fp8_e8m0_t等)
+// Weight1Type: 权重的数据类型 (fp8_e4m3fn_t等)
+// Weight1ScaleType: 权重量化的scale类型 (fp8_e8m0_t等)
 // GMM1OutType: GMM1(SwiGLU)输出的数据类型
 // OutputType: 最终输出的数据类型
 // QuantMode: 量化模式 (0: 无量化, 1: per-token量化, 2: per-block量化)
-#define TemplateDispatchFFNCombineTypeClass typename XType, typename WeightType, typename WeightScaleType, typename GMM1OutType, typename OutputType, int32_t QuantMode
-#define TemplateDispatchFFNCombineTypeFunc XType, WeightType, WeightScaleType, GMM1OutType, OutputType, QuantMode
+#define TemplateDispatchFFNCombineTypeClass typename XType, typename Weight1Type, typename WeightScale1Type, typename Weight2Type, typename WeightScale2Type, typename OutputType, int32_t QuantMode, int32_t QuantOutType
+#define TemplateDispatchFFNCombineTypeFunc XType, Weight1Type, WeightScale1Type, Weight2Type, WeightScale2Type, OutputType, QuantMode, QuantOutType
 
-struct GmmAddrInfo {
-    GM_ADDR a;
-    GM_ADDR b;
-    GM_ADDR aScale;
-    GM_ADDR bScale;
-    uint32_t startBlockIdx;
-    bool isVecSetSyncCom;
+struct GMMAddrInfo {
+    GM_ADDR aGlobal;
+    GM_ADDR aScaleGlobal;
+    GM_ADDR bGlobal;
+    GM_ADDR bScaleGlobal;
 };
 
 template <TemplateDispatchFFNCombineTypeClass>
 class DispatchFFNCombine {
 public:
     // 类型别名 - 使用模板参数
-    using Gmm1TypesAlias = Gmm1Types<XType, WeightType, WeightScaleType, GMM1OutType, OutputType>;
-    using Gmm2TypesAlias = Gmm2Types<GMM1OutType, WeightType, WeightScaleType, OutputType>;
+    using Gmm1TypesAlias = Gmm1Types<XType, Weight1Type, WeightScale1Type, GMM1OutType, OutputType>;
+    using Gmm2TypesAlias = Gmm2Types<GMM1OutType, Weight2Type, WeightScale2Type, OutputType>;
     using Gmm1SwigluRunner = GmmSwigluRunner<Gmm1TypesAlias>;
     using Gmm2CombineRunner = Gmm2WithCombineRunner<Gmm2TypesAlias>;
-    
+    // TupleShape 用于更新shape BlockOffset 用于更新偏移
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockOffset = AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
+                                       int64_t, int64_t, int64_t, int64_t, int64_t,
+                                       int64_t, int64_t>;
     __aicore__ inline DispatchFFNCombine(){};
-    
-    __aicore__ inline void Init(
-        GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
-        GM_ADDR weight1, GM_ADDR weight2,
-        GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
-        GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
-        GM_ADDR workspaceGM, GM_ADDR tilingGM);
-    
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
+        GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
+        GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
-
+ 
 private:
-    __aicore__ inline void NotifyCube(uint16_t value = 0);
-    __aicore__ inline void WaitForVector(uint16_t value = 0);
-    __aicore__ inline void NotifyVector(uint16_t value = 0);
-    __aicore__ inline void WaitForCube(uint16_t value = 0);
-    __aicore__ inline void EndSync(bool isVecSetSync);
-    __aicore__ inline void EndGMM2Sync(uint32_t syncNum);
-    __aicore__ inline void AivSyncAllForAic();
-
-    // Callback context for static function pointer conversion (lambda with capture cannot convert to function pointer)
-    struct CallbackContext {
-        static DispatchFFNCombine* instance;
-        static __aicore__ void NotifyVectorCallback(uint16_t value) {
-            instance->NotifyVector(value);
+    __aicore__ inline void ResetWorkSpaceFlagList();
+    __aicore__ inline void GetCumsumForMMAIV();
+    __aicore__ inline void CrossRankSyncCntPerExpert();
+    __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<quantOutType_> dst, GlobalTensor<quantOutScaleType_> dstScale,
+        GlobalTensor<quantOutType_> src, int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
+    __aicore__ inline void DispatchTokens(uint32_t expertIdx);
+    __aicore__ inline bool UpdateGroupParams(uint32_t expertIdx);
+    __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex);
+    __aicore__ inline void GroupMatmulSwigluQuant(Params& params, TupleShape& problemShape, GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom);
+    __aicore__ inline void GroupMatmul2(Params& params, TupleShape& problemShape, GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom);
+    __aicore__ inline void ArgSortExpandedRowIdx();
+    __aicore__ inline void ResetTokenPerExpert();
+    __aicore__ inline void Unpermute();
+ 
+    __aicore__ inline void NotifyCube(uint16_t value = 0)
+    {
+        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
+    }
+ 
+    __aicore__ inline void WaitForVector(uint16_t value = 0)
+    {
+        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value);
+    }
+ 
+    __aicore__ inline void NotifyVector(uint16_t value = 0)
+    {
+        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
+    }
+ 
+    __aicore__ inline void WaitForCube(uint16_t value = 0)
+    {
+        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+    }
+ 
+    __aicore__ inline void EndSync()
+    {
+        if (isVecSetSync_ == 0) {
+            return;
         }
-        static __aicore__ void WaitForCubeCallback(uint16_t value) {
-            instance->WaitForCube(value);
+        if constexpr(g_coreType == AscendC::AIC) {
+            WaitForVector();
         }
-    };
-
-    __aicore__ inline void InitParamsAndTensor();
-    __aicore__ inline void UpdateOffset(uint32_t groupIdx);
-    __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, uint8_t groupListType);
-    __aicore__ inline bool UpdateGroupParams(uint32_t groupIdx);
-    __aicore__ inline void UpdateGlobalBuffer(const Params& params);
-    __aicore__ inline void InitRouting();
-    __aicore__ inline void CrossRankSyncTokenPerExpert(GM_ADDR tokenPerExpertCurRank);
-    __aicore__ inline void DispatchTokens(uint32_t groupIdx);
-    __aicore__ inline void GroupMatmulSwigluQuant(const Params& params, const GmmAddrInfo& gmmAddrInfo);
-    __aicore__ inline void GroupMatmul2(const Params& params, uint32_t groupIdx);
-    __aicore__ inline void FinalizeRouting();
-
-    __aicore__ inline bool IsFirstSubBlock();
-    __aicore__ inline uint32_t GetMValue();
-    __aicore__ inline uint32_t GetNValue();
-    __aicore__ inline uint32_t GetKValue();
-
-    template<typename GmmRunner>
-    __aicore__ inline void RunGmm(GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb, uint32_t m, uint32_t n, uint32_t k);
-
-    template<typename GmmSwigluRunner>
-    __aicore__ inline void RunGmmSwiglu(
-        const typename GmmSwigluRunner::GmmSwigluParams& params,
-        LocalTensor<bfloat16_t> l0cOutUbFirst,
-        LocalTensor<bfloat16_t> l0cOutUbSecond,
-        GM_ADDR notifyFn, GM_ADDR waitFn);
-
-    template<typename Gmm2Runner>
-    __aicore__ inline void RunGmm2(
-        GM_ADDR aGm, GM_ADDR bGm, GM_ADDR cUb, GM_ADDR outputGm,
-        uint32_t m, uint32_t n, uint32_t k, GM_ADDR notifyFn, GM_ADDR waitFn);
-
-private:
-    __gm__ Mc2MoeContext* mc2Context_;
-    GM_ADDR commBuffer_[HCCL_MAX_RANK_SIZE];
-    const DispatchFFNCombineTilingData* tilingData_;
-
-    using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
-    TupleShape problemShape_;
-    BlockOffset baseOffset_;
-
-    uint32_t blockNum_;
-    uint32_t blockIdx_;
-    uint32_t subBlockIdx_;
-    uint32_t aivCoreIdx_;
-    int32_t prevSum_;
-
-    bool isVecSetSyncCom_;
-    uint32_t vecSetSyncCom2_;
-    uint32_t startBlockIdx_;
-    uint32_t dispatchBlockNumPerEP_;
-    uint16_t gmm2PingpongIdx_;
-
-    GlobalTensor<int32_t> groupListGm_;
+    }
+ 
+    __aicore__ inline void EndGMM2Sync(uint32_t syncNum)
+    {
+        if constexpr(g_coreType == AscendC::AIV) {
+            return;
+        }
+        if (syncNum <= 0) {
+            return;
+        } else if (syncNum == 1) {
+            WaitForVector();
+        } else {
+            WaitForVector(GMM2_PINGPONG_IDX);
+            WaitForVector(1 - GMM2_PINGPONG_IDX);
+        }
+    }
+ 
+    __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t& coreOffset)
+    {
+        int32_t coreIdx = GetBlockIdx();
+        int32_t coreNum = GetBlockNum();
+        int32_t lenPerCore = CeilDiv((uint32_t)totalLen, coreNum) / 32 * 32;
+        int32_t lenLastCore = totalLen - lenPerCore * (coreNum - 1);
+        coreLen = (coreIdx == coreNum - 1) ? lenLastCore : lenPerCore;
+        coreOffset = coreIdx * lenPerCore;
+    }
+ 
+    __aicore__ inline void  TokenPerExpertLayout(int64_t dim0, int64_t dim1, int64_t dim2)
+    {
+        return dim0 * strides_ + dim1 * expertPerRank_ + dim2;
+    }
+ 
+    __aicore__ inline void  CeilAlign(int64_t a, int64_t b)
+    {
+        if (b == 0) {
+            return a;
+        }
+        return (a + b - 1) / b * b;
+    }
+ 
+    __aicore__ inline void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32_t cmp_val) {
+        do {
+            if (AscendC::ReadGmByPassDCache(sig_addr) != cmp_val) {
+                return;
+            }
+        } while (true);
+    }
+ 
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    Params params_;
+    TupleShape problemShape_{};
+    BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+ 
+    GM_ADDR tokenPerExpertCurRank_;
+ 
+    GlobalTensor<int32_t> preSumBeforeRankWorkSpaceGM_;
+    GlobalTensor<int32_t> tokenPerExpertWinGM_;
+    GlobalTensor<int32_t> cumsumInWorkSpaceGM_;
+    GlobalTensor<int32_t> groupFlagListWorkSpaceGM_;
     GlobalTensor<int32_t> groupFlagListGm_;
     GlobalTensor<int32_t> groupFlagListGm2_;
-    GlobalTensor<int32_t> tokenPerExpertGm_;
-    GlobalTensor<int32_t> preSumBeforeRankGm_;
-    GlobalTensor<int32_t> cumsumMMGm_;
-    Layout3D tokenPerExpertLayout_;
+    GlobalTensor<int32_t> groupListGm_;
+ 
+    uint32_t blockNum_ = GetBlockNum();
+    uint32_t blockIdx_ = GetBlockIdx() / AscendC::GetTaskRation();
+    uint32_t subBlockIdx_ = GetSubBlockIdx();
+    uint32_t aivCoreIdx_ = GetBlockIdx();
 
-    // GMM1 L0C输出 (使用GMM1OutType)
-    LocalTensor<GMM1OutType> l0cOutUbFirst_;
-    LocalTensor<GMM1OutType> l0cOutUbSecond_;
-    // GMM2 L0C输出
-    LocalTensor<OutputType> l0cOutUbGMM2First_;
-    LocalTensor<OutputType> l0cOutUbGMM2Second_;
-    
-    GM_ADDR weight1_;
-    GM_ADDR weight2_;
-    GM_ADDR weightScales1_;
-    GM_ADDR weightScales2_;
-    GM_ADDR x_;
-    GM_ADDR yOut_;
-    GM_ADDR topkIds_;
-    GM_ADDR topkWeights_;
-    GM_ADDR workspaceGM_;
-    
-    // GMM1 tensors - 使用模板类型
-    GlobalTensor<XType> aGlobal_;           // 输入X
-    GlobalTensor<WeightType> bGlobal_;      // 权重W1
-    GlobalTensor<WeightScaleType> aScaleGlobal_;  // X的scale
-    GlobalTensor<WeightScaleType> bScaleGlobal_;  // W1的scale
-    
-    // GMM2 tensors - GMM2的A输入是GMM1的输出，B是W2
-    GlobalTensor<GMM1OutType> a2Global_;    // GMM1的输出作为GMM2的输入
-    GlobalTensor<WeightType> b2Global_;     // 权重W2
-    GlobalTensor<WeightScaleType> a2ScaleGlobal_;  // GMM2 A的scale
-    GlobalTensor<WeightScaleType> b2ScaleGlobal_;  // W2的scale
-    GlobalTensor<OutputType> outputGm_;     // 最终输出
-    
-    // BlockEpilogue for SwiGLU+Quant
-    using BlockEpilogue = BlockEpilogueSwiGluMxQuant<GMM1OutType, OutputType>;
-    BlockEpilogue epilogueOp;
-    
-    // Params for function calls
-    Params params_;
+    uint32_t m_;
+    uint32_t k_;
+    uint32_t topK_;
+    uint32_t rankId_;
+    uint32_t worldSize_;
+    uint32_t expertPerRank_;
+    uint32_t groupListType_;
+    int32_t preOffset_ = 0;
+    int64_t strides_;
+ 
+    int32_t prevSum_ = 0;
+    int32_t dispatchRows_ = 0;
+    int32_t vecSetSyncCom_ = 0;
+    uint32_t vecSetSyncCom2_ = 0;
+    bool isVecSetSyncCom_ = false;
+    uint32_t dispatchBlockNumPerEP_ = 2;
+    uint32_t startBlockIdx_ = 0;
+    uint16_t gmm2PingpongIdx_ = 0;
+
+    BlockEpilogue epilogueOp_;
+    LocalTensor<bfloat16_t> l0cOutUbFirst_;
+    LocalTensor<bfloat16_t> l0cOutUbSecond_;
+
+    using quantOutType_ = fp8_e4m3fn_t;
+    using quantOutScaleType_ = fp8_e8m0_t;
+
+    static __aicore__ void NotifyVectorCallback(uint16_t value)
+    {
+        AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
+    }
+
+    static __aicore__ void WaitForCubeCallback(uint16_t value)
+    {
+        AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+    }
 };
-
+ 
 template <TemplateDispatchFFNCombineTypeClass>
 __aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
-    GM_ADDR weight1, GM_ADDR weight2,
-    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
-    GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
+    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,GM_ADDR scales, GM_ADDR yOut, 
+    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, TPipe *pipe, const DispatchFFNCombineTilingData *tilingData)
 {
-    tilingData_ = reinterpret_cast<const DispatchFFNCombineTilingData*>(tilingGM);
+    m_ = tilingData->m;
+    k_ = tilingData->k;
+    topK_ = tilingData->topK;
+    rankId_ = tilingData->rank;
+    worldSize_ = tilingData->worldSize_;
+    expertPerRank_ = tilingData->expertPerRank_;
+    dispatchBlockNumPerEP_ = tilingData->blockNumPerEP;
+    dispatchRows_ = tilingData->dispatchRows;
+    groupListType_ = tilingData->groupListType;
+    Get<N_VALUE>(problemShape_) = tilingData->n;
+    Get<K_VALUE>(problemShape_) = k_;
+    GM_ADDR buff[HCCL_MAX_RANK_SIZE];
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
-    
-    for (uint32_t i = 0; i < tilingData_->megaMoeInfo.epWorldSize; i++) {
-        commBuffer_[i] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer_[i]);
+    for (int i = 0; i < worldSize_; i++) {
+        buff[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
     }
-
-    blockNum_ = GetBlockNum();
-    blockIdx_ = GetBlockIdx() / GetTaskRation();
-    subBlockIdx_ = GetSubBlockIdx();
-    aivCoreIdx_ = GetBlockIdx();
-
-    isVecSetSyncCom_ = false;
-    vecSetSyncCom2_ = 0;
-    startBlockIdx_ = 0;
-    gmm2PingpongIdx_ = 0;
-    prevSum_ = 0;
-    dispatchBlockNumPerEP_ = 2;
-    
-    x_ = x;
-    weight1_ = weight1;
-    weight2_ = weight2;
-    weightScales1_ = weightScales1;
-    weightScales2_ = weightScales2;
-    yOut_ = yOut;
-    topkIds_ = topkIds;
-    topkWeights_ = topkWeights;
-    workspaceGM_ = workspaceGM;
-    
-    // Initialize params_ from workspaceGM and tilingData_
-    params_.aGmAddr = workspaceGM_;
-    params_.expertIdxGmAddr = topkIds_;
-    params_.bGmAddr = weight1_;
-    params_.bScaleGmAddr = weightScales1_;
-    params_.b2GmAddr = weight2_;
-    params_.b2ScaleGmAddr = weightScales2_;
-    params_.y2GmAddr = yOut_;
-    params_.probsGmAddr = topkWeights_;
-    params_.tilingData = tilingData_;
-    
-    // Initialize peermemInfo
-    for (uint32_t i = 0; i < tilingData_->megaMoeInfo.epWorldSize; i++) {
-        params_.peermemInfo.peermemBaseAddr[i] = commBuffer_[i];
-    }
-    
-    InitParamsAndTensor();
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::NotifyCube(uint16_t value)
-{
-    AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::WaitForVector(uint16_t value)
-{
-    AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIV_FLAG + value);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::NotifyVector(uint16_t value)
-{
-    AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::WaitForCube(uint16_t value)
-{
-    AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::EndSync(bool isVecSetSync)
-{
-    if (!isVecSetSync) return;
-    if constexpr(g_coreType == AscendC::AIC) {
-        WaitForVector();
+    params_ = {
+        .aGmAddr = x,
+        .expertIdxGmAddr = topkIds,
+        .bGmAddr = weight1,
+        .bScaleGmAddr = weightScales1,
+        .b2GmAddr = weight2,
+        .b2ScaleGmAddr = weightScales2,
+        .y2GmAddr = yOut,
+        .expertTokenNumsOutGmAddr = expertTokenNumsOut,
+        .probsGmAddr = topkWeights,
+        .workspaceInfo = WorkspaceInfo(workspace, tilingData_),
+        .peermemInfo = PeermemInfo(buff[rankId_], tilingData_),
+        .shmem = HcclShmem(buff, rankId_, worldSize_),
+        .tilingData_ = tilingData
+    };
+    preSumBeforeRankWorkSpaceGM_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrSumBeforeRank);
+    tokenPerExpertWinGM_.SetGlobalBuffer((__gm__ int32_t*)params_.peermemInfo.ptrTokenPerExpert);
+    cumsumInWorkSpaceGM_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.ptrcumsumMM));
+    groupListGm_ = cumsumMM[(worldSize_ - 1) * expertPerRank_]; // cumsumMM的最后一行
+    groupFlagListWorkSpaceGM_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagList);
+ 
+    ResetWorkSpaceFlagList();
+    using L1TileShape = tla::Shape<Int<256>, Int<256>, Int<448>>;
+    epilogueOp_ = BlockEpilogueSwigluQuant<L1TileShape, fp8_e4m3fn_t, bfloat16_t, fp8_e8m0_t, fp8_e8m0_t, true>; // swiglu
+    epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale, params_.workspaceInfo.ptrFlagList,
+                    nullptr, nullptr, nullptr, L1_TILE_M, L1_TILE_N});
+    strides_ = CeilAlign(worldSize_ * expertPerRank_, ALIGN_128);
+    tokenPerExpertCurRank_ = params_.peermemInfo.ptrTokenPerExpert + TokenPerExpertLayout(params_.rankId_, 0, 0) * sizeof(int32_t);
+    if (constexpr (QuantMode == 2)){
+        if constexpr (QuantOutType == 2) { // 暂定1是fp8_e4m3 2是fp8_e5m2
+            quantOutType_ = fp8_e5m2fn_t;
+        } else  if constexpr (QuantOutType == 2) {
+            quantOutType_ = fp8_e4m3fn_t ;
+        }
+        quantOutScaleType_ = fp8_e8m0_t;
     }
 }
-
+ 
 template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::EndGMM2Sync(uint32_t syncNum)
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::ResetWorkSpaceFlagList()
 {
-    if constexpr(g_coreType == AscendC::AIV) return;
-    if (syncNum <= 0) return;
-    else if (syncNum == 1) WaitForVector();
-    else {
-        WaitForVector(gmm2PingpongIdx_);
-        WaitForVector(1 - gmm2PingpongIdx_);
-    }
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::AivSyncAllForAic()
-{
-    if constexpr(g_coreType == AscendC::AIC) {
-        AscendC::CrossCoreWaitFlag<0x2>(0);
-    }
+    // workSpace groupFlagList清零
+    groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagList);
     if constexpr(g_coreType == AscendC::AIV) {
-        AscendC::SyncAll<true>();
-        AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
+        int32_t flagNum = expertPerRank_ * INT_CACHELINE * MAX_AICORE_NUM * 2;
+        int32_t coreLen, coreOffset;
+        TilingByCore(flagNum, coreLen, coreOffset);
+        AscendC::LocalTensor<int32_t> initTensor{AscendC::TPosition::VECIN, 0, 0};
+        AscendC::Duplicate(initTensor, 0, coreLen);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::DataCopy(groupFlagListGm_[coreOffset], initTensor, coreLen);
     }
 }
-
+ 
 template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::InitParamsAndTensor()
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GetCumsumForMMAIV()
 {
-    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    Get<1>(problemShape_) = tilingData_->megaMoeInfo.n;
-    Get<2>(problemShape_) = tilingData_->megaMoeInfo.k;
-    tokenPerExpertLayout_ = Layout3D(
-        CeilAlign(tilingData_->megaMoeInfo.epWorldSize * (tilingData_->megaMoeInfo.moeExpertNum / tilingData_->megaMoeInfo.epWorldSize), 128),
-        tilingData_->megaMoeInfo.moeExpertNum / tilingData_->megaMoeInfo.epWorldSize);
-    dispatchBlockNumPerEP_ = tilingData_->megaMoeInfo.blockNumPerEP;
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline int32_t DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GetSplitValueFromGroupList(uint32_t groupIdx, uint8_t groupListType)
-{
-    int32_t splitValue = 0;
-    if (groupListType == 0) {
-        int32_t offset = static_cast<int32_t>(groupListGm_.GetValue(groupIdx));
-        splitValue = offset - prevSum_;
-        prevSum_ = offset;
-    } else {
-        splitValue = static_cast<int32_t>(groupListGm_.GetValue(groupIdx));
+    int32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
+    AscendC::LocalTensor<int32_t> tmpBuffer1 = {AscendC::TPosition::VECIN, 0, 0};
+    #define U16(x) static_cast<uint16_t>(x)
+ 
+    AscendC::DataCopyPad(
+        tmpBuffer1,
+        tokenPerExpertWinGM_[rankId_ * expertPerRank_], // win区存放ep域内所有卡的专家cnt情况的起始地址，偏移到本卡的位置上，按照offset取每张卡上要发给本卡专家的数据
+        {U16(worldSize_), U16(expertPerRank_ * sizeof(int32_t)), U16((AlignUp(worldSize_ * expertPerRank_, 128) - expertPerRank_) * sizeof(int32_t)), 0},
+        {}
+    );
+ 
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+ 
+    for (uint32_t i = 1; i < worldSize_; ++i) {
+        AscendC::Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[(i - 1) * expertPerRankAligned], expertPerRank_);
+        AscendC::PipeBarrier<PIPE_V>();
     }
-    return splitValue;
+ 
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+ 
+    AscendC::DataCopyPad(cumsumInWorkSpaceGM_, tmpBuffer1, {U16(worldSize_), U16((expertPerRank_) * sizeof(int32_t)), 0, 0}); // workSpace上
 }
-
+ 
+ 
 template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::UpdateOffset(uint32_t groupIdx)
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::CrossRankSyncCntPerExpert()
 {
-    if (groupIdx == 0) {
+    if constexpr(g_coreType == AscendC::AIC) {
         return;
     }
-    uint64_t m = Get<0>(problemShape_);
-    uint64_t n = Get<1>(problemShape_);
-    uint64_t k = Get<2>(problemShape_);
-    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    
-    Get<0>(baseOffset_) += m * k;
-    Get<1>(baseOffset_) += n * k;
-    Get<2>(baseOffset_) += m * scaleK;
-    Get<3>(baseOffset_) += n * scaleK;
-    Get<4>(baseOffset_) += m * n / 2;
-    Get<5>(baseOffset_) += m * CeilDiv(n / 2, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    Get<6>(baseOffset_) += 1;
-    Get<7>(baseOffset_) += k * n / 2;
-    Get<8>(baseOffset_) += k * CeilDiv(n / 2, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    Get<9>(baseOffset_) += m * k;
-    Get<10>(baseOffset_) += m;
+    uint32_t numPerCore = CeilAlign(worldSize_ * expertPerRank_, ALIGN_128);
+    AscendC::LocalTensor<int32_t> tmpBuffer{AscendC::TPosition::VECIN, 0, 0};
+    AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
+    // 给对端发送
+    for(int32_t dstEpIdx = aivCoreIdx; dstEpIdx < worldSize_; dstEpIdx += blockNum) {
+        if (dstEpIdx == rankId_) {
+            continue;
+        }
+        GlobalTensor<int32_t> srcAddress;
+        srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(tokenPerExpertCurRank_));
+        GlobalTensor<int32_t> dstAddress;
+        __gm__ void* dstPeermemPtr = params_.shmem(tokenPerExpertCurRank_, dstEpIdx);
+        dstAddress.SetGlobalBuffer((__gm__ int32_t * )dstPeermemPtr);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::DataCopy(tmpBuffer, srcAddress, numPerCore);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+        AscendC::Adds(tmpBuffer, tmpBuffer, 0x800000, numPerCore);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::DataCopy(dstAddress, tmpBuffer, numPerCore);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    }
+    // 本端接收
+    int32_t intPer512 = ALIGN_512 / sizeof(int);
+    for(int32_t dstEpIdx = aivCoreIdx_; dstEpIdx < worldSize_; dstEpIdx += blockNum_) {
+        if (dstEpIdx != rankId_) {
+            for(int32_t checkIdx = 0; checkIdx < numPerCore; checkIdx += intPer512) {
+                __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(params_.peermemInfo.ptrTokenPerExpert) + TokenPerExpertLayout(dstEpIdx, 0, checkIdx);
+                gm_signal_wait_until_ne(sync_check, 0);
+            }
+            AscendC::DataCopy(tmpBuffer, tokenPerExpertWinGM_[TokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::DataCopy(tokenPerExpertWinGM_[TokenPerExpertLayout(dstEpIdx, 0, 0)], tmpBuffer, numPerCore);
+        } else {
+            AscendC::DataCopy(tmpBuffer, tokenPerExpertWinGM_[TokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+        int32_t tmpSum = 0;
+        int32_t j = 0;
+        for (int32_t i = 0; i < (rankId_ + 1) * expertPerRank_; i++) {
+            if (i >= rankId_ * expertPerRank_) {
+                prevSumBuf(j) = tmpSum;
+                j++;
+            }
+            tmpSum += tmpBuffer(i);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        DataCopyPad(preSumBeforeRankWorkSpaceGM_[dstEpIdx * expertPerRank_], prevSumBuf,
+        DataCopyParams{1, static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)), 0, 0});
+    }
+    AscendC::SyncAll<true>();
+    if (aivCoreIdx == 0) {
+        GetCumsumForMMAIV();
+    }
+    if (blockIdx_ < worldSize_ * dispatchBlockNumPerEP_) {
+        prevSum_ = preSumBeforeRankWorkSpaceGM_(blockIdx_ / dispatchBlockNumPerEP_ * expertPerRank_);
+    }
 }
-
+ 
 template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline bool DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::UpdateGroupParams(uint32_t groupIdx)
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::CopyGMToGMPerTokenV2(GlobalTensor<quantOutType_> dst, GlobalTensor<quantOutScaleType_> dstScale,
+    GlobalTensor<quantOutType_> src, int32_t rows, int32_t hiddenSize, int32_t& pingpongId)
 {
-    UpdateOffset(groupIdx);
-    int32_t splitValue = GetSplitValueFromGroupList(groupIdx, tilingData_->megaMoeInfo.groupListType);
-    Get<0>(problemShape_) = splitValue;
-    if (Get<0>(problemShape_) == 0) {
+    constexpr int32_t BufferNum = 2;
+    AscendC::LocalTensor<quantOutType_> tmpBuffer1{AscendC::TPosition::VECIN, 0, 0};
+    AscendC::LocalTensor<quantOutType_> tmpBuffer2{AscendC::TPosition::VECIN, 96 * 1024, 0};
+    uint32_t scaleLen = CeilDiv(hiddenSize, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    uint32_t copyInNum = hiddenSize + scaleLen;
+    auto processCount = CeilDiv(rows, dispatchRows_);
+    for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
+        pingpongId = (pingpongId + 1) % BufferNum;
+        AscendC::TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID0 : EVENT_ID1;
+        AscendC::LocalTensor<quantOutType_> buf = pingpongId == 0 ? tmpBuffer1 : tmpBuffer2;
+        AscendC::LocalTensor<Weight2ScaleType> bufScale = buf[hiddenSize].template ReinterpretCast<Weight2ScaleType>();
+        
+        auto inputOffset = processIndex * dispatchRows_ * copyInNum;
+        
+        int32_t rowNum = dispatchRows_;
+        if (processIndex == processCount - 1) {
+            rowNum = rows - processIndex * dispatchRows_;
+        }
+ 
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
+        int64_t dataLen = rowNum * copyInNum;
+        AscendC::DataCopy(buf, src[inputOffset], dataLen);
+ 
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
+        auto outputOffset = processIndex * dispatchRows_ * hiddenSize;
+        #define U16(x) static_cast<uint16_t>(x)
+        AscendC::DataCopyPad(dst[outputOffset], 
+            buf, {U16(rowNum), U16(hiddenSize), U16(scaleLen / 32), 0, 0});
+ 
+        AscendC::DataCopyPad(dstScale[processIndex * dispatchRows_ * scaleLen], 
+            bufScale, {U16(rowNum), U16(scaleLen), U16(hiddenSize / 32), 0, 0});
+ 
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
+    }
+}
+ 
+ 
+template <TemplateDispatchFFNCombineTypeClass>
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::DispatchTokens(uint32_t expertIdx)
+{
+    int64_t widthA = Get<K_VALUE>(problemShape_); // H长度
+    int64_t widthAScale = CeilDiv(widthA, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    auto &tilingData = params_.tilingData;
+    int32_t pingpongId = 0;
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    for(int32_t idx = blockIdx; idx < tilingData->worldSize_ * dispatchBlockNumPerEP; idx += blockNum) {
+        uint32_t dstEpIdx = idx / dispatchBlockNumPerEP;
+        uint32_t idxInEp = idx % dispatchBlockNumPerEP;
+        uint32_t rowStart = (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * tilingData->expertPerRank_ + expertIdx));
+        if (rowStart < tilingData->maxOutputSize) {
+            uint32_t rows = tokenPerExpertWinGM_(TokenPerExpertLayout(dstEpIdx, tilingData->rank, expertIdx));
+            if (rowStart + rows > tilingData->maxOutputSize) {
+                rows = tilingData->maxOutputSize - rowStart;
+            }
+            uint32_t rowSrc = prevSum_;
+            prevSum_ += rows;
+            uint32_t rowsPerCore = CeilDiv(rows, dispatchBlockNumPerEP);
+            uint32_t rowStartPerCore = rowStart + idxInEp * rowsPerCore;
+            uint32_t rowSrcPerCore = rowSrc + idxInEp * rowsPerCore;
+            if (rowStartPerCore + rowsPerCore > rowStart + rows) {
+                rowsPerCore = rowStart + rows - rowStartPerCore;
+            }
+            if (rowsPerCore > 0) {
+                GlobalTensor <quantOutType_> gmRemoteA;
+                gmRemoteA.SetGlobalBuffer(reinterpret_cast<__gm__ quantOutType_ * > (params_.shmem(params_.peermemInfo.ptrA0, dstEpIdx)));
+                int64_t gmOffsetA = rowStartPerCore * widthA;
+                int64_t gmOffsetAScale = rowStartPerCore * widthAScale;
+                int64_t gmOffsetPeer = rowSrcPerCore * (widthA + widthAScale);
+                GM_ADDR aScalePtr = (GM_ADDR) aScaleGlobal[gmOffsetAScale].GetPhyAddr();
+                CopyGMToGMPerTokenV2(aGlobal[gmOffsetA], aScaleGlobal[gmOffsetAScale], gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
+            }
+        }
+        AtomicAddFlag((__gm__ int32_t*)groupFlagListGm2_.GetPhyAddr(), MAX_AICORE_NUM * INT_CACHELINE); // TODO 不需要这么大
+    }
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+}
+ 
+ 
+template <TemplateDispatchFFNCombineTypeClass>
+__aicore__ inline bool DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::UpdateGroupParams(uint32_t expertIdx)
+{
+    // baseOffset_ is 0 when expertIdx = 0
+    if (expertIdx == 0) {
+        return;
+    }
+    uint64_t m = Get<M_VALUE>(problemShape_); // 待确认 这个m没有初始值
+    uint64_t n = Get<N_VALUE>(problemShape_);
+    uint64_t k = Get<K_VALUE>(problemShape_);
+    Get<IDX_A_OFFSET>(baseOffset_) += m * k;
+    Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+    // only splitM
+    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    // scaleAAxisBaseOffset (m, ceil(k,64), 2)
+    Get<IDX_A_SCALE_OFFSET>(baseOffset_) += m * scaleK;
+    // scaleBAxisBaseOffset (g, n, ceil(k,64), 2) or (g, ceil(k,64), n, 2)
+    Get<IDX_B_SCALE_OFFSET>(baseOffset_) += n * scaleK;
+    Get<IDX_C_OFFSET>(baseOffset_) += m * n / SWIGLU_N_HALF;
+    Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
+        m * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    Get<IDX_FLAG_OFFSET>(baseOffset_) += 1;
+    Get<IDX_B2_OFFSET>(baseOffset_) += k * n / SWIGLU_N_HALF;
+    Get<IDX_B2_SCALE_OFFSET>(baseOffset_) += k * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    Get<IDX_Y2_OFFSET>(baseOffset_) += m * k;
+    Get<IDX_M_OFFSET>(baseOffset_) += m;
+ 
+    int32_t splitValue = 0;
+    if (groupListType_ == 0) {
+        int32_t offset = static_cast<int32_t>(groupListGm.GetValue(expertIdx));
+        splitValue = offset - preOffset;
+        preOffset = offset;
+    } else {
+        splitValue = static_cast<uint64_t>(groupListGm.GetValue(expertIdx));
+    }
+    Get<M_VALUE>(problemShape_) = splitValue;
+ 
+    // split_m，when m=0, skip 这里groupListType写死1, 就是没收到值就跳过
+    if (Get<M_VALUE>(problemShape_) == 0) {
         return false;
     }
     return true;
 }
+ 
+template <TemplateDispatchFFNCombineTypeClass>
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex)
+{
+    if (gmmIndex == 0) {
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffset_) * sizeof(quantOutType_);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale + Get<IDX_A_SCALE_OFFSET>(baseOffset_) * sizeof(Weight2ScaleType);
+        if constexpr(g_coreType == AscendC::AIC) {
+            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(Weight1Type);
+            gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) * sizeof(WeightScale1Type); 
+        } else {
+            AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
+                Get<IDX_C_OFFSET>(baseOffset_), Get<IDX_C_SCALE_OFFSET>(baseOffset_),
+                Get<IDX_FLAG_OFFSET>(baseOffset_), 0L, 0L, 0L};
+            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        }
+    } else if constexpr(g_coreType == AscendC::AIC) {
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(quantOutType_);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrA2Scale + Get<IDX_C_SCALE_OFFSET>(baseOffset_) * sizeof(quantOutScaleType_);
+        gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(baseOffset_) * sizeof(Weight2Type2);
+        gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) * sizeof(WeightScale2Type2);
+    }
+ 
+    groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagList + Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE * MAX_AICORE_NUM);
+    groupFlagListGm2_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagList2 + Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE * MAX_AICORE_NUM);
+}
 
 template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::UpdateGlobalBuffer(const Params& params)
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::ArgSortExpandedRowIdx()
 {
-    // 使用params中的地址，参考老代码
-    aGlobal_.SetGlobalBuffer((__gm__ XType*)(params.workspaceInfo.ptrA + Get<0>(baseOffset_)));
-    aScaleGlobal_.SetGlobalBuffer((__gm__ WeightScaleType*)(params.workspaceInfo.ptrAScale + Get<2>(baseOffset_)));
+    int32_t coreLen, coreOffset;
+    TilingByCore(m_ * topK_, coreLen, coreOffset, 1);
+    __gm__ int32_t *src = (__gm__ int32_t *)params_.workspaceInfo.expandedRowIdx;
+    __gm__ int32_t *dst = (__gm__ int32_t *)params_.workspaceInfo.expandedRowIdxGather;
+    Simt::VF_CALL<ArgsortSimt>(Simt::Dim3{MoeInitRoutingV3::SIMT_THREAD_NUM, 1, 1}, coreLen, coreOffset,
+                                src, dst);
+}
+ 
+template <TemplateDispatchFFNCombineTypeClass>
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::ResetTokenPerExpert()
+{
+    if (aivCoreIdx != blockNum - 1) {
+        return;
+    }
+    int32_t num = worldSize_ * CeilAlign(worldSize_ * expertPerRank_, ALIGN_128);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+    AscendC::LocalTensor<int32_t> tmp = resource.ubBuf.template GetBufferByByte<int32_t>(0); // 这啥玩意？
+    AscendC::Duplicate(tmp, 0, num);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+    AscendC::DataCopy(tokenPerExpert, tmp, num);
+}
+ 
+template <TemplateDispatchFFNCombineTypeClass>
+__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::Unpermute()
+{
     if constexpr(g_coreType == AscendC::AIC) {
-        bGlobal_.SetGlobalBuffer((__gm__ WeightType*)(params.bGmAddr + Get<1>(baseOffset_)));
-        bScaleGlobal_.SetGlobalBuffer((__gm__ WeightScaleType*)(params.bScaleGmAddr + Get<3>(baseOffset_)));
-        // GMM2的A输入是GMM1的输出
-        a2Global_.SetGlobalBuffer((__gm__ GMM1OutType*)(params.workspaceInfo.ptrA2 + Get<4>(baseOffset_)));
-        a2ScaleGlobal_.SetGlobalBuffer((__gm__ WeightScaleType*)(params.workspaceInfo.ptrA2Scale + Get<5>(baseOffset_)));
-        b2Global_.SetGlobalBuffer((__gm__ WeightType*)(params.b2GmAddr + Get<7>(baseOffset_)));
-        b2ScaleGlobal_.SetGlobalBuffer((__gm__ WeightScaleType*)(params.b2ScaleGmAddr + Get<8>(baseOffset_)));
+        return;
     }
-    if constexpr(g_coreType == AscendC::AIV) {
-        epilogueOp.UpdateGlobalAddr({Get<4>(baseOffset_), Get<5>(baseOffset_), Get<6>(baseOffset_), 0, 0, 0});
-        outputGm_.SetGlobalBuffer((__gm__ OutputType*)(params.y2GmAddr + Get<9>(baseOffset_)));
+    int32_t coreLen, coreOffset;
+    TilingByCore(m_, coreLen, coreOffset, 1);
+    AscendC::GlobalTensor<int32_t> expandedRowIdx;
+    expandedRowIdx.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdxGather);
+    AscendC::GlobalTensor<bfloat16_t> probs;
+    probs.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
+    AscendC::GlobalTensor<bfloat16_t> expandedX;
+    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.ptrD);
+    AscendC::GlobalTensor<bfloat16_t> output;
+    output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+    for(int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::LocalTensor<bfloat16_t> dataRes{AscendC::TPosition::VECIN, 0, 0};
+        AscendC::LocalTensor<bfloat16_t> dataIn0 = dataRes[k_];
+        AscendC::LocalTensor<bfloat16_t> dataIn1 = dataRes[k_ * 2];
+        for(int32_t expId = 0; expId < topK_; ++expId) {
+            int32_t rowIdx = expandedRowIdx(tokenIdx * topK_+ expId);
+            bfloat16_t expScale = probs(tokenIdx * topK_ + expId);
+            auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
+            auto dataIn = (expId % 2 == 0) ? dataIn0 : dataIn1;
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+            AscendC::DataCopy(dataIn, expandedX[rowIdx * k_], k_);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(event);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(event);
+            if (expId == 0) {
+                AscendC::Muls(dataRes, dataIn, expScale, k_);
+            } else {
+                AscendC::Muls(dataIn, dataIn, expScale, k_);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Add(dataRes, dataRes, dataIn, k_);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(event);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::DataCopy(output[tokenIdx * k_], dataRes, k_);
     }
-    groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)(params.workspaceInfo.ptrFlagList + Get<6>(baseOffset_) * INT_CACHELINE * MAX_AICORE_NUM));
-    groupFlagListGm2_.SetGlobalBuffer((__gm__ int32_t*)(params.workspaceInfo.ptrFlagList2 + Get<6>(baseOffset_) * INT_CACHELINE * MAX_AICORE_NUM + 128));
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
 }
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::InitRouting()
-{
-    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
-    DispatchFFNCombineImpl::InitRouting(params_, tokenPerExpertGm_, 0);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::CrossRankSyncTokenPerExpert(GM_ADDR tokenPerExpertCurRank)
-{
-    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
-    DispatchFFNCombineImpl::CrossRankSyncTokenPerExpert(params_, tokenPerExpertGm_, preSumBeforeRankGm_, cumsumMMGm_);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::DispatchTokens(uint32_t groupIdx)
-{
-    GlobalTensor<bfloat16_t> aGlobal;
-    GlobalTensor<fp8_e8m0_t> aScaleGlobal;
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(x_));
-    aScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ fp8_e8m0_t*>(weightScales1_));
-    
-    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
-    DispatchFFNCombineImpl::DispatchTokens(params_, groupIdx, tokenPerExpertGm_, 
-                                          preSumBeforeRankGm_, cumsumMMGm_,
-                                          aGlobal, aScaleGlobal, 0);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GroupMatmulSwigluQuant(const Params& params, const GmmAddrInfo& gmmAddrInfo)
-{
-    uint32_t m = GetMValue();
-    uint32_t n = GetNValue();
-    uint32_t k = GetKValue();
-    uint32_t outputN = n / SWIGLU_N_HALF;
-    
-    epilogueOp.UpdateNextProblem({m, outputN, k, 0});
-
-    typename Gmm1SwigluRunner::GmmSwigluParams gmmParams = {
-        .aGm = gmmAddrInfo.a,
-        .bGm = gmmAddrInfo.b,
-        .bScaleGm = gmmAddrInfo.bScale,
-        .aScaleGm = gmmAddrInfo.aScale,
-        .cUb = 0,
-        .cUb2 = 0,
-        .outputUb = 0,
-        .outputScaleUb = 0,
-        .m = m,
-        .n = n,
-        .k = k,
-        .blockNum = blockNum_,
-        .blockIdx = blockIdx_,
-        .subBlockIdx = subBlockIdx_,
-        .startBlockIdx = gmmAddrInfo.startBlockIdx,
-        .isVecSetSyncCom = gmmAddrInfo.isVecSetSyncCom
-    };
-
-    // Set callback context for static function pointer conversion
-    CallbackContext::instance = this;
-    Gmm1SwigluRunner::RunTile(gmmParams, l0cOutUbFirst_, l0cOutUbSecond_,
-                              gmm2PingpongIdx_, isVecSetSyncCom_, gmmAddrInfo.startBlockIdx,
-                              blockNum_, blockIdx_,
-                              reinterpret_cast<GM_ADDR>(CallbackContext::NotifyVectorCallback),
-                              reinterpret_cast<GM_ADDR>(CallbackContext::WaitForCubeCallback));
-    startBlockIdx_ = (gmmAddrInfo.startBlockIdx + 1) % blockNum_;
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GroupMatmul2(const Params& params, uint32_t groupIdx)
-{
-    // Set callback context for static function pointer conversion
-    CallbackContext::instance = this;
-    
-    // Get correct GM_ADDR for GMM2 data tensors
-    GM_ADDR a2Gm = reinterpret_cast<GM_ADDR>(a2Global_.GetPhyAddr());
-    GM_ADDR b2Gm = reinterpret_cast<GM_ADDR>(b2Global_.GetPhyAddr());
-    GM_ADDR a2ScaleGm = reinterpret_cast<GM_ADDR>(a2ScaleGlobal_.GetPhyAddr());
-    GM_ADDR b2ScaleGm = reinterpret_cast<GM_ADDR>(b2ScaleGlobal_.GetPhyAddr());
-    GM_ADDR outputGm = reinterpret_cast<GM_ADDR>(outputGm_.GetPhyAddr());
-    
-    // L0C buffer address - use first buffer
-    GM_ADDR cUb = reinterpret_cast<GM_ADDR>(l0cOutUbGMM2First_.GetPhyAddr());
-    
-    // Fix parameter order: m, n, k (not m, k, n/2)
-    Gmm2CombineRunner::RunTileGmm2(a2Gm, b2Gm, a2ScaleGm, b2ScaleGm, cUb, outputGm,
-                                   GetMValue(), GetNValue(), GetKValue(),
-                                   blockNum_, blockIdx_, startBlockIdx_,
-                                   vecSetSyncCom2_, gmm2PingpongIdx_,
-                                   reinterpret_cast<GM_ADDR>(CallbackContext::NotifyVectorCallback),
-                                   reinterpret_cast<GM_ADDR>(CallbackContext::WaitForCubeCallback),
-                                   reinterpret_cast<GM_ADDR>(tokenPerExpertGm_.GetPhyAddr()),
-                                   reinterpret_cast<GM_ADDR>(preSumBeforeRankGm_.GetPhyAddr()),
-                                   reinterpret_cast<GM_ADDR>(cumsumMMGm_.GetPhyAddr()),
-                                   groupIdx, params_);
-    vecSetSyncCom2_++;
-    gmm2PingpongIdx_ = 1 - gmm2PingpongIdx_;
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::FinalizeRouting()
-{
-    GlobalTensor<bfloat16_t> combinedOutput;
-    GlobalTensor<int32_t> expandedRowIdx;
-    GlobalTensor<bfloat16_t> topkWeights;
-    GlobalTensor<int32_t> topkIds;
-    
-    combinedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(yOut_));
-    expandedRowIdx.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceGM_));
-    topkWeights.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(topkWeights_));
-    topkIds.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(topkIds_));
-    
-    // Call interface - implementation in dispatch_ffn_combine_ops_impl.h
-    DispatchFFNCombineImpl::FinalizeRouting(params_, combinedOutput, expandedRowIdx, 
-                                           0, topkWeights, topkIds);
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline bool DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::IsFirstSubBlock()
-{
-    return subBlockIdx_ == 0;
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline uint32_t DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GetMValue()
-{
-    return static_cast<uint32_t>(Get<0>(problemShape_));
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline uint32_t DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GetNValue()
-{
-    return static_cast<uint32_t>(Get<1>(problemShape_));
-}
-
-template <TemplateDispatchFFNCombineTypeClass>
-__aicore__ inline uint32_t DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::GetKValue()
-{
-    return static_cast<uint32_t>(Get<2>(problemShape_));
-}
-
+ 
 template <TemplateDispatchFFNCombineTypeClass>
 __aicore__ inline void DispatchFFNCombine<TemplateDispatchFFNCombineTypeFunc>::Process()
 {
-    
-    GM_ADDR tokenPerExpertCurRank = 0;
-    InitRouting();
-    
+    // 1. moe_init_routing_v3调用
+    moe_init_routing_v3<bfloat16_t, fp8_e4m3fn_t>(params_.aGmAddr, params_.expertIdxGmAddr, nullptr, nullptr,
+            params_.peermemInfo.ptrA0, params_.workspaceInfo.expandedRowIdx, tokenPerExpertCurRank_, nullptr,
+            params_.workspaceInfo.ptrA, &params_.tilingData_->moeInitRoutingTilingData,
+            params_.tilingData_->moeInitRoutingTilingData.tilingKey);
     SyncAll<true>();
-    CrossRankSyncTokenPerExpert(tokenPerExpertCurRank);
-    AivSyncAllForAic();
-
-    uint32_t expertPerRank = tilingData_->megaMoeInfo.expertPerRank;
-    for (uint32_t groupIdx = 0; groupIdx < expertPerRank; groupIdx++) {
-        if (!UpdateGroupParams(groupIdx)) continue;
-        UpdateGlobalBuffer(params_);
-
+ 
+    // 2. cnt值全ep域内的发送以及本端接收整理
+    CrossRankSyncCntPerExpert();
+    SyncAll<false>();
+ 
+    // 3. for循环按照本卡专家id进行Disptch，内部M1SwigluQuant按照基本块进行流水
+    GMMAddrInfo gmmAddrInfo;
+    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+        if (!UpdateGroupParams(expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer(gmmAddrInfo, 0);
         if (subBlockIdx_ == 1) {
-            DispatchTokens(groupIdx);
+            DispatchTokens(expertIdx);
         }
         if (subBlockIdx_ == 0) {
-            GmmAddrInfo gmmAddrInfo = {
-                .a = x_,
-                .b = weight1_,
-                .aScale = 0,  // x scale, 需要根据实际情况设置
-                .bScale = weightScales1_,
-                .startBlockIdx = startBlockIdx_,
-                .isVecSetSyncCom = isVecSetSyncCom_
-            };
-            GroupMatmulSwigluQuant(params_, gmmAddrInfo);
+            GroupMatmulSwigluQuant(epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
-
+    EndSync();
+ 
+    // 4. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
+    preOffset_ = 0;
+    vecSetSyncCom_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    for (uint32_t groupIdx = 0; groupIdx < expertPerRank; groupIdx++) {
-        if (!UpdateGroupParams(groupIdx)) continue;
-        UpdateGlobalBuffer(params_);
+    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+        if (!UpdateGroupParams(expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer(gmmAddrInfo, 1);
         if (subBlockIdx_ == 0) {
-            GroupMatmul2(params_, groupIdx);
+            GroupMatmul2(params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
-
-    EndGMM2Sync(vecSetSyncCom2_);
-    SyncAll<true>();
-    FinalizeRouting();
+    EndGMM2Sync();
+    AscendC::SyncAll<true>();
+ 
+    // 5. unpermute & 清理win区上放置token的位置
+    ArgSortExpandedRowIdx();
+    if constexpr(g_coreType == AscendC::AIV) {
+        ResetTokenPerExpert();
+        params_.shmem.CrossRankSync();
+    }
+    Unpermute(params_);
 }
-
-}  // namespace DispatchFFNCombineImpl
-
+ 
+}   // namespace DispatchFFNCombineImpl
 #endif
