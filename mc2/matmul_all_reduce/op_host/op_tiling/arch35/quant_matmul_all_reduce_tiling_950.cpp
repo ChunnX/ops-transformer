@@ -19,6 +19,7 @@
 #include "mc2_log.h"
 #include "util/math_util.h"
 #include "mc2/matmul_all_reduce/op_kernel/matmul_all_reduce_apt_tiling_key.h"
+#include "all_reduce_fit_balance_tiling.h"
 
 using namespace Mc2Log;
 using namespace Mc2Tiling;
@@ -992,6 +993,25 @@ void QuantTilingTransferHelperA5::PrintTilingInputParam(Mc2QuantBatchMatmulInfo 
         quantBatchMatmulInfo.batchB1, quantBatchMatmulInfo.batchB2, quantBatchMatmulInfo.batchB3,
         quantBatchMatmulInfo.batchB4, quantBatchMatmulInfo.batchC, quantBatchMatmulInfo.batchBias);
     OP_LOGD(tilingProcesser_.opName_, "Check isperTensor=%d.", static_cast<int32_t>(quantBatchMatmulInfo.isPerTensor));
+}
+
+CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT, TopoType::STANDARD_CARD);
+        mCutAllreduce = allReduceTilingHccl.GetTiling();
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
 }
 
 //注册tiling类

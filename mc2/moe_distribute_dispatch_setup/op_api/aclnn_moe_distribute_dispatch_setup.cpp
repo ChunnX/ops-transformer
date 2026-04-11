@@ -15,6 +15,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_moe_distribute_dispatch_setup.h"
 
 using namespace op;
 
@@ -44,14 +45,6 @@ inline int64_t Align(int64_t x, int64_t base)
     return ((x + base - 1) / base) * base;
 }
 
-extern aclnnStatus aclnnInnerMoeDistributeDispatchSetupGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
-    const aclTensor* xActiveMaskOptional, const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum, int64_t shareExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t commType, const char* commAlg, aclTensor* yOut,
-    aclTensor* expandIdxOut, aclTensor* commCmdInfoOut, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeDistributeDispatchSetup(void* workspace, uint64_t workspaceSize,
-                                                        aclOpExecutor* executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -99,9 +92,9 @@ aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchSetupGetWorkspaceSize(
-        x, expertIds, scalesOptional, xActiveMaskOptional, groupEp, epWorldSize, epRankId, moeExpertNum,
-        expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, commType,
-        commAlg, yOut, expandIdxOut, commCmdInfoOut, workspaceSize, executor);
+        x, expertIds, scalesOptional, xActiveMaskOptional, const_cast<char*>(groupEp), epWorldSize, epRankId,
+        moeExpertNum, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, commType,
+        const_cast<char*>(commAlg), yOut, expandIdxOut, commCmdInfoOut, workspaceSize, executor);
     return ret;
 }
 
