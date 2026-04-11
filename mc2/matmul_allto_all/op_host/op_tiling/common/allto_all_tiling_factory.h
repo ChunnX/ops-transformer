@@ -35,13 +35,11 @@ public:
      *
      * @param args tiling 参数
      * @param kernelType 算子类型
-     * @param topoType 拓扑类型
      * @param socVersion SOC 版本
      * @param npuArch NPU 架构
      * @return CutResult tiling 结果
      */
     static CutResult CreateTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
-                                  TopoType topoType = TopoType::STANDARD_CARD,
                                   SocVersion socVersion = SocVersion::SOC950, NpuArch npuArch = NpuArch::DAV_3510);
 };
 
