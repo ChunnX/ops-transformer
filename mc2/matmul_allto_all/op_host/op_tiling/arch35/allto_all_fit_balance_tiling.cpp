@@ -49,7 +49,7 @@ void MMAlltoAllFitBalanceTiling::SetShortTileLen()
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
         mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
     isLargerThanL2Cache_ = l2UseSize > L2_CACHE_SIZE;
-    if (isLargerThanL2Cache_ && mmInfo_.mValue > tilingM_.GetMinLen() * FOUR) {
+    if (isLargerThanL2Cache_) {
         tilingM_.SetMinLenByMax(tilingM_.GetMinLen() * TWO);
     }
     if (mmInfo_.mValue * mmInfo_.nValue <= coreNum_ * matmulPerf_.GetBaseM() * matmulPerf_.GetBaseN() * TWO) {
@@ -73,15 +73,6 @@ void MMAlltoAllFitBalanceTiling::SetLongTileLen()
             matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
     }
     OP_LOGD("MMAlltoAllFitBalanceTiling", "longTileLen %lu", tilingM_.cutRes.longTileLen);
-
-    // adjust the long tile for better pipeline
-    if (isLargerThanL2Cache_ && mmInfo_.mValue % tilingM_.cutRes.shortTileLen == 0 &&
-        (mmInfo_.nValue >= TWO * mmInfo_.mValue * rankDim_)) {
-        tilingM_.cutRes.longTileLen = tilingM_.cutRes.shortTileLen;
-    } else if (isQuantMatmul_ && ratioCalcComm_ > UNBALANCE_RATIO && mmInfo_.kValue < SMALL_K_BOUND &&
-        mmInfo_.mValue % tilingM_.cutRes.shortTileLen == 0) {
-        tilingM_.cutRes.longTileLen = tilingM_.cutRes.shortTileLen;
-    }
 }
 
 void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLen()

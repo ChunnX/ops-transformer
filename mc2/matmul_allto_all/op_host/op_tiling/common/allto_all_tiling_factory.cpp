@@ -24,23 +24,23 @@ class MMAlltoAllFitBalanceTiling;
 namespace MC2Tiling {
 
 CutResult AlltoAllTilingFactory::CreateTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
-                                              TopoType topoType, SocVersion socVersion, NpuArch npuArch)
+                                              SocVersion socVersion, NpuArch npuArch)
 {
-    // 判断是否使用 fit balance tiling（arch35 标卡4P）
+    // 对于arch35版本，4p和8p使用Mc2FitBasedBalanceTiling来拟合
     if (mc2tiling::IsStandardCard4P(args.rankDim, npuArch)) {
         OP_LOGD("AlltoAllTilingFactory", "Using fit balance tiling for arch35 standard card 4P");
-
-        // 创建 arch35 的 fit balance tiling 实例
-        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, topoType, socVersion);
+        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::STANDARD_CARD, socVersion);
         return fitBalanceTiling.GetTiling();
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch)) {
+        OP_LOGD("AlltoAllTilingFactory", "Using fit balance tiling for arch35 and 8p");
+        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, KernelType, TopoType::EIGHT_P, SocVersion);
+        return fitBalanceTiling.GetTiling();
+    } else {
+        OP_LOGD("AlltoAllTilingFactory", "Using formulaic tiling");
+        AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, socVersion);
+        formulaicTiling.GetTiling();
+        return formulaicTiling.tilingM_.cutRes;
     }
-
-    // 其他情况使用 formulaic tiling
-    OP_LOGD("AlltoAllTilingFactory", "Using formulaic tiling");
-
-    AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, socVersion);
-    formulaicTiling.GetTiling();
-    return formulaicTiling.tilingM_.cutRes;
 }
 
 } // namespace MC2Tiling
