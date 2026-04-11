@@ -111,7 +111,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
     </tr></thead>
   <tbody>
     <tr>
-      <td>gradY</td>
+      <td>gradY（aclTensor）</td>
       <td>输入</td>
       <td>表示MoeFinalizeRoutingV2正向输出y的导数。</td>
       <td>-</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>√</td>
     </tr>
     <tr>
-      <td>expandedRowIdx</td>
+      <td>expandedRowIdx（aclTensor）</td>
       <td>输入</td>
       <td>表示token按照专家序排序的索引。</td>
       <td>当scalesOptional传入空指针的时候，K必须为1。当dropPadMode是0时，取值范围是[0, R * K - 1]，且没有重复索引；当dropPadMode是1时，取值范围是[-1, expertNum * expertCapacity - 1]，且除-1外，不允许有其它重复索引。</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>√</td>
     </tr>
     <tr>
-      <td>expandedXOptional</td>
+      <td>expandedXOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示根据expertIdx进行扩展过的特征。</td>
       <td>当scalesOptional非空指针时，其也不能是空指针。</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>√</td>
     </tr>
     <tr>
-      <td>scalesOptional</td>
+      <td>scalesOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示对特征进行的缩放。</td>
       <td>-</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>√</td>
     </tr>
     <tr>
-      <td>expertIdxOptional</td>
+      <td>expertIdxOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示每一个特征对应的处理专家索引。</td>
       <td>当biasOptional非空指针时，expertIdxOptional也不能是空指针，取值范围是[0, E - 1], E &gt;= 1, 允许有重复索引。E代表专家数。</td>
@@ -161,7 +161,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>√</td>
     </tr>
     <tr>
-      <td>biasOptional</td>
+      <td>biasOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示对特征进行的偏移。</td>
       <td>-</td>
@@ -171,7 +171,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>√</td>
     </tr>
     <tr>
-      <td>dropPadMode</td>
+      <td>dropPadMode（int64_t）</td>
       <td>输入</td>
       <td>表示使用不同的场景。</td>
       <td>取值为0和1，0代表dropless场景，不校验expertNum和expertCapacity；1代表drop场景，需要校验expertNum和expertCapacity，对于每个专家处理的超过和不足expertCapacity的值会做相应的处理。</td>
@@ -181,7 +181,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>-</td>
     </tr>
     <tr>
-      <td>activeNum</td>
+      <td>activeNum（int64_t）</td>
       <td>输入</td>
       <td>表示gradExpandedXOut最大输出行数。</td>
       <td>当dropPadMode是0时，只有当activeNum大于0且小于R * K时，该参数才生效；当dropPadMode是1时，该参数不生效。</td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertNum</td>
+      <td>expertNum（int64_t）</td>
       <td>输入</td>
       <td>表示专家数。</td>
       <td>当dropPadMode是0时，该参数不生效；当dropPadMode是1时，当biasOptional非空指针时，expertNum必须等于E，当biasOptional是空指针时，expertNum必须大于0，否则会报错。</td>
@@ -201,7 +201,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertCapacity</td>
+      <td>expertCapacity（int64_t）</td>
       <td>输入</td>
       <td>表示每个专家能够处理的行数。</td>
       <td>当dropPadMode是0时，该参数不生效；当dropPadMode是1时，expertCapacity必须大于0，否则会报错。</td>
@@ -211,7 +211,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>-</td>
     </tr>
     <tr>
-      <td>gradExpandedXOut</td>
+      <td>gradExpandedXOut（aclTensor）</td>
       <td>输出</td>
       <td>MoeFinalizeRoutingV2正向输入expandedX的导数。</td>
       <td>-</td>
@@ -221,7 +221,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>×</td>
     </tr>
     <tr>
-      <td>gradScalesOut</td>
+      <td>gradScalesOut（aclTensor）</td>
       <td>输出</td>
       <td>MoeFinalizeRoutingV2正向输入scales的导数。</td>
       <td>当scalesOptional不是空指针时，此输出才有意义。</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
