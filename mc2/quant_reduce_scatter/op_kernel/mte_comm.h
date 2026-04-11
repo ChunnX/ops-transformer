@@ -67,6 +67,7 @@ public:
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
+    int32_t i_ = 0;
 private:
 
     uint32_t xNumPerBlock_{0};
@@ -320,13 +321,16 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     float minTarget = hcclContext_->rankDim - (float)0.5;
     float maxTarget = hcclContext_->rankDim + (float)0.5;
     // 读取statusCnt个数据求和
-    while ((flag < minTarget) || (flag > maxTarget)) {
+    while (i_ < 1000) {
+    // while ((flag < minTarget) || (flag > maxTarget)) {
+        AscendC::PRINTF("xyf --- whilewhile");
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
+        i_++;
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
