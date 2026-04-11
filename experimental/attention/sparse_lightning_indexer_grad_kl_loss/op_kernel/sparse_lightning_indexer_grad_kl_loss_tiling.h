@@ -86,6 +86,7 @@ public:
     int32_t sparseMode;
     int32_t rsvd;
     int64_t cmpRatio;
+    int64_t hasSoftmaxInput;
 
     float scaleValue;
     
@@ -130,6 +131,9 @@ public:
 
     int64_t get_cmpRatio() const {return cmpRatio;}
     void set_cmpRatio(int64_t cmpRatioParam) {this->cmpRatio = cmpRatioParam;}
+
+    int64_t get_hasSoftmaxInput() const {return hasSoftmaxInput;}
+    void set_hasSoftmaxInput(int64_t hasSoftmaxInputParam) {this->hasSoftmaxInput = hasSoftmaxInputParam;}
 
     uint8_t get_layoutType() const {return layoutType;}
     void set_layoutType(uint8_t layoutTypeParam) {this->layoutType = layoutTypeParam;}
