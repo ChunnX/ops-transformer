@@ -363,7 +363,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::Compute(
             DataCopyPadExtParams<uint8_t> mpadParams{false, 0, 0, 0};
             DataCopyPad(maskRaw[b * sPad], maskGM_[maskGmOff], mcp, mpadParams);
         }
-        // SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
         maskRowQueue_.EnQue(maskRaw);
         maskRaw = maskRowQueue_.DeQue<uint8_t>();
 
@@ -433,6 +432,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
         };
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
     }
+    SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
     ioQueue_.FreeTensor(ioBuf);
 }
 
