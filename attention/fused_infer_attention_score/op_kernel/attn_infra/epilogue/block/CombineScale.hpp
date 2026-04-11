@@ -40,19 +40,21 @@ public:
     __aicore__ inline
     void init(Arch::Resource<ArchTag> &resource) {
         // UB Memory Allocation
-        constexpr uint32_t LL_UB_OFFSET = 0; // splitnum_align * (q * h)_algin
-        constexpr uint32_t LM_UB_OFFSET = 1 * STAGE2_UB_UINT8_BLOCK_SIZE;  // 1 * (q * h)_algin
-        constexpr uint32_t BROADCAST_OFFSET = 2 * STAGE2_UB_UINT8_BLOCK_SIZE; // splitnum_align * (q * h)_algin
-        constexpr uint32_t TL_UB_OFFSET = 3 * STAGE2_UB_UINT8_BLOCK_SIZE; // splitnum_align * (q * h)_algin
-        constexpr uint32_t RS_UB_OFFSET = 4 * STAGE2_UB_UINT8_BLOCK_SIZE; // 1 * (q * h)_algin
-        constexpr uint32_t TS_UB_OFFSET = 5 * STAGE2_UB_UINT8_BLOCK_SIZE; // 1 * (q * h)_algin
-        constexpr uint32_t BROADCASTSCALE_OFFSET = 6 * STAGE2_UB_UINT8_BLOCK_SIZE; // splitnum_align * (q * h)_algin
-        constexpr uint32_t GL_UB_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE; // splitnum_align * (q * h)_algin
-        constexpr uint32_t BROADCASTO_OFFSET = 8 * STAGE2_UB_UINT8_BLOCK_SIZE; //splitnum_align * (q * h)_algin * v
-        constexpr uint32_t GO_UB_OFFSET = 8 * STAGE2_UB_UINT8_BLOCK_SIZE + 1 * UB_UINT8_LINE_SIZE; // (q * h)_algin * v
-        constexpr uint32_t GO16_UB_OFFSET = 8 * STAGE2_UB_UINT8_BLOCK_SIZE + 2 * UB_UINT8_LINE_SIZE; // (q * h)_algin * v
-        constexpr uint32_t tempReduceMax_OFFSET = 8 * STAGE2_UB_UINT8_BLOCK_SIZE + 3 * UB_UINT8_LINE_SIZE + 1 * STAGE2_UB_UINT8_BLOCK_SIZE; //splitnum_align * (q * h)_algin * v
-        constexpr uint32_t tempReduceSum_OFFSET = 8 * STAGE2_UB_UINT8_BLOCK_SIZE + 3 * UB_UINT8_LINE_SIZE + 2 * STAGE2_UB_UINT8_BLOCK_SIZE; //splitnum_align * (q * h)_algin * v
+        constexpr uint32_t LL_UB_OFFSET = 0;
+        constexpr uint32_t LM_UB_OFFSET = 1 * STAGE2_UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t BROADCAST_OFFSET = 2 * STAGE2_UB_UINT8_BLOCK_SIZE;  // broadCastTensor & broadCastScaleTensor 复用
+        constexpr uint32_t TL_UB_OFFSET = 3 * STAGE2_UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t RS_UB_OFFSET = 4 * STAGE2_UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t TS_UB_OFFSET = 5 * STAGE2_UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t GL_UB_OFFSET = 6 * STAGE2_UB_UINT8_BLOCK_SIZE;
+
+        // Phase2 O计算区 (offset 7起, 每块UB_UINT8_LINE_SIZE=32768字节)
+        constexpr uint32_t BROADCASTO_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t GO_UB_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE + 1 * UB_UINT8_LINE_SIZE;
+        constexpr uint32_t GO16_UB_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE + 2 * UB_UINT8_LINE_SIZE;
+
+        // ReduceMax/ReduceSum顺序执行，共享同一块临时空间
+        constexpr uint32_t TEMP_REDUCE_OFFSET = 7 * STAGE2_UB_UINT8_BLOCK_SIZE + 3 * UB_UINT8_LINE_SIZE;
 
         // Buffer Init
         llUbTensor = resource.ubBuf.template GetBufferByByte<float>(LL_UB_OFFSET);
@@ -61,7 +63,7 @@ public:
         tlUbTensor = resource.ubBuf.template GetBufferByByte<float>(TL_UB_OFFSET);
         rsUbTensor = resource.ubBuf.template GetBufferByByte<float>(RS_UB_OFFSET);
         tsUbTensor = resource.ubBuf.template GetBufferByByte<float>(TS_UB_OFFSET);
-        broadCastScaleTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCASTSCALE_OFFSET);
+        broadCastScaleTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCAST_OFFSET);  // 复用BROADCAST_OFFSET
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(GL_UB_OFFSET);
         broadCastOTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCASTO_OFFSET);
         toUbTensor = resource.ubBuf.template GetBufferByByte<float>(BROADCASTO_OFFSET);
@@ -69,8 +71,8 @@ public:
         loFloatUbTensor = resource.ubBuf.template GetBufferByByte<float>(GO16_UB_OFFSET);
         go16UbTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(GO_UB_OFFSET);
 
-        tempReduceMax = resource.ubBuf.template GetBufferByByte<uint8_t>(tempReduceMax_OFFSET);
-        tempReduceSum = resource.ubBuf.template GetBufferByByte<uint8_t>(tempReduceSum_OFFSET);
+        tempReduceMax = resource.ubBuf.template GetBufferByByte<uint8_t>(TEMP_REDUCE_OFFSET);
+        tempReduceSum = resource.ubBuf.template GetBufferByByte<uint8_t>(TEMP_REDUCE_OFFSET);  // 复用同一块空间
 
     }
 
@@ -211,6 +213,7 @@ public:
                                     tokenTile : (lseBlock - tileStart);
                 uint32_t curTileAlign = (curTile + 7) / 8 * 8;
                 uint32_t oTileCount = curTile * headSizeV;
+                uint32_t oTileCountPad = (oTileCount + 7) / 8 * 8;
 
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
                 for (uint32_t nIdx = 0; nIdx < splitNum; nIdx++) {
@@ -231,14 +234,14 @@ public:
                         dstShapeO, srcShapeO, tempReduceSum);
                     AscendC::PipeBarrier<PIPE_V>();
 
-                    AscendC::Mul(toUbTensor, loFloatUbTensor, broadCastOTensor, oTileCount); // toUbTensor和broadCastOTensor共用一块空间
+                    AscendC::Mul(toUbTensor, loFloatUbTensor, broadCastOTensor, oTileCountPad);
                     AscendC::PipeBarrier<PIPE_V>();
 
                     if (nIdx == 0) {
-                        AscendC::Adds(goUbTensor, toUbTensor, 0.0f, oTileCount);
+                        AscendC::Adds(goUbTensor, toUbTensor, 0.0f, oTileCountPad);
                         AscendC::PipeBarrier<PIPE_V>();
                     } else {
-                        AscendC::Add(goUbTensor, toUbTensor, goUbTensor, oTileCount);
+                        AscendC::Add(goUbTensor, toUbTensor, goUbTensor, oTileCountPad);
                         AscendC::PipeBarrier<PIPE_V>();
                     }
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
@@ -247,9 +250,9 @@ public:
 
                 // Cast and move out
                 if (std::is_same<ElementOutput, bfloat16_t>::value) {
-                    AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_RINT, oTileCount);
+                    AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_RINT, oTileCountPad);
                 } else {
-                    AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_NONE, oTileCount);
+                    AscendC::Cast(go16UbTensor, goUbTensor, AscendC::RoundMode::CAST_NONE, oTileCountPad);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
 
