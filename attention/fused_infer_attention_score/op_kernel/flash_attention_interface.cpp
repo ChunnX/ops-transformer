@@ -187,6 +187,7 @@ namespace SplitFuse {
 
         using L1TileShapePV = GemmShape<128, 128, 256>;
         using L0TileShapePV = GemmShape<128, 128, 128>;
+        
         // Use MmadAtlasA2FAIPVDecode dispatch policy for decoding scenario
         using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPVDecode<PagedCacheFlag, false>;
         using VType = Gemm::GemmType<ElementV, LayoutV>;
