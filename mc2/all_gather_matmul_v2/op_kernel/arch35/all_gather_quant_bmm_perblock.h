@@ -115,12 +115,15 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
     this->tPipe_->Destroy();
     this->tPipe_->Init();
     MmType op;
-    // Local compute do not need 'strideCount', set to 0.
-    uint32_t strideCount = 0;
-    op.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM, 
-            this->quantAddrs_->scale2GM, cGM, this->addrs_->workspaceGM, this->localInfo_.mmTiling, this->tPipe_,
-            this->batchWeight_, strideCount, false);
-    op.Process();
+
+    if (cfg.rankN != 0) {
+        // Local compute do not need 'strideCount', set to 0.
+        uint32_t strideCount = 0;
+        op.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM,
+                this->quantAddrs_->scale2GM, cGM, this->addrs_->workspaceGM, this->localInfo_.mmTiling, this->tPipe_,
+                this->batchWeight_, strideCount, false);
+        op.Process();
+    }
 }
 
 /**
@@ -141,10 +144,12 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
         this->HcclWait(i, isTail);
         this->tPipe_->Destroy();
         this->tPipe_->Init();
-        mmOp.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM, this->gatherScaleAddr_,
+        if (cfg.rankN != 0) {
+            mmOp.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM, this->gatherScaleAddr_,
                   this->addrs_->cGM, this->addrs_->workspaceGM, tileInfo.mmTiling, this->tPipe_, this->batchWeight_, strideCount, true);
-        // batchmatmul计算
-        mmOp.Process();
+            // batchmatmul计算
+            mmOp.Process();
+        }
         SyncAll<false>();
         // 刷新下一个tile片的A、C矩阵地址
         // 到计算尾块时，因为已经加上了所有整块的地址大小，尾块不需要重新计算起始地址
