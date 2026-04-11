@@ -87,7 +87,7 @@ public:
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *queryRope,
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                             __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                                             __gm__ uint8_t *blockTable);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
@@ -180,7 +180,7 @@ private:
     int64_t sparseS2Start;
     int64_t sparseS2End;
 
-    static cosntexpr int32_t IS_SPLIT_G = 0;
+    static constexpr int32_t IS_SPLIT_G = 0;
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
@@ -267,7 +267,7 @@ uint32_t QSFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(
     uint32_t combineBytes = 512 * sizeof(KV_T);   // constInfo.dSizeVInput;
     int64_t keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
         (keyOffset1 - keyOffset0)) * sizeof(KV_T) - combineBytes;
-    if (unlikely(keyoffset1 < 0)) {
+    if (unlikely(keyOffset1 < 0)) {
         CopyInSingleKv(kvInUb, startRow, keyOffset0);
     } else if (keySrcStride >= INT32_MAX || keySrcStride < 0 || constInfo.sparseBlockSize > 1) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
@@ -782,13 +782,12 @@ void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut,
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
 void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key,
-    __gm__ uint8_t *value, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+    __gm__ uint8_t *value, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable)
 {
     keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
     blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    queryRopeGm.SetGlobalBuffer((__gm__ KV_T *)(queryRope));
     keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)(keyRope));
 }
 
@@ -928,7 +927,7 @@ public:
     __aicore__ inline QSFAVectorServiceDummy() {};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
-        __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
+        __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
         __gm__ uint8_t *blockTable) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseFlashAttentionTilingDataMla *__restrict tiling,
         CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ,

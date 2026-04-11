@@ -170,7 +170,7 @@ template <typename CubeBlockType, typename VecBlockType>
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query);
+        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, queryRope);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
@@ -322,7 +322,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, queryRope, keyRope, sparseIndices, blockTable);
+    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable);
     cubeBlock.InitCubeInput(key, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, constInfo);
 }
 
