@@ -49,7 +49,7 @@ struct TempParams {
 
 struct AiCoreParams {
     uint64_t ubSize;
-    uint64_t blockDim;
+    uint64_t numBlocks;
     uint64_t aicNum;
     uint64_t l1Size;
     uint64_t l0aSize;
