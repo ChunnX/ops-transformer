@@ -141,22 +141,23 @@ uint64_t WeightQuantMatmulAllReduceTiling::GetTilingKey() const
             SET_NOT_USE_FM_MM_TPL_TILING,
             SET_NOT_USE_QUANT_MM_TPL_TILING,
             SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING);
+    } else {
+        tilingKey = GET_TPL_TILING_KEY(
+            static_cast<uint64_t>(ASCEND_910B),
+            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
+            MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+            MATMUL_ALLREDUCE_INT8_COMM_F,
+            0UL,    // ENABLE_L2_CACHE
+            0UL,    // SHARE_MM
+            SET_NOT_USE_FM_MM_TPL_TILING,
+            SET_NOT_USE_QUANT_MM_TPL_TILING,
+            weightQuantMatmulTPLParam_.subAlgorithmCustom,
+            weightQuantMatmulTPLParam_.hasAntiquantOffset,
+            weightQuantMatmulTPLParam_.antiquantType,
+            weightQuantMatmulTPLParam_.transA,
+            weightQuantMatmulTPLParam_.transB,
+            static_cast<uint64_t>(FORMAT_B_ND));
     }
-    tilingKey = GET_TPL_TILING_KEY(
-        static_cast<uint64_t>(ASCEND_910B),
-        static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
-        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-        MATMUL_ALLREDUCE_INT8_COMM_F,
-        0UL,    // ENABLE_L2_CACHE
-        0UL,    // SHARE_MM
-        SET_NOT_USE_FM_MM_TPL_TILING,
-        SET_NOT_USE_QUANT_MM_TPL_TILING,
-        weightQuantMatmulTPLParam_.subAlgorithmCustom,
-        weightQuantMatmulTPLParam_.hasAntiquantOffset,
-        weightQuantMatmulTPLParam_.antiquantType,
-        weightQuantMatmulTPLParam_.transA,
-        weightQuantMatmulTPLParam_.transB,
-        static_cast<uint64_t>(FORMAT_B_ND));
     OP_LOGI(opName_, " tilingKey %lu", tilingKey);
     return tilingKey;
 }
