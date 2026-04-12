@@ -13,7 +13,7 @@ struct HcclA5OpResParam {
     uint64_t workSpaceSize; // client和server之间通信空间的大小
     uint32_t rankId; // 当前卡rankId
     uint32_t rankDim; // 卡总数
-    uint64_t winSzie; 
+    uint64_t winSize; 
     uint64_t windowsIn[MAX_RANK_NUM];
     uint64_t windowsOut[MAX_RANK_NUM];     // MAX_RANK_NUM 最大到32
 
