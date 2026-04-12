@@ -97,6 +97,7 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape& srcShape, const uint32_t d
     const uint32_t dataTypeSize2, const bool isUpdate, const bool isBasicBlock,
     const bool isFlashOutputBrc)
 {
+    std::cout << "20260412 GetSoftMaxFlashV2MinTmpSize_mocker" << std::endl;
     const uint32_t inputSize = static_cast<uint32_t>(srcShape.GetShapeSize());
     if (inputSize == 0U) { return 0U; }
     if (dataTypeSize1 == 0U || (dataTypeSize1 != SOFTMAX_HALF_SIZE && dataTypeSize1 != SOFTMAX_FLOAT_SIZE)) {
@@ -178,6 +179,7 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape& srcShape, const uint32_t d
 uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape& srcShape, const uint32_t dataTypeSize,
     const bool isUpdate, const bool /*isReuseSource*/)
 {
+    std::cout << "20260412 GetSoftMaxFlashMinTmpSize_mocker" << std::endl;
     const uint32_t inputSize = static_cast<uint32_t>(srcShape.GetShapeSize());
     if (inputSize == 0U) { return 0U; }
     if (dataTypeSize == 0U || (dataTypeSize != SOFTMAX_HALF_SIZE && dataTypeSize != SOFTMAX_FLOAT_SIZE)) {

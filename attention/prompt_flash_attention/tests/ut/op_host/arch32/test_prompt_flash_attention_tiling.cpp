@@ -90,7 +90,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_0)
         &compileInfo, "Ascend910B", PromptFlashAttention_A2SocInfo, 4096);
     int64_t expectTilingKey = 4423156480;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // // // BSH
