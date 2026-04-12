@@ -53,7 +53,7 @@ public:
         // gmmXScale comm init(MX quant)
         if constexpr (MX_QUANT_MODE) {
             uint64_t commOutLen =
-                Align((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), TENSOR_LIST_SIZE);
+                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR), TENSOR_LIST_SIZE);
             gmmxScaleCommOutGm_ = tilingData_->isPermuteOut ? workspaceGM : workspaceGM + commOutLen;
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_);
             computeScaleGm_ = gmmxScaleCommOutGm_; // 存在scale通信时为通信后permuteScaleout的地址

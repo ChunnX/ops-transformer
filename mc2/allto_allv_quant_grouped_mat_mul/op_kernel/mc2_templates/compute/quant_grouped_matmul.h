@@ -59,9 +59,9 @@ public:
         bs_ = tilingData_->taskTilingInfo.BS;
         a_ = tilingData_->taskTilingInfo.A;
 
-        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * h1_);
+        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * CeilDiv(h1_, PACK_FACTOR));
         // 将 permuteOutSize 对齐到 512 字节
-        permuteOutSize = CeilDiv(Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE), PACK_FACTOR);
+        permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
         uint64_t permuteXScaleSize =
             a_ * Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
             Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
