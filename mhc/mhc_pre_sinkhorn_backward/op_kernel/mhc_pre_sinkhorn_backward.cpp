@@ -20,7 +20,7 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(GM_ADDR x, GM_AD
     // TPipe pipe;
 
     // // MhcPreGradKernel<DTYPE_X> op;
-    // MhcPreGradOneStageKernel<DTYPE_X> op;
+    MhcPreGradOneStageKernel<DTYPE_X, DTYPE_PHI> op;
     
     // op.mm1_.SetSubBlockIdx(0);
     // op.mm1_.Init(&tilingData.mm1TilingData, &pipe);

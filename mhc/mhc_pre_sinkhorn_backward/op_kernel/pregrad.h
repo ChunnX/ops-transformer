@@ -51,7 +51,7 @@ protected:
     int64_t blkIdx_, aivNum_, aicNum_;
     TPipe* pipe_;
     int64_t batchSize_, seqLength_, totalTasks_, totalTasksAligned_;
-    int64_t c_, n_, c0_, c1_;
+    int64_t c_, n_, c0_, c1_, cTail_;
     int64_t tile_;
     int64_t skIterCount_;
     int64_t mm1K_, mm1M_, mm1N_;
@@ -107,6 +107,7 @@ private:
         n_ = tilingData->n;
         c0_ = tilingData->c0;
         c1_ = tilingData->c1;
+        cTail_ = tilingData->cTail;
         skIterCount_ = tilingData->skIterCount;
         tile_ = tilingData->tileSize;
         totalTasks_ = batchSize_ * seqLength_;

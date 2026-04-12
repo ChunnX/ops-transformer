@@ -16,6 +16,7 @@ TILING_DATA_FIELD_DEF(int64_t, c)
 TILING_DATA_FIELD_DEF(int64_t, n)
 TILING_DATA_FIELD_DEF(int64_t, c0)      // tile for c
 TILING_DATA_FIELD_DEF(int64_t, c1)      // tile count of c
+TILING_DATA_FIELD_DEF(int64_t, cTail)      // tail of c
 TILING_DATA_FIELD_DEF(int64_t, aivNum)      // tile count of c
 TILING_DATA_FIELD_DEF(int64_t, tileGradY)
 TILING_DATA_FIELD_DEF(int64_t, tileHHat2)

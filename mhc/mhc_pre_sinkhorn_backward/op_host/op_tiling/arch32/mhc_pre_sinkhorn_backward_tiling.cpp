@@ -57,8 +57,10 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     int64_t seqLength = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
     int64_t n = xShape.GetDim(N_DIM_IDX);
     int64_t c = xShape.GetDim(C_DIM_IDX);
-    int64_t c0 = 512;    // must be VL
+    int64_t c0 = 256;    // must be VL
     int64_t c1 = c / c0;
+    int64_t cTail = c % c0;
+    int64_t cTailunaglin = cTail % 64 + 64 * cTail / (64 + 128);
     // int64_t tileGradY = 40;
     // int64_t tileHHat2 = 32;
     int64_t tile = 32;
@@ -111,6 +113,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     tilingData.set_batchSize(batchSize);
     tilingData.set_seqLength(seqLength);
     tilingData.set_c(c);
+    tilingData.set_cTail(cTail);
     tilingData.set_n(n);
     tilingData.set_c0(c0);
     tilingData.set_c1(c1);
