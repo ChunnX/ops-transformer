@@ -962,9 +962,16 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
                 "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
             return ge::GRAPH_FAILED;
         } else {
-            OP_CHECK_IF(fiaInfo.qkHeadDim != 192 || fiaInfo.vHeadDim != 128,
-            OP_LOGE(fiaInfo.opName, "In %s %s situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, BSH_BNSD, BSND_BNSD, NTD_TND, and the headDim shared by query and key is not equal to that of value, only query|key headDim = 192, value headDim = 128 are supported, but got query|key headDim: %u, value headDim: %u",
-                QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.qkHeadDim, fiaInfo.vHeadDim),
+            OP_CHECK_IF(fiaInfo.ropeMode == RopeMode::ROPE_COMBINE &&
+                (fiaInfo.qkHeadDim != 192 || fiaInfo.vHeadDim != 128),
+            OP_LOGE(fiaInfo.opName,
+                "In %s %s situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, "
+                "BSH_BNSD, BSND_BNSD, NTD_TND, "
+                "and the headDim shared by query and key is not equal to that of value, "
+                "only query|key headDim = 192, value headDim = 128 are supported, "
+                "but got query|key headDim: %u, value headDim: %u",
+                QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.qkHeadDim, fiaInfo.vHeadDim),
             return ge::GRAPH_FAILED);
         }
     }
