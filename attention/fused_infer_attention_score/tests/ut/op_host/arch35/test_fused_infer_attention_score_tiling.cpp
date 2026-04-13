@@ -3437,8 +3437,8 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-//check query rope dtype与query不一致
-TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_query_rope_Dtype)
+// check query rope dtype 与 query 不一致
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_query_rope_dtype)
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
         64, 32, 117440512, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -3472,7 +3472,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
             {{{4,32,16,64}, {4,32,16,64}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // query_rope-input21
             {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_rope-input22
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
@@ -3504,8 +3504,8 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-//check key rope dtype与key不一致
-TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_key_rope_Dtype)
+// check key rope dtype 与 key 不一致
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_key_rope_dtype)
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
         64, 32, 117440512, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -3539,7 +3539,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
             {{{4,32,16,64}, {4,32,16,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // query_rope-input21
             {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_rope-input22
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
