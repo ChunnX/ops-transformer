@@ -20,6 +20,8 @@
 #endif
 #if defined(V310_QGMM_QUANT_MIX)
 #include "arch35/qgmm_inplace_add_mix_online_dynamic.h"
+// pertensor-pertensor 模式（scale2 也是 float32，但为标量 shape）同样在 V310_QGMM_QUANT_MIX 宏下编译
+#include "arch35/qgmm_inplace_add_cube_pertensor.h"
 #endif
 
 using namespace AscendC;
@@ -48,9 +50,16 @@ __global__ __aicore__ void quant_grouped_matmul_inplace_add(GM_ADDR x1, GM_ADDR 
 #endif
 #if defined(V310_QGMM_QUANT_MIX)
     if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
-        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_VECTOR) { // transX = true, transW = false
+        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_VECTOR) { // transX = true, transW = false, perchannel
         QGmmInplaceAddMixAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(x1, x2, scale2, groupList,
                                                                                            scale1, y, tiling);
+    }
+    // pertensor-pertensor 模式：scale1 和 scale2 均为 (g,) 或 (g,1) 的 float32 标量
+    // 走纯 cube 路径（AIC_ONLY），通过 fixpipe 随路反量化（高19位）
+    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
+        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_PERTENSOR) { // transX = true, transW = false, pertensor
+        QGmmInplaceAddPertensorAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(
+            x1, x2, scale2, groupList, scale1, y, tiling);
     }
 #endif
 #endif
