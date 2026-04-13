@@ -670,7 +670,124 @@ T=1024 (m_groups=4): ~56 MB
 
 ---
 
-## 8. 性能建模工具
+## 8. L0C→UB 核内通路优化
+
+### 8.1 硬件通路
+
+950 芯片在每个 AI Core 内提供两条高速核内通路：
+
+| 通路 | 方向 | 带宽 | 用途 |
+|------|------|:----:|------|
+| **L0C→UB** | Cube→Vector | 256 B/cycle (422 GB/s) | matmul 输出直传 AIV |
+| **UB→L1** | Vector→Cube | 256 B/cycle (422 GB/s) | vector 结果回传下一个 matmul |
+
+对比 HBM 路径: 50 GB/s per core → **核内通路 8.4× 快于 HBM**
+
+这两条通路**仅限核内**（1 AIC + 2 AIV paired），跨核仍需 HBM 中转。M-Split 每核独立处理，完美适配。
+
+### 8.2 核内全闭环流水
+
+```mermaid
+graph LR
+    subgraph CORE ["单个 AI Core (核内闭环)"]
+        MM1["MM1<br/>X×W_DQ→Cq"]
+        L0C1["L0C→UB<br/>422 GB/s"]
+        RN["RmsNormCq<br/>(UB 内)"]
+        UBL1["UB→L1<br/>422 GB/s"]
+        MM3["MM3<br/>Cq_norm×W_UQ→QcQr"]
+        L0C3["L0C→UB<br/>422 GB/s"]
+        DQ["DequantQc+RopeQr<br/>(UB 内)"]
+        UBL13["UB→L1<br/>422 GB/s"]
+        MM4["MM4<br/>Qc×W_UK→Qn"]
+
+        MM1 --> L0C1 --> RN --> UBL1 --> MM3 --> L0C3 --> DQ --> UBL13 --> MM4
+    end
+
+    HBM["HBM<br/>(仅 weight B<br/>+ 最终输出)"]
+    MM1 -.->|"MTE2: 仅 B 矩阵"| HBM
+    MM3 -.->|"MTE2: 仅 B 矩阵"| HBM
+    MM4 -->|"FixPipe: 最终输出"| HBM
+
+    style CORE fill:#e8f8f5
+    style HBM fill:#fadbd8
+```
+
+**传统流水**（通过 HBM）:
+```
+MM1 → FixPipe→HBM → MTE2→UB → RmsNormCq → MTE3→HBM → MTE2→L1 → MM3
+      (422 GB/s)  (50 GB/s)                 (50 GB/s)  (50 GB/s)
+```
+
+**核内闭环流水**:
+```
+MM1 → L0C→UB → RmsNormCq → UB→L1 → MM3
+      (422 GB/s)    (核内)      (422 GB/s)
+```
+
+### 8.3 UB 约束与统一 baseM
+
+UB (256 KB) 必须装下 **N 轴 reduce 操作所需的完整 N 行**:
+- **RmsNorm**: full N reduce → `baseM × full_N × dtype ≤ 256KB`
+- **DynamicQuant**: per-row max/abs → `baseM × full_N × dtype ≤ 256KB`
+- **DequantQc/RopeQr**: per-element → `baseM × baseN × dtype ≤ 256KB`
+
+**所有 matmul 使用统一 baseM**（简化代码）。最严约束来自 RmsNormCq (full_N = Hcq):
+
+| 模型 | Hcq | 统一 baseM | UB 占用 | Cube 利用率 |
+|------|:---:|:---------:|:-------:|:----------:|
+| 小模型 (He=2048) | 512 | **256** | 256KB (100%) | 100% |
+| 中模型 (He=4096) | 1024 | **128** | 256KB (100%) | 100% |
+| **DeepSeek-V3** (He=7168) | 1536 | **80** | 240KB (94%) | **100%** |
+
+> baseM=80 >> 32 (MMAD bound 阈值) → **Cube 利用率 100%**，UB 约束不降低计算效率。
+
+### 8.4 MM3 baseN = D+Dr = 192 (per head)
+
+MM3 输出按完整注意力头处理:
+- baseN = D + Dr = 128 + 64 = 192 (一个 head 的 Qc + Qr)
+- per tile: baseM=80 × 192 × 2B = 30 KB (远小于 UB)
+- n_heads_per_core = N / n_groups (如 128/8 = 16 heads)
+
+### 8.5 AIV 切分策略（2 核切 M）
+
+核内 2 个 AIV 核统一按 **M 轴对半分**:
+
+| 操作 | core0 处理 | core1 处理 | N 轴 reduce? |
+|------|-----------|-----------|:----------:|
+| RmsNormCq | rows [0, 40) × 1536 | rows [40, 80) × 1536 | ✓ |
+| RmsNormCkvKr | rows [0, 40) × 512 | rows [40, 80) × 512 | ✓ |
+| DequantQc | rows [0, 40) × 192 | rows [40, 80) × 192 | ✗ |
+| RopeQr | rows [0, 40) × 64 | rows [40, 80) × 64 | ✗ |
+| DynamicQuantQn | rows [0, 40) × 512 | rows [40, 80) × 512 | ✓ |
+
+### 8.6 HBM 带宽释放效应
+
+UB→L1 通路将 A 矩阵从 HBM 带宽中移除:
+
+**MM3 per kL1 slab** (baseM=80, baseK=64, baseN=192):
+```
+当前: MTE2 = (A_slab + B_slab) / HBM_bw
+      A = 80×256×2 = 40KB, B = 256×192×2 = 96KB
+      MTE2 = (40+96)/50 GB/s = 2.79µs
+
+核内: A 从 UB→L1 (422 GB/s), MTE2 仅搬 B
+      MTE2 = 96KB / 50 GB/s = 1.97µs
+      A_UB→L1 = 40KB / 422 GB/s = 0.097µs (与 MTE2 并行)
+      → MTE2 时间减少 29%
+```
+
+### 8.7 理论收益总结
+
+| 收益来源 | 机制 | 影响量 |
+|---------|------|:------:|
+| 消除 HBM 中转 | L0C→UB + UB→L1 替代 FixPipe+MTE2+MTE3 | 节省 ~51µs 数据搬运 |
+| 释放 HBM 带宽 | A 矩阵走核内通路 → B 独享 HBM 带宽 | MM3 MTE2 减少 24-29% |
+| 消除 workspace | 中间结果不写 HBM | 减少 ~56MB GM 占用 |
+| per-tile 流水 | L0C→UB 每 tile 完成触发 vector | 减少 vector tailing |
+
+---
+
+## 9. 性能建模工具
 
 ```bash
 cd attention/mla_prolog_v3/tests/perf
