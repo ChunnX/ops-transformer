@@ -77,7 +77,7 @@ private:
 
     static constexpr uint64_t L0_BUF_NUM = 2;
     static constexpr uint64_t L0_BUF_OFFSET_B8 = 32 * 1024;
-    static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 128;
+    static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 512;
 
     int8_t aL1DbNum_;
     bool isBias_;

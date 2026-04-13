@@ -379,7 +379,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyGm
     // Inline CopyBiasGmToUb logic
     if (hasBias_ && kGmOffset == 0 && biasRealSize != 0) {
         DataCopyPad2D(
-            bias_[(weightMte2LoopIdx_ & 1) * UB_BUFFER_INFO.biasSingleBufferSize],
+            bias_[(weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize],
             biasGlobal_[biasGmOffset], 1, biasRealSize, biasRealSize, biasRealSize);
 
         SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
@@ -424,7 +424,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Weight
     }
     if (hasBias_ && kGmOffset == 0 && biasRealSize != 0) {
         DataCopy(biasL1,
-             biasRescale_[(ubComputeLoopIdx_ & 1) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
+             biasRescale_[(ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
              biasRealSize);
     }
     SetFlag<HardEvent::MTE3_V>(
@@ -458,9 +458,9 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQu
 
     if (hasBias_ && kGmOffset == 0 && biasRealSize != 0) {
         mxA8W4NzParams.biasInUbAddr = (__ubuf__ biasType *)bias_.GetPhyAddr(
-            (weightMte2LoopIdx_ & 1) * UB_BUFFER_INFO.biasSingleBufferSize);
+            (weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize);
         mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
-            (ubComputeLoopIdx_ & 1) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
+            (ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
         mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
         FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
     } else {
