@@ -18,19 +18,19 @@
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_masked_causal_conv1d.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -39,18 +39,19 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr)
+void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<int8_t> resultData(size, 0);
-    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
+                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("result[%ld] is: %d\n", i, resultData[i]);
     }
 }
 
-int Init(int32_t deviceId, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtStream *stream)
 {
     // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
@@ -63,9 +64,8 @@ int Init(int32_t deviceId, aclrtStream* stream)
 }
 
 template <typename T>
-int CreateAclTensor(
-    const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr, aclDataType dataType,
-    aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -82,9 +82,8 @@ int CreateAclTensor(
     }
 
     // 调用aclCreateTensor接口创建aclTensor
-    *tensor = aclCreateTensor(
-        shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(),
-        *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -114,15 +113,15 @@ int main()
     std::vector<op::fp16_t> yHostData(S * B * H, 0.5f);
 
 
-    void* xDeviceAddr = nullptr;
-    void* weightDeviceAddr = nullptr;
-    void* maskDeviceAddr = nullptr;
-    void* yDeviceAddr = nullptr;
+    void *xDeviceAddr = nullptr;
+    void *weightDeviceAddr = nullptr;
+    void *maskDeviceAddr = nullptr;
+    void *yDeviceAddr = nullptr;
 
-    aclTensor* x = nullptr;
-    aclTensor* weight = nullptr;
-    aclTensor* mask = nullptr;
-    aclTensor* y = nullptr;
+    aclTensor *x = nullptr;
+    aclTensor *weight = nullptr;
+    aclTensor *mask = nullptr;
+    aclTensor *y = nullptr;
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -135,15 +134,15 @@ int main()
 
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor;
+    aclOpExecutor *executor;
 
     // 调用aclnnMaskedCausalConv1d第一段接口
-    ret = aclnnMaskedCausalConv1dGetWorkspaceSize(
-        x, weight, mask, y, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMaskedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnMaskedCausalConv1dGetWorkspaceSize(x, weight, mask, y, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMaskedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
