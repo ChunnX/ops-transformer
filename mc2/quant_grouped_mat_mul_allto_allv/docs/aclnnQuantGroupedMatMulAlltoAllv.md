@@ -109,7 +109,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmX</td>
                 <td>输入</td>
                 <td>公式中的输入 gmmX。</td>
-                <td>shape (A, H)。</td>
+                <td>shape (A, H1)。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmWeight</td>
                 <td>输入</td>
                 <td>公式中的输入 gmmWeight。</td>
-                <td>shape (e, H, N1)。e 为每卡部署的专家数，H 为 hidden size，N1 为 MoE FFN 中间维度。</td>
+                <td>shape (e, H1, N1)。e 为每卡部署的专家数，H1 为 hidden size，N1 为 MoE FFN 中间维度。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
                 <td>ND</td>
                 <td>3</td>
@@ -134,7 +134,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td><li>TT量化：shape (1, )。</li><li>Mx量化：shape (A, ceil(H1/64), 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
-                <td>1</td>
+                <td><li>TT量化：1</li><li>Mx量化：3</li></td>
                 <td>x</td>
             </tr>
             <!-- gmmWeightScale -->
@@ -145,7 +145,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td><li>TT量化：shape (1, )。</li><li>Mx量化：shape (e, N1, ceil(H1/64), 2)，weight转置时为(e, ceil(H1/64), N1, 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
-                <td>1</td>
+                <td><li>TT量化：1</li><li>Mx量化：3</li></td>
                 <td>x</td>
             </tr>
             <!-- sendCountsTensorOptional -->
@@ -175,8 +175,8 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmXOptional</td>
                 <td>输入</td>
                 <td>公式中的输入 mmX。</td>
-                <td>shape (bs, H)。bs 为每卡部署的专家个数，H 为 hidden size。</td>
-                <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
+                <td>shape (bs, H2)。bs 为每卡部署的专家个数，H2 为 hidden size。</td>
+                <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
                 <td>x</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>mmWeightOptional</td>
                 <td>输入</td>
                 <td>公式中的输入 mmWeight。</td>
-                <td>shape (H, N1)。H 为 hidden size，N1 为共享专家 FFN 的中间层维度。</td>
+                <td>shape (H2, N2)。H2 为 hidden size，N2 为共享专家 FFN 的中间层维度。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
                 <td>ND</td>
                 <td>2</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td><li>TT量化：shape (1, )。</li><li>Mx量化：shape (BS, ceil(H2/64), 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
-                <td>1</td>
+                <td><li>TT量化：1</li><li>Mx量化：3</li></td>
                 <td>x</td>
             </tr>
             <!-- mmWeightScaleOptional -->
@@ -211,7 +211,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td><li>TT量化：shape(1, )。</li><li>Mx量化: shape (N2, ceil(H2/64), 2)，weight转置时为(ceil(H2/64), N2, 2)</li></td>
                 <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
                 <td>ND</td>
-                <td>1</td>
+                <td><li>TT量化：1</li><li>Mx量化：3</li></td>
                 <td>x</td>
             </tr>
             <!-- commQuantScaleOptional -->
@@ -503,9 +503,9 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
   - aclnnQuantGroupedMatMulAlltoAllv默认确定性实现。
 - e * epWorldSize最大支持256，e表示单卡上的专家数量，最大支持到32，epWorldSize支持2/4/8/16/32/64/128/256;
 - gmmX的shape(A, H1)，A为sendCounts之和，H1取值范围(0, 65536);
-- gmmWeight的shape(e, H1, N1)，H1取值范围(0, 65536)，N1取值范围(0, 65536);
-- y的shape为(BSK, N1)，第一维其中K的范围[2, 8]，BSK为recvCounts之和，N1取值(65536);
-- mmX是共享专家的左矩阵，shape为(BS, H2)，H2的取值范围(0, 65536)；
+- gmmWeight的shape(e, H1, N1)，N1取值范围(0, 65536);
+- y的shape为(BSK, N1)，第一维其中K的范围[2, 8]，BSK为recvCounts之和;
+- mmX是共享专家的左矩阵，shape为(BS, H2)，H2的取值范围(0, 12288]；
 - mmWeight是共享专家的右矩阵，shape为(H2， N2)，N2的取值范围(0, 65536)；
 - sendCounts为发送到其他卡的token数，数组大小为e * epWorldSize;
 - recvCounts从其他卡的token数，数组大小为e * epWorldSize;
@@ -597,7 +597,8 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
     constexpr int64_t EP_WORLD_SIZE = 8;
     constexpr int64_t BS = 4096;
     constexpr int64_t K = 2;
-    constexpr int64_t H = 7168;
+    constexpr int64_t H1 = 7168;
+    constexpr int64_t H2 = 7168;
     constexpr int64_t e = 4;
     constexpr int64_t N1 = 4096;
     constexpr int64_t N2 = 4096;
@@ -614,13 +615,13 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
         ret = HcclGetCommName(args.hcclComm, hcomName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
 
-        std::vector<int64_t> gmmXShape = {A, H};
-        std::vector<int64_t> gmmWShape = {e, H, N1};
+        std::vector<int64_t> gmmXShape = {A, H1};
+        std::vector<int64_t> gmmWShape = {e, H1, N1};
         std::vector<int64_t> gmmXScaleShape = {1};
         std::vector<int64_t> gmmWScaleShape = {1};
         std::vector<int64_t> yShape = {BS * K, N1};
-        std::vector<int64_t> mmXShape = {BS, H};
-        std::vector<int64_t> mmWShape = {H, N2};
+        std::vector<int64_t> mmXShape = {BS, H2};
+        std::vector<int64_t> mmWShape = {H2, N2};
         std::vector<int64_t> mmXScaleShape = {1};
         std::vector<int64_t> mmWScaleShape = {1};
         std::vector<int64_t> mmYShape = {BS, N2};
