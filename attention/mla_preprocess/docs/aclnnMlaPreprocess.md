@@ -707,7 +707,7 @@ aclnnStatus aclnnMlaPreprocess(
 - shape格式字段含义及约束
     - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
     - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    - headNum：表示多头数，取值范围：16、32、64、128
+    - headNum：表示多头数，取值范围：0~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
     - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
