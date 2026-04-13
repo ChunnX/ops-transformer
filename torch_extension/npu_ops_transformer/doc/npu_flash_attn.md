@@ -14,10 +14,10 @@
 
 ## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
 
--   API功能：
+-   API功能:
 
     支持flashattention训练推理归一化
--   计算公式：
+-   计算公式:
     
     self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
@@ -27,7 +27,7 @@
     Attention(Q,K,V)=Score(Q,K)V
     $$
 
-    本算子中Score函数采用Softmax函数，self-attention计算公式为：
+    本算子中Score函数采用Softmax函数，self-attention计算公式为:
 
     $$
     Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
@@ -70,7 +70,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND"，layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
+npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -454,198 +454,236 @@ layout匹配关系如下：
         - attentionOut和lse都为空时，属于空Tensor。
         - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
 - <a id="public"></a>通用场景
+
+- 存在性约束
+
+  <table style="undefined;table-layout: fixed; width: 700px">
+        <colgroup>
+            <col style="width: 400px">
+            <col style="width: 300px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>场景</th>
+                <th>结果预期</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>query,key,value,attentionOut存在nullptr</td>
+                <td>正常拦截</td>
+            </tr>
+            <tr>
+                <td>query,attentionOut的tensor的shapeSize为0</td>
+                <td>attentionOut为返回空tesor</td>
+            </tr>
+            <tr>
+                <td>query,attentionOut的tensor的shapeSize不为0,且key,value的tensor的shapeSize为0</td>
+                <td>attentionOut返回全0</td>
+            </tr>
+        </tbody>
+    </table>
+- 一致性约束
+
+    <table style="undefined;table-layout: fixed; width: 800px">
+        <colgroup>
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>tensor</th>
+                <th>B</th>
+                <th>N</th>
+                <th>S</th>
+                <th>D</th>
+                <th>Q_N/KV_N</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>q</td>
+                <td>
+                    支持B轴小于等于65536
+                </td>
+                <td>
+                    N轴无限制
+                </td>
+                <td>
+                    S轴无限制
+                </td>
+                <td>
+                    D轴小于等于512, 且16对齐
+                </td>
+                <td rowspan="3">
+                    N_Q是N_KV的整数倍
+                </td>
+            </tr>
+            <tr>
+                <td>k</td>
+                <td>
+                    支持B轴小于等于65536
+                </td>
+                <td>
+                    N轴无限制
+                </td>
+                <td>
+                    S轴无限制
+                </td>
+                <td>
+                    D轴小于等于512, 且16对齐
+                </td>
+            </tr>
+                <td>v</td>
+                <td>
+                    支持B轴小于等于65536
+                </td>
+                <td>
+                    N轴无限制
+                </td>
+                <td>
+                    S轴无限制
+                </td>
+                <td>
+                    D轴小于等于512, 且16对齐
+                </td>
+            </tr>
+        </tbody>
+    </table>
+- 特性交叉约束
+
+  - 非量化场景
     <table style="undefined;table-layout: fixed; width: 1000px">
         <colgroup>
-            <col style="width: 150px">
-            <col style="width: 100px">
-            <col style="width: 750px">
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 400px">
         </colgroup>
         <thead>
             <tr>
-                <th>参数</th>
-                <th>维度</th>
-                <th>限制</th>
+                <th>场景</th>
+                <th>PagedAttention场景</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td rowspan="4">q/k/v</td>
-                <td>B</td>
+                <td>npu_flash_attn</td>
                 <td>
                     <ul>
-                        <li>支持B轴小于等于65536</li>
-                        <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>N</td>
-                <td>
-                    <ul>
-                        <li>N轴无限制</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>S</td>
-                <td>
-                    <ul>
-                        <li>S轴无限制</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>D</td>
-                <td>
-                    <ul>
-                        <li>D轴无限制</li>
+                        <li>Key/Value排布支持BnBsND（blockNum, blockSize, KV_N, D）、BnNBsD（blockNum, KV_N,
+                            blockSize, D）和NZ（blockNum，KV_N，D/16，blockSize，16）三种格式</li>
                     </ul>
                 </td>
             </tr>
         </tbody>
     </table>
-- <a id="Mask"></a>Mask
-    <table style="undefined;table-layout: fixed; width: 820"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 360px">
-        <col style="width: 360px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>sparseMode</th>
-                <th>含义</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td>1</td>
-            <td>allMask</td>
-            <td>
-                无
-            </td>
-        </tr>
-        <tr>
-            <td>3</td>
-            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</td>
-            <td>
-                无
-            </td>
-        </tr>
-        <tr>
-            <td>4</td>
-            <td>band模式的mask</td>
-            <td>
-                无
-            </td>
-        </tr>
-        </tbody>
-    </table>
-- <a id="seqused"></a>seqused
-    <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
-    <col style="width: 195px">
-    <col style="width: 156px">
-    <col style="width: 608px">
-    <col style="width: 189px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>参数</th>
-                <th>Layout</th>
-                <th>说明</th>
-                <th>限制</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>seqused_q</td>
-                <td>不为TND</td>
-                <td>该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S</td>
-                <td rowspan="4">传入时应为非负数</td>
-            </tr>
-            <tr>
-                <td>cu_seqused_q</td>
-                <td>TND</td>
-                <td>该入参必须传入，第b+1个值表示前b个batch的Q_S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch_size + 1</td>
-            </tr>
-            <tr>
-                <td>seqused_kv</td>
-                <td>不为TND</td>
-                <td>
-                在非PA场景下，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。</br>
-                在PA场景下，该入参为必选入参，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S
-                </td>
-            </tr>
-            <tr>
-                <td>cu_seqused_kv</td>
-                <td>TND</td>
-                <td>该入参必须传入</br>
-                    在非PA场景下，第b + 1个值表示前b个batch的KV_S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数</br>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+#### Mask参数组
 
-- <a id="PagedAttention"></a>PagedAttention
-    <table style="undefined;table-layout: fixed; width: 1354px">
-        <colgroup>
-            <col style="width: 155px">
-            <col style="width: 169px">
-            <col style="width: 550px">
-            <col style="width: 600px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>参数所属场景或特性</th>
-                <th>参数</th>
-                <th>约束</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td rowspan="2">PagedAttention</td>
-                <td>blockSize</td>
-                <td>
-                    <li>在使能PagedAttention，blockSize需要传入非0值</li>
-                </td>
-                <td>blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。</td>
-            </tr>
-            <tr>
-                <td>blockTable</td>
-                <td>PagedAttention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-                </td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td rowspan="2">通用场景</td>
-                <td>k、v</td>
-                <td>
-                    <ul>
-                        <li>支持key、value dtype为FLOAT16/BFLOAT16</li>
-                </td>
-                <td>
-                <ul>
-                    <li>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。</li>
-                    <li>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。</li>
-                    <li>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</li>
-                </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>seqused_kv</td>
-                <td>PagedAttention场景下，必须传入seqused_kv。</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td colspan="4">
-                <ul><li>PagedAttention 不支持tensorlist场景</li>
-                <li>PagedAttention的使能必要条件是blocktable存在且有效，同时k、v是按照blocktable中的索引在一片连续内存中排布，在该场景下k、v的inputLayout参数无效</li>
-                </ul></td>
-            </tr>
-        </tbody>
-    </table>
+- 单参数约束
+  - 公共
+    - 入参 mask_mode 需要满足以下条件:
 
+      - mask_mode 支持输入范围为 1、3、4，默认值为 1
+      - mask_mode 含义如下表所示
+
+      | mask_mode |                                                                               含义                                                                                     |
+      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+      |     1     |                                                全计算模式，忽略win_left和win_right                                                 |
+      |     3     |                                           Causal模式，忽略win_left和win_right                                           |
+      |     4     |                                           band模式，计算win_left和win_right之间的部分                                            |
+- 存在性约束
+  - 无
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
+#### SeqLengths参数组
+
+- 单参数约束
+  - 公共
+    - 入参 seqused_q应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数
+      - 入参中的数值应满足以下条件:
+        - 其值应为非负数
+    - 入参 seqused_kv应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数
+      - 入参中的数值应满足以下条件:
+        - 其值应为非负数
+    - 入参 cu_seqlens_q应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数 + 1
+      - 入参中的数值应满足以下条件:
+        - 当 layout_q 为 TND 时，其值应递增(大于等于前一个值)排列
+        - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T_Q
+        - 其值应为非负数
+    - 入参 cu_seqlens_kv应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数 + 1
+      - 入参中的数值应满足以下条件:
+        - 当 layout_kv 为 TND 时，其值应递增(大于等于前一个值)排列
+        - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T_KV
+        - 其值应为非负数
+- 存在性约束
+  - 公共
+    - 入参 seqused_kv 应满足以下条件:
+      - PagedAttention场景，必须传入 seqused_kv
+    - 入参 cu_seqlens_q 应满足以下条件:
+      - 当 layout_q 为 TND 时，必须传入 cu_seqlens_q
+    - 入参 cu_seqlens_kv 应满足以下条件:
+      - 当 layout_kv 为 TND 时，必须传入 cu_seqlens_kv
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
+
+#### Paged Attention参数组
+
+- 单参数约束
+  - 公共
+    - 入参 blockTable 需要满足以下条件：
+      - tensor dtype 为int32类型
+      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）
+- 存在性约束
+  - 公共
+    - PagedAttention 使能情况下，必须传入 seqused_kv
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
+
+#### LearnableSink参数组
+
+- 单参数约束
+  - 公共
+    - 入参 sinks 需要满足以下条件
+      - tensor dtype 为 FP32
+      - tensor shape 为 (Q_N)
+- 存在性约束
+  - 无
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
+#### SoftmaxLSE参数组
+
+- 单参数约束
+  - 公共
+    - 输出 lseOut 仅支持数据类型 FP32
+- 存在性约束
+  - 公共
+    - softmaxLSE 场景下，输出 lseOut 不应为空
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 公共
+    - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 lseOut 输入维度应为 3，且 shape 匹配 [Q_T，Q_N]
+    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 lseOut 输入维度应为 2，且 shape 匹配 [B，Q_N，Q_S，1]
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
