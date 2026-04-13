@@ -27,8 +27,8 @@ namespace ascend_ops
         public:
             __aicore__ inline MOE_LAYERNORM_ADDADD2D_SINGLECORE() {}
 
-            __aicore__ inline void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
-                    GM_ADDR inOne, GM_ADDR inTwo, GM_ADDR inThr, GM_ADDR gamma, GM_ADDR beta, 
+            __aicore__ inline  void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
+                    GM_ADDR  inOne, GM_ADDR  inTwo, GM_ADDR  inThr, GM_ADDR  gamma, GM_ADDR  beta, 
                     GM_ADDR outLyn, GM_ADDR outAdd, const bool clamp, int64_t clamp_value, int32_t simplified)
             {
                 blockNum_ = GetBlockNum();
@@ -45,7 +45,7 @@ namespace ascend_ops
                 bkW_ = gbW_;
                 bkAlignW_ = AlignUp(bkW_, 64);
                 bkLoop_ = (int64_t)(gbH_ / blockNum_);
-                if(gbH_ % blockNum_ != 0){ bkLoop_ += 1; }
+                if (gbH_ % blockNum_ != 0) { bkLoop_ += 1; }
 
                 // tlH_ = 1;
                 // // tlW_ = (bkW_ <= MAX_COUNT_PER_TILE) ? bkW_ : MAX_COUNT_PER_TILE;
@@ -70,11 +70,8 @@ namespace ascend_ops
                 pipe_.InitBuffer(inQueBeta_, 1, bkAlignW_ * sizeof(T) * 2);
                 pipe_.InitBuffer(outQueOutLyn_, BUFFER_NUM, bkH_ * bkAlignW_ * sizeof(T) * 2);
                 pipe_.InitBuffer(outQueOutAdd_, BUFFER_NUM, bkH_ * bkAlignW_ * sizeof(T) * 2);
-
                 pipe_.InitBuffer(bufQueWork_, WORK_LOCAL_SIZE * sizeof(float));
                 pipe_.InitBuffer(bufQueSum_, 16*sizeof(float));
-
-
             }
 
             __aicore__ inline void Process()
@@ -103,15 +100,15 @@ namespace ascend_ops
                 Cast(gammaFloatLm_, gammaLm_[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
                 Cast(betaFloatLm_, betaLm_[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
 
-                if(bkAlignW_ - AlignUp(bkW_,16) != 0)
+                if (bkAlignW_ - AlignUp(bkW_, 16) != 0)
                 {
-                    Duplicate(in_two_local[bkAlignW_ + AlignUp(bkW_,16)], (T)0.0, bkAlignW_-AlignUp(bkW_, 16));
+                    Duplicate(in_two_local[bkAlignW_ + AlignUp(bkW_, 16)], (T)0.0, bkAlignW_ - AlignUp(bkW_, 16));
                 }
                 inTwoLmfp32_ = inTwoLm_.template ReinterpretCast<float>();
                 Cast(inTwoLmfp32_, inTwoLm_[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
 
-                for(int64_t i = 0; i < bkLoop_; i++){
-                    if(i * blockNum_ + blockIdx_ < gbH_){
+                for (int64_t i = 0; i < bkLoop_; i++) {
+                    if (i * blockNum_ + blockIdx_ < gbH_) {
                         CopyIn(i);
                         Compute(i);
                         CopyOut(i);
@@ -146,12 +143,11 @@ namespace ascend_ops
                 LocalTensor<T> in_one_local   = in_onethr_local[0];
                 LocalTensor<T> in_thr_local   = in_onethr_local[bkAlignW_];
                 LocalTensor<float> infloat_local = in_onethr_local.template ReinterpretCast<float>();
-
                 
-                if(bkAlignW_-AlignUp(bkW_,16) != 0)
+                if (bkAlignW_ - AlignUp(bkW_,16) != 0)
                 {
-                    Duplicate<T>(in_one_local[AlignUp(bkW_,16)], (T)0.0, bkAlignW_-AlignUp(bkW_,16));
-                    Duplicate<T>(in_thr_local[AlignUp(bkW_,16)], (T)0.0, bkAlignW_-AlignUp(bkW_,16));
+                    Duplicate<T>(in_one_local[AlignUp(bkW_, 16)], (T)0.0, bkAlignW_ - AlignUp(bkW_, 16));
+                    Duplicate<T>(in_thr_local[AlignUp(bkW_, 16)], (T)0.0, bkAlignW_ - AlignUp(bkW_, 16));
                 }
                 
                 LocalTensor<T> out_lyn_local = outQueOutLyn_.AllocTensor<T>();
@@ -166,7 +162,6 @@ namespace ascend_ops
                 LocalTensor<float> sum_local     = bufQueSum_.Get<float>();
                 LocalTensor<float> work_local    = bufQueWork_.Get<float>();
 
-
                 Add(in_one_fp32_local, in_one_fp32_local, inTwoLmfp32_, bkAlignW_);  //  + fc2 bias
                 Add(in_one_fp32_local, in_one_fp32_local, in_thr_fp32_local, bkAlignW_); // + attn out
                 
@@ -175,25 +170,24 @@ namespace ascend_ops
                 //     ClampMax(in_one_fp32_local, in_one_fp32_local,  (float)(clamp_value_), bkW_);
                 //     ClampMin(in_one_fp32_local, in_one_fp32_local, (float)(-1 * clamp_value_), bkW_);
                 // }
-                Cast(out_add_local, in_one_fp32_local, RoundMode::CAST_ROUND, bkAlignW_);  // +fc2 + attn out 
+                Cast(out_add_local, in_one_fp32_local, RoundMode::CAST_ROUND, bkAlignW_);  //  +fc2 + attn out 
                 // Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkAlignW_);
 
                 float cur_mean = 0.0f;
-                if(!simplified_)
+                if (!simplified_)
                 {
                     Duplicate<float>(work_local, (float)0.0, 64);
-                    BinaryRepeatParams byrt_pas = {1,1,1,0,8,0};
+                    BinaryRepeatParams byrt_pas = {1, 1, 1, 0, 8, 0};
                     Add(work_local, in_one_fp32_local, work_local, 64, bkAlignW_/64, byrt_pas) ;
                     WholeReduceSum(sum_local, work_local, 64, 1, 1, 1, 8);
                     Muls(sum_local, sum_local, (float)invert_, 1);
                     Muls(sum_local, sum_local, (float)(-1.0), 1);
                     cur_mean = sum_local.GetValue(0);
                 }
-                
-                
+                              
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkAlignW_);
                 // (x - mean)
-                if(!simplified_)
+                if (!simplified_)
                 {
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
@@ -201,7 +195,7 @@ namespace ascend_ops
                 Mul(infloat_local, infloat_local, infloat_local, bkW_);
                 {
                     Duplicate<float>(work_local, (float)0.0, 64);
-                    BinaryRepeatParams byrt_pas = {1,1,1,0,8,0};
+                    BinaryRepeatParams byrt_pas = {1, 1, 1, 0, 8, 0};
                     Add(work_local, infloat_local, work_local, 64, bkAlignW_/64, byrt_pas);
                     WholeReduceSum(sum_local, work_local, 64, 1, 1, 1, 8);
                 }
@@ -213,17 +207,15 @@ namespace ascend_ops
 
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkW_);
                 // (x - mean)
-                if(!simplified_)
+                if (!simplified_)
                 {
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) / rsqrt(var)
                 Muls(infloat_local, infloat_local, cur_var, bkW_);
-                
-                
                 Mul(infloat_local, infloat_local, gammaFloatLm_, bkW_);
                 Add(infloat_local, infloat_local, betaFloatLm_, bkW_);
-                if(clamp_)
+                if (clamp_)
                 {
                     ClampMax(infloat_local, infloat_local,  (float)(clamp_value_), bkW_);
                     ClampMin(infloat_local, infloat_local, (float)(-1 * clamp_value_), bkW_);
@@ -289,7 +281,7 @@ namespace ascend_ops
         public:
             __aicore__ inline MOE_LAYERNORM_ADDADD2D_SINGLECORE_SH() {}
 
-            __aicore__ inline void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
+            __aicore__  inline void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
                     GM_ADDR inOne, GM_ADDR inTwo, GM_ADDR inThr, GM_ADDR gamma, GM_ADDR beta, 
                     GM_ADDR outLyn, GM_ADDR outAdd, const bool clamp, int64_t clamp_value, int32_t simplified)
             {
@@ -336,8 +328,6 @@ namespace ascend_ops
 
                 pipe_.InitBuffer(bufQueWork_, WORK_LOCAL_SIZE * sizeof(float));
                 pipe_.InitBuffer(bufQueSum_, 16*sizeof(float));
-
-
             }
 
             __aicore__ inline void Process()
@@ -467,9 +457,7 @@ namespace ascend_ops
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) / rsqrt(var)
-                Muls(infloat_local, infloat_local, cur_var, bkW_);
-                
-                
+                Muls(infloat_local, infloat_local, cur_var, bkW_);               
                 LocalTensor<T> gamma_local = inQueGamma_.DeQue<T>();
                 LocalTensor<float> gammaFloatLm = gamma_local.template ReinterpretCast<float>();
                 Cast(gammaFloatLm, gamma_local[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
