@@ -234,4 +234,4 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_kv_quant_sparse_flash_attention_pioneer](./examples/test_kv_quant_sparse_flash_attention_pioneer.cpp) | 通过[test_kv_quant_sparse_flash_attention_pioneer](./docs/aclnnKvQuantSparseFlashAttentionPioneer.md)调用KvQuantSparseFlashAttentionPioneer算子。 |
+| aclnn接口 | [test_kv_quant_sparse_flash_attention_pioneer](./examples/test_kv_quant_sparse_flash_attention_pioneer.cpp) | 通过[aclnnKvQuantSparseFlashAttentionPioneer](./docs/aclnnKvQuantSparseFlashAttentionPioneer.md)调用KvQuantSparseFlashAttentionPioneer算子。 |
