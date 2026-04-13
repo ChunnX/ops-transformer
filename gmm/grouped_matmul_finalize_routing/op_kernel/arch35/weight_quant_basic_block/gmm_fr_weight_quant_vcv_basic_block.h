@@ -271,8 +271,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::VecComputeNzNk
         vecCompute_.WaitVToMTE2();
         uint64_t biasL1Offset = GetSubBlockIdx() * MX_BIAS_SINGLE_VECTOR_SIZE;
         uint64_t biasGmOffset = curOffsetParam.nOffset + biasL1Offset;
-        uint64_t biasRealSize = biasGmOffset >= curOffsetParam.nL1Size ? 0 :
-                                biasGmOffset + MX_BIAS_SINGLE_VECTOR_SIZE >= curOffsetParam.nL1Size ? curOffsetParam.nL1Size -  biasGmOffset :
+        uint64_t biasRealSize = biasL1Offset >= curOffsetParam.nL1Size ? 0 :
+                                biasGmOffset + MX_BIAS_SINGLE_VECTOR_SIZE >= curOffsetParam.nSize ? curOffsetParam.nSize -  biasGmOffset :
                                 MX_BIAS_SINGLE_VECTOR_SIZE;
         uint64_t kL1Offset = GetSubBlockIdx() * kMte2BaseSize;
         uint64_t mte2RealK = kMte2Offset + kL1Offset >= kMte2Limit ? 0 :
