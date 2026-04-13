@@ -34,8 +34,8 @@ struct MaskedCausalConv1dBackwardTilingDataV35 {
     int64_t ubTailFactorH{0};      // 主核UB内h维度尾块大小
     int64_t ubMainFactorS{0};      // 主核UB内s维度主块大小（有效输出行数，不包含重叠部分）
     int64_t ubTailFactorS{0};      // 主核UB内s维度尾块大小（有效输出行数，不包含重叠部分）
-    int64_t ubMainFactorSCount{0}; // 主块大小出现次数（例如21出现2次）
-    int64_t ubTailFactorSCount{0}; // 尾块大小出现次数（例如20出现3次）
+    int64_t ubMainFactorSCount{0}; // 主块大小出现次数
+    int64_t ubTailFactorSCount{0}; // 尾块大小出现次数
 
     // 尾核循环参数
     int64_t tailHLoopCnt{0}; // 尾核UB内h维度循环次数

@@ -283,7 +283,6 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceSTile(int64_t sTile
 
     // k=2
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, p2Ub, srcShape, false);
-    // binary-reduce insert for k=2
     {
         int64_t level = 0;
         while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
@@ -304,7 +303,6 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceSTile(int64_t sTile
 
     // k=1
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, p1Ub, srcShape, false);
-    // binary-reduce insert for k=1
     {
         int64_t level = 0;
         while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
@@ -325,7 +323,6 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceSTile(int64_t sTile
 
     // k=0
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, p0Ub, srcShape, false);
-    // binary-reduce insert for k=0
     {
         int64_t level = 0;
         while (level < sCacheLevels_ - 1 && (static_cast<int64_t>(sTile) & (1ULL << level))) {
@@ -434,7 +431,6 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::ApplyMaskToGradOutput(Loc
     }
     PipeBarrier<PIPE_V>();
 
-    // Apply mask on effective rows only (sEff * hLenThis elements)
     Mul(goLocal, goLocal, maskPlaneDT, static_cast<uint32_t>(sEffU * hU));
     PipeBarrier<PIPE_V>();
 
@@ -550,7 +546,6 @@ template <typename DT>
 __aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInMask(int64_t bTile, int64_t sTile, int64_t sEff)
 {
     LocalTensor<bool> mLocal = maskQ_.AllocTensor<bool>();
-    // bool is 1B on Ascend: mask has shape [B,S] with 1 byte per element
     DataCopyExtParams inParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sEff), static_cast<uint32_t>(S_ - sEff),
                                0, 0};
     int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) :
