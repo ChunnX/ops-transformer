@@ -1039,10 +1039,12 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
+        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
+        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
 
         args.rankId = rankId;
-        args.epRankId = rank_id;
-        args.tpRankId = 0;
+        args.epRankId = epRankId;
+        args.tpRankId = tpRankId;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
         args.combineStream = combineStream;
@@ -1157,7 +1159,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         else if (rank_table_file && first_rank_id) {
             EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 0;
+            TP_WORLD_SIZE = 1;
             DEV_NUM = EP_WORLD_SIZE;
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
