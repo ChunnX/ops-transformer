@@ -413,7 +413,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
+            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用PagedAttention模式管理scale/offset、per-token叠加per head并使用PagedAttention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -431,7 +431,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持空Tensor。</li>
             <li>使用时，shape必须与keyAntiquantScaleOptional保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset。</li>
+            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用PagedAttention模式管理scale/offset、per-token叠加per head并使用PagedAttention模式管理scale/offset。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -448,7 +448,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
+            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用PagedAttention模式管理scale/offset、per-token叠加per head并使用PagedAttention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -466,7 +466,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持空Tensor。</li>
             <li>使用时，shape必须与valueAntiquantScaleOptional保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset。</li>
+            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用PagedAttention模式管理scale/offset、per-token叠加per head并使用PagedAttention模式管理scale/offset。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -820,8 +820,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>keyAntiquantMode为1时，代表per-token模式。</li>
             <li>keyAntiquantMode为2时，代表per-tensor叠加per-head模式。</li>
             <li>keyAntiquantMode为3时，代表per-token叠加per-head模式。</li>
-            <li>keyAntiquantMode为4时，代表per-token叠加使用page attention模式管理scale/offset模式。</li>
-            <li>keyAntiquantMode为5时，代表per-token叠加per head并使用page attention模式管理scale/offset模式。</li>
+            <li>keyAntiquantMode为4时，代表per-token叠加使用PagedAttention模式管理scale/offset模式。</li>
+            <li>keyAntiquantMode为5时，代表per-token叠加per head并使用PagedAttention模式管理scale/offset模式。</li>
             <li>keyAntiquantMode为6时，代表per-token-group模式。</li>
             <li>keyAntiquantMode为7时，代表FP8 per-block全量化模式。</li>
             <li>传入0-7之外的其他值会执行异常。</li>

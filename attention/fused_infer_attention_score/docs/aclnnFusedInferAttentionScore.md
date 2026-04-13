@@ -805,16 +805,16 @@ aclnnStatus aclnnFusedInferAttentionScore(
     
   - kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
 
-  - page attention场景：
+  - PagedAttention场景：
 
-    - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-    - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致
-    - page attention不支持伪量化场景，不支持tensorlist场景，不支持左padding场景。
-    - page attention场景下，必须传入actualSeqLengthsKv。
-    - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
-    - page attention场景下，不支持query为int8。
-    - page attention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
+    - PagedAttention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
+    - blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，在使能PagedAttention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。
+    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致
+    - PagedAttention不支持伪量化场景，不支持tensorlist场景，不支持左padding场景。
+    - PagedAttention场景下，必须传入actualSeqLengthsKv。
+    - PagedAttention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
+    - PagedAttention场景下，不支持query为int8。
+    - PagedAttention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
       - 传入attenMask时，如 mask shape为 (B, 1, Q_S, KV_S)
       - 传入pseShift时，如 pseShift shape为(B, N, Q_S, KV_S)
     
@@ -854,16 +854,16 @@ aclnnStatus aclnnFusedInferAttentionScore(
   - query，key，value输入，功能使用限制如下：
     - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
     - query、key、value输入类型均为INT8的场景暂不支持。
-  - page attention场景:
-    - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-    - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
-    - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-    - page attention场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 KV_N * D 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为（blocknum, KV_N, blocksize, D）解决。
-    - page attention不支持tensorlist场景，不支持左padding场景。
-    - page attention场景下，必须传入actualSeqLengthsKv。
-    - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-    - page attention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
+  - PagedAttention场景:
+    - PagedAttention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
+    - blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，在使能PagedAttention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。
+    - PagedAttention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
+    - PagedAttention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
+    - PagedAttention场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 KV_N * D 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为（blocknum, KV_N, blocksize, D）解决。
+    - PagedAttention不支持tensorlist场景，不支持左padding场景。
+    - PagedAttention场景下，必须传入actualSeqLengthsKv。
+    - PagedAttention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
+    - PagedAttention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
       - 传入attenMask时，如 mask shape为 (B, 1, Q_S, KV_S)
       - 传入pseShift时，如 pseShift shape为(B, N, Q_S, KV_S)
   - kv左padding场景:
