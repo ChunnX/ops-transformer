@@ -47,7 +47,8 @@ public:
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
         preCommSendGlobalBuffer_.SetGlobalBuffer((__gm__ uint64_t *)preCommBuffer);
-        preCommRecvGlobalBuffer_.SetGlobalBuffer((__gm__ uint64_t *)(preCommBuffer + epWorldSize_ * sizeof(uint64_t)));
+        preCommRecvGlobalBuffer_.SetGlobalBuffer(
+            (__gm__ uint64_t *)(preCommBuffer + epWorldSize_ * e_ * epWorldSize_ * sizeof(uint64_t)));
 
         GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
         hccl_.InitV2(hcclContextGm, hcclInitTiling);
@@ -66,12 +67,6 @@ public:
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_FP16;
         }
-
-        // 打印初始化信息
-        // AscendC::printf("=== HCCL Init ===\n");
-        // AscendC::printf("rankId=%u, rankDim=%u, e=%u, H1=%lu, N1=%lu\n",
-        //        rankId_, rankDim_, e_, H1_, N1_);
-        // AscendC::printf("sendBuffer=%p, recvBuffer=%p, workspace=%p\n", sendBuffer, recvBuffer, workspaceGM_);
     }
 
     __aicore__ inline void InitPreComm()
@@ -84,26 +79,29 @@ public:
                 return;
             }
         }
-        // AscendC::printf("=== InitPreComm rank=%u ===\n", rankId_);
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
-
-        // 计算本卡总接收量
-        uint64_t myRecvSum = 0;
         for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
-            myRecvSum += static_cast<uint64_t>(recvCnt[i]);
-        }
-        // AscendC::printf("myRecvSum=%lu\n", myRecvSum);
-
-        // 发送本卡的 recvSum 给所有卡
-        for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            preCommSendGlobalBuffer_.SetValue(i, myRecvSum);
+            preCommSendGlobalBuffer_.SetValue(i, static_cast<uint64_t>(recvCnt[i]));
         }
         AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                           AscendC::DcciDst::CACHELINE_OUT>(preCommSendGlobalBuffer_);
 
-        // 注释掉实际通信，仅打印
-        // AscendC::printf("InitPreComm: preRecvCountHandle simulated\n");
-        // preRecvCountHandle_ = hccl_.AlltoAllV<true>(...);
+        uint64_t sendCntPerRank[MAX_EP_RANK_SIZE] = {0UL};
+        uint64_t recvCntPerRank[MAX_EP_RANK_SIZE] = {0UL};
+        uint64_t sendOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
+        uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
+        for (uint32_t i = 0U; i < epWorldSize_; i++) {
+            sendCntPerRank[i] = e_ * epWorldSize_;
+            recvCntPerRank[i] = e_ * epWorldSize_;
+        }
+        for (uint32_t i = 1U; i < epWorldSize_; i++) {
+            sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
+            recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
+        }
+        preRecvCountHandle_ = hccl_.AlltoAllV<true>((__gm__ uint8_t *)preCommSendGlobalBuffer_.GetPhyAddr(),
+                                                    sendCntPerRank, sendOffsetPerRank, HCCL_DATA_TYPE_UINT64,
+                                                    (__gm__ uint8_t *)preCommRecvGlobalBuffer_.GetPhyAddr(),
+                                                    recvCntPerRank, recvOffsetPerRank, HCCL_DATA_TYPE_UINT64);
     }
 
     __aicore__ inline void WaitPreComm()
@@ -116,35 +114,34 @@ public:
                 return;
             }
         }
-        // AscendC::printf("WaitPreComm: simulated wait\n");
-        // hccl_.Wait(preRecvCountHandle_);
+        hccl_.Wait(preRecvCountHandle_);
 
-        // 从预通信结果中读取所有卡的 recvSum
-        // 计算最大接收卡和 totalRound
+        uint64_t myRecvSum = 0;
         uint64_t maxRecvSum = 0;
-        uint32_t maxRecvRank = 0;
-        for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            uint64_t recvSum = preCommRecvGlobalBuffer_.GetValue(i);
-            // AscendC::printf("rank%u recvSum=%lu\n", i, recvSum);
+        for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+            uint64_t recvSum = 0;
+            for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
+                recvSum += preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i);
+            }
+            if (rankIdx == rankId_) {
+                myRecvSum = recvSum;
+            }
             if (recvSum > maxRecvSum) {
                 maxRecvSum = recvSum;
-                maxRecvRank = i;
             }
         }
 
-        // 最大卡 baseA 固定 2048
-        baseA_ = 2048U;
-
-        // 计算总轮次
-        totalRound_ = static_cast<uint32_t>((maxRecvSum + baseA_ - 1) / baseA_);
-
-        // AscendC::printf("maxRecvRank=%u, maxRecvSum=%lu, baseA=%u, totalRound=%u\n",
-        //        maxRecvRank, maxRecvSum, baseA_, totalRound_);
+        uint32_t globalBaseA = 2048U;
+        totalRound_ = static_cast<uint32_t>((maxRecvSum + globalBaseA - 1) / globalBaseA);
+        if (totalRound_ == 0) {
+            totalRound_ = 1;
+        }
+        localBaseA_ = static_cast<uint32_t>((myRecvSum + totalRound_ - 1) / totalRound_);
     }
 
-    __aicore__ inline uint32_t GetBaseA() const
+    __aicore__ inline uint32_t GetLocalBaseA() const
     {
-        return baseA_;
+        return localBaseA_;
     }
     __aicore__ inline uint32_t GetTotalRound() const
     {
@@ -174,15 +171,13 @@ public:
                 return;
             }
         }
-        // AscendC::printf("WaitMultiRound slotIdx=%u: simulated wait\n", slotIdx);
-        // hccl_.Wait(alltoAllvHandleQueue_[slotIdx]);
+        hccl_.Wait(alltoAllvHandleQueue_[slotIdx]);
     }
 
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
     {
         LaunchMultiRound(0, 0);
     }
-
     __aicore__ inline void Wait(uint32_t startExpertIdx)
     {
         WaitMultiRound(0);
@@ -192,7 +187,6 @@ public:
     {
         sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
         recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)recvBuffer);
-        // AscendC::printf("InitScaleBuffer: sendScale=%p, recvScale=%p\n", sendBuffer, recvBuffer);
     }
 
     __aicore__ inline void LaunchScaleMultiRound(uint32_t roundIdx, uint32_t slotIdx)
@@ -205,8 +199,7 @@ public:
                 return;
             }
         }
-        // AscendC::printf("=== LaunchScaleMultiRound round=%u rank=%u ===\n", roundIdx, rankId_);
-
+        uint32_t srcRank = roundIdx % epWorldSize_;
         for (uint32_t i = 0U; i < rankDim_; i++) {
             alltoAllvScaleSendCnt[i] = 0UL;
             alltoAllvScaleRecvCnt[i] = 0UL;
@@ -216,43 +209,45 @@ public:
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
 
-        // AscendC::printf("Scale Send/Recv per target rank (axis=%lu):\n", axis);
-        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            for (uint32_t rankIdx = 0U; rankIdx < rankDim_; rankIdx++) {
-                int32_t sendToRank = sendCnt[expertIdx + rankIdx * e_];
-                uint32_t startSend = roundIdx * baseA_;
-                uint32_t endSend = Mc2Min((roundIdx + 1) * baseA_, static_cast<uint32_t>(sendToRank));
-                uint64_t sendM = (endSend > startSend) ? (endSend - startSend) : 0;
-
-                int32_t recvFromRank = recvCnt[expertIdx + rankIdx * e_];
-                uint32_t startRecv = roundIdx * baseA_;
-                uint32_t endRecv = Mc2Min((roundIdx + 1) * baseA_, static_cast<uint32_t>(recvFromRank));
-                uint64_t recvM = (endRecv > startRecv) ? (endRecv - startRecv) : 0;
-
-                alltoAllvScaleSendCnt[rankIdx] += sendM * axis;
-                alltoAllvScaleRecvCnt[rankIdx] += recvM * axis;
-
-                // if (sendM > 0 || recvM > 0) {
-                //     AscendC::printf("  expert%u: sendToRank%u=%lu(recvNeed), recvFromRank%u=%lu\n",
-                //            expertIdx, rankIdx, sendM, rankIdx, recvM);
-                // }
+        if (srcRank == rankId_) {
+            for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
+                if (dstRank == rankId_)
+                    continue;
+                uint64_t sendM = 0;
+                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                    int32_t totalNeed = sendCnt[expertIdx + dstRank * e_];
+                    uint32_t alreadySent = roundIdx * localBaseA_;
+                    uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
+                                             static_cast<uint32_t>(totalNeed) - alreadySent :
+                                             0;
+                    sendM += Mc2Min(remaining, localBaseA_);
+                }
+                alltoAllvScaleSendCnt[dstRank] = sendM * axis;
             }
         }
 
-        // AscendC::printf("Scale SendCnt: ");
-        // for (uint32_t i = 0U; i < rankDim_; i++) {
-        //     AscendC::printf("%lu ", alltoAllvScaleSendCnt[i]);
-        // }
-        // AscendC::printf("\n");
-        // AscendC::printf("Scale RecvCnt: ");
-        // for (uint32_t i = 0U; i < rankDim_; i++) {
-        //     AscendC::printf("%lu ", alltoAllvScaleRecvCnt[i]);
-        // }
-        // AscendC::printf("\n");
+        if (srcRank != rankId_) {
+            uint64_t recvM = 0;
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                int32_t totalNeed = recvCnt[expertIdx + srcRank * e_];
+                uint32_t alreadyRecv = roundIdx * localBaseA_;
+                uint32_t remaining =
+                    static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
+                recvM += Mc2Min(remaining, localBaseA_);
+            }
+            alltoAllvScaleRecvCnt[srcRank] = recvM * axis;
+        }
 
-        // 注释掉实际通信
-        // AscendC::printf("LaunchScaleMultiRound: simulated (AlltoAllV not called)\n");
-        // alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(...);
+        alltoAllvScaleSendOffset[0] = 0UL;
+        alltoAllvScaleRecvOffset[0] = 0UL;
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U] + alltoAllvScaleSendCnt[i - 1U];
+            alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
+        }
+        alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
+            HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
+            alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
     }
 
     __aicore__ inline void WaitScaleMultiRound(uint32_t slotIdx)
@@ -265,8 +260,7 @@ public:
                 return;
             }
         }
-        // AscendC::printf("WaitScaleMultiRound slotIdx=%u: simulated wait\n", slotIdx);
-        // hccl_.Wait(alltoAllvScaleHandleQueue_[slotIdx]);
+        hccl_.Wait(alltoAllvScaleHandleQueue_[slotIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
@@ -279,7 +273,9 @@ public:
                 return;
             }
         }
-        // AscendC::printf("WaitAll allNum=%u: simulated\n", allNum);
+        for (uint32_t i = 0U; i < allNum; i++) {
+            hccl_.Wait(alltoAllvHandleQueue_[i]);
+        }
     }
 
     __aicore__ inline void End()
@@ -287,7 +283,6 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        // AscendC::printf("=== HCCL End rank=%u ===\n", rankId_);
         SyncAll<true>();
         hccl_.Finalize();
     }
@@ -295,8 +290,12 @@ public:
 private:
     __aicore__ inline void LaunchCommMultiRound(uint32_t roundIdx, uint32_t slotIdx)
     {
-        // AscendC::printf("\n=== LaunchCommMultiRound round=%u rank=%u ===\n", roundIdx, rankId_);
-
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        uint32_t srcRank = roundIdx % epWorldSize_;
         for (uint32_t i = 0U; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
             alltoAllvRecvCnt[i] = 0UL;
@@ -306,119 +305,52 @@ private:
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
 
-        // AscendC::printf("PACK_FACTOR=%u, axis=%lu\n", PACK_FACTOR, axis);
-        // AscendC::printf("sendCnt array: ");
-        // for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
-        //     AscendC::printf("%d ", sendCnt[i]);
-        // }
-        // AscendC::printf("\n");
-        // AscendC::printf("recvCnt array: ");
-        // for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
-        //     AscendC::printf("%d ", recvCnt[i]);
-        // }
-        // AscendC::printf("\n");
-
-        // AscendC::printf("\n--- Send/Recv per target rank (本轮发送/接收量) ---\n");
-        for (uint32_t rankIdx = 0U; rankIdx < rankDim_; rankIdx++) {
-            uint64_t totalSendToRank = 0;
-            uint64_t totalRecvFromRank = 0;
-            // AscendC::printf("目标卡%u: ", rankIdx);
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                int32_t sendToRank = sendCnt[expertIdx + rankIdx * e_];
-                uint32_t startSend = roundIdx * baseA_;
-                uint32_t endSend = Mc2Min((roundIdx + 1) * baseA_, static_cast<uint32_t>(sendToRank));
-                uint64_t sendM = (endSend > startSend) ? (endSend - startSend) : 0;
-
-                int32_t recvFromRank = recvCnt[expertIdx + rankIdx * e_];
-                uint32_t startRecv = roundIdx * baseA_;
-                uint32_t endRecv = Mc2Min((roundIdx + 1) * baseA_, static_cast<uint32_t>(recvFromRank));
-                uint64_t recvM = (endRecv > startRecv) ? (endRecv - startRecv) : 0;
-
-                // if (sendM > 0) {
-                //     AscendC::printf("send(e%u)=%lu ", expertIdx, sendM);
-                // }
-                // if (recvM > 0) {
-                //     AscendC::printf("recv(e%u)=%lu ", expertIdx, recvM);
-                // }
-                totalSendToRank += sendM;
-                totalRecvFromRank += recvM;
+        if (srcRank == rankId_) {
+            for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
+                if (dstRank == rankId_)
+                    continue;
+                uint64_t sendM = 0;
+                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                    int32_t totalNeed = sendCnt[expertIdx + dstRank * e_];
+                    uint32_t alreadySent = roundIdx * localBaseA_;
+                    uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
+                                             static_cast<uint32_t>(totalNeed) - alreadySent :
+                                             0;
+                    sendM += Mc2Min(remaining, localBaseA_);
+                }
+                alltoAllvSendCnt[dstRank] = sendM * axis;
             }
-            // AscendC::printf(" | totalSend=%lu, totalRecv=%lu\n", totalSendToRank, totalRecvFromRank);
-            alltoAllvSendCnt[rankIdx] = totalSendToRank * axis;
-            alltoAllvRecvCnt[rankIdx] = totalRecvFromRank * axis;
         }
 
-        // AscendC::printf("\n--- AlltoAllV SendCnt/RecvCnt (实际通信量) ---\n");
-        // AscendC::printf("SendCnt: ");
-        // for (uint32_t i = 0U; i < rankDim_; i++) {
-        //     AscendC::printf("%lu ", alltoAllvSendCnt[i]);
-        // }
-        // AscendC::printf("\n");
-        // AscendC::printf("RecvCnt: ");
-        // for (uint32_t i = 0U; i < rankDim_; i++) {
-        //     AscendC::printf("%lu ", alltoAllvRecvCnt[i]);
-        // }
-        // AscendC::printf("\n");
+        if (srcRank != rankId_) {
+            uint64_t recvM = 0;
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                int32_t totalNeed = recvCnt[expertIdx + srcRank * e_];
+                uint32_t alreadyRecv = roundIdx * localBaseA_;
+                uint32_t remaining =
+                    static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
+                recvM += Mc2Min(remaining, localBaseA_);
+            }
+            alltoAllvRecvCnt[srcRank] = recvM * axis;
+        }
 
         alltoAllvSendOffset[0] = 0UL;
-        for (uint32_t round = 0U; round < roundIdx; round++) {
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                for (uint32_t rank = 0U; rank < rankDim_; rank++) {
-                    int32_t cnt = sendCnt[expertIdx + rank * e_];
-                    alltoAllvSendOffset[0] += static_cast<uint64_t>(Mc2Min(cnt, static_cast<int32_t>(baseA_))) * axis;
-                }
-            }
-        }
-
-        for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U];
-            for (uint32_t round = 0U; round < roundIdx; round++) {
-                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                    int32_t cnt = sendCnt[expertIdx + (rankDim_ - i) * e_];
-                    alltoAllvSendOffset[i] += static_cast<uint64_t>(Mc2Min(cnt, static_cast<int32_t>(baseA_))) * axis;
-                }
-            }
-        }
-
         alltoAllvRecvOffset[0] = 0UL;
-        for (uint32_t round = 0U; round < roundIdx; round++) {
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                for (uint32_t rank = 0U; rank < rankDim_; rank++) {
-                    int32_t cnt = recvCnt[expertIdx + rank * e_];
-                    alltoAllvRecvOffset[0] += static_cast<uint64_t>(Mc2Min(cnt, static_cast<int32_t>(baseA_))) * axis;
-                }
-            }
-        }
-
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U];
-            for (uint32_t round = 0U; round < roundIdx; round++) {
-                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                    int32_t cnt = recvCnt[expertIdx + (rankDim_ - i) * e_];
-                    alltoAllvRecvOffset[i] += static_cast<uint64_t>(Mc2Min(cnt, static_cast<int32_t>(baseA_))) * axis;
-                }
-            }
+            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
+            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
         }
 
-        // AscendC::printf("\nSendOffset: ");
-        // for (uint32_t i = 0U; i < rankDim_; i++) {
-        //     AscendC::printf("%lu ", alltoAllvSendOffset[i]);
-        // }
-        // AscendC::printf("\n");
-        // AscendC::printf("RecvOffset: ");
-        // for (uint32_t i = 0U; i < rankDim_; i++) {
-        //     AscendC::printf("%lu ", alltoAllvRecvOffset[i]);
-        // }
-        // AscendC::printf("\n");
+        alltoAllvHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
+            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
 
-        // AscendC::printf("\n--- GM Address Info ---\n");
-        // AscendC::printf("sendBuffer PhyAddr=%p\n", sendGlobalBuffer_.GetPhyAddr());
-        // AscendC::printf("recvBuffer PhyAddr=%p\n", recvGlobalBuffer_.GetPhyAddr());
-        // AscendC::printf("workspace=%p\n", workspaceGM_);
-
-        // 注释掉实际通信
-        // AscendC::printf("\nLaunchCommMultiRound: AlltoAllV simulated (not actually called)\n");
-        // alltoAllvHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(...);
+        uint64_t totalSend = 0, totalRecv = 0;
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            totalSend += alltoAllvSendCnt[i];
+            totalRecv += alltoAllvRecvCnt[i];
+        }
+        AscendC::printf("rank%u round%u src%u send=%lu recv=%lu\n", rankId_, roundIdx, srcRank, totalSend, totalRecv);
     }
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
@@ -441,7 +373,7 @@ private:
     uint32_t epWorldSize_ = 0U;
     uint64_t H1_ = 0UL;
     uint64_t N1_ = 0UL;
-    uint32_t baseA_ = 0U;
+    uint32_t localBaseA_ = 0U;
     uint32_t totalRound_ = 0U;
 
     GlobalTensor<hcclDataType> sendGlobalBuffer_;

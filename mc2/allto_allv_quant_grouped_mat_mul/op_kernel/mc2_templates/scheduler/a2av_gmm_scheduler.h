@@ -74,18 +74,18 @@ public:
         }
         GM_ADDR preCommBuffer = workspaceGM_ + workspaceOffset;
         workspaceOffset += Align((epWorldSize_ + 1) * epWorldSize_ * e_ * sizeof(uint64_t), TENSOR_LIST_SIZE);
-        AscendC::printf("\n=== Scheduler Workspace Layout ===\n");
-        AscendC::printf("workspace base=%p\n", workspaceGM_);
-        AscendC::printf("commOutGm=%p (offset=%lu)\n", commOutGm_, 0UL);
-        if (tilingData_->isPermuteOut) {
-            AscendC::printf("  (permuteOut provided externally, not in workspace)\n");
-        }
-        if (MX_QUANT_MODE) {
-            AscendC::printf("gmmxScaleCommOutGm=%p\n", gmmxScaleCommOutGm_);
-        }
-        AscendC::printf("preCommBuffer=%p\n", preCommBuffer);
-        commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_,
-                    preCommBuffer, workspaceGM_);
+        // AscendC::printf("\n=== Scheduler Workspace Layout ===\n");
+        // AscendC::printf("workspace base=%p\n", workspaceGM_);
+        // AscendC::printf("commOutGm=%p (offset=%lu)\n", commOutGm_, 0UL);
+        // if (tilingData_->isPermuteOut) {
+        //     AscendC::printf("  (permuteOut provided externally, not in workspace)\n");
+        // }
+        // if (MX_QUANT_MODE) {
+        //     AscendC::printf("gmmxScaleCommOutGm=%p\n", gmmxScaleCommOutGm_);
+        // }
+        // AscendC::printf("preCommBuffer=%p\n", preCommBuffer);
+        commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_, preCommBuffer,
+                    workspaceGM_);
         groupListGM_ = workspaceGM_ + workspaceOffset;
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, groupListGM_, tilingData_,
                        &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
@@ -100,13 +100,11 @@ public:
     {
         commOp.InitPreComm();
         commOp.WaitPreComm();
-        
+
         // 从 commOp 获取动态计算的 baseA 和 totalRound
-        baseA_ = commOp.GetBaseA();
+        localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
-        
-        AscendC::printf("=== Scheduler Process ===\n");
-        AscendC::printf("baseA=%u, totalRound=%u\n", baseA_, totalRound_);
+        AscendC::printf("rank totalRound=%u localBaseA=%u\n", totalRound_, localBaseA_);
 
         if (IsNeedMM) {
             localComputeOp.Process(0);
@@ -123,20 +121,20 @@ public:
                 endRound = totalRound_;
             }
 
-            for (uint32_t baseARoundIdx = startRound; baseARoundIdx < endRound; baseARoundIdx++) {
-                uint32_t slotIdx = baseARoundIdx - startRound;
+            for (uint32_t roundIdx = startRound; roundIdx < endRound; roundIdx++) {
+                uint32_t slotIdx = roundIdx - startRound;
 
                 if constexpr (MX_QUANT_MODE) {
-                    commOp.LaunchScaleMultiRound(baseARoundIdx, slotIdx);
+                    commOp.LaunchScaleMultiRound(roundIdx, slotIdx);
                 }
-                commOp.LaunchMultiRound(baseARoundIdx, slotIdx);
+                commOp.LaunchMultiRound(roundIdx, slotIdx);
 
                 if constexpr (MX_QUANT_MODE) {
                     commOp.WaitScaleMultiRound(slotIdx);
                 }
                 commOp.WaitMultiRound(slotIdx);
                 SyncAll<false>();
-                computeOp.ProcessAll(baseARoundIdx, baseA_);
+                computeOp.ProcessAll(roundIdx, localBaseA_);
             }
         }
         this->End();
@@ -165,7 +163,7 @@ private:
     uint64_t h1_ = 0U;
     uint64_t a_ = 0U;
     uint64_t epWorldSize_ = 0U;
-    uint32_t baseA_ = 0U;
+    uint32_t localBaseA_ = 0U;
     uint32_t totalRound_ = 0U;
 };
 }; // namespace MC2KernelTemplate
