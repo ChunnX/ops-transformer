@@ -194,6 +194,9 @@ aclDataType ParseDtype(const string &dtype)
         {"INT4", ACL_INT4},
         {"INT32", ACL_INT32},
         {"INT64", ACL_INT64},
+        {"FLOAT8_E4M3FN", ACL_FLOAT8_E4M3FN},
+        {"FLOAT8_E5M2", ACL_FLOAT8_E5M2},
+        {"HIFLOAT8", ACL_HIFLOAT8},
         {"NONE", ACL_DT_UNDEFINED},
     };
     auto it = dtypeMap.find(Trim(dtype));
