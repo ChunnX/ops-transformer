@@ -1199,14 +1199,14 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingpongFlag);
         }
 
-        DownCastP(sUbOffset, rowNumCurLoop, columnNumRound);
+        DownCastP(sUbOffset, rowNumCurLoop, columnNumRound, false);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingpongFlag);
 
         CalcLocalRowSum(sUbOffset, rowNumCurLoopRound, columnNum, columnNumRound, rowOffset);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingpongFlag);
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingpongFlag);
-        CopyPUbToGm(gOutput, sUbOffset, rowNumCurLoop, columnNumRound, columnNumPad);
+        CopyPUbToGm(gOutput, sUbOffset, rowNumCurLoop, columnNumRound, columnNumPad, false);
         if constexpr (!doTriUMask) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingpongFlag);
             if (isLastNoMaskStackTile && isLastRowLoop) {
@@ -1270,7 +1270,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingpongFlag);
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingpongFlag);
-        CopyPUbToGm(gOutput, sUbOffset, rowNumCurLoop, columnNumRound, columnNumPad);
+        CopyPUbToGm(gOutput, sUbOffset, rowNumCurLoop, columnNumRound, columnNumPad, isAlibiFullMask);
         if (isAlibiFullMask) {
  	             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
  	    } else {
