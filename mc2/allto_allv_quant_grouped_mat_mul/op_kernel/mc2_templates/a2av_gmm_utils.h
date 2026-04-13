@@ -33,26 +33,16 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-#if ((DTYPE_GMM_X == DTYPE_GMM_WEIGHT) && (DTYPE_GMM_X == DT_HIFLOAT8))
-#define A2AV_QUANT_GMM_PERTENSOR
-#else
-#define A2AV_QUANT_GMM_MX
-#endif
-
-#if ((DTYPE_GMM_X == DTYPE_GMM_WEIGHT) && (DTYPE_GMM_X == DT_FLOAT4_E2M1))
-#define A2AV_QUANT_GMM_MXFP4
-#endif
-
+#if ((ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT) && (ORIG_DTYPE_GMM_X == DT_HIFLOAT8))
 #define MX_QUANT_MODE false
-#ifdef A2AV_QUANT_GMM_MX
-#undef  MX_QUANT_MODE
+#else
 #define MX_QUANT_MODE true
 #endif
 
-#define PACK_FACTOR 1U
-#ifdef A2AV_QUANT_GMM_MXFP4
-#undef  PACK_FACTOR
+#if ((ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT) && (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1))
 #define PACK_FACTOR 2U
+#else
+#define PACK_FACTOR 1U
 #endif
 
 }
