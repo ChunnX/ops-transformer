@@ -64,10 +64,6 @@ class CloudKvRmsNormRopeCache : public OpDef {
 public:
     explicit CloudKvRmsNormRopeCache(const char* name) : OpDef(name)
     {
-        this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-5);
-        this->Attr("cache_mode").AttrType(OPTIONAL).String("Norm");
-        this->Attr("is_output_kv").AttrType(OPTIONAL).Bool(false);
-
         OpAICoreConfig config_950;
         config_950.Input("kv")
             .ParamType(REQUIRED)
@@ -165,7 +161,13 @@ public:
         config_950.DynamicCompileStaticFlag(true)
             .DynamicShapeSupportFlag(true)
             .DynamicRankSupportFlag(true)
-            .ExtendCfgInfo("opFile.value", "kv_rms_norm_rope_cache_apt");
+            .ExtendCfgInfo("opFile.value", "cloud_kv_rms_norm_rope_cache_apt");
+        this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-5);
+        this->Attr("cache_mode").AttrType(OPTIONAL).String("Norm");
+        this->Attr("rotary_mode").AttrType(OPTIONAL).String("interleave-half");
+        this->Attr("quant_mode").AttrType(OPTIONAL).String("none");
+        this->Attr("is_output_kv").AttrType(OPTIONAL).Bool(false);
+
         this->AICore().AddConfig("ascend950", config_950);
     }
 };

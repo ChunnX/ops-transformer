@@ -1,8 +1,8 @@
 {
-    "op_type": "KvRmsNormRopeCache",
+    "op_type": "CloudKvRmsNormRopeCache",
     "op_list": [
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16",
             "inputs": [
                 {
                     "name": "kv",
@@ -202,7 +202,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16",
             "inputs": [
                 {
                     "name": "kv",
@@ -402,7 +402,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_quant_int8",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_quant_int8",
             "inputs": [
                 {
                     "name": "kv",
@@ -602,7 +602,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_quant_int8",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_quant_int8",
             "inputs": [
                 {
                     "name": "kv",
@@ -802,7 +802,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_kquant_int8",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_kquant_int8",
             "inputs": [
                 {
                     "name": "kv",
@@ -1002,7 +1002,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_kquant_int8",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_kquant_int8",
             "inputs": [
                 {
                     "name": "kv",
@@ -1202,7 +1202,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_vquant_int8",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_vquant_int8",
             "inputs": [
                 {
                     "name": "kv",
@@ -1402,7 +1402,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_vquant_int8",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_vquant_int8",
             "inputs": [
                 {
                     "name": "kv",
@@ -1602,7 +1602,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_quant_hifloat8",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_quant_hifloat8",
             "inputs": [
                 {
                     "name": "kv",
@@ -1802,7 +1802,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_quant_hifloat8",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_quant_hifloat8",
             "inputs": [
                 {
                     "name": "kv",
@@ -2002,7 +2002,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_kquant_hifloat8",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_kquant_hifloat8",
             "inputs": [
                 {
                     "name": "kv",
@@ -2202,7 +2202,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_kquant_hifloat8",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_kquant_hifloat8",
             "inputs": [
                 {
                     "name": "kv",
@@ -2402,7 +2402,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_vquant_hifloat8",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_vquant_hifloat8",
             "inputs": [
                 {
                     "name": "kv",
@@ -2602,7 +2602,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_vquant_hifloat8",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_vquant_hifloat8",
             "inputs": [
                 {
                     "name": "kv",
@@ -2802,7 +2802,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_quant_float8_e5m2",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_quant_float8_e5m2",
             "inputs": [
                 {
                     "name": "kv",
@@ -3002,7 +3002,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_quant_float8_e5m2",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_quant_float8_e5m2",
             "inputs": [
                 {
                     "name": "kv",
@@ -3202,7 +3202,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_kquant_float8_e5m2",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_kquant_float8_e5m2",
             "inputs": [
                 {
                     "name": "kv",
@@ -3402,7 +3402,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_kquant_float8_e5m2",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_kquant_float8_e5m2",
             "inputs": [
                 {
                     "name": "kv",
@@ -3602,7 +3602,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_vquant_float8_e5m2",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_vquant_float8_e5m2",
             "inputs": [
                 {
                     "name": "kv",
@@ -3802,7 +3802,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_vquant_float8_e5m2",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_vquant_float8_e5m2",
             "inputs": [
                 {
                     "name": "kv",
@@ -4002,7 +4002,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_quant_float8_e4m3fn",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_quant_float8_e4m3fn",
             "inputs": [
                 {
                     "name": "kv",
@@ -4202,7 +4202,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_quant_float8_e4m3fn",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_quant_float8_e4m3fn",
             "inputs": [
                 {
                     "name": "kv",
@@ -4402,7 +4402,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_kquant_float8_e4m3fn",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_kquant_float8_e4m3fn",
             "inputs": [
                 {
                     "name": "kv",
@@ -4602,7 +4602,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_kquant_float8_e4m3fn",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_kquant_float8_e4m3fn",
             "inputs": [
                 {
                     "name": "kv",
@@ -4802,7 +4802,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_fp16_vquant_float8_e4m3fn",
+            "bin_filename": "CloudKvRmsNormRopeCache_fp16_vquant_float8_e4m3fn",
             "inputs": [
                 {
                     "name": "kv",
@@ -5002,7 +5002,7 @@
             ]
         },
         {
-            "bin_filename": "KvRmsNormRopeCache_bf16_vquant_float8_e4m3fn",
+            "bin_filename": "CloudKvRmsNormRopeCache_bf16_vquant_float8_e4m3fn",
             "inputs": [
                 {
                     "name": "kv",
