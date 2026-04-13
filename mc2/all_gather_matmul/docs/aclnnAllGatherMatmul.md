@@ -21,11 +21,11 @@
 - **计算公式**：
 
     $$
-    output=allgather(x1)@x2+bias
+    output=AllGather(x1)@x2+bias
     $$
 
     $$
-    gatherOut=allgather(x1)
+    gatherOut=AllGather(x1)
     $$
 
 ## 函数原型
@@ -276,7 +276,7 @@ aclnnStatus aclnnAllGatherMatmul(
 ## 约束说明
 
 - 确定性计算：
-  - <term>Ascend 950PR/Ascend 950DT</term>aclnnAllGatherMatmul默认确定性实现。
+  - <term>Ascend 950PR/Ascend 950DT</term>，aclnnAllGatherMatmul默认确定性实现。
 
 - 输入x1为2维，其shape为(m, k)。x2必须是2维，其shape为(k, n)，轴满足MatMul算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
 - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
@@ -288,7 +288,7 @@ aclnnStatus aclnnAllGatherMatmul(
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
 - <term>Ascend 950PR/Ascend 950DT</term>:
   - 支持2、4、8、16、32、64卡，并且仅支持HCCS链路all mesh组网。
-  - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - AllGather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
@@ -303,6 +303,8 @@ aclnnStatus aclnnAllGatherMatmul(
     #include <thread>
     #include <iostream>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_all_gather_matmul.h"
