@@ -68,25 +68,21 @@ constexpr uint32_t H_REG = 64;
 //   bStride = (2*sMain + 2) * ubFactorH  (sCur = 2*sMain)
 // ============================================================================
 template <typename T>
-__simd_vf__ void MaskedConv1dVFNoTail(
-    __ubuf__ T* ioBase,
-    __ubuf__ T* wBase,
-    uint32_t    sMain,
-    uint32_t    bUbCur,
-    uint32_t    ubFactorH)
+__simd_vf__ void MaskedConv1dVFNoTail(__ubuf__ T *ioBase, __ubuf__ T *wBase, uint32_t sMain, uint32_t bUbCur,
+                                      uint32_t ubFactorH)
 {
     MicroAPI::MaskReg maskFull = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
     uint32_t numHReg = ubFactorH / H_REG;
     uint32_t stride2 = 2 * ubFactorH;
     uint32_t stride3 = 3 * ubFactorH;
-    uint32_t bStride = (2 * sMain + 2) * ubFactorH;  // sCur=2*sMain, sCur+2 rows per batch
+    uint32_t bStride = (2 * sMain + 2) * ubFactorH; // sCur=2*sMain, sCur+2 rows per batch
 
     for (uint32_t b = 0; b < bUbCur; ++b) {
-        __ubuf__ T* bBase = ioBase + b * bStride;
+        __ubuf__ T *bBase = ioBase + b * bStride;
 
         for (uint32_t c = 0; c < numHReg; ++c) {
-            MicroAPI::RegTensor<T>     w0B16, w1B16, w2B16;
+            MicroAPI::RegTensor<T> w0B16, w1B16, w2B16;
             MicroAPI::RegTensor<float> w0F32, w1F32, w2F32;
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(w0B16, wBase + 0 * ubFactorH + c * H_REG);
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(w1B16, wBase + 1 * ubFactorH + c * H_REG);
@@ -95,16 +91,16 @@ __simd_vf__ void MaskedConv1dVFNoTail(
             MicroAPI::Cast<float, T, castTraitB162B32>(w1F32, w1B16, maskFull);
             MicroAPI::Cast<float, T, castTraitB162B32>(w2F32, w2B16, maskFull);
 
-            __ubuf__ T* p = bBase + c * H_REG;
+            __ubuf__ T *p = bBase + c * H_REG;
 
             for (uint32_t si = 0; si < sMain; ++si) {
                 // 6 independent loads: 3 for s=2si, 3 for s=2si+1
-                MicroAPI::RegTensor<T>     x0B16, x1B16, x2B16;
+                MicroAPI::RegTensor<T> x0B16, x1B16, x2B16;
                 MicroAPI::RegTensor<float> x0F32, x1F32, x2F32;
-                MicroAPI::RegTensor<T>     x3B16, x4B16, x5B16;
+                MicroAPI::RegTensor<T> x3B16, x4B16, x5B16;
                 MicroAPI::RegTensor<float> x3F32, x4F32, x5F32;
                 MicroAPI::RegTensor<float> y0F32, y1F32, tmpF32;
-                MicroAPI::RegTensor<T>     y0B16, y1B16;
+                MicroAPI::RegTensor<T> y0B16, y1B16;
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x0B16, p);
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x1B16, p + ubFactorH);
@@ -120,22 +116,22 @@ __simd_vf__ void MaskedConv1dVFNoTail(
                 MicroAPI::Cast<float, T, castTraitB162B32>(x5F32, x5B16, maskFull);
 
                 // y0 = x0*w0 + x1*w1 + x2*w2
-                MicroAPI::Mul(y0F32,  x0F32, w0F32, maskFull);
+                MicroAPI::Mul(y0F32, x0F32, w0F32, maskFull);
                 MicroAPI::Mul(tmpF32, x1F32, w1F32, maskFull);
-                MicroAPI::Add(y0F32,  y0F32, tmpF32, maskFull);
+                MicroAPI::Add(y0F32, y0F32, tmpF32, maskFull);
                 MicroAPI::Mul(tmpF32, x2F32, w2F32, maskFull);
-                MicroAPI::Add(y0F32,  y0F32, tmpF32, maskFull);
+                MicroAPI::Add(y0F32, y0F32, tmpF32, maskFull);
 
                 // y1 = x3*w0 + x4*w1 + x5*w2
-                MicroAPI::Mul(y1F32,  x3F32, w0F32, maskFull);
+                MicroAPI::Mul(y1F32, x3F32, w0F32, maskFull);
                 MicroAPI::Mul(tmpF32, x4F32, w1F32, maskFull);
-                MicroAPI::Add(y1F32,  y1F32, tmpF32, maskFull);
+                MicroAPI::Add(y1F32, y1F32, tmpF32, maskFull);
                 MicroAPI::Mul(tmpF32, x5F32, w2F32, maskFull);
-                MicroAPI::Add(y1F32,  y1F32, tmpF32, maskFull);
+                MicroAPI::Add(y1F32, y1F32, tmpF32, maskFull);
 
                 MicroAPI::Cast<T, float, castTraitB322B16>(y0B16, y0F32, maskFull);
                 MicroAPI::Cast<T, float, castTraitB322B16>(y1B16, y1F32, maskFull);
-                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p,             y0B16, maskFull);
+                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p, y0B16, maskFull);
                 MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p + ubFactorH, y1B16, maskFull);
 
                 p += 2 * ubFactorH;
@@ -150,25 +146,21 @@ __simd_vf__ void MaskedConv1dVFNoTail(
 //   bStride = (2*sMain + 3) * ubFactorH  (sCur = 2*sMain+1)
 // ============================================================================
 template <typename T>
-__simd_vf__ void MaskedConv1dVFWithTail(
-    __ubuf__ T* ioBase,
-    __ubuf__ T* wBase,
-    uint32_t    sMain,
-    uint32_t    bUbCur,
-    uint32_t    ubFactorH)
+__simd_vf__ void MaskedConv1dVFWithTail(__ubuf__ T *ioBase, __ubuf__ T *wBase, uint32_t sMain, uint32_t bUbCur,
+                                        uint32_t ubFactorH)
 {
     MicroAPI::MaskReg maskFull = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
     uint32_t numHReg = ubFactorH / H_REG;
     uint32_t stride2 = 2 * ubFactorH;
     uint32_t stride3 = 3 * ubFactorH;
-    uint32_t bStride = (2 * sMain + 3) * ubFactorH;  // sCur=2*sMain+1, sCur+2 rows per batch
+    uint32_t bStride = (2 * sMain + 3) * ubFactorH; // sCur=2*sMain+1, sCur+2 rows per batch
 
     for (uint32_t b = 0; b < bUbCur; ++b) {
-        __ubuf__ T* bBase = ioBase + b * bStride;
+        __ubuf__ T *bBase = ioBase + b * bStride;
 
         for (uint32_t c = 0; c < numHReg; ++c) {
-            MicroAPI::RegTensor<T>     w0B16, w1B16, w2B16;
+            MicroAPI::RegTensor<T> w0B16, w1B16, w2B16;
             MicroAPI::RegTensor<float> w0F32, w1F32, w2F32;
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(w0B16, wBase + 0 * ubFactorH + c * H_REG);
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(w1B16, wBase + 1 * ubFactorH + c * H_REG);
@@ -177,16 +169,16 @@ __simd_vf__ void MaskedConv1dVFWithTail(
             MicroAPI::Cast<float, T, castTraitB162B32>(w1F32, w1B16, maskFull);
             MicroAPI::Cast<float, T, castTraitB162B32>(w2F32, w2B16, maskFull);
 
-            __ubuf__ T* p = bBase + c * H_REG;
+            __ubuf__ T *p = bBase + c * H_REG;
 
             for (uint32_t si = 0; si < sMain; ++si) {
                 // 6 independent loads: 3 for s=2si, 3 for s=2si+1
-                MicroAPI::RegTensor<T>     x0B16, x1B16, x2B16;
+                MicroAPI::RegTensor<T> x0B16, x1B16, x2B16;
                 MicroAPI::RegTensor<float> x0F32, x1F32, x2F32;
-                MicroAPI::RegTensor<T>     x3B16, x4B16, x5B16;
+                MicroAPI::RegTensor<T> x3B16, x4B16, x5B16;
                 MicroAPI::RegTensor<float> x3F32, x4F32, x5F32;
                 MicroAPI::RegTensor<float> y0F32, y1F32, tmpF32;
-                MicroAPI::RegTensor<T>     y0B16, y1B16;
+                MicroAPI::RegTensor<T> y0B16, y1B16;
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x0B16, p);
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x1B16, p + ubFactorH);
@@ -202,22 +194,22 @@ __simd_vf__ void MaskedConv1dVFWithTail(
                 MicroAPI::Cast<float, T, castTraitB162B32>(x5F32, x5B16, maskFull);
 
                 // y0 = x0*w0 + x1*w1 + x2*w2
-                MicroAPI::Mul(y0F32,  x0F32, w0F32, maskFull);
+                MicroAPI::Mul(y0F32, x0F32, w0F32, maskFull);
                 MicroAPI::Mul(tmpF32, x1F32, w1F32, maskFull);
-                MicroAPI::Add(y0F32,  y0F32, tmpF32, maskFull);
+                MicroAPI::Add(y0F32, y0F32, tmpF32, maskFull);
                 MicroAPI::Mul(tmpF32, x2F32, w2F32, maskFull);
-                MicroAPI::Add(y0F32,  y0F32, tmpF32, maskFull);
+                MicroAPI::Add(y0F32, y0F32, tmpF32, maskFull);
 
                 // y1 = x3*w0 + x4*w1 + x5*w2
-                MicroAPI::Mul(y1F32,  x3F32, w0F32, maskFull);
+                MicroAPI::Mul(y1F32, x3F32, w0F32, maskFull);
                 MicroAPI::Mul(tmpF32, x4F32, w1F32, maskFull);
-                MicroAPI::Add(y1F32,  y1F32, tmpF32, maskFull);
+                MicroAPI::Add(y1F32, y1F32, tmpF32, maskFull);
                 MicroAPI::Mul(tmpF32, x5F32, w2F32, maskFull);
-                MicroAPI::Add(y1F32,  y1F32, tmpF32, maskFull);
+                MicroAPI::Add(y1F32, y1F32, tmpF32, maskFull);
 
                 MicroAPI::Cast<T, float, castTraitB322B16>(y0B16, y0F32, maskFull);
                 MicroAPI::Cast<T, float, castTraitB322B16>(y1B16, y1F32, maskFull);
-                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p,             y0B16, maskFull);
+                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p, y0B16, maskFull);
                 MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p + ubFactorH, y1B16, maskFull);
 
                 p += 2 * ubFactorH;
@@ -225,9 +217,9 @@ __simd_vf__ void MaskedConv1dVFWithTail(
 
             // Tail row — unconditional (this VF variant is only called when sCur is odd)
             {
-                MicroAPI::RegTensor<T>     x0B16, x1B16, x2B16;
+                MicroAPI::RegTensor<T> x0B16, x1B16, x2B16;
                 MicroAPI::RegTensor<float> x0F32, x1F32, x2F32, yF32, tmpF32;
-                MicroAPI::RegTensor<T>     yB16;
+                MicroAPI::RegTensor<T> yB16;
 
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x0B16, p);
                 MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x1B16, p + ubFactorH);
@@ -236,11 +228,11 @@ __simd_vf__ void MaskedConv1dVFWithTail(
                 MicroAPI::Cast<float, T, castTraitB162B32>(x1F32, x1B16, maskFull);
                 MicroAPI::Cast<float, T, castTraitB162B32>(x2F32, x2B16, maskFull);
 
-                MicroAPI::Mul(yF32,   x0F32, w0F32, maskFull);
+                MicroAPI::Mul(yF32, x0F32, w0F32, maskFull);
                 MicroAPI::Mul(tmpF32, x1F32, w1F32, maskFull);
-                MicroAPI::Add(yF32,   yF32,  tmpF32, maskFull);
+                MicroAPI::Add(yF32, yF32, tmpF32, maskFull);
                 MicroAPI::Mul(tmpF32, x2F32, w2F32, maskFull);
-                MicroAPI::Add(yF32,   yF32,  tmpF32, maskFull);
+                MicroAPI::Add(yF32, yF32, tmpF32, maskFull);
 
                 MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yF32, maskFull);
                 MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(p, yB16, maskFull);
@@ -255,15 +247,11 @@ __simd_vf__ void MaskedConv1dVFWithTail(
 //   __simd_vf__ variant, each of which contains no runtime branches.
 // ============================================================================
 template <typename T>
-__aicore__ inline void CallMaskedConv1dVF(
-    LocalTensor<T> ioBuf,
-    LocalTensor<T> wBuf,
-    uint32_t       sCur,
-    uint32_t       bUbCur,
-    uint32_t       ubFactorH)
+__aicore__ inline void CallMaskedConv1dVF(LocalTensor<T> ioBuf, LocalTensor<T> wBuf, uint32_t sCur, uint32_t bUbCur,
+                                          uint32_t ubFactorH)
 {
-    __ubuf__ T* ioBase = (__ubuf__ T*)ioBuf.GetPhyAddr();
-    __ubuf__ T* wBase  = (__ubuf__ T*)wBuf.GetPhyAddr();
+    __ubuf__ T *ioBase = (__ubuf__ T *)ioBuf.GetPhyAddr();
+    __ubuf__ T *wBase = (__ubuf__ T *)wBuf.GetPhyAddr();
     uint32_t sMain = sCur / 2;
     if (sCur & 1u) {
         MaskedConv1dVFWithTail<T>(ioBase, wBase, sMain, bUbCur, ubFactorH);

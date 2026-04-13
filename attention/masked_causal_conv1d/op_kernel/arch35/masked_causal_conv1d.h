@@ -41,23 +41,26 @@ constexpr uint32_t ALIGN_BYTES = 32; // DataCopy 32-byte alignment unit
 template <typename T>
 class MaskedCausalConv1d {
 public:
-    __aicore__ inline MaskedCausalConv1d() {}
+    __aicore__ inline MaskedCausalConv1d()
+    {
+    }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR mask, GM_ADDR y,
-                                const MaskedCausalConv1dTilingData* tiling);
+                                const MaskedCausalConv1dTilingData *tiling);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void ParseTilingData(const MaskedCausalConv1dTilingData* tiling);
-    __aicore__ inline void CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
-                                  uint32_t h0, uint32_t ubFactorHCur);
-    __aicore__ inline void Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
-                                   uint32_t ubFactorHCur, LocalTensor<T>& wBuf);
-    __aicore__ inline void CopyOut(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
-                                   uint32_t h0, uint32_t ubFactorHCur);
+    __aicore__ inline void ParseTilingData(const MaskedCausalConv1dTilingData *tiling);
+    __aicore__ inline void CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0,
+                                  uint32_t ubFactorHCur);
+    __aicore__ inline void Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t ubFactorHCur,
+                                   LocalTensor<T> &wBuf);
+    __aicore__ inline void CopyOut(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0,
+                                   uint32_t ubFactorHCur);
 
     // Helper: align up to align bytes
-    static __aicore__ inline uint32_t AlignUp(uint32_t n, uint32_t align) {
+    static __aicore__ inline uint32_t AlignUp(uint32_t n, uint32_t align)
+    {
         return (n + align - 1) / align * align;
     }
 
@@ -83,22 +86,22 @@ private:
     uint32_t sCoreCnt_, sMainCnt_, sBlockFactor_, sBlockTailFactor_;
 
     // UB tile
-    uint32_t ubFactorH_;  // = ubFactorH = k * H_REG
+    uint32_t ubFactorH_; // = ubFactorH = k * H_REG
     uint32_t ubFactorB_;
     uint32_t ubFactorS_;
 
     // Main-core loop params
-    uint32_t loopNumH_,  ubTailFactorH_;
-    uint32_t loopNumB_,  ubTailFactorB_;
-    uint32_t loopNumS_,  ubTailFactorS_;
+    uint32_t loopNumH_, ubTailFactorH_;
+    uint32_t loopNumB_, ubTailFactorB_;
+    uint32_t loopNumS_, ubTailFactorS_;
 
     // Tail-core loop params
-    uint32_t tailBlockLoopNumH_,  tailBlockUbTailFactorH_;
-    uint32_t tailBlockLoopNumB_,  tailBlockUbTailFactorB_;
-    uint32_t tailBlockLoopNumS_,  tailBlockUbTailFactorS_;
+    uint32_t tailBlockLoopNumH_, tailBlockUbTailFactorH_;
+    uint32_t tailBlockLoopNumB_, tailBlockUbTailFactorB_;
+    uint32_t tailBlockLoopNumS_, tailBlockUbTailFactorS_;
 
     uint32_t realCoreNum_;
-    uint32_t isMaskNone_;  // 1 = skip mask application; 0 = apply mask
+    uint32_t isMaskNone_; // 1 = skip mask application; 0 = apply mask
     uint32_t xSStride_;   // = B_ * H_, pre-computed to avoid repeated multiply in CopyIn/CopyOut
 
     // Core 3D index (decoded from blockIdx)
@@ -112,19 +115,19 @@ private:
     uint32_t sStart_, sLen_;
 
     // Loop params selected for this core (main vs tail)
-    uint32_t myLoopNumH_,  myUbTailFactorH_;
-    uint32_t myLoopNumB_,  myUbTailFactorB_;
-    uint32_t myLoopNumS_,  myUbTailFactorS_;
+    uint32_t myLoopNumH_, myUbTailFactorH_;
+    uint32_t myLoopNumB_, myUbTailFactorB_;
+    uint32_t myLoopNumS_, myUbTailFactorS_;
 
     // -------------------------------------------------------------------------
     // Pipeline & Global Tensors
     // -------------------------------------------------------------------------
     TPipe pipe_;
 
-    GlobalTensor<T>       xGM_;       // [S][B][H] contiguous
-    GlobalTensor<T>       weightGM_;  // [3][H]
-    GlobalTensor<uint8_t> maskGM_;    // [B][S] bool (uint8_t)
-    GlobalTensor<T>       yGM_;       // [S][B][H] contiguous
+    GlobalTensor<T> xGM_;          // [S][B][H] contiguous
+    GlobalTensor<T> weightGM_;     // [3][H]
+    GlobalTensor<uint8_t> maskGM_; // [B][S] bool (uint8_t)
+    GlobalTensor<T> yGM_;          // [S][B][H] contiguous
 
     // -------------------------------------------------------------------------
     // UB buffers
@@ -136,36 +139,46 @@ private:
     // maskCastQueue_: [bUb][sPad] half (step2) → reused as [sPad][ubFactorH] T Broadcast dst (step4), double buffer
     // -------------------------------------------------------------------------
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> ioQueue_;
-    TQue<QuePosition::VECIN, 1> weightQueue_;  // [3][ubFactorH]
-    TQue<QuePosition::VECIN, 1> maskRowQueue_;    // double-buffered: uint8 DMA / T mask
-    TQue<QuePosition::VECIN, 1> maskCastQueue_;   // double-buffered: half Cast / T Broadcast dst
+    TQue<QuePosition::VECIN, 1> weightQueue_;   // [3][ubFactorH]
+    TQue<QuePosition::VECIN, 1> maskRowQueue_;  // double-buffered: uint8 DMA / T mask
+    TQue<QuePosition::VECIN, 1> maskCastQueue_; // double-buffered: half Cast / T Broadcast dst
 };
 
 // ============================================================================
 // ParseTilingData
 // ============================================================================
 template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::ParseTilingData(
-    const MaskedCausalConv1dTilingData* tiling)
+__aicore__ inline void MaskedCausalConv1d<T>::ParseTilingData(const MaskedCausalConv1dTilingData *tiling)
 {
-    S_ = tiling->S;  B_ = tiling->B;  H_ = tiling->H;
+    S_ = tiling->S;
+    B_ = tiling->B;
+    H_ = tiling->H;
 
-    hCoreCnt_ = tiling->hCoreCnt;  hMainCnt_ = tiling->hMainCnt;
-    hBlockFactor_ = tiling->hBlockFactor;  hBlockTailFactor_ = tiling->hBlockTailFactor;
+    hCoreCnt_ = tiling->hCoreCnt;
+    hMainCnt_ = tiling->hMainCnt;
+    hBlockFactor_ = tiling->hBlockFactor;
+    hBlockTailFactor_ = tiling->hBlockTailFactor;
 
-    bCoreCnt_ = tiling->bCoreCnt;  bMainCnt_ = tiling->bMainCnt;
-    bBlockFactor_ = tiling->bBlockFactor;  bBlockTailFactor_ = tiling->bBlockTailFactor;
+    bCoreCnt_ = tiling->bCoreCnt;
+    bMainCnt_ = tiling->bMainCnt;
+    bBlockFactor_ = tiling->bBlockFactor;
+    bBlockTailFactor_ = tiling->bBlockTailFactor;
 
-    sCoreCnt_ = tiling->sCoreCnt;  sMainCnt_ = tiling->sMainCnt;
-    sBlockFactor_ = tiling->sBlockFactor;  sBlockTailFactor_ = tiling->sBlockTailFactor;
+    sCoreCnt_ = tiling->sCoreCnt;
+    sMainCnt_ = tiling->sMainCnt;
+    sBlockFactor_ = tiling->sBlockFactor;
+    sBlockTailFactor_ = tiling->sBlockTailFactor;
 
-    ubFactorH_ = tiling->ubFactorH;  // k × H_REG, variable
+    ubFactorH_ = tiling->ubFactorH; // k × H_REG, variable
     ubFactorB_ = tiling->ubFactorB;
     ubFactorS_ = tiling->ubFactorS;
 
-    loopNumH_ = tiling->loopNumH;  ubTailFactorH_ = tiling->ubTailFactorH;
-    loopNumB_ = tiling->loopNumB;  ubTailFactorB_ = tiling->ubTailFactorB;
-    loopNumS_ = tiling->loopNumS;  ubTailFactorS_ = tiling->ubTailFactorS;
+    loopNumH_ = tiling->loopNumH;
+    ubTailFactorH_ = tiling->ubTailFactorH;
+    loopNumB_ = tiling->loopNumB;
+    ubTailFactorB_ = tiling->ubTailFactorB;
+    loopNumS_ = tiling->loopNumS;
+    ubTailFactorS_ = tiling->ubTailFactorS;
 
     tailBlockLoopNumH_ = tiling->tailBlockLoopNumH;
     tailBlockUbTailFactorH_ = tiling->tailBlockUbTailFactorH;
@@ -175,17 +188,16 @@ __aicore__ inline void MaskedCausalConv1d<T>::ParseTilingData(
     tailBlockUbTailFactorS_ = tiling->tailBlockUbTailFactorS;
 
     realCoreNum_ = tiling->realCoreNum;
-    isMaskNone_  = tiling->isMaskNone;
-    xSStride_    = B_ * H_;  // pre-compute once
+    isMaskNone_ = tiling->isMaskNone;
+    xSStride_ = B_ * H_; // pre-compute once
 }
 
 // ============================================================================
 // Init
 // ============================================================================
 template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::Init(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR mask, GM_ADDR y,
-    const MaskedCausalConv1dTilingData* tiling)
+__aicore__ inline void MaskedCausalConv1d<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR mask, GM_ADDR y,
+                                                   const MaskedCausalConv1dTilingData *tiling)
 {
     ParseTilingData(tiling);
 
@@ -193,34 +205,34 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
     uint32_t blockIdx = GetBlockIdx();
 
     hCoreIdx_ = blockIdx - (blockIdx / hCoreCnt_) * hCoreCnt_;
-    bCoreIdx_ = (blockIdx / hCoreCnt_) - ((blockIdx / hCoreCnt_) / bCoreCnt_)  * bCoreCnt_;
+    bCoreIdx_ = (blockIdx / hCoreCnt_) - ((blockIdx / hCoreCnt_) / bCoreCnt_) * bCoreCnt_;
     sCoreIdx_ = blockIdx / (hCoreCnt_ * bCoreCnt_);
 
     // Compute this core's H range
     if (hCoreIdx_ < hMainCnt_) {
         hStart_ = hCoreIdx_ * hBlockFactor_;
-        hLen_   = hBlockFactor_;
+        hLen_ = hBlockFactor_;
     } else {
         hStart_ = hMainCnt_ * hBlockFactor_ + (hCoreIdx_ - hMainCnt_) * hBlockTailFactor_;
-        hLen_   = hBlockTailFactor_;
+        hLen_ = hBlockTailFactor_;
     }
 
     // Compute this core's B range
     if (bCoreIdx_ < bMainCnt_) {
         bStart_ = bCoreIdx_ * bBlockFactor_;
-        bLen_   = bBlockFactor_;
+        bLen_ = bBlockFactor_;
     } else {
         bStart_ = bMainCnt_ * bBlockFactor_ + (bCoreIdx_ - bMainCnt_) * bBlockTailFactor_;
-        bLen_   = bBlockTailFactor_;
+        bLen_ = bBlockTailFactor_;
     }
 
     // Compute this core's S range
     if (sCoreIdx_ < sMainCnt_) {
         sStart_ = sCoreIdx_ * sBlockFactor_;
-        sLen_   = sBlockFactor_;
+        sLen_ = sBlockFactor_;
     } else {
         sStart_ = sMainCnt_ * sBlockFactor_ + (sCoreIdx_ - sMainCnt_) * sBlockTailFactor_;
-        sLen_   = sBlockTailFactor_;
+        sLen_ = sBlockTailFactor_;
     }
 
     // Select loop params for this core
@@ -228,25 +240,25 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
     bool isBTail = (bCoreIdx_ >= bMainCnt_);
     bool isSTail = (sCoreIdx_ >= sMainCnt_);
 
-    myLoopNumH_       = isHTail ? tailBlockLoopNumH_       : loopNumH_;
-    myUbTailFactorH_  = isHTail ? tailBlockUbTailFactorH_  : ubTailFactorH_;
-    myLoopNumB_       = isBTail ? tailBlockLoopNumB_       : loopNumB_;
-    myUbTailFactorB_  = isBTail ? tailBlockUbTailFactorB_  : ubTailFactorB_;
-    myLoopNumS_       = isSTail ? tailBlockLoopNumS_       : loopNumS_;
-    myUbTailFactorS_  = isSTail ? tailBlockUbTailFactorS_  : ubTailFactorS_;
+    myLoopNumH_ = isHTail ? tailBlockLoopNumH_ : loopNumH_;
+    myUbTailFactorH_ = isHTail ? tailBlockUbTailFactorH_ : ubTailFactorH_;
+    myLoopNumB_ = isBTail ? tailBlockLoopNumB_ : loopNumB_;
+    myUbTailFactorB_ = isBTail ? tailBlockUbTailFactorB_ : ubTailFactorB_;
+    myLoopNumS_ = isSTail ? tailBlockLoopNumS_ : loopNumS_;
+    myUbTailFactorS_ = isSTail ? tailBlockUbTailFactorS_ : ubTailFactorS_;
 
     // Bind GM — x and y are contiguous [S][B][H]
-    xGM_.SetGlobalBuffer((__gm__ T*)x, (uint64_t)S_ * B_ * H_);
-    weightGM_.SetGlobalBuffer((__gm__ T*)weight, (uint64_t)3 * H_);
-    maskGM_.SetGlobalBuffer((__gm__ uint8_t*)mask);
-    yGM_.SetGlobalBuffer((__gm__ T*)y, (uint64_t)S_ * B_ * H_);
+    xGM_.SetGlobalBuffer((__gm__ T *)x, (uint64_t)S_ * B_ * H_);
+    weightGM_.SetGlobalBuffer((__gm__ T *)weight, (uint64_t)3 * H_);
+    maskGM_.SetGlobalBuffer((__gm__ uint8_t *)mask);
+    yGM_.SetGlobalBuffer((__gm__ T *)y, (uint64_t)S_ * B_ * H_);
 
     // ioQueue: [bUb][sUb+2][ubFactorH] T — 2 prefix rows + sCur data rows, each row ubFactorH wide
-    uint32_t ioBufBytes     = AlignUp(ubFactorB_ * (ubFactorS_ + 2) * ubFactorH_ * sizeof(T), ALIGN_BYTES);
+    uint32_t ioBufBytes = AlignUp(ubFactorB_ * (ubFactorS_ + 2) * ubFactorH_ * sizeof(T), ALIGN_BYTES);
     // weightQueue: [3][ubFactorH] T — tap-major layout
     uint32_t weightBufBytes = AlignUp(3 * ubFactorH_ * sizeof(T), ALIGN_BYTES);
 
-    pipe_.InitBuffer(ioQueue_,     BUFFER_NUM, ioBufBytes);
+    pipe_.InitBuffer(ioQueue_, BUFFER_NUM, ioBufBytes);
     pipe_.InitBuffer(weightQueue_, BUFFER_NUM, weightBufBytes);
 
     if (isMaskNone_ == 0) {
@@ -257,7 +269,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
         pipe_.InitBuffer(maskRowQueue_, BUFFER_NUM, maskRowBytes);
 
         // maskCastQueue_: half Cast result (step2), then reused as T Broadcast dst (step4)
-        uint32_t castHalfBytes  = AlignUp(ubFactorB_ * sPadAligned * static_cast<uint32_t>(sizeof(half)), ALIGN_BYTES);
+        uint32_t castHalfBytes = AlignUp(ubFactorB_ * sPadAligned * static_cast<uint32_t>(sizeof(half)), ALIGN_BYTES);
         uint32_t broadcastBytes = AlignUp(sPadAligned * ubFactorH_ * static_cast<uint32_t>(sizeof(T)), ALIGN_BYTES);
         pipe_.InitBuffer(maskCastQueue_, BUFFER_NUM, castHalfBytes > broadcastBytes ? castHalfBytes : broadcastBytes);
     }
@@ -278,15 +290,15 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(
 //   s0 >= 2: DataCopy all sCur+2 rows from GM[s0-2, b0+b, h0]
 // ============================================================================
 template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
-    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0, uint32_t ubFactorHCur)
+__aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
+                                                     uint32_t h0, uint32_t ubFactorHCur)
 {
     LocalTensor<T> ioBuf = ioQueue_.AllocTensor<T>();
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
     // x is contiguous [S][B][H]: S-stride = xSStride_, B-stride = H_
-    uint32_t rowElems     = ubFactorHCur;
-    uint32_t bRowStride   = (sCur + 2) * rowElems;  // element stride per batch in ioQueue
+    uint32_t rowElems = ubFactorHCur;
+    uint32_t bRowStride = (sCur + 2) * rowElems; // element stride per batch in ioQueue
     uint32_t srcSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
     for (uint32_t b = 0; b < bUbCur; ++b) {
         uint32_t dstBase = b * bRowStride;
@@ -294,31 +306,22 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
         if (s0 >= 2) {
             // Common case: load sCur+2 rows starting at x[s0-2, b0+b, h0]
             uint64_t gmOff = (uint64_t)(s0 - 2) * xSStride_ + (uint64_t)(b0 + b) * H_ + h0;
-            DataCopyExtParams xcp{
-                static_cast<uint16_t>(sCur + 2),
-                static_cast<uint16_t>(rowElems * sizeof(T)),
-                srcSkipBytes, 0, 0
-            };
+            DataCopyExtParams xcp{static_cast<uint16_t>(sCur + 2), static_cast<uint16_t>(rowElems * sizeof(T)),
+                                  srcSkipBytes, 0, 0};
             DataCopyPad(ioBuf[dstBase], xGM_[gmOff], xcp, padParams);
         } else if (s0 == 0) {
             // Prefix rows 0,1 = zero; load sCur rows at rows 2..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), 2 * rowElems);
             uint64_t gmOff = (uint64_t)(b0 + b) * H_ + h0;
-            DataCopyExtParams xcp{
-                static_cast<uint16_t>(sCur),
-                static_cast<uint16_t>(rowElems * sizeof(T)),
-                srcSkipBytes, 0, 0
-            };
+            DataCopyExtParams xcp{static_cast<uint16_t>(sCur), static_cast<uint16_t>(rowElems * sizeof(T)),
+                                  srcSkipBytes, 0, 0};
             DataCopyPad(ioBuf[dstBase + 2 * rowElems], xGM_[gmOff], xcp, padParams);
         } else {
             // s0 == 1: row 0 = zero; load sCur+1 rows from GM[0, b0+b, h0] into rows 1..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), rowElems);
             uint64_t gmOff = (uint64_t)(b0 + b) * H_ + h0;
-            DataCopyExtParams xcp{
-                static_cast<uint16_t>(sCur + 1),
-                static_cast<uint16_t>(rowElems * sizeof(T)),
-                srcSkipBytes, 0, 0
-            };
+            DataCopyExtParams xcp{static_cast<uint16_t>(sCur + 1), static_cast<uint16_t>(rowElems * sizeof(T)),
+                                  srcSkipBytes, 0, 0};
             DataCopyPad(ioBuf[dstBase + rowElems], xGM_[gmOff], xcp, padParams);
         }
     }
@@ -340,8 +343,8 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(
 // Mask (isMaskNone_==1): skip mask — result written directly to CopyOut.
 // ============================================================================
 template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::Compute(
-    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t ubFactorHCur, LocalTensor<T>& wBuf)
+__aicore__ inline void MaskedCausalConv1d<T>::Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
+                                                      uint32_t ubFactorHCur, LocalTensor<T> &wBuf)
 {
     LocalTensor<T> ioBuf = ioQueue_.DeQue<T>();
 
@@ -411,25 +414,22 @@ __aicore__ inline void MaskedCausalConv1d<T>::Compute(
 // Output y GM layout: [S][B][H] contiguous; S-stride = B*H, B-stride = H.
 // ============================================================================
 template <typename T>
-__aicore__ inline void MaskedCausalConv1d<T>::CopyOut(
-    uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0, uint32_t ubFactorHCur)
+__aicore__ inline void MaskedCausalConv1d<T>::CopyOut(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
+                                                      uint32_t h0, uint32_t ubFactorHCur)
 {
     LocalTensor<T> ioBuf = ioQueue_.DeQue<AscendC::TPosition::VECOUT, AscendC::TPosition::GM, T>();
 
     // dstJumpStride: bytes to skip in y GM between consecutive S rows
     uint32_t dstSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
-    uint32_t bIoStride    = (sCur + 2) * ubFactorHCur;
+    uint32_t bIoStride = (sCur + 2) * ubFactorHCur;
 
     for (uint32_t b = 0; b < bUbCur; ++b) {
         // y[0..sCur-1] are at rows 0..sCur-1 of this batch's region
         uint32_t ioOff = b * bIoStride;
 
         uint64_t dstOff = (uint64_t)s0 * xSStride_ + (uint64_t)(b0 + b) * H_ + h0;
-        DataCopyExtParams ycp{
-            static_cast<uint16_t>(sCur),
-            static_cast<uint16_t>(ubFactorHCur * sizeof(T)),
-            0, dstSkipBytes, 0
-        };
+        DataCopyExtParams ycp{static_cast<uint16_t>(sCur), static_cast<uint16_t>(ubFactorHCur * sizeof(T)), 0,
+                              dstSkipBytes, 0};
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
     }
     SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
@@ -459,9 +459,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Process()
             LocalTensor<T> wBufTmp = weightQueue_.AllocTensor<T>();
             DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
             uint32_t wSkipBytes = (H_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
-            DataCopyExtParams wcp{3,
-                static_cast<uint16_t>(ubFactorHCur * sizeof(T)),
-                wSkipBytes, 0, 0};
+            DataCopyExtParams wcp{3, static_cast<uint16_t>(ubFactorHCur * sizeof(T)), wSkipBytes, 0, 0};
             DataCopyPad(wBufTmp[0], weightGM_[h0], wcp, padParams);
             weightQueue_.EnQue(wBufTmp);
         }
@@ -471,12 +469,12 @@ __aicore__ inline void MaskedCausalConv1d<T>::Process()
         // ---- B middle loop ----
         for (uint32_t bIter = 0; bIter < myLoopNumB_; ++bIter) {
             uint32_t bUbCur = (bIter < myLoopNumB_ - 1) ? ubFactorB_ : myUbTailFactorB_;
-            uint32_t b0     = bStart_ + bIter * ubFactorB_;
+            uint32_t b0 = bStart_ + bIter * ubFactorB_;
 
             // ---- S inner loop ----
             for (uint32_t sIter = 0; sIter < myLoopNumS_; ++sIter) {
                 uint32_t sCur = (sIter < myLoopNumS_ - 1) ? ubFactorS_ : myUbTailFactorS_;
-                uint32_t s0   = sStart_ + sIter * ubFactorS_;
+                uint32_t s0 = sStart_ + sIter * ubFactorS_;
 
                 // CopyIn loads sCur+2 rows per batch (rows 0,1=prefix; rows 2..=x[s0..])
                 CopyIn(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
