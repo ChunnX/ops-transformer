@@ -34,14 +34,14 @@ graphStatus GetMlaPrologInputTensor(const OpExecuteContext *ctx, MlaPrologFallBa
 
     param.weightDkvKr = ctx->GetRequiredInputTensor(WEIGHT_DKV_KR_INDEX);
     OP_CHECK_IF(param.weightDkvKr == nullptr, OP_LOGE("aclnnfallback", "weightDkvKr is null"), return GRAPH_FAILED);
-    
+
     param.rmsnormGammaCq = ctx->GetRequiredInputTensor(RMSNORM_GAMMA_CQ_INDEX);
     OP_CHECK_IF(param.rmsnormGammaCq == nullptr, OP_LOGE("aclnnfallback", "rmsnormGammaCq is null"),
-        return GRAPH_FAILED);
+                return GRAPH_FAILED);
 
     param.rmsnormGammaCkv = ctx->GetRequiredInputTensor(RMSNORM_GAMMA_CKV_INDEX);
-    OP_CHECK_IF(param.rmsnormGammaCkv == nullptr, OP_LOGE("aclnnfallback", "rmsnormGammaCkv is null"), 
-        return GRAPH_FAILED);
+    OP_CHECK_IF(param.rmsnormGammaCkv == nullptr, OP_LOGE("aclnnfallback", "rmsnormGammaCkv is null"),
+                return GRAPH_FAILED);
 
     param.ropeSin = ctx->GetRequiredInputTensor(ROPE_SIN_INDEX);
     OP_CHECK_IF(param.ropeSin == nullptr, OP_LOGE("aclnnfallback", "ropeSin is null"), return GRAPH_FAILED);
@@ -98,7 +98,7 @@ graphStatus GetMlaPrologAttr(const OpExecuteContext *ctx, MlaPrologFallBackParam
     param.cacheMode = getCacheMode;
 
     OP_LOGD("aclnnFallback", "MlaProlog fallback begin, RmsnormEpsilonCq = %f, RmsnormEpsilonCkv = %f",
-              param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv);
+            param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv);
 
     return GRAPH_SUCCESS;
 }
@@ -107,28 +107,25 @@ graphStatus MlaHostExecuteFunc(OpExecuteContext *host_api_ctx)
 {
     OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
 
-    MlaPrologFallBackParam param {};
+    MlaPrologFallBackParam param{};
     auto apiRet = GetMlaPrologInputTensor(host_api_ctx, param);
     OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "Context get input tesnor failed"),
-        return GRAPH_FAILED);
+                return GRAPH_FAILED);
 
     apiRet = GetMlaPrologOutputTensor(host_api_ctx, param);
     OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "Context get output tesnor failed"),
-        return GRAPH_FAILED);
+                return GRAPH_FAILED);
 
     apiRet = GetMlaPrologAttr(host_api_ctx, param);
-    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "Context get attr failed"),
-        return GRAPH_FAILED);
+    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "Context get attr failed"), return GRAPH_FAILED);
 
     apiRet = EXEC_OPAPI_CMD(
         aclnnMlaProlog, param.tokenX, param.weightDq, param.weightUqQr, param.weightUk, param.weightDkvKr,
-        param.rmsnormGammaCq, param.rmsnormGammaCkv, param.ropeSin, param.ropeCos, param.cacheIndex,
-        param.kvCache, param.krCache, param.dequantScaleX, param.dequantScaleWDq, param.dequantScaleWUqQr,
-        param.dequantScaleWDkvKr, param.quantScaleCkv, param.quantScaleCkr, param.smoothScalesCq,
-        param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv, param.cacheMode,
-        param.query, param.queryRope, param.kvCacheOut, param.krCacheOut);
-    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "ret failed:%u", apiRet),
-        return GRAPH_FAILED);
+        param.rmsnormGammaCq, param.rmsnormGammaCkv, param.ropeSin, param.ropeCos, param.cacheIndex, param.kvCache,
+        param.krCache, param.dequantScaleX, param.dequantScaleWDq, param.dequantScaleWUqQr, param.dequantScaleWDkvKr,
+        param.quantScaleCkv, param.quantScaleCkr, param.smoothScalesCq, param.rmsnormEpsilonCq, param.rmsnormEpsilonCkv,
+        param.cacheMode, param.query, param.queryRope, param.kvCacheOut, param.krCacheOut);
+    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "ret failed:%u", apiRet), return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }

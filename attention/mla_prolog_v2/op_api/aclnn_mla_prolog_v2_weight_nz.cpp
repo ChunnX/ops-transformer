@@ -33,12 +33,11 @@ namespace {
 extern aclnnStatus aclnnInnerMlaPrologV2GetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
-    const aclTensor *ropeSin, const aclTensor *ropeCos, const aclTensor *cacheIndex,
-    aclTensor *kvCacheRef, aclTensor *krCacheRef, const aclTensor *dequantScaleXOptional,
-    const aclTensor *dequantScaleWDqOptional, const aclTensor *dequantScaleWUqQrOptional,
-    const aclTensor *dequantScaleWDkvKrOptional, const aclTensor *quantScaleCkvOptional,
-    const aclTensor *quantScaleCkrOptional, const aclTensor *smoothScalesCqOptional,
-    double rmsnormEpsilonCq, double rmsnormEpsilonCkv, char *cacheModeOptional,
+    const aclTensor *ropeSin, const aclTensor *ropeCos, const aclTensor *cacheIndex, aclTensor *kvCacheRef,
+    aclTensor *krCacheRef, const aclTensor *dequantScaleXOptional, const aclTensor *dequantScaleWDqOptional,
+    const aclTensor *dequantScaleWUqQrOptional, const aclTensor *dequantScaleWDkvKrOptional,
+    const aclTensor *quantScaleCkvOptional, const aclTensor *quantScaleCkrOptional,
+    const aclTensor *smoothScalesCqOptional, double rmsnormEpsilonCq, double rmsnormEpsilonCkv, char *cacheModeOptional,
     const aclTensor *queryOut, const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
@@ -47,27 +46,29 @@ extern aclnnStatus aclnnInnerMlaPrologV2(void *workspace, uint64_t workspaceSize
 
 class TensorHolder {
 public:
-    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName) {
+    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName)
+    {
         inner_ = nullptr;
         name_ = varName;
         if (output == nullptr) {
             std::vector<int64_t> shape = {0};
             int64_t addr = 0xff;
-            inner_ = aclCreateTensor(shape.data(), shape.size(),
-                dataType, shape.data(), 0, ACL_FORMAT_ND,
-                shape.data(), shape.size(), static_cast<void *>(&addr));
+            inner_ = aclCreateTensor(shape.data(), shape.size(), dataType, shape.data(), 0, ACL_FORMAT_ND, shape.data(),
+                                     shape.size(), static_cast<void *>(&addr));
             output = inner_;
         }
     }
 
-    ~TensorHolder() {
+    ~TensorHolder()
+    {
         if (inner_) {
             aclDestroyTensor(inner_);
             inner_ = nullptr;
         }
     }
-    
-    void CheckTensorConditionalNotNull(bool conditional) const {
+
+    void CheckTensorConditionalNotNull(bool conditional) const
+    {
         if (inner_ && conditional) {
             OP_LOGW("Check %s != nullptr failed!", name_.c_str());
         } else if (!inner_ && !conditional) {
@@ -75,7 +76,8 @@ public:
         }
     }
 
-    bool IsTensorNotNull() const {
+    bool IsTensorNotNull() const
+    {
         return inner_ == nullptr;
     }
 
@@ -85,36 +87,19 @@ private:
 };
 
 aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
-    const aclTensor *tokenX,
-    const aclTensor *weightDq,
-    const aclTensor *weightUqQr,
-    const aclTensor *weightUk,
-    const aclTensor *weightDkvKr,
-    const aclTensor *rmsnormGammaCq,
-    const aclTensor *rmsnormGammaCkv,
-    const aclTensor *ropeSin,
-    const aclTensor *ropeCos,
-    const aclTensor *cacheIndex,
-    aclTensor *kvCacheRef,
-    aclTensor *krCacheRef,
-    const aclTensor *dequantScaleXOptional,
-    const aclTensor *dequantScaleWDqOptional,
-    const aclTensor *dequantScaleWUqQrOptional,
-    const aclTensor *dequantScaleWDkvKrOptional,
-    const aclTensor *quantScaleCkvOptional,
-    const aclTensor *quantScaleCkrOptional,
-    const aclTensor *smoothScalesCqOptional,
-    double rmsnormEpsilonCq,
-    double rmsnormEpsilonCkv,
-    char *cacheModeOptional,
-    const aclTensor *queryOut,
-    const aclTensor *queryRopeOut,
-    const aclTensor *dequantScaleQNopeOutOptional,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
+    const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
+    const aclTensor *ropeSin, const aclTensor *ropeCos, const aclTensor *cacheIndex, aclTensor *kvCacheRef,
+    aclTensor *krCacheRef, const aclTensor *dequantScaleXOptional, const aclTensor *dequantScaleWDqOptional,
+    const aclTensor *dequantScaleWUqQrOptional, const aclTensor *dequantScaleWDkvKrOptional,
+    const aclTensor *quantScaleCkvOptional, const aclTensor *quantScaleCkrOptional,
+    const aclTensor *smoothScalesCqOptional, double rmsnormEpsilonCq, double rmsnormEpsilonCkv, char *cacheModeOptional,
+    const aclTensor *queryOut, const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOutOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaPrologV2WeightNzGetWorkspaceSize are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaPrologV2WeightNzGetWorkspaceSize "
+                                         "are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -124,12 +109,14 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    auto dequantScaleQNopeHolder = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
+    auto dequantScaleQNopeHolder =
+        TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOut!");
         return ge::GRAPH_FAILED;
     }
-    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(tokenX ->GetDataType() == ge::DT_INT8 && kvCacheRef ->GetDataType() == ge::DT_INT8); 
+    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(tokenX->GetDataType() == ge::DT_INT8 &&
+                                                          kvCacheRef->GetDataType() == ge::DT_INT8);
 
     return aclnnInnerMlaPrologV2GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
