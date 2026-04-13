@@ -56,7 +56,7 @@ constexpr int64_t TEMPLATE_ROPE = 2;
 constexpr int64_t TEMPLATE_ALIBI = 3;
 constexpr int64_t TEMPLATE_OMNI = 4;
 constexpr int64_t TEMPLATE_NZ = 5;
-constexpr int64_t TEMPLATE_NCT = 5;
+constexpr int64_t TEMPLATE_NCT = 6;
 
 
 constexpr uint64_t INPUT_CACHE_MODE_INDEX = 0;

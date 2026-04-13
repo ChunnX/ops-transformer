@@ -21,19 +21,6 @@
 namespace ScatterPaKvCache {
 using namespace AscendC;
 
-__aicore__ inline constexpr uint32_t GetVRegSize()
-{
-#if __CCE_AICORE__ == 310
-    return AscendC::VECTOR_REG_WIDTH;
-#else
-    return 256U;
-#endif
-}
-
-constexpr uint32_t VECTOR_LENGTH = GetVRegSize();
-constexpr uint32_t VL_B32 = VECTOR_LENGTH / sizeof(uint32_t);
-
-
 template <typename T, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheOmniFullyLoad {
 public:

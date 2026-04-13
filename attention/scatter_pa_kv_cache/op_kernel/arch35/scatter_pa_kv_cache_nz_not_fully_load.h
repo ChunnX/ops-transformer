@@ -22,9 +22,9 @@ namespace ScatterPaKvCache {
 using namespace AscendC;
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-class ScatterPaKvCacheNormalNzNotFullyLoad {
+class ScatterPaKvCacheNzNotFullyLoad {
 public:
-    __aicore__ inline ScatterPaKvCacheNormalNzNotFullyLoad(TPipe *pipe,
+    __aicore__ inline ScatterPaKvCacheNzNotFullyLoad(TPipe *pipe,
                                                            const ScatterPaKvCacheTilingData *__restrict tiling)
         : pipe_(pipe), tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value,
@@ -56,7 +56,7 @@ private:
 };
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::Init(
+__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::Init(
     GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out, GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
@@ -80,12 +80,12 @@ __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>:
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::CopyToCacheNzK(uint32_t start,
+__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzK(uint32_t start,
                                                                                                 uint32_t cacheStart)
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), BLOCK_SIZE, 0,
-                                          static_cast<uint32_t>(tilingData_->blockSize - 1)}; // dstStride 需要乘blocksize
+                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)}; // dstStride 需要乘blocksize
     DataCopyPadExtParams<T1> PadParams;
     PadParams.isPad = 0;
     PadParams.leftPadding = 0;
@@ -118,7 +118,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>:
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::CopyToCacheNzV(uint32_t start,
+__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzV(uint32_t start,
                                                                                                 uint32_t cacheStart)
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0};
@@ -156,7 +156,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>:
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::Process()
+__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
