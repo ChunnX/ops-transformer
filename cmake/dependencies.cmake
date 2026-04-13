@@ -9,9 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 # Ascend mode
-if(DEFINED ASCEND_CANN_PACKAGE_PATH AND EXISTS "${ASCEND_CANN_PACKAGE_PATH}")
-  set(ASCEND_DIR ${ASCEND_CANN_PACKAGE_PATH})
-elseif(DEFINED ENV{ASCEND_HOME_PATH})
+if(DEFINED ENV{ASCEND_HOME_PATH})
   set(ASCEND_DIR $ENV{ASCEND_HOME_PATH})
 else()
   if ("$ENV{USER}" STREQUAL "root")
@@ -36,7 +34,6 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules
   ${CMAKE_MODULE_PATH}
   ${ASCEND_DIR}/include/ge/cmake
-  ${ASCEND_DIR}/${SYSTEM_PREFIX}/include/ge/cmake
 )
 message(STATUS "CMAKE_MODULE_PATH            :${CMAKE_MODULE_PATH}")
 

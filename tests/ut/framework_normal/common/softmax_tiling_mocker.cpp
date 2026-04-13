@@ -70,9 +70,13 @@ uint32_t GetSoftMaxMinTmpSize(const ge::Shape& srcShape, const uint32_t dataType
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize;
 
     // 关键替换：使用有参 GetInstance，由 SoftmaxTilingMocker 提供 SoC 版本字符串
+    std::cout << "20260325 GetSoftMaxMinTmpSize_mocker soc: " << SoftmaxTilingMocker::GetInstance().GetSocVersion() << " end" << std::endl;
+    // platform_ascendc::PlatformAscendC* platform =
+    //     platform_ascendc::PlatformAscendCManager::GetInstance(
+    //         SoftmaxTilingMocker::GetInstance().GetSocVersion());
     platform_ascendc::PlatformAscendC* platform =
         platform_ascendc::PlatformAscendCManager::GetInstance(
-            SoftmaxTilingMocker::GetInstance().GetSocVersion());
+            "Ascend910B");
     if (platform == nullptr) { return 0U; }
     const auto npuArch = platform->GetCurNpuArch();
 
@@ -113,9 +117,12 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape& srcShape, const uint32_t d
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize2;
 
     // 关键替换：使用有参 GetInstance
+    // platform_ascendc::PlatformAscendC* platform =
+    //     platform_ascendc::PlatformAscendCManager::GetInstance(
+    //         SoftmaxTilingMocker::GetInstance().GetSocVersion());
     platform_ascendc::PlatformAscendC* platform =
         platform_ascendc::PlatformAscendCManager::GetInstance(
-            SoftmaxTilingMocker::GetInstance().GetSocVersion());
+            "Ascend910B");
     if (platform == nullptr) { return 0U; }
     const auto npuArch = platform->GetCurNpuArch();
 
@@ -191,9 +198,12 @@ uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape& srcShape, const uint32_t dat
     const uint32_t srcM = retVec[0];
     const uint32_t srcK = retVec[1];
 
+    // platform_ascendc::PlatformAscendC* platform =
+    //     platform_ascendc::PlatformAscendCManager::GetInstance(
+    //         SoftmaxTilingMocker::GetInstance().GetSocVersion());
     platform_ascendc::PlatformAscendC* platform =
         platform_ascendc::PlatformAscendCManager::GetInstance(
-            SoftmaxTilingMocker::GetInstance().GetSocVersion());
+            "Ascend910B");
     if (platform == nullptr) { return 0U; }
     const auto npuArch = platform->GetCurNpuArch();
 

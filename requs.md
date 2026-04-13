@@ -783,3 +783,74 @@ prompt_flash_attention_tiling.h   |30.7%    352
 
 这说明当前“先把前置依赖方法打通”的目标已经完成。  
 后续如果你愿意，再继续推进“方案二：重编 `tiling_api`”会更系统，但当前这条路已经能支撑你做 lcov 观察与后续扩展了。
+
+
+
+## 2026-04-13 继续排障
+
+关于之前你回答的"## 2026-04-12 继续排障后的最终结论"，我这里给出几个回复吧：
+1、Error: Please set the toolkit package installation directory through parameter -p|--package-path.
+是执行命令我没给全：
+
+```bash
+# 先source包的环境变量
+source /home/j60100428/Ascend_0408/cann/set_env.sh
+# 开启打屏error日志（设置了才会具体显示报错信息）
+export ASCEND_GLOBAL_LOG_LEVEL=3
+export ASCEND_SLOG_PRINT_TO_STDOUT=1
+# 跑lcov ut覆盖
+bash build.sh -u --ophost --ops=prompt_flash_attention --soc=ascend910b --cov 2>&1 | tee ./log/pfa_ophost_ut.log
+```
+
+所以不需要栋`cmake/dependencies.cmake`，我已经将代码改回去了
+
+2、arch32 testcase的为什么在打桩后依赖返回了tilingRet = 4294967295
+
+经过我测试验证，发现至少当前并非用例问题，开启打屏error日志后，你读取log/pfa_ophost_ut.log，会发现
+
+```
+[2026-04-13 15:26:09] [ERROR] ASCENDCKERNEL(3663442,transformer_op_host_ut):2026-04-13-15:26:09.532.534 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.534.195 [task_fail_callback_data_manager.cc:93] 3663442 TaskFailCallBackManager: Constructor.
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.534.207 [xpu_task_fail_callback_data_manager.cc:59] 3663442 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.535.821 [runtime_keeper.cc:184] 3663442 CreateRuntimeImpl: Open libruntime_v100.so successfully
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.536.359 [runtime_adapt.cc:57] 3663442 ~Runtime: runtime destructor.
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.536.366 [runtime.cc:1395] 3663442 WaitMonitorExit: wait monitor success, used count=0.
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.538.153 [xpu_task_fail_callback_data_manager.cc:64] 3663442 ~XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Destructor.
+[2026-04-13 15:26:09] [INFO] RUNTIME(3663442,transformer_op_host_ut):2026-04-13-15:26:09.538.165 [task_fail_callback_data_manager.cc:98] 3663442 ~TaskFailCallBackManager: Destructor.
+[2026-04-13 15:26:09] [ERROR] FE(3663442,transformer_op_host_ut):2026-04-13-15:26:09.735.377 [platform_info.cpp:110]3663442 LoadIniFile:Failed to open conf file, it does not exist or is already opened.
+[2026-04-13 15:26:09] [ERROR] FE(3663442,transformer_op_host_ut):2026-04-13-15:26:09.735.415 [platform_info.cpp:1169]3663442 InitRuntimePlatformInfos:Failed to load ini file[/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/data/platform_config/UnknowSocType.ini].
+[2026-04-13 15:26:09] [ERROR] ASCENDCKERNEL(3663442,transformer_op_host_ut):2026-04-13-15:26:09.735.436 [platform_ascendc.cpp:75][SocVersionStrMap] get platform failed, convertMap do not find soc  version
+```
+
+SocVersion找不到的问题依然存在，`Failed to get PlatformAscendC.`的报错消失了仅仅是由于我们在tests/ut/framework_normal/common/softmax_tiling_mocker.cpp打桩文件中并没有像原实现文件"/home/j60100428/asc-devkit/impl/adv_api/tiling/activation/softmax_tiling.cpp"中去添加
+
+```
+ASCENDC_HOST_ASSERT((platform != nullptr), return 0, "Failed to get PlatformAscendC.");
+```
+
+拦截，但确实是我们自己写的mocker打桩文件已经可以执行到了，很不错，就是SocVersion问题还要继续定位
+
+下面的[2026-04-13 15:26:09] [ERROR] ASCENDCKERNEL(3663442,transformer_op_host_ut):2026-04-13-15:26:09.735.492 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)是我改了`asc-devkit/impl/adv_api/tiling/activation/softmax_tiling.cpp`的源码编的Ascend包打出的错误日志（在当前这个Ascend_0408环境下是没有的，后面排查没发现这个日志可以不用管，只需要知道asc-devkit那边的接口拿到的SocVersion还是空）
+
+mocker打桩已经生效了，但SocVersion还为空？排查是我们这边引入的吗？基于这个思想，我在tests/ut/framework_normal/common/softmax_tiling_mocker.cpp打桩文件中的73行加了一个这个
+
+```
+std::cout << "20260325 GetSoftMaxMinTmpSize_mocker soc: " << SoftmaxTilingMocker::GetInstance().GetSocVersion() << " end" << std::endl;
+```
+
+执行ut生成如下日志文件：log/pfa_ophost_print_soc.log
+
+```
+[2026-04-13 16:11:30] 20260325 GetSoftMaxMinTmpSize_mocker
+[2026-04-13 16:11:30] 20260325 GetSoftMaxMinTmpSize_mocker soc: [ERROR] ASCENDCKERNEL(3713434,transformer_op_host_ut):2026-04-13-16:11:30.537.549 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
+```
+
+可以发现我们的打桩SoftmaxTilingMocker::GetInstance().GetSocVersion()获取soc失败了？
+
+
+
+那假设我们直接在platform_ascendc::PlatformAscendCManager::GetInstance中写死soc呢？又生成log/pfa_ophost_910B.log
+
+可以发现还是异常失败
+
+请继续帮我排障吧，和之前一样，继续把记录记到本requs.md文档
