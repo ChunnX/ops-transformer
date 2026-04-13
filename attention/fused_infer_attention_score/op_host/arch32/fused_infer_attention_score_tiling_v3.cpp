@@ -860,9 +860,6 @@ bool GetQkvD(gert::TilingContext *context, int64_t &queryD, int64_t &queryRopeD,
     }
 
     int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
-    if (numHeads <= 0) {
-        return false;
-    }
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     if (inputLayoutStr == "BNSD_BSND" ||
         inputLayoutStr == "BSND_BNSD" ||

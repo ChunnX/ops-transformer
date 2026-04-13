@@ -1790,7 +1790,17 @@ static ge::graphStatus GetB(const gert::TilingContext *context, const string inp
     }
     return ge::GRAPH_SUCCESS;
 }
-
+static ge::graphStatus CheckBSHQueryN(const gert::TilingContext *context, const string inputLayoutStr)
+{
+    if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "BSH_BNSD") {
+        auto attrs = context->GetAttrs();
+        int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
+        OP_CHECK_IF((numHeads <= 0),
+            OP_LOGE(context->GetNodeName(), "Q numhead should >= 0"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
 static ge::graphStatus GetQueryN(const gert::TilingContext *context, const string inputLayoutStr, int64_t &queryN)
 {
     auto tempQ = context->GetInputShape(QUERY_INDEX);
@@ -2034,17 +2044,24 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
+    auto attrs = context->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Attributes returned from GetAttrs() is a nullptr"),
+                return ge::GRAPH_FAILED);
+    const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
+    
+    if (CheckBSHQueryN(context, inputLayoutStr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
-    
+
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
-    auto attrs = context->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "Attributes returned from GetAttrs() is a nullptr"), return ge::GRAPH_FAILED);
-    const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"),
+                return ge::GRAPH_FAILED);
+
     // 获取关键轴信息
     int64_t b = 0;
     int64_t queryN = 0;
