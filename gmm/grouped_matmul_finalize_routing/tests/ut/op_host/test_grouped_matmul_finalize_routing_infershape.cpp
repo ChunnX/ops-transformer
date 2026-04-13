@@ -164,6 +164,7 @@ ge::DataType ParseDtype(const string &dtype)
         {"FLOAT", ge::DT_FLOAT},
         {"BF16", ge::DT_BF16},
         {"INT8", ge::DT_INT8},
+        {"INT4", ge::DT_INT4},
         {"INT64", ge::DT_INT64},
         {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
         {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
@@ -384,6 +385,7 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingIn
               [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
     return name;
 }
+
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
