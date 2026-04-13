@@ -221,7 +221,6 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
         return ge::GRAPH_FAILED;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-
     blockDim_ = ascendcPlatform.GetCoreNumAic();
     vecCoreNum_ = ascendcPlatform.GetCoreNumAiv();
 
