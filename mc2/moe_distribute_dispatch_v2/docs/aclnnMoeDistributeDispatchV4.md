@@ -124,11 +124,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-<<<<<<< HEAD
     <td><code>(BS, H)</code>（BS=batch size，H=hidden size）</td>
-=======
-    <td><code>(BS, H)</code>（Bs=batch size，H=hidden size）</td>
->>>>>>> fd02d036 (mc2 docs fix)
     <td>√</td>
     </tr>
     <tr>
@@ -305,11 +301,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-<<<<<<< HEAD
     <td><br> <li> 各卡BS一致时：<code>globalBs = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡BS最大值。</li></td>
-=======
-    <td><br> <li> 各卡BS一致时：<code>globalBs = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡Bs最大值。</li></td>
->>>>>>> fd02d036 (mc2 docs fix)
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
