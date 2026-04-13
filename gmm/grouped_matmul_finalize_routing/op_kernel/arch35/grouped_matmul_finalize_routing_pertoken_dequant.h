@@ -52,29 +52,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = layout::RowMajorAlign;
-<<<<<<< HEAD
-<<<<<<< HEAD
     // 2 represents bf16 dtype
-=======
-    // using weightscaleType = DTYPE_SCALE;
->>>>>>> 98f14ece (tilingkey modify)
-=======
-    // 2 represents bf16 dtype
->>>>>>> a95594fe (Modification Review Comments)
     using weightscaleType = std::conditional_t<scaleType == 2, bfloat16_t, float>;
     using BiasType = bfloat16_t;
     using LayoutBias = layout::RowMajor;
     using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>; // matmul output dtype
     using xscaleType = float;
-<<<<<<< HEAD
-<<<<<<< HEAD
     using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
-=======
-    using rowIndexType = std::conditional_t<rowindexType == 1, int32_t, int64_t>;
->>>>>>> 98f14ece (tilingkey modify)
-=======
-    using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
->>>>>>> a95594fe (Modification Review Comments)
     using ProblemShape = Cgmct::Gemm::MatmulShape;
     using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitScheduler;
     using BlockMmadBuilder =
