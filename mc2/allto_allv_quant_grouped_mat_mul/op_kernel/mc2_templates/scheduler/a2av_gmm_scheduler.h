@@ -106,38 +106,38 @@ public:
         totalRound_ = commOp.GetTotalRound();
         AscendC::printf("rank totalRound=%u localBaseA=%u\n", totalRound_, localBaseA_);
 
-        if (IsNeedMM) {
-            localComputeOp.Process(0);
-            SyncAll<false>();
-        }
+        // if (IsNeedMM) {
+        //     localComputeOp.Process(0);
+        //     SyncAll<false>();
+        // }
 
-        uint32_t maxRoundsPerCommBatch = MX_QUANT_MODE ? 31U : 63U;
-        uint32_t commBatchCount = (totalRound_ + maxRoundsPerCommBatch - 1) / maxRoundsPerCommBatch;
+        // uint32_t maxRoundsPerCommBatch = MX_QUANT_MODE ? 31U : 63U;
+        // uint32_t commBatchCount = (totalRound_ + maxRoundsPerCommBatch - 1) / maxRoundsPerCommBatch;
 
-        for (uint32_t commBatchIdx = 0U; commBatchIdx < commBatchCount; commBatchIdx++) {
-            uint32_t startRound = commBatchIdx * maxRoundsPerCommBatch;
-            uint32_t endRound = (commBatchIdx + 1) * maxRoundsPerCommBatch;
-            if (endRound > totalRound_) {
-                endRound = totalRound_;
-            }
+        // for (uint32_t commBatchIdx = 0U; commBatchIdx < commBatchCount; commBatchIdx++) {
+        //     uint32_t startRound = commBatchIdx * maxRoundsPerCommBatch;
+        //     uint32_t endRound = (commBatchIdx + 1) * maxRoundsPerCommBatch;
+        //     if (endRound > totalRound_) {
+        //         endRound = totalRound_;
+        //     }
 
-            for (uint32_t roundIdx = startRound; roundIdx < endRound; roundIdx++) {
-                uint32_t slotIdx = roundIdx - startRound;
+        //     for (uint32_t roundIdx = startRound; roundIdx < endRound; roundIdx++) {
+        //         uint32_t slotIdx = roundIdx - startRound;
 
-                if constexpr (MX_QUANT_MODE) {
-                    commOp.LaunchScaleMultiRound(roundIdx, slotIdx);
-                }
-                commOp.LaunchMultiRound(roundIdx, slotIdx);
+        //         if constexpr (MX_QUANT_MODE) {
+        //             commOp.LaunchScaleMultiRound(roundIdx, slotIdx);
+        //         }
+        //         commOp.LaunchMultiRound(roundIdx, slotIdx);
 
-                if constexpr (MX_QUANT_MODE) {
-                    commOp.WaitScaleMultiRound(slotIdx);
-                }
-                commOp.WaitMultiRound(slotIdx);
-                SyncAll<false>();
-                computeOp.ProcessAll(roundIdx, localBaseA_);
-            }
-        }
-        this->End();
+        //         if constexpr (MX_QUANT_MODE) {
+        //             commOp.WaitScaleMultiRound(slotIdx);
+        //         }
+        //         commOp.WaitMultiRound(slotIdx);
+        //         SyncAll<false>();
+        //         computeOp.ProcessAll(roundIdx, localBaseA_);
+        //     }
+        // }
+        // this->End();
     }
 
 protected:
