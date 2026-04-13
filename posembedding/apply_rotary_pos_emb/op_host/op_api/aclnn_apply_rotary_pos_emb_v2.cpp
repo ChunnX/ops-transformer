@@ -9,17 +9,11 @@
  */
 
 #include "aclnn_apply_rotary_pos_emb_v2.h"
+#include "aclnnInner_apply_rotary_pos_emb.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerApplyRotaryPosEmbGetWorkspaceSize(aclTensor* queryRef, aclTensor* keyRef,
-                                                               const aclTensor* cos, const aclTensor* sin,
-                                                               int64_t layout, char* rotaryMode,
-                                                               uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerApplyRotaryPosEmb(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                               aclrtStream stream);
 
 aclnnStatus aclnnApplyRotaryPosEmbV2GetWorkspaceSize(aclTensor* queryRef, aclTensor* keyRef, const aclTensor* cos,
                                                      const aclTensor* sin, int64_t layout,
