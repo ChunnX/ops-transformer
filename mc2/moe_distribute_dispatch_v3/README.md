@@ -349,4 +349,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| npu_low_latency_dispatch接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_dispatch](../../torch_extension/npu_ops_transformer/docs/npu_low_latency_dispatch.md)接口方式调用moe_distribute_dispatch_v3算子。 |
+| npu_low_latency_dispatch接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_dispatch](../../torch_extension/npu_ops_transformer/doc/npu_low_latency_dispatch.md)接口方式调用moe_distribute_dispatch_v3算子。 |
