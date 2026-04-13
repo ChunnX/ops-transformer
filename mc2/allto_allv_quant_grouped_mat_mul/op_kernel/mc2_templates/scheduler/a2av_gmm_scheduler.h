@@ -104,12 +104,16 @@ public:
         // 从 commOp 获取动态计算的 baseA 和 totalRound
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
-        AscendC::printf("rank totalRound=%u localBaseA=%u\n", totalRound_, localBaseA_);
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("rank totalRound=%u localBaseA=%u\n", totalRound_, localBaseA_);
+            }
+        }
 
-        // if (IsNeedMM) {
-        //     localComputeOp.Process(0);
-        //     SyncAll<false>();
-        // }
+        if (IsNeedMM) {
+            localComputeOp.Process(0);
+            SyncAll<false>();
+        }
 
         // uint32_t maxRoundsPerCommBatch = MX_QUANT_MODE ? 31U : 63U;
         // uint32_t commBatchCount = (totalRound_ + maxRoundsPerCommBatch - 1) / maxRoundsPerCommBatch;
@@ -137,7 +141,7 @@ public:
         //         computeOp.ProcessAll(roundIdx, localBaseA_);
         //     }
         // }
-        // this->End();
+        this->End();
     }
 
 protected:
