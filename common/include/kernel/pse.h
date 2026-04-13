@@ -227,8 +227,6 @@ template <bool hasPse> __aicore__ inline int64_t PseComputeOffset(PseInfo &pseIn
 template <LayOutTypeEnum layOutType, bool hasPse> __aicore__ inline int64_t PseAlibiComputeOffset(PseInfo &pseInfo)
 {
     if constexpr (hasPse == true) {
-        AscendC::printf("zad:: pseS1Size: %lld\n", pseInfo.pseS1Size);
-        AscendC::printf("zad:: pseS2Size: %lld\n", pseInfo.pseS2Size);
         int64_t bOffset = (pseInfo.boIdx % pseInfo.pseBSize) * pseInfo.n2G * pseInfo.pseS2Size * pseInfo.pseS1Size;
         int64_t n2Offset = pseInfo.n2oIdx * pseInfo.gSize * pseInfo.pseS2Size * pseInfo.pseS1Size;
         int64_t gOffset = pseInfo.goIdx * pseInfo.pseS2Size * pseInfo.pseS1Size;
@@ -239,7 +237,6 @@ template <LayOutTypeEnum layOutType, bool hasPse> __aicore__ inline int64_t PseA
         int64_t k = 0;
         if constexpr (layOutType != LayOutTypeEnum::LAYOUT_TND) {
             int64_t threshold = pseInfo.s1Size - pseInfo.pseS1Size;
-            AscendC::printf("zad:: threshold (s1Size - pseS1Size): %lld", threshold);
             if (row >= threshold) {
                 m = row - threshold;
                 k = column;
@@ -247,11 +244,8 @@ template <LayOutTypeEnum layOutType, bool hasPse> __aicore__ inline int64_t PseA
                 m = row % pseInfo.pseS1Size;
                 k = pseInfo.pseS2Size - (row - column) - (pseInfo.pseS1Size - m);
             }
-            AscendC::printf("zad:: m: %lld", m);
-            AscendC::printf("zad:: k: %lld", k);
         } else {
             int64_t threshold = pseInfo.pseS2Size - pseInfo.pseS1Size;
-            AscendC::printf("zad:: threshold (pseS2Size - pseS1Size): %lld", threshold);
             int64_t posVal = row - column - threshold;
             if (threshold >= 0) {
                 if (posVal >= 0) {
@@ -265,16 +259,11 @@ template <LayOutTypeEnum layOutType, bool hasPse> __aicore__ inline int64_t PseA
                 m = posVal;
                 k = 0;
             }
-            AscendC::printf("zad:: m: %lld", m);
-            AscendC::printf("zad:: k: %lld", k);
         }
         int64_t s1Offset = m * pseInfo.pseS2Size;
         int64_t s2Offset = k;
-        AscendC::printf("zad:: s1Offset (m * pseS2Size): %lld", s1Offset);
         pseInfo.readS2Size = Min(pseInfo.s2AlignedSize, pseInfo.pseS2Size - k);
         pseInfo.pseS2ComputeSize = Align(pseInfo.readS2Size);
-        AscendC::printf("zad:: readS2Size: %lld", pseInfo.readS2Size);
-        AscendC::printf("zad:: pseS2ComputeSize: %lld", pseInfo.pseS2ComputeSize);
 
         return bOffset + n2Offset + gOffset + s1Offset + s2Offset;
     } else {
@@ -306,8 +295,6 @@ __aicore__ inline void PseAlibiCopyIn(LocalTensor<T> &dstTensor, LocalTensor<INP
             return;
         }
         int64_t offset = PseAlibiComputeOffset<layOutType, hasPse>(pseInfo);
-        AscendC::printf("zad:: PseAlibiCopyIn offset: %lld\n", offset);
-        AscendC::printf("zad:: PseAlibiCopyIn pseS2Size: %lld\n", pseInfo.pseS2Size);
         if constexpr (IsSameType<INPUT_T, T>::value) {
             if (!pseInfo.align8){
                 DataCopyIn<INPUT_T, hasPse>(dstTensor, srcTensor, offset, pseInfo.vec1S1RealSize, pseInfo.readS2Size,
