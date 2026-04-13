@@ -53,7 +53,8 @@ public:
         // gmmXScale comm init(MX quant)
         if constexpr (MX_QUANT_MODE) {
             uint64_t commOutLen =
-                Align((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), TENSOR_LIST_SIZE);
+                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR),
+                TENSOR_LIST_SIZE);
             gmmxScaleCommOutGm_ = tilingData_->isPermuteOut ? workspaceGM : workspaceGM + commOutLen;
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_);
             computeScaleGm_ = gmmxScaleCommOutGm_; // 存在scale通信时为通信后permuteScaleout的地址
@@ -76,34 +77,24 @@ public:
             localComputeOp.Process(0);
             SyncAll<false>();
         }
-        // 根据量化方式选择最大hccl handle数(tt量化63, mx量化scale需要通信选取31)
         uint32_t max_hccl_handle_num = MX_QUANT_MODE ? 31U : 63U;
-        // 循环数(超过max_hccl_handle_num的部分进入后续循环)
-        uint32_t totalRound = 1 + e_ / max_hccl_handle_num;
+        uint32_t totalRound = (e_ + max_hccl_handle_num - 1) / max_hccl_handle_num;
         for (uint32_t roundIdx = 0; roundIdx < totalRound; roundIdx++) {
-            // 专家循环起始专家号
             uint32_t startExpertIdx = roundIdx * max_hccl_handle_num;
             uint32_t endExpertIdx = (roundIdx + 1) * max_hccl_handle_num;
             endExpertIdx = endExpertIdx > e_ ? e_ : endExpertIdx;
-            // 通信
             for (uint32_t expertIdx = startExpertIdx; expertIdx < endExpertIdx; expertIdx++) {
-                // mx gmmx scale comm
                 if constexpr (MX_QUANT_MODE) {
                     commOp.LaunchScaleBeforeCompute(expertIdx, 1);
                 }
-                // gmmx comm
                 commOp.Launch(expertIdx, 1);
             }
-            // 计算
             for (uint32_t expertIdx = startExpertIdx; expertIdx < endExpertIdx; expertIdx++) {
-                // mx wait gmmx scale
                 if constexpr (MX_QUANT_MODE) {
                     commOp.WaitScale(expertIdx);
                 }
-                // wait gmmx
                 commOp.Wait(expertIdx);
                 SyncAll<false>();
-                // compute
                 computeOp.Process(expertIdx);
             }
         }

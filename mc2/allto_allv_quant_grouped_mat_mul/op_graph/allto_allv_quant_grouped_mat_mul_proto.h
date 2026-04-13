@@ -23,12 +23,16 @@ namespace ge {
 /**
 * @brief Fusion of alltoallv and grouped matmul.
 * @par Inputs:
-* @li gmm_x: A matrix Tensor of shape [BSK, H1]. The data type of elements supports hifloat8, float8_e4m3fn, float8_e5m2, float4_e2m1; the format supports ND.
-* @li gmm_weight: A matrix Tensor of shape [e, H1, N1]. The data type of elements supports hifloat8, float8_e4m3fn, float8_e5m2, float4_e2m1; the format supports ND.
+* @li gmm_x: A matrix Tensor of shape [BSK, H1]. The data type of elements supports hifloat8, float8_e4m3fn,
+      float8_e5m2, float4_e2m1; the format supports ND.
+* @li gmm_weight: A matrix Tensor of shape [e, H1, N1]. The data type of elements supports hifloat8, float8_e4m3fn,
+      float8_e5m2, float4_e2m1; the format supports ND.
 * @li send_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int64; the format supports ND.
 * @li recv_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int64; the format supports ND.
-* @li mm_x: A matrix Tensor of shape [BS, H1]. The data type of elements supports hifloat8, float8_e4m3fn, float8_e5m2, float4_e2m1 and should match that of gmm_x; the format supports ND.
-* @li mm_weight: A matrix Tensor of shape [H2, N2]. The data type of elements supports hifloat8, float8_e4m3fn, float8_e5m2, float4_e2m1 and should match that of gmm_weight; the format supports ND.
+* @li mm_x: A matrix Tensor of shape [BS, H1]. The data type of elements supports hifloat8, float8_e4m3fn,
+      float8_e5m2, float4_e2m1 and should match that of gmm_x; the format supports ND.
+* @li mm_weight: A matrix Tensor of shape [H2, N2]. The data type of elements supports hifloat8, float8_e4m3fn,
+      float8_e5m2, float4_e2m1 and should match that of gmm_weight; the format supports ND.
 * @li gmm_x_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
 * @li gmm_weight_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
 * @li mm_x_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
@@ -60,7 +64,8 @@ namespace ge {
 * @par Outputs:
 * @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
 * @li mm_y: A matrix tensor of shape [BS, N2] containing result of matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true. The data type of elements supports hifloat8, float8_e4m3fn, float8_e5m2, float4_e2m1; the format supports ND.
+* @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true.
+      The data type of elements supports hifloat8, float8_e4m3fn, float8_e5m2, float4_e2m1; the format supports ND.
 */
 REG_OP(AlltoAllvQuantGroupedMatMul)
       .INPUT(gmm_x, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
