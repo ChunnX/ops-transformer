@@ -109,8 +109,6 @@ protected:
 
     AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
 
-    CutResult GetTilingResult() override;
-
     ge::graphStatus DoUnQuantTiling();
 
 private:

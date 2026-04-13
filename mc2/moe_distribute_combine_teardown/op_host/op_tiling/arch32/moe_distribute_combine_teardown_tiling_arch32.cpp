@@ -15,8 +15,6 @@
 
 #include "mc2_log.h"
 #include "moe_distribute_combine_teardown_tiling_arch32.h"
-#include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
 
 namespace {
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
@@ -44,7 +42,6 @@ constexpr uint32_t SDMA_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 namespace MC2Tiling {
 
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineTeardown, MoeDistributeCombineTeardownTilingA3, 1);
 ge::graphStatus MoeDistributeCombineTeardownTilingA3::CheckAttrsWithoutRelation()
 {
     auto attrs = context_->GetAttrs();

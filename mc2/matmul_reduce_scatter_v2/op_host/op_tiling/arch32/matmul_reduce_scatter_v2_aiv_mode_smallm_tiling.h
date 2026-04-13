@@ -1862,10 +1862,7 @@ inline int GetOptimalUbmovenum(int m, int k, int n)
 
 } // namespace Tiling_Rank8_A2
 
-}; // namespace Tiling_Small_M
 
-namespace optiling {
-    ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *context);
-}
+}; // namespace Tiling_Small_M
 
 #endif // DECISION_RULES_H

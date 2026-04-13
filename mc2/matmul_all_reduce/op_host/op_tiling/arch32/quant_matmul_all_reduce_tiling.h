@@ -60,8 +60,6 @@ protected:
 
     ge::graphStatus CheckDequantScaleType();
 
-    CutResult GetTilingResult() override;
-
 private:
     ge::graphStatus CheckAxisSize();
     Mc2Tiling::QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingDataSelf_{};
