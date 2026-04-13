@@ -90,7 +90,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
 {
     OP_CHECK_IF(std::find(TOKENS_DTYPE.begin(), TOKENS_DTYPE.end(), tokenDtype_) == TOKENS_DTYPE.end(),
                 OP_LOGE(context_->GetNodeName(),
-                        "tokens support INT8, BF16, F16, FP8_E4M3FN, FP8_E5M2 datetype, actual %s.",
+                        "tokens support INT8, BF16, F16, FP8_E4M3FN, FP8_E5M2, HIFLOAT8 datatype, actual %s.",
                         ge::TypeUtils::DataTypeToSerialString(tokenDtype_).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(std::find(EXPERT_TOKEN_NUM_DTYPE.begin(), EXPERT_TOKEN_NUM_DTYPE.end(), expertDtype_) ==
@@ -151,7 +151,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
     OP_CHECK_IF(outTokenShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "outTokenShapePtr is nullptr."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(outTokenShapePtr->GetStorageShape() != context_->GetInputShape(IN_TOKEN_INDEX)->GetStorageShape(),
-                OP_LOGE(context_->GetNodeName(), "Input tokens shape must be same with out pertmute_tokens."),
+                OP_LOGE(context_->GetNodeName(), "Input tokens shape must be same with out permute_tokens."),
                 return ge::GRAPH_FAILED);
     if (hasScale_) {
         const gert::StorageShape *outScaleShapePtr = context_->GetOutputShape(OUT_SCALE_INDEX);
