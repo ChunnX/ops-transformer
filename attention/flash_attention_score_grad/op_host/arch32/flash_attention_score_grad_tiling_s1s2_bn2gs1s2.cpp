@@ -112,7 +112,6 @@ const char *templateNameS1S2 = "FlashAttentionScoreGradTilingS1s2Bn2gs1s2";
 
 bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2::IsCapable()
 {
-    return false;
     // 基础模板 除了sink以外全部支持
     auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
     if (sinkShape != nullptr && sinkShape->GetStorageShape().GetDimNum() == 1 ) {

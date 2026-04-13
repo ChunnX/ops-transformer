@@ -27,7 +27,6 @@ public:
 
     bool IsCapable() override
     {
-        return false;
         auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
         if (sinkShape != nullptr && sinkShape->GetStorageShape().GetDimNum() == 1 ) {
             return false;
