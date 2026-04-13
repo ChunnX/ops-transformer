@@ -36,7 +36,6 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)
     GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)
     GlobalTensor<bfloat16_t> kg;
-    // GlobalTensor<bfloat16_t> attnInter;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
     StageTwoMT *mm1;
@@ -75,7 +74,8 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
+        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max((uint64_t)chunkSize_,
+                                                             (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
         uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                          (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
@@ -101,10 +101,6 @@ public:
             for (int64_t cId = 0; cId < chunkNum_; cId++) {
                 auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
                 auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
-                // if (GetSubBlockIdx() == 0) {
-                //     DumpTensor(curState, 0, 10);
-                //     DumpTensor(curState[Dv_ * Dk_ - 8], 0, 8);
-                // }
                 int64_t length = cId * chunkSize_;
                 if (cId == chunkNum_ - 1) {
                     curChunkSize_ = lastChunkSize;
@@ -117,7 +113,6 @@ public:
                     CrossCoreWaitFlag(0x2);
                     if (GetSubBlockIdx() == 0) {
                         CalGCumExp(finalState, sTP_->gCumExp[nvId * Sp_ + length]);
-                        // printf("=========================   nvId * Sp_ + length: %ld \n", nvId * Sp_ + length);
                     }
                     CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                     CrossCoreWaitFlag(0x4);
@@ -125,34 +120,9 @@ public:
                 if ASCEND_IS_AIC {
                     uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                     uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                    if (GetSubBlockIdx() == 0) {
-                        // DumpTensor(sTP_->vInner[mm_offset1], 0, 10);
-                        // DumpTensor(sTP_->vInner[mm_offset1 + curChunkSize_ * Dv_ - 10], 0, 10);
-
-                        // DumpTensor(curState, 0, 10);
-                        // DumpTensor(curState[Dv_ * Dk_ - 10], 0, 10);
-                    }
                     CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
-                    CalAttnInter(sTP_->qPrime[mm_offset0], curState, sTP_->out[nvId * Dv_]);
-                    if (GetSubBlockIdx() == 0) {
-                        // for (int i = 0; i < curChunkSize_; ++i) {
-                        //     DumpTensor(sTP_->out[nvId * Dv_  + i * Nv_* Dv_], i, Dv_);
-                        // }
-                        // sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);    // MNK
-                        // sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
-                        // sTP_->mm1->SetTensorA(sTP_->qPrime[mm_offset0], false);
-                        // sTP_->mm1->SetTensorB(curState, true);
-                        // sTP_->mm1->IterateAll(sTP_->out[nvId * Dv_ ]);
-                        // sTP_->mm1->End();
-                        // for (int i = 0; i < curChunkSize_; ++i) {
-                        //     DumpTensor(sTP_->out[nvId * Dv_  + i * Nv_* Dv_], i, Dv_);
-                        // }
-                        // DumpTensor(sTP_->attnInter[mm_offset1], 0, 10);
-                        // DumpTensor(sTP_->attnInter[mm_offset1 + curChunkSize_ * Dv_ - 10], 0, 10);
-
-                        // DumpTensor(curState, 0, 10);
-                        // DumpTensor(curState[Dv_ * Dk_ - 10], 0, 10);
-                    }
+                    CalAttnInter(sTP_->qPrime[mm_offset0], curState,
+                                 sTP_->out[nvId * Dv_ + + cId * chunkSize_ * Nv_ * Dv_]);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
                     // CrossCoreWaitFlag(0x3);
                     CrossCoreWaitFlag(0x5);
@@ -180,9 +150,6 @@ public:
         Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
         Muls(tmpBuffer1_, tmpBuffer1_, lastGCumExp, Dv_ * curDk_);
         Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
-        // DumpTensor(stateOut, 0, 10);
-        // DumpTensor(stateOut, 0, Dv_ * curDk_);
-        // DumpTensor(stateOut[Dv_ * curDk_ - 16], 0, 16);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
 

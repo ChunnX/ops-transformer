@@ -288,7 +288,7 @@ private:
     {
         Stage3 stageThreeOp;
         StageThreeParams initStageThreeParams{
-            qkt_, gCumExp_, attnInter_, vInner_,
+            qkt_, gCumExp_, vInner_,
             stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
             &stage3MT_, pipe_, &cg, tiling_->scale,

@@ -31,7 +31,6 @@ using StageThreeMT = matmul::MatmulImpl<aT3, bT3, cT3>;
 struct StageThreeParams {
     GlobalTensor<bfloat16_t> qkt;       // (Nv, Sp, Dk)
     GlobalTensor<float> gCumExp;           // (Nv, Sp)
-    GlobalTensor<bfloat16_t> attnInter;
     GlobalTensor<bfloat16_t> vInner;
     GlobalTensor<float> maskTensor;
     GM_ADDR ws;
@@ -119,17 +118,13 @@ public:
                 }
                 CrossCoreSetFlag<0x2, PIPE_MTE3>(0x4);
                 CrossCoreWaitFlag(0x3);
-                // if (GetSubBlockIdx() == 0) {
-                //     CalAttnOut(sTP_->attnInter[nvId * Sp_ * Dv_ + chunkPos * Dv_],
-                //                sTP_->attnOut[chunkPos * Nv_ * Dv_ + nvId * Dv_]);
-                // }
             }
 
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag(0x4);
                 AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_],
                            sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
-                           sTP_->attnOut[nvId * Dv_]);
+                           sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
                 CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);
             }
         }
@@ -168,47 +163,6 @@ public:
         outQueue_.EnQue(scale_qkt);
         AlignedCopyOut(outGM, curChunkSize_, curChunkSize_);
         inQueue_.FreeTensor(qkt);
-    }
-
-    template <typename inType>
-    __aicore__ inline void CalAttnOut(GlobalTensor<inType> inTensor, GlobalTensor<bfloat16_t> outTensor)
-    {
-        // 匹配到BF16对齐, 余数为8以上时自动对齐无需额外偏移
-        // int64_t dstStride = 0;
-        // if (Dv_ % BLOCK_BF16_NUM != 0) {
-        //     dstStride = Dv_ % BLOCK_BF16_NUM > BLOCK_FLOAT_NUM ? 0 : BLOCK_FLOAT_NUM;
-        // }
-        // LocalTensor<float> inLocal = inQueue_.AllocTensor<float>();
-        // DataCopyExtParams inParams{static_cast<uint16_t>(curChunkSize_),
-        //                            static_cast<uint32_t>(Dv_ * sizeof(float)),
-        //                            static_cast<uint32_t>(0),
-        //                            static_cast<uint32_t>((dstStride) * sizeof(float) / BLOCK_SIZE),
-        //                            0};
-        LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
-        DataCopyExtParams inParams{static_cast<uint16_t>(curChunkSize_),
-                                   static_cast<uint32_t>(Dv_ * sizeof(inType)),
-                                   static_cast<uint32_t>(0),
-                                   static_cast<uint32_t>(0),
-                                   0};
-        DataCopyPadExtParams<inType> copyPadParams{false, 0, 0, 0};
-        DataCopyPad(inLocal, inTensor, inParams, copyPadParams);
-        inQueue_.EnQue(inLocal);
-        auto bf16AttnIn = inQueue_.DeQue<inType>();
-        // auto fp32AttnIn = inQueue_.DeQue<inType>();
-        auto attnOut = outQueue_.AllocTensor<bfloat16_t>();
-        // Copy(attnOut, bf16AttnIn, curChunkSize_ * Dv_);
-        // DataCopyPad(attnOut, bf16AttnIn, inParams, {1, static_cast<uint16_t>(curChunkSize_), static_cast<uint16_t>(Dv_), 0, 0, 1, 1, 1});
-        // Cast(attnOut, fp32AttnIn, RoundMode::CAST_RINT, curChunkSize_ * paddedDv_);
-        inQueue_.FreeTensor(bf16AttnIn);  // Cast 完成后立即释放
-        outQueue_.EnQue(attnOut);
-        auto outLocal = outQueue_.DeQue<bfloat16_t>();
-        DataCopyExtParams copyParams;
-        copyParams.blockCount = static_cast<uint16_t>(curChunkSize_);
-        copyParams.blockLen = static_cast<uint32_t>(Dv_ * sizeof(bfloat16_t));
-        copyParams.srcStride = static_cast<uint32_t>((0) * sizeof(bfloat16_t));
-        copyParams.dstStride = static_cast<uint32_t>((Nv_ * Dv_ - Dv_) * sizeof(bfloat16_t));
-        DataCopyPad(outTensor, outLocal, copyParams);
-        outQueue_.FreeTensor(outLocal);
     }
 
     __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t>tmpGM,
