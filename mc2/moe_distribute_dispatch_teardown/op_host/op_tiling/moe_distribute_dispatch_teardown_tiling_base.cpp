@@ -231,7 +231,7 @@ const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckOptionalAttr
             *epWorldSizePtr / 2, *sharedExpertRankNumPtr),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        ((*quantModePtr < UNQUANT) && (*quantModePtr > MX_QUANT)),
+        ((*quantModePtr < UNQUANT) || (*quantModePtr > MX_QUANT)),
         OP_LOGE(
             nodeName_, "quantMode only support 0 to 4 for now, but get %ld.",
             *quantModePtr),
