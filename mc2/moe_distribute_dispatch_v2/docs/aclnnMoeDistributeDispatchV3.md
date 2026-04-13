@@ -304,7 +304,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>globalBs</td>
     <td>输入</td>
-    <td>EP域全局batch size。</li></td>
+    <td>EP域全局batch size。</td>
     <td><br> <li> 各卡BS一致时：<code>globalBs = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡Bs最大值。</li></td>
     <td>INT64</td>
     <td>-</td>
