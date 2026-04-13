@@ -42,7 +42,7 @@ protected:
 
     template <bool hasQuantScale, bool isFirstColsLoop>
     // hasQuantScale = (isInputScale_ == 1), isFirstColsLoop = (colsLoop == 0)
-    __aicore__ inline void GatherOutSingleSlice(const LocalTensor<int32_t>& subRowIdxLocal, int64_t colsLoop, int64_t perLoopCols, int64_t curLoopCols, int64_t currentLoopStartRow, int64_t currentLoopLastRow, int64_t initialRow){
+    __aicore__ inline void GatherOutSingleSlice(const LocalTensor<int32_t>& subRowIdxLocal, int64_t curLoopRows, int64_t colsLoop, int64_t perLoopCols, int64_t curLoopCols, int64_t currentLoopStartRow, int64_t currentLoopLastRow, int64_t initialRow){
         // Gather out token-expert pairs with same expert section
         int64_t curLoopRow = 0;
         int64_t gatherDstRow = initialRow;
@@ -65,7 +65,7 @@ protected:
             SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
             DataCopyExtParams intriParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
 
-            while (curLoopRow < this->curLoopElements_ && gatherDstRow / k_ == row) {
+            while (curLoopRow < curLoopRows && gatherDstRow / k_ == row) {
                 int32_t outIndex = subRowIdxLocal.GetValue(curLoopRow);
                 curLoopRow++;
                 gatherDstRow++;
@@ -121,7 +121,7 @@ private:
     int64_t lastLoopCols_;
 
     int64_t indicesLoops_;
-    int64_t curLoopElements_;
+    int64_t curLoopElements_{0};   // Deprecating: it is better to be a param as kernel tiling input 
 
     int64_t perCoreIndicesElements_;
     int64_t lastCoreIndicesElements_;
@@ -230,10 +230,10 @@ __aicore__ inline void MoeGatherOut<T, EP>::Init(GM_ADDR x, GM_ADDR scale, GM_AD
 }
 
 template <typename T, const int EP>
-__aicore__ inline void MoeGatherOut<T, EP>::CopyExpertIn(int64_t progress)
+__aicore__ inline void MoeGatherOut<T, EP>::CopyExpertIn(int64_t progress, int64_t curLoopRows)
 {
     LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.AllocTensor<int32_t>();
-    DataCopyExtParams copyParams{1, static_cast<uint32_t>(curLoopElements_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{1, static_cast<uint32_t>(curLoopRows * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
     DataCopyPad(subRowIdxLocal, expandedRowIdxGm_[progress * curCorePerLoopIndicesElements_], copyParams, padParams);
     expandedRowIdxCopyInQueue_.EnQue(subRowIdxLocal);
@@ -279,7 +279,7 @@ __aicore__ inline void MoeGatherOut<T, EP>::CopyScaleOut(int64_t scaleDstOffset)
 
 template <typename T, const int EP>
 template <bool hasQuantScale>
-__aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
+__aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress, int64_t curLoopRows)
 {
     int64_t curExpertLoopOffset = progress * curCorePerLoopIndicesElements_;
     int64_t curIndiceLoopOffset = blockIdx_ * perCoreIndicesElements_;
@@ -292,7 +292,7 @@ __aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
     // Loop constants
     int64_t completeColsLoops = this->colsLoops_ - 1;
     int64_t currentLoopStartRow = initialRow / k_;
-    int64_t currentLoopLastRow = (initialRow + this->curLoopElements_ - 1) / k_;
+    int64_t currentLoopLastRow = (initialRow + curLoopRows - 1) / k_;
 
     // Seperate quant scale gather alone
     int64_t colsLoopStart = 0;
@@ -305,18 +305,18 @@ __aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
 
         if (doTailProc){
             // There are at least one complete colsLoops in total, tail and head columns DO NOT overlap. 
-            GatherOutSingleSlice<hasQuantScale, true>(subRowIdxLocal, NUM_ZERO, this->perLoopCols_, this->perLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+            GatherOutSingleSlice<hasQuantScale, true>(subRowIdxLocal, curLoopRows, NUM_ZERO, this->perLoopCols_, this->perLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
         } else {
             // Head and tail columns overlap when total column is less than single complete loop unit.
-            GatherOutSingleSlice<hasQuantScale, true>(subRowIdxLocal, NUM_ZERO, this->perLoopCols_, this->lastLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+            GatherOutSingleSlice<hasQuantScale, true>(subRowIdxLocal, curLoopRows, NUM_ZERO, this->perLoopCols_, this->lastLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
         }
     }
     for (int64_t colsLoop = colsLoopStart; colsLoop < completeColsLoops; colsLoop++) {
-        GatherOutSingleSlice<hasQuantScale, false>(subRowIdxLocal, colsLoop, this->perLoopCols_, this->perLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+        GatherOutSingleSlice<hasQuantScale, false>(subRowIdxLocal, curLoopRows, colsLoop, this->perLoopCols_, this->perLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
     }
     // process the tail tokens
     if (doTailProc){
-        GatherOutSingleSlice<hasQuantScale, false>(subRowIdxLocal, completeColsLoops, this->perLoopCols_, this->lastLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+        GatherOutSingleSlice<hasQuantScale, false>(subRowIdxLocal, curLoopRows, completeColsLoops, this->perLoopCols_, this->lastLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
     }
 
     expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
@@ -324,7 +324,7 @@ __aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
 
 template <typename T, const int EP>
 template <bool hasQuantScale>
-__aicore__ inline void MoeGatherOut<T, EP>::ScatterCopyOut(int64_t progress)
+__aicore__ inline void MoeGatherOut<T, EP>::ScatterCopyOut(int64_t progress, int64_t curLoopRows)
 {
     int64_t curExpertLoopOffset = progress * curCorePerLoopIndicesElements_;
     int64_t curIndiceLoopOffset = blockIdx_ * perCoreIndicesElements_;
@@ -333,7 +333,7 @@ __aicore__ inline void MoeGatherOut<T, EP>::ScatterCopyOut(int64_t progress)
     
     int64_t completeSlices = colsLoops_ - 1;
     
-    for (int64_t indicesIndex = 0; indicesIndex < curLoopElements_; indicesIndex++) {
+    for (int64_t indicesIndex = 0; indicesIndex < curLoopRows; indicesIndex++) {
         int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
         int64_t rowOffset = curIndiceBaseOffset + indicesIndex;
         if (activeNum_ > 0 && dropPadMode_ == DROPLESS_MODE && rowOffset >= activeNum_) {
@@ -368,18 +368,28 @@ template <bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
-        curLoopElements_ = curCorePerLoopIndicesElements_;
-        for (int64_t loop = 0; loop < indicesLoops_; loop++) {
-            if (loop == indicesLoops_ - 1) {
-                curLoopElements_ = curCoreLastLoopIndicesElements_;
-            }
-            CopyExpertIn(loop);
+        //curLoopElements_ = curCorePerLoopIndicesElements_;
+        int64_t completeIndiceLoops = this->indicesLoops_ - 1;
+
+        for (int64_t loop = 0; loop < completeIndiceLoops; loop++) {
+            CopyExpertIn(loop, curCorePerLoopIndicesElements_);
             if constexpr (!EP) {
                 // ep_ = 0
-                GatherCopyOut<hasQuantScale>(loop);
+                GatherCopyOut<hasQuantScale>(loop, curCorePerLoopIndicesElements_);
             } else {
                 // ep_ = 1 
-                ScatterCopyOut<hasQuantScale>(loop);
+                ScatterCopyOut<hasQuantScale>(loop, curCorePerLoopIndicesElements_);
+            }
+        }
+        // Tail indice procession
+        if (this->curCoreLastLoopIndicesElements_ > 0){
+            CopyExpertIn(completeIndiceLoops, this->curCoreLastLoopIndicesElements_);
+            if constexpr (!EP) {
+                // ep_ = 0
+                GatherCopyOut<hasQuantScale>(completeIndiceLoops, this->curCoreLastLoopIndicesElements_);
+            } else {
+                // ep_ = 1 
+                ScatterCopyOut<hasQuantScale>(completeIndiceLoops, this->curCoreLastLoopIndicesElements_);
             }
         }
     }
