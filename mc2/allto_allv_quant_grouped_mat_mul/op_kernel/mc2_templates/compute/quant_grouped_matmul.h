@@ -63,7 +63,7 @@ public:
         groupListGm_ = workspaceGM_;
 
         ptrTableBase_ = groupListGm_ + groupListSize;
-        cOffsetListGm_ = ptrTableBase_ + 64;  // 指针表后面存放 cOffsetList
+        cOffsetListGm_ = ptrTableBase_ + 64; // 指针表后面存放 cOffsetList
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
         yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)this->yGM_);
@@ -80,7 +80,7 @@ public:
         }
     }
 
-    __aicore__ inline void Process(uint32_t expertIdx, uint32_t roundIdx = 0)
+    __aicore__ inline void Process(uint32_t expertIdx, uint32_t roundIdx = 0, uint32_t baseA = 0)
     {
         if ASCEND_IS_AIV {
             return;
@@ -88,7 +88,7 @@ public:
         if (!isLocal && expertTokenNum_[expertIdx] == 0) {
             return;
         }
-        this->UpdateAddr(expertIdx, roundIdx);
+        this->UpdateAddr(expertIdx, roundIdx, baseA);
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
@@ -98,8 +98,10 @@ public:
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
         uint64_t totalTokens = isLocal ? bs_ : expertTokenNum_[expertIdx];
-        uint32_t startM = roundIdx * baseA_;
-        uint32_t endM = (roundIdx + 1) * baseA_ < static_cast<uint32_t>(totalTokens) ? (roundIdx + 1) * baseA_ : static_cast<uint32_t>(totalTokens);
+        uint32_t startM = roundIdx * baseA;
+        uint32_t endM = (roundIdx + 1) * baseA < static_cast<uint32_t>(totalTokens) ?
+                            (roundIdx + 1) * baseA :
+                            static_cast<uint32_t>(totalTokens);
         uint64_t curRoundTokens = (endM > startM) ? (endM - startM) : 0;
 
         groupListGlobalBuffer_.SetValue(0, curRoundTokens);
@@ -109,8 +111,8 @@ public:
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans>
             gmmASWKernel;
         tPipe_->Reset();
-        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
-                          &gmmParamsCopy_, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_, &gmmParamsCopy_,
+                          &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
 
@@ -133,13 +135,15 @@ public:
             }
             uint64_t totalTokens = isLocal ? bs_ : expertTokenNum_[e];
             uint32_t startM = roundIdx * baseA;
-            uint32_t endM = (roundIdx + 1) * baseA < static_cast<uint32_t>(totalTokens) ? (roundIdx + 1) * baseA : static_cast<uint32_t>(totalTokens);
+            uint32_t endM = (roundIdx + 1) * baseA < static_cast<uint32_t>(totalTokens) ?
+                                (roundIdx + 1) * baseA :
+                                static_cast<uint32_t>(totalTokens);
             uint64_t curRoundTokens = (endM > startM) ? (endM - startM) : 0;
             cumulativeM += curRoundTokens;
             groupListGlobalBuffer_.SetValue(activeGroupNum, cumulativeM);
 
-            AscendC::printf("expert%u: totalTokens=%lu, startM=%u, endM=%u, curRoundTokens=%lu, cumulativeM=%lu\n",
-                   e, totalTokens, startM, endM, curRoundTokens, cumulativeM);
+            AscendC::printf("expert%u: totalTokens=%lu, startM=%u, endM=%u, curRoundTokens=%lu, cumulativeM=%lu\n", e,
+                            totalTokens, startM, endM, curRoundTokens, cumulativeM);
 
             cOffsetListGlobalBuffer_.SetValue(activeGroupNum, cOffset);
             AscendC::printf("  cOffset[%u] = %lu (output offset in y)\n", activeGroupNum, cOffset);
@@ -217,9 +221,9 @@ public:
     }
 
 protected:
-    __aicore__ inline void UpdateAddr(uint32_t expertIdx, uint32_t roundIdx = 0)
+    __aicore__ inline void UpdateAddr(uint32_t expertIdx, uint32_t roundIdx = 0, uint32_t baseA = 0)
     {
-        uint64_t roundOffset = roundIdx * baseA_;
+        uint64_t roundOffset = roundIdx * baseA;
 
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr((expertTokenOffset_ + roundOffset) * h1_);
         wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
