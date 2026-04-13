@@ -679,8 +679,11 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
         this->reluGradQue.template EnQue(reluGradUb);
         this->reluGradQue.template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        uint16_t dstGap = constInfo.gSizeQueryIndex == G_SIZE_QUERY_INDEX_24 ? 
+                            (static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - runInfo.nIndexSize)) : 
+                            (static_cast<uint16_t>(runInfo.nIndexSize));
         DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.nIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
-            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),  static_cast<uint16_t>(runInfo.nIndexSize), 0, static_cast<uint16_t>(runInfo.nIndexSize)});
+            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),  static_cast<uint16_t>(runInfo.nIndexSize), 0, dstGap});
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
     if (kRunInfo.isS2end) {
