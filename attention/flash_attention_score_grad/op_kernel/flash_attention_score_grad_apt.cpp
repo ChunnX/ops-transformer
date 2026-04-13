@@ -74,7 +74,7 @@ __global__ __aicore__ void flash_attention_score_grad(
             IsDNoEqual, IsRope, OutDType, FP8_OPEN_TSCM, IsTndSwizzle, IsRegbase>(
                 query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,
                 softmax_in, attention_in, prefix, actual_seq_qlen, actual_seq_kvlen,
-                deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, dsScale, pScale, queryRope, keyRope,
-                dq, dk, dv, dpse, dqRope, dkRope, workspace, tiling_data);
+                deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, dsScale, pScale, queryRope, keyRope, sink,
+                dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, tiling_data);
     }
 }

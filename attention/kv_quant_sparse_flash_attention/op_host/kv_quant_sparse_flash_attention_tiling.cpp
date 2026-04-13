@@ -236,9 +236,13 @@ void QSFAMlaTiling::GenTilingKey()
 {
     uint32_t layoutQuery = static_cast<uint32_t>(sfaaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaaInfo_->kvLayout);
+    uint32_t pageAttention = 0U;
+    if (sfaaInfo_->kvLayout == QSFALayout::PA_BSND) {
+        pageAttention = 1U;
+    }
 
-    tilingKey_ = GET_TPL_TILING_KEY(0U, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
-
+    tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
+    
     OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
 
@@ -336,6 +340,9 @@ void QSFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseMode(sfaaInfo_->sparseMode);
     tilingData_.baseParams.set_sparseBlockSize(sfaaInfo_->sparseBlockSize);
     tilingData_.baseParams.set_sparseBlockCount(sfaaInfo_->sparseBlockCount);
+    tilingData_.baseParams.set_dSizeVInput(sfaaInfo_->dSizeVInput);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -719,7 +726,8 @@ ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
     if (quantScaleRepoMode_ == 1) {
         OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr || opParamInfo_.valueDequantScale.tensor == nullptr),
             OP_LOGE(opName_,
-            "When quant_scale_repo_mode is 1(combine), key_dequant_scale and value_dequant_scale should be both null."),
+            "When quant_scale_repo_mode is 1(combine), "
+            "key_dequant_scale and value_dequant_scale should be both provided."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1084,9 +1092,9 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
         return ge::GRAPH_FAILED);
 
     if (isA5_) {
-        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64, 128};
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 48, 64, 128, but got %u", gSize_),
+            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 48, 64, but got %u", gSize_),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
@@ -1094,7 +1102,24 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
             OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
             return ge::GRAPH_FAILED);
     }
-    
+
+    if (isA5_) {
+        if (inputKvType_ == ge::DT_HIFLOAT8) {
+            OP_CHECK_IF(sparseBlockCount_ != 2048,
+                OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse block count must be 2048, but got %u",
+                    sparseBlockCount_), return ge::GRAPH_FAILED);
+        }
+        OP_CHECK_IF(sparseBlockSize_ != 1,
+            OP_LOGE(opName_, "sparse block size must be 1, but got %u", sparseBlockSize_),
+            return ge::GRAPH_FAILED);
+    } else {
+        std::vector<uint32_t> sparseBlockSizeSupportList = {1, 2, 4, 8, 16};
+        OP_CHECK_IF(std::find(sparseBlockSizeSupportList.begin(), sparseBlockSizeSupportList.end(),
+            sparseBlockSize_) == sparseBlockSizeSupportList.end(),
+            OP_LOGE(opName_, "sparse block size should be in 1, 2, 4, 8, 16, but got %u", sparseBlockSize_),
+            return ge::GRAPH_FAILED);
+    }
+
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
         OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
         return ge::GRAPH_FAILED);
@@ -1676,6 +1701,12 @@ ge::graphStatus QSFAInfoParser::GetValueHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFAInfoParser::GetDSizeKV()
+{
+    dSizeKV_ = GetAxisNum(keyShape_, QSFAAxis::D, kvLayout_);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFAInfoParser::GetQueryAndOutLayout()
 {
     // 获取query和attentionOut的Layout基准值
@@ -1782,7 +1813,10 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaaInfo.maxActualseq = maxActualseq_;
+    
+    sfaaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
     sfaaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
+
     sfaaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaaInfo.isSameActualseq = isSameActualseq_;
 
@@ -1800,6 +1834,7 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.topkLayout = topkLayout_;
     sfaaInfo.kvLayout = kvLayout_;
     sfaaInfo.outLayout = outLayout_;
+    sfaaInfo.dSizeVInput = dSizeKV_;
 }
 
 ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &sfaaInfo)
@@ -1836,6 +1871,7 @@ ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &sfaaInfo)
         ge::GRAPH_SUCCESS != GetKHeadDim() ||
         ge::GRAPH_SUCCESS != GetS2Size() ||
         ge::GRAPH_SUCCESS != GetValueHeadDim() ||
+        ge::GRAPH_SUCCESS != GetDSizeKV() ||
         ge::GRAPH_SUCCESS != GetSparseBlockCount()) {
         return ge::GRAPH_FAILED;
     }

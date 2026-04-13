@@ -15,7 +15,6 @@
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
-
 ## 功能说明
 
 - **接口功能**：完成AllGather通信与MatMul计算融合。
@@ -234,12 +233,13 @@ aclnnStatus aclnnAllGatherMatmul(
 
 ## aclnnAllGatherMatmul
 
--   **参数说明：**
+- **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1166px"> <colgroup>
     <col style="width: 173px">
     <col style="width: 133px">
     <col style="width: 860px">
+    </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
@@ -269,14 +269,14 @@ aclnnStatus aclnnAllGatherMatmul(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnAllGatherMatmul默认确定性实现。
+  - <term>Ascend 950PR/Ascend 950DT</term>aclnnAllGatherMatmul默认确定性实现。
 
 - 输入x1为2维，其shape为(m, k)。x2必须是2维，其shape为(k, n)，轴满足MatMul算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
 - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
@@ -286,10 +286,11 @@ aclnnStatus aclnnAllGatherMatmul(
 - 输出为2维，其shape为(m*rank_size, n), rank_size为卡数。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>:
   - 支持2、4、8、16、32、64卡，并且仅支持HCCS链路all mesh组网。
   - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:一个模型中的通算融合MC2算子，仅支持相同通信域。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:一个模型中的通算融合MC2算子，仅支持相同通信域。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
@@ -303,6 +304,7 @@ aclnnStatus aclnnAllGatherMatmul(
     #include <iostream>
     #include <vector>
     #include "hccl/hccl.h"
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_all_gather_matmul.h"
 
     #define CHECK_RET(cond, return_expr) \
@@ -391,11 +393,11 @@ aclnnStatus aclnnAllGatherMatmul(
         long long outShapeSize = GetShapeSize(outShape);
         long long gatherOutShapeSize = GetShapeSize(gatherOutShape);
 
-        std::vector<int16_t> x1HostData(x1ShapeSize, 0);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 0);
-        std::vector<int16_t> biasHostData(biasShapeSize, 0);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
-        std::vector<int16_t> gatherOutHostData(gatherOutShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 0);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 0);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 0);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> gatherOutHostData(gatherOutShapeSize, 0);
 
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);

@@ -16,7 +16,7 @@
 #define __REDUCE_SCATTER_FORMULAIC_TILING_H__
 
 #pragma once
-#include "tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
 constexpr double TIME_LOWER_RATIO = 2.0;
 constexpr double TIME_UPPER_RATIO = 3.0;
 constexpr uint64_t LARGE_K_BOUNDARY = 8192;

@@ -295,7 +295,8 @@ struct RunInfo<false> {
     float scaleValue; \
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
-    float pScale
+    float pScale;\
+    float sinkValue = 0.0f;
 
 
 #define ROPE_INFO \
@@ -393,7 +394,7 @@ struct RunInfo<false> {
     uint32_t sparseType : 8;  \
     uint32_t dSizeRope : 11; \
     uint32_t splitCoreMode : 1; \
-    uint32_t coreNum;
+    uint32_t coreNum
 
 #define FAG_CV_SHARED_PARAMS \
     /* base params */ \
@@ -480,6 +481,8 @@ struct CVSharedParams<true, false> {
     // prefix
     bool isActualSharedPrefixLenNull;
     int64_t kvPrefixSize;
+
+    int64_t totalSize;
 };
 
 template<>
@@ -518,6 +521,8 @@ struct CVSharedParams<true, true> {
     // prefix
     bool isActualSharedPrefixLenNull;
     int64_t kvPrefixSize;
+
+    int64_t totalSize;
 };
 }
 

@@ -13,14 +13,13 @@
 | <term>Atlas 推理系列产品</term>                             |    √    |
 | <term>Atlas 训练系列产品</term>                              |    x    |
 
-
 ## 功能说明
 
--  接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
+- 接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
    本接口针对[aclnnApplyRotaryPosEmb](aclnnApplyRotaryPosEmb.md)做了如下功能变更，请根据实际情况选择合适的接口：
    
    - 新增rotaryMode参数，用于控制不同的旋转编码方式
--  计算公式：
+- 计算公式：
 
   （1）rotaryMode为"half"：
 
@@ -142,7 +141,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnApplyRotaryPosEmbV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnApplyRotaryPosEmbV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnApplyRotaryPosEmbV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnApplyRotaryPosEmbV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmbV2GetWorkspaceSize(
@@ -168,16 +167,16 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1557px">
+  <table style="undefined;table-layout: fixed; width: 1576px">
   <colgroup>
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 250px">
-    <col style="width: 300px">
-    <col style="width: 180px">
-    <col style="width: 80px">
-    <col style="width: 100px">
-    <col style="width: 100px">
+    <col style="width: 157px">
+    <col style="width: 125px">
+    <col style="width: 282px">
+    <col style="width: 319px">
+    <col style="width: 196px">
+    <col style="width: 122px">
+    <col style="width: 230px">
+    <col style="width: 145px">
   </colgroup>
   <tr>
     <th align="center">参数名</th>
@@ -191,7 +190,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
   </tr>
   <tbody>
     <tr>
-      <td>queryRef</td>
+      <td>queryRef（aclTensor）</td>
       <td>输入输出</td>
       <td>表示要执行旋转位置编码的第一个张量，公式中的query，计算结果原地更新。</td>
       <td>
@@ -214,7 +213,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>√</td>
     </tr>
     <tr>
-      <td>keyRef</td>
+      <td>keyRef（aclTensor）</td>
       <td>输入输出</td>
       <td>表示要执行旋转位置编码的第二个张量，公式中的key，计算结果原地更新。</td>
       <td>
@@ -237,7 +236,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>√</td>
     </tr>
     <tr>
-      <td>cos</td>
+      <td>cos（aclTensor）</td>
       <td>输入</td>
       <td>表示参与计算的位置编码张量，公式中的cos。</td>
       <td>
@@ -264,7 +263,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>√</td>
     </tr>
     <tr>
-      <td>sin</td>
+      <td>sin（aclTensor）</td>
       <td>输入</td>
       <td>表示参与计算的位置编码张量，公式中的sin。</td>
       <td>
@@ -291,7 +290,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>√</td>
     </tr>
     <tr>
-      <td>layout</td>
+      <td>layout（int64_t）</td>
       <td>输入</td>
       <td>表示输入Tensor的布局格式。</td>
       <td>
@@ -307,7 +306,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>rotaryMode</td>
+      <td>rotaryMode（char）</td>
       <td>输入</td>
       <td>表示公式中的旋转模式。</td>
       <td>
@@ -323,7 +322,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -333,7 +332,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -355,9 +354,9 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
   <table>
   
   <tr>
-  <td align="center">返回值</td>
-  <td align="center">错误码</td>
-  <td align="center">描述</td>
+  <td align="center" style="width:169px;">返回值</td>
+  <td align="center" style="width:125px;">错误码</td>
+  <td align="center" style="width:855px;">描述</td>
   </tr>
   <tr>
   <td align="left">ACLNN_ERR_PARAM_NULLPTR</td>
@@ -377,11 +376,11 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1557px">
+  <table style="undefined;table-layout: fixed; width: 1149px">
   <colgroup>
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 600px">
+    <col style="width: 169px">
+    <col style="width: 125px">
+    <col style="width: 855px">
   </colgroup>
   <tr>
     <th align="center">参数名</th>

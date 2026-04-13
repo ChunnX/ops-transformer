@@ -24,16 +24,11 @@ public:
     explicit FlashAttentionScoreGradTilingVarlenRegbase(gert::TilingContext *curContext_) : FlashAttentionScoreGradTilingNormalRegbase(curContext_)
     {
     }
-    ~FlashAttentionScoreGradTilingVarlenRegbase()
-    {
-    }
+    ~FlashAttentionScoreGradTilingVarlenRegbase() override = default;
 
 protected:
     bool IsCapable() override
     {
-        const char *tndSoftmaxIn = context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN) ? context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN)) : "";
-        if (strcmp(tndSoftmaxIn, "") != 0) return false;
-
         auto actualSeqQLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
         OP_LOGD(context_, "coreNum is %lu", fBaseParams.coreNum);
         if (npuArch == NpuArch::DAV_3510 && actualSeqQLenTensor != nullptr &&
@@ -44,7 +39,7 @@ protected:
         return false;
     }
 
-    void CalcleTNDDeterParam()
+    void CalcleTNDDeterParam() override
     {
         if (fBaseParams.layoutType != INPUT_FORMAT_TND) {
             return;
@@ -90,11 +85,8 @@ protected:
             deterPrefixData.nNewList.push_back(actualS2Outer);
         }
         int64_t totalArea = deterPrefixData.prefix1.back() * fBaseParams.n1;
-        if (fBaseParams.g == 1) {
-            fBaseParams.deterMaxRound = std::max(CeilDivideBy(totalArea, static_cast<int64_t>(fBaseParams.aicNum)), s1Max);
-        } else {
-            fBaseParams.deterMaxRound = std::max({CeilDivideBy(totalArea, static_cast<int64_t>(fBaseParams.aicNum)), s1Max * fBaseParams.g, s2Max});
-        }
+        fBaseParams.deterMaxRound =
+            std::max({CeilDivideBy(totalArea, static_cast<int64_t>(fBaseParams.aicNum)), s1Max * fBaseParams.g, s2Max});
 
         deterPrefixData.prefix0 = SliceVector(deterPrefixData.prefix1, fBaseParams.deterPrefixStep);
         deterPrefixData.deterPrefix = SliceVector(deterPrefixData.deterPrefix, fBaseParams.deterPrefixStep);
@@ -216,7 +208,7 @@ protected:
             if (N12 > 0) {
                 deterPrefixData.prefix1.push_back(deterPrefixData.prefix1.back() +
                                         (actualS1Outer - (actualS2Outer + 1) / NUM_TWO + 1) * (actualS2Outer / NUM_TWO));
-                if (actualS2Outer >= NUM_TWO && fBaseParams.g != 1) {
+                if (fBaseParams.g == 1 || (actualS2Outer >= NUM_TWO && fBaseParams.g != 1)) {
                     m1Max = std::max(m1Max, fBaseParams.g * (actualS1Outer - (actualS2Outer + 1) / NUM_TWO + 1));
                 }
 
@@ -787,7 +779,7 @@ protected:
         tndBandDeterRoundInfo.lastBatchId = batchId;
     }
 
-    ge::graphStatus GetBlockInfoOfTNDForBn2()
+    ge::graphStatus GetBlockInfoOfTNDForBn2() override
     {
         // 二维数组，第一维是batch，第二维的id0存储不乘N的基本块数，id1存每个batch乘N的基本块总数
         std::vector<std::vector<int64_t>> totalBlockInfo(fBaseParams.b, std::vector<int64_t>(TOTAL_BLOCK_DIMENSION));
@@ -939,7 +931,7 @@ protected:
         return true;
     }
 
-    ge::graphStatus GetSparseUnpadBlockInfo()
+    ge::graphStatus GetSparseUnpadBlockInfo() override
     {
         std::vector<std::vector<std::vector<int64_t>>> calculatedBlockInfo(
             fBaseParams.b,
@@ -1127,7 +1119,7 @@ protected:
         }
     }
 
-    bool IsValidUnpad(int64_t blockIdx)
+    bool IsValidUnpad(int64_t blockIdx) override
     {
         int64_t resbaseIdx = blockIdx;
         for (int64_t bIdx = 0; bIdx < fBaseParams.b; bIdx++) {
@@ -1155,7 +1147,7 @@ protected:
     }
 
     bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx,
-        int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx)
+        int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx) override
     {
         int64_t actualS1Len = fBaseParams.actualSeqQlen[bIdx];
         int64_t actualS2Len = fBaseParams.actualSeqKvlen[bIdx];
@@ -1202,7 +1194,7 @@ protected:
         return isValid;
     }
 
-    bool GetBlockInfoOfBNS4TND()
+    bool GetBlockInfoOfBNS4TND() override
     {
         std::vector<std::vector<int64_t>> totalBlockInfo(fBaseParams.b, std::vector<int64_t>(TOTAL_BLOCK_DIMENSION));
         std::vector<std::vector<float>> acturalBlockInfo(fBaseParams.b + NUM_TWO, std::vector<float>(fBaseParams.s2Outer));

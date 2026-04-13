@@ -636,8 +636,9 @@ static int64_t GetPergroupSize(const GMMAttrs& gmmAttrs, bool isSingleWeight,
   return pergroupSize;
 }
 
-static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
-                                                            const GMMParamsInfo &paramsInfo, bool hasAntiquantOffset)
+static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(const gert::InferShapeContext *context,
+                                                            const GMMAttrs &gmmAttrs, const GMMParamsInfo &paramsInfo,
+                                                            bool hasAntiquantOffset)
 {
     auto antiquantScale0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
     auto dimNum = antiquantScale0Shape->GetDimNum();

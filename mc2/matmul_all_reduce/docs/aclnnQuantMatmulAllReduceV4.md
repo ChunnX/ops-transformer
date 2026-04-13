@@ -11,7 +11,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
 | <term>Atlas 推理系列产品</term>                                                 |    ×    |
-| <term>Atlas 训练系列产品 </term>                                                 |    ×    |
+| <term>Atlas 训练系列产品</term>                                                 |    ×    |
 
 ## 功能说明
 
@@ -20,7 +20,7 @@
   - <term>Ascend 950PR/Ascend 950DT</term>：新增perblock、pertile、mxfp量化方式。新增x1，x2输入支持dtype为`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、HIFLOAT8、`FLOAT4_E2M1`。
 - **计算公式**：
 
-  - 公式1，使能低bit通信场景的公式2或公式3场景：
+  - 公式1，使能低bit通信的公式2或公式3场景：
   
     x1，x2为INT8，commQuantScale1Optional, commQuantScale2Optional不为空时:
 
@@ -81,7 +81,7 @@
 
   - 公式7，perblock-perblock量化：
   
-    x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
+    x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceilDiv(a0，128)，ceilDiv(a1，128))，x2Scale为(ceilDiv(b0，128)，ceilDiv(b1，128))，out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
     output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3Optional)
@@ -155,12 +155,13 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV4(
-    void          *workspace,
-    uint64_t       workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream    stream)
+    void              *workspace,
+    uint64_t           workspaceSize,
+    aclOpExecutor     *executor,
+    const aclrtStream  stream)
 ```
 
 ## aclnnQuantMatmulAllReduceV4GetWorkspaceSize
@@ -242,7 +243,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>x2ScaleOptional</td>
           <td>输入</td>
           <td>MatMul计算后的去量化系数，即计算公式中的x2Scale。</td>
-          <td><ul><li>shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。</li><li>输入为int8且输出为BFLOAT16时，直接将BFLOAT16类型的x2ScaleOptional传入本接口。</li><li>输出为FLOAT16且输入为INT8时，x1ScaleOptional不为空，可直接将FLOAT32类型的x2ScaleOptional传入本接口，如果x1ScaleOptional为空，则需提前调用TransQuantParamV2算子的aclnn接口来将x2ScaleOptional转成INT64/UINT64数据类型。<li>数据类型为FLOAT8_E8M0时，仅支持转置，shape为[n, ceilDiv(k, 64), 2]。</li> <li>x2为FLOAT4_E2M1时，必须保证ceilDiv(k, 32)为偶数.</li><li>perblock场景下，x2的shape为[ceilDiv(k, 128), ceilDiv(n, 128)]，x2转置时，x2ScaleOptional的shape为[ceilDiv(n, 128), ceilDiv(k, 128)]。</li></ul></td>
+          <td><ul><li>shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。</li><li>输入为int8且输出为BFLOAT16时，直接将BFLOAT16类型的x2ScaleOptional传入本接口。</li><li>输出为FLOAT16且输入为INT8时，x1ScaleOptional不为空，可直接将FLOAT32类型的x2ScaleOptional传入本接口，如果x1ScaleOptional为空，则需提前调用TransQuantParamV2算子的aclnn接口来将x2ScaleOptional转成INT64/UINT64数据类型。</li><li>数据类型为FLOAT8_E8M0时，仅支持转置，shape为[n, ceilDiv(k, 64), 2]。</li> <li>x2为FLOAT4_E2M1时，必须保证ceilDiv(k, 32)为偶数.</li><li>perblock场景下，x2的shape为[ceilDiv(k, 128), ceilDiv(n, 128)]，x2转置时，x2ScaleOptional的shape为[ceilDiv(n, 128), ceilDiv(k, 128)]。</li></ul></td>
           <td>INT64、UINT64、FLOAT32、BFLOAT16、FLOAT8_E8M0</td>
           <td>ND</td>
           <td>1-3</td>
@@ -406,6 +407,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
   <col style="width: 168px">
   <col style="width: 128px">
   <col style="width: 854px">
+  </colgroup>
   <thead>
   <tr>
       <th>参数名</th>
@@ -465,6 +467,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     $$
 
 输入和输出支持以下数据类型组合
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     <table>
     <thead>
@@ -736,6 +739,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
   #include <vector>
   #include <thread>
   #include "hccl/hccl.h"
+  #include "aclnn/opdev/fp16_t.h"
   #include "aclnnop/aclnn_trans_matmul_weight.h"
   #include "aclnnop/aclnn_quant_matmul_all_reduce_v4.h"
 
@@ -786,10 +790,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       const aclIntArray *mat2Size = aclCreateIntArray(shape.data(), shape.size());
       auto ret = aclnnCalculateMatmulWeightSizeV2(mat2Size, ACL_INT8, &size);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCalculateMatmulWeightSizeV2 failed. ERROR: %d\n", ret); return ret);
-      auto tensorSize = size * sizeof(T);
 
       // 调用aclrtMalloc申请device内存
-      ret = aclrtMalloc(deviceAddr, tensorSize, ACL_MEM_MALLOC_HUGE_FIRST);
+      ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
 
       // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
@@ -897,12 +900,12 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       std::vector<int8_t> x1HostData(x1ShapeSize, 1);
       std::vector<int8_t> x2HostData(x2ShapeSize, 1);
       std::vector<int32_t> biasHostData(biasShapeSize, 1);
-      std::vector<int32_t> dequantScaleHostData(dequantScaleShapeSize, 1);
-      std::vector<int32_t> x1ScaleHostData(x1ScaleShapeSize, 1);
-      std::vector<int16_t> commQuantScale1HostData(commQuantScale1ShapeSize, 1);
-      std::vector<int16_t> commQuantScale2HostData(commQuantScale2ShapeSize, 1);
-      std::vector<int16_t> x3HostData(x3ShapeSize, 1);
-      std::vector<int16_t> outHostData(outShapeSize, 0);
+      std::vector<float> dequantScaleHostData(dequantScaleShapeSize, 1);
+      std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 1);
+      std::vector<op::fp16_t> commQuantScale1HostData(commQuantScale1ShapeSize, 1);
+      std::vector<op::fp16_t> commQuantScale2HostData(commQuantScale2ShapeSize, 1);
+      std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
+      std::vector<op::fp16_t> outHostData(outShapeSize, 0);
       // 创建 tensor
       ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
       CHECK_RET(ret == ACL_SUCCESS, return ret);

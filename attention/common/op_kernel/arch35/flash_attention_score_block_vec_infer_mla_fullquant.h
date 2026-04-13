@@ -41,7 +41,8 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                                   IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
-    static constexpr bool isMlaFullQuant = isFp8 && hasRope;
+    static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
+    static constexpr bool isMlaFullQuant = (isFp8 || isInt8) && hasRope;
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
 
@@ -430,7 +431,7 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Vec1SinkCompu
     float sinkValue;
     if constexpr (IsSameType<decltype(sinkRaw), half>::value) {
         sinkValue = static_cast<float>(sinkRaw);
-    } else {
+    } else if constexpr (IsSameType<decltype(sinkRaw), bfloat16_t>::value) {
         sinkValue = ToFloat(sinkRaw);
     }
     SinkSubExpAddVF<float>(sumUb, maxUb, sinkValue, runInfo.halfS1RealSize);

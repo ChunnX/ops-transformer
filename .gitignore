@@ -37,3 +37,12 @@ MANIFEST.in
 
 # third_party
 third_party/
+
+# ai
+.agents/
+.opencode/
+.claude/
+
+# pre-commit log
+log/
+oat_reports/

@@ -18,14 +18,14 @@
 
 #include "lib/hccl/hccl.h"
 #include "../common_def.h"
-#include "../../common/inc/kernel/mc2_common_def.h"
-#include "../../common/new_mc2_mm/kernel/mc2_mat_mul_asw_kernel.h"
-#include "../../common/new_mc2_mm/kernel/mc2_mat_mul_asw_block.h"
+#include "../../common/op_kernel/mc2_common_def.h"
+#include "../../common/op_kernel/mc2_mat_mul_asw_kernel.h"
+#include "../../common/op_kernel/mc2_mat_mul_asw_block.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "matmul_reduce_scatter_v2_c_tiling.h"
-#include "../../common/inc/kernel/reduce_sum_cast_fp32.h"
+#include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename BiasType, typename CType>
 #define TEMPLATE_FUNC_PARAMS AType, BType, BiasType, CType

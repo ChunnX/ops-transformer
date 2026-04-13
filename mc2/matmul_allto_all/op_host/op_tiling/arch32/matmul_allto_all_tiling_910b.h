@@ -18,7 +18,7 @@
 
 #include "securec.h"
 #include "mc2_matmul_tiling_cfg.h"
-#include "tiling/new_mc2_tiling_utils.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "../matmul_allto_all_tiling_base.h"
 #include "../common/matmul_allto_all_util_tiling.h"
 #include "../../../op_kernel/arch32/matmul_allto_all_tiling.h"

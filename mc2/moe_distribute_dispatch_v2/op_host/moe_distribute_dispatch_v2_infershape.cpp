@@ -39,6 +39,7 @@ static constexpr int64_t ASSIST_INFO_NUM_PER_A = 128;
 static constexpr int64_t PER_GROUP_SIZE = 128;
 static constexpr int64_t MX_QUANT_SIZE = 32;
 static constexpr int64_t NUM_EVEN = 2;
+static constexpr int64_t SEND_COUNT_MEMORY_SIZE = 2;
 
 static constexpr size_t DISPATCH_INPUT_X_INDEX = 0;
 static constexpr size_t DISPATCH_INPUT_EXPERT_IDS_INDEX = 1;
@@ -287,7 +288,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         if (*tpWorldSize == DIM_TWO)  {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
         } else if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE);
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -311,7 +312,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckQuantMode(gert::InferDataTypeContext *context, const int64_t *quantMode, int64_t yDtype)
+static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context, const int64_t *quantMode, int64_t yDtype)
 {
     if (*quantMode == QuantMode::QUANT_MODE_STATIC) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
@@ -327,9 +328,11 @@ static ge::graphStatus CheckQuantMode(gert::InferDataTypeContext *context, const
         return ge::GRAPH_FAILED);
     } else if ((*quantMode == QuantMode::QUANT_MODE_PERGROUP) || (*quantMode == QuantMode::QUANT_MODE_MX)) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E2M1)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E1M2)),
         OP_LOGE(context->GetNodeName(), "when quantmode is pergoup or mxfp8 quant, "
-                "ydtype must be float8_e4m3fn or float8_e5m2"),
+                "ydtype must be float8_e4m3fn, float8_e5m2, float4_e2m1 or float4_e1m2"),
         return ge::GRAPH_FAILED);
     }
 

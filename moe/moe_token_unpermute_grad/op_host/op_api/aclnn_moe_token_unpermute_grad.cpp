@@ -19,6 +19,10 @@
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/contiguous.h"
+#include "opdev/tensor_view_utils.h"
+#include "opdev/op_log.h"
+#include "moe/moe_finalize_routing_v2_grad/op_host/op_api/moe_finalize_routing_v2_grad.h"
 
 using namespace op;
 
@@ -26,14 +30,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2GradGetWorkspaceSize(
-    const aclTensor* gradY, const aclTensor* expandedRowIdx, const aclTensor* expandedXOptional,
-    const aclTensor* scalesOptional, const aclTensor* expertIdxOptional, const aclTensor* biasOptional,
-    int64_t dropPadMode, int64_t activeNum, int64_t expertNum, int64_t expertCapacity,
-    const aclTensor* gradExpandedXOut, const aclTensor* gradScalesOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeFinalizeRoutingV2Grad(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 extern aclnnStatus aclnnInnerMoeTokenUnpermuteGradGetWorkspaceSize(
     const aclTensor* permuteTokens, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
     const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
@@ -46,6 +42,12 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
     aclTensor* permutedTokensGradOut, aclTensor* probsGradOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    L2_DFX_PHASE_1(aclnnMoeTokenUnpermuteGrad,
+        DFX_IN(permuteTokens, unpermutedTokensGrad, sortedIndices,
+            probsOptional, paddedMode, restoreShapeOptional),
+        DFX_OUT(permutedTokensGradOut, probsGradOut));
+
     static bool useMoeFinalizeRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2Grad) {
         return aclnnInnerMoeTokenUnpermuteGradGetWorkspaceSize(
@@ -53,20 +55,58 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
             permutedTokensGradOut, probsGradOut, workspaceSize, executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
+
+    // 参数检查
     OP_CHECK_NULL(permuteTokens, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(unpermutedTokensGrad, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(permutedTokensGradOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(probsGradOut, return ACLNN_ERR_PARAM_NULLPTR);
+
+    // 创建OpExecutor
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    // 固定写法，将输入转换成连续的tensor
+    auto unpermutedTokensGradContiguous = l0op::Contiguous(unpermutedTokensGrad, uniqueExecutor.get());
+    CHECK_RET(unpermutedTokensGradContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
+    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());
+    CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    
+    const aclTensor* probsContiguous = nullptr;
+    if (probsOptional != nullptr) {
+        probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
+        CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    // 获取activeNum
     auto permuteTokensShape = permuteTokens->GetViewShape();
     CHECK_RET(permuteTokensShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
     int64_t activeNum = permuteTokensShape.GetDim(0);
-    aclnnStatus ret = aclnnInnerMoeFinalizeRoutingV2GradGetWorkspaceSize(
-        unpermutedTokensGrad, sortedIndices, permuteTokens, probsOptional, nullptr, nullptr, 0, activeNum, 0, 0,
-        permutedTokensGradOut, probsGradOut, workspaceSize, executor);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(
-            ACLNN_ERR_INNER,
-            "aclnnMoeTokenUnpermuteGrad calls aclnnInnerMoeFinalizeRoutingV2Grad, please refer to the document for "
-            "parameter correspondence.");
-    }
-    return ret;
+
+    // 调用l0接口进行计算
+    auto result = l0op::MoeFinalizeRoutingV2Grad(unpermutedTokensGradContiguous, sortedIndicesContiguous,
+        permuteTokensContiguous, probsContiguous, nullptr, nullptr,
+        0, activeNum, 0, 0, permutedTokensGradOut,
+        probsGradOut, uniqueExecutor.get());
+    auto [gradExpandedXOut_, gradScalesOut_] = result;
+    bool hasNullptr = (gradExpandedXOut_ == nullptr) || (gradScalesOut_ == nullptr);
+    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
+
+    // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
+    auto viewCopyGradExpandedXOutResult = l0op::ViewCopy(gradExpandedXOut_,
+        permutedTokensGradOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyGradExpandedXOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto viewCopyGradScalesOutResult = l0op::ViewCopy(gradScalesOut_, probsGradOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyGradScalesOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 获取计算过程中需要使用的workspace大小
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnMoeTokenUnpermuteGrad(
@@ -76,14 +116,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
     if (!useMoeFinalizeRoutingV2Grad) {
         return aclnnInnerMoeTokenUnpermuteGrad(workspace, workspaceSize, executor, stream);
     }
-    aclnnStatus ret = aclnnInnerMoeFinalizeRoutingV2Grad(workspace, workspaceSize, executor, stream);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(
-            ACLNN_ERR_INNER,
-            "aclnnMoeTokenUnpermuteGrad calls aclnnInnerMoeFinalizeRoutingV2Grad, please refer to the document for "
-            "parameter correspondence.");
-        return ret;
-    }
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

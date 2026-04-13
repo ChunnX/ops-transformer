@@ -396,9 +396,11 @@ function(add_ops_src_copy)
     set(MC2_OPS_LIST "matmul_reduce_scatter;"
         "matmul_reduce_scatter_v2;"
         "grouped_mat_mul_allto_allv;"
+        "quant_grouped_mat_mul_allto_allv;"
         "grouped_mat_mul_all_reduce;"
         "batch_mat_mul_reduce_scatter_allto_all;"
         "allto_allv_grouped_mat_mul;"
+        "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
         "moe_distribute_combine_add_rms_norm;"
@@ -675,6 +677,7 @@ function(add_bin_compile_target)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} optiling_compat generate_ops_info)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
+            add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
             add_dependencies(${OP_TARGET_NAME} ${OP_TARGET_NAME}_${op_index})
         endif ()
     endforeach()

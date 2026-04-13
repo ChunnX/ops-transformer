@@ -85,7 +85,12 @@ protected:
 
     ge::graphStatus CheckInput() override;
 
+    ge::graphStatus GetWorkspaceSizeInStandardCard4P();
+    ge::graphStatus SetMc2HcommAllReduce(const char* groupName, const uint32_t reduceType);
+    ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2Hcomm();
+
+    CutResult GetTilingResult() override;
 
 private:
     ge::graphStatus CheckBiasInput();

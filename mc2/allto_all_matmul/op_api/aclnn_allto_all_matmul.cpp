@@ -11,8 +11,8 @@
 #include "aclnn_allto_all_matmul.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
@@ -20,10 +20,11 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
 #include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
+#include "aclnnInner_allto_all_matmul.h"
 
 
 namespace {
@@ -218,19 +219,6 @@ static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **
 }
 } // namespace
 
-// L0层两段式接口Inner，根据算子原型op_graph/allto_all_matmul_proto.h，由模板自动生成。非量化L2层接口和量化L2层接口共用一套L0层接口。
-// worldSize为硬件方参数，在aclnn侧不感知。yDtype在aclnn侧不感知。这两个参数需要在Inner接口处声明，在aclnn侧通过默认值传参。
-extern "C" aclnnStatus aclnnInnerAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                                                const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional,
-                                                                const aclTensor *commScaleOptional,
-                                                                const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional,
-                                                                const char *group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
-                                                                int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
-                                                                int64_t commQuantMode, int64_t x1QuantDtype, int64_t commQuantDtype,
-                                                                bool transposeX1, bool transposeX2, int64_t groupSize, bool all2AllOutFlag,
-                                                                const aclTensor *out, const aclTensor *all2AllOutOptional,
-                                                                uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnInnerAlltoAllMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerAlltoAllMatmulGetWorkspaceSize完成默认值传参和调用L0层接口
@@ -256,7 +244,7 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
     int64_t x1QuantMode = 0;
     int64_t x2QuantMode = 0;
     int64_t commQuantMode = 0;
-    int64_t x1QuantDtype = 2;
+    int64_t x1QuantDtype = GE_UNDEFINED;
     int64_t commQuantDtype = GE_UNDEFINED;
     int64_t groupSize = 0;
     bool all2AllOutFlag = IsAll2AllOut(alltoAllOutOptional);
@@ -276,7 +264,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
                                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_INVALID);	// 先检查x2是否合法，避免访问空指针等等非法操作
+    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
     bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
     auto transX2 = x2;    // 复制一个x2
     if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错

@@ -16,9 +16,9 @@
 - 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
 
     相较于MoeDistributeCombine算子，该算子变更如下：
-    -   输入了更详细的token信息辅助`MoeDistributeCombineV2`高效地进行全卡同步，因此原算子中shape为(`Bs` * `K`,)的`expandIdx`入参替换为shape为(`A` * 128,)的`assistInfoForCombine`参数；
-    -   新增`sharedExpertXOptional`入参，支持在`sharedExpertNum`为0时，由用户输入共享专家计算后的token；
-    -   新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
+    - 输入了更详细的token信息辅助`MoeDistributeCombineV2`高效地进行全卡同步，因此原算子中shape为(`Bs` * `K`,)的`expandIdx`入参替换为shape为(`A` * 128,)的`assistInfoForCombine`参数；
+    - 新增`sharedExpertXOptional`入参，支持在`sharedExpertNum`为0时，由用户输入共享专家计算后的token；
+    - 新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
     详细说明请参考以下参数说明。
 - 计算公式：
 
@@ -178,7 +178,6 @@
    <td>ND</td>
   </tr>
   <tr>
-  <tr>
     <td>performanceInfoOptional</td>
     <td>可选输入</td>
     <td>表示本卡等待各卡数据的通信时间，单位为us（微秒）。单次算子调用各卡通信耗时会累加到该Tensor上，算子内部不进行自动清零，因此用户每次启用此Tensor开始记录耗时前需对Tensor清零。</td>
@@ -202,7 +201,7 @@
   <tr>
    <td>epRankId</td>
    <td>属性</td>
-   <td>EP域本卡Id，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+   <td>EP域本卡ID，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -230,7 +229,7 @@
   <tr>
    <td>tpRankId</td>
    <td>可选属性</td>
-   <td><li>TP域本卡Id，无TP域通信时传0即可。</li><li>默认值为0。</li></td>
+   <td><li>TP域本卡ID，无TP域通信时传0即可。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -327,9 +326,14 @@
     * 不支持动态缩容场景，不支持`elasticInfoOptional`。
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
     * 不支持常量专家场景，不支持`constExpertNum`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`和`constExpertVOptional`，使用默认值即可。
+    
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
+
+- <term>Ascend 950PR/Ascend 950DT</term>：
     * 不支持`expandScalesOptional`。
     * 不支持`commAlg`。
+    * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出为无效内容。
 
 ## 约束说明
 
@@ -352,10 +356,10 @@
     - `zeroExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moeExpertNum`, `moeExpertNum` + `zeroExpertNum`)。
     - `copyExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moeExpertNum` + `zeroExpertNum`, `moeExpertNum` + `zeroExpertNum` + `copyExpertNum`)。
     - `constExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moeExpertNum` + `zeroExpertNum` + `copyExpertNum`, `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`)。
-    - `oriXOptional`：可选择传入有效数据或填空指针，当`copyExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需跟`expandX`保持一致。
-    - `constExpertAlpha1Optional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, )，数据类型需跟`expandX`保持一致。
-    - `constExpertAlpha2Optional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, )，数据类型需跟`expandX`保持一致。
-    - `constExpertVOptional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, `H`)，数据类型需跟`expandX`保持一致。
+    - `oriXOptional`：可选择传入有效数据或填空指针，当`copyExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需与`expandX`保持一致。
+    - `constExpertAlpha1Optional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, )，数据类型需与`expandX`保持一致。
+    - `constExpertAlpha2Optional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, )，数据类型需与`expandX`保持一致。
+    - `constExpertVOptional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, `H`)，数据类型需与`expandX`保持一致。
 
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：
@@ -382,7 +386,7 @@
         - `commQuantMode`：2，开启通信int8量化，仅当`commAlg` = "hierarchy"且驱动版本不低于25.0.RC1.1时支持。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
         - `commAlg` = "fullmesh"：要求 >= (`Bs` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
-        - `commAlg` = "hierarchy"：要求 >= (`moeExpertNum` + `epWorldSize` / 4) * `maxBs` * (`H` * 2 + 16 * Align8(`K`)) * 1B + 6MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
+        - `commAlg` = "hierarchy"：要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBs` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
@@ -398,6 +402,9 @@
         - `sharedExpertNum`：当前取值范围[0, 4]。
         - `commQuantMode`：int8量化当且仅当`tpWorldSize` < 2时可使能。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
+        - `commAlg`：当前支持""，"hierarchy"两种输入方式。
+            - ""：默认值，使能通信域不跨超模板。
+            - "hierarchy": 使能通信域跨超模板。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：

@@ -12,14 +12,14 @@ if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         moe_distribute_dispatch_teardown_def.cpp
     )
-    add_modules_sources(
+    add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
         OPTYPE moe_distribute_dispatch_teardown moe_distribute_dispatch_teardown ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(moe_distribute_dispatch_teardown_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(moe_distribute_dispatch_teardown_depends mc2/common mc2/3rd mc2/moe_distribute_combine_setup  mc2/moe_distribute_dispatch_setup PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT}) 

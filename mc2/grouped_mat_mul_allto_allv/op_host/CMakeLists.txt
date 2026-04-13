@@ -12,7 +12,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         grouped_mat_mul_allto_allv_def.cpp
     )
-    add_modules_sources(
+    add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
@@ -20,7 +20,6 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul PARENT_SCOPE)
-    set(grouped_mat_mul_allto_allv_apt_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令

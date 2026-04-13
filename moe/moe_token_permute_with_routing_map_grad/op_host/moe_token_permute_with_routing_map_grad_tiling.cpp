@@ -268,13 +268,13 @@ ge::graphStatus TilingComputeDropPad(gert::TilingContext* context)
 {
     auto attrPtr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
-    const int32_t* ptokenNum = attrPtr->GetAttrPointer<int32_t>(1);
-    int32_t tokenNum = *ptokenNum;
-    const int32_t* pExpertsNum = attrPtr->GetAttrPointer<int32_t>(0);
-    int32_t expertsNum = *pExpertsNum;
+    const int64_t* ptokenNum = attrPtr->GetAttrPointer<int64_t>(1);
+    int64_t tokenNum = *ptokenNum;
+    const int64_t* pExpertsNum = attrPtr->GetAttrPointer<int64_t>(0);
+    int64_t expertsNum = *pExpertsNum;
     const gert::StorageShape* tokensShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, tokensShape);
-    int32_t capacity = safeDiv(tokensShape->GetStorageShape().GetDim(0), expertsNum);
+    int64_t capacity = safeDiv(tokensShape->GetStorageShape().GetDim(0), expertsNum);
     auto permuted_tokens = context->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, permuted_tokens);
 
@@ -318,12 +318,12 @@ static inline ge::graphStatus Tiling4MoeTokenPermuteWithRoutingMapGrad(gert::Til
         const gert::StorageShape* tokensShape = context->GetInputShape(0);
         OP_CHECK_NULL_WITH_CONTEXT(context, tokensShape);
 
-        const int32_t* ptokenNum = attrPtr->GetAttrPointer<int32_t>(1);
-        int32_t tokenNum = *ptokenNum;
-        int32_t topk = safeDiv(tokensShape->GetStorageShape().GetDim(0), tokenNum);
+        const int64_t* ptokenNum = attrPtr->GetAttrPointer<int64_t>(1);
+        int64_t tokenNum = *ptokenNum;
+        int64_t topk = safeDiv(tokensShape->GetStorageShape().GetDim(0), tokenNum);
         if (topk > MAX_TOPK_NUM) {
             OP_LOGE(
-                context->GetNodeName(), "numOutTokens / numTokens [%d] should not large than max topk[%d].", topk,
+                context->GetNodeName(), "numOutTokens / numTokens [%ld] should not large than max topk[%d].", topk,
                 MAX_TOPK_NUM);
             return ge::GRAPH_FAILED;
         }

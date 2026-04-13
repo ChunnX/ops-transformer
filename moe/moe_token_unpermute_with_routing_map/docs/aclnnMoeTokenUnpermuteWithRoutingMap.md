@@ -2,7 +2,6 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute_with_routing_map)
 
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -74,7 +73,6 @@
   $$
   unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
-
 
   （3）probs为None，paddedMode为true时：
 
@@ -153,7 +151,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
       <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>paddedMode为false：(tokens_num * topK_num,  hidden_size）<br>paddedMode为true：(experts_num* capacity,  hidden_size）</td>
+      <td>paddedMode为false：(tokens_num * topK_num, hidden_size)<br>paddedMode为true：(experts_num* capacity, hidden_size)</td>
       <td>√</td>
     </tr>
     <tr>
@@ -295,27 +293,19 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     <tr>
       <td> ACLNN_ERR_PARAM_INVALID </td>
       <td> 161002 </td>
-      <td>输入或输出的数据类型不在支持的范围内。</td>
+      <td>输入或输出的数据类型或shape不在支持的范围内。</td>
     </tr>
     <tr>
-      <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
-      <td rowspan="4"> 561002 </td>
+      <td rowspan="2"> ACLNN_ERR_INNER_NULLPTR </td>
+      <td rowspan="2"> 561103 </td>
       <td>topK_num > 512。</td>
     </tr>
     <tr>
-      <td>topK_num大于experts_num。</td>
-    </tr>
-    <tr>
-      <td>capacity大于tokens_num。</td>
-    </tr>
-    <tr>
-      <td>输入或输出的shape不符合要求。</td>
+      <td>probsOptional的shape不在支持的范围内。</td>
     </tr>
   </tbody></table>
 
-
 ## aclnnMoeTokenUnpermuteWithRoutingMap
-
 
 - **参数说明**
   <table style="undefined;table-layout: fixed; width: 1244px"><colgroup>
@@ -353,7 +343,6 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     </tbody>
   </table>
 
-
 - **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -363,7 +352,13 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 - 确定性计算：
   - aclnnMoeTokenUnpermuteWithRoutingMap默认确定性实现。
 
-- topK_num <= 512, pad模式为false时routingMap中每行为1或true的个数固定且小于`512`。
+- topK_num <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
+
+- 以下场景后续版本会拦截，如果提示warning，建议整改：
+  - paddedMode为true，且topK_num > experts_num。
+  - paddedMode为true，且capacity > tokens_num。
+  - routingMap的数据类型或shape不符合要求。
+  - 输入tensor的数据格式不为ND。
 
 ## 调用示例
 
@@ -503,7 +498,7 @@ int main() {
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
     ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapfailed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret); return ret);
     // 4. 固定写法，同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

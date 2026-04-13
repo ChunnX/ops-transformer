@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-算子功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
+- 接口功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
 
 - 计算公式：
 
@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用`aclnnGroupedMatMulAlltoAllvGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllv`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnGroupedMatMulAlltoAllvGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllv`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
@@ -69,133 +69,187 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1013px"><colgroup>
-    <col style="width: 160px">
-    <col style="width: 111px">
-    <col style="width: 429px">
-    <col style="width: 188px">
-    <col style="width: 125px">
+    <table style="undefined;table-layout: fixed; width: 1440px"> <colgroup>
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 200px">
+    <col style="width: 250px">
+    <col style="width: 150px">
+    <col style="width: 180px">
+    <col style="width: 180px">
+    <col style="width: 180px">
     </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
     <th>描述</th>
+    <th>使用说明</th>
     <th>数据类型</th>
     <th>数据格式</th>
+    <th>维度(shape)</th>
+    <th>非连续Tensor</th>
     </tr></thead>
     <tbody>
     <tr>
-    <td>gmmX</td>
+    <td>gmmX(aclTensor*)</td>
     <td>输入</td>
-    <td>该输入作为GroupedMatMul计算的左矩阵，计算结果进行AlltoAllv通信，支持2维，shape为(A, H1)。</td>
+    <td>该输入进行AlltoAllv通信。</td>
+    <td><ul><li>数据类型与gmmWeight保持一致。</li><li>支持2维，shape为(A, H1)。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+    <td>2</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>gmmWeight</td>
+    <td>gmmWeight(aclTensor*)</td>
     <td>输入</td>
-    <td>GroupedMatMul计算的右矩阵，数据类型与gmmX保持一致，支持3维，shape为(e, H1, N1)。</td>
+    <td>GroupedMatMul计算的右矩阵。</td>
+    <td><ul><li>数据类型与gmmX保持一致。</li><li>支持3维，shape为(e, H1, N1)。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+    <td>3</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>sendCountsTensorOptional</td>
-    <td>输入</td>
-    <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
+    <td>sendCountsTensorOptional (aclTensor*)</td>
+    <td>可选输入</td>
+    <td>shape为(e * epWorldSize,)。</td>
+    <td>当前版本暂不支持，需传nullptr。</td>
     <td>INT32、INT64</td>
     <td>ND</td>
+    <td>1</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>recvCountsTensorOptional</td>
-    <td>输入</td>
-    <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
+    <td>recvCountsTensorOptional (aclTensor*)</td>
+    <td>可选输入</td>
+    <td>shape为(e * epWorldSize,)。</td>
+    <td>当前版本暂不支持，需传nullptr。</td>
     <td>INT32、INT64</td>
     <td>ND</td>
+    <td>1</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>mmXOptional</td>
-    <td>输入</td>
-    <td>可选输入，共享专家MatMul计算中的左矩阵，需与mmWeightOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(BS, H2)。</td>
+    <td>mmXOptional(aclTensor*)</td>
+    <td>可选输入</td>
+    <td>共享专家MatMul计算中的左矩阵。</td>
+    <td><ul><li>需与mmWeightOptional、mmYOptional同时传入或同为nullptr。</li><li>数据类型与gmmX保持一致。</li><li>支持2维，shape为(BS, H2)。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+    <td>2</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>mmWeightOptional</td>
-    <td>输入</td>
-    <td>可选输入，共享专家MatMul计算中的右矩阵，需与mmXOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(H2, N2)。</td>
+    <td>mmWeightOptional(aclTensor*)</td>
+    <td>可选输入</td>
+    <td>共享专家MatMul计算中的右矩阵。</td>
+    <td><ul><li>需与mmXOptional、mmYOptional同时传入或同为nullptr。</li><li>数据类型与gmmX保持一致。</li><li>支持2维，shape为(H2, N2)。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+    <td>2</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>group</td>
+    <td>group(char*)</td>
     <td>输入</td>
-    <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
+    <td>专家并行的通信域名。</td>
+    <td>字符串长度需大于0，小于128。</td>
     <td>STRING</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>epWorldSize</td>
+    <td>epWorldSize（int64_t）</td>
     <td>输入</td>
-    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128、256。</td>
+    <td>ep通信域size。</td>
+    <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>sendCounts</td>
+    <td>sendCounts(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示发送给其他卡的token数，数据类型支持INT64，list大小为e * epWorldSize，最大为256。输入类型需为list。</td>
+    <td>表示发送给其他卡的token数。</td>
+    <td><ul><li>输入类型需为aclIntArray*，元素类型为INT64。</li><li>list大小为e * epWorldSize，最大为256。输入类型需为list。</li></ul></td>
     <td>aclIntArray*（元素类型INT64）</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>recvCounts</td>
+    <td>recvCounts(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示接收其他卡的token数，数据类型支持INT64，list大小为e * epWorldSize，最大为256。输入类型需为list。</td>
+    <td>表示接收其他卡的token数。</td>
+    <td><ul><li>输入类型需为aclIntArray*，元素类型为INT64。</li><li>list大小为e * epWorldSize，最大为256。</li></ul></td>
     <td>aclIntArray*（元素类型INT64）</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>transGmmWeight</td>
+    <td>transGmmWeight(bool)</td>
     <td>输入</td>
-    <td>gmmWeight是否需要转置，true表示需要转置，false表示不转置。</td>
+    <td>gmmWeight是否需要转置。</td>
+    <td>true表示需要转置，false表示不转置。</td>
     <td>BOOL</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>transMmWeight</td>
+    <td>transMmWeight(bool)</td>
     <td>输入</td>
-    <td>共享专家mmWeightOptional是否需要转置，true表示需要转置，false表示不转置。</td>
+    <td>共享专家mmWeightOptional是否需要转置。</td>
+    <td>true表示需要转置，false表示不转置。</td>
     <td>BOOL</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>y</td>
+    <td>y(aclTensor*)</td>
     <td>输出</td>
-    <td>最终计算结果，数据类型与输入gmmX保持一致，支持2维，shape为(BSK, N1)。</td>
+    <td>最终计算结果。</td>
+    <td><ul><li>数据类型与输入gmmX保持一致。</li><li>支持2维，shape为(BSK, N1)。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+    <td>2</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>mmYOptional</td>
+    <td>mmYOptional(aclTensor*)</td>
     <td>输出</td>
-    <td>共享专家MatMul的输出，数据类型与mmXOptional保持一致，支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
+    <td>共享专家MatMul的输出。</td>
+    <td><ul><li>数据类型与mmXOptional保持一致。</li><li>支持2维，shape为(BS, N2)。</li><li>仅当传入mmXOptional与mmWeightOptional才输出，否则需传nullptr。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
+    <td>2</td>
+    <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>-</td>
     <td>UINT64</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>executor</td>
+    <td>executor(aclOpExecutor**)</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
+    <td>-</td>
     <td>aclOpExecutor*</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     </tbody></table>
 
@@ -228,7 +282,6 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <td>1. gmmX、gmmWeight、sendCountsTensorOptional、recvCountsTensorOptional、mmXOptional、mmWeightOptional、group、epWorldSize、sendCounts、recvCounts的数据类型、数据格式或者维度不在支持的范围内。</td>
     </tr>
     </tbody></table>
-
 
 ## aclnnGroupedMatMulAlltoAllv
 
@@ -293,9 +346,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
@@ -384,7 +437,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         std::vector<int64_t> gmmXShape = {A, H};
         std::vector<int64_t> gmmWShape = {e, H, N1};
-        std::vector<int64_t> yShape = {BS * K, N1};
+        std::vector<int64_t> gmmYShape = {BS * K, N1};
+        std::vector<int64_t> permuteShape = {A, H};
         std::vector<int64_t> mmXShape = {BS, H};
         std::vector<int64_t> mmWShape = {H, N2};
         std::vector<int64_t> mmYShape = {BS, N2};
@@ -397,14 +451,15 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         void *gmmXDeviceAddr = nullptr;
         void *gmmWDeviceAddr = nullptr;
-        void *yDeviceAddr = nullptr;
+        void *gmmYDeviceAddr = nullptr;
+        void *permuteDeviceAddr = nullptr;
         void *mmXDeviceAddr = nullptr;
         void *mmWDeviceAddr = nullptr;
         void *mmYDeviceAddr = nullptr;
 
         aclTensor *gmmX = nullptr;
         aclTensor *gmmW = nullptr;
-        aclTensor *y = nullptr;
+        aclTensor *gmmY = nullptr;
 
         aclTensor *mmX = nullptr;
         aclTensor *mmW = nullptr;
@@ -419,7 +474,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         long long gmmXShapeSize = GetShapeSize(gmmXShape);
         long long gmmWShapeSize = GetShapeSize(gmmWShape);
-        long long yShapeSize = GetShapeSize(yShape);
+        long long gmmYShapeSize = GetShapeSize(gmmYShape);
 
         long long mmXShapeSize = GetShapeSize(mmXShape);
         long long mmWShapeSize = GetShapeSize(mmWShape);
@@ -427,7 +482,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         std::vector<uint16_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024);  // BF16, FP16
         std::vector<uint16_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 512);
-        std::vector<uint16_t> yHostData(yShapeSize, 65535);
+        std::vector<uint16_t> gmmYHostData(gmmYShapeSize, 65535);
 
         std::vector<uint16_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024);  // BF16, FP16
         std::vector<uint16_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 512);
@@ -437,7 +492,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(gmmWHostData, gmmWShape, &gmmWDeviceAddr, aclDataType::ACL_FLOAT16, &gmmW);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_FLOAT16, &y);
+        ret = CreateAclTensor(gmmYHostData, gmmYShape, &gmmYDeviceAddr, aclDataType::ACL_FLOAT16, &gmmY);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(mmXHostData, mmXShape, &mmXDeviceAddr, aclDataType::ACL_FLOAT16, &mmX);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -450,8 +505,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
 
         // 调用第一阶段接口
-        ret = aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
-            gmmX,
+        ret = aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(gmmX,
             gmmW,
             sendCountsTensor,
             recvCountsTensor,
@@ -463,7 +517,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
             recvCounts,
             false,
             false,
-            y,
+            gmmY,
             mmY,
             &workspaceSize,
             &executor);
@@ -486,7 +540,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         // 释放device资源，需要根据具体API的接口定义修改
         if (args.rankId == 0) {
             size_t size = A * N1 * sizeof(int16_t);
-            aclrtMemcpy(pGmmyData.data(), size, yDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
+            aclrtMemcpy(pGmmyData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
         }
         if (gmmX != nullptr) {
             aclDestroyTensor(gmmX);
@@ -494,8 +548,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         if (gmmW != nullptr) {
             aclDestroyTensor(gmmW);
         }
-        if (y != nullptr) {
-            aclDestroyTensor(y);
+        if (gmmY != nullptr) {
+            aclDestroyTensor(gmmY);
         }
         if (mmX != nullptr) {
             aclDestroyTensor(mmX);
@@ -512,8 +566,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         if (gmmWDeviceAddr != nullptr) {
             aclrtFree(gmmWDeviceAddr);
         }
-        if (yDeviceAddr != nullptr) {
-            aclrtFree(yDeviceAddr);
+        if (gmmYDeviceAddr != nullptr) {
+            aclrtFree(gmmYDeviceAddr);
         }
         if (mmXDeviceAddr != nullptr) {
             aclrtFree(mmXDeviceAddr);

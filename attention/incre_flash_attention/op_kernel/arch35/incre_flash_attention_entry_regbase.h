@@ -19,10 +19,17 @@
 #include "kernel/incre_flash_attention_normal_Bbn2s2_Us2_regbase.h"
 #include "kernel/incre_flash_attention_antiquant_Bbn2s2_Us2_regbase.h"
 namespace optiling {};
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h"
 #include "incre_flash_attention_dummy.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_entry_regbase.h"
+#else
+#include "../../common/arch35/flash_attention_score_antiquant_kernel.h"
+#include "incre_flash_attention_dummy.h"
+#include "../../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../prompt_flash_attention/arch35/prompt_flash_attention_entry_regbase.h"
+#endif
 
 using namespace AscendC;
 
@@ -64,9 +71,9 @@ using namespace AscendC;
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm1TilingData, bmm1TilingDataVar, tiling);   \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm2TilingData, bmm2TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingDataVar;                                      \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingDataVar;
 
@@ -77,27 +84,27 @@ using namespace AscendC;
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm1TilingData, bmm1TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm1tiling = &bmm1TilingDataVar;
 
 #define COPY_BMM2_TILING_DATA(tiling, need_cube)                                                        \
     if constexpr (!need_cube) {                                                                         \
       return;                                                                                           \
     }                                                                                                   \
-    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);   \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = nullptr;                              \
+    GET_TILING_DATA_MEMBER(IncreFlashAttentionTilingDataRegbase, bmm2TilingData, bmm2TilingDataVar, tiling);   \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = nullptr;                              \
     const TCubeTiling* __restrict bmm2tiling = &bmm2TilingDataVar;
 #else
 #define COPY_TILING_DATA(tiling, need_cube)                                                             \
-    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingData, tiling_data_in, tiling);                 \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;                      \
+    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingDataRegbase, tiling_data_in, tiling);                 \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = &tiling_data_in;                      \
     const TCubeTiling* __restrict bmm1tiling = &(tiling_data->bmm1TilingData);                          \
     const TCubeTiling* __restrict bmm2tiling = &(tiling_data->bmm2TilingData);
 
 #define COPY_TILING_DATA_NO_CUBE(tiling)                                                                \
-    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingData, tiling_data_in, tiling);                 \
-    const IncreFlashAttentionTilingData* __restrict tiling_data = &tiling_data_in;
+    GET_TILING_DATA_WITH_STRUCT(IncreFlashAttentionTilingDataRegbase, tiling_data_in, tiling);                 \
+    const IncreFlashAttentionTilingDataRegbase* __restrict tiling_data = &tiling_data_in;
 
 #define COPY_BMM1_TILING_DATA(tiling, need_cube) COPY_TILING_DATA(tiling, need_cube)
 #define COPY_BMM2_TILING_DATA(tiling, need_cube) COPY_TILING_DATA(tiling, need_cube)
@@ -156,7 +163,7 @@ using namespace AscendC;
 #endif
 
 template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope, 
-  bool isPa, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix>
+  bool isPa, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
   inline __aicore__ void incre_flash_attention_FIAS_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key,
                                                             __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
                                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,

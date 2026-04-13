@@ -17,11 +17,13 @@
 #define _QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_
 
 #include "quant_bmm_reduce_scatter_tiling.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
+#include "reduce_scatter_fit_balance_tiling.h"
+#include "../reduce_scatter_formulaic_tiling.h"
 
 using namespace Mc2Log;
 using namespace Mc2Tiling;
@@ -845,6 +847,24 @@ QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTi
       tilingProcesser_(quantBmmReduceScatterTiling),
       tilingArgs_(quantBmmReduceScatterTiling.GetArgs())
 {
+}
+
+CutResult QuantBmmReduceScatterTiling::GetTilingResult()
+{
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+        MMReduceScatterFitBalanceTiling scatterTiling(args_,
+            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::STANDARD_CARD);
+        return scatterTiling.GetTiling();
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+        MMReduceScatterFitBalanceTiling scatterTiling(args_,
+            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
+        return scatterTiling.GetTiling();
+    } else {
+        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        scatterTiling.GetTiling();
+        return scatterTiling.tilingM_.cutRes;
+    }
 }
 //注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling, \

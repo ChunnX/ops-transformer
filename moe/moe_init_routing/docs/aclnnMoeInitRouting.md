@@ -17,7 +17,7 @@
 
 - **接口功能**：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)的计算结果做routing处理。
 - **计算公式**：
-  将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数。
+  将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数。sortedRowIdx为rowIdx经过排序后的结果
   
   $$
   expandedExpertIdxOut,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
@@ -115,7 +115,7 @@ aclnnStatus aclnnMoeInitRouting(
     <tr>
       <td>activeNum</td>
       <td>输入</td>
-      <td>表示expandedXOut的有效行数。</td>
+      <td>表示总的最大处理row数且大于等于0，expandedXOut只有这么多行是有效的。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

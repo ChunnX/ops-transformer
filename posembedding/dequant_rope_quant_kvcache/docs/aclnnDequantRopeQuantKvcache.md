@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
-
 ## 功能说明
 
 - 算子功能：对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。
@@ -108,7 +107,8 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 ```
 
 ## aclnnDequantRopeQuantKvcacheGetWorkspaceSize
--   **参数说明：**
+
+- **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 187px">
@@ -197,7 +197,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
         <td>输入</td>
         <td>公式中的输入scaleK用于量化k的scale因子。</td>
         <td>当cache_mode为page且x为3维时shape为[B*S]，否则shape为[B]。</td>
-        <td>INT32</td>
+        <td>FLOAT</td>
         <td>ND</td>
         <td>1-2</td>
         <td>√</td>
@@ -225,7 +225,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
     <tr>
         <td>offsetVOptional</td>
         <td>输入</td>
-        <td>公式中的输入offsetVOptional用于量化k的offset因子。</td>
+        <td>公式中的输入offsetVOptional用于量化v的offset因子。</td>
         <td>shape为[Nkv, D]。</td>
         <td>FLOAT</td>
         <td>ND</td>
@@ -305,13 +305,14 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
     <tr>
         <td>cacheModeOptional</td>
         <td>输入</td>
-        <td>表示kCacheRef的更新方式，目前仅支持“page”和“contiguous”，默认为“contiguous”。</td>
-        <td>目前仅支持“BSND”。</td>
+        <td>表示kCacheRef的更新方式。</td>
+        <td>目前仅支持“page”和“contiguous”，默认为“contiguous”。</td>
         <td>CHAR</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
     </tr>
+    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>

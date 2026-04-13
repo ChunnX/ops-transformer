@@ -2,7 +2,7 @@
 
 ## 前提条件
 
-- 环境部署：调用算子之前，请先参考[环境部署](../../docs/zh/context/quick_install.md)完成基础环境搭建。
+- 环境部署：调用算子之前，请先参考[环境部署](../../docs/zh/install/quick_install.md)完成基础环境搭建。
 - 算子源码：可参考通算融合示例算子[all_gather_add](../../examples/mc2/all_gather_add)完成代码编写，本说明后续将以all_gather_add算子为例。
 
 ## 编译执行
@@ -53,7 +53,7 @@
 
 3. **本地验证**
 
-    通过项目根目录build.sh脚本，可快速调用算子和UT用例，验证项目功能是否正常，build参数介绍参见[build参数说明](../../docs/zh/context/build.md)。
+    通过项目根目录build.sh脚本，可快速调用算子和UT用例，验证项目功能是否正常，build参数介绍参见[build参数说明](../../docs/zh/install/build.md)。
 
     - **执行算子样例**
 

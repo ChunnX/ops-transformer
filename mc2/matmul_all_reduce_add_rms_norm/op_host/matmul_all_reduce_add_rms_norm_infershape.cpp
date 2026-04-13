@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "util/math_util.h"
 #include "register/op_impl_registry.h"

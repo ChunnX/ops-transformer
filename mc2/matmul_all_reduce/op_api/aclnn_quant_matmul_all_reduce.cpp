@@ -13,22 +13,10 @@
  * \brief
  */
 #include "aclnn_quant_matmul_all_reduce.h"
-#include "securec.h"
 
-#include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
-#include "opdev/common_types.h"
-#include "opdev/op_dfx.h"
-#include "opdev/op_executor.h"
-#include "opdev/make_op_executor.h"
-#include "opdev/op_log.h"
-#include "opdev/platform.h"
+#include "aclnnInner_matmul_all_reduce.h"
 #include "matmul_all_reduce_util.h"
-#include "aclnn_kernels/contiguous.h"
-#include "hccl_util.h"
-#include "matmul_all_reduce_util.h"
+#include "common/utils/hccl_util.h"
 
 using namespace op;
 
@@ -36,15 +24,6 @@ using namespace op;
 extern "C" {
 #endif
 
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
-extern aclnnStatus aclnnInnerMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);

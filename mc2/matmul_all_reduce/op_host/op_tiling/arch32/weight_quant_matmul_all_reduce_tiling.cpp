@@ -13,7 +13,7 @@
  * \brief
  */
 #include "weight_quant_matmul_all_reduce_tiling.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 
 using namespace Mc2Log;
@@ -141,22 +141,23 @@ uint64_t WeightQuantMatmulAllReduceTiling::GetTilingKey() const
             SET_NOT_USE_FM_MM_TPL_TILING,
             SET_NOT_USE_QUANT_MM_TPL_TILING,
             SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING);
+    } else {
+        tilingKey = GET_TPL_TILING_KEY(
+            static_cast<uint64_t>(ASCEND_910B),
+            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
+            MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+            MATMUL_ALLREDUCE_INT8_COMM_F,
+            0UL,    // ENABLE_L2_CACHE
+            0UL,    // SHARE_MM
+            SET_NOT_USE_FM_MM_TPL_TILING,
+            SET_NOT_USE_QUANT_MM_TPL_TILING,
+            weightQuantMatmulTPLParam_.subAlgorithmCustom,
+            weightQuantMatmulTPLParam_.hasAntiquantOffset,
+            weightQuantMatmulTPLParam_.antiquantType,
+            weightQuantMatmulTPLParam_.transA,
+            weightQuantMatmulTPLParam_.transB,
+            static_cast<uint64_t>(FORMAT_B_ND));
     }
-    tilingKey = GET_TPL_TILING_KEY(
-        static_cast<uint64_t>(ASCEND_910B),
-        static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
-        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-        MATMUL_ALLREDUCE_INT8_COMM_F,
-        0UL,    // ENABLE_L2_CACHE
-        0UL,    // SHARE_MM
-        SET_NOT_USE_FM_MM_TPL_TILING,
-        SET_NOT_USE_QUANT_MM_TPL_TILING,
-        weightQuantMatmulTPLParam_.subAlgorithmCustom,
-        weightQuantMatmulTPLParam_.hasAntiquantOffset,
-        weightQuantMatmulTPLParam_.antiquantType,
-        weightQuantMatmulTPLParam_.transA,
-        weightQuantMatmulTPLParam_.transB,
-        static_cast<uint64_t>(FORMAT_B_ND));
     OP_LOGI(opName_, " tilingKey %lu", tilingKey);
     return tilingKey;
 }
@@ -346,6 +347,27 @@ WeightQuantMatmulAllReduceTiling::WeightQuantMatmulAllReduceTiling(
     gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, WeightQuantMatmulAllReduceTilingData* out)
     : MatmulAllReduceTilingBase(context, mmrCtxInfo), weightQuantMatmulAllReduceTilingData_(*out)
 {}
+
+CutResult WeightQuantMatmulAllReduceTiling::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+        OP_LOGD(opName_, "TileCnt enter comm quant.");
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        quantAllReduceTilingHccl.GetTiling();
+        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
+}
 
 //注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, WeightQuantMatmulAllReduceTiling, \

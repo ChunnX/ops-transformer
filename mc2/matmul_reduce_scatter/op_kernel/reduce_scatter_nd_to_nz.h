@@ -29,11 +29,11 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../common/inc/kernel/mc2_tiling_struct.h")
-#include "../../common/inc/kernel/mc2_tiling_struct.h"
+#if __has_include("../../common/op_kernel/mc2_tiling_struct.h")
+#include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
 #else
-#include "../common/inc/kernel/mc2_tiling_struct.h"
+#include "../common/op_kernel/mc2_tiling_struct.h"
 #include "../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
 #endif
 

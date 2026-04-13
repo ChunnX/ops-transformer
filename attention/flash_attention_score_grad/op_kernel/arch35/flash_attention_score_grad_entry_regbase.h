@@ -42,7 +42,7 @@
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,           \
     FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)                                \
     do {                                                                                                               \
-        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
+        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE, IS_ATTEN_MASK> opPre;  \
         opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
         opPre.Process();                                                                                               \
         opPre.SyncALLCores();                                                                                          \
@@ -58,7 +58,7 @@
         typename std::conditional<(DETER_SPARSE_TYPE) == NO_DETER, FagBaseApi::FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>, FagBaseApi::FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>>::type op; \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, dq, dk, dv, dpse, dqRope, dkRope, user, tilingData, &pipeBase);                               \
+                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase);                  \
         op.Process();                                                                                                  \
         if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
             op.SyncALLCores();                                                                                         \
@@ -67,7 +67,7 @@
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
                                                           DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                                   \
                 opPost;                                                                                                \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, user, tilingData, &pipePost);                                      \
+            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
             opPost.Process();                                                                                          \
         } else {                                                                                                       \
             pipeBase.Destroy();                                                                                        \
@@ -102,7 +102,7 @@
         FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
                                                         DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                                   \
             opPost;                                                                                                \
-        opPost.Init(dq, dk, dv, dqRope, dkRope, user, tilingData, &pipePost);                                      \
+        opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
         opPost.Process();                                                                                          \
     } while (0)
  
@@ -152,7 +152,7 @@
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE, IS_DETER, IS_TND> opPost;    \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, user, tilingData, &pipePost);                                      \
+            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
             opPost.Process();                                                                                          \
         } else {                                                                                                       \
             pipeBase.Destroy();                                                                                        \
@@ -205,7 +205,7 @@
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE, IS_DETER, IS_TND> opPost;    \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, user, tilingData, &pipePost);                                      \
+            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
             opPost.Process();                                                                                          \
         } else {                                                                                                       \
             pipeBase.Destroy();                                                                                        \
@@ -244,7 +244,7 @@
     INPUT_TYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,           \
     FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType, OUTDTYPE)                                \
     do {                                                                                                               \
-        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
+        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE, IS_ATTEN_MASK> opPre;  \
         opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
         opPre.Process();                                                                                               \
         opPre.SyncALLCores();                                                                                          \
@@ -272,7 +272,7 @@
                           (TCubeTiling *)nullptr, op.mm3, (TCubeTiling *)nullptr);                                     \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, dq, dk, dv, dpse, dqRope, dkRope, user, tilingData, &pipeBase, dsScm, pScm);                  \
+                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase, dsScm, pScm);     \
         op.Process();                                                                                                  \
         if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
             op.SyncALLCores();                                                                                         \
@@ -281,7 +281,7 @@
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
                                                           DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                                   \
                 opPost;                                                                                                \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, user, tilingData, &pipePost);                                      \
+            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
             opPost.Process();                                                                                          \
             pipePost.Destroy();                                                                                        \
         } else {                                                                                                       \
@@ -306,8 +306,8 @@
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE,       \
     IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE, FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)      \
     do {                                                                                                               \
-        if constexpr (IS_BN2_MULTIBLK && IS_TND) {                                                                     \
-            FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS> opPre;  \
+        if (tilingData->s1s2BNGS1S2BaseParams.sinkOptional) {                                                          \
+            FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE, IS_ATTEN_MASK> opPre;  \
             opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
             opPre.Process();                                                                                               \
             opPre.SyncALLCores();                                                                                          \
@@ -324,9 +324,20 @@
         FagBaseApi::FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType> op;                                     \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, dq, dk, dv, dpse, dqRope, dkRope, user, tilingData, &pipeBase);                               \
+                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase);                  \
         op.Process();                                                                                                  \
-        pipeBase.Destroy();                                                                                            \
+        if (tilingData->s1s2BNGS1S2BaseParams.sinkOptional) {                                                          \
+            op.SyncALLCores();                                                                                         \
+            pipeBase.Destroy();                                                                                        \
+            TPipe pipePost;                                                                                            \
+            FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
+                                                          DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                   \
+                opPost;                                                                                                \
+            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
+            opPost.Process();                                                                                          \
+        } else {                                                                                                       \
+            pipeBase.Destroy();                                                                                        \
+        }                                                                                                              \
     } while (0)
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2_REGBASE_IMPL_FP16(...)                                                             \
@@ -352,8 +363,9 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
            __gm__ uint8_t *softmax_in, __gm__ uint8_t *attention_in, __gm__ uint8_t *prefix,
            __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *deqScaleQ,
            __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *deqScaleDy, __gm__ uint8_t *dsScale, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope,
-           __gm__ uint8_t *keyRope, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
-           __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
+           __gm__ uint8_t *keyRope, __gm__ uint8_t *sink, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
+           __gm__ uint8_t *dpse, __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *dsink,
+           __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipeIn;
@@ -366,21 +378,9 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     const fagTiling *__restrict tilingData = &tiling_data_in;
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
         if constexpr (splitAxis == BN2GS1S2) {
-            if constexpr (deterType != DETER_OLD) {
-                INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
-                    half, float, half, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope, fp8OpenTscm, isTndSwizzle, BN2GS1S2,
-                    S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType)); 
-            } else {
-                if constexpr (dTemplateType == 768){
-                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_FP16(
-                        half, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isDNoEqual, isRope, fp8OpenTscm, BN2GS1S2, S1TemplateType(s1TemplateType), 
-                        S2TemplateType(s2TemplateType), DTemplateType(512), half);
-                }
-                else
-                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_FP16(
-                        half, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isDNoEqual, isRope, fp8OpenTscm, BN2GS1S2, S1TemplateType(s1TemplateType), 
-                        S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), half);
-            }
+            INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
+                half, float, half, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope, fp8OpenTscm, isTndSwizzle, BN2GS1S2,
+                S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType)); 
             return;
         } else if constexpr (splitAxis == BN2S2) {
             INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
@@ -397,21 +397,9 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
 
     #if (ORIG_DTYPE_QUERY == DT_BF16)
         if constexpr (splitAxis == BN2GS1S2) {
-            if constexpr (deterType != DETER_OLD) {
-                INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
-                    bfloat16_t, float, bfloat16_t, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope, fp8OpenTscm, isTndSwizzle,
-                    BN2GS1S2, S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
-            } else {
-                if constexpr (dTemplateType == 768){
-                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_BF16(
-                        bfloat16_t, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isDNoEqual, isRope, fp8OpenTscm, BN2GS1S2, S1TemplateType(s1TemplateType), 
-                        S2TemplateType(s2TemplateType), DTemplateType(512), bfloat16_t);
-                }
-                else
-                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_BF16(
-                        bfloat16_t, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isDNoEqual, isRope, fp8OpenTscm, BN2GS1S2, S1TemplateType(s1TemplateType), 
-                        S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), bfloat16_t);
-            }
+            INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
+                bfloat16_t, float, bfloat16_t, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope, fp8OpenTscm, isTndSwizzle,
+                BN2GS1S2, S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
             return;
         } else if constexpr (splitAxis == BN2S2) {
             INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
@@ -429,21 +417,9 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
  
     #if (ORIG_DTYPE_QUERY == DT_FLOAT)
         if constexpr (splitAxis == BN2GS1S2) {
-            if constexpr (deterType != DETER_OLD) {
-                INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP32(
-                    float, float, float, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope, fp8OpenTscm, isTndSwizzle, BN2GS1S2,
-                    S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
-            } else {
-                if constexpr (dTemplateType == 768){
-                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_FP32(
-                        float, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isDNoEqual, isRope, fp8OpenTscm, BN2GS1S2, S1TemplateType(s1TemplateType), 
-                        S2TemplateType(s2TemplateType), DTemplateType(512), float);
-                }
-                else
-                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_FP32(
-                        float, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isDNoEqual, isRope, fp8OpenTscm, BN2GS1S2, S1TemplateType(s1TemplateType), 
-                        S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), float);
-            }
+            INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP32(
+                float, float, float, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope, fp8OpenTscm, isTndSwizzle, BN2GS1S2,
+                S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType)); 
             return;
         } else if constexpr (splitAxis == BN2S2) {
             INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP32(
