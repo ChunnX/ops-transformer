@@ -85,6 +85,7 @@ public:
 
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3Buffer;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> zeroRowBuffer;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> sYL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> reluGradResL1Buf;
 
@@ -225,7 +226,7 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::Process
                     SetPSingleRunInfo(kRunInfoNeg1, runInfo, s2TaskId - 1, s2InnerIdx);
                     vecBlock.ProcessVector4(bmm1Res, runInfo, kRunInfoNeg1);
                     vecBlock.ProcessVector5(runInfo, kRunInfoNeg1);
-                    vecBlock.ProcessVector6(this->reluGradResL1Buf.Get(), runInfo, kRunInfoNeg1);
+                    vecBlock.ProcessVector6(this->reluGradResL1Buf.Get(), runInfo, kRunInfoNeg1, this->zeroRowBuffer.Get());
                 }
             }
         }
@@ -609,8 +610,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     constInfo.scaleValue = baseInfo.scaleValue;
     constInfo.sparseBlockSize = 1;
     constInfo.gatherKBaseSize = 128; // gather每次处理的行数(v0+v1)
-    constInfo.syKBaseSize = 16384 / (constInfo.n2Size * constInfo.gSizeQueryIndex);
-    constInfo.pKBaseSize = 16384 / (constInfo.n2Size * constInfo.gSizeQuery);
+    constInfo.syKBaseSize = tilingData->multiCoreParams.syKTotalSize / (constInfo.n2Size * constInfo.gSizeQueryIndex);
+    constInfo.pKBaseSize = tilingData->multiCoreParams.pKTotalSize / (constInfo.n2Size * constInfo.gSizeQuery);
     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
     constInfo.pKBaseSize = Min(1024, constInfo.pKBaseSize);
     constInfo.pScaler = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
@@ -629,6 +630,7 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitMMR
     ubBufferManager.Init(pipe, UB_MAX_SIZE);
     bmm1Buffers.Init(ubBufferManager, 32 * 256 * sizeof(T));
     bmm3Buffer.Init(ubBufferManager, 64 * 128 * sizeof(T));
+    zeroRowBuffer.Init(ubBufferManager, 8 * 256 * sizeof(T));
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[1]);
