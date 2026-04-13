@@ -608,8 +608,11 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 ## 约束说明
 
-- 确定性计算：
+- **确定性计算**：
   - aclnnMoeDistributeDispatchV3默认确定性实现。
+
+- **驱动约束**：
+  - 算子通信域各节点的驱动版本应当相同。
 
 - **接口配套约束**：
   - `aclnnMoeDistributeDispatchV3`与CombineV3系列算子必须配套使用，前者输出的`assistInfoForCombineOut`、`epRecvCountsOut`、`tpRecvCountsOut`、`expandScalesOut`需直接传入后者对应参数，业务逻辑不可依赖这些Tensor的具体值。
