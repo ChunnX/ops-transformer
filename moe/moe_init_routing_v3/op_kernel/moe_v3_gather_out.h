@@ -38,8 +38,57 @@ public:
     __aicore__ inline void GatherCopyOut(int64_t progress);
     __aicore__ inline void ScatterCopyOut(int64_t progress);
 
-    //__aicore__ inline void GatherCopyOut(int64_t progress);
-    __aicore__ inline void ScatterSingleSlice(int64_t colsLoop, int64_t perLoopCols_, int64_t curLoopCols, int64_t xSrcOffset, int64_t xDstOffset);
+protected:
+
+    template <bool hasQuantScale, bool isFirstColsLoop>
+    // hasQuantScale = (isInputScale_ == 1), isFirstColsLoop = (colsLoop == 0)
+    __aicore__ inline void GatherOutSingleSlice(const LocalTensor<int32_t>& subRowIdxLocal, int64_t colsLoop, int64_t perLoopCols, int64_t curLoopCols, int64_t currentLoopStartRow, int64_t currentLoopLastRow, int64_t initialRow){
+        // Gather out token-expert pairs with same expert section
+        int64_t curLoopRow = 0;
+        int64_t gatherDstRow = initialRow;
+
+        for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
+            LocalTensor<T> inLocal = xCopyInQueue_.AllocTensor<T>();
+            int64_t inputOffset = row * this->cols_ + colsLoop * perLoopCols;
+            DataCopyExtParams xCopyParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+            DataCopyPadExtParams<T> dataCopyPadParams{false, 0, 0, 0};
+            DataCopyPad(inLocal, xGm_[inputOffset], xCopyParams, dataCopyPadParams);
+
+            // copy in scale
+            LocalTensor<float> scaleLocal = scaleCopyInQueue_.AllocTensor<float>();
+            DataCopyExtParams scaleCopyParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+            if constexpr (hasQuantScale && isFirstColsLoop) {
+                DataCopyPadExtParams<float> scalePadParams{false, 0, 0, 0};
+                DataCopyPad(scaleLocal, xGscaleGm_[row], scaleCopyParams, scalePadParams);
+            }
+            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            DataCopyExtParams intriParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+
+            while (curLoopRow < this->curLoopElements_ && gatherDstRow / k_ == row) {
+                int32_t outIndex = subRowIdxLocal.GetValue(curLoopRow);
+                curLoopRow++;
+                gatherDstRow++;
+                if (outIndex == -1 || (dropPadMode_ == DROPLESS_MODE && outIndex >= activeNum_)) {
+                    // Skipping invalid destination slots 
+                    continue;
+                }
+                int64_t outOffset = outIndex * this->cols_ + colsLoop * perLoopCols;
+                DataCopyPad(expandedXGm_[outOffset], inLocal, intriParams);
+                // copy out scale
+                if constexpr (hasQuantScale && isFirstColsLoop) {
+                    DataCopyPad(expandedScaleGm_[outIndex], scaleLocal, scaleCopyParams);
+                }
+            }
+            scaleCopyInQueue_.FreeTensor(scaleLocal);
+            xCopyInQueue_.FreeTensor(inLocal);
+        }
+    }
+
+    __aicore__ inline void ScatterSingleSlice(int64_t colsLoop, int64_t perLoopCols, int64_t curLoopCols, int64_t xSrcOffset, int64_t xDstOffset) {
+        int64_t colsLoopOffset = colsLoop * perLoopCols;
+        CopyXIn(xSrcOffset + colsLoopOffset, curLoopCols);
+        CopyXOut(xDstOffset + colsLoopOffset, curLoopCols);
+    }
 
 private:
     TPipe *pipe_;
@@ -223,57 +272,53 @@ __aicore__ inline void MoeGatherOut<T, EP>::CopyScaleOut(int64_t scaleDstOffset)
     scaleCopyInQueue_.FreeTensor(scaleLocal);
 }
 
-template <typename T, const int EP, bool hasQuantScale>
+template <typename T, const int EP>
+template <bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::GatherCopyOut(int64_t progress)
 {
+    int64_t curExpertLoopOffset = progress * curCorePerLoopIndicesElements_;
+    int64_t curIndiceLoopOffset = blockIdx_ * perCoreIndicesElements_;
+    int64_t initialRow = curExpertLoopOffset + curIndiceLoopOffset;
+
     LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
+
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-    int64_t curLoopCols = perLoopCols_;
-    for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-        int64_t initialRow = blockIdx_ * perCoreIndicesElements_ + curCorePerLoopIndicesElements_ * progress;
-        int64_t curLoopRow = 0;
-        if (colsLoop == colsLoops_ - 1) {
-            curLoopCols = lastLoopCols_;
-        }
-        int64_t currentLoopStartRow = initialRow / k_;
-        int64_t currentLoopLastRow = (initialRow + this->curLoopElements_ - 1) / k_;
-        for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
-            LocalTensor<T> inLocal = xCopyInQueue_.AllocTensor<T>();
-            int64_t inputOffset = row * cols_ + colsLoop * perLoopCols_;
-            DataCopyExtParams xCopyParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-            DataCopyPadExtParams<T> dataCopyPadParams{false, 0, 0, 0};
-            DataCopyPad(inLocal, xGm_[inputOffset], xCopyParams, dataCopyPadParams);
-            // copy in scale
-            LocalTensor<float> scaleLocal = scaleCopyInQueue_.AllocTensor<float>();
-            DataCopyExtParams scaleCopyParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-            if (isInputScale_ == 1 && colsLoop == 0) {
-                DataCopyPadExtParams<float> scalePadParams{false, 0, 0, 0};
-                DataCopyPad(scaleLocal, xGscaleGm_[row], scaleCopyParams, scalePadParams);
-            }
-            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-            DataCopyExtParams intriParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-            while (curLoopRow < this->curLoopElements_ && initialRow / k_ == row) {
-                int32_t outIndex = subRowIdxLocal.GetValue(curLoopRow);
-                curLoopRow++;
-                initialRow++;
-                if (outIndex == -1 || (dropPadMode_ == DROPLESS_MODE && outIndex >= activeNum_)) {
-                    continue;
-                }
-                int64_t outOffset = outIndex * this->cols_ + colsLoop * this->perLoopCols_;
-                DataCopyPad(expandedXGm_[outOffset], inLocal, intriParams);
-                // copy out scale
-                if (isInputScale_ == 1 && colsLoop == 0) {
-                    DataCopyPad(expandedScaleGm_[outIndex], scaleLocal, scaleCopyParams);
-                }
-            }
-            scaleCopyInQueue_.FreeTensor(scaleLocal);
-            xCopyInQueue_.FreeTensor(inLocal);
+
+    // Loop constants
+    int64_t completeColsLoops = this->colsLoops_ - 1;
+    int64_t currentLoopStartRow = initialRow / k_;
+    int64_t currentLoopLastRow = (initialRow + this->curLoopElements_ - 1) / k_;
+
+    // Seperate quant scale gather alone
+    int64_t colsLoopStart = 0;
+    bool doTailProc = (this->lastLoopCols_ > 0);
+
+    if constexpr (hasQuantScale) {
+        // Special procession on quantscales on the first column
+        colsLoopStart = NUM_ONE;
+        doTailProc = (completeColsLoops > NUM_ZERO);    
+
+        if (doTailProc){
+            // There are at least one complete colsLoops in total, tail and head columns DO NOT overlap. 
+            GatherOutSingleSlice<hasQuantScale, true>(subRowIdxLocal, NUM_ZERO, this->perLoopCols_, this->perLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+        } else {
+            // Head and tail columns overlap when total column is less than single complete loop unit.
+            GatherOutSingleSlice<hasQuantScale, true>(subRowIdxLocal, NUM_ZERO, this->perLoopCols_, this->lastLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
         }
     }
+    for (int64_t colsLoop = colsLoopStart; colsLoop < completeColsLoops; colsLoop++) {
+        GatherOutSingleSlice<hasQuantScale, false>(subRowIdxLocal, colsLoop, this->perLoopCols_, this->perLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+    }
+    // process the tail tokens
+    if (doTailProc){
+        GatherOutSingleSlice<hasQuantScale, false>(subRowIdxLocal, completeColsLoops, this->perLoopCols_, this->lastLoopCols_, currentLoopStartRow, currentLoopLastRow, initialRow);
+    }
+
     expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
 }
 
-template <typename T, const int EP, bool hasQuantScale>
+template <typename T, const int EP>
+template <bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::ScatterCopyOut(int64_t progress)
 {
     int64_t curExpertLoopOffset = progress * curCorePerLoopIndicesElements_;
@@ -313,13 +358,8 @@ __aicore__ inline void MoeGatherOut<T, EP>::ScatterCopyOut(int64_t progress)
     expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
 }
 
-__aicore__ inline void ScatterSingleSlice(int64_t colsLoop, int64_t perLoopCols_, int64_t curLoopCols, int64_t xSrcOffset, int64_t xDstOffset){
-    int64_t colsLoopOffset = colsLoop * perLoopCols_;
-    CopyXIn(xSrcOffset + colsLoopOffset, curLoopCols);
-    CopyXOut(xDstOffset + colsLoopOffset, curLoopCols);
-}
-
-template <typename T, const int EP, bool hasQuantScale>
+template <typename T, const int EP>
+template <bool hasQuantScale>
 __aicore__ inline void MoeGatherOut<T, EP>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
