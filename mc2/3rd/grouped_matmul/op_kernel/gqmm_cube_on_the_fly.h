@@ -30,12 +30,13 @@ public:
     __aicore__ inline Mc2GmmASWKernel() {}
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
         GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
-        const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que);
+        const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que,
+        GM_ADDR cOffsetList = nullptr);
     __aicore__ inline void Process();
 
 protected:
     __aicore__ inline void InitAddrAndParams(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
-        GM_ADDR perTokenScale, GM_ADDR y, TILING_TYPE *gmmArrayAddrIn);
+        GM_ADDR perTokenScale, GM_ADDR y, TILING_TYPE *gmmArrayAddrIn, GM_ADDR cOffsetList = nullptr);
     __aicore__ inline void UpdateMMGlobalAddr(uint32_t groupIdx);
     __aicore__ inline void SetMNK(uint32_t groupIdx, int32_t &mSize, int32_t &nSize, int32_t &kSize);
     __aicore__ inline void CalcTailTile(uint64_t mTail, uint64_t nTail);
@@ -73,6 +74,7 @@ protected:
     GM_ADDR groupListPtr_;
     GM_ADDR perTokenScalePtr_;
     GM_ADDR yTensorPtr_;
+    GM_ADDR cOffsetListPtr_;  // 自定义输出偏移列表（可选）
     Mc2GroupedMatmul::QuantASWBlockSch block_;
 
     // mxType定义
@@ -95,7 +97,7 @@ LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
     GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
     const GMMQuantParams *__restrict gmmBaseParamsIn, const TCubeTiling *__restrict mmTilingDataIn,
-    TILING_TYPE *gmmArrayAddrIn, TPipe *que)
+    TILING_TYPE *gmmArrayAddrIn, TPipe *que, GM_ADDR cOffsetList)
 {
     if ASCEND_IS_AIV {
         return;
@@ -105,12 +107,13 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     blockIdx_ = GetBlockIdx();
     mm_.SetSubBlockIdx(0);
     mm_.Init(mmTilingData_, que);
-    InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
+    InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn, cOffsetList);
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::InitAddrAndParams(GM_ADDR x, GM_ADDR weight,
-    GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, TILING_TYPE *gmmArrayAddrIn)
+    GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, TILING_TYPE *gmmArrayAddrIn,
+    GM_ADDR cOffsetList)
 {
     groupNum_ = gmmQuantParams_->groupNum;
     groupType_ = gmmQuantParams_->groupType;
@@ -123,6 +126,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::InitAddrAndP
     groupListPtr_ = groupList;
     perTokenScalePtr_ = perTokenScale;
     yTensorPtr_ = y;
+    cOffsetListPtr_ = cOffsetList;  // 自定义输出偏移列表
     if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
         scaleAGlobal_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)perTokenScale);
     }
@@ -280,14 +284,22 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         int32_t mSize;
         int32_t nSize;
         int32_t kSize;
-        // 更新group内的输入参数M,N,K
         SetMNK(groupIdx, mSize, nSize, kSize);
-        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
+        
+        uint64_t cOffset = 0;
+        bool useCustomCOffset = false;
+        if (cOffsetListPtr_ != nullptr) {
+            __gm__ uint64_t *cOffsetList = reinterpret_cast<__gm__ uint64_t *>(cOffsetListPtr_);
+            cOffset = cOffsetList[groupIdx];
+            useCustomCOffset = true;
+        }
+        
+        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx,
+                                                                                     cOffset, useCustomCOffset);
         if (mSize <= 0 || kSize <= 0 || nSize <= 0) {
             continue;
         }
         block_.template UpdateGroupParams<true>();
-        // 最后一个group最后一轮是否进一步切分以使用更多的核数
         if (IsLastGroupAndNeedSplit(groupIdx)) {
             CalcTailTile(block_.params_.mBaseTail, block_.params_.nBaseTail);
             block_.UpdateTailTile();
@@ -297,14 +309,11 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         for (uint64_t roundIdx = 0; roundIdx < block_.params_.round; ++roundIdx) {
             bool isLastGroupRound = IsLastGroupAndRound(groupIdx, roundIdx);
             block_.template UpdateBasicIndex<true>(roundIdx, isLastGroupRound);
-            // 1. Set single core param
             block_.template UpdateBlockParams<aTrans, bTrans, wFormat>(roundIdx, isLastGroupRound);
             if (block_.params_.singleCoreM <= 0 || block_.params_.singleCoreN <= 0) {
                 continue;
             }
-            // 2. compute offset
             block_.template CalcGMOffset<aTrans, bTrans, scaleType, wFormat>();
-            // 3. set offset and compute
             SetMMParaAndCompute();
         }
     }
