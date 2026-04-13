@@ -1195,7 +1195,6 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                 maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
                 if (actualLenData[i] != actualLenData[0]) {
                     isSameActualseq_ = false;
-                    break;
                 }
             }
         }
