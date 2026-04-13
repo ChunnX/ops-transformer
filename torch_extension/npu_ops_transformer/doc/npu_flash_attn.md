@@ -107,7 +107,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
             <ul>
                 <li>(B, S_Q, N_Q, D)</li>
                 <li>(B, N_Q, S_Q, D)</li>
-                <li>(Q, N_Q, D)</li>
+                <li>(T_Q, N_Q, D)</li>
             </ul>      
         </td>
         <td>√</td>
@@ -122,7 +122,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
             <ul>
                 <li>(B, S_KV, N_KV, D)</li>
                 <li>(B, N_KV, S_KV, D)</li>
-                <li>(KV, N_KV, D)</li>
+                <li>(T_KV, N_KV, D)</li>
                 <li>(number_blocks, B, N_KV, D)</li>
                 <li>(num_blocks, N_KV, block_size, D)</li>
                 <li>(num_blocks, N_KV, D/16, block_size, 16)</li>
@@ -140,7 +140,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
             <ul>
                 <li>(B, S_KV, N_KV, D)</li>
                 <li>(B, N_KV, S_KV, D)</li>
-                <li>(KV, N_KV, D)</li>
+                <li>(T_KV, N_KV, D)</li>
                 <li>(number_blocks, B, N_KV, D)</li>
                 <li>(num_blocks, N_KV, block_size, D)</li>
                 <li>(num_blocks, N_KV, D/16, block_size, 16)</li>
@@ -347,7 +347,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
             <ul>
                 <li>(B, S_Q, N_Q, D)</li>
                 <li>(B, N_Q, S_Q, D)</li>
-                <li>(Q, N_Q, D)</li>
+                <li>(T_Q, N_Q, D)</li>
             </ul>      
         </td>
         <td>√</td>
@@ -389,7 +389,7 @@ layout匹配关系如下：
     <th>layout_q</th>
     <th>layout_kv</th>
     <th>layout_out</th>
-    <th>layout_softmax_lse_layout</th>
+    <th>softmax_lse_layout</th>
 </tr>
 </thread>
 <tbody>
@@ -608,26 +608,26 @@ layout匹配关系如下：
       - 长度应满足以下条件:
         - 长度应等于 batch 数
       - 入参中的数值应满足以下条件:
-        - 其值应为非负数
+        - 其值应为非负整数
     - 入参 seqused_kv应满足以下条件:
       - 长度应满足以下条件:
         - 长度应等于 batch 数
       - 入参中的数值应满足以下条件:
-        - 其值应为非负数
+        - 其值应为非负整数
     - 入参 cu_seqlens_q应满足以下条件:
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
         - 当 layout_q 为 TND 时，其值应递增(大于等于前一个值)排列
         - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T_Q
-        - 其值应为非负数
+        - 其值应为非负整数
     - 入参 cu_seqlens_kv应满足以下条件:
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
         - 当 layout_kv 为 TND 时，其值应递增(大于等于前一个值)排列
         - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T_KV
-        - 其值应为非负数
+        - 其值应为非负整数
 - 存在性约束
   - 公共
     - 入参 seqused_kv 应满足以下条件:
