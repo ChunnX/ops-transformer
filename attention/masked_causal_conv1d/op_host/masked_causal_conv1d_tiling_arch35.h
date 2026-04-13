@@ -32,7 +32,9 @@ using namespace Ops::Transformer::OpTiling;
 
 class MaskedCausalConv1dTilingArch35 : public TilingBaseClass {
 public:
-    explicit MaskedCausalConv1dTilingArch35(gert::TilingContext* context) : TilingBaseClass(context) {}
+    explicit MaskedCausalConv1dTilingArch35(gert::TilingContext *context) : TilingBaseClass(context)
+    {
+    }
 
 protected:
     bool IsCapable() override;
@@ -51,11 +53,11 @@ private:
     ge::graphStatus CheckInputParams();
     ge::graphStatus SearchBestCoreSplit();
     ge::graphStatus CalcUbTiling();
-    ge::graphStatus CalcLoopParams(int64_t len, int64_t factor, int64_t& loopNum, int64_t& tailFactor);
+    ge::graphStatus CalcLoopParams(int64_t len, int64_t factor, int64_t &loopNum, int64_t &tailFactor);
 
     // Hardware
-    uint64_t ubSize_      = 0;
-    uint64_t coreNum_     = 0;
+    uint64_t ubSize_ = 0;
+    uint64_t coreNum_ = 0;
     uint64_t ubBlockSize_ = 0;
 
     // Shape
@@ -73,7 +75,7 @@ private:
     uint64_t realCoreNum_ = 1;
 
     // UB tile sizes
-    int64_t ubFactorH_     = 64;
+    int64_t ubFactorH_ = 64;
     int64_t ubFactorB_ = 1;
     int64_t ubFactorS_ = 1;
 

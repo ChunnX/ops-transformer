@@ -19,7 +19,7 @@ namespace ops {
 
 class MaskedCausalConv1d : public OpDef {
 public:
-    explicit MaskedCausalConv1d(const char* name) : OpDef(name)
+    explicit MaskedCausalConv1d(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
