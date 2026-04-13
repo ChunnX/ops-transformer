@@ -29,7 +29,7 @@ pt_dir = TEST_INPUT_PATH
 result_path = Path('result.xlsx')  # 或使用传入的result_path
 
 # 生成所有的组合，并转换为字典列表
-locals()["testcase_files"] = []
+testcase_files = []
 if os.path.isdir(pt_dir):
     pt_files = [f for f in os.listdir(pt_dir) if f.endswith('.pt')]
     if not pt_files:
@@ -38,17 +38,20 @@ if os.path.isdir(pt_dir):
         print(f"找到 {len(pt_files)} 个测试用例文件")
         for pt_file in pt_files:  
             filepath = os.path.join(pt_dir, pt_file)
-            locals()["testcase_files"].append(filepath)
+            testcase_files.append(filepath)
 else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def qli(testcase_files):   # 初始化参数和tensor
     cpu_result, npu_result, topk_value, params = lightning_indexer_pt_loadprocess.test_qli_process(testcase_files, device_id=0)
-    if npu_result != None:
+    if npu_result is not None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
     else:
         result = "Failed"
         fulfill_percent = 0
+
+    if result != "Pass":
+        pytest.fail(f"用例执行失败")
     
     row_data = {
         "Testcase_Name": Path(testcase_files).stem,
@@ -105,7 +108,7 @@ def qli(testcase_files):   # 初始化参数和tensor
     df.to_excel(result_path, index=False)
 
 @pytest.mark.ci
-@pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
+@pytest.mark.parametrize("testcase_files", testcase_files)
 def test_qli(testcase_files):   # 初始化参数和tensor
     with ProcessPoolExecutor(max_workers=1) as executor:
         # 创建当前用例子进程
