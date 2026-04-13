@@ -323,11 +323,12 @@ __global__ __aicore__ void blitz_sparse_attention(__gm__ uint8_t* query, __gm__ 
                                             __gm__ uint8_t* deq_scale1, __gm__ uint8_t* quant_scale1,
                                             __gm__ uint8_t* deq_scale2, __gm__ uint8_t* quant_scale2,
                                             __gm__ uint8_t* quant_offset2, __gm__ uint8_t* attentionOut,
+                                            __gm__ uint8_t* softmaxLse,
                                             __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
         blitz_sparse_attention_FIAS<Q_T, KV_T, OUT_T, PAGE_ATTENTIOND, LAYOUT_T, KV_LAYOUT_T, FLASH_DECODE, ENABLE_PREFIX, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE,
                                     M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA, M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE,
                                     M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, P_TEMPLATE_VERSION, TEMPLATE_MODE>
            (query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1, deq_scale2, quant_scale2,
-                                quant_offset2, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, attentionOut, nullptr, workspace, tiling);
+                                quant_offset2, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, attentionOut, softmaxLse, workspace, tiling);
 }

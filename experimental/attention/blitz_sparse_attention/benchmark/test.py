@@ -71,12 +71,12 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
         b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE
     )
     
-    # Run our implementation
-    out_our = torch_bsa.blitz_sparse_attention(q, k, v,
+    # Run our implementation (returns tuple: attention_out, softmax_lse)
+    out_our, _ = torch_bsa.blitz_sparse_attention(q, k, v,
         sabi=sabi,
-        actual_seq_lengths=actseqlen, actual_seq_lengths_kv=actseqlenkv, 
+        actual_seq_lengths=actseqlen, actual_seq_lengths_kv=actseqlenkv,
         num_heads=h, num_key_value_heads=h, input_layout=INPUT_LAYOUT,
-        scale_value=scale, atten_mask=bsa_atten_mask, sparse_mode=sm, 
+        scale_value=scale, atten_mask=bsa_atten_mask, sparse_mode=sm,
         pre_tokens=pre_tok, next_tokens=post_tok,
     )
     

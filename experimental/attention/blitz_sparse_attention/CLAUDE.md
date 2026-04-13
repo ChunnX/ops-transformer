@@ -1,5 +1,33 @@
 # Blitz Sparse Attention – Codebase Guide
 
+## Known limitations / TODOs
+
+**TODO: variable sabi granularity**
+Currently sabi indices are always in units of **128×128** (Q-tile × KV-tile) blocks.
+The original design used 128×512 granularity.  A future task is to support both
+granularities dynamically — i.e. let the caller choose whether each sabi index
+addresses a 128×128 or a 128×512 KV block — without requiring a kernel rebuild.
+This affects sabi shape (`ceil(S/128)` KV axis today vs `ceil(S/512)` before),
+tiling, and all Python tooling that generates or interprets sabi tensors.
+
+**TODO: batch size > 1 is broken**
+Only `B=1` (batch size 1) is known to produce correct results.
+For `B>1` the output is incorrect (wrong memory access due to stride mismatches in
+the host-side binding or kernel tiling).  All tests and benchmarks should be run
+with `B=1` until this is diagnosed and fixed.
+
+---
+
+## Before running anything
+
+Always set the NPU device to unit 5 before running any Python script, test, or benchmark:
+
+```bash
+export ASCEND_RT_VISIBLE_DEVICES=5
+```
+
+Without this, commands may land on the wrong NPU or fail to find the device.
+
 ## Kernel Landscape (the three kernels you need to know)
 
 ### PFA – `attention/prompt_flash_attention`
@@ -57,6 +85,28 @@ PyTorch exposure via `torch_npu.npu_fused_infer_attention_score_v5(...)`.
 - `softmax_lse` output shape is `[B, N, q_len]` (float32, 3-D). TND layout is
   not supported for LSE and will return an empty `{0}` tensor.
 - Only BNSD layout is exercised in tests/benchmarks on 910B2.
+
+---
+
+## Host-side layer stack
+
+Understanding the 4-layer stack is essential for debugging output-binding bugs.
+Each layer has a different job:
+
+```
+torch_interface.cpp          ← Python boundary: allocates torch Tensors, calls aclnn public API
+  └─ aclnnBlitzSparseAttentionGetWorkspaceSize   (aclnn_blitz_sparse_attention.cpp)
+       └─ InnerBlitzSparseAttentionGetWorkspaceSize  (aclnn_blitz_sparse_attention_inner.cpp)
+            ├─ l0op::BlitzSparseAttention            (blitz_sparse_attention_base_aclnn.cpp)
+            │    └─ executor->AllocTensor()  ← internal scratch tensor, NOT user memory
+            │    └─ INFER_SHAPE / ADD_TO_LAUNCHER_LIST_AICORE
+            └─ l0op::ViewCopy(l0Out, userTensor)  ← binds scratch → user memory
+```
+
+`AllocTensor()` at the L0 layer creates executor-owned scratch. The kernel writes
+into that scratch. `ViewCopy` is the only thing that routes kernel output to the
+tensor the user actually allocated. If a `ViewCopy` is missing for an output, the
+kernel result is silently discarded.
 
 ---
 
@@ -155,3 +205,25 @@ and for random input values were unrelated to attention statistics.
 **Rule**: whenever the L0 builder allocates an output tensor with `AllocTensor()`,
 check that a corresponding `ViewCopy` exists in the caller for every output the
 user cares about.
+
+### `isSoftMaxLseEnable` side effects in tiling
+
+Setting `isSoftMaxLseEnable=true` in tiling has one non-obvious side effect:
+it also sets `enableRingAttention=true`, which **disables the CVDIFF tiling path**.
+This is intentional — ring attention and CVDIFF are mutually exclusive — but means
+LSE-enabled runs use a different tiling branch than LSE-disabled runs. If you see
+tiling or performance differences between `softmax_lse_flag=true/false`, this is why.
+
+### Quick LSE sanity check
+
+For zero input (Q=K=V=0), the attention scores are all 0, so softmax is uniform
+over S tokens. LSE must equal `log(S)` regardless of B, N, or D:
+
+```python
+q0 = torch.zeros(B, H, S, D, dtype=dtype, device=DEVICE)
+_, lse = torch_bsa.blitz_sparse_attention(q0, q0, q0, ..., softmax_lse_flag=True)
+assert torch.allclose(lse, torch.full_like(lse, math.log(S)), atol=1e-3)
+```
+
+This check is cheap, layout-independent, and catches missing ViewCopy, wrong
+`SoftMaxOffset`, incorrect GatherMask, and uninitialized output — all at once.

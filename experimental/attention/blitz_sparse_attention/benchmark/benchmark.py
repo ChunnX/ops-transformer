@@ -608,7 +608,8 @@ def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params):
     sm, pre_tok, post_tok = sparsity_params
     
     def fn(q, k, v, seq, seqkv):
-        return torch_bsa.blitz_sparse_attention(
+        # Returns (attention_out, softmax_lse); benchmark only needs attention_out
+        out, _ = torch_bsa.blitz_sparse_attention(
             q, k, v,
             sabi=sabi, actual_seq_lengths=seq,
             actual_seq_lengths_kv=seqkv, num_heads=h, num_key_value_heads=h,
@@ -616,6 +617,7 @@ def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params):
             atten_mask=atten_mask, sparse_mode=sm,
             pre_tokens=pre_tok, next_tokens=post_tok,
         )
+        return out
     return fn
 
 

@@ -2,6 +2,21 @@
 
 This kernel is based on PromptFlashAttentionV3, extending it by a new argument "sabi" to enable block sparse attention computation during prefill. We provide a **torch interface** to quickly try out our kernel in your end-to-end python pipelines that may benefit from sparse computation (e.g. Hunyuan-video). Documentation of the sabi argument can be found in [docs/aclnnBlitzSparseAttention.md](docs/aclnnBlitzSparseAttention.md)
 
+## Known limitations / TODOs
+
+> **TODO: variable sabi granularity**
+> The sabi tensor currently uses a fixed **128×128** (Q-tile × KV-tile) block
+> granularity (shape `[B, N, ceil(S/128), ceil(S/128)]`).  The original design
+> used 128×512 granularity.  A future task is to add dynamic control so the caller
+> can choose between 128×128 and 128×512 KV-block granularity at runtime, without
+> a kernel rebuild.  This requires changes to the sabi shape convention, kernel
+> tiling, and all Python mask-generation utilities.
+
+> **TODO: batch size > 1 is broken**
+> Only `batch_size=1` (`B=1`) is currently known to produce correct results.
+> Runs with `B>1` produce incorrect outputs.  All tests and benchmarks must be
+> run with `B=1` until the multi-batch issue is diagnosed and fixed.
+
 ## Quick test and benchmark in python:
 build the kernel as a custom experimental package, install it, then install our "torch_bsa" torch interface package
 ```shell

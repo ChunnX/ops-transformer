@@ -43,7 +43,9 @@ __attribute__ ((visibility("default"))) aclnnStatus aclnnBlitzSparseAttentionGet
     int64_t numKeyValueHeads,
     int64_t sparseMode,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     const aclTensor *attentionOut,
+    const aclTensor *softmaxLse,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

@@ -425,6 +425,7 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
     contextKeyParams.antiquantScaleShape = context->GetOptionalInputShape(ANTIQUANT_SCALE_INDEX);
     contextKeyParams.antiquantOffsetShape = context->GetOptionalInputShape(ANTIQUANT_OFFSET_INDEX);
     contextKeyParams.outputShape = context->GetOutputShape(0);
+    contextKeyParams.lseoutputShape = context->GetOutputShape(1);  // softmax_lse
     auto attrs = context->GetAttrs();
     contextKeyParams.innerPrecisePtr = attrs->GetAttrPointer<int64_t>(ATTR_INNER_PRECISE);
     contextKeyParams.headsNumber = attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX);
@@ -438,6 +439,10 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
     contextKeyParams.compileInfoPtr = reinterpret_cast<const BlitzSparseAttentionCompileInfo *>(context->GetCompileInfo());
     contextKeyParams.isBSNDOut = (string(contextKeyParams.layout) == "BNSD_BSND") ? 1U : 0U;
     contextKeyParams.fromFused = NUM_0;
+    constexpr uint32_t ATTR_SOFTMAX_LSE_FLAG_INDEX = 8;
+    contextKeyParams.softmaxLseFlag = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    contextKeyParams.isSoftMaxLseEnable =
+        (contextKeyParams.softmaxLseFlag != nullptr) && (*contextKeyParams.softmaxLseFlag);
 
     contextKeyParams.deqScaleType = (context->GetOptionalInputDesc(DEQ_SCALE1_INDEX) != nullptr) ?
     context->GetOptionalInputDesc(DEQ_SCALE1_INDEX)->GetDataType() : contextKeyParams.inputDataType;

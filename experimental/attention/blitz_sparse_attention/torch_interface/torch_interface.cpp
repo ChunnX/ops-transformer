@@ -37,26 +37,26 @@ aclDataType get_acl_dtype(const at::Tensor& tensor) {
 aclTensor* create_acl_tensor(const at::Tensor& tensor) {
     auto sizes = tensor.sizes();
     std::vector<int64_t> shape(sizes.begin(), sizes.end());
-    
+
     // Calculate strides
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    
+
     aclDataType dtype = get_acl_dtype(tensor);
     void* data_ptr = tensor.data_ptr();
-    
-    return aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, 
+
+    return aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0,
                           aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), data_ptr);
 }
 
 /**
- * @brief Interface to the `aclnnBlitzSparseAttention` kernel which performs 
- *        flash attention computation with prompt support
+ * @brief Interface to the `aclnnBlitzSparseAttention` kernel which performs
+ *        flash attention computation with prompt support and optional LSE output.
  *
  * @param [in] query Tensor of shape [B, N, S, D] (fp16/bf16)
- * @param [in] key Tensor of shape [B, N, T, D] (fp16/bf16) 
+ * @param [in] key Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] value Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] atten_mask Tensor of shape [B, N, S, T] (bool, optional)
  * @param [in] sabi Tensor of shape [B, N, S / Qtile_size, sparsity * T / KVTileSize] (uint16, padded with 65535, optional)
@@ -69,14 +69,16 @@ aclTensor* create_acl_tensor(const at::Tensor& tensor) {
  * @param [in] input_layout output layout string
  * @param [in] num_key_value_heads number of key/value heads
  * @param [in] sparse_mode sparse mode flag
- * @param [out] output Tensor of shape [B, N, S, D] (fp16/bf16)
- * 
- * @returns output tensor with attention results
+ * @param [in] softmax_lse_flag if true, compute and return softmax LSE (log-sum-exp)
+ * @param [out] (first)  attention_out Tensor of shape [B, N, S, D] (fp16/bf16)
+ * @param [out] (second) softmax_lse  Tensor of shape [B, N, S] (float32), empty when flag=false
+ *
+ * @returns tuple (attention_out, softmax_lse)
  */
 
-at::Tensor blitz_sparse_attention(
+std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
     const at::Tensor &query,
-    const at::Tensor &key, 
+    const at::Tensor &key,
     const at::Tensor &value,
     const c10::optional<at::Tensor> &atten_mask = c10::nullopt,
     const c10::optional<at::Tensor> &sabi = c10::nullopt,
@@ -88,7 +90,8 @@ at::Tensor blitz_sparse_attention(
     c10::optional<int64_t> next_tokens_opt = c10::nullopt,
     c10::optional<std::string> input_layout_opt = c10::nullopt,
     c10::optional<int64_t> num_key_value_heads_opt = c10::nullopt,
-    c10::optional<int64_t> sparse_mode_opt = c10::nullopt
+    c10::optional<int64_t> sparse_mode_opt = c10::nullopt,
+    c10::optional<bool> softmax_lse_flag_opt = c10::nullopt
 ) {
     // Set default values
     int64_t num_heads = num_heads_opt.value_or(1);
@@ -98,7 +101,8 @@ at::Tensor blitz_sparse_attention(
     std::string input_layout = input_layout_opt.value_or("BSH");
     int64_t num_key_value_heads = num_key_value_heads_opt.value_or(0);
     int64_t sparse_mode = sparse_mode_opt.value_or(0);
-    
+    bool softmax_lse_flag = softmax_lse_flag_opt.value_or(false);
+
     // Validate input tensors
     TORCH_CHECK(query.is_contiguous(), "query must be contiguous");
     TORCH_CHECK(key.is_contiguous(), "key must be contiguous");
@@ -112,7 +116,7 @@ at::Tensor blitz_sparse_attention(
         TORCH_CHECK(sabi.value().scalar_type() == at::kUInt16, "sabi tensor must be uint16 tensor");
         TORCH_CHECK(sabi.value().is_contiguous(), "sabi must be contiguous");
     }
-    
+
     // Create ACL tensors from torch tensors
     aclTensor* query_tensor = create_acl_tensor(query);
     aclTensor* key_tensor = create_acl_tensor(key);
@@ -125,29 +129,53 @@ at::Tensor blitz_sparse_attention(
     if (sabi.has_value()) {
         sabi_tensor = create_acl_tensor(sabi.value());
     }
-    
+
     // Create actual sequence lengths array - handle optional parameters
     aclIntArray* actual_seq_lengths_array = nullptr;
     aclIntArray* actual_seq_lengths_kv_array = nullptr;
-    
+
     if (actual_seq_lengths_opt.has_value()) {
         const auto& seq_lengths = actual_seq_lengths_opt.value();
         actual_seq_lengths_array = aclCreateIntArray(seq_lengths.data(), seq_lengths.size());
     }
-    
+
     if (actual_seq_lengths_kv_opt.has_value()) {
         const auto& seq_lengths_kv = actual_seq_lengths_kv_opt.value();
         actual_seq_lengths_kv_array = aclCreateIntArray(seq_lengths_kv.data(), seq_lengths_kv.size());
     }
-    
+
     // Prepare layerOut string
     std::vector<char> layer_out(input_layout.begin(), input_layout.end());
     layer_out.push_back('\0');
-    
+
     // Create output tensor with same properties as query
     at::Tensor output = torch::empty_like(query);
     aclTensor* output_tensor = create_acl_tensor(output);
-    
+
+    // Allocate LSE output: shape [B, N, S] float32 when flag=true, empty otherwise.
+    // Derive B/N/S from the query shape assuming BNSD (the only layout used on 910B2).
+    // For other layouts the LSE will be empty regardless of the flag.
+    at::Tensor lse_out;
+    aclTensor* lse_tensor = nullptr;
+    if (softmax_lse_flag) {
+        TORCH_CHECK(input_layout == "BNSD" || input_layout == "BSH" || input_layout == "BSND",
+                    "softmax_lse_flag=True only supported for BNSD/BSH/BSND layouts");
+        int64_t B, N, S;
+        if (input_layout == "BNSD") {
+            B = query.size(0); N = num_heads; S = query.size(2);
+        } else if (input_layout == "BSND") {
+            B = query.size(0); N = num_heads; S = query.size(1);
+        } else {  // BSH
+            B = query.size(0); N = num_heads; S = query.size(1);
+        }
+        lse_out = torch::empty({B, N, S},
+                               torch::dtype(torch::kFloat32).device(query.device()));
+        lse_tensor = create_acl_tensor(lse_out);
+    } else {
+        lse_out = torch::empty({0},
+                               torch::dtype(torch::kFloat32).device(query.device()));
+    }
+
     int64_t inner_precise = 1;
 
     if (sparse_mode >= PFA_SPARSE_HIGH_PRECISION_NO_MASK && sparse_mode <= PFA_SPARSE_HIGH_PRECISION_BAND) {
@@ -155,12 +183,12 @@ at::Tensor blitz_sparse_attention(
         inner_precise = 0;
         sparse_mode -= PFA_SPARSE_HIGH_PRECISION_NO_MASK;
     }
-    
+
     // Get workspace size
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     void* workspace_addr = nullptr;
-    
+
     int ret = aclnnBlitzSparseAttentionGetWorkspaceSize(
         query_tensor,                 //  const aclTensor   *query,
         key_tensor,                   //  const aclTensor   *key,
@@ -183,12 +211,14 @@ at::Tensor blitz_sparse_attention(
         num_key_value_heads,          //  int64_t            numKeyValueHeads,
         sparse_mode,                  //  int64_t            sparseMode,
         inner_precise,                //  int64_t            innerPrecise,
+        softmax_lse_flag,             //  bool               softmaxLseFlag,
         output_tensor,                //  const aclTensor   *attentionOut,
+        lse_tensor,                   //  const aclTensor   *softmaxLse,
         &workspace_size,              //  uint64_t          *workspaceSize,
         &executor);                   //  aclOpExecutor     **executor)
 
     TORCH_CHECK(ret == ACL_SUCCESS, "aclnnBlitzSparseAttentionGetWorkspaceSize failed with error: ", ret);
-    
+
     // Allocate workspace if needed
     if (workspace_size > 0) {
         ret = aclrtMalloc(&workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -200,7 +230,7 @@ at::Tensor blitz_sparse_attention(
     aclrtGetDevice(&deviceId);
     auto npuStream = c10_npu::getCurrentNPUStream(deviceId);
     auto aclStream = npuStream.stream(true);
-    
+
     // Execute the kernel
     ret = aclnnBlitzSparseAttention(workspace_addr, workspace_size, executor, aclStream);
     TORCH_CHECK(ret == ACL_SUCCESS, "aclnnBlitzSparseAttention execution failed with error: ", ret);
@@ -213,15 +243,16 @@ at::Tensor blitz_sparse_attention(
     if (workspace_addr) aclrtFree(workspace_addr);
     if (actual_seq_lengths_array) aclDestroyIntArray(actual_seq_lengths_array);
     if (actual_seq_lengths_kv_array) aclDestroyIntArray(actual_seq_lengths_kv_array);
-    
-    return output;
+    if (lse_tensor) aclDestroyTensor(lse_tensor);
+
+    return std::make_tuple(output, lse_out);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("blitz_sparse_attention", &blitz_sparse_attention,
         R"DOC(
-        Interface to the `aclnnBlitzSparseAttention` kernel which performs 
-        flash attention computation with prompt support.
+        Interface to the `aclnnBlitzSparseAttention` kernel which performs
+        flash attention computation with block-sparse support.
 
         Args:
             query (torch.Tensor): Query tensor of shape [B, N, S, D] (fp16/bf16)
@@ -238,9 +269,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             input_layout (str, optional): Output layout string. Default: "BSH"
             num_key_value_heads (int, optional): Number of key/value heads. Default: 0
             sparse_mode (int, optional): sparse mode = 0,1,2,...7 choice. Default: 0
+            softmax_lse_flag (bool, optional): If True, compute softmax LSE output. Default: False
 
         Returns:
-            torch.Tensor: Output tensor of shape [B, N, S, D] with attention results
+            tuple(torch.Tensor, torch.Tensor):
+                - attention_out: shape [B, N, S, D], same dtype as query
+                - softmax_lse:   shape [B, N, S], float32 (empty tensor when softmax_lse_flag=False)
         )DOC",
         py::arg("query"),
         py::arg("key"),
@@ -255,6 +289,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("next_tokens") = c10::optional<int64_t>(),
         py::arg("input_layout") = c10::optional<std::string>(),
         py::arg("num_key_value_heads") = c10::optional<int64_t>(),
-        py::arg("sparse_mode") = c10::optional<int64_t>()
+        py::arg("sparse_mode") = c10::optional<int64_t>(),
+        py::arg("softmax_lse_flag") = c10::optional<bool>()
     );
 }
