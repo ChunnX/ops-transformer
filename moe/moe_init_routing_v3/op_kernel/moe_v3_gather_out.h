@@ -46,10 +46,11 @@ protected:
         // Gather out token-expert pairs with same expert section
         int64_t curLoopRow = 0;
         int64_t gatherDstRow = initialRow;
+        int64_t colOffset = colsLoop * perLoopCols;
 
+        int64_t inputOffset = colOffset;
         for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
             LocalTensor<T> inLocal = xCopyInQueue_.AllocTensor<T>();
-            int64_t inputOffset = row * this->cols_ + colsLoop * perLoopCols;
             DataCopyExtParams xCopyParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
             DataCopyPadExtParams<T> dataCopyPadParams{false, 0, 0, 0};
             DataCopyPad(inLocal, xGm_[inputOffset], xCopyParams, dataCopyPadParams);
@@ -68,11 +69,13 @@ protected:
                 int32_t outIndex = subRowIdxLocal.GetValue(curLoopRow);
                 curLoopRow++;
                 gatherDstRow++;
+
                 if (outIndex == -1 || (dropPadMode_ == DROPLESS_MODE && outIndex >= activeNum_)) {
                     // Skipping invalid destination slots 
                     continue;
                 }
-                int64_t outOffset = outIndex * this->cols_ + colsLoop * perLoopCols;
+
+                int64_t outOffset = outIndex * this->cols_ + colOffset;
                 DataCopyPad(expandedXGm_[outOffset], inLocal, intriParams);
                 // copy out scale
                 if constexpr (hasQuantScale && isFirstColsLoop) {
@@ -81,6 +84,8 @@ protected:
             }
             scaleCopyInQueue_.FreeTensor(scaleLocal);
             xCopyInQueue_.FreeTensor(inLocal);
+
+            inputOffset += this->cols_;
         }
     }
 
