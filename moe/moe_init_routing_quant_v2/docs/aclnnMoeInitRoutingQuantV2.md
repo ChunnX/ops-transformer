@@ -15,75 +15,74 @@
 
 ## 功能说明
 
--   **接口功能**：该算子对应MoE（Mixture of Experts，混合专家模型）中的**Routing计算**，以[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)算子的计算结果作为输入，并输出量化后的Routing矩阵expandedXOut等结果供后续计算使用。本接口针对[aclnnMoeInitRoutingQuant](../../moe_init_routing_quant/docs/aclnnMoeInitRoutingQuant.md)做了如下功能变更，请根据实际情况选择合适的接口：
+- **接口功能**：该算子对应MoE（Mixture of Experts，混合专家模型）中的**Routing计算**，以[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)算子的计算结果作为输入，并输出量化后的Routing矩阵expandedXOut等结果供后续计算使用。本接口针对[aclnnMoeInitRoutingQuant](../../moe_init_routing_quant/docs/aclnnMoeInitRoutingQuant.md)做了如下功能变更，请根据实际情况选择合适的接口：
 
-    - 新增Drop模式，在该模式下输出内容会将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。
-    - 新增Dropless模式下expertTokensCountOrCumsumOut可选输出，输出每个专家需要处理的累积Token个数（Cumsum），或每个专家需要处理的Token数（Count）。
-    - 新增Drop模式下expertTokensBeforeCapacityOut可选输出，输出每个专家在Drop前应处理的Token个数。
-    - 删除rowIdx输入。
-    - 增加动态quant计算模式。
+  - 新增Drop模式，在该模式下输出内容会将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。
+  - 新增Dropless模式下expertTokensCountOrCumsumOut可选输出，输出每个专家需要处理的累积Token个数（Cumsum），或每个专家需要处理的Token数（Count）。
+  - 新增Drop模式下expertTokensBeforeCapacityOut可选输出，输出每个专家在Drop前应处理的Token个数。
+  - 删除rowIdx输入。
+  - 增加动态quant计算模式。
 
--   **计算公式**：
+- **计算公式**：
 
-    1.将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
-    
-    $$
-    sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
-    $$
+  1.将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
+  
+  $$
+  sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
+  $$
 
-    2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
+  2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
 
-    $$
-    expandedRowIdxOut[sortedRowIdx[i]]=i
-    $$
+  $$
+  expandedRowIdxOut[sortedRowIdx[i]]=i
+  $$
 
-    3.在dropless模式下，对sortedExpertIdx的每个专家统计直方图结果，再进行Cumsum，得出expertTokensCountOrCumsumOutOptional：
+  3.在dropless模式下，对sortedExpertIdx的每个专家统计直方图结果，再进行Cumsum，得出expertTokensCountOrCumsumOutOptional：
 
-    $$
-    expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
-    $$
+  $$
+  expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
+  $$
 
-    4.在Drop模式下，对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacityOutOptional：
+  4.在Drop模式下，对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacityOutOptional：
 
-    $$
-    expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
-    $$
+  $$
+  expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
+  $$
 
-    5.计算quant结果：
-    - 静态quant：
+  5.计算quant结果：
 
-        $$
-        quantResult = round((x * scaleOptional) + offsetOptional)
-        $$
+  - 静态quant：
 
-    - 动态quant：
-        - 若不输入scale：
+      $$
+      quantResult = round((x * scaleOptional) + offsetOptional)
+      $$
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
-            $$
+  - 动态quant：
+    - 若不输入scale：
 
+      $$
+      dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
+      $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+      $$
+      quantResult = round(x / dynamicQuantScaleOutOptional)
+      $$
 
-        - 若输入scale:
+    - 若输入scale:
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
-            $$
+      $$
+      dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
+      $$
 
+      $$
+      quantResult = round(x * scaleOptional / dynamicQuantScaleOutOptional)
+      $$
 
-            $$
-            quantResult = round(x * scaleOptional / dynamicQuantScaleOutOptional)
-            $$
+  6.根据quantResult得出expandedXOut：
 
-    6.根据quantResult得出expandedXOut：
-
-    $$
-    expandedXOut[expandedRowIdxOut[i]]=quantResult[i // K]
-    $$
+  $$
+  expandedXOut[expandedRowIdxOut[i]]=quantResult[i // K]
+  $$
 
 ## 函数原型
 
@@ -326,7 +325,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
       <td>-</td>
     </tr>
   </tbody></table>
-  -   <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
+  - <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
 
 - **返回值：**
 

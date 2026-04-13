@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - **算子功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
@@ -35,7 +34,6 @@
   当前支持的布局：
   - qInputLayout: "TND" "BNSD"
   - kvInputLayout: "TND" "BNSD"
-
 
 ## 函数原型
 
@@ -342,7 +340,6 @@ aclnnStatus aclnnRainFusionAttention(
   </tbody>
   </table>
 
-
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -383,7 +380,6 @@ aclnnStatus aclnnRainFusionAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnRainFusionAttention
 
@@ -428,7 +424,6 @@ aclnnStatus aclnnRainFusionAttention(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -446,7 +441,6 @@ aclnnStatus aclnnRainFusionAttention(
 - 稀疏块索引必须在有效范围内，无效位置用-1填充。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0。
 - 设G = N1 / N2，G需要满足以下约束：G < 128 && 128 % G == 0。
-
 
 ## 调用示例
 
@@ -770,4 +764,3 @@ int main() {
 }
 
 ```
-

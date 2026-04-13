@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - **接口功能**：BlockSparseAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
@@ -34,10 +33,9 @@
   - qInputLayout: "TND" "BNSD"
   - kvInputLayout: "TND" "BNSD"
 
-
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用"aclnnBlockSparseAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttention"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttention"接口执行计算。
 
 ```c++
 aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
@@ -402,7 +400,6 @@ aclnnStatus aclnnBlockSparseAttention(
   </tbody>
   </table>
 
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -443,7 +440,6 @@ aclnnStatus aclnnBlockSparseAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnBlockSparseAttention
 
@@ -511,10 +507,9 @@ aclnnStatus aclnnBlockSparseAttention(
 - blockSize当前只支持输入0，表示不支持paged cache。
 - preTokens和nextTokens当前只支持输入2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
 
-
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>

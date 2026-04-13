@@ -4,25 +4,29 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
--  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
-    -  首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
-    -  通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
-    -  通路3后乘以$W^{uk}$后输出$q^N$。
-    -  通路4后经过旋转位置编码后输出$q^R$。
-    -  通路2拆分为通路5和通路6。
-    -  通路5经过RmsNorm后传入Cache中得到$k^N$。
-    -  通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
+- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
+  - 首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
+  - 通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
+  - 通路3后乘以$W^{uk}$后输出$q^N$。
+  - 通路4后经过旋转位置编码后输出$q^R$。
+  - 通路2拆分为通路5和通路6。
+  - 通路5经过RmsNorm后传入Cache中得到$k^N$。
+  - 通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
 
--  **计算流程图**
+- **计算流程图**
 
 ![MlaPreprocess图](../../../docs/zh/figures/MlaPreprocess计算过程.png)
 
--  **计算公式**：
+- **计算公式**：
 
     RmsNormQuant公式
 
@@ -57,7 +61,6 @@
     $$
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
-
 
 ## 函数原型
 
@@ -111,6 +114,7 @@ aclnnStatus aclnnMlaPreprocessV2GetWorkspaceSize(
   uint64_t        *workspaceSize, 
   aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnMlaPreprocessV2(
   void          *workspace, 
@@ -119,12 +123,11 @@ aclnnStatus aclnnMlaPreprocessV2(
   aclrtStream    stream)
 ```
 
-
 ## aclnnMlaPreprocessV2GetWorkspaceSize
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1700px"><colgroup>
   <col style="width: 151px">
   <col style="width: 121px">
   <col style="width: 301px">
@@ -132,7 +135,7 @@ aclnnStatus aclnnMlaPreprocessV2(
   <col style="width: 237px">
   <col style="width: 111px">
   <col style="width: 170px">
-  <col style="width: 100px">
+  <col style="width: 150px">
   </colgroup>
   <thead>
     <tr>
@@ -601,7 +604,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ
+        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -639,7 +642,6 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>-</td>
     </tr>
   </tbody></table>
-
 
 - **返回值**
 
@@ -680,8 +682,6 @@ aclnnStatus aclnnMlaPreprocessV2(
     </tr>
   </tbody>
   </table>
-
-
 
 ## aclnnMlaPreprocessV2
 
@@ -725,19 +725,17 @@ aclnnStatus aclnnMlaPreprocessV2(
 
   aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
   - aclnnMlaPreprocessV2默认确定性实现。
--   shape格式字段含义及约束
-    -  tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    -  hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    -  headNum：表示多头数，取值范围：16、32、64、128
-    -  blockNum：PagedAttention场景下的块数，取值范围：192
-    -  blockSize：PagedAttention场景下的块大小，取值范围：128
-    -  当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
-
+- shape格式字段含义及约束
+    - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
+    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
+    - headNum：表示多头数，取值范围：16、32、64、128
+    - blockNum：PagedAttention场景下的块数，取值范围：192
+    - blockSize：PagedAttention场景下的块大小，取值范围：128
+    - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
 
 ## 调用示例
 

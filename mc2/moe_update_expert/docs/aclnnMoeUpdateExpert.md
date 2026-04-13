@@ -49,7 +49,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeUpdateExpertGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeUpdateExpert”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeUpdateExpertGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeUpdateExpert”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
@@ -127,7 +127,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>activeMaskOptional</td>
     <td>输入</td>
-    <td>表示token是否参与通信，可传有效数据或空指针：<br><ul><li> 传有效数据时，expertScalesOptional和pruningThresholdOptional必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。<br><li> 传空指针时，默认所有token参与通信。<br>要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</li></ul></td>
+    <td>表示token是否参与通信，可传有效数据或空指针：<ul><li> 传有效数据时，expertScalesOptional和pruningThresholdOptional必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。</li><li> 传空指针时，默认所有token参与通信。<br>要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     </tr>
@@ -148,7 +148,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>balanceMode</td>
     <td>输入</td>
-    <td>均衡规则，默认值为0：<br><ul><li> 0：按rank分发；<br><li> 1：按token分发；<br>取值范围[0, 1]。</li></ul></td>
+    <td>均衡规则，默认值为0：<br><ul><li> 0：按rank分发；</li><li> 1：按token分发；<br>取值范围[0, 1]。</li></ul></td>
     <td>INT64</td>
     <td>ND</td>
     </tr>
@@ -295,6 +295,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
 
 - 示例代码如下，仅供参考
+
     ```Cpp
     #include <thread>
     #include <iostream>

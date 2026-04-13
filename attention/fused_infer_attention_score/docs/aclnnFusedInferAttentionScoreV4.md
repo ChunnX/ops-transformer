@@ -44,7 +44,6 @@
     <blockquote>query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
     <br>Q_S表示query shape中的S，KV_S表示key和value shape中的S，Q_N表示num_query_heads，KV_N表示num_key_value_heads。P表示Softmax(<span>(QK<sup class="superscript">T</sup>) / <span class="sqrt">d</span></span>)的计算结果。</blockquote>
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV4GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV4”接口执行计算。
@@ -569,7 +568,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
-        <td>(Q_N)</a></td>
+        <td>(Q_N)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -878,7 +877,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -1165,9 +1163,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 <summary><a id="INT8"></a>int8量化场景：</summary>
 
-
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-
 
     <table style="undefined;table-layout: fixed;  width: 1150px">
         <colgroup>
@@ -1315,7 +1311,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                         </ul>
                     </ul>
                 </td>
-            <tr>
+            </tr>
         </tbody>
     </table>
 
@@ -1465,7 +1461,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>代表per-token-group模式</td>
                 <td>-</td>
             </tr>
-        <tbody>
+        </tbody>
     </table>
 
 </details>
@@ -2043,7 +2039,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、RingAttention或者D非32Byte对齐的场景。</li>
                     </ul>
                 </td>
-            <tr>
+            </tr>
         </tbody>
     </table>
 
@@ -2155,8 +2151,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
         </tbody>
     </table>
-</details>
 
+</details>
 
 ## 调用示例
 

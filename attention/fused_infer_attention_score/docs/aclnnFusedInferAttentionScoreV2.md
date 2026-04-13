@@ -39,7 +39,6 @@
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV2GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV2”接口执行计算。
@@ -583,7 +582,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>4</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>
@@ -642,7 +640,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   </tbody>
   </table>
 
-
 ## aclnnFusedInferAttentionScoreV2
 
 - **参数说明**
@@ -681,7 +678,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
     </tr>
   </tbody>
   </table>
-
 
 - **返回值**
 
@@ -1413,4 +1409,3 @@ int main()
   return 0;
 }
 ```
-

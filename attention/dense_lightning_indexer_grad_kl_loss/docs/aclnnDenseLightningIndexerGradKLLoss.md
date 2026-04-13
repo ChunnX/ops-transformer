@@ -78,7 +78,7 @@
 
 ## 函数原型
 
-算子执行接口为两段式接口，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
@@ -98,10 +98,10 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
-    int64_t              pre_tokens,
-    int64_t              next_tokens,
+    int64_t              preTokens,
+    int64_t              nextTokens,
     const aclTensor     *dQueryIndex,
-    const aclTensor     *dKeyKndex,
+    const aclTensor     *dKeyIndex,
     const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
@@ -113,7 +113,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnDenseLightningIndexerGradKLLoss
@@ -284,6 +284,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>-</td>
        <td>-</td>
        <td>-</td>
+      </tr>
       <tr>
        <td>layout（char*）</td>
        <td>输入</td>
@@ -308,7 +309,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1</a>。</li></ul></td>
+       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -318,7 +319,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1</a>。</li></ul></td>
+       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -616,7 +617,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tbody>
       <tr>
        <td>query</td>
-       <td>N1=128/64/32; D=128<td>
+       <td>N1=128/64/32; D=128</td>
       </tr>
       <tr>
        <td>queryIndex</td>

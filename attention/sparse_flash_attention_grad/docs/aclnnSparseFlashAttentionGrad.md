@@ -11,13 +11,11 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
-
 ## 功能说明
 
--   **接口功能**：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
+- **接口功能**：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
 
--   **计算公式**：根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
+- **计算公式**：根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
 
   $$
    selectedKey\text{ }=\text{ }Gather \left( key,topkIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
@@ -51,7 +49,6 @@
    d\mathop{{S}}\nolimits_{{t,:}}= \left[ P\mathop{{}}\nolimits_{{t,:}}@ \left( dP\mathop{{}}\nolimits_{{t,:}}-FlashSoftmaxGrad \left( dO,O \left)  \left)  \right] \right. \right. \right. \right.
   $$
 
-
 <div style="padding-left:40px;">
 
    阶段3：计算$dQ$与$dK$:
@@ -66,11 +63,10 @@
    dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
   $$
 
-
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
+
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *query, 
@@ -100,6 +96,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t            *workspaceSize,
     aclOpExecutor      **executor)
 ```
+
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGrad(
     void             *workspace, 
@@ -505,7 +502,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tbody>
     </table>
 
-
 ## aclnnSparseFlashAttentionGrad
 
 - **参数说明**
@@ -548,7 +544,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
 
 ## 约束说明
 
@@ -684,7 +679,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         </tbody>
     </table>
-
 
 ## 调用示例
 

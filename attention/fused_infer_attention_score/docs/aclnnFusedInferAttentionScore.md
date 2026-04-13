@@ -37,7 +37,6 @@
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScore”接口执行计算。
@@ -556,13 +555,11 @@ aclnnStatus aclnnFusedInferAttentionScore(
   </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-
 
 - 确定性计算：
   - aclnnPromptFlashAttention默认确定性实现。
@@ -1085,4 +1082,3 @@ int main()
     return 0;
 }
 ```
-

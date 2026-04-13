@@ -11,13 +11,11 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
-
 ## 功能说明
 
 - 接口功能：训练场景下计算注意力的反向输出，即[FlashAttentionScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionScoreV4.md)的反向计算。**该接口query、key、value参数支持多个长度相等或者长度不相等的sequence**
   - **该接口合并了[FlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)接口和[FlashAttentionUnpaddingScoreGradV2](./aclnnFlashAttentionUnpaddingScoreGradV2.md)接口，并调整了Dropout功能**：
-    -   <term>Ascend 950PR/Ascend 950DT</term>：keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask
+    - <term>Ascend 950PR/Ascend 950DT</term>：keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask
 - 计算公式：
 
   - pseType=1时，与[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)计算公式相同
@@ -59,7 +57,6 @@
     query、keyIn、value数据排布格式支持从多种维度解读，其中T (Total S Length) 表示所有batch对应的S的总长、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、d（Head-Dim）表示隐藏层最小的单元尺寸，且满足d=H/N。
 
 ## 函数原型
-
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreGradV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGradV4”接口执行计算。
 
@@ -121,7 +118,6 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   aclOpExecutor    *executor, 
   aclrtStream       stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
@@ -618,7 +614,6 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   </tbody>
   </table>
 
-  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -690,10 +685,9 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   </tbody>
   </table>
 
+- **返回值：**
 
--   **返回值：**
-
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明<a name="1"></a>
 
@@ -706,11 +700,11 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    -   B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
-    -   N：取值范围为1\~256。
-    -   S：取值范围为1\~1M。
-    -   D：取值范围为1\~768。
-    -   KeepProb：取值范围为(0, 1]。
+    - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+    - N：取值范围为1\~256。
+    - S：取值范围为1\~1M。
+    - D：取值范围为1\~768。
+    - KeepProb：取值范围为(0, 1]。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseModeOptional=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
 - sparseModeOptional=7时，不支持可选输入pseShiftOptional。
@@ -720,8 +714,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - headNum的取值必须和传入的Query中的N值保持一致。
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    -   seedOptional和offsetOptional只在keepProbOptional小于1.0时生效，否则不生效。
-    -   keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
+    - seedOptional和offsetOptional只在keepProbOptional小于1.0时生效，否则不生效。
+    - keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 
 ## 调用示例
