@@ -207,7 +207,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
   </thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensor）</td>
       <td>输入</td>
       <td>MOE的输入，即token特征输入</td>
       <td>shape为(NUM_ROWS, H)，quantMode=6时支持输入类型为HIFLOAT8</td>
@@ -217,7 +217,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertIdx</td>
+      <td>expertIdx（aclTensor）</td>
       <td>输入</td>
       <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数</td>
       <td>shape为(NUM_ROWS, K)</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional</td>
+      <td>scaleOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示用于计算量化结果的参数</td>
       <td><ul>
@@ -245,7 +245,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offsetOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示用于计算quant结果的偏移值</td>
       <td><ul>
@@ -258,7 +258,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>activeNum</td>
+      <td>activeNum（int64_t）</td>
       <td>输入</td>
       <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的</td>
       <td>入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</td>
@@ -268,7 +268,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertCapacity</td>
+      <td>expertCapacity（int64_t）</td>
       <td>输入</td>
       <td>表示每个专家能够处理的tokens数</td>
       <td>入参校验大于0小于NUM_ROWS。</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertNum</td>
+      <td>expertNum（int64_t）</td>
       <td>输入</td>
       <td>表示专家数</td>
       <td>expertTokensNumType为key_value模式时，取值范围为[0, 5120]，其它模式取值范围[0, 10240]</td>
@@ -288,7 +288,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>dropPadMode</td>
+      <td>dropPadMode（int64_t）</td>
       <td>输入</td>
       <td>表示是否为DropPad场景</td>
       <td>取值为0和1
@@ -301,7 +301,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertTokensNumType</td>
+      <td>expertTokensNumType（int64_t）</td>
       <td>输入</td>
       <td>表示直方图的不同模式</td>
       <td>取值为0、1和2
@@ -315,7 +315,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertTokensNumFlag</td>
+      <td>expertTokensNumFlag（bool）</td>
       <td>输入</td>
       <td>表示是否输出 expertTokensCountOrCumsumOut </td>
       <td>取值为false和true</td>
@@ -325,7 +325,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>quantMode</td>
+      <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示不同量化场景</td>
       <td>取值为0、1、-1、2、3、6、7、8（不同产品支持情况有差异，见表后描述）
@@ -344,7 +344,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>activeExpertRangeOptional</td>
+      <td>activeExpertRangeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>表示活跃的expert范围</td>
       <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum </td>
@@ -354,7 +354,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>rowIdxType</td>
+      <td>rowIdxType（int64_t）</td>
       <td>输入</td>
       <td>表示expandedRowIdxOut使用的索引类型</td>
       <td>取值为0、1
@@ -366,7 +366,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedXOut</td>
+      <td>expandedXOut（aclTensor）</td>
       <td>输出</td>
       <td>根据expertIdx进行扩展过的特征</td>
       <td><ul>
@@ -381,7 +381,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedRowIdxOut</td>
+      <td>expandedRowIdxOut（aclTensor）</td>
       <td>输出</td>
       <td>expandedXOut和x的索引映射关系</td>
       <td>输出shape为(NUM_ROWS*K, )， 前availableIdxNum个元素为有效数据，其余无效数据由rowIdxType决定：
@@ -394,7 +394,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertTokensCountOrCumsumOut</td>
+      <td>expertTokensCountOrCumsumOut（aclTensor）</td>
       <td>输出</td>
       <td>输出每个专家处理的token数量的统计结果或累加值</td>
       <td><ul>
@@ -408,7 +408,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedScaleOut</td>
+      <td>expandedScaleOut（aclTensor）</td>
       <td>输出</td>
       <td>输出不同量化过程中scaleOptional的中间值。</td>
       <td> 输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。
@@ -427,7 +427,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回用户需要在Device侧申请的workspace大小</td>
       <td>-</td>
@@ -437,7 +437,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程</td>
       <td>-</td>

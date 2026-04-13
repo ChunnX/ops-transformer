@@ -189,7 +189,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>blockSize (int64_t)</td>
+        <td>blockSize （int64_t）</td>
         <td>输入</td>
         <td>用于表示mm输出矩阵在M轴方向上和N轴方向上可以用于对应方向上的多少个数的量化。</td>
         <td>blockSize由blockSizeM、blockSizeN、blockSizeK三个值拼接而成，每个值占16位，计算公式为blockSize = blockSizeK | blockSizeN << 16 | blockSizeM << 32，mm输出矩阵不涉及K轴，blockSizeK固定为0, 当前版本只支持blockSizeM=blockSizeN=0。</td>
@@ -209,7 +209,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>gatherIndex (int64_t)</td>
+        <td>gatherIndex （int64_t）</td>
         <td>输入</td>
         <td>标识gather目标。</td>
         <td><ul><li>0表示目标为x1，1表示目标为x2。</li><li>当前版本仅支持输入0。</li></ul></td>
@@ -219,7 +219,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>commTurn (int64_t)</td>
+        <td>commTurn （int64_t）</td>
         <td>输入</td>
         <td>通信数据切分数，即总数据量/单次通信量。</td>
         <td>当前版本仅支持输入0。</td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>streamMode (int64_t)</td>
+        <td>streamMode （int64_t）</td>
         <td>输入</td>
         <td>流模式的枚举。</td>
         <td>当前只支持枚举值1。</td>
@@ -239,7 +239,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>groupSize (int64_t)</td>
+        <td>groupSize （int64_t）</td>
         <td>输入</td>
         <td>用于表示反量化中x1Scale/x2Scale输入的一个数在其所在的对应维度方向上可以用于该方向x1/x2输入的多少个数的反量化。</td>
         <td>groupSize输入由3个方向的groupSizeM、groupSizeN、groupSizeK三个值拼接组成，每个值占16位，计算公式为groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>workspaceSize (uint64_t*)</td>
+        <td>workspaceSize （uint64_t*）</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
