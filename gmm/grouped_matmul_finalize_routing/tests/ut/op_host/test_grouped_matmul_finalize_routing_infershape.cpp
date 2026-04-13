@@ -164,6 +164,7 @@ ge::DataType ParseDtype(const string &dtype)
         {"FLOAT", ge::DT_FLOAT},
         {"BF16", ge::DT_BF16},
         {"INT8", ge::DT_INT8},
+        {"INT4", ge::DT_INT4},
         {"INT64", ge::DT_INT64},
         {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
         {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
@@ -384,6 +385,36 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingIn
               [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
     return name;
 }
+
+gert::InfershapeContextPara BuildOffsetInfershapeContext(const string &offsetShape)
+{
+    return gert::InfershapeContextPara(
+        "GroupedMatmulFinalizeRouting",
+        {
+            {MakeStorageShape(ParseDims("1024:2048")), ge::DT_INT8, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("16:2048:7168")), ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},
+            {MakeStorageShape(ParseDims("16:1:7168")), ge::DT_INT64, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("16:7168")), ge::DT_FLOAT, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("1024")), ge::DT_FLOAT, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("16")), ge::DT_INT64, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("64:7168")), ge::DT_BF16, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("1024")), ge::DT_FLOAT, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims("1024")), ge::DT_INT64, ge::FORMAT_ND},
+            {MakeStorageShape(ParseDims(offsetShape)), ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {MakeStorageShape(ParseDims("NONE")), ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
+            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        });
+}
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
@@ -403,6 +434,18 @@ protected:
 TEST_P(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
 {
     GetParam().Run();
+}
+
+TEST(TestGroupedMatmulFinalizeRoutingInfershapeManual, offsetShapeValid)
+{
+    auto infershapeContextPara = BuildOffsetInfershapeContext("16:1:7168");
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{64, 7168}});
+}
+
+TEST(TestGroupedMatmulFinalizeRoutingInfershapeManual, offsetShapeInvalidDimNum)
+{
+    auto infershapeContextPara = BuildOffsetInfershapeContext("16:7168");
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
 }
 
 INSTANTIATE_TEST_SUITE_P(GMMFR_INFERSHAPE_CSV, TestGroupedMatmulFinalizeRoutingInfershape,
