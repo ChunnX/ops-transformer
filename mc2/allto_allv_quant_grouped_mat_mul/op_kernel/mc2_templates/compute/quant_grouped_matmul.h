@@ -30,7 +30,7 @@ namespace MC2KernelTemplate {
 constexpr uint64_t GROUP_LIST_INDEX = 0;
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm, bool isMxfp4Mode = false>
+    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
@@ -127,10 +127,8 @@ public:
 protected:
     __aicore__ inline void UpdateAddr(uint32_t expertIdx)
     {
-        // MXFP4:2个4-bit元素打包成1字节，偏移量需要除以2
-        constexpr uint64_t packFactor = isMxfp4Mode ? 2U : 1U;
-        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(CeilDiv(expertTokenOffset_ * h1_, packFactor));
-        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(CeilDiv(expertIdx * h1_ * n1_, packFactor));
+        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_);
+        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
 
         // MX 模式：更新 scale 偏移
