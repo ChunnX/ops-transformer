@@ -609,8 +609,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     constInfo.scaleValue = baseInfo.scaleValue;
     constInfo.sparseBlockSize = 1;
     constInfo.gatherKBaseSize = 128; // gather每次处理的行数(v0+v1)
-    constInfo.syKBaseSize = 16384 / (constInfo.n2Size * constInfo.gSizeQueryIndex);
-    constInfo.pKBaseSize = 16384 / (constInfo.n2Size * constInfo.gSizeQuery);
+    constInfo.syKBaseSize = tilingData->multiCoreParams.syKTotalSize / (constInfo.n2Size * constInfo.gSizeQueryIndex);
+    constInfo.pKBaseSize = tilingData->multiCoreParams.pKTotalSize / (constInfo.n2Size * constInfo.gSizeQuery);
     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
     constInfo.pKBaseSize = Min(1024, constInfo.pKBaseSize);
     constInfo.pScaler = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
