@@ -1003,6 +1003,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
     if (startExpertId_ >= totalExpertNum_) {return;}
     GlobalTensor<int32_t> rankGMTensor;
 
+    uint32_t startExpertIdPreRank;
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
         uint32_t offset = stateOffset_ * epRankId_;
