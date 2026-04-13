@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -189,6 +190,21 @@ vector<int64_t> ParseDims(const string &value)
     return dims;
 }
 
+vector<int64_t> ParseI64List(const string &value)
+{
+    const string trimmed = Trim(value);
+    if (trimmed.empty() || trimmed == "NONE") {
+        return {};
+    }
+    vector<string> tokens;
+    SplitStr2Vec(trimmed, "|", tokens);
+    vector<int64_t> values;
+    for (const auto &token : tokens) {
+        values.emplace_back(stoll(Trim(token)));
+    }
+    return values;
+}
+
 gert::Shape BuildShape(const vector<int64_t> &dims)
 {
     gert::Shape shape;
@@ -308,8 +324,7 @@ struct GroupedMatmulFinalizeRoutingTilingCase {
                 {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(outputBs)))},
                 {"group_list_type",
                  Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(groupListType)))},
-                {"tuning_config",
-                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(tuningConfig)))},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(ParseI64List(tuningConfig))},
             },
             &compileInfo);
 
@@ -479,6 +494,128 @@ class TestGroupedMatmulFinalizeRoutingTiling : public testing::TestWithParam<Gro
 TEST_P(TestGroupedMatmulFinalizeRoutingTiling, generalTest)
 {
     GetParam().Run();
+}
+
+TEST(TestGroupedMatmulFinalizeRoutingTilingManual, w4a8OffsetChangesTilingData)
+{
+    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileInfo;
+    compileInfo.aicNum = 20;
+    compileInfo.aivNum = 48;
+    compileInfo.ubSize = 196608;
+    compileInfo.l1Size = 524288;
+    compileInfo.l2Size = 33554432;
+    compileInfo.l0CSize = 131072;
+    compileInfo.l0ASize = 65536;
+    compileInfo.l0BSize = 65536;
+    compileInfo.btSize = 131072;
+    compileInfo.cubeFreq = 0.0F;
+    compileInfo.socVersion = static_cast<platform_ascendc::SocVersion>(0);
+    compileInfo.supportL0c2out = false;
+    compileInfo.supportL12BtBf16 = false;
+    compileInfo.npuArch = static_cast<NpuArch>(0);
+
+    const auto makeContext = [&](const string &offsetShape) {
+        return gert::TilingContextPara(
+            "GroupedMatmulFinalizeRouting",
+            {
+                {MakeStorageShape(ParseDims("1024:2048")), ge::DT_INT8, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("16:64:448:16:32")), ge::DT_INT4, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("16:7168")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("NONE")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("1024")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("16")), ge::DT_INT64, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("64:7168")), ge::DT_BF16, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("1024")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("1024")), ge::DT_INT64, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims(offsetShape)), ge::DT_FLOAT, ge::FORMAT_ND},
+            },
+            {
+                {MakeStorageShape(ParseDims("NONE")), ge::DT_FLOAT, ge::FORMAT_ND},
+            },
+            {
+                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
+                {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1})},
+            },
+            &compileInfo);
+    };
+
+    TilingInfo noOffset;
+    TilingInfo withOffset;
+    ASSERT_TRUE(ExecuteTiling(makeContext("NONE"), noOffset));
+    ASSERT_TRUE(ExecuteTiling(makeContext("16:1:7168"), withOffset));
+    ASSERT_EQ(noOffset.tilingKey, withOffset.tilingKey);
+    ASSERT_EQ(noOffset.tilingDataSize, withOffset.tilingDataSize);
+    ASSERT_GT(noOffset.tilingDataSize, 0U);
+    EXPECT_NE(std::memcmp(noOffset.tilingData.get(), withOffset.tilingData.get(), noOffset.tilingDataSize), 0);
+}
+
+TEST(TestGroupedMatmulFinalizeRoutingTilingManual, deterministicModeChangesWorkspaceAndTilingData)
+{
+    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileInfo;
+    compileInfo.aicNum = 20;
+    compileInfo.aivNum = 48;
+    compileInfo.ubSize = 196608;
+    compileInfo.l1Size = 524288;
+    compileInfo.l2Size = 33554432;
+    compileInfo.l0CSize = 131072;
+    compileInfo.l0ASize = 65536;
+    compileInfo.l0BSize = 65536;
+    compileInfo.btSize = 131072;
+    compileInfo.cubeFreq = 0.0F;
+    compileInfo.socVersion = static_cast<platform_ascendc::SocVersion>(0);
+    compileInfo.supportL0c2out = false;
+    compileInfo.supportL12BtBf16 = false;
+    compileInfo.npuArch = static_cast<NpuArch>(0);
+
+    const auto makeContext = [&](int32_t deterministicInfo) {
+        return gert::TilingContextPara(
+            "GroupedMatmulFinalizeRouting",
+            {
+                {MakeStorageShape(ParseDims("1024:2048")), ge::DT_INT8, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("16:64:448:16:32")), ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},
+                {MakeStorageShape(ParseDims("16:7168")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("NONE")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("1024")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("16")), ge::DT_INT64, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("64:7168")), ge::DT_BF16, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("1024")), ge::DT_FLOAT, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("1024")), ge::DT_INT64, ge::FORMAT_ND},
+                {MakeStorageShape(ParseDims("NONE")), ge::DT_FLOAT, ge::FORMAT_ND},
+            },
+            {
+                {MakeStorageShape(ParseDims("NONE")), ge::DT_FLOAT, ge::FORMAT_ND},
+            },
+            {
+                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
+                {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1})},
+            },
+            &compileInfo, "Ascend910B", "", 4096, deterministicInfo);
+    };
+
+    TilingInfo nonDeterministic;
+    TilingInfo deterministic;
+    ASSERT_TRUE(ExecuteTiling(makeContext(0), nonDeterministic));
+    ASSERT_TRUE(ExecuteTiling(makeContext(1), deterministic));
+    ASSERT_FALSE(nonDeterministic.workspaceSizes.empty());
+    ASSERT_FALSE(deterministic.workspaceSizes.empty());
+    EXPECT_GT(deterministic.workspaceSizes[0], nonDeterministic.workspaceSizes[0]);
+    ASSERT_EQ(nonDeterministic.tilingDataSize, deterministic.tilingDataSize);
+    ASSERT_GT(nonDeterministic.tilingDataSize, 0U);
+    EXPECT_NE(std::memcmp(nonDeterministic.tilingData.get(), deterministic.tilingData.get(),
+                          nonDeterministic.tilingDataSize),
+              0);
 }
 
 INSTANTIATE_TEST_SUITE_P(
