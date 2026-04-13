@@ -53,6 +53,20 @@
   dK=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
 
+  其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
+
+  $$
+  m = max(sink, max(S))
+  $$
+
+  $$
+  Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + S^{sink - m}}
+  $$
+
+  $$
+  dSink = reduce(-Softmax(S) * dP * SimpleSoftmax(sink, x\_max, x\_sum))
+  $$
+
     **说明：**
     query、keyIn、value数据排布格式支持从多种维度解读，其中T (Total S Length) 表示所有batch对应的S的总长、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、d（Head-Dim）表示隐藏层最小的单元尺寸，且满足d=H/N。
 
@@ -303,13 +317,13 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
     <tr>
       <td>sinkInOptional</td>
-      <td>输入</td>
-      <td>保留参数，暂未使用。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
+      <td>可选输入</td>
+      <td>公式中的sink。</td>
+      <td>长度是headNum。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[headNum]</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>dScaleQOptional</td>
@@ -584,12 +598,12 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     <tr>
       <td>dsinkOut</td>
       <td>输出</td>
-      <td>保留参数，暂未使用。</td>
+      <td>公式中dSink，d(sinkInOptional)梯度。</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -717,6 +731,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     - seedOptional和offsetOptional只在keepProbOptional小于1.0时生效，否则不生效。
     - keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
+- sinkInOptional维度为1，长度需要与query的headnum相同。
 
 ## 调用示例
 
@@ -828,9 +843,11 @@ int main() {
   std::vector<int64_t> softmaxMaxShape = {B, N1, S1, 8};
   std::vector<int64_t> softmaxSumShape = {B, N1, S1, 8};
   std::vector<int64_t> attentionInShape = {S1, B, H1};
+  std::vector<int64_t> sinkInOptionalShape = {N1};
   std::vector<int64_t> dqShape = {S1, B, H1};
   std::vector<int64_t> dkShape = {S2, B, H2};
   std::vector<int64_t> dvShape = {S2, B, H2};
+  std::vector<int64_t> dsinkShape = {N1};
 
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
@@ -840,9 +857,11 @@ int main() {
   void* softmaxMaxDeviceAddr = nullptr;
   void* softmaxSumDeviceAddr = nullptr;
   void* attentionInDeviceAddr = nullptr;
+  void* sinkInOptionalDeviceAddr = nullptr;
   void* dqDeviceAddr = nullptr;
   void* dkDeviceAddr = nullptr;
   void* dvDeviceAddr = nullptr;
+  void* dsinkDeviceAddr = nullptr;
 
   aclTensor* q = nullptr;
   aclTensor* k = nullptr;
@@ -863,12 +882,14 @@ int main() {
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxIn = nullptr;
   aclTensor* attentionIn = nullptr;
+  aclTensor* sinkInOptional = nullptr;
   aclTensor* dq = nullptr;
   aclTensor* dk = nullptr;
   aclTensor* dv = nullptr;
   aclTensor* dpse = nullptr;
   aclTensor* dqRope = nullptr;
   aclTensor* dkRope = nullptr;
+  aclTensor* dsink = nullptr;
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -898,9 +919,11 @@ int main() {
   std::vector<float> softmaxMaxHostData(softmax_size, 3.0);
   std::vector<float> softmaxSumHostData(softmax_size, 3.0);
   std::vector<float> attentionInHostData(q_size, 255.0);
+  std::vector<float> sinkInOptionalHostData(N1, 0);
   std::vector<float> dqHostData(q_size, 2.0);
   std::vector<float> dkHostData(kv_size, 2.0);
   std::vector<float> dvHostData(kv_size, 3.0);
+  std::vector<float> dsinkHostData(N1, 0);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -917,12 +940,15 @@ int main() {
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT, &attentionIn);
+  ret = CreateAclTensor(sinkInOptionalHostData, sinkInOptionalShape, &sinkInOptionalDeviceAddr, aclDataType::ACL_FLOAT, &sinkInOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT, &dq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dkHostData, dkShape, &dkDeviceAddr, aclDataType::ACL_FLOAT, &dk);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dvHostData, dvShape, &dvDeviceAddr, aclDataType::ACL_FLOAT, &dv);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(dsinkHostData, dsinkShape, &dsinkDeviceAddr, aclDataType::ACL_FLOAT, &dsink);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   double scaleValue = 1.0/sqrt(128);
@@ -944,10 +970,10 @@ int main() {
 
   // 调用aclnnFlashAttentionScoreGradV4第一段接口
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
-            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
+            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, sinkInOptional, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
             preTokens, nextTokens, headNum, inputlayOut, nullptr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
-            dq,dk,dv,dqRope,dkRope,dpse, nullptr, &workspaceSize, &executor);
+            dq,dk,dv,dqRope,dkRope,dpse, dsink, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -969,6 +995,7 @@ int main() {
   PrintOutResult(dqShape, &dqDeviceAddr);
   PrintOutResult(dkShape, &dkDeviceAddr);
   PrintOutResult(dvShape, &dvDeviceAddr);
+  PrintOutResult(dsinkShape, &dsinkDeviceAddr);
 
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
@@ -979,8 +1006,11 @@ int main() {
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
   aclDestroyTensor(attentionIn);
+  aclDestroyTensor(sinkInOptional);
   aclDestroyTensor(dq);
   aclDestroyTensor(dk);
+  aclDestroyTensor(dv);
+  aclDestroyTensor(dsink);
 
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
@@ -991,9 +1021,11 @@ int main() {
   aclrtFree(softmaxMaxDeviceAddr);
   aclrtFree(softmaxSumDeviceAddr);
   aclrtFree(attentionInDeviceAddr);
+  aclrtFree(sinkInOptionalDeviceAddr);
   aclrtFree(dqDeviceAddr);
   aclrtFree(dkDeviceAddr);
   aclrtFree(dvDeviceAddr);
+  aclrtFree(dsinkDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
