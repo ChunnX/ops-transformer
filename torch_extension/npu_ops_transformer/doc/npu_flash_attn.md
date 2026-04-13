@@ -446,278 +446,307 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 </tbody>
 </table>
 
-## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
+## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a?>
+## 约束说明
 
--   该接口支持训练正向和推理场景下使用。
--   layout匹配关系如下：
-    <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-    <col style="width: 247px">
-    <col style="width: 132px">
-    <col style="width: 232px">
-    <col style="width: 293px">
-    <col style="width: 185px">
-    <col style="width: 119px">
-    <col style="width: 272px">
-    <col style="width: 145px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>layout_q</th>
-        <th>layout_kv</th>
-        <th>layout_out</th>
-        <th>layout_softmax_lse_layout</th>
-    </tr>
-    </thread>
-    <tbody>
-        <tr>
-            <td>BNSD</td>
-            <td>
-                <ul>
+### 一、约束类型说明
+
+npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
+
+- npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 Tensor 和 Attributes
+  - 对于Tensor，单参数约束中包含如下校验
+    - 校验 shape，包括shape维度dim、每一维度 dim value
+    - 校验 dtype
+    - 校验 format
+  - 对于属性 Attribute
+    - 校验属性取值
+- 存在性约束：约束特定场景下，特性参数组内，必须传入某参数，或不支持传入某参数
+- 一致性约束：特性参数组内，各个参数间约束。
+  - Example 1：属性sparseMode和输入tensor attenMask均属于Attention Mask参数组，sparseMode取值为2/3/4时，attenMask shape必须为（2048，2048），此类约束即为参数组内的一致性约束
+- 特性交叉约束：涉及多个参数组，不同参数组间交叉约束
+  - Example 1：输入tensor blockTable 和 属性 blockSize 属于Paged Attention（同PA）参数组，输入tensor attenMask属于 Mask参数组；在PA场景下，attenMask输入最后一维（attenMaskS2）需要大于等于maxBlockNumPerSeq * blockSize，此类约束即为多参数组间的交叉约束；**且为保证风格统一，此约束会放在入参顺序靠后的 Paged Attention参数组中**
+
+### 特性参数组
+
+|      特性参数组       |     参数字段名称     |    字段分组    |  字段类型  |
+| :--------------------: | :-------------------: | :-------------: | :--------: |
+|      公共参数组      |         q         |      INPUT      |   Tensor   |
+|                      |          k         |      INPUT      | Tensor |
+|                      |         v         |      INPUT      | Tensor |
+|                      |      softmax_scale      | ATTR(OPTIONAL) |   float   |
+|                      |      layout_q      | ATTR(OPTIONAL) |    string    
+|                      |      layout_kv      | ATTR(OPTIONAL) |    string    |
+|                      |      layout_out      | ATTR(OPTIONAL) |    string    |
+|                      |     attentionOut     |     OUTPUT     |   Tensor   |
+|      Mask参数组      |      sparseMode      | ATTR(OPTIONAL) |   int64   |
+|                      |       win_left       | ATTR(OPTIONAL) |   int64   |
+|                      |      win_right      | ATTR(OPTIONAL) |   int64   |
+|  Seqused参数组       |   seqused_q   | INPUT(OPTIONAL) |  Tensor  |
+|                      |   seqused_kv   | INPUT(OPTIONAL) |  Tensor  |
+|                      |   cu_seqused_q   | INPUT(OPTIONAL) |  Tensor  |
+|                      |   cu_seqused_kv   | INPUT(OPTIONAL) |  Tensor  |
+| Paged Attention参数组 |      blockTable      | INPUT(OPTIONAL) |   Tensor   |
+|  LearnableSink参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
+|   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    int    |
+|                      |      softmaxLse      |     OUTPUT(OPTIONAL)     |   Tensor   |
+
+### 基准信息说明
+
+资料约束中，常见字段释义如下：
+
+|    命名    |                            含义                            |
+| :---------: | :---------------------------------------------------------: |
+|      B      |                Batch, 表示输入样本批量大小                |
+|     Q_N     |        输入query tensor的头数，对应query shape中的N        |
+|    KV_N    |    输入key/value tensor的头数，对应key/value shape中的N    |
+|     Q_S     |      输入query tensor的序列长度，对应query shape中的S      |
+|    KV_S    |  输入key/value tensor的序列长度，对应key/value shape中的S  |
+|     Q_T     |          输入query tensor所有batch序列长度的累加和          |
+
+### 参数组约束
+
+<!--
+#### 整体规则
+1. 按照 特性参数组 -> 四层约束 -> 量化类型（非量化/伪量化/全量化） -> FA场景（GQA/Prefill MLA/Decode MLA） -> 芯片代际（Atlas A2/Ascend 950PR）层级维护
+2. 每个特性组，缩进风格一致，表格宽高无固定约束，保持简洁清晰即可
+3. 约束中参数命名，第一次出现必须和接口中参数名一致，后续可通过 “attenMask（同 mask/后称 mask）”方式缩写
+4. 对于输入各轴缩写，缩写需要具有自解释性，如QueryS、KeyNumHead、PseShiftS2等，禁止出现 S1、B、n2 等字眼；最好在基准信息说明中补充各个变量含义
+-->
+#### 公共参数组（ShapeChecker）
+
+- 单参数约束
+
+  - layout约束
+    <table style="undefined;table-layout: fixed; width: 1100px">
+        <colgroup>
+            <col style="width: 200px">
+            <col style="width: 250px">
+            <col style="width: 200px">
+            <col style="width: 450px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>layout_q</th>
+                <th>layout_kv</th>
+                <th>layout_out</th>
+                <th>layout_softmax_lse_layout</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>BNSD</td>
+                <td>
                     <li>BNSD</li>
                     <li>PA_BBND</li>
                     <li>PA_BNBD</li>
                     <li>PA_Nz</li>
-                </ul>
-            </td>
-            <td>
-                <ul>
+                </td>
+                <td>
                     <li>BNSD</li>
                     <li>BSND</li>
-                </ul>
-            </td>
-            <td>(B, N_Q, S_Q)</td>
-        </tr>
-        <tr>
-            <td>BSND</td>
-            <td>
-                <ul>
+                </td>
+                <td>
+                    (B, N_Q, S_Q)
+                </td>
+            </tr>
+            <tr>
+                <td>BSND</td>
+                <td>
                     <li>BSND</li>
                     <li>PA_BBND</li>
                     <li>PA_BNBD</li>
                     <li>PA_Nz</li>
-                </ul>
-            </td>
-            <td>BSND</td>
-            <td>(B, N_Q, S_Q)</td>
-        </tr>
-        <tr>
+                </td>
+                <td>
+                    <li>BSND</li>
+                </td>
+                <td>
+                    (B, N_Q, S_Q)
+                </td>
+            </tr>
+            <tr>
             <td>TND</td>
-            <td>
-                <ul>
+                <td>
                     <li>TND</li>
                     <li>PA_BBND</li>
                     <li>PA_BNBD</li>
                     <li>PA_Nz</li>
-                </ul>
-            </td>
-            <td>TND</td>
-            <td>(N_Q, Q)</td>
-        </tr>
-    </tbody>
+                </td>
+                <td>
+                    <li>TND</li>
+                </td>
+                <td>
+                    (N_Q, Q)
+                </td>
+            </tr>
+        </tbody>
     </table>
+  - 公共约束
 
-- 确定性计算：
-  - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
-- 公共约束
-    - 入参为空的场景处理：
-        - 空Tensor指必选输入和输出的shapeSize为0。在空Tensor场景下，若attentionOut为空，返回空，否则返回全0；若有lse且lse为空时返回空，lse不为空则返回全inf。非空Tensor时输入正常拦截。
-        - query，attentionOut所有tensor的shapeSize为0，属于空Tensor。
-        - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
-        - attentionOut和lse都为空时，属于空Tensor。
-        - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
-- <a id="public"></a>通用场景
+- 存在性约束
+
+  <table style="undefined;table-layout: fixed; width: 700px">
+        <colgroup>
+            <col style="width: 400px">
+            <col style="width: 300px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>场景</th>
+                <th>结果预期</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>query,key,value,attentionOut存在nullptr</td>
+                <td>正常拦截</td>
+            </tr>
+            <tr>
+                <td>query,attentionOut的tensor的shapeSize为0</td>
+                <td>attentionOut为返回空tesor</td>
+            </tr>
+            <tr>
+                <td>query,attentionOut的tensor的shapeSize不为0,且key,value的tensor的shapeSize为0</td>
+                <td>attentionOut返回全0</td>
+            </tr>
+        </tbody>
+    </table>
+- 一致性约束
+
+    <table style="undefined;table-layout: fixed; width: 800px">
+        <colgroup>
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+            <col style="width: 200px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>tensor</th>
+                <th>B</th>
+                <th>N</th>
+                <th>S</th>
+                <th>D</th>
+                <th>Q_N/KV_N</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>q</td>
+                <td>
+                    支持B轴小于等于65536
+                </td>
+                <td>
+                    N轴无限制
+                </td>
+                <td>
+                    S轴无限制
+                </td>
+                <td>
+                    D轴小于等于512, 且16对齐
+                </td>
+                <td rowspan="3">
+                    Q_N需可整除KV_N，Q_N与KV_N的比值无限制
+                </td>
+            </tr>
+            <tr>
+                <td>k</td>
+                <td>
+                    支持B轴小于等于65536
+                </td>
+                <td>
+                    N轴无限制
+                </td>
+                <td>
+                    S轴无限制
+                </td>
+                <td>
+                    D轴小于等于512, 且16对齐
+                </td>
+            </tr>
+                        <tr>
+                <td>q</td>
+                <td>
+                    支持B轴小于等于65536
+                </td>
+                <td>
+                    N轴无限制
+                </td>
+                <td>
+                    S轴无限制
+                </td>
+                <td>
+                    D轴小于等于512, 且16对齐
+                </td>
+            </tr>
+        </tbody>
+    </table>
+- 特性交叉约束
+
+  - 非量化场景
     <table style="undefined;table-layout: fixed; width: 1000px">
         <colgroup>
-            <col style="width: 150px">
-            <col style="width: 100px">
-            <col style="width: 750px">
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 400px">
         </colgroup>
         <thead>
             <tr>
-                <th>参数</th>
-                <th>维度</th>
-                <th>限制</th>
+                <th>场景</th>
+                <th>PagedAttention场景</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td rowspan="4">q/k/v</td>
-                <td>B</td>
+                <td>npu_flash_attn</td>
                 <td>
                     <ul>
-                        <li>支持B轴小于等于65536</li>
-                        <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>N</td>
-                <td>
-                    <ul>
-                        <li>N轴无限制</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>S</td>
-                <td>
-                    <ul>
-                        <li>S轴无限制</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>D</td>
-                <td>
-                    <ul>
-                        <li>D轴无限制</li>
+                        <li>Key/Value排布支持BnBsH（blockNum, blockSize, H）、BnNBsD（blockNum, KV_N,
+                            blockSize, D）和NZ（blockNum，KV_N，D/16，blockSize，16）三种格式</li>
                     </ul>
                 </td>
             </tr>
         </tbody>
     </table>
-- <a id="Mask"></a>Mask
-    <table style="undefined;table-layout: fixed; width: 820"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 360px">
-        <col style="width: 360px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>sparseMode</th>
-                <th>含义</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td>1</td>
-            <td>allMask</td>
-            <td>
-                无
-            </td>
-        </tr>
-        <tr>
-            <td>3</td>
-            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</td>
-            <td>
-                无
-            </td>
-        </tr>
-        <tr>
-            <td>4</td>
-            <td>band模式的mask</td>
-            <td>
-                无
-            </td>
-        </tr>
-        </tbody>
-    </table>
-- <a id="seqused"></a>seqused
-    <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
-    <col style="width: 195px">
-    <col style="width: 156px">
-    <col style="width: 608px">
-    <col style="width: 189px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>参数</th>
-                <th>Layout</th>
-                <th>说明</th>
-                <th>限制</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>seqused_q</td>
-                <td>不为TND</td>
-                <td>该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S</td>
-                <td rowspan="4">传入时应为非负数</td>
-            </tr>
-            <tr>
-                <td>cu_seqused_q</td>
-                <td>TND</td>
-                <td>该入参必须传入，第b+1个值表示前b个batch的Q_S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch_size + 1</td>
-            </tr>
-            <tr>
-                <td>seqused_kv</td>
-                <td>不为TND</td>
-                <td>
-                在非PA场景下，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。</br>
-                在PA场景下，该入参为必选入参，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S
-                </td>
-            </tr>
-            <tr>
-                <td>cu_seqused_kv</td>
-                <td>TND</td>
-                <td>该入参必须传入</br>
-                    在非PA场景下，第b + 1个值表示前b个batch的KV_S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数</br>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+#### Mask 参数组
 
-- <a id="PagedAttention"></a>PagedAttention
-    <table style="undefined;table-layout: fixed; width: 1354px">
-        <colgroup>
-            <col style="width: 155px">
-            <col style="width: 169px">
-            <col style="width: 550px">
-            <col style="width: 600px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>参数所属场景或特性</th>
-                <th>参数</th>
-                <th>约束</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td rowspan="2">PagedAttention</td>
-                <td>blockSize</td>
-                <td>
-                    <li>在使能PagedAttention，blockSize需要传入非0值</li>
-                </td>
-                <td>blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。</td>
-            </tr>
-            <tr>
-                <td>blockTable</td>
-                <td>PagedAttention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-                </td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td rowspan="2">通用场景</td>
-                <td>k、v</td>
-                <td>
-                    <ul>
-                        <li>支持key、value dtype为FLOAT16/BFLOAT16</li>
-                </td>
-                <td>
-                <ul>
-                    <li>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。</li>
-                    <li>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。</li>
-                    <li>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</li>
-                </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>seqused_kv</td>
-                <td>PagedAttention场景下，必须传入seqused_kv。</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td colspan="4">
-                <ul><li>PagedAttention 不支持tensorlist场景</li>
-                <li>PagedAttention的使能必要条件是blocktable存在且有效，同时k、v是按照blocktable中的索引在一片连续内存中排布，在该场景下k、v的inputLayout参数无效</li>
-                </ul></td>
-            </tr>
-        </tbody>
-    </table>
+- 单参数约束
+  - 公共
+    - 入参 mask_mode 需要满足以下条件：
 
+      - mask_mode 支持输入范围为 1、3、4，默认值为 1
+      - mask_mode 含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
+
+      | mask_mode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
+      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------: | :-------------------------------------------------------------------------------------------: |
+      |     1     |                                                allMask模式，必须传入完整的attenMask矩阵，忽略preTokens和nextTokens                                                | 00101<br />10111<br />10101 |                                             同上                                             |
+      |     3     |                                           rightDownCausal模式，忽略win_left和win_right                                          | 00011<br />00001<br />00000 | 优化后的attenMask矩阵，固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+      |     4     |                                           band模式，需要传入优化后的attenMask矩阵，计算preTokens和nextTokens之间的部分                                           | 00011<br />10001<br />11000 | 优化后的attenMask矩阵，固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+- 存在性约束
+  - 无
+- 一致性约束
+  - 公共
+    - 入参 attenMask 的输入维度仅支持 2/3/4
+      - `<term>` Ascend 950PR/Ascend 950DT `</term>`
+        - 维度为 2 时，不支持 sparseMode 为 0/1 模式
+      - `<term>` Atlas A3 训练系列产品/Atlas A3 推理系列产品 `</term>` 和 `<term>`Atlas A2 训练系列产品/Atlas A2 推理系列产品 `</term>`
+        - 维度为 2 时，支持 sparseMode 为 0/1 模式
+    - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S]
+    - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048
+    - 非伪量化或 Q_S 大于1时，preTokens 与 nextTokens 应满足 nextTokens * (-1) <= preTokens，以确保具有有效数据
+  - 伪量化
+    - Q_S等于1时，attenMask 输入维度仅支持 3/4，且 attenMask 输入的 shape 应满足，第一维等于 batchSize 或 1，最后一维应大于等于 blockTable 的第二维 * blockSize
+    - Q_S大于1时，若 sparseMode 为 4 模式，且 attentionOut 为 int8 类型时，则 preTokens 与 nextTokens 均不能为负数
+- 特性交叉约束
+  - 非量化
+    - Decode MLA场景下，sparseMode 仅支持 0/3/4 模式
+    - GQA 场景下，当 query，key 及 value 的 head dim 不相等时，sparseMode 仅支持 0/2/3 模式
+  - 全量化
+    - Decode MLA场景下，如果query/key/value的类型为 INT8，Q_S 等于 1 时，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵；其它 layout 时，sparseMode 仅支持 0 模式，且不传入 attenMask 矩阵
+    - Decode MLA场景下，如果query/key/value的类型为 INT8，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵
+    - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
