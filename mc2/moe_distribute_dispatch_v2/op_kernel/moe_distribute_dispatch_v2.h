@@ -1004,20 +1004,37 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
     GlobalTensor<int32_t> rankGMTensor;
 
     uint32_t startExpertIdPreRank;
+    uint32_t endExpertIdPreRank;
+    uint32_t startExpertIdNextRank = startExpertId_;
+    uint32_t dstNextRankId;
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
         uint32_t offset = stateOffset_ * epRankId_;
         if (expertIndex >= sharedExpertRankNum_) {
             dstRankId = ((expertIndex - sharedExpertRankNum_) / moeExpertNumPerRank_ + sharedExpertRankNum_);
-            offset += ((expertIndex - sharedExpertRankNum_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
+            dstNextRankId = ((expertIndex + 1 - sharedExpertRankNum_) / moeExpertNumPerRank_ + sharedExpertRankNum_);
+            startExpertIdPreRank = startExpertIdNextRank;
+            if ((dstRankId == dstNextRankId) && (expertIndex + 1 < endExpertId_)) {
+                endExpertIdPreRank = expertIndex + 1;
+                continue;
+            } else {
+                endExpertIdPreRank = expertIndex ;
+                startExpertIdNextRank = expertIndex + 1;
+            }
+            offset += ((startExpertIdPreRank - sharedExpertRankNum_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
         }
         if (isScalingDownFlag_) {
             dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
         }
         GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset);  // 计算地址偏移
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
-        // 按32对齐拷贝，8是32字节包含的元素个数, 本卡数据需要去掉起始index偏移
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_)* 8], 8UL);
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);            // 按32对齐拷贝，8是32字节包含的元素个数, 本卡数据需要去掉起始index偏移
+        if (expertIndex >= sharedExpertRankNum_) {
+            DataCopyParams StatusCopyParams{static_cast<uint16_t>(endExpertIdPreRank - startExpertIdPreRank + 1), 1,
+                                static_cast<uint16_t>(0), static_cast<uint16_t>(epWorldSize_ - 1)};
+            DataCopy<int32_t>(rankGMTensor, statusTensor_[(startExpertIdPreRank - startExpertId_)* 8], StatusCopyParams);
+        } else {
+            DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_)* 8], 8UL);
+        }
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
