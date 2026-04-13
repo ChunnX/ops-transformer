@@ -296,11 +296,13 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     OP_TILING_CHECK(gmmXScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale input shape should be [1], "
                     "but actual shape is [%lu].", gmmXScaleShape), return ge::GRAPH_FAILED);
     // check gmmWeightScale dimNum
-    size_t gmmWeightScaleDimNum = context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
+    size_t gmmWeightScaleDimNum =
+        context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(gmmWeightScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale input dimNum should be 1, "
                     "but actual dimNum is %lu.", gmmWeightScaleDimNum), return ge::GRAPH_FAILED);
     // check gmmWeightScale shape
-    int64_t gmmWeightScaleShape = context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    int64_t gmmWeightScaleShape =
+        context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(gmmWeightScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale input shape should be [1], "
                     "but actual shape is [%lu].", gmmWeightScaleShape), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {

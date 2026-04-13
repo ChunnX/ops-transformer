@@ -36,8 +36,10 @@ protected:
     ge::graphStatus DoGmmTiling(uint64_t gmmMSize) override;
     void GetPermuteOutSize() override;
 private:
-    ge::graphStatus CheckGmmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType, ge::DataType gYDataType) const;
-    ge::graphStatus CheckMmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType, ge::DataType gYDataType) const;
+    ge::graphStatus CheckGmmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
+        ge::DataType gYDataType) const;
+    ge::graphStatus CheckMmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
+        ge::DataType gYDataType) const;
     ge::graphStatus CheckFp4Input(ge::DataType gXDataType, ge::DataType gWtDataType) const;
     ge::graphStatus CheckGmmScale() const;
     ge::graphStatus CheckMmScale() const;
