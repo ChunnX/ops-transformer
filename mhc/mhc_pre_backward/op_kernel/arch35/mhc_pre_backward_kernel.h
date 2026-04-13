@@ -255,7 +255,6 @@ public:
     {
     }
     __aicore__ inline void Init(InitParams initParams);
-    __aicore__ inline void InitStage2();
     __aicore__ inline void Process();
 
     __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t dealBsNum, uint32_t ubOffset,
@@ -316,6 +315,10 @@ public:
     __aicore__ inline void VFDoV2GammaMulXRsGradMm(__ubuf__ P *xRsGradUbAddr, __ubuf__ P *xRsGradMmAddr,
                                                    __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize,
                                                    uint32_t copySizeND);
+
+    __aicore__ inline void InitGlobalBuffersAndTiling(InitParams initParams);
+    __aicore__ inline void InitUBAndAIVBuffers();
+    __aicore__ inline void InitStage2AndDataCopy();
 
 private:
     MT_C0 &mm0;
@@ -409,41 +412,39 @@ private:
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
 {
-    // 1. 绑定GlobalTensor
+    InitGlobalBuffersAndTiling(initParams);
+    InitUBAndAIVBuffers();
+    InitStage2AndDataCopy();
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(InitParams initParams)
+{
     xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.phi));
     alphaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.alpha));
-
     hInGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.h_in_grad));
     hPostGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_post_grad));
     hCombBeforeGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_comb_before_grad));
-
     invRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.inv_rms));
     mmResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.mm_res));
     hPreGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_pre));
     hPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_post));
-
     xGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x_grad));
     hcWeightGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.hc_weight_grad));
     alphaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.alpha_grad));
     biasPostGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.bias_post_grad));
-
     workSpaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
-
     withGamma_ = (initParams.gamma != nullptr);
     withGradXPost_ = (initParams.grad_x_post != nullptr);
-
     if (withGradXPost_) {
         gradXPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x_post));
         gradXPostGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
-
     if (withGamma_) {
         gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.gamma));
         gammaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.gamma_grad));
     }
-
-    // 2. 获取TilingData进行初始化
     tiling_ = initParams.tilingData;
     runInfo_.totalLength_ = tiling_->totalLength;
     nD_ = tiling_->nD;
@@ -456,13 +457,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = 1.0f / nD_;
     eleNumPerVf_ = GetVRegSize() / sizeof(P);
-
-    // 初始化WorkspaceBuffer接口（需要在coreNum_初始化之后）
     workspaceBuf_.Init(totalLength_, fusionSize_, vecCoreNum_);
     blockIdx_ = GetBlockIdx();
+}
 
-    // 3. 申请UB
-    pipe_ = initParams.tPipeIn;
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers()
+{
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
@@ -471,19 +472,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
     hCombBeforeGradBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + hCombBeforeGradBufLen_;
     onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
-
     if ASCEND_IS_AIV {
+        pipe_ = tiling_->tPipeIn;
         pipe_->InitBuffer(bf16InQueue_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(bf16OutQueue_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(fp32InQueue_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(fp32OutQueue_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
-
         globalUbOffset_ = hFusionBufLen_ * sizeof(uint32_t);
         alphaBuf_ = fp32TBuf_.GetWithOffset<P>(hFusionBufLen_, globalUbOffset_);
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
         globalUbOffset_ += fusionSize_ * sizeof(P);
-
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
             vecDealBSPeCore_ = totalLength_;
@@ -494,26 +493,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
                                   vecCoreNum_ :
                                   CeilDiv(totalLength_, vecDealBSPeCore_);
         }
-
         dealStartBS_ = vecDealBSPeCore_ * blockIdx_;
         dealEndBS_ = dealStartBS_ + vecDealBSPeCore_;
         if (dealEndBS_ > totalLength_ || blockIdx_ == usedVecCoreNum_ - 1) {
             dealEndBS_ = totalLength_;
         }
     }
-    InitStage2();
-    // 初始化DataCopyParams和DataCopyPadParams
-    dataCopyParams_.blockCount = 1;
-    dataCopyParams_.srcStride = 0;
-    dataCopyParams_.dstStride = 0;
-    dataCopyPadParams_.isPad = false;
-    alphaBufInitialized_ = false;
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2()
+__aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
 {
-    // 4. 初始化 V2 & C0-1 的分核
     v1UsedCubeCoreNum_ = 0;
     cubeDealnDPeCore_ = nD_ / GetBlockNum();
     if (cubeDealnDPeCore_ == 0) {
@@ -523,24 +513,25 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2()
         cubeDealnDPeCore_ = CeilAlign(cubeDealnDPeCore_, CEIL_ALIGN_128);
         v1UsedCubeCoreNum_ = CeilDiv(nD_, cubeDealnDPeCore_);
     }
-
     if ASCEND_IS_AIC {
         dealStartND_ = cubeDealnDPeCore_ * blockIdx_;
-
         dealEndND_ = dealStartND_ + cubeDealnDPeCore_;
         if (dealEndND_ > nD_) {
             dealEndND_ = nD_;
         }
     }
-
     if ASCEND_IS_AIV {
-        // 1C2V: 初始化 V2 & C0-1 的分核
         dealStartND_ = cubeDealnDPeCore_ * uint32_t(blockIdx_ / VEC_DEAL_VECIDX_DIV);
         dealEndND_ = dealStartND_ + cubeDealnDPeCore_;
         if (dealEndND_ > nD_) {
             dealEndND_ = nD_;
         }
     }
+    dataCopyParams_.blockCount = 1;
+    dataCopyParams_.srcStride = 0;
+    dataCopyParams_.dstStride = 0;
+    dataCopyPadParams_.isPad = false;
+    alphaBufInitialized_ = false;
 }
 
 template <class T, class P>
