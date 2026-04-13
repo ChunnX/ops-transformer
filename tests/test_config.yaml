@@ -241,10 +241,16 @@ attention:
     exclude:
       - attention/prompt_flash_attention/docs
       - attention/prompt_flash_attention/README.md
+      - attention/prompt_flash_attention/op_graph
+      - attention/common
     ut_cov_exclude:
       - attention/prompt_flash_attention/op_kernel
       - attention/prompt_flash_attention/tests
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_context.h
+      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.h
+      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
+      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h
+      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
       examples: False
     options:
