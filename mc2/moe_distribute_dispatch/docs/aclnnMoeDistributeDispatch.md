@@ -498,6 +498,9 @@ aclnnStatus aclnnMoeDistributeDispatch(
 - 确定性计算：
   - aclnnMoeDistributeDispatch默认确定性实现。
 
+- 驱动约束：
+  - 算子通信域各节点的驱动版本应当相同。
+
 - `MoeDistributeDispatch`算子与`MoeDistributeCombine`算子必须配套使用，具体参考调用示例。
 
 - 在不同产品型号、不同通信算法或不同版本中，`MoeDistributeDispatch`的Tensor输出`expandIdx`、`epRecvCounts`、`tpRecvCounts`、`expandScales`中的元素值可能不同，使用时直接将上述Tensor传给`MoeDistributeCombine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
