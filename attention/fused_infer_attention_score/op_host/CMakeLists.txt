@@ -73,6 +73,5 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     ../op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
-    ../op_graph/fallback_fused_infer_attention_score.cpp
     )
 endif()
