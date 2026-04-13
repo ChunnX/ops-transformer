@@ -124,7 +124,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
       <td>-</td>
       </tr>
       <tr>
-      <td>splitItem(uint64_t)</td>
+      <td>splitItem（uint64_t）</td>
       <td>输入</td>
       <td>可选属性，代表输入和输出是否要做tensor切分。</td>
       <td>支持0/1/2/3：0=输入输出都不切分，1=输入切分输出不切分，2=输入不切分输出切分，3=输入输出都切分。</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
       <td>-</td>
       </tr>
       <tr>
-      <td>commTurn(uint64_t)</td>
+      <td>commTurn（uint64_t）</td>
       <td>输入</td>
       <td>通信数据切分数（总数据量/单次通信量）。</td>
       <td>仅支持0。</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
       <td>-</td>
       </tr>
       <tr>
-      <td>streamMode(uint64_t)</td>
+      <td>streamMode（uint64_t）</td>
       <td>输入</td>
       <td>acl流模式的枚举。</td>
       <td>仅支持1。</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
       <td>×</td>
       </tr>
       <tr>
-      <td>workspaceSize(uint64_t*)</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>

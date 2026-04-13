@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
+完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
 
 ## 函数原型
 
@@ -83,7 +83,7 @@ aclnnStatus aclnnDistributeBarrier(
     <td>-</td>
     </tr>
     <tr>
-    <td>worldSize(int64_t)</td>
+    <td>worldSize（int64_t）</td>
     <td>输入</td>
     <td>通信域大小。</td>
     <td>取值范围：[2,384]</td>
@@ -93,9 +93,9 @@ aclnnStatus aclnnDistributeBarrier(
     <td>-</td>
     </tr>
     <tr>
-    <td>workspaceSize(uint64_t*)</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
-    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>返回workspace大小。</td>
     <td>-</td>
     <td>UINT64</td>
     <td>-</td>

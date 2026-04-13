@@ -142,7 +142,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -152,7 +152,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight</td>
+      <td>weight（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -162,7 +162,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional</td>
+      <td>biasOptional（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional</td>
+      <td>scaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional</td>
+      <td>antiquantScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -202,7 +202,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional</td>
+      <td>antiquantOffsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>perTokenScaleOptional</td>
+      <td>perTokenScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的由x量化引入的缩放因子。</td>
       <td>仅支持x、weight、out均为单tensor。</td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional</td>
+      <td>groupListOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>-</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationInputOptional</td>
+      <td>activationInputOptional（aclTensorList）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -242,7 +242,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantScaleOptional</td>
+      <td>activationQuantScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantOffsetOptional</td>
+      <td>activationQuantOffsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>splitItem</td>
+      <td>splitItem（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，代表输出是否要做tensor切分。</td>
       <td>0/1代表输出为多tensor；2/3代表输出为单tensor。</td>
@@ -272,7 +272,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupType</td>
+      <td>groupType（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，代表需要分组的轴。</td>
       <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</td>
@@ -282,17 +282,17 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListType</td>
+      <td>groupListType（int64_t）</td>
       <td>输入</td>
       <td>-</td>
-      <td>枚举值0、1、2。综合约束请参见<a href="#约束说明">约束说明。</td>
+      <td>枚举值0、1、2。综合约束请参见<a href="#约束说明">约束说明。</a></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>actType</td>
+      <td>actType（int64_t）</td>
       <td>输入</td>
       <td>代表激活函数类型。</td>
       <td>取值范围为0-5。<br>
@@ -308,7 +308,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>out</td>
+      <td>out（aclTensorList）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -318,7 +318,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationFeatureOutOptional</td>
+      <td>activationFeatureOutOptional（aclTensorList）</td>
       <td>输出</td>
       <td>激活函数的输入数据。</td>
       <td>当前只支持传入nullptr。</td>
@@ -328,7 +328,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>dynQuantScaleOutOptional</td>
+      <td>dynQuantScaleOutOptional（aclTensorList）</td>
       <td>输出</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -338,7 +338,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -348,7 +348,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>

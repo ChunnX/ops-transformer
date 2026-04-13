@@ -17,8 +17,8 @@
 
 ## 功能说明
 
-- **算子功能**：完成mm + all_reduce + add + rms_norm计算。
-- **计算公式**：
+- 接口功能：完成mm + all_reduce + add + rms_norm计算。
+- 计算公式：
 
   $$
   mm_out = allReduce(dequantScale * (x1_{int8}@x2_{int8} + bias_{int32}))
@@ -39,7 +39,7 @@
   - aclnnQuantMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
   - aclnnInplaceQuantMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，原非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
 
-- 每个算子分为两段式接口，必须先调用“aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAllReduceAddRmsNorm”接口执行计算。
+- 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAllReduceAddRmsNorm”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -94,7 +94,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         </tr></thead>
       <tbody>
         <tr>
-          <td>x1</td>
+          <td>x1（aclTensor）</td>
           <td>输入</td>
           <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
@@ -104,7 +104,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>×</td>
         </tr>
         <tr>
-          <td>x2</td>
+          <td>x2（aclTensor）</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
           <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>支持转置场景下的非连续的tensor</li></ul></td>
@@ -114,7 +114,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>√</td>
         </tr>
         <tr>
-          <td>bias</td>
+          <td>bias（aclTensor）</td>
           <td>输入</td>
           <td>即计算公式中的bias。</td>
           <td><ul><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></ul></td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>√</td>
         </tr>
         <tr>
-          <td>dequantScale</td>
+          <td>dequantScale（aclTensor）</td>
           <td>输入</td>
           <td>MatMul计算后的全量化系数，即计算公式中的dequantScale。</td>
           <td>shape在pertensor场景为(1)，perchannel场景为(n)或(1, n)。</td>
@@ -134,7 +134,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>×</td>
         </tr>
         <tr>
-          <td>residual</td>
+          <td>residual（aclTensor）</td>
           <td>输入</td>
           <td>AddRmsNorm融合算子的残差输入，即计算公式中的residual。</td>
           <td>inplace场景将residual作为y的输出地址。当前版本仅支持三维输入。</td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>×</td>
         </tr>
         <tr>
-          <td>gamma</td>
+          <td>gamma（aclTensor）</td>
           <td>输入</td>
           <td>AddRmsNorm融合算子的RmsNorm计算输入，即计算公式中的gamma。</td>
           <td>当前版本仅支持一维输入。</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>×</td>
         </tr>
         <tr>
-          <td>epsilon</td>
+          <td>epsilon（double）</td>
           <td>输入</td>
           <td>Host侧的双精度，用于防止除0错误，即计算公式中的epsilon。</td>
           <td>epsilon取值满足取值范围(0,1)。</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>-</td>
         </tr>
         <tr>
-          <td>group</td>
+          <td>group（char）</td>
           <td>输入</td>
           <td>Host侧标识通信域的字符串，通信域名称。</td>
           <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>-</td>
         </tr>
         <tr>
-          <td>reduceOp</td>
+          <td>reduceOp（char）</td>
           <td>输入</td>
           <td>Host侧标识操作类型的字符串，reduce操作类型。</td>
           <td>当前仅支持输入"sum"。</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>-</td>
         </tr>
         <tr>
-          <td>commTurn</td>
+          <td>commTurn（int64_t）</td>
           <td>输入</td>
           <td>Host侧的整型，通信数据切分数，即总数据量/单次通信量。</td>
           <td>当前版本仅支持输入0。</td>
@@ -194,7 +194,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>-</td>
         </tr>
         <tr>
-          <td>streamMode</td>
+          <td>streamMode（int64_t）</td>
           <td>输入</td>
           <td>Host侧的整型，流模式的枚举。</td>
           <td>当前只支持枚举值1。</td>
@@ -204,7 +204,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>-</td>
         </tr>
         <tr>
-          <td>y</td>
+          <td>y（aclTensor）</td>
           <td>输出</td>
           <td>mm + all_reduce + add的结果，即计算公式中的y。</td>
           <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
@@ -214,7 +214,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>√</td>
         </tr>
         <tr>
-          <td>normOut</td>
+          <td>normOut（aclTensor）</td>
           <td>输出</td>
           <td>mm + all_reduce + add + rms_norm的结果，即计算公式中的normOut。</td>
           <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
@@ -224,7 +224,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>√</td>
         </tr>
         <tr>
-          <td>workspaceSize</td>
+          <td>workspaceSize（uint64_t）</td>
           <td>输出</td>
           <td>返回需要在Device侧申请的workspace大小。</td>
           <td>-</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
           <td>-</td>
         </tr>
         <tr>
-          <td>executor</td>
+          <td>executor（aclOpExecutor）</td>
           <td>输出</td>
           <td>返回op执行器，包含了算子计算流程。</td>
           <td>-</td>
