@@ -842,8 +842,6 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;         // Decode每个核需要存储头和尾部两块数据
     constexpr uint32_t S1_BASE_SIZE = 8;               // S1轴基本块的大小
     constexpr uint32_t TOPK_MAX_SIZE = 2048;           // TopK选取个数
-    constexpr uint32_t S1_BASE_SIZE_A5 = 4;
-    constexpr uint32_t S2_BASE_SIZE_A5 = 128;
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
