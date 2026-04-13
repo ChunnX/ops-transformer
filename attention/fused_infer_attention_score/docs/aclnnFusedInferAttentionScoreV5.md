@@ -1084,7 +1084,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 
 |    命名    |                            含义                            |
 | :---------: | :---------------------------------------------------------: |
-|     GQA     |           在资料约束中，泛指不传入ROPE的所有场景,包含G=1和G>1的场景           |
+|     GQA     |           在资料约束中，泛指不传入ROPE的所有场景，包含G=1和G>1的场景           |
 | Prefill MLA | 传入ROPE（包含合并和分离2种模式，headdim为64）：分离模式下，输入Q/K/V headdim为128，ROPE单独传入；合并模式下，输入Q/K headdim为192（与ROPE合并），V headdim为128，ROPE不单独传入 |
 | Decode MLA |             输入Q/K/V headdim为512，且ROPE单独传入             |
 |      B      |                Batch, 表示输入样本批量大小                |
