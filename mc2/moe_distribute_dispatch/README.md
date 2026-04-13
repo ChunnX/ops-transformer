@@ -183,7 +183,7 @@
 <tr>
 <td>globalBs</td>
 <td>可选属性</td>
-<td><li>EP域全局的batch size大小，各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单rank BS最大值）。</li><li>默认值为0。</li></td>
+<td><li>EP域全局的batch size大小，各rank BS一致时，globalBs = BS * epWorldSize 或 0；各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单rank BS最大值）。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>

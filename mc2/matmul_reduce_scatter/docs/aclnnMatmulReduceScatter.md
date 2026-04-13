@@ -323,6 +323,8 @@ aclnnStatus aclnnMatmulReduceScatter(
     #include <thread>
     #include <iostream>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_reduce_scatter.h"

@@ -22,12 +22,20 @@
     新增采集通信耗时功能，记录每张卡的通信时间，通过传入`performanceInfoOptional`参数使能该特性。该功能推荐结合[DeepXTrace](https://github.com/antgroup/DeepXTrace)工具使用。单次算子调用各卡通信耗时会累加到该Tensor上，用户使用前按需清零。
 
 - 计算公式：
+    - 不存在TP域通信时：
 
-$$
-rsOut = ReduceScatterV(expandX)\\
-ataOut = AllToAllV(rsOut)\\
-xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-$$
+    $$
+    ataOut = AllToAllV(expandX)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
+
+    - 存在TP域通信时：
+
+    $$
+    rsOut = ReduceScatterV(expandX)\\
+    ataOut = AllToAllV(rsOut)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
 
 > 注意：该接口必须与`aclnnMoeDistributeDispatchV4`配套使用，相当于按`aclnnMoeDistributeDispatchV4`接口收集数据的路径原路返还。
 
@@ -758,6 +766,8 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"
@@ -841,7 +851,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
                         context = %p\n", args.rankId, hcomEpName, args.dispatchV4Stream, args.combineV4Stream,                 \
                         args.context);
 
-            int64_t Bs = 32;
+            int64_t BS = 32;
             int64_t H = 7168;
             int64_t K = 8;
             int64_t expertShardType = 0;
@@ -849,7 +859,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
             int64_t sharedExpertRankNum = 0;
             int64_t moeExpertNum = 256;
             int64_t quantMode = 0;
-            int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+            int64_t globalBs = BS * EP_WORLD_SIZE_A2;
             int64_t expertTokenNumsType = 1;
             int64_t outDtype = 0;
             int64_t commQuantMode = 0;
@@ -919,10 +929,10 @@ aclnnStatus aclnnMoeDistributeCombineV4(
             aclTensor *xOut = nullptr;
 
             //定义当前场景下各变量维度
-            std::vector<int64_t> xShape{Bs, H};
-            std::vector<int64_t> expertIdsShape{Bs, K};
+            std::vector<int64_t> xShape{BS, H};
+            std::vector<int64_t> expertIdsShape{BS, K};
             std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-            std::vector<int64_t> expertScalesShape{Bs, K};
+            std::vector<int64_t> expertScalesShape{BS, K};
 
             std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
             std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
@@ -932,8 +942,8 @@ aclnnStatus aclnnMoeDistributeCombineV4(
             std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
             std::vector<int64_t> expandScalesShape{A};
 
-            std::vector<int64_t> oriXShape{Bs, H};
-            std::vector<int64_t> xOutShape{Bs, H};
+            std::vector<int64_t> oriXShape{BS, H};
+            std::vector<int64_t> xOutShape{BS, H};
             std::vector<int64_t> performanceInfoShape{EP_WORLD_SIZE_A2};
 
             int64_t xShapeSize = GetShapeSize(xShape);

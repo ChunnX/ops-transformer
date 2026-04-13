@@ -286,7 +286,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = BS * epWorldSize 或 0</li><li>各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</li></ul></td>
+    <td><ul><li>各rank BS一致时，globalBs = BS * epWorldSize 或 0</li><li>各rank BS不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -634,6 +634,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
     #include <iostream>
     #include <string>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
@@ -1035,7 +1037,6 @@ aclnnStatus aclnnMoeDistributeDispatch(
         args.rankId = rankId;
         args.epRankId = epRankId;
         args.tpRankId = tpRankId;
-        args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
         args.combineStream = combineStream;

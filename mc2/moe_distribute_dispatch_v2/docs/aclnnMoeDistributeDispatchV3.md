@@ -688,6 +688,8 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"
@@ -771,7 +773,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
                         context = %p\n", args.rankId, hcomEpName, args.dispatchV3Stream, args.combineV3Stream,                 \
                         args.context);
 
-            int64_t Bs = 32;
+            int64_t BS = 32;
             int64_t H = 7168;
             int64_t K = 8;
             int64_t expertShardType = 0;
@@ -779,7 +781,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
             int64_t sharedExpertRankNum = 0;
             int64_t moeExpertNum = 256;
             int64_t quantMode = 0;
-            int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+            int64_t globalBs = BS * EP_WORLD_SIZE_A2;
             int64_t expertTokenNumsType = 1;
             int64_t outDtype = 0;
             int64_t commQuantMode = 0;
@@ -845,10 +847,10 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
             aclTensor *xOut = nullptr;
 
             //定义当前场景下各变量维度
-            std::vector<int64_t> xShape{Bs, H};
-            std::vector<int64_t> expertIdsShape{Bs, K};
+            std::vector<int64_t> xShape{BS, H};
+            std::vector<int64_t> expertIdsShape{BS, K};
             std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-            std::vector<int64_t> expertScalesShape{Bs, K};
+            std::vector<int64_t> expertScalesShape{BS, K};
 
             std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
             std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
@@ -858,8 +860,8 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
             std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
             std::vector<int64_t> expandScalesShape{A};
 
-            std::vector<int64_t> oriXShape{Bs, H};
-            std::vector<int64_t> xOutShape{Bs, H};
+            std::vector<int64_t> oriXShape{BS, H};
+            std::vector<int64_t> xOutShape{BS, H};
 
             int64_t xShapeSize = GetShapeSize(xShape);
             int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
