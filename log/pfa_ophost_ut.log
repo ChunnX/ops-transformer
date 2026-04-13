@@ -1,148 +1,148 @@
 HEAD is now at c8d83f3 [Reduce模板]非连续/连续kernel分离
-[2026-04-13 16:04:39] Warning: The current environment is configured for ascend910b, Please use Atlas A2 series hardware for optimal performance.
-[2026-04-13 16:04:39] ----------------------------------------------------------------
-[2026-04-13 16:04:39] Start to build ut
-[2026-04-13 16:04:40] -- The C compiler identification is GNU 9.4.0
-[2026-04-13 16:04:40] -- The CXX compiler identification is GNU 9.4.0
-[2026-04-13 16:04:40] -- Detecting C compiler ABI info
-[2026-04-13 16:04:40] -- Detecting C compiler ABI info - done
-[2026-04-13 16:04:41] -- Check for working C compiler: /usr/bin/cc - skipped
-[2026-04-13 16:04:41] -- Detecting C compile features
-[2026-04-13 16:04:41] -- Detecting C compile features - done
-[2026-04-13 16:04:41] -- Detecting CXX compiler ABI info
-[2026-04-13 16:04:41] -- Detecting CXX compiler ABI info - done
-[2026-04-13 16:04:41] -- Check for working CXX compiler: /usr/bin/c++ - skipped
-[2026-04-13 16:04:41] -- Detecting CXX compile features
-[2026-04-13 16:04:41] -- Detecting CXX compile features - done
-[2026-04-13 16:04:41] -- ASCEND_CANN_PACKAGE_PATH=/home/j60100428/Ascend_cus/cann-9.0.0
-[2026-04-13 16:04:41] -- compile project with library
-[2026-04-13 16:04:41] -- Find opbase source dir: /home/j60100428/ops-transformer_0408/third_party/opbase
-[2026-04-13 16:04:41] D	aicpu_common/context/CMakeLists.txt
-[2026-04-13 16:04:41] D	aicpu_common/context/common/async_cpu_kernel.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/async_event_util.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/context.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/cpu_kernel_cache.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/cpu_kernel_register.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/cpu_kernel_utils.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/device.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/device_cpu_kernel.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/device_sharder.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/eigen_threadpool.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/host_sharder.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/common/node_def_builder.cpp
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/attr_value.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/node_def.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/node_def_impl.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/tensor.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/tensor_impl.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/tensor_shape.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cust_op/cust_dlog_record.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/cust_op/cust_dlog_record.h
-[2026-04-13 16:04:41] D	aicpu_common/context/cust_op/cust_op_log.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/device/CMakeLists.txt
-[2026-04-13 16:04:41] D	aicpu_common/context/host/CMakeLists.txt
-[2026-04-13 16:04:41] D	aicpu_common/context/utils/bcast.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/utils/eigen_tensor.cc
-[2026-04-13 16:04:41] D	aicpu_common/context/utils/kernel_util.cc
-[2026-04-13 16:04:41] D	include/aclnnop/aclnn_util.h
-[2026-04-13 16:04:41] D	include/nnopbase/aclnn/acl_meta.h
-[2026-04-13 16:04:41] D	include/nnopbase/aclnn/aclnn_base.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/aicpu/aicpu_any_value.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/aicpu/aicpu_args_handler.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/aicpu/aicpu_ext_info_handle.h
-[2026-04-1json found in /home/j60100428/ops-transformer_0408/third_party/json, and not force rebuild cann third_party
+[2026-04-13 17:47:22] Warning: The current environment is configured for ascend910b, Please use Atlas A2 series hardware for optimal performance.
+[2026-04-13 17:47:22] ----------------------------------------------------------------
+[2026-04-13 17:47:22] Start to build ut
+[2026-04-13 17:47:23] -- The C compiler identification is GNU 9.4.0
+[2026-04-13 17:47:23] -- The CXX compiler identification is GNU 9.4.0
+[2026-04-13 17:47:23] -- Detecting C compiler ABI info
+[2026-04-13 17:47:23] -- Detecting C compiler ABI info - done
+[2026-04-13 17:47:24] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-04-13 17:47:24] -- Detecting C compile features
+[2026-04-13 17:47:24] -- Detecting C compile features - done
+[2026-04-13 17:47:24] -- Detecting CXX compiler ABI info
+[2026-04-13 17:47:24] -- Detecting CXX compiler ABI info - done
+[2026-04-13 17:47:24] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-04-13 17:47:24] -- Detecting CXX compile features
+[2026-04-13 17:47:24] -- Detecting CXX compile features - done
+[2026-04-13 17:47:24] -- ASCEND_CANN_PACKAGE_PATH=/home/j60100428/Ascend_0413/cann-9.0.0
+[2026-04-13 17:47:24] -- compile project with library
+[2026-04-13 17:47:24] -- Find opbase source dir: /home/j60100428/ops-transformer_0408/third_party/opbase
+[2026-04-13 17:47:24] D	aicpu_common/context/CMakeLists.txt
+[2026-04-13 17:47:24] D	aicpu_common/context/common/async_cpu_kernel.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/async_event_util.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/context.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/cpu_kernel_cache.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/cpu_kernel_register.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/cpu_kernel_utils.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/device.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/device_cpu_kernel.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/device_sharder.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/eigen_threadpool.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/host_sharder.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/common/node_def_builder.cpp
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/attr_value.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/node_def.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/node_def_impl.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/tensor.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/tensor_impl.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/tensor_shape.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cust_op/cust_dlog_record.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/cust_op/cust_dlog_record.h
+[2026-04-13 17:47:24] D	aicpu_common/context/cust_op/cust_op_log.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/device/CMakeLists.txt
+[2026-04-13 17:47:24] D	aicpu_common/context/host/CMakeLists.txt
+[2026-04-13 17:47:24] D	aicpu_common/context/utils/bcast.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/utils/eigen_tensor.cc
+[2026-04-13 17:47:24] D	aicpu_common/context/utils/kernel_util.cc
+[2026-04-13 17:47:24] D	include/aclnnop/aclnn_util.h
+[2026-04-13 17:47:24] D	include/nnopbase/aclnn/acl_meta.h
+[2026-04-13 17:47:24] D	include/nnopbase/aclnn/aclnn_base.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/aicpu/aicpu_any_value.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/aicpu/aicpu_args_handler.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/aicpu/aicpu_ext_info_handle.h
+[2026-04-json found in /home/j60100428/ops-transformer_0408/third_party/json, and not force rebuild cann third_party
 GTEST_INSTALL_PATH=/home/j60100428/ops-transformer_0408/third_party/gtest
 gtest found:TRUE
 gtest found in /home/j60100428/ops-transformer_0408/third_party/gtest, and not force rebuild cann third_party
-3 16:04:41] D	include/nnopbase/opdev/aicpu/aicpu_kernel_launcher.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/aicpu/aicpu_task.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/aicpu/aicpu_uitls.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/bfloat16.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/common_types.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/data_type_utils.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/fast_vector.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/format_utils.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/fp16_t.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/framework_op.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/make_op_executor.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/object.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_arg_def.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_cache.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_cache_container.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_common/data_type_utils.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_config.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_def.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_dfx.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_errno.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_executor.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/op_log.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/platform.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/pool_allocator.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/shape_utils.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/small_vector.h
-[2026-04-13 16:04:41] D	include/nnopbase/opdev/tensor_view_utils.h
-[2026-04-13 16:04:42] -- Found Python3: /root/miniconda3/envs/jpy310/bin/python3.10 (found version "3.10.20") found components: Interpreter
-[2026-04-13 16:04:42] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=
-[2026-04-13 16:04:42] -- CCACHE_PROGRAM=CCACHE_PROGRAM-NOTFOUND
-[2026-04-13 16:04:42] -- ASCEND_COMPUTE_UNIT=ascend910b;
-[2026-04-13 16:04:42] -- ASCEND_OP_NAME=prompt_flash_attention
-[2026-04-13 16:04:42] -- TILING_KEY=
-[2026-04-13 16:04:42] -- TESTS_UT_OPS_TEST=prompt_flash_attention
-[2026-04-13 16:04:42] -- TESTS_EXAMPLE_OPS_TEST=
-[2026-04-13 16:04:42] -- CMAKE_BUILD_TYPE=Debug
-[2026-04-13 16:04:42] -- VERSION=
-[2026-04-13 16:04:42] -- CMAKE_CXX_COMPILER_ID=GNU
-[2026-04-13 16:04:42] -- Found json: /home/j60100428/ops-transformer_0408/third_party/json/include
-[2026-04-13 16:04:42] -- Found gtest: /home/j60100428/ops-transformer_0408/third_party/gtest/include
-[2026-04-13 16:04:42] -- Start building custom package.
-[2026-04-13 16:04:42] -- Search libs under install path /home/j60100428/Ascend_cus/cann-9.0.0
-[2026-04-13 16:04:42] -- CMAKE_MODULE_PATH            :/home/j60100428/ops-transformer_0408/cmake/modules;/home/j60100428/Ascend_cus/cann-9.0.0/include/ge/cmake
-[2026-04-13 16:04:42] -- compile option:  -O0 -g -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
-[2026-04-13 16:04:42] -- Found dlog: /home/j60100428/Ascend_cus/cann-9.0.0/pkg_inc/base
-[2026-04-13 16:04:42] -- Transformer Variables in dlog module:
-[2026-04-13 16:04:42] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/j60100428/Ascend_cus/cann-9.0.0/pkg_inc/base"
-[2026-04-13 16:04:42] -- dlog_SHARED_LIBRARY="/home/j60100428/Ascend_cus/cann-9.0.0/lib64/libascendalog.so"
-[2026-04-13 16:04:42] -- 
-[2026-04-13 16:04:42]  Properties for TARGET dlog:
-[2026-04-13 16:04:42]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
-[2026-04-13 16:04:42]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
-[2026-04-13 16:04:42]    dlog.IMPORTED_LOCATION = "/home/j60100428/Ascend_cus/cann-9.0.0/lib64/libascendalog.so"
-[2026-04-13 16:04:42] 
-[2026-04-13 16:04:42] -- 
-[2026-04-13 16:04:42]  Properties for TARGET dlog_headers:
-[2026-04-13 16:04:42]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_cus/cann-9.0.0/pkg_inc/base"
-[2026-04-13 16:04:42] 
-[2026-04-13 16:04:42] -- Found securec: /home/j60100428/Ascend_cus/cann-9.0.0/include
-[2026-04-13 16:04:42] -- Found OPBASE: /home/j60100428/ops-transformer_0408/third_party/opbase/pkg_inc
-[2026-04-13 16:04:42] -- Found OPABSE include:/home/j60100428/ops-transformer_0408/third_party/opbase/pkg_inc
-[2026-04-13 16:04:42] -- Found OPABSE lib:
-[2026-04-13 16:04:42] -- Found platform: /home/j60100428/Ascend_cus/cann-9.0.0/include
-[2026-04-13 16:04:42] -- Found platform include:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include
-[2026-04-13 16:04:42] -- Found register library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libregister.so
-[2026-04-13 16:04:42] -- Found opp_registry library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libopp_registry.so
-[2026-04-13 16:04:42] -- Found exe_graph library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libexe_graph.so
-[2026-04-13 16:04:42] -- Found graph_base library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libgraph_base.so
-[2026-04-13 16:04:42] -- Found error_manager library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/liberror_manager.so
-[2026-04-13 16:04:42] -- Found metadef library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libmetadef.so
-[2026-04-13 16:04:42] -- Found rt2_registry library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/librt2_registry.a
-[2026-04-13 16:04:42] -- Found metadef: /home/j60100428/Ascend_cus/cann-9.0.0/include
-[2026-04-13 16:04:42] -- Found source metadef include dir:  /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/exe_graph
-[2026-04-13 16:04:42] -- Found graph library:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libgraph.so
-[2026-04-13 16:04:42] -- Found source acl include dir:  /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include
-[2026-04-13 16:04:42] -- [transformer]Found source npuruntime include dir: /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc/runtime
-[2026-04-13 16:04:42] -- Found aclnn include dir:  /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include
-[2026-04-13 16:04:42] -- Found opdev include dir:  /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/aclnn
-[2026-04-13 16:04:42] -- Found tilingapi include:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include
-[2026-04-13 16:04:42] -- TILINGAPI_INC_DIRS: /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/ascendc;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/ascendc/include;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/lib;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/impl;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/tiling
-[2026-04-13 16:04:42] -- Found tilingapi lib:/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/lib64/libtiling_api.a
-[2026-04-13 16:04:42] -- Using AICPU include dirs: /home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/experiment;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/experiment/cce;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/experiment/msprof;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/common;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/utils;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/aicpu_common/context;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/aicpu_common/context/common;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/aicpu_common/context/utils;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/homThe eigen package needs to be downloaded.
+13 17:47:24] D	include/nnopbase/opdev/aicpu/aicpu_kernel_launcher.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/aicpu/aicpu_task.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/aicpu/aicpu_uitls.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/bfloat16.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/common_types.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/data_type_utils.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/fast_vector.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/format_utils.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/fp16_t.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/framework_op.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/make_op_executor.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/object.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_arg_def.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_cache.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_cache_container.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_common/data_type_utils.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_config.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_def.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_dfx.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_errno.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_executor.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/op_log.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/platform.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/pool_allocator.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/shape_utils.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/small_vector.h
+[2026-04-13 17:47:24] D	include/nnopbase/opdev/tensor_view_utils.h
+[2026-04-13 17:47:25] -- Found Python3: /root/miniconda3/envs/jpy310/bin/python3.10 (found version "3.10.20") found components: Interpreter
+[2026-04-13 17:47:25] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=
+[2026-04-13 17:47:25] -- CCACHE_PROGRAM=CCACHE_PROGRAM-NOTFOUND
+[2026-04-13 17:47:25] -- ASCEND_COMPUTE_UNIT=ascend910b;
+[2026-04-13 17:47:25] -- ASCEND_OP_NAME=prompt_flash_attention
+[2026-04-13 17:47:25] -- TILING_KEY=
+[2026-04-13 17:47:25] -- TESTS_UT_OPS_TEST=prompt_flash_attention
+[2026-04-13 17:47:25] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-04-13 17:47:25] -- CMAKE_BUILD_TYPE=Debug
+[2026-04-13 17:47:25] -- VERSION=
+[2026-04-13 17:47:25] -- CMAKE_CXX_COMPILER_ID=GNU
+[2026-04-13 17:47:25] -- Found json: /home/j60100428/ops-transformer_0408/third_party/json/include
+[2026-04-13 17:47:25] -- Found gtest: /home/j60100428/ops-transformer_0408/third_party/gtest/include
+[2026-04-13 17:47:25] -- Start building custom package.
+[2026-04-13 17:47:25] -- Search libs under install path /home/j60100428/Ascend_0413/cann-9.0.0
+[2026-04-13 17:47:25] -- CMAKE_MODULE_PATH            :/home/j60100428/ops-transformer_0408/cmake/modules;/home/j60100428/Ascend_0413/cann-9.0.0/include/ge/cmake
+[2026-04-13 17:47:25] -- compile option:  -O0 -g -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-04-13 17:47:25] -- Found dlog: /home/j60100428/Ascend_0413/cann-9.0.0/pkg_inc/base
+[2026-04-13 17:47:25] -- Transformer Variables in dlog module:
+[2026-04-13 17:47:25] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/j60100428/Ascend_0413/cann-9.0.0/pkg_inc/base"
+[2026-04-13 17:47:25] -- dlog_SHARED_LIBRARY="/home/j60100428/Ascend_0413/cann-9.0.0/lib64/libascendalog.so"
+[2026-04-13 17:47:25] -- 
+[2026-04-13 17:47:25]  Properties for TARGET dlog:
+[2026-04-13 17:47:25]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-04-13 17:47:25]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-04-13 17:47:25]    dlog.IMPORTED_LOCATION = "/home/j60100428/Ascend_0413/cann-9.0.0/lib64/libascendalog.so"
+[2026-04-13 17:47:25] 
+[2026-04-13 17:47:25] -- 
+[2026-04-13 17:47:25]  Properties for TARGET dlog_headers:
+[2026-04-13 17:47:25]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_0413/cann-9.0.0/pkg_inc/base"
+[2026-04-13 17:47:25] 
+[2026-04-13 17:47:25] -- Found securec: /home/j60100428/Ascend_0413/cann-9.0.0/include
+[2026-04-13 17:47:25] -- Found OPBASE: /home/j60100428/ops-transformer_0408/third_party/opbase/pkg_inc
+[2026-04-13 17:47:25] -- Found OPABSE include:/home/j60100428/ops-transformer_0408/third_party/opbase/pkg_inc
+[2026-04-13 17:47:25] -- Found OPABSE lib:
+[2026-04-13 17:47:25] -- Found platform: /home/j60100428/Ascend_0413/cann-9.0.0/include
+[2026-04-13 17:47:25] -- Found platform include:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include
+[2026-04-13 17:47:25] -- Found register library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libregister.so
+[2026-04-13 17:47:25] -- Found opp_registry library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libopp_registry.so
+[2026-04-13 17:47:25] -- Found exe_graph library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libexe_graph.so
+[2026-04-13 17:47:25] -- Found graph_base library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libgraph_base.so
+[2026-04-13 17:47:25] -- Found error_manager library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/liberror_manager.so
+[2026-04-13 17:47:25] -- Found metadef library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libmetadef.so
+[2026-04-13 17:47:25] -- Found rt2_registry library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/librt2_registry.a
+[2026-04-13 17:47:25] -- Found metadef: /home/j60100428/Ascend_0413/cann-9.0.0/include
+[2026-04-13 17:47:25] -- Found source metadef include dir:  /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/exe_graph
+[2026-04-13 17:47:25] -- Found graph library:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libgraph.so
+[2026-04-13 17:47:25] -- Found source acl include dir:  /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include
+[2026-04-13 17:47:25] -- [transformer]Found source npuruntime include dir: /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc/runtime
+[2026-04-13 17:47:25] -- Found aclnn include dir:  /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include
+[2026-04-13 17:47:25] -- Found opdev include dir:  /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/aclnn
+[2026-04-13 17:47:25] -- Found tilingapi include:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include
+[2026-04-13 17:47:25] -- TILINGAPI_INC_DIRS: /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/ascendc;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/ascendc/include;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/lib;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/impl;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/ascendc/include/highlevel_api/tiling
+[2026-04-13 17:47:25] -- Found tilingapi lib:/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/lib64/libtiling_api.a
+[2026-04-13 17:47:25] -- Using AICPU include dirs: /home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/experiment;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/experiment/cce;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/experiment/msprof;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/common;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc/aicpu_common/context/utils;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/aicpu_common/context;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/aicpu_common/context/common;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/aicpu_common/context/cpu_proto;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/aicpu_common/context/utils;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-lThe eigen package needs to be downloaded.
 CMake Warning (dev) at /root/miniconda3/envs/jpy310/share/cmake-4.3/Modules/ExternalProject/shared_internal_commands.cmake:1261 (message):
   The DOWNLOAD_EXTRACT_TIMESTAMP option was not given and policy CMP0135 is
   not set.  The policy's OLD behavior will be used.  When using a URL
@@ -175,290 +175,207 @@ Call Stack (most recent call first):
   CMakeLists.txt:149 (include)
 This warning is for project developers.  Use -Wno-dev to suppress it.
 
-e/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc;/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/pkg_inc/aicpu
-[2026-04-13 16:04:42] -- Finding gen es pkg
-[2026-04-13 16:04:42] -- [add_es_library] Module loaded from: /home/j60100428/Ascend_cus/cann-9.0.0/include/ge/cmake
-[2026-04-13 16:04:42] -- Downloading eigen from https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz
-[2026-04-13 16:04:42] -- Could NOT find abseil-cpp (missing: ABSL_SOURCE_DIR) 
-[2026-04-13 16:04:42] -- [ThirdPartyLib][abseil-cpp] https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz not found, need download.
-[2026-04-13 16:04:42] -- Could NOT find ascend_protobuf_build_transformer (missing: ASCEND_PROTOBUF_SHARED_INCLUDE) 
-[2026-04-13 16:04:42] -- [ThirdPartyLib][ascend protobuf] ascend protobuf shared not found, finding binary file.
-[2026-04-13 16:04:42] -- [ThirdPartyLib][ascend protobuf] https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz not found, need download.
-[2026-04-13 16:04:42] -- Found alog: /home/j60100428/Ascend_cus/cann-9.0.0/include
-[2026-04-13 16:04:42] -- Variables in alog module:
-[2026-04-13 16:04:42] -- alog_a_INCLUDE_DIR="/home/j60100428/Ascend_cus/cann-9.0.0/include"
-[2026-04-13 16:04:42] -- slog_a_SHARED_LIBRARY="/home/j60100428/Ascend_cus/cann-9.0.0/lib64/libascendalog.so"
-[2026-04-13 16:04:42] -- alog_a_SHARED_LIBRARY="/home/j60100428/Ascend_cus/cann-9.0.0/lib64/libascendalog.so"
-[2026-04-13 16:04:42] -- 
-[2026-04-13 16:04:42]  Properties for TARGET slog_a:
-[2026-04-13 16:04:42]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
-[2026-04-13 16:04:42]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
-[2026-04-13 16:04:42]    slog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_cus/cann-9.0.0/lib64/libascendalog.so"
-[2026-04-13 16:04:42] 
-[2026-04-13 16:04:42] -- 
-[2026-04-13 16:04:42]  Properties for TARGET alog_a:
-[2026-04-13 16:04:42]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
-[2026-04-13 16:04:42]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
-[2026-04-13 16:04:42]    alog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_cus/cann-9.0.0/lib64/libascendalog.so"
-[2026-04-13 16:04:42] 
-[2026-04-13 16:04:42] -- 
-[2026-04-13 16:04:42]  Properties for TARGET alog_headers:
-[2026-04-13 16:04:42]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_cus/cann-9.0.0/include;/home/j60100428/Ascend_cus/cann-9.0.0/include/base"
-[2026-04-13 16:04:42] 
-[2026-04-13 16:04:42] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
-[2026-04-13 16:04:43] -- === Debug: start ops.ops-transformer.attention.prompt_flash_attention.tests.CMakeLists.txt 
-[2026-04-13 16:04:43] -- === Debug: CURRENT_DIRS =CMakeLists.txt;st;ut 
-[2026-04-13 16:04:43] -- === Debug: CURRENT_DIRS =CMakeLists.txt;op_api;op_host 
-[2026-04-13 16:04:43] -- _OpsTestUt_UTestCaseLibraries      = .
-[2026-04-13 16:04:43] -- _OpsTestUt_UTestAclnnCaseLibraries = 
-[2026-04-13 16:04:43] -- _OpsTestUt_UTestCaseLibraries and _OpsTestUt_UTestAclnnCaseLibraries both empty.
-[2026-04-13 16:04:43] -- aicpu or host aicpu no need aclnn.
-[2026-04-13 16:04:43] -- Update proto header path: /home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_graph/prompt_flash_attention_proto.h
-[2026-04-13 16:04:43] -- Start Generating es transformer for custom pkg
-[2026-04-13 16:04:43] -- Generated helper script: /home/j60100428/ops-transformer_0408/build/cmake/run_gen_esb_with_lock.sh
-[2026-04-13 16:04:43] -- _add_es_library_impl: EXCLUDE_OPS is not provided
-[2026-04-13 16:04:43] -- add_es_package: Using default output directory: /home/j60100428/ops-transformer_0408/build
-[2026-04-13 16:04:43] -- add_es_package: OPP_PROTO_TARGET output directory: /home/j60100428/ops-transformer_0408/build
-[2026-04-13 16:04:43] -- add_es_package: Derived ASCEND_OPP_PATH: /home/j60100428/ops-transformer_0408/build
-[2026-04-13 16:04:43] --   - Created standard OPP path: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
-[2026-04-13 16:04:43] -- _add_es_library_impl: gen_esb target not found, searching in environment...
-[2026-04-13 16:04:43] --     Found gen_esb in PATH (environment variables configured)
-[2026-04-13 16:04:43] --     - gen_esb path: /home/j60100428/Ascend_cus/cann-9.0.0/bin/gen_esb
-[2026-04-13 16:04:43] --     - library path: /home/j60100428/Ascend_cus/cann-9.0.0/lib64
-[2026-04-13 16:04:43] -- Using proto library path (derived from OPP_PROTO_TARGET): /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
-[2026-04-13 16:04:43] -- add_es_package: Module name for gen_esb: transformer_cust
-[2026-04-13 16:04:43] -- [add_es_library] No history registry found at /home/j60100428/Ascend_cus/cann-9.0.0/opp/history_registry/transformer_cust, skipping
-[2026-04-13 16:04:43] -- Trying to locate eager_style_graph_builder_base library from run package...
-[2026-04-13 16:04:43] --   Found library in run package: /home/j60100428/Ascend_cus/cann-9.0.0/lib64/libeager_style_graph_builder_base.so
-[2026-04-13 16:04:43] -- Configuring ES package: es_transformer_cust
-[2026-04-13 16:04:43] --   - Exported target: es_transformer_cust (public interface)
-[2026-04-13 16:04:43] --   - Internal .obj target: es_transformer_cust_obj (compile once)
-[2026-04-13 16:04:43] --   - Internal .so target: es_transformer_cust_so
-[2026-04-13 16:04:43] --   - Internal .a target: es_transformer_cust_a
-[2026-04-13 16:04:43] --   - Module name (for gen_esb): transformer_cust
-[2026-04-13 16:04:43] --   - OPP proto target: proto_transformer_cust
-[2026-04-13 16:04:43] --   - OPP proto path: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
-[2026-04-13 16:04:43] --   - Output path: /home/j60100428/ops-transformer_0408/build/es_packages
-[2026-04-13 16:04:43] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
-[2026-04-13 16:04:43] --   - Python package: es_transformer_cust
-[2026-04-13 16:04:43] -- ES package 'es_transformer_cust' using single-file compilation mode
-[2026-04-13 16:04:43] --   - Wrapper file: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
-[2026-04-13 16:04:43] --   - Module name: transformer_cust
-[2026-04-13 16:04:43] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
-[2026-04-13 16:04:43] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
-[2026-04-13 16:04:43] -- add_es_library: Deduced header base path from cmake file: /home/j60100428/Ascend_cus/cann-9.0.0
-[2026-04-13 16:04:43] -- add_es_library: metadef_headers target not found, skipping
-[2026-04-13 16:04:43] -- add_es_library: Found c_sec target
-[2026-04-13 16:04:43] -- add_es_library: Linking with CANN libraries: c_sec
-[2026-04-13 16:04:43] -- add_es_package: 'build_es_transformer_cust' is the first ES package (will be built first)
-[2026-04-13 16:04:43] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
-[2026-04-13 16:04:43] --   - Exported target (for linking): es_transformer_cust
-[2026-04-13 16:04:43] --   - Build target: build_es_transformer_cust
-[2026-04-13 16:04:43] --   - Wrapper file: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
-[2026-04-13 16:04:43] --   - Internal targets:
-[2026-04-13 16:04:43] --     * Code generation: generate_es_transformer_cust_code
-[2026-04-13 16:04:43] --     * Object library: es_transformer_cust_obj (compiled once)
-[2026-04-13 16:04:43] --     * Shared library: es_transformer_cust_so
-[2026-04-13 16:04:43] --     * Static library: es_transformer_cust_a
-[2026-04-13 16:04:43] --     * Wheel generation: generate_es_transformer_cust_whl
-[2026-04-13 16:04:43] --     * Install: install_es_transformer_cust
-[2026-04-13 16:04:43] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
-[2026-04-13 16:04:43] --   - Python package: es_transformer_cust
-[2026-04-13 16:04:43] --   - ES base library: /home/j60100428/Ascend_cus/cann-9.0.0/lib64/libeager_style_graph_builder_base.so (from library)
-[2026-04-13 16:04:43] -- 
-[2026-04-13 16:04:43] -- Build mode: Single-file compilation (no reconfiguration needed)
-[2026-04-13 16:04:43] -- 
-[2026-04-13 16:04:43] -- Quick start:
-[2026-04-13 16:04:43] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
-[2026-04-13 16:04:43] --   2. Build:   make your_target  (recommended, triggers automatically)
-[2026-04-13 16:04:43] -- 
-[2026-04-13 16:04:43] -- custom cust proto to es
-[2026-04-13 16:04:43] -- Detected architecture: x86_64
-[2026-04-13 16:04:43] -- End building custom package.
-[2026-04-13 16:04:43] -- create aclnn master header file: /home/j60100428/ops-transformer_0408/build/aclnn_ops_transformer_custom.h
-[2026-04-13 16:04:43] -- no operator info to generate
-[2026-04-13 16:04:43] -- Start building custom package.
-[2026-04-13 16:04:43] -- No aicpu json files to merge, skipping.
-[2026-04-13 16:04:43] -- No aicpu cust obj targets found, skipping.
-[2026-04-13 16:04:43] -- Configuring done (3.2s)
-[2026-04-13 16:04:43] -- Generating done (0.1s)
-[2026-04-13 16:04:43] -- Build files have been written to: /home/j60100428/ops-transformer_0408/build
-[2026-04-13 16:04:43] ... transformer_op_host_ut
-[2026-04-13 16:04:43] Building target: transformer_op_host_ut.
-[2026-04-13 16:04:44] [  4%] Building CXX object attention/prompt_flash_attention/tests/ut/op_host/arch32/CMakeFiles/transformer_op_tiling_ut_cases_obj.dir/test_prompt_flash_attention_tiling.cpp.o
-[2026-04-13 16:04:44] [  8%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/fp16.cpp.o
-[2026-04-13 16:04:44] [  8%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/log/log.cpp.o
-[2026-04-13 16:04:44] [ 16%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/math_util.cpp.o
-[2026-04-13 16:04:44] [ 16%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_tiling_ut_common_obj.dir/__/common/tiling_context_faker.cpp.o
-[2026-04-13 16:04:44] [ 16%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_tiling_ut_common_obj.dir/__/common/tiling_case_executor.cpp.o
-[2026-04-13 16:04:44] [ 20%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_datatype_context_faker.cpp.o
-[2026-04-13 16:04:44] [ 24%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_cases_obj.dir/__/empty.cpp.o
-[2026-04-13 16:04:44] [ 24%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/shape_util.cpp.o
-[2026-04-13 16:04:44] [ 24%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_shape_case_executor.cpp.o
-[2026-04-13 16:04:44] [ 24%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/fallback_comm.cpp.o
-[2026-04-13 16:04:44] [ 28%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_shaperange_context_faker.cpp.o
-[2026-04-13 16:04:44] [ 36%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/softmax_tiling_ut_stub.dir/__/__/__/tests/ut/framework_normal/common/softmax_tiling_mocker.cpp.o
-[2026-04-13 16:04:44] [ 32%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_shape_context_faker.cpp.o
-[2026-04-13 16:04:44] [ 44%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/fallback_comm_2stages.cpp.o
-[2026-04-13 16:04:44] [ 44%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/prompt_flash_attention_infershape.cpp.o
-[2026-04-13 16:04:44] [ 44%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/common/op_host/proto_stub.cpp.o
-[2026-04-13 16:04:44] [ 48%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/tiling_base/tiling_util.cpp.o
-[2026-04-13 16:04:44] [ 52%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/op_graph/fallback_prompt_flash_attention.cpp.o
-[2026-04-13 16:04:44] [ 52%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling.cpp.o
-[2026-04-13 16:04:44] [ 56%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_broadcast_util.cpp.o
-[2026-04-13 16:04:44] [ 64%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_reduce_util.cpp.o
-[2026-04-13 16:04:44] [ 68%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_arch38.cpp.o
-[2026-04-13 16:04:44] [ 68%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling.cpp.o
-[2026-04-13 16:04:44] [ 64%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_elewise_util.cpp.o
-[2026-04-13 16:04:44] [ 72%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_noncontiguous.cpp.o
-[2026-04-13 16:04:44] [ 76%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/elewise/elewise_tiling.cpp.o
-[2026-04-13 16:04:44] [ 76%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_register.cpp.o
-[2026-04-13 16:04:44] [ 76%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_base.cpp.o
-[2026-04-13 16:04:44] [ 80%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_v2.cpp.o
-[2026-04-13 16:04:44] [ 88%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/fia_tiling_shape.cpp.o
-[2026-04-13 16:04:44] [ 88%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/fia_tiling_info.cpp.o
-[2026-04-13 16:04:44] [ 88%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/reduce/reduce_tiling.cpp.o
-[2026-04-13 16:04:44] [ 88%] Built target transformer_op_infershape_ut_cases_obj
-[2026-04-13 16:04:44] [ 88%] Built target opbase_util_objs
-[2026-04-13 16:04:45] [ 88%] Linking CXX static library libsoftmax_tiling_ut_stub.a
-[2026-04-13 16:04:45] [ 88%] Built target softmax_tiling_ut_stub
-[2026-04-13 16:04:45] [ 88%] Built target common_transformer_obj
-[2026-04-13 16:04:45] [ 88%] Built target opbase_infer_objs
-[2026-04-13 16:04:46] [ 88%] Built target transformer_op_infershape_ut_common_obj
-[2026-04-13 16:04:46] [ 88%] Linking CXX static library libtransformer_op_infershape_ut_cases.a
-[2026-04-13 16:04:46] [ 88%] Built target transformer_op_infershape_ut_cases
-[2026-04-13 16:04:46] [ 88%] Built target opbase_tiling_objs
-[2026-04-13 16:04:47] [ 88%] Built target ophost_transformer_infer_obj
-[2026-04-13 16:04:50] [ 88%] Built target transformer_op_tiling_ut_common_obj
-[2026-04-13 16:04:51] [ 88%] Built target transformer_op_tiling_ut_cases_obj
-[2026-04-13 16:04:51] [ 88%] Linking CXX static library libtransformer_op_tiling_ut_cases.a
-[2026-04-13 16:04:51] [ 88%] Built target transformer_op_tiling_ut_cases
-[2026-04-13 16:05:26] [ 88%] Built target ophost_transformer_tiling_obj
-[2026-04-13 16:05:26] [ 92%] Linking CXX shared library libophost_transformer_ut.so
-[2026-04-13 16:05:27] [ 92%] Built target ophost_transformer_ut
-[2026-04-13 16:05:27] [ 96%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_host_ut.dir/test_op_host_main.cpp.o
-[2026-04-13 16:05:29] [100%] Linking CXX executable transformer_op_host_ut
-[2026-04-13 16:05:30] Run ops op_host utest with asan
-[2026-04-13 16:05:30] [==========] Running 1 test from 1 test suite.
-[2026-04-13 16:05:30] [----------] Global test environment set-up.
-[2026-04-13 16:05:30] Global Environment SetpUp.
-[2026-04-13 16:05:31] [----------] 1 test from PromptFlashAttentionTiling
-[2026-04-13 16:05:31] PromptFlashAttentionTiling SetUp
-[2026-04-13 16:05:31] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_0
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.051.635 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.053.138 [task_fail_callback_data_manager.cc:93] 3705232 TaskFailCallBackManager: Constructor.
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.053.151 [xpu_task_fail_callback_data_manager.cc:59] 3705232 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.054.704 [runtime_keeper.cc:184] 3705232 CreateRuntimeImpl: Open libruntime_v100.so successfully
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.055.201 [runtime_adapt.cc:57] 3705232 ~Runtime: runtime destructor.
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.055.210 [runtime.cc:1395] 3705232 WaitMonitorExit: wait monitor success, used count=0.
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.056.933 [xpu_task_fail_callback_data_manager.cc:64] 3705232 ~XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Destructor.
-[2026-04-13 16:05:31] [INFO] RUNTIME(3705232,transformer_op_host_ut):2026-04-13-16:05:31.056.946 [task_fail_callback_data_manager.cc:98] 3705232 ~TaskFailCallBackManager: Destructor.
-[2026-04-13 16:05:31] [ERROR] FE(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.446 [platform_info.cpp:110]3705232 LoadIniFile:Failed to open conf file, it does not exist or is already opened.
-[2026-04-13 16:05:31] [ERROR] FE(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.486 [platform_info.cpp:1169]3705232 InitRuntimePlatformInfos:Failed to load ini file[/home/j60100428/Ascend_cus/cann-9.0.0/x86_64-linux/data/platform_config/UnknowSocType.ini].
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.508 [platform_ascendc.cpp:75][SocVersionStrMap] get platform failed, convertMap do not find soc  version
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.516 [platform_ascendc.cpp:525][PlatformAscendCInit] Invalid SocVersion.
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.568 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.590 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.601 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.625 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.635 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.647 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.657 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.669 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.679 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.691 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.700 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.722 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.731 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.743 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.752 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.765 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.774 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.787 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.799 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.811 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.820 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.832 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.841 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.854 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.863 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.876 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.885 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.897 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.907 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260325 GetSoftMaxMinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.919 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] 20260412 GetSoftMaxFlashV2MinTmpSize_mocker
-[2026-04-13 16:05:31] [ERROR] ASCENDCKERNEL(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.929 [platform_ascendc.cpp:538][PlatformAscendCManagerInit] SocVersion: (null)
-[2026-04-13 16:05:31] [ERROR] OP(3705232,transformer_op_host_ut):2026-04-13-16:05:31.254.936 [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp:6281][OPS_BASE][FindOptimalTilingSouter][3705232] OpName:[PromptFlashAttention] cannot find valid sOuterFactor, sInnerFactor and softmaxSOuterFactor!
-[2026-04-13 16:05:31] [ERROR] OP(3705232,transformer_op_host_ut):2026-04-13-16:05:31.294.501 [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp:6155][OPS_BASE][PromptFlashAttentionComputeCVDiffParams][3705232] OpName:[PromptFlashAttention] FindOptimalTilingBasicBLock failed!
-[2026-04-13 16:05:31] [ERROR] OP(3705232,transformer_op_host_ut):2026-04-13-16:05:31.294.563 [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp:6478][OPS_BASE][AdjustCVTilingCVDiff][3705232] OpName:[PromptFlashAttention] PromptFlashAttentionComputeCVDiffParams failed!
-[2026-04-13 16:05:31] [ERROR] OP(3705232,transformer_op_host_ut):2026-04-13-16:05:31.294.592 [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp:4975][OPS_BASE][RunBigKernelTilingWithParams][3705232] OpName:[PromptFlashAttention] adjust tiling cv diff [2026-04-13 16:05:31] ================================================================================
-[2026-04-13 16:05:31] Coverage Report
-[2026-04-13 16:05:31] ================================================================================
-[2026-04-13 16:05:46] ================================================================================
-fail
-[2026-04-13 16:05:31] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_0 (244 ms)
-[2026-04-13 16:05:31] PromptFlashAttentionTiling TearDown
-[2026-04-13 16:05:31] [----------] 1 test from PromptFlashAttentionTiling (244 ms total)
-[2026-04-13 16:05:31] 
-[2026-04-13 16:05:31] [----------] Global test environment tear-down
-[2026-04-13 16:05:31] Global Environment TearDown
-[2026-04-13 16:05:31] [==========] 1 test from 1 test suite ran. (445 ms total)
-[2026-04-13 16:05:31] [  PASSED  ] 1 test.
-[2026-04-13 16:05:31] [100%] Built target transformer_op_host_ut
-[2026-04-13 16:05:46] Reading tracefile /home/j60100428/ops-transformer_0408/build/cov_result/coverage.info
-[2026-04-13 16:05:46]                                           |Lines       |Functions  |Branches    
-[2026-04-13 16:05:46] Filename                                  |Rate     Num|Rate    Num|Rate     Num
-[2026-04-13 16:05:46] ================================================================================
-[2026-04-13 16:05:46] [/home/j60100428/ops-transformer_0408/attention/common/op_host/]
-[2026-04-13 16:05:46] fia_tiling_base.h                         | 100%      7| 100%     1|    -      0
-[2026-04-13 16:05:46] fia_tiling_info.cpp                       | 0.0%     50| 0.0%     4|    -      0
-[2026-04-13 16:05:46] fia_tiling_shape.cpp                      | 0.0%    168| 0.0%    19|    -      0
-[2026-04-13 16:05:46] fia_tiling_shape.h                        | 0.0%     20| 0.0%     2|    -      0
-[2026-04-13 16:05:46] fia_tiling_templates_registry.h           |87.7%     57|84.6%    13|    -      0
-[2026-04-13 16:05:46] 
-[2026-04-13 16:05:46] [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_graph/]
-[2026-04-13 16:05:46] fallback_prompt_flash_attention.cpp       | 0.0%     58| 0.0%     2|    -      0
-[2026-04-13 16:05:46] 
-[2026-04-13 16:05:46] [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_host/]
-[2026-04-13 16:05:46] prompt_flash_attention_infershape.cpp     | 0.0%    123| 0.0%     2|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling.cpp         |20.4%   3409|20.0%   120|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling.h           |30.7%    352|65.6%   163|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling_arch38.cpp  | 0.0%   2070| 0.0%   106|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling_arch38.h    | 0.0%      4| 0.0%     5|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling_register.cpp| 0.0%     17| 0.0%     1|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling_v2.cpp      | 0.0%   2559| 0.0%   125|    -      0
-[2026-04-13 16:05:46] prompt_flash_attention_tiling_v2.h        | 0.0%      7| 0.0%     6|    -      0
-[2026-04-13 16:05:46] ================================================================================
-[2026-04-13 16:05:46]                                     Total:| 9.7%   8901|25.1%   569|    -      0
+inux/include/experiment/datagw/aicpu/common;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc;/home/j60100428/Ascend_0413/cann-9.0.0/x86_64-linux/pkg_inc/aicpu
+[2026-04-13 17:47:25] -- Finding gen es pkg
+[2026-04-13 17:47:25] -- [add_es_library] Module loaded from: /home/j60100428/Ascend_0413/cann-9.0.0/include/ge/cmake
+[2026-04-13 17:47:25] -- Downloading eigen from https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz
+[2026-04-13 17:47:25] -- Could NOT find abseil-cpp (missing: ABSL_SOURCE_DIR) 
+[2026-04-13 17:47:25] -- [ThirdPartyLib][abseil-cpp] https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz not found, need download.
+[2026-04-13 17:47:25] -- Could NOT find ascend_protobuf_build_transformer (missing: ASCEND_PROTOBUF_SHARED_INCLUDE) 
+[2026-04-13 17:47:25] -- [ThirdPartyLib][ascend protobuf] ascend protobuf shared not found, finding binary file.
+[2026-04-13 17:47:25] -- [ThirdPartyLib][ascend protobuf] https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz not found, need download.
+[2026-04-13 17:47:25] -- Found alog: /home/j60100428/Ascend_0413/cann-9.0.0/include
+[2026-04-13 17:47:25] -- Variables in alog module:
+[2026-04-13 17:47:25] -- alog_a_INCLUDE_DIR="/home/j60100428/Ascend_0413/cann-9.0.0/include"
+[2026-04-13 17:47:25] -- slog_a_SHARED_LIBRARY="/home/j60100428/Ascend_0413/cann-9.0.0/lib64/libascendalog.so"
+[2026-04-13 17:47:25] -- alog_a_SHARED_LIBRARY="/home/j60100428/Ascend_0413/cann-9.0.0/lib64/libascendalog.so"
+[2026-04-13 17:47:25] -- 
+[2026-04-13 17:47:25]  Properties for TARGET slog_a:
+[2026-04-13 17:47:25]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-04-13 17:47:25]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-04-13 17:47:25]    slog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_0413/cann-9.0.0/lib64/libascendalog.so"
+[2026-04-13 17:47:25] 
+[2026-04-13 17:47:25] -- 
+[2026-04-13 17:47:25]  Properties for TARGET alog_a:
+[2026-04-13 17:47:25]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-04-13 17:47:25]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-04-13 17:47:25]    alog_a.IMPORTED_LOCATION = "/home/j60100428/Ascend_0413/cann-9.0.0/lib64/libascendalog.so"
+[2026-04-13 17:47:25] 
+[2026-04-13 17:47:25] -- 
+[2026-04-13 17:47:25]  Properties for TARGET alog_headers:
+[2026-04-13 17:47:25]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/j60100428/Ascend_0413/cann-9.0.0/include;/home/j60100428/Ascend_0413/cann-9.0.0/include/base"
+[2026-04-13 17:47:25] 
+[2026-04-13 17:47:25] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-04-13 17:47:26] -- === Debug: start ops.ops-transformer.attention.prompt_flash_attention.tests.CMakeLists.txt 
+[2026-04-13 17:47:26] -- === Debug: CURRENT_DIRS =CMakeLists.txt;st;ut 
+[2026-04-13 17:47:26] -- === Debug: CURRENT_DIRS =CMakeLists.txt;op_api;op_host 
+[2026-04-13 17:47:26] -- _OpsTestUt_UTestCaseLibraries      = .
+[2026-04-13 17:47:26] -- _OpsTestUt_UTestAclnnCaseLibraries = 
+[2026-04-13 17:47:26] -- _OpsTestUt_UTestCaseLibraries and _OpsTestUt_UTestAclnnCaseLibraries both empty.
+[2026-04-13 17:47:26] -- aicpu or host aicpu no need aclnn.
+[2026-04-13 17:47:26] -- Update proto header path: /home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_graph/prompt_flash_attention_proto.h
+[2026-04-13 17:47:26] -- Start Generating es transformer for custom pkg
+[2026-04-13 17:47:26] -- Generated helper script: /home/j60100428/ops-transformer_0408/build/cmake/run_gen_esb_with_lock.sh
+[2026-04-13 17:47:26] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-04-13 17:47:26] -- add_es_package: Using default output directory: /home/j60100428/ops-transformer_0408/build
+[2026-04-13 17:47:26] -- add_es_package: OPP_PROTO_TARGET output directory: /home/j60100428/ops-transformer_0408/build
+[2026-04-13 17:47:26] -- add_es_package: Derived ASCEND_OPP_PATH: /home/j60100428/ops-transformer_0408/build
+[2026-04-13 17:47:26] --   - Created standard OPP path: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-13 17:47:26] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-04-13 17:47:26] --     Found gen_esb in PATH (environment variables configured)
+[2026-04-13 17:47:26] --     - gen_esb path: /home/j60100428/Ascend_0413/cann-9.0.0/bin/gen_esb
+[2026-04-13 17:47:26] --     - library path: /home/j60100428/Ascend_0413/cann-9.0.0/lib64
+[2026-04-13 17:47:26] -- Using proto library path (derived from OPP_PROTO_TARGET): /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-13 17:47:26] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-04-13 17:47:26] -- [add_es_library] No history registry found at /home/j60100428/Ascend_0413/cann-9.0.0/opp/history_registry/transformer_cust, skipping
+[2026-04-13 17:47:26] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-04-13 17:47:26] --   Found library in run package: /home/j60100428/Ascend_0413/cann-9.0.0/lib64/libeager_style_graph_builder_base.so
+[2026-04-13 17:47:26] -- Configuring ES package: es_transformer_cust
+[2026-04-13 17:47:26] --   - Exported target: es_transformer_cust (public interface)
+[2026-04-13 17:47:26] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-04-13 17:47:26] --   - Internal .so target: es_transformer_cust_so
+[2026-04-13 17:47:26] --   - Internal .a target: es_transformer_cust_a
+[2026-04-13 17:47:26] --   - Module name (for gen_esb): transformer_cust
+[2026-04-13 17:47:26] --   - OPP proto target: proto_transformer_cust
+[2026-04-13 17:47:26] --   - OPP proto path: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-13 17:47:26] --   - Output path: /home/j60100428/ops-transformer_0408/build/es_packages
+[2026-04-13 17:47:26] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-04-13 17:47:26] --   - Python package: es_transformer_cust
+[2026-04-13 17:47:26] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-04-13 17:47:26] --   - Wrapper file: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-04-13 17:47:26] --   - Module name: transformer_cust
+[2026-04-13 17:47:26] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-04-13 17:47:26] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-04-13 17:47:26] -- add_es_library: Deduced header base path from cmake file: /home/j60100428/Ascend_0413/cann-9.0.0
+[2026-04-13 17:47:26] -- add_es_library: metadef_headers target not found, skipping
+[2026-04-13 17:47:26] -- add_es_library: Found c_sec target
+[2026-04-13 17:47:26] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-04-13 17:47:26] -- add_es_package: 'build_es_transformer_cust' is the first ES package (will be built first)
+[2026-04-13 17:47:26] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-04-13 17:47:26] --   - Exported target (for linking): es_transformer_cust
+[2026-04-13 17:47:26] --   - Build target: build_es_transformer_cust
+[2026-04-13 17:47:26] --   - Wrapper file: /home/j60100428/ops-transformer_0408/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-04-13 17:47:26] --   - Internal targets:
+[2026-04-13 17:47:26] --     * Code generation: generate_es_transformer_cust_code
+[2026-04-13 17:47:26] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-04-13 17:47:26] --     * Shared library: es_transformer_cust_so
+[2026-04-13 17:47:26] --     * Static library: es_transformer_cust_a
+[2026-04-13 17:47:26] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-04-13 17:47:26] --     * Install: install_es_transformer_cust
+[2026-04-13 17:47:26] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-04-13 17:47:26] --   - Python package: es_transformer_cust
+[2026-04-13 17:47:26] --   - ES base library: /home/j60100428/Ascend_0413/cann-9.0.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-04-13 17:47:26] -- 
+[2026-04-13 17:47:26] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-04-13 17:47:26] -- 
+[2026-04-13 17:47:26] -- Quick start:
+[2026-04-13 17:47:26] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-04-13 17:47:26] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-04-13 17:47:26] -- 
+[2026-04-13 17:47:26] -- custom cust proto to es
+[2026-04-13 17:47:26] -- Detected architecture: x86_64
+[2026-04-13 17:47:26] -- End building custom package.
+[2026-04-13 17:47:26] -- create aclnn master header file: /home/j60100428/ops-transformer_0408/build/aclnn_ops_transformer_custom.h
+[2026-04-13 17:47:26] -- no operator info to generate
+[2026-04-13 17:47:26] -- Start building custom package.
+[2026-04-13 17:47:26] -- No aicpu json files to merge, skipping.
+[2026-04-13 17:47:26] -- No aicpu cust obj targets found, skipping.
+[2026-04-13 17:47:26] -- Configuring done (3.2s)
+[2026-04-13 17:47:26] -- Generating done (0.1s)
+[2026-04-13 17:47:26] -- Build files have been written to: /home/j60100428/ops-transformer_0408/build
+[2026-04-13 17:47:26] ... transformer_op_host_ut
+[2026-04-13 17:47:26] Building target: transformer_op_host_ut.
+[2026-04-13 17:47:27] [  0%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/log/log.cpp.o
+[2026-04-13 17:47:27] [  4%] Building CXX object attention/prompt_flash_attention/tests/ut/op_host/arch32/CMakeFiles/transformer_op_tiling_ut_cases_obj.dir/test_prompt_flash_attention_tiling.cpp.o
+[2026-04-13 17:47:27] [  8%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_tiling_ut_common_obj.dir/__/common/tiling_case_executor.cpp.o
+[2026-04-13 17:47:27] [ 12%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_tiling_ut_common_obj.dir/__/common/tiling_context_faker.cpp.o
+[2026-04-13 17:47:27] [ 12%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/math_util.cpp.o
+[2026-04-13 17:47:27] [ 16%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/fp16.cpp.o
+[2026-04-13 17:47:27] [ 20%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_datatype_context_faker.cpp.o
+[2026-04-13 17:47:27] [ 20%] Building CXX object attention/common/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/shape_util.cpp.o
+[2026-04-13 17:47:27] [ 24%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_cases_obj.dir/__/empty.cpp.o
+[2026-04-13 17:47:27] [ 28%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/fallback_comm.cpp.o
+[2026-04-13 17:47:27] [ 28%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_shape_case_executor.cpp.o
+[2026-04-13 17:47:27] [ 28%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/fallback_comm_2stages.cpp.o
+[2026-04-13 17:47:27] [ 44%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_shape_context_faker.cpp.o
+[2026-04-13 17:47:27] [ 44%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/softmax_tiling_ut_stub.dir/__/__/__/tests/ut/framework_normal/common/softmax_tiling_mocker.cpp.o
+[2026-04-13 17:47:27] [ 44%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_infershape_ut_common_obj.dir/__/common/infer_shaperange_context_faker.cpp.o
+[2026-04-13 17:47:27] [ 44%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/tiling_base/tiling_util.cpp.o
+[2026-04-13 17:47:27] [ 44%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/common/op_host/proto_stub.cpp.o
+[2026-04-13 17:47:27] [ 44%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/op_graph/fallback_prompt_flash_attention.cpp.o
+[2026-04-13 17:47:27] [ 52%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling.cpp.o
+[2026-04-13 17:47:27] [ 52%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/prompt_flash_attention_infershape.cpp.o
+[2026-04-13 17:47:27] [ 56%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_broadcast_util.cpp.o
+[2026-04-13 17:47:27] [ 60%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_elewise_util.cpp.o
+[2026-04-13 17:47:27] [ 60%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling.cpp.o
+[2026-04-13 17:47:27] [ 64%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_arch38.cpp.o
+[2026-04-13 17:47:27] [ 68%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_base.cpp.o
+[2026-04-13 17:47:27] [ 68%] Building CXX object attention/common/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_reduce_util.cpp.o
+[2026-04-13 17:47:27] [ 68%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_register.cpp.o
+[2026-04-13 17:47:27] [ 76%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_noncontiguous.cpp.o
+[2026-04-13 17:47:27] [ 76%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/prompt_flash_attention_tiling_v2.cpp.o
+[2026-04-13 17:47:27] [ 80%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/elewise/elewise_tiling.cpp.o
+[2026-04-13 17:47:27] [ 84%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/fia_tiling_info.cpp.o
+[2026-04-13 17:47:27] [ 84%] Building CXX object attention/prompt_flash_attention/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/fia_tiling_shape.cpp.o
+[2026-04-13 17:47:27] [ 88%] Building CXX object attention/common/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/reduce/reduce_tiling.cpp.o
+[2026-04-13 17:47:27] [ 88%] Built target transformer_op_infershape_ut_cases_obj
+[2026-04-13 17:47:27] [ 88%] Built target opbase_util_objs
+[2026-04-13 17:47:28] [ 88%] Linking CXX static library libsoftmax_tiling_ut_stub.a
+[2026-04-13 17:47:28] [ 88%] Built target softmax_tiling_ut_stub
+[2026-04-13 17:47:28] [ 88%] Built target common_transformer_obj
+[2026-04-13 17:47:28] [ 88%] Built target opbase_infer_objs
+[2026-04-13 17:47:29] [ 88%] Built target transformer_op_infershape_ut_common_obj
+[2026-04-13 17:47:29] [ 88%] Linking CXX static library libtransformer_op_infershape_ut_cases.a
+[2026-04-13 17:47:29] [ 88%] Built target transformer_op_infershape_ut_cases
+[2026-04-13 17:47:29] [ 88%] Built target opbase_tiling_objs
+[2026-04-13 17:47:30] [ 88%] Built target ophost_transformer_infer_obj
+[2026-04-13 17:47:32] [ 88%] Built target transformer_op_tiling_ut_co[2026-04-13 17:48:11] ================================================================================
+[2026-04-13 17:48:11] Coverage Report
+[2026-04-13 17:48:11] ================================================================================
+[2026-04-13 17:48:26] ================================================================================
+mmon_obj
+[2026-04-13 17:47:33] [ 88%] Built target transformer_op_tiling_ut_cases_obj
+[2026-04-13 17:47:33] [ 88%] Linking CXX static library libtransformer_op_tiling_ut_cases.a
+[2026-04-13 17:47:33] [ 88%] Built target transformer_op_tiling_ut_cases
+[2026-04-13 17:48:06] [ 88%] Built target ophost_transformer_tiling_obj
+[2026-04-13 17:48:06] [ 92%] Linking CXX shared library libophost_transformer_ut.so
+[2026-04-13 17:48:07] [ 92%] Built target ophost_transformer_ut
+[2026-04-13 17:48:07] [ 96%] Building CXX object tests/ut/framework_normal/op_host/CMakeFiles/transformer_op_host_ut.dir/test_op_host_main.cpp.o
+[2026-04-13 17:48:09] [100%] Linking CXX executable transformer_op_host_ut
+[2026-04-13 17:48:10] Run ops op_host utest with asan
+[2026-04-13 17:48:10] [==========] Running 6 tests from 1 test suite.
+[2026-04-13 17:48:10] [----------] Global test environment set-up.
+[2026-04-13 17:48:10] Global Environment SetpUp.
+[2026-04-13 17:48:11] [----------] 6 tests from PromptFlashAttentionTiling
+[2026-04-13 17:48:11] PromptFlashAttentionTiling SetUp
+[2026-04-13 17:48:11] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_0
+[2026-04-13 17:48:11] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_0 (3 ms)
+[2026-04-13 17:48:11] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_1
+[2026-04-13 17:48:11] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_1 (1 ms)
+[2026-04-13 17:48:11] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_2
+[2026-04-13 17:48:11] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_2 (1 ms)
+[2026-04-13 17:48:11] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_3
+[2026-04-13 17:48:11] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_3 (1 ms)
+[2026-04-13 17:48:11] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_4
+[2026-04-13 17:48:11] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_4 (0 ms)
+[2026-04-13 17:48:11] [ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_5
+[2026-04-13 17:48:11] [       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_5 (0 ms)
+[2026-04-13 17:48:11] PromptFlashAttentionTiling TearDown
+[2026-04-13 17:48:11] [----------] 6 tests from PromptFlashAttentionTiling (9 ms total)
+[2026-04-13 17:48:11] 
+[2026-04-13 17:48:11] [----------] Global test environment tear-down
+[2026-04-13 17:48:11] Global Environment TearDown
+[2026-04-13 17:48:11] [==========] 6 tests from 1 test suite ran. (193 ms total)
+[2026-04-13 17:48:11] [  PASSED  ] 6 tests.
+[2026-04-13 17:48:11] [100%] Built target transformer_op_host_ut
+[2026-04-13 17:48:26] Reading tracefile /home/j60100428/ops-transformer_0408/build/cov_result/coverage.info
+[2026-04-13 17:48:26]                                           |Lines       |Functions  |Branches    
+[2026-04-13 17:48:26] Filename                                  |Rate     Num|Rate    Num|Rate     Num
+[2026-04-13 17:48:26] ================================================================================
+[2026-04-13 17:48:26] [/home/j60100428/ops-transformer_0408/attention/prompt_flash_attention/op_host/]
+[2026-04-13 17:48:26] prompt_flash_attention_infershape.cpp     | 0.0%    123| 0.0%     2|    -      0
+[2026-04-13 17:48:26] prompt_flash_attention_tiling.cpp         |52.3%   3409|47.5%   120|    -      0
+[2026-04-13 17:48:26] prompt_flash_attention_tiling.h           |59.4%    352|69.3%   163|    -      0
+[2026-04-13 17:48:26] prompt_flash_attention_tiling_register.cpp| 0.0%     17| 0.0%     1|    -      0
+[2026-04-13 17:48:26] ================================================================================
+[2026-04-13 17:48:26]                                     Total:|51.1%   3901|59.4%   286|    -      0
