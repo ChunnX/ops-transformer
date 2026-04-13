@@ -1,7 +1,7 @@
 #include "stdio.h"
 
 #define TYPE_SWITCH(dtype, DType, ...)                           \
-    switch(dtype)                                                       \
+    switch (dtype)                                                       \
     {                                                                   \
         case 1:                                                         \
             {                                                           \
