@@ -15,9 +15,9 @@
 
 ## 功能说明
 
-- **算子功能**：完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算**。
+- 接口功能：完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算**。
 
-- **计算公式**：
+- 计算公式：
     - 路由专家：
 
     $$
@@ -34,7 +34,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用`aclnnAlltoAllvGroupedMatMulGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnAlltoAllvGroupedMatMul`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnAlltoAllvGroupedMatMulGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnAlltoAllvGroupedMatMul`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(
@@ -93,7 +93,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
     </tr></thead>
     <tbody>
     <tr>
-        <td>gmmX</td>
+        <td>gmmX(aclTensor*)</td>
         <td>输入</td>
         <td>该输入进行AlltoAllv通信与Permute操作后结果作为GroupedMatMul计算的左矩阵。</td>
         <td>支持2维，shape为(BSK, H1)。</td>
@@ -103,7 +103,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>x</td>
     </tr>
     <tr>
-        <td>gmmWeight</td>
+        <td>gmmWeight(aclTensor*)</td>
         <td>输入</td>
         <td>GroupedMatMul计算的右矩阵。</td>
         <td>支持3维，shape为(e, H1, N1)。</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>√（仅适用转置场景）</td>
     </tr>
     <tr>
-        <td>sendCountsTensorOptional</td>
+        <td>sendCountsTensorOptional(aclTensor*)</td>
         <td>输入</td>
         <td>预留参数，当前版本仅支持传nullptr。</td>
         <td>-</td>
@@ -123,7 +123,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>recvCountsTensorOptional</td>
+        <td>recvCountsTensorOptional(aclTensor*)</td>
         <td>输入</td>
         <td>预留参数，当前版本仅支持传nullptr。</td>
         <td>-</td>
@@ -133,7 +133,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>mmXOptional</td>
+        <td>mmXOptional(aclTensor*)</td>
         <td>输入</td>
         <td>可选输入，共享专家MatMul计算中的左矩阵。</td>
         <td>支持2维，shape为(BS, H2)，需与mmWeightOptional同时传入或同为nullptr。</td>
@@ -143,7 +143,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>x</td>
     </tr>
     <tr>
-        <td>mmWeightOptional</td>
+        <td>mmWeightOptional(aclTensor*)</td>
         <td>输入</td>
         <td>可选输入，共享专家MatMul计算中的右矩阵。</td>
         <td>支持2维，shape为(H2, N2)，需与mmXOptional同时传入或同为nullptr。</td>
@@ -153,7 +153,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>√（仅适用转置场景）</td>
     </tr>
     <tr>
-        <td>group</td>
+        <td>group(char*)</td>
         <td>输入</td>
         <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
         <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>epWorldSize</td>
+        <td>epWorldSize（int64_t）</td>
         <td>输入</td>
         <td>ep通信域的大小。</td>
         <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>sendCounts</td>
+        <td>sendCounts(aclIntArray*)</td>
         <td>输入</td>
         <td>表示发送给其他卡的token数。</td>
         <td>数据类型支持INT64，长度为e * epWorldSize，最大为256。输入类型需为list。</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>recvCounts</td>
+        <td>recvCounts(aclIntArray*)</td>
         <td>输入</td>
         <td>表示接收其他卡的token数。</td>
         <td>数据类型支持INT64，长度为e * epWorldSize，最大为256。输入类型需为list。</td>
@@ -193,7 +193,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>transGmmWeight</td>
+        <td>transGmmWeight(bool)</td>
         <td>输入</td>
         <td>GroupedMatMul的右矩阵是否需要转置。</td>
         <td>true表示需要转置，false表示不转置。</td>
@@ -203,7 +203,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>transMmWeight</td>
+        <td>transMmWeight(bool)</td>
         <td>输入</td>
         <td>共享专家MatMul的右矩阵是否需要转置。</td>
         <td>true表示需要转置，false表示不转置。</td>
@@ -213,7 +213,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>permuteOutFlag</td>
+        <td>permuteOutFlag(bool)</td>
         <td>输入</td>
         <td>permuteOutOptional是否需要输出。</td>
         <td>true表明需要输出，false表明不需要输出。</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>gmmY</td>
+        <td>gmmY(aclTensor*)</td>
         <td>输出</td>
         <td>路由专家计算的输出。</td>
         <td>支持2维，shape为(A, N1)。</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>x</td>
     </tr>
     <tr>
-        <td>mmYOptional</td>
+        <td>mmYOptional(aclTensor*)</td>
         <td>输出</td>
         <td>共享专家计算的输出。</td>
         <td>支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
@@ -243,7 +243,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>x</td>
     </tr>
     <tr>
-        <td>permuteOutOptional</td>
+        <td>permuteOutOptional(aclTensor*)</td>
         <td>输出</td>
         <td>permute之后的输出。</td>
         <td>支持2维，shape为(A, H1)，仅当permuteOutFlag为true时输出。</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>x</td>
     </tr>
     <tr>
-        <td>workspaceSize</td>
+        <td>workspaceSize（uint64_t*）</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
@@ -263,7 +263,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>-</td>
     </tr>
     <tr>
-        <td>executor</td>
+        <td>executor(aclOpExecutor**)</td>
         <td>输出</td>
         <td>返回op执行器，包含了算子的计算流程。</td>
         <td>-</td>
@@ -371,7 +371,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
 
 说明：
 
-- 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+- 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 - 本示例代码以8卡为例，请根据实际环境卡数修改 `EP_WORLD_SIZE`。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：

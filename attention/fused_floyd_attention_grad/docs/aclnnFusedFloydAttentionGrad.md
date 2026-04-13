@@ -77,10 +77,10 @@ aclnnStatus aclnnFusedFloydAttentionGradGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnFusedFloydAttentionGrad(
-        void *workspace, 
-        uint64_t workspaceSize, 
-        aclOpExecutor *executor, 
-        aclrtStream stream)
+  void          *workspace, 
+  uint64_t       workspaceSize, 
+  aclOpExecutor *executor, 
+  aclrtStream    stream)
 ```
 
 ## aclnnFusedFloydAttentionGradGetWorkspaceSize
@@ -110,7 +110,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         </tr></thead>
       <tbody>
         <tr>
-          <td>query</td>
+          <td>query（aclTensor）</td>
           <td>输入</td>
           <td>公式中的Q。</td>
           <td>数据类型与key1/value1/key2/value2的数据类型一致。</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>key1</td>
+          <td>key1（aclTensor）</td>
           <td>输入</td>
           <td>公式中的K1。</td>
           <td>数据类型与query/value1/key2/value2的数据类型一致。</td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>value1</td>
+          <td>value1（aclTensor）</td>
           <td>输入</td>
           <td>公式中的V1。</td>
           <td>数据类型与query/key1/key2/value2的数据类型一致。</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>key2</td>
+          <td>key2（aclTensor）</td>
           <td>输入</td>
           <td>公式中的K2。</td>
           <td>数据类型与query/key1/value1/value2的数据类型一致。</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>value2</td>
+          <td>value2（aclTensor）</td>
           <td>输入</td>
           <td>公式中的V2。</td>
           <td>数据类型与query/key1/value1/key2的数据类型一致。</td>
@@ -160,7 +160,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>dy</td>
+          <td>dy（aclTensor）</td>
           <td>输入</td>
           <td>公式中的输入dY。</td>
           <td>-</td>
@@ -170,7 +170,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>attenMaskOptional</td>
+          <td>attenMaskOptional（aclTensor）</td>
           <td>输入</td>
           <td>公式中的atten_mask。</td>
           <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
@@ -180,7 +180,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>softmaxMax</td>
+          <td>softmaxMax（aclTensor）</td>
           <td>输入</td>
           <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>softmaxSum</td>
+          <td>softmaxSum（aclTensor）</td>
           <td>输入</td>
           <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>attentionInOptional</td>
+          <td>attentionInOptional（aclTensor）</td>
           <td>输入</td>
           <td>注意力正向计算的最终输出。</td>
           <td>数据类型和shape类型与query保持一致。</td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>dqOut</td>
+          <td>dqOut（aclTensor）</td>
           <td>输出</td>
           <td>公式中的dQ，表示query的梯度。</td>
           <td>-</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>dk1Out</td>
+          <td>dk1Out（aclTensor）</td>
           <td>输出</td>
           <td>公式中的dK1，表示key1的梯度。</td>
           <td>-</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>dv1Out</td>
+          <td>dv1Out（aclTensor）</td>
           <td>输出</td>
           <td>公式中的dV1，表示value1的梯度。</td>
           <td>-</td>
@@ -240,7 +240,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>dk2Out</td>
+          <td>dk2Out（aclTensor）</td>
           <td>输出</td>
           <td>公式中的dK2，表示key2的梯度。</td>
           <td>-</td>
@@ -250,7 +250,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>dv2Out</td>
+          <td>dv2Out（aclTensor）</td>
           <td>输出</td>
           <td>公式中的dV2，表示value2的梯度。</td>
           <td>-</td>
@@ -260,7 +260,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>scaleValue</td>
+          <td>scaleValue（double）</td>
           <td>输入</td>
           <td>公式中的scale，代表缩放系数。</td>
           <td>-</td>
@@ -270,7 +270,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>-</td>
         </tr>
         <tr>
-          <td>workspaceSize</td>
+          <td>workspaceSize（uint64_t*）</td>
           <td>输出</td>
           <td>返回需要在Device侧申请的workspace大小。</td>
           <td>-</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>-</td>
         </tr>
         <tr>
-          <td>executor</td>
+          <td>executor（aclOpExecutor）</td>
           <td>输出</td>
           <td>返回op执行器，包含了算子计算流程。</td>
           <td>-</td>
