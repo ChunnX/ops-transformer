@@ -854,3 +854,246 @@ std::cout << "20260325 GetSoftMaxMinTmpSize_mocker soc: " << SoftmaxTilingMocker
 可以发现还是异常失败
 
 请继续帮我排障吧，和之前一样，继续把记录记到本requs.md文档
+
+### 2026-04-13 本轮继续排障记录
+
+#### 1. 这轮先确认了什么
+
+- 重新读取了 `log/pfa_ophost_ut.log`、`log/pfa_ophost_910B.log`，以及当前工程里的打桩实现后，发现“高级 API 打桩未生效”这个判断已经不成立了：`GetSoftMaxMinTmpSize` / `GetSoftMaxFlashV2MinTmpSize` 的确已经命中了我们自己的 stub。
+- 真正的问题不是“符号没替换掉”，而是 **UT 用例侧设置的 `SoftmaxTilingMocker::SetSocVersion("Ascend910B")` 没有传到 stub 那一侧**，所以 stub 内部拿到的 `GetSocVersion()` 仍然可能是空，才继续触发 `(null)` / `UnknowSocType.ini` 这一串报错。
+
+#### 2. 根因分析
+
+这次把根因定位到了 `SoftmaxTilingMocker` 的实现方式本身：
+
+```cpp
+static SoftmaxTilingMocker& GetInstance() {
+    static SoftmaxTilingMocker instance;
+    return instance;
+}
+```
+
+之前这个单例函数是直接写在 `softmax_tiling_mocker.h` 里的 inline/header-only 形式。
+
+而当前 UT 的链接结构里：
+
+- testcase 在 `transformer_op_host_ut` 可执行文件里调用 `SetSocVersion`
+- softmax 打桩代码在 `libophost_transformer_ut.so` 里调用 `GetSocVersion`
+
+这样一来，**可执行文件和 so 各自持有了一份函数内静态对象**，结果就是：
+
+- testcase 改到的是“可执行文件那份” `SoftmaxTilingMocker`
+- stub 读取的是“so 里那份” `SoftmaxTilingMocker`
+
+所以用户前面看到的现象就解释通了：
+
+1. 打桩函数明明已经执行到了；
+2. 但 stub 内仍然会继续初始化 `(null)` 的 SocVersion；
+3. 一旦在 stub 里硬编码 `"Ascend910B"`，`tilingRet` 立刻恢复为 `0`，说明真正缺的就是这份 SoC 状态同步。
+
+也就是说，这里不是 `PlatformAscendCManager::GetInstance(customSocVersion)` 本身失效，而是 **传进去的 `customSocVersion` 在 stub 那个二进制边界里压根没被正确写进去**。
+
+#### 3. 这轮做的修改
+
+1. 把 `SoftmaxTilingMocker` 的单例与成员函数实现从头文件移到 `.cpp`，避免 header-only 单例在 exe / so 间各生成一份实例。
+2. 让 softmax stub 重新通过
+
+```cpp
+platform_ascendc::PlatformAscendCManager::GetInstance(
+    SoftmaxTilingMocker::GetInstance().GetSocVersion());
+```
+
+取 SoC，不再保留前面为了验证链路临时写死的 `"Ascend910B"`。
+3. 在 `tests/ut/framework_normal/op_host/CMakeLists.txt` 里把 `${OPHOST_NAME}_ut` 显式链接到 `transformer_op_host_ut`，这样 testcase 对 `SoftmaxTilingMocker` 的引用会直接落到 `libophost_transformer_ut.so` 里的同一份实现上。
+4. 由于 SoC 终于正确传入后，UT 行为恢复成成功路径，因此把 `attention/prompt_flash_attention/tests/ut/op_host/arch32/test_prompt_flash_attention_tiling.cpp` 里这个 case 的期望重新修正为：
+   - `expectResult = ge::GRAPH_SUCCESS`
+   - `expectTilingKey = 1000000000000021217`
+
+#### 4. 修改后验证结果
+
+验证命令仍然按你补充的方式执行：
+
+```bash
+source /home/j60100428/Ascend_0408/cann/set_env.sh
+export ASCEND_GLOBAL_LOG_LEVEL=3
+export ASCEND_SLOG_PRINT_TO_STDOUT=1
+bash build.sh -u --ophost --ops=prompt_flash_attention --soc=ascend910b --cov -j$(nproc) 2>&1 | tee ./log/pfa_ophost_ut_20260413_fix4.log
+```
+
+本轮关键验证结论：
+
+- `log/pfa_ophost_ut_20260413_fix4.log` 中已经**不再出现**
+  - `SocVersion: (null)`
+  - `UnknowSocType.ini`
+  - `get platform failed`
+  - `Invalid SocVersion`
+- UT 结果恢复正常：
+
+```text
+[ RUN      ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_0
+[       OK ] PromptFlashAttentionTiling.PromptFlashAttention_910b_tiling_0 (7 ms)
+[  PASSED  ] 1 test.
+```
+
+- lcov 也正常生成，关键覆盖结果里：
+
+```text
+prompt_flash_attention_tiling.cpp |31.5%   3409|28.3%   120|
+Total:|14.4%   8901|27.9%   569|
+```
+
+#### 5. 为什么这次结论更可靠
+
+因为现在已经同时满足了这三个条件：
+
+1. stub 仍然命中；
+2. 不再靠硬编码 `"Ascend910B"` 才能成功；
+3. 错误日志里那条 `(null)` 平台初始化链路已经消失。
+
+这说明本轮修掉的是“UT 与 stub 之间 SoC 状态没有共享”的真实根因，而不是只是在高级 API 外面继续绕过报错。
+
+#### 6. 本轮动过的工程文件（按你的要求记录）
+
+- `tests/ut/framework_normal/common/softmax_tiling_mocker.h`
+- `tests/ut/framework_normal/common/softmax_tiling_mocker.cpp`
+- `tests/ut/framework_normal/op_host/CMakeLists.txt`
+- `attention/prompt_flash_attention/tests/ut/op_host/arch32/test_prompt_flash_attention_tiling.cpp`
+
+#### 7. 本轮新增的排障日志文件
+
+- `log/pfa_ophost_ut_20260413_fix1.log`
+- `log/pfa_ophost_ut_20260413_fix2.log`
+- `log/pfa_ophost_ut_20260413_fix3.log`
+- `log/pfa_ophost_ut_20260413_fix4.log`
+
+### 方案沉淀：op_host 侧高级 API 打桩的通用做法
+
+这一节不是只针对 PromptFlashAttention，而是总结成 **“凡是 op_host tiling 文件里直接调了高级 API，做 UT/lcov 覆盖时都可以参考的通用方案”**。
+
+#### 一、适用场景
+
+适用于下面这类情况：
+
+- 算子的 `op_host` tiling 代码里直接调用了高级 API；
+- 这些高级 API 最终来自 `tiling_api` 或其内部依赖；
+- 跑 `--ophost --cov` 的 UT 时，希望把某些高级 API 替换成 mock/stub；
+- 但直接做“前置依赖覆盖”或外部 so 注入时，经常发现还是走回原始实现。
+
+本次排障已经验证，**在当前工程链路下，最稳妥的方案不是去改外部 CANN 包，也不是靠 preload 覆盖，而是把 stub 直接编进当前 UT 链路，并确保它在静态链接阶段优先生效。**
+
+#### 二、为什么 op_host 侧更容易出现“前置依赖已配但仍未打桩”
+
+核心原因通常有两个：
+
+1. `tiling_api` 很多时候是静态库（例如 `libtiling_api.a`），不是普通动态库；
+2. op_host 的 UT 构建里，符号往往已经在链接 `libophost_transformer_ut.so` 时被静态归档展开了。
+
+这样就会导致：
+
+- 你以为自己替换的是“运行时动态加载的符号”；
+- 但实际上目标符号早在链接 `libophost_transformer_ut.so` 时就已经从静态库里拉进来了；
+- 后面再靠外部依赖顺序、运行时搜索路径、乃至单独替换某个 so，往往都拦不住。
+
+所以如果只做“前置依赖”而不进入当前 UT 的真实链接链路，很容易出现：
+
+- CMake 看起来配了；
+- 编译也通过；
+- 但真正运行时还是调回原实现。
+
+#### 三、通用方案建议
+
+##### 方案 A：优先推荐，直接在 UT 链路里重编 stub 并抢占符号
+
+步骤建议如下：
+
+1. 在 `tests/ut/framework_normal/common/` 或类似公共 UT 目录下，新增高级 API 对应的 `*_mocker.h/.cpp`。
+2. stub 的函数签名必须与原始高级 API **完全一致**。
+3. 将该 mocker 编译成一个单独的静态库，例如：
+
+```cmake
+add_library(xxx_ut_stub STATIC xxx_mocker.cpp)
+```
+
+4. 在 `libophost_transformer_ut.so` 的链接顺序里，把这个 stub 静态库放在 `tiling_api` 前面。
+5. 必要时增加：
+
+```cmake
+-Wl,--allow-multiple-definition
+```
+
+用于容忍同名符号并让前面的定义生效。
+
+这套方式的本质是：
+
+- 不去赌运行时替换；
+- 直接在当前 UT 的最终链接产物里，让 stub 定义先被解析。
+
+这也是本次 softmax 系列高级 API 最终打通的方式。
+
+##### 方案 B：如果 stub 需要测试侧注入状态，必须避免 header-only 单例跨 exe/so 各自持有
+
+这次已经踩实了一个很容易忽略的坑：
+
+- testcase 在可执行文件里写 mock 状态；
+- stub 在 `libophost_transformer_ut.so` 里读 mock 状态；
+- 如果状态容器是 header-only 单例 / inline 函数局部静态对象，就可能出现 exe 一份、so 一份。
+
+因此，**凡是 mocker 需要被 testcase 写入、再被 stub 读取的共享状态，都应该遵守下面的实现原则**：
+
+1. 头文件里只放声明；
+2. 单例和成员函数实现放进 `.cpp`；
+3. 让 testcase 与 stub 最终都解析到同一份目标文件/同一个 so 中的符号；
+4. 必要时在测试可执行文件中显式链接承载该实现的 so。
+
+否则就会出现表面上“Set 成功了”，实际 stub 读到的仍然是空值。
+
+#### 四、方案 A/B 在本次 softmax 高级 API 打桩中的对应落地
+
+本次 softmax 相关高级 API 的实际落地可以抽象成：
+
+1. 用 `tests/ut/framework_normal/common/softmax_tiling_mocker.cpp` 重定义：
+   - `GetSoftMaxMinTmpSize`
+   - `GetSoftMaxFlashV2MinTmpSize`
+   - `GetSoftMaxFlashMinTmpSize`
+2. 把它编进 `softmax_tiling_ut_stub` 静态库；
+3. 在 `tests/ut/framework_normal/op_host/CMakeLists.txt` 中，确保：
+   - `softmax_tiling_ut_stub` 先于 `tiling_api` 链接；
+   - `${OPHOST_NAME}_ut` 被显式链接进 `transformer_op_host_ut`；
+4. `SoftmaxTilingMocker` 由 header-only 单例改成 `.cpp` 唯一定义，保证 testcase 和 stub 共用同一份 SoC 状态。
+
+#### 五、这种通用方案的优点
+
+- 不依赖外部 Ascend 包改造；
+- 不依赖 preload 或运行时搜索顺序；
+- 更贴近真实 UT 最终链接产物；
+- 对“高级 API 在 `tiling_api.a` 静态归档里”的场景更稳；
+- 便于在 lcov 覆盖时稳定复用。
+
+#### 六、这种通用方案的限制与注意事项
+
+1. **stub 逻辑最好尽量贴近原始实现**
+   - 否则虽然覆盖率上去了，但行为可能和正式包差太远。
+
+2. **如果高级 API 内部还依赖平台信息、socVersion、上下文对象**
+   - 就不能只替换最外层符号；
+   - 还要检查这些依赖是否能在 testcase 和 stub 间共享。
+
+3. **如果有多个高级 API 彼此串联**
+   - 可能需要一并 stub；
+   - 否则会出现“外层已打桩，内层仍回原实现”的半拦截状态。
+
+4. **修改链接顺序时要记录清楚**
+   - 否则后续别人看到 `-Wl,--allow-multiple-definition` 时会很难理解这个选项为什么存在。
+
+#### 七、建议作为后续统一规范的结论
+
+后续如果其它算子的 `op_host` tiling 代码也遇到“高级 API 打桩失败”，优先按下面顺序处理：
+
+1. 先确认目标高级 API 是否来自静态 `tiling_api`；
+2. 若是，优先使用“UT stub 静态库 + 链接顺序抢占”的方案；
+3. 若 stub 需要从 testcase 注入状态，禁止继续使用 header-only 单例；
+4. 所有 CMake 链接顺序改动、状态共享设计、以及新增 stub 文件，都要同步记录到需求/排障文档中。
+
+**结论一句话版：**
+
+> 对 op_host 侧调用高级 API 的算子，做 UT/lcov 覆盖时，推荐把对应高级 API 的 stub 直接编进当前 UT 链路，并确保 testcase 与 stub 共享同一份 mock 状态，而不是继续依赖外部前置依赖覆盖。  

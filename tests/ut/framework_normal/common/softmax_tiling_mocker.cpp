@@ -26,6 +26,29 @@
 
 #include "softmax_tiling_mocker.h"
 
+SoftmaxTilingMocker& SoftmaxTilingMocker::GetInstance()
+{
+    // Keep the singleton definition in a single TU so the test binary and the
+    // UT stub inside libophost_transformer_ut.so observe the same state.
+    static SoftmaxTilingMocker instance;
+    return instance;
+}
+
+void SoftmaxTilingMocker::SetSocVersion(const std::string& socVersion)
+{
+    socVersion_ = socVersion;
+}
+
+const char* SoftmaxTilingMocker::GetSocVersion() const
+{
+    return socVersion_.empty() ? nullptr : socVersion_.c_str();
+}
+
+void SoftmaxTilingMocker::Reset()
+{
+    socVersion_.clear();
+}
+
 namespace AscendC {
 
 // ---- 与 softmax_tiling.cpp 相同的内部常量 --------------------------------
@@ -57,7 +80,6 @@ inline std::vector<uint32_t> GetLastAxisShapeND(const ge::Shape& srcShape)
 uint32_t GetSoftMaxMinTmpSize(const ge::Shape& srcShape, const uint32_t dataTypeSize,
     const bool /*isReuseSource*/)
 {
-    std::cout << "20260325 GetSoftMaxMinTmpSize_mocker" << std::endl;
     const uint32_t inputSize = static_cast<uint32_t>(srcShape.GetShapeSize());
     if (inputSize == 0U) { return 0U; }
     if (dataTypeSize == 0U || (dataTypeSize != SOFTMAX_HALF_SIZE && dataTypeSize != SOFTMAX_FLOAT_SIZE)) {
@@ -69,14 +91,9 @@ uint32_t GetSoftMaxMinTmpSize(const ge::Shape& srcShape, const uint32_t dataType
     const uint32_t srcK = retVec[1];
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize;
 
-    // 关键替换：使用有参 GetInstance，由 SoftmaxTilingMocker 提供 SoC 版本字符串
-    std::cout << "20260325 GetSoftMaxMinTmpSize_mocker soc: " << SoftmaxTilingMocker::GetInstance().GetSocVersion() << " end" << std::endl;
-    // platform_ascendc::PlatformAscendC* platform =
-    //     platform_ascendc::PlatformAscendCManager::GetInstance(
-    //         SoftmaxTilingMocker::GetInstance().GetSocVersion());
     platform_ascendc::PlatformAscendC* platform =
         platform_ascendc::PlatformAscendCManager::GetInstance(
-            "Ascend910B");
+            SoftmaxTilingMocker::GetInstance().GetSocVersion());
     if (platform == nullptr) { return 0U; }
     const auto npuArch = platform->GetCurNpuArch();
 
@@ -101,7 +118,6 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape& srcShape, const uint32_t d
     const uint32_t dataTypeSize2, const bool isUpdate, const bool isBasicBlock,
     const bool isFlashOutputBrc)
 {
-    std::cout << "20260412 GetSoftMaxFlashV2MinTmpSize_mocker" << std::endl;
     const uint32_t inputSize = static_cast<uint32_t>(srcShape.GetShapeSize());
     if (inputSize == 0U) { return 0U; }
     if (dataTypeSize1 == 0U || (dataTypeSize1 != SOFTMAX_HALF_SIZE && dataTypeSize1 != SOFTMAX_FLOAT_SIZE)) {
@@ -116,13 +132,9 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape& srcShape, const uint32_t d
     const uint32_t srcK = retVec[1];
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize2;
 
-    // 关键替换：使用有参 GetInstance
-    // platform_ascendc::PlatformAscendC* platform =
-    //     platform_ascendc::PlatformAscendCManager::GetInstance(
-    //         SoftmaxTilingMocker::GetInstance().GetSocVersion());
     platform_ascendc::PlatformAscendC* platform =
         platform_ascendc::PlatformAscendCManager::GetInstance(
-            "Ascend910B");
+            SoftmaxTilingMocker::GetInstance().GetSocVersion());
     if (platform == nullptr) { return 0U; }
     const auto npuArch = platform->GetCurNpuArch();
 
@@ -186,7 +198,6 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape& srcShape, const uint32_t d
 uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape& srcShape, const uint32_t dataTypeSize,
     const bool isUpdate, const bool /*isReuseSource*/)
 {
-    std::cout << "20260412 GetSoftMaxFlashMinTmpSize_mocker" << std::endl;
     const uint32_t inputSize = static_cast<uint32_t>(srcShape.GetShapeSize());
     if (inputSize == 0U) { return 0U; }
     if (dataTypeSize == 0U || (dataTypeSize != SOFTMAX_HALF_SIZE && dataTypeSize != SOFTMAX_FLOAT_SIZE)) {
@@ -198,12 +209,9 @@ uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape& srcShape, const uint32_t dat
     const uint32_t srcM = retVec[0];
     const uint32_t srcK = retVec[1];
 
-    // platform_ascendc::PlatformAscendC* platform =
-    //     platform_ascendc::PlatformAscendCManager::GetInstance(
-    //         SoftmaxTilingMocker::GetInstance().GetSocVersion());
     platform_ascendc::PlatformAscendC* platform =
         platform_ascendc::PlatformAscendCManager::GetInstance(
-            "Ascend910B");
+            SoftmaxTilingMocker::GetInstance().GetSocVersion());
     if (platform == nullptr) { return 0U; }
     const auto npuArch = platform->GetCurNpuArch();
 
