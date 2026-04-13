@@ -53,7 +53,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         # 定义必需的列名
         required_columns = [
             'Testcase_Name', 'batch_size', 'hidden_size', 'Seq_len', 'head_dim', 'block_size', 'rope_head_dim', 'cmp_ratio',
-            'coff', 'norm_eps', 'start_p', 'rotary_mode', 'layout_x', 'data_type', 'cu_seqlens', 'seqused', 'start_pos',
+            'coff', 'norm_eps', 'start_p', 'rotary_mode', 'cache_mode', 'layout_x', 'data_type', 'cu_seqlens', 'seqused', 'start_pos',
             'x_datarange','wkv_datarange','wgate_datarange','ape_datarange','norm_weight_datarange','kv_state_datarange','score_state_datarange'
         ]
 
@@ -78,6 +78,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['norm_eps'], 
                 row['start_p'], 
                 row['rotary_mode'], 
+                row['cache_mode'],
                 row['layout_x'], 
                 row['data_type'], 
                 row['cu_seqlens'], 
@@ -117,11 +118,12 @@ class Generalized_operator():
                 cmp_ratio,
                 coff,
                 norm_eps,
-                rotary_mode):
+                rotary_mode,
+                cache_mode):
         return cpu_compressor(
             x, wkv, wgate, kv_state, score_state, ape, norm_weight, rope_sin, rope_cos,
             block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-            rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode)
+            rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode,cache_mode=cache_mode)
 
 
 def compressor_output_single(data_case):
@@ -129,7 +131,7 @@ def compressor_output_single(data_case):
     params = data_case[1:]
 
     batch_size, hidden_size, Seq_len, head_dim, block_size, rope_head_dim, cmp_ratio, coff, norm_eps, \
-    start_p, rotary_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, x_datarange, wkv_datarange,  \
+    start_p, rotary_mode,cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, x_datarange, wkv_datarange,  \
     wgate_datarange, ape_datarange, norm_weight_datarange, kv_state_datarange, score_state_datarange = params
 
     if data_type == 'FP16':
@@ -271,47 +273,48 @@ def compressor_output_single(data_case):
     # ======================== check input params finish ========================
     # ======================== gen input data start =============================
     # page state
-    max_block_num_per_batch = (S_max + block_size - 1) // block_size
-    block_num = batch_size * max_block_num_per_batch
-    next_block_id = 1
-    print(f"max_block_num_per_batch: {max_block_num_per_batch}")
-    block_table = torch.zeros(size=(batch_size, max_block_num_per_batch), dtype=torch.int32)
-    for i in range(batch_size):
-        # 需要读取state的范围
-        cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
-        cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
-        if start_pos[i] % cmp_ratio == 0:
-            cur_end = start_pos[i]
-        cur_end = min(cur_end, start_pos[i] + Seq_len)
-        cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
-        cur_end_block_id = (cur_end - 1) // block_size
-        for j in range(cur_start_block_id, cur_end_block_id + 1):
-            block_table[i][j] = next_block_id
-            next_block_id = next_block_id + 1
-        # 需要写入state的范围
-        end_pos = get_seq_used_by_batch(i, Seq_len, seqused, cu_seqlens)
-        if save_state_seqlens is not None:
-            next_start = start_pos[i] + end_pos - save_state_seqlens[i]
-            next_end = start_pos[i] + end_pos
-        else:
-            next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
-            next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
-            if (start_pos[i] + end_pos) % cmp_ratio == 0:
-                next_end = start_pos[i] + end_pos
-        next_end = min(next_end, start_pos[i] + end_pos)
-        next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
-        next_end_block_id = (next_end - 1) // block_size
-        for j in range(next_start_block_id, next_end_block_id + 1):
-            if block_table[i][j] == 0:
+    if cache_mode == 1:
+        max_block_num_per_batch = (S_max + block_size - 1) // block_size
+        block_num = batch_size * max_block_num_per_batch
+        next_block_id = 1
+        print(f"max_block_num_per_batch: {max_block_num_per_batch}")
+        block_table = torch.zeros(size=(batch_size, max_block_num_per_batch), dtype=torch.int32)
+        for i in range(batch_size):
+            # 需要读取state的范围
+            cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
+            cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
+            if start_pos[i] % cmp_ratio == 0:
+                cur_end = start_pos[i]
+            cur_end = min(cur_end, start_pos[i] + Seq_len)
+            cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
+            cur_end_block_id = (cur_end - 1) // block_size
+            for j in range(cur_start_block_id, cur_end_block_id + 1):
                 block_table[i][j] = next_block_id
                 next_block_id = next_block_id + 1
-    if batch_size==0:
-        kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
-        score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
-    else:
-        kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
-        score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
-    
+            # 需要写入state的范围
+            end_pos = get_seq_used_by_batch(i, Seq_len, seqused, cu_seqlens)
+            if save_state_seqlens is not None:
+                next_start = start_pos[i] + end_pos - save_state_seqlens[i]
+                next_end = start_pos[i] + end_pos
+            else:
+                next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
+                next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
+                if (start_pos[i] + end_pos) % cmp_ratio == 0:
+                    next_end = start_pos[i] + end_pos
+            next_end = min(next_end, start_pos[i] + end_pos)
+            next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
+            next_end_block_id = (next_end - 1) // block_size
+            for j in range(next_start_block_id, next_end_block_id + 1):
+                if block_table[i][j] == 0:
+                    block_table[i][j] = next_block_id
+                    next_block_id = next_block_id + 1
+        if batch_size==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+
     # other input
     if layout_x == "TH":
         x_shape = (cu_seqlens[-1], hidden_size)
@@ -352,7 +355,8 @@ def compressor_output_single(data_case):
                                         cmp_ratio = cmp_ratio,
                                         coff = coff,
                                         norm_eps = norm_eps,
-                                        rotary_mode = rotary_mode)
+                                        rotary_mode = rotary_mode,
+                                        cache_mode = cache_mode)
     update_kv = cpu_kv_state != kv_state
     update_score = cpu_score_state != score_state
 
@@ -381,7 +385,8 @@ def compressor_output_single(data_case):
         "cmp_ratio":cmp_ratio,
         "coff":coff,
         "norm_eps":norm_eps,
-        "rotary_mode":rotary_mode
+        "rotary_mode":rotary_mode,
+        "cache_mode":cache_mode
     }
     return  casename, output_tensors
 
