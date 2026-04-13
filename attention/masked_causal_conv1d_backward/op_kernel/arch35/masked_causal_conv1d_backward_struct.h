@@ -55,7 +55,6 @@ struct MaskedCausalConv1dBackwardTilingDataV35 {
     int64_t W{0};       // W维度大小
 };
 
-
 } // namespace MaskedCausalConv1dBackwardArch35Tiling
 
 #endif // MASKED_CAUSAL_CONV1D_BACKWARD_STRUCT_H

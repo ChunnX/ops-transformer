@@ -256,7 +256,7 @@ MaskedCausalConv1dBackward<DT>::ComputeGradInputWeight(LocalTensor<DT> &goLocal,
     LocalTensor<float> p0Ub =
         tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + 2U * planeBytesCap);
 
-    AggHiddenGradVF::DoGradInputWeight<DT>(goLocal, wLocal, inLocal, giLocal, p0Ub, p1Ub, p2Ub,
+    MaskedCausalConv1dBackwardVF::DoGradInputWeight<DT>(goLocal, wLocal, inLocal, giLocal, p0Ub, p1Ub, p2Ub,
                                            static_cast<uint32_t>(sLen), static_cast<uint32_t>(hLenThis));
     gradInQ_.EnQue<DT>(giLocal);
 }
@@ -456,15 +456,15 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceBTileAndCopyOut(int
     // k=0
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, gwAccF32_[0], srcShape, false);
     PipeBarrier<PIPE_V>();
-    AggHiddenGradVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out0);
+    MaskedCausalConv1dBackwardVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out0);
     // k=1
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, gwAccF32_[1], srcShape, false);
     PipeBarrier<PIPE_V>();
-    AggHiddenGradVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out1);
+    MaskedCausalConv1dBackwardVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out1);
     // k=2
     ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(sumUb, gwAccF32_[2], srcShape, false);
     PipeBarrier<PIPE_V>();
-    AggHiddenGradVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out2);
+    MaskedCausalConv1dBackwardVF::DoCastToDT<DT>(sumUb, static_cast<uint32_t>(hLenThis), out2);
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
     DataCopyExtParams outParams{static_cast<uint16_t>(kW), static_cast<uint32_t>(hLenThis * sizeof(DT)),

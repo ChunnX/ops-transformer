@@ -20,7 +20,7 @@
 
 using namespace AscendC;
 
-namespace AggHiddenGradVF {
+namespace MaskedCausalConv1dBackwardVF {
 
 constexpr MicroAPI::CastTrait castTraitB162B32 = {
     MicroAPI::RegLayout::ZERO,
@@ -297,6 +297,6 @@ __aicore__ inline void DoCastToDT(LocalTensor<float> &inUb, uint32_t dimLen, Loc
 }
 
 
-} // namespace AggHiddenGradVF
+} // namespace MaskedCausalConv1dBackwardVF
 
 #endif
