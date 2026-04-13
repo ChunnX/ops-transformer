@@ -129,7 +129,6 @@ public:
                     SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                     WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                 }
-
             }
         }
     }

@@ -109,24 +109,6 @@ public:
         }
     }
 
-    __aicore__ inline void InitFinalState()
-    {
-        if ASCEND_IS_AIV {
-            int64_t totalLen = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-            int64_t lenPerCore = totalLen / GetBlockNum();
-            int64_t blkId = GetBlockIdx();
-            int64_t startPos = lenPerCore * blkId;
-            int64_t endPos = startPos + lenPerCore;
-            if (startPos >= totalLen) {
-                return;
-            }
-            if (endPos > totalLen) {
-                endPos = totalLen;
-            }
-            InitOutput<bfloat16>(finalState_[startPos], endPos - startPos, static_cast<bfloat16>(0.0));
-        }
-    }
-
     __aicore__ inline void InitMask()
     {
         if ASCEND_IS_AIV {
@@ -219,12 +201,10 @@ public:
 
         InitMatmul();
         InitMask();
-        // InitFinalState();
     }
 
     __aicore__ inline void Process()
     {
-        // initHighState();
         SyncAll<false>();
         int64_t seqStart = 0;
         int64_t seqEnd = 0;
@@ -257,7 +237,6 @@ public:
                 SyncAll<false>();
             }
         }
-        // SetFinalState();
     }
 
 private:
@@ -295,20 +274,6 @@ private:
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
         stageThreeOp.Process();
-        pipe_->Reset();
-    }
-
-    __aicore__ inline void initHighState()
-    {
-        int64_t dataCount = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-        CopyCast(initState_, highState_, pipe_, dataCount, RoundMode::CAST_NONE);
-        pipe_->Reset();
-    }
-
-    __aicore__ inline void SetFinalState()
-    {
-        int64_t dataCount = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-        CopyCast(highState_, finalState_, pipe_, dataCount, RoundMode::CAST_RINT);
         pipe_->Reset();
     }
 
