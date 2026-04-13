@@ -16,6 +16,7 @@
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include <tiling/tiling_api.h>
+#include <unordered_set>
 
 using namespace ge;
 using namespace AscendC;
@@ -43,11 +44,13 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_128K = 128 * 1024;
 static constexpr uint32_t NQUERY_SIZE_8   = 8;
 static constexpr uint32_t NQUERY_SIZE_16  = 16;
 static constexpr uint32_t NQUERY_SIZE_32  = 32;
+static constexpr uint32_t NQUERY_SIZE_48  = 48;
 static constexpr uint32_t NQUERY_SIZE_64  = 64;
 static constexpr uint32_t NQUERY_SIZE_128 = 128;
 
 static constexpr uint32_t NQUERYINDEX_SIZE_8  = 8;
 static constexpr uint32_t NQUERYINDEX_SIZE_16 = 16;
+static constexpr uint32_t NQUERYINDEX_SIZE_24 = 24;
 static constexpr uint32_t NQUERYINDEX_SIZE_32 = 32;
 static constexpr uint32_t NQUERYINDEX_SIZE_64 = 64;
 
@@ -498,13 +501,16 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify T1 is failed, the value of query[0], query_index[0], weights[0], softmax_max[1] \
                  and softmax_sum[1] are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.", queryShape[0], queryIndexShape[0], weightsShape[0], softmaxMaxShape[1], softmaxSumShape[1]), return false);
         // 验证N Query数字是否正确
-        OP_CHECK_IF(queryShape[1] != NQUERY_SIZE_64 && queryShape[1] != NQUERY_SIZE_128,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {64, 128}, but the value of query[1] is (%ld)", queryShape[1]), return false);        
+        const std::unordered_set<uint32_t> valid_query_head_uset = {NQUERY_SIZE_32, NQUERY_SIZE_48, NQUERY_SIZE_64, NQUERY_SIZE_128};
+        OP_CHECK_IF(valid_query_head_uset.find(queryShape[1]) == valid_query_head_uset.end(),
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {32, 48, 64, 128}, but the value of query[1] is (%ld)", queryShape[1]), return false);        
         // 验证N Index数字是否正确
-        OP_CHECK_IF(queryIndexShape[1] != NQUERYINDEX_SIZE_32 && queryIndexShape[1] != NQUERYINDEX_SIZE_64,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {32, 64}, but the value of query_index[1] is (%ld).", queryIndexShape[1]), return false);
-        OP_CHECK_IF(weightsShape[1] != NQUERYINDEX_SIZE_32 && weightsShape[1] != NQUERYINDEX_SIZE_64,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of weights must be one of the {32, 64}, but the value of weights[1] is (%ld).", weightsShape[1]), return false);
+        const std::unordered_set<uint32_t> valid_query_index_head_uset = {NQUERYINDEX_SIZE_8, NQUERYINDEX_SIZE_16, NQUERYINDEX_SIZE_24, NQUERYINDEX_SIZE_32, NQUERYINDEX_SIZE_64};
+        OP_CHECK_IF(valid_query_index_head_uset.find(queryIndexShape[1]) == valid_query_index_head_uset.end(),
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {8, 16, 24, 32, 64}, but the value of query_index[1] is (%ld).", queryIndexShape[1]), return false);
+        const std::unordered_set<uint32_t> valid_weight_head_uset = {NQUERYINDEX_SIZE_8, NQUERYINDEX_SIZE_16, NQUERYINDEX_SIZE_24, NQUERYINDEX_SIZE_32, NQUERYINDEX_SIZE_64};
+        OP_CHECK_IF(valid_weight_head_uset.find(weightsShape[1]) == valid_weight_head_uset.end(),
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of weights must be one of the {8, 16, 24, 32, 64}, but the value of weights[1] is (%ld).", weightsShape[1]), return false);
         // 验证N Index
         OP_CHECK_IF(queryIndexShape[1] != weightsShape[1],
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N index is failed, the value of query_index[1] and weights[1] are respectively (%ld), (%ld). Their values should be equal.", queryIndexShape[1], weightsShape[1]), return false);
@@ -580,13 +586,16 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
         OP_CHECK_IF(keyIndexShape[1] != s2Len,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify shape S2 is failed, the value of key[1] and key_index[1] are respectively (%ld), (%ld). Their values should be equal.", keyShape[1], keyIndexShape[1]), return false);
         // 验证N Query数字是否正确
-        OP_CHECK_IF(queryShape[2] != NQUERY_SIZE_64 && queryShape[2] != NQUERY_SIZE_128,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {64, 128}, but the value of query[2] is (%ld)", queryShape[2]), return false);        
+        const std::unordered_set<uint32_t> valid_query_head_uset = {NQUERY_SIZE_32, NQUERY_SIZE_48, NQUERY_SIZE_64, NQUERY_SIZE_128};
+        OP_CHECK_IF(valid_query_head_uset.find(queryShape[2]) == valid_query_head_uset.end(),
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {32, 48, 64, 128}, but the value of query[2] is (%ld)", queryShape[2]), return false);        
         // 验证N Index数字是否正确
-        OP_CHECK_IF(queryIndexShape[2] != NQUERYINDEX_SIZE_32 && queryIndexShape[2] != NQUERYINDEX_SIZE_64,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {32, 64}, but the value of query_index[2] is (%ld).", queryIndexShape[2]), return false);        
-        OP_CHECK_IF(weightsShape[2] != NQUERYINDEX_SIZE_32 && weightsShape[2] != NQUERYINDEX_SIZE_64,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of weights must be one of the {32, 64}, but the value of weights[2] is (%ld).", weightsShape[2]), return false);         
+        const std::unordered_set<uint32_t> valid_query_index_head_uset = {NQUERYINDEX_SIZE_8, NQUERYINDEX_SIZE_16, NQUERYINDEX_SIZE_24, NQUERYINDEX_SIZE_32, NQUERYINDEX_SIZE_64};
+        OP_CHECK_IF(valid_query_index_head_uset.find(queryIndexShape[2]) == valid_query_index_head_uset.end(),
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {8, 16, 24, 32, 64}, but the value of query_index[2] is (%ld).", queryIndexShape[2]), return false);        
+        const std::unordered_set<uint32_t> valid_weight_head_uset = {NQUERYINDEX_SIZE_8, NQUERYINDEX_SIZE_16, NQUERYINDEX_SIZE_24, NQUERYINDEX_SIZE_32, NQUERYINDEX_SIZE_64};
+        OP_CHECK_IF(valid_weight_head_uset.find(weightsShape[2]) == valid_weight_head_uset.end(),
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of weights must be one of the {8, 16, 24, 32, 64}, but the value of weights[2] is (%ld).", weightsShape[2]), return false);
         // 验证N Index
         OP_CHECK_IF(queryIndexShape[2] != weightsShape[2],
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N index is failed, the value of query_index[2] and weights[2] are respectively (%ld), (%ld). Their values should be equal.", queryIndexShape[2], weightsShape[2]), return false);
