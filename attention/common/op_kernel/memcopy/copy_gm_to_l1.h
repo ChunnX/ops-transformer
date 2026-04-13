@@ -44,7 +44,7 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
         DataCopy(l1Tensor, gmTensor, nd2nzPara);
-    }else{
+    } else {
         // 一行一行拷贝
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
