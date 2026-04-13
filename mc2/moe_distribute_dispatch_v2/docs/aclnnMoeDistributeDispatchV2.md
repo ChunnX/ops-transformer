@@ -755,6 +755,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     #include <string>
     #include <cstring>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
@@ -1011,7 +1013,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         );
         CHECK_RET(
             ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+            LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
         );
         // 根据dispatchV2算子第一阶段接口计算出的workspaceSize申请device内存
         if (dispatchV2WorkspaceSize > 0) {
@@ -1037,7 +1039,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
         CHECK_RET(
             ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+            LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
         );
         // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
         if (combineV2WorkspaceSize > 0) {
@@ -1046,7 +1048,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         }
         // 调用combineV2算子第二阶段接口
         ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2 failed. ret = %d\n", ret); return ret);
         // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
         CHECK_RET(
@@ -1054,7 +1056,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
         );
 
-        LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
+        LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributeCombineV2 execute successfully.\n", args.rankId);
 
         // 释放device资源
         if (dispatchV2WorkspaceSize > 0) {
@@ -1108,7 +1110,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
                     context = %p\n", args.rankId, hcomEpName, args.dispatchV2Stream, args.combineV2Stream,                 \
                     args.context);
 
-        int64_t Bs = 32;
+        int64_t BS = 32;
         int64_t H = 7168;
         int64_t K = 8;
         int64_t expertShardType = 0;
@@ -1116,7 +1118,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         int64_t sharedExpertRankNum = 0;
         int64_t moeExpertNum = 256;
         int64_t quantMode = 0;
-        int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+        int64_t globalBs = BS * EP_WORLD_SIZE_A2;
         int64_t expertTokenNumsType = 1;
         int64_t outDtype = 0;
         int64_t commQuantMode = 0;
@@ -1173,10 +1175,10 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         aclTensor *xOut = nullptr;
 
         //定义当前场景下各变量维度
-        std::vector<int64_t> xShape{Bs, H};
-        std::vector<int64_t> expertIdsShape{Bs, K};
+        std::vector<int64_t> xShape{BS, H};
+        std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-        std::vector<int64_t> expertScalesShape{Bs, K};
+        std::vector<int64_t> expertScalesShape{BS, K};
 
         std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
         std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
@@ -1186,7 +1188,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
         std::vector<int64_t> expandScalesShape{A};
 
-        std::vector<int64_t> xOutShape{Bs, H};
+        std::vector<int64_t> xOutShape{BS, H};
 
         int64_t xShapeSize = GetShapeSize(xShape);
         int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
