@@ -95,13 +95,13 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <th>维度(shape)</th>
     <th>非连续Tensor</th>
 </tr>
-</thread>
+</thead>
 <tbody>
     <tr>
         <td>q</td>
         <td>必选输入</td>
         <td>公式中的q</td>
-        <td>BF16/FP16</td>
+        <td>BFloat16/Float16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -116,7 +116,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>k</td>
         <td>必选输入</td>
         <td>公式中的k</td>
-        <td>BF16/FP16</td>
+        <td>BFloat16/Float16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -134,7 +134,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>v</td>
         <td>必选输入</td>
         <td>公式中的v</td>
-        <td>BF16/FP16</td>
+        <td>BFloat16/Float16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -341,7 +341,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>attn_out</td>
         <td>固定输出</td>
         <td>flash_attn的计算输出</td>
-        <td>BF16/FP16</td>
+        <td>BFloat16/Float16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -371,7 +371,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 **说明**
 -   attention_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该入参的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
--   softmaxLse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse 为1时，一般情况下，输出shape为(B, N, Q_S)的Tensor，当input_layout为TND/NTD_TND时，输出shape为(T_Q,N_Q)的Tensor；softmax_lse_flag为False时，则输出shape为[1]的值为0的Tensor。
+-   softmaxLse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse 为1时，一般情况下，输出shape为(B, N_Q, S_Q)的Tensor，当input_q为TND时，输出shape为(N_Q, T_Q)的Tensor；softmax_lse_flag为False时，则输出shape为[1]的值为0的Tensor。
 
 layout匹配关系如下：
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
@@ -447,42 +447,13 @@ layout匹配关系如下：
 - 确定性计算：
   - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
 #### 公共参数组
-    - 入参为空的场景处理：
-        - 空Tensor指必选输入和输出的shapeSize为0。在空Tensor场景下，若attentionOut为空，返回空，否则返回全0；若有lse且lse为空时返回空，lse不为空则返回全inf。非空Tensor时输入正常拦截。
-        - query，attentionOut所有tensor的shapeSize为0，属于空Tensor。
-        - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
-        - attentionOut和lse都为空时，属于空Tensor。
-        - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
+- 入参为空的场景处理：
+    - 空Tensor指必选输入和输出的shapeSize为0, 即有任意轴为0。
+    - 触发空tensor的用例，全部拦截
 - 单参数约束
   - 无
 - 存在性约束
-
-  <table style="undefined;table-layout: fixed; width: 700px">
-        <colgroup>
-            <col style="width: 400px">
-            <col style="width: 300px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>场景</th>
-                <th>结果预期</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>query,key,value,attentionOut存在nullptr</td>
-                <td>正常拦截</td>
-            </tr>
-            <tr>
-                <td>query,attentionOut的tensor的shapeSize为0</td>
-                <td>attentionOut为返回空tensor</td>
-            </tr>
-            <tr>
-                <td>query,attentionOut的tensor的shapeSize不为0,且key,value的tensor的shapeSize为0</td>
-                <td>attentionOut返回全0</td>
-            </tr>
-        </tbody>
-    </table>
+  - 无
 - 一致性约束
 
     <table style="undefined;table-layout: fixed; width: 800px">
@@ -508,16 +479,16 @@ layout匹配关系如下：
             <tr>
                 <td>q</td>
                 <td>
-                    支持B轴小于等于65536
+                    支持B轴小于等于65536且大于0
                 </td>
                 <td>
-                    N轴无限制
+                    大于0
                 </td>
                 <td>
-                    S轴无限制
+                    大于0
                 </td>
                 <td>
-                    D轴小于等于512, 且16对齐
+                    D轴小于等于512, 16对齐, 且大于0
                 </td>
                 <td rowspan="3">
                     N_Q是N_KV的整数倍
@@ -526,31 +497,31 @@ layout匹配关系如下：
             <tr>
                 <td>k</td>
                 <td>
-                    支持B轴小于等于65536
+                    支持B轴小于等于65536且大于0
                 </td>
                 <td>
-                    N轴无限制
+                    大于0
                 </td>
                 <td>
-                    S轴无限制
+                    大于0
                 </td>
                 <td>
-                    D轴小于等于512, 且16对齐
+                    D轴小于等于512, 16对齐, 且大于0
                 </td>
             </tr>
             <tr>
                 <td>v</td>
                 <td>
-                    支持B轴小于等于65536
+                    支持B轴小于等于65536且大于0
                 </td>
                 <td>
-                    N轴无限制
+                    大于0
                 </td>
                 <td>
-                    S轴无限制
+                    大于0
                 </td>
                 <td>
-                    D轴小于等于512, 且16对齐
+                    D轴小于等于512, 16对齐, 且大于0
                 </td>
             </tr>
         </tbody>
@@ -682,7 +653,7 @@ layout匹配关系如下：
 - 特性交叉约束
   - 公共
     - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 lseOut 输出维度应为 2，且 shape 匹配 [N_Q，T_Q]
-    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 lseOut 输出维度应为 3，且 shape 匹配 [B，N_Q，Q_S]
+    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 lseOut 输出维度应为 3，且 shape 匹配 [B，N_Q，S_Q]
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
