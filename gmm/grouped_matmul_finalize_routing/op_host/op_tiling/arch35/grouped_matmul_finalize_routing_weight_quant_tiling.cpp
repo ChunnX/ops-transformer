@@ -174,7 +174,7 @@ bool GMMFRWeightQuantTiling::InferScenario() {
     // GetPrimaryFormat returns the format value masked with 0xFF
     // FORMAT_FRACTAL_NZ = 29, FORMAT_FRACTAL_NZ_C0_32 = 51
 
-    auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
+    auto scaleDesc = context_->GetOptionalInputDesc(SCALE_INDEX);
     auto scaleDtype = scaleDesc->GetDataType();
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
     auto perTokenScaleDtype =
