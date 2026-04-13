@@ -517,16 +517,18 @@ aclnnStatus aclnnMoeDistributeCombine(
 1. 确定性计算：
      - aclnnMoeDistributeCombine默认确定性实现。
 
-2. `aclnnMoeDistributeDispatch`接口与`aclnnMoeDistributeCombine`接口必须配套使用，具体参考调用示例。
+2. 驱动约束：
+     - 算子通信域各节点的驱动版本应当相同。
 
-3. 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatch`的Tensor输出`expandIdx`、`epRecvCounts`、`tpRecvCounts`、`expandScales`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
+3. `aclnnMoeDistributeDispatch`接口与`aclnnMoeDistributeCombine`接口必须配套使用，具体参考调用示例。
 
-4. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBS`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatch`对应参数也保持一致。
+4. 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatch`的Tensor输出`expandIdx`、`epRecvCounts`、`tpRecvCounts`、`expandScales`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
-5. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+5. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatch`对应参数也保持一致。
 
-6. 参数说明里shape格式说明：
+6. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
+7. 参数说明里shape格式说明：
     - **A**：表示本卡需要分发的最大token数量，取值范围如下：
       - 对于共享专家，需满足 (A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
       - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS * epWorldSize * min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS * min(localExpertNum, K))。
@@ -544,7 +546,7 @@ aclnnStatus aclnnMoeDistributeCombine(
       - 对于共享专家卡，(localExpertNum = 1)。
       - 对于MoE专家卡，(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum))；当(localExpertNum > 1)时，不支持TP域通信。
 
-7. **HCCL_BUFFSIZE**：
+8. **HCCL_BUFFSIZE**：
 
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
 
@@ -555,20 +557,18 @@ aclnnStatus aclnnMoeDistributeCombine(
         - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
    - <term>Ascend 950PR/Ascend 950DT</term>：设置大小要求 (≥ 2) 且满足 (1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1))，其中`localExpertNum`需使用MoE专家卡的本卡专家数。
 
-8. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
+9. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
    <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：设置环境变量`HCCL_INTRA_PCIE_ENABLE = 1`和`HCCL_INTRA_ROCE_ENABLE = 0`可减少跨机通信数据量，可能提升算子性能。此时，`HCCL_BUFFSIZE`要求 (≥ moeExpertNum * BS * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB)；且对于入参`moeExpertNum`，仅要求 (moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0)，不要求 (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24)。
 
-9. 本文公式中的“/”表示整除。
+10. 本文公式中的“/”表示整除。
 
-10. 通信域使用约束：
+11. 通信域使用约束：
+    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
+    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
-   - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-   - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
-
-11. 组网约束：
-
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
+12. 组网约束：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
 ## 调用示例
 
