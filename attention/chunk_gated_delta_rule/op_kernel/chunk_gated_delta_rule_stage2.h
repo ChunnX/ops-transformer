@@ -109,7 +109,6 @@ public:
                     if (GetSubBlockIdx() == 0) {
                         CopyIn(curState, Dv_, Dk_);
                     }
-                    // CrossCoreSetFlag<0x2, PIPE_MTE2>(0x3);
                     CrossCoreWaitFlag(0x2);
                     if (GetSubBlockIdx() == 0) {
                         CalGCumExp(finalState, sTP_->gCumExp[nvId * Sp_ + length]);
@@ -124,7 +123,6 @@ public:
                     CalAttnInter(sTP_->qPrime[mm_offset0], curState,
                                  sTP_->out[nvId * Dv_ + + cId * chunkSize_ * Nv_ * Dv_]);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
-                    // CrossCoreWaitFlag(0x3);
                     CrossCoreWaitFlag(0x5);
                     CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
