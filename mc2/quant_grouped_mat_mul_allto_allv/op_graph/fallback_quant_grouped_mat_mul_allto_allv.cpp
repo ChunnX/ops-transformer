@@ -12,7 +12,7 @@
  * \file fallback_quant_grouped_mat_mul_allto_allv.cpp
  * \brief fallback function of op QuantGroupedMatMulAlltoAllv
  */
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
 
