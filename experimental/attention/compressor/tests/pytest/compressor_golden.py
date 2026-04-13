@@ -310,19 +310,20 @@ def rotary_emb(x, rope_sin, rope_cos, rotary_mode):
 # state.shape is (block_num, block_size, coff * head_dim), is numpy type
 # new_state.shape is (s, coff * head_dim), data writed to state
 # block_table.shape is (B, (s_max + block_size - 1) // block_size)
-def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table):
+def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=1):
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
     finish_cnt = 0
     while finish_cnt < seq_cnt:
         cur_seq_id = start_seq_idx + finish_cnt
-        block_id = block_table[b_idx][cur_seq_id // block_size]
+        if cache_mode == 1:
+            block_id = block_table[b_idx][cur_seq_id // block_size]
         block_start_seq_id = cur_seq_id % block_size
         can_write_seq_cnt = block_size - block_start_seq_id
         if can_write_seq_cnt > seq_cnt - finish_cnt:
             can_write_seq_cnt = seq_cnt - finish_cnt
         # block_id为0表示block无效,不写数据
-        if block_id != 0:
+        if (cache_mode == 1 and block_id != 0):
             state[block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_write_seq_cnt), :] = sc_new_state[finish_cnt:(finish_cnt + can_write_seq_cnt), :]
         finish_cnt = finish_cnt + can_write_seq_cnt
 
@@ -330,20 +331,21 @@ def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_id
 # block_table.shape is (B, (s_max + block_size - 1) // block_size)
 # when coff_id = 0, read pre data; when coff_id = 1, read cur data
 # out.shape is (end_seq_idx - start_seq_idx, head_dim)
-def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table, d_start, d_end):
+def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table, d_start, d_end, cache_mode=1):
     result = np.zeros(shape=(end_seq_idx - start_seq_idx, d_end - d_start), dtype=np.float32)
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
     finish_cnt = 0
     while finish_cnt < seq_cnt:
         cur_seq_id = start_seq_idx + finish_cnt
-        block_id = block_table[b_idx][cur_seq_id // block_size]
+        if cache_mode == 1:
+            block_id = block_table[b_idx][cur_seq_id // block_size]
         block_start_seq_id = cur_seq_id % block_size
         can_read_seq_cnt = block_size - block_start_seq_id
         if can_read_seq_cnt > seq_cnt - finish_cnt:
             can_read_seq_cnt = seq_cnt - finish_cnt
         # 如果block_id为0, 输出错误日志, 但是依然读数据
-        if block_id == 0:
+        if cache_mode == 1 and block_id == 0:
             print(f"Error Info: [read_state_page_cache] block_id of block_table is 0, b_idx={b_idx} cur_seq_id={cur_seq_id} block_size={block_size}")
         result[finish_cnt:(finish_cnt + can_read_seq_cnt), :] = state[
             block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_read_seq_cnt), d_start:d_end]
@@ -353,7 +355,7 @@ def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table,
 def cpu_compressor(
     x, wkv, wgate, kv_state, score_state, ape, norm_weight, rope_sin, rope_cos,
     block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
-    rope_head_dim=64, cmp_ratio=4, coff=1, norm_eps=1e-6, rotary_mode=1):
+    rope_head_dim=64, cmp_ratio=4, coff=1, norm_eps=1e-6, rotary_mode=1, cache_mode=1):
     x_dtype = x.dtype
     x = x.to(torch.float32).numpy()
     wkv = wkv.to(torch.float32).numpy()
@@ -424,14 +426,15 @@ def cpu_compressor(
             new_score_state[start_offset:end_offset, :] = np.add(new_score_state[start_offset:end_offset, :], ape[start_seq_id_in_sc : end_seq_idx_in_sc, :])
             # 1.判断块是否需要存储到state
             # 2.判断块是否需要压缩
-            save_flag = True
+            if cache_mode == 1:
+               save_flag = True
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
                 tmp_kv_state = new_kv_state[start_offset:end_offset, :]
                 tmp_score_state = new_score_state[start_offset:end_offset, :]
-                write_state_page_cache(kv_state, tmp_kv_state, b_idx, start_seq_idx, end_seq_idx, block_table)
-                write_state_page_cache(score_state, tmp_score_state, b_idx, start_seq_idx, end_seq_idx, block_table)
+                write_state_page_cache(kv_state, tmp_kv_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
+                write_state_page_cache(score_state, tmp_score_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
 
             if compress_flag:
                 # init value and shape of one sc state
@@ -449,8 +452,8 @@ def cpu_compressor(
                     if cnt_from_state > 0:
                         copy_start_seq_id = batch_start_pos - cnt_from_state
                         copy_end_seq_id = batch_start_pos
-                        sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end)
-                        sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end)
+                        sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                        sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
                 sc_kv_state[coff_id, cnt_from_state:cmp_ratio, :] = new_kv_state[start_offset:end_offset, d_start:d_end]
                 sc_score_state[coff_id, cnt_from_state:cmp_ratio, :] = new_score_state[start_offset:end_offset, d_start:d_end]
 
@@ -468,16 +471,16 @@ def cpu_compressor(
                         if batch_start_pos >= cmp_ratio:
                             copy_start_seq_id = batch_start_pos - batch_start_pos % cmp_ratio - cmp_ratio
                             copy_end_seq_id = copy_start_seq_id + cnt_from_state
-                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end)
-                            sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end)
+                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
                     elif start_seq_idx - cmp_ratio < batch_start_pos:
                         # 第二块, pre数据部分在state中
                         cnt_from_state = batch_start_pos % cmp_ratio
                         if cnt_from_state > 0: # 不可能为0
                             copy_start_seq_id = batch_start_pos - batch_start_pos % cmp_ratio
                             copy_end_seq_id = batch_start_pos
-                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end)
-                            sc_score_state[coff_id, 0:cnt_from_state,:] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end)
+                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_score_state[coff_id, 0:cnt_from_state,:] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
                     if cnt_from_state < cmp_ratio:
                         # 需要拷贝的数据就在start_offset的前面
                         pre_start_offset = start_offset - (cmp_ratio - cnt_from_state)
@@ -520,7 +523,7 @@ def cpu_compressor(
 
 def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0, start_pos=None, seqused=None, cu_seqlens=None,
                          block_size = 128, rotary_mode = 2, data_type = torch.bfloat16, hidden_size = 4096,
-                         rope_head_dim = 64, norm_eps = 1e-6, save_state_seqlens = None, x_datarange = [-10, 10],
+                         rope_head_dim = 64, norm_eps = 1e-6, save_state_seqlens = None, cache_mode = 1, x_datarange = [-10, 10],
                          wkv_datarange = [-10, 10], wgate_datarange = [-10, 10], ape_datarange = [-10, 10], norm_weight_datarange = [-10, 10],
                          kv_state_datarange = [-10, 10], score_state_datarange = [-10, 10]):
     torch_npu.npu.set_device(int(DEVICE_ID))
@@ -597,47 +600,48 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # ======================== check input params finish ========================
     # ======================== gen input data start =============================
     # page state
-    max_block_num_per_batch = (S_max + block_size - 1) // block_size
-    block_num = B * max_block_num_per_batch
-    next_block_id = 1
-    print(f"max_block_num_per_batch: {max_block_num_per_batch}")
-    block_table = torch.zeros(size=(B, max_block_num_per_batch), dtype=torch.int32)
-    for i in range(B):
-        # 需要读取state的范围
-        cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
-        cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
-        if start_pos[i] % cmp_ratio == 0:
-            cur_end = start_pos[i]
-        cur_end = min(cur_end, start_pos[i] + S)
-        cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
-        cur_end_block_id = (cur_end - 1) // block_size
-        for j in range(cur_start_block_id, cur_end_block_id + 1):
-            block_table[i][j] = next_block_id
-            next_block_id = next_block_id + 1
-        # 需要写入state的范围
-        end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
-        if save_state_seqlens is not None:
-            next_start = start_pos[i] + end_pos - save_state_seqlens[i]
-            next_end = start_pos[i] + end_pos
-        else:
-            next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
-            next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
-            if (start_pos[i] + end_pos) % cmp_ratio == 0:
-                next_end = start_pos[i] + end_pos
-        next_end = min(next_end, start_pos[i] + end_pos)
-        next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
-        next_end_block_id = (next_end - 1) // block_size
-        for j in range(next_start_block_id, next_end_block_id + 1):
-            if block_table[i][j] == 0:
+    if cache_mode == 1:
+        max_block_num_per_batch = (S_max + block_size - 1) // block_size
+        block_num = B * max_block_num_per_batch
+        next_block_id = 1
+        print(f"max_block_num_per_batch: {max_block_num_per_batch}")
+        block_table = torch.zeros(size=(B, max_block_num_per_batch), dtype=torch.int32)
+        for i in range(B):
+            # 需要读取state的范围
+            cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
+            cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
+            if start_pos[i] % cmp_ratio == 0:
+                cur_end = start_pos[i]
+            cur_end = min(cur_end, start_pos[i] + S)
+            cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
+            cur_end_block_id = (cur_end - 1) // block_size
+            for j in range(cur_start_block_id, cur_end_block_id + 1):
                 block_table[i][j] = next_block_id
                 next_block_id = next_block_id + 1
+            # 需要写入state的范围
+            end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
+            if save_state_seqlens is not None:
+                next_start = start_pos[i] + end_pos - save_state_seqlens[i]
+                next_end = start_pos[i] + end_pos
+            else:
+                next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
+                next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
+                if (start_pos[i] + end_pos) % cmp_ratio == 0:
+                    next_end = start_pos[i] + end_pos
+            next_end = min(next_end, start_pos[i] + end_pos)
+            next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
+            next_end_block_id = (next_end - 1) // block_size
+            for j in range(next_start_block_id, next_end_block_id + 1):
+                if block_table[i][j] == 0:
+                    block_table[i][j] = next_block_id
+                    next_block_id = next_block_id + 1
 
-    if B==0:
-        kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
-        score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
-    else:
-        kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
-        score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+        if B==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -669,7 +673,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     cpu_out, cmp_kv_mask = cpu_compressor(
         x, wkv, wgate, cpu_kv_state, cpu_score_state, ape, norm_weight, rope_sin, rope_cos,
         block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-        rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode)
+        rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode, cache_mode=cache_mode)
     update_kv = cpu_kv_state != kv_state
     update_score = cpu_score_state != score_state
     # ======================== execute cpu finish ================================
@@ -678,8 +682,11 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     x = x.to("npu:%s" % DEVICE_ID)
     wkv = wkv.to("npu:%s" % DEVICE_ID)
     wgate = wgate.to("npu:%s" % DEVICE_ID)
-    kv_state = kv_state.to("npu:%s" % DEVICE_ID)
-    score_state = score_state.to("npu:%s" % DEVICE_ID)
+    if cache_mode == 1:  # 连续buffer
+        state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
+        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
     ape = ape.to("npu:%s" % DEVICE_ID)
     norm_weight = norm_weight.to("npu:%s" % DEVICE_ID)
     rope_sin = rope_sin.to("npu:%s" % DEVICE_ID)
@@ -692,17 +699,17 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
     # start run custom ops
-    npu_out, _, _, _, _ = (
+    npu_out = (
         torch.ops.custom.compressor(
             x,
             wkv,
             wgate,
-            torch.cat((kv_state, score_state), dim=-1),
+            state_cache,
             ape,
             norm_weight, 
             rope_sin,
             rope_cos,
-            block_table,
+            state_block_table = block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos if exist_start_pos else None,
@@ -711,7 +718,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             coff = coff,
             norm_eps = norm_eps,
             rotary_mode = rotary_mode,
-            cache_mode = 1,
+            cache_mode = cache_mode
         )
     )
     print(f"x: shape {x.shape}, dtype: {x.dtype}")
@@ -729,17 +736,23 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # 结果精度对比
     check_succeed = True
     data_type = str(npu_out.dtype)
+    results = [True for _ in range(5)]
     print("--------------------------------------------------------------check result-------------------------------------------------------------")
-    check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    _, result = check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    results[0] = result == "Pass"
     print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
-    check_result(cpu_kv_state[update_kv].to(torch.float32), kv_state.cpu()[update_kv].to(torch.float32), data_type)
+    _, result = check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
+    results[1] = result == "Pass"
     print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
-    check_result(cpu_score_state[update_score].to(torch.float32), score_state.cpu()[update_score].to(torch.float32), data_type)
+    _, result = check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
+    results[2] = result == "Pass"
     print("--------------------------------------------------------------check kv state origin-------------------------------------------------------------")
-    check_result(cpu_kv_state[~update_kv].to(torch.float32), kv_state.cpu()[~update_kv].to(torch.float32), data_type, 0.0)
+    _, result = check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
+    results[3] = result == "Pass"
     print("--------------------------------------------------------------check score state origin-------------------------------------------------------------")
-    check_result(cpu_score_state[~update_score].to(torch.float32), score_state.cpu()[~update_score].to(torch.float32), data_type, 0.0)
-
+    _, result = check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
+    results[4] = result == "Pass"
+    assert all(results)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -754,6 +767,7 @@ if __name__ == "__main__":
     parser.add_argument('--seqused', type=int, nargs='*', help="sequence which is used, len is B")
     parser.add_argument('--cu_seqlens', type=int, nargs='*', help='when x is [T, h], it is required, len is B+1')
     parser.add_argument('--block_size', type=int, default=128)
+    parser.add_argument('--cache_mode', type=int, default=1)
     parser.add_argument('--rotary_mode', type=int, choices=[1, 2], default=2, help='1:half 2:interleave')
     parser.add_argument('--data_type', type=str, choices=["bfloat16", "float16"], default="bfloat16", help='bfloat16 or float16')
     parser.add_argument('--hidden_size', type=int, default=4096)
@@ -787,4 +801,5 @@ if __name__ == "__main__":
             args.hidden_size,
             args.rope_head_dim,
             args.norm_eps,
-            args.save_state_seqlens)
+            args.save_state_seqlens,
+            args.cache_mode)

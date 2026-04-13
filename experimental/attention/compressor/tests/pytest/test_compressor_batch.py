@@ -42,29 +42,23 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def compressor(testcase_files):   # 初始化参数和tensor
-    cpu_result, kv_mask_result, npu_result ,cpu_kv_state, npu_kv_state, mask_cpu_kv_state, cpu_score_state, npu_score_state, mask_cpu_score_state, params = compressor_pt_loadprocess.test_compressor_process(testcase_files, device_id=0)
+    cpu_result, kv_mask_result, npu_result ,cpu_kv_state, mask_cpu_kv_state, cpu_score_state, mask_cpu_score_state, state_cache, params = compressor_pt_loadprocess.test_compressor_process(testcase_files, device_id=0)
     if npu_result != None:
-        npu_kv_state = npu_kv_state.cpu()
-        npu_score_state = npu_score_state.cpu()
         cpu_kv_state_update = cpu_kv_state[mask_cpu_kv_state]
-        npu_kv_state_update = npu_kv_state[mask_cpu_kv_state]
-        cpu_kv_state_origin = npu_kv_state[~mask_cpu_kv_state]
-        npu_kv_state_origin = npu_kv_state[~mask_cpu_kv_state]
+        cpu_kv_state_origin =  cpu_kv_state[~mask_cpu_kv_state]
         cpu_score_state_update = cpu_score_state[mask_cpu_score_state]
-        npu_score_state_update = npu_score_state[mask_cpu_score_state]
         cpu_score_state_origin = cpu_score_state[~mask_cpu_score_state]
-        npu_score_state_origin = npu_score_state[~mask_cpu_score_state]
         data_type = str(npu_result.dtype)
         print("--------------------------------------------------------------check result-------------------------------------------------------------")
         result_percent, result= check_result(cpu_result[kv_mask_result].to(torch.float32), npu_result.cpu()[kv_mask_result].to(torch.float32), data_type)
         print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
-        kv_state_result_percent, kv_state_result= check_result(cpu_kv_state_update.to(torch.float32), npu_kv_state_update.cpu().to(torch.float32), data_type)
+        kv_state_result_percent, kv_state_result= check_result(cpu_kv_state_update.to(torch.float32), state_cache.cpu()[:, :, :state_cache.shape[2]//2][mask_cpu_kv_state].to(torch.float32), data_type)
         print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
-        score_state_result_percent, score_state_result = check_result(cpu_score_state_update.to(torch.float32), npu_score_state_update.cpu().to(torch.float32), data_type)
+        score_state_result_percent, score_state_result = check_result(cpu_score_state_update.to(torch.float32), state_cache.cpu()[:, :, state_cache.shape[2]//2:][mask_cpu_score_state].to(torch.float32), data_type)
         print("--------------------------------------------------------------check kv state origin-------------------------------------------------------------")
-        kv_state_origin_result_percent, kv_state_origin_result = check_result(cpu_kv_state_origin.to(torch.float32), npu_kv_state_origin.cpu().to(torch.float32), data_type, 0.0)
+        kv_state_origin_result_percent, kv_state_origin_result = check_result(cpu_kv_state_origin.to(torch.float32), state_cache.cpu()[:, :, :state_cache.shape[2]//2][~mask_cpu_kv_state].to(torch.float32), data_type, 0.0)
         print("--------------------------------------------------------------check score state origin-------------------------------------------------------------")
-        score_state_origin_result_percent, score_state_origin_result = check_result(cpu_score_state_origin.to(torch.float32), npu_score_state_origin.cpu().to(torch.float32), data_type, 0.0)
+        score_state_origin_result_percent, score_state_origin_result = check_result(cpu_score_state_origin.to(torch.float32), state_cache.cpu()[:, :, state_cache.shape[2]//2:][~mask_cpu_score_state].to(torch.float32), data_type, 0.0)
     else:
         result = "Failed"
         result_percent = 0
@@ -91,18 +85,19 @@ def compressor(testcase_files):   # 初始化参数和tensor
         "norm_eps": params[8],
         "start_p": params[9],
         "rotary_mode": params[10],
-        "layout_x": params[11],
-        "data_type": params[12],
-        "cu_seqlens": params[13],
-        "seqused": params[14],
-        "start_pos": params[15],
-        "x_datarange": params[16],
-        "wkv_datarange": params[17],
-        "wgate_datarange": params[18],
-        "ape_datarange": params[19],
-        "norm_weight_datarange": params[20],
-        "kv_state_datarange": params[21],
-        "score_state_datarange": params[22],
+        "cache_mode": params[11],
+        "layout_x": params[12],
+        "data_type": params[13],
+        "cu_seqlens": params[14],
+        "seqused": params[15],
+        "start_pos": params[16],
+        "x_datarange": params[17],
+        "wkv_datarange": params[18],
+        "wgate_datarange": params[19],
+        "ape_datarange": params[20],
+        "norm_weight_datarange": params[21],
+        "kv_state_datarange": params[22],
+        "score_state_datarange": params[23],
         "result":result,
         "result_percent":result_percent,
         "kv_state_update":kv_state_result,
