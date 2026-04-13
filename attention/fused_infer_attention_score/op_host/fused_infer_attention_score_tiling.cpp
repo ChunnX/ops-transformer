@@ -1373,7 +1373,10 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (minKVSeqlen >= aicoreNum * 512);
         bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (minKVSeqlen >= 1024);
         if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
-            (faInfo.embeddingSize % EMBEDDING_SIZE_ALIGN_16 == 0) && (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) && (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) && (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) && 
+            (faInfo.embeddingSize % EMBEDDING_SIZE_ALIGN_16 == 0) && 
+            (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) && 
+            (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) && 
+            (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) && 
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
         }
