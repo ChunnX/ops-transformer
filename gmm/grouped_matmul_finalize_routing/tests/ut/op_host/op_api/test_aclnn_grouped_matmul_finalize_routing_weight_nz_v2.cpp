@@ -194,6 +194,9 @@ aclDataType ParseDtype(const string &dtype)
         {"INT4", ACL_INT4},
         {"INT32", ACL_INT32},
         {"INT64", ACL_INT64},
+        {"FLOAT8_E4M3FN", ACL_FLOAT8_E4M3FN},
+        {"FLOAT8_E5M2", ACL_FLOAT8_E5M2},
+        {"HIFLOAT8", ACL_HIFLOAT8},
         {"NONE", ACL_DT_UNDEFINED},
     };
     auto it = dtypeMap.find(Trim(dtype));
@@ -477,6 +480,28 @@ class grouped_matmul_finalize_routing_weight_nz_v2_csv_test
 TEST_P(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case)
 {
     GetParam().Run();
+}
+
+TEST(grouped_matmul_finalize_routing_weight_nz_v2_manual_test, shared_input_optional_on_ascend910b)
+{
+    SetupPlatformForCase("Ascend910B");
+
+    TensorDesc x1({192, 2048}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc x2({4, 2048, 7168}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {4, 224, 128, 16, 32});
+    TensorDesc scale({4, 7168}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc perTokenScale({192}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc groupList({4}, ACL_INT64, ACL_FORMAT_ND);
+    groupList.Value(vector<int64_t>{24, 24, 24, 24});
+    TensorDesc logits({192}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc rowIndex({192}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc out({24, 7168}, ACL_FLOAT, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                        INPUT(x1, x2, scale, nullptr, nullptr, nullptr, nullptr, perTokenScale, groupList, nullptr,
+                              logits, rowIndex, 0, 1.0F, 0, false, false, 1, nullptr),
+                        OUTPUT(out));
+    uint64_t workspaceSize = 0;
+    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
 }
 
 INSTANTIATE_TEST_SUITE_P(
