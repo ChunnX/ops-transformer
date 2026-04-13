@@ -10,7 +10,7 @@
 
 #include "fallback/fallback_comm.h"
 #include "fallback/fallback.h"
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 
 #ifdef __cplusplus
 extern "C" {
