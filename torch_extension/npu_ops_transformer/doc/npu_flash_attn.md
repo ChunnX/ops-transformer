@@ -14,10 +14,10 @@
 
 ## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
 
--   API功能：
+-   API功能:
 
     支持flashattention训练推理归一化
--   计算公式：
+-   计算公式:
     
     self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
@@ -27,7 +27,7 @@
     Attention(Q,K,V)=Score(Q,K)V
     $$
 
-    本算子中Score函数采用Softmax函数，self-attention计算公式为：
+    本算子中Score函数采用Softmax函数，self-attention计算公式为:
 
     $$
     Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
@@ -49,7 +49,7 @@
     Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
     $$
 
-    **说明**：
+    **说明**:
         <blockquote>query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。Q表示total_q，KV表示total_kv。
         <br>S_Q表示seqlen_q，N_Q表示nheads_q，S_KV表示seqlen_kv，N_KV表示nheads_kv。</blockquote>
 
@@ -451,7 +451,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 ### 一、约束类型说明
 
-npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
+npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下:
 
 - npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 Tensor 和 Attributes
   - 对于Tensor，单参数约束中包含如下校验
@@ -460,11 +460,11 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
     - 校验 format
   - 对于属性 Attribute
     - 校验属性取值
-- 存在性约束：约束特定场景下，特性参数组内，必须传入某参数，或不支持传入某参数
-- 一致性约束：特性参数组内，各个参数间约束。
-  - Example 1：属性sparseMode和输入tensor attenMask均属于Attention Mask参数组，sparseMode取值为2/3/4时，attenMask shape必须为（2048，2048），此类约束即为参数组内的一致性约束
-- 特性交叉约束：涉及多个参数组，不同参数组间交叉约束
-  - Example 1：输入tensor blockTable 和 属性 blockSize 属于Paged Attention（同PA）参数组，输入tensor attenMask属于 Mask参数组；在PA场景下，attenMask输入最后一维（attenMaskS2）需要大于等于maxBlockNumPerSeq * blockSize，此类约束即为多参数组间的交叉约束；**且为保证风格统一，此约束会放在入参顺序靠后的 Paged Attention参数组中**
+- 存在性约束:约束特定场景下，特性参数组内，必须传入某参数，或不支持传入某参数
+- 一致性约束:特性参数组内，各个参数间约束。
+  - Example 1:属性sparseMode和输入tensor attenMask均属于Attention Mask参数组，sparseMode取值为2/3/4时，attenMask shape必须为（2048，2048），此类约束即为参数组内的一致性约束
+- 特性交叉约束:涉及多个参数组，不同参数组间交叉约束
+  - Example 1:输入tensor blockTable 和 属性 blockSize 属于Paged Attention（同PA）参数组，输入tensor attenMask属于 Mask参数组；在PA场景下，attenMask输入最后一维（attenMaskS2）需要大于等于maxBlockNumPerSeq * blockSize，此类约束即为多参数组间的交叉约束；**且为保证风格统一，此约束会放在入参顺序靠后的 Paged Attention参数组中**
 
 ### 特性参数组
 
@@ -481,10 +481,10 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 |      Mask参数组      |      sparseMode      | ATTR(OPTIONAL) |   int64   |
 |                      |       win_left       | ATTR(OPTIONAL) |   int64   |
 |                      |      win_right      | ATTR(OPTIONAL) |   int64   |
-|  Seqused参数组       |   seqused_q   | INPUT(OPTIONAL) |  Tensor  |
+|  SeqLengths参数组       |   seqused_q   | INPUT(OPTIONAL) |  Tensor  |
 |                      |   seqused_kv   | INPUT(OPTIONAL) |  Tensor  |
-|                      |   cu_seqused_q   | INPUT(OPTIONAL) |  Tensor  |
-|                      |   cu_seqused_kv   | INPUT(OPTIONAL) |  Tensor  |
+|                      |   cu_seqlens_q   | INPUT(OPTIONAL) |  Tensor  |
+|                      |   cu_seqlens_kv   | INPUT(OPTIONAL) |  Tensor  |
 | Paged Attention参数组 |      blockTable      | INPUT(OPTIONAL) |   Tensor   |
 |  LearnableSink参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
 |   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    int    |
@@ -492,7 +492,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 
 ### 基准信息说明
 
-资料约束中，常见字段释义如下：
+资料约束中，常见字段释义如下:
 
 |    命名    |                            含义                            |
 | :---------: | :---------------------------------------------------------: |
@@ -710,43 +710,67 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
             </tr>
         </tbody>
     </table>
-#### Mask 参数组
+#### Mask参数组
 
 - 单参数约束
   - 公共
-    - 入参 mask_mode 需要满足以下条件：
+    - 入参 mask_mode 需要满足以下条件:
 
       - mask_mode 支持输入范围为 1、3、4，默认值为 1
-      - mask_mode 含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
+      - mask_mode 含义如下表所示
 
-      | mask_mode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
-      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------: | :-------------------------------------------------------------------------------------------: |
-      |     1     |                                                allMask模式，必须传入完整的attenMask矩阵，忽略preTokens和nextTokens                                                | 00101<br />10111<br />10101 |                                             同上                                             |
-      |     3     |                                           rightDownCausal模式，忽略win_left和win_right                                          | 00011<br />00001<br />00000 | 优化后的attenMask矩阵，固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
-      |     4     |                                           band模式，需要传入优化后的attenMask矩阵，计算preTokens和nextTokens之间的部分                                           | 00011<br />10001<br />11000 | 优化后的attenMask矩阵，固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+      | mask_mode |                                                                               含义                                                                                     |
+      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+      |     1     |                                                全计算模式，忽略win_left和win_right                                                 |
+      |     3     |                                           rightDownCausal模式，忽略win_left和win_right                                           |
+      |     4     |                                           band模式，计算win_left和win_right之间的部分                                            |
 - 存在性约束
   - 无
 - 一致性约束
   - 公共
-    - 入参 attenMask 的输入维度仅支持 2/3/4
-      - `<term>` Ascend 950PR/Ascend 950DT `</term>`
-        - 维度为 2 时，不支持 sparseMode 为 0/1 模式
-      - `<term>` Atlas A3 训练系列产品/Atlas A3 推理系列产品 `</term>` 和 `<term>`Atlas A2 训练系列产品/Atlas A2 推理系列产品 `</term>`
-        - 维度为 2 时，支持 sparseMode 为 0/1 模式
-    - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S]
-    - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048
-    - 非伪量化或 Q_S 大于1时，preTokens 与 nextTokens 应满足 nextTokens * (-1) <= preTokens，以确保具有有效数据
-  - 伪量化
-    - Q_S等于1时，attenMask 输入维度仅支持 3/4，且 attenMask 输入的 shape 应满足，第一维等于 batchSize 或 1，最后一维应大于等于 blockTable 的第二维 * blockSize
-    - Q_S大于1时，若 sparseMode 为 4 模式，且 attentionOut 为 int8 类型时，则 preTokens 与 nextTokens 均不能为负数
+    - Q_S 大于1时，win_left 与 win_right 应满足 win_left * (-1) <= win_right，以确保具有有效数据
 - 特性交叉约束
-  - 非量化
-    - Decode MLA场景下，sparseMode 仅支持 0/3/4 模式
-    - GQA 场景下，当 query，key 及 value 的 head dim 不相等时，sparseMode 仅支持 0/2/3 模式
-  - 全量化
-    - Decode MLA场景下，如果query/key/value的类型为 INT8，Q_S 等于 1 时，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵；其它 layout 时，sparseMode 仅支持 0 模式，且不传入 attenMask 矩阵
-    - Decode MLA场景下，如果query/key/value的类型为 INT8，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵
-    - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
+  - 无
+#### SeqLengths参数组
+
+- 单参数约束
+  - 公共
+    - 入参 seqused_q应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数
+      - 入参中的数值应满足以下条件:
+        - 其值应为非负数
+    - 入参 seqused_kv应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数
+      - 入参中的数值应满足以下条件:
+        - 其值应为非负数
+    - 入参 cu_seqlens_q应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数 + 1
+      - 入参中的数值应满足以下条件:
+        - 当 layout_q 为 TND 时，其值应递增(大于等于前一个值)排列
+        - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T
+        - 其值应为非负数
+    - 入参 cu_seqlens_kv应满足以下条件:
+      - 长度应满足以下条件:
+        - 长度应等于 batch 数 + 1
+      - 入参中的数值应满足以下条件:
+        - 当 layout_kv 为 TND 时，其值应递增(大于等于前一个值)排列
+        - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T
+        - 其值应为非负数
+- 存在性约束
+  - 公共
+    - 入参 seqused_kv 应满足以下条件:
+      - PagedAttention场景，必须传入 cu_seqlens_kv
+    - 入参 cu_seqlens_q 应满足以下条件:
+      - 当 layout_q 为 TND 时，必须传入 cu_seqlens_q
+    - 入参 cu_seqlens_kv 应满足以下条件:
+      - 当 layout_kv 为 TND 时，必须传入 cu_seqlens_kv
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
