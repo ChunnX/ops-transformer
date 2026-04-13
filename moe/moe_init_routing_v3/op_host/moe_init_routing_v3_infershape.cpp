@@ -309,7 +309,7 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
-        if (scaleShape->GetDimNum() == DIM_ONE) {
+        if (scaleShape->GetDimNum() == DIM_ONE || scaleShape->GetDimNum() == DIM_THREE) {
             OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
                         OP_LOGE(context,
                                 "When quant_mode is %ld and use scale in dynamic shape, The shape of scale should be (-1) or (-2), current shape is (%s).",
