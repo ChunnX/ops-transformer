@@ -79,7 +79,6 @@ protected:
     ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus CheckInput() override;
-    CutResult GetTilingResult() override;
 
 private:
     ge::graphStatus CheckAxisSize();

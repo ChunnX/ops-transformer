@@ -64,7 +64,6 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
     uint64_t GetTilingKey() const override;
-    CutResult GetTilingResult() override;
 
     ::TCubeTiling &MutableTCubeTileTilingData() const;
     DequantBmm::Mc2QuantBatchMatmulV3DataParams &MutableTCubeTilingParam() const;

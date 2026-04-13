@@ -90,8 +90,6 @@ protected:
     ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2Hcomm();
 
-    CutResult GetTilingResult() override;
-
 private:
     ge::graphStatus CheckBiasInput();
     ge::graphStatus CheckAxisSize();
