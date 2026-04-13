@@ -446,15 +446,15 @@ layout匹配关系如下：
 
 - 确定性计算：
   - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
-- 公共约束
+#### 公共参数组
     - 入参为空的场景处理：
         - 空Tensor指必选输入和输出的shapeSize为0。在空Tensor场景下，若attentionOut为空，返回空，否则返回全0；若有lse且lse为空时返回空，lse不为空则返回全inf。非空Tensor时输入正常拦截。
         - query，attentionOut所有tensor的shapeSize为0，属于空Tensor。
         - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
         - attentionOut和lse都为空时，属于空Tensor。
         - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
-- <a id="public"></a>通用场景
-
+- 单参数约束
+  - 无
 - 存在性约束
 
   <table style="undefined;table-layout: fixed; width: 700px">
@@ -555,8 +555,6 @@ layout匹配关系如下：
         </tbody>
     </table>
 - 特性交叉约束
-
-  - 非量化场景
     <table style="undefined;table-layout: fixed; width: 1000px">
         <colgroup>
             <col style="width: 200px">
