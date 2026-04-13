@@ -295,42 +295,124 @@ struct GroupedMatmulFinalizeRoutingV3Case {
         aclnnStatus ret = ACLNN_SUCCESS;
 
         if (!ParseBool(hasOffset)) {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, nullBias ? nullptr : bias, nullptr, nullptr, nullptr,
-                                      nullPerTokenScale ? nullptr : perTokenScale, groupList,
-                                      nullSharedInput ? nullptr : sharedInput, nullLogits ? nullptr : logits,
-                                      nullRowIndex ? nullptr : rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, nullptr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            auto run = [&](auto biasArg, auto perTokenScaleArg, auto sharedInputArg, auto logitsArg, auto rowIndexArg) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                    INPUT(x1, x2, scale, biasArg, nullptr, nullptr, nullptr, perTokenScaleArg, groupList,
+                                          sharedInputArg, logitsArg, rowIndexArg, dtype, sharedInputWeight, sharedInputOffset,
+                                          transposeX, transposeW, groupListType, nullptr),
+                                    OUTPUT(out));
+                return ut.TestGetWorkspaceSize(&workspaceSize);
+            };
+            auto runWithRowIndex = [&](auto biasArg, auto perTokenScaleArg, auto sharedInputArg, auto logitsArg) {
+                return nullRowIndex ? run(biasArg, perTokenScaleArg, sharedInputArg, logitsArg, nullptr)
+                                    : run(biasArg, perTokenScaleArg, sharedInputArg, logitsArg, rowIndex);
+            };
+            auto runWithLogits = [&](auto biasArg, auto perTokenScaleArg, auto sharedInputArg) {
+                return nullLogits ? runWithRowIndex(biasArg, perTokenScaleArg, sharedInputArg, nullptr)
+                                  : runWithRowIndex(biasArg, perTokenScaleArg, sharedInputArg, logits);
+            };
+            auto runWithSharedInput = [&](auto biasArg, auto perTokenScaleArg) {
+                return nullSharedInput ? runWithLogits(biasArg, perTokenScaleArg, nullptr)
+                                       : runWithLogits(biasArg, perTokenScaleArg, sharedInput);
+            };
+            auto runWithPerTokenScale = [&](auto biasArg) {
+                return nullPerTokenScale ? runWithSharedInput(biasArg, nullptr)
+                                         : runWithSharedInput(biasArg, perTokenScale);
+            };
+            ret = nullBias ? runWithPerTokenScale(nullptr) : runWithPerTokenScale(bias);
         } else if (!ParseBool(hasLogits)) {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, nullBias ? nullptr : bias, nullOffset ? nullptr : offset,
-                                      nullptr, nullptr, nullPerTokenScale ? nullptr : perTokenScale, groupList,
-                                      nullSharedInput ? nullptr : sharedInput, nullptr, nullRowIndex ? nullptr : rowIndex,
-                                      dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, tuningConfigPtr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            auto run = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg, auto sharedInputArg, auto rowIndexArg) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                    INPUT(x1, x2, scale, biasArg, offsetArg, nullptr, nullptr, perTokenScaleArg, groupList,
+                                          sharedInputArg, nullptr, rowIndexArg, dtype, sharedInputWeight, sharedInputOffset,
+                                          transposeX, transposeW, groupListType, tuningConfigPtr),
+                                    OUTPUT(out));
+                return ut.TestGetWorkspaceSize(&workspaceSize);
+            };
+            auto runWithRowIndex = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg, auto sharedInputArg) {
+                return nullRowIndex ? run(biasArg, offsetArg, perTokenScaleArg, sharedInputArg, nullptr)
+                                    : run(biasArg, offsetArg, perTokenScaleArg, sharedInputArg, rowIndex);
+            };
+            auto runWithSharedInput = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg) {
+                return nullSharedInput ? runWithRowIndex(biasArg, offsetArg, perTokenScaleArg, nullptr)
+                                       : runWithRowIndex(biasArg, offsetArg, perTokenScaleArg, sharedInput);
+            };
+            auto runWithPerTokenScale = [&](auto biasArg, auto offsetArg) {
+                return nullPerTokenScale ? runWithSharedInput(biasArg, offsetArg, nullptr)
+                                         : runWithSharedInput(biasArg, offsetArg, perTokenScale);
+            };
+            auto runWithOffset = [&](auto biasArg) {
+                return nullOffset ? runWithPerTokenScale(biasArg, nullptr) : runWithPerTokenScale(biasArg, offset);
+            };
+            ret = nullBias ? runWithOffset(nullptr) : runWithOffset(bias);
         } else if (ParseBool(hasAntiQuantScale)) {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, nullBias ? nullptr : bias, nullOffset ? nullptr : offset,
-                                      nullAntiQuantScale ? nullptr : antiQuantScale, nullptr,
-                                      nullPerTokenScale ? nullptr : perTokenScale, groupList,
-                                      nullSharedInput ? nullptr : sharedInput, nullLogits ? nullptr : logits,
-                                      nullRowIndex ? nullptr : rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, tuningConfigPtr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            auto run = [&](auto biasArg, auto offsetArg, auto antiQuantScaleArg, auto perTokenScaleArg,
+                           auto sharedInputArg, auto logitsArg, auto rowIndexArg) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                    INPUT(x1, x2, scale, biasArg, offsetArg, antiQuantScaleArg, nullptr,
+                                          perTokenScaleArg, groupList, sharedInputArg, logitsArg, rowIndexArg, dtype,
+                                          sharedInputWeight, sharedInputOffset, transposeX, transposeW, groupListType,
+                                          tuningConfigPtr),
+                                    OUTPUT(out));
+                return ut.TestGetWorkspaceSize(&workspaceSize);
+            };
+            auto runWithRowIndex = [&](auto biasArg, auto offsetArg, auto antiQuantScaleArg, auto perTokenScaleArg,
+                                       auto sharedInputArg, auto logitsArg) {
+                return nullRowIndex ? run(biasArg, offsetArg, antiQuantScaleArg, perTokenScaleArg, sharedInputArg, logitsArg, nullptr)
+                                    : run(biasArg, offsetArg, antiQuantScaleArg, perTokenScaleArg, sharedInputArg, logitsArg, rowIndex);
+            };
+            auto runWithLogits = [&](auto biasArg, auto offsetArg, auto antiQuantScaleArg, auto perTokenScaleArg,
+                                     auto sharedInputArg) {
+                return nullLogits ? runWithRowIndex(biasArg, offsetArg, antiQuantScaleArg, perTokenScaleArg, sharedInputArg, nullptr)
+                                  : runWithRowIndex(biasArg, offsetArg, antiQuantScaleArg, perTokenScaleArg, sharedInputArg, logits);
+            };
+            auto runWithSharedInput = [&](auto biasArg, auto offsetArg, auto antiQuantScaleArg, auto perTokenScaleArg) {
+                return nullSharedInput ? runWithLogits(biasArg, offsetArg, antiQuantScaleArg, perTokenScaleArg, nullptr)
+                                       : runWithLogits(biasArg, offsetArg, antiQuantScaleArg, perTokenScaleArg, sharedInput);
+            };
+            auto runWithPerTokenScale = [&](auto biasArg, auto offsetArg, auto antiQuantScaleArg) {
+                return nullPerTokenScale ? runWithSharedInput(biasArg, offsetArg, antiQuantScaleArg, nullptr)
+                                         : runWithSharedInput(biasArg, offsetArg, antiQuantScaleArg, perTokenScale);
+            };
+            auto runWithAntiQuantScale = [&](auto biasArg, auto offsetArg) {
+                return nullAntiQuantScale ? runWithPerTokenScale(biasArg, offsetArg, nullptr)
+                                          : runWithPerTokenScale(biasArg, offsetArg, antiQuantScale);
+            };
+            auto runWithOffset = [&](auto biasArg) {
+                return nullOffset ? runWithAntiQuantScale(biasArg, nullptr) : runWithAntiQuantScale(biasArg, offset);
+            };
+            ret = nullBias ? runWithOffset(nullptr) : runWithOffset(bias);
         } else {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, nullBias ? nullptr : bias, nullOffset ? nullptr : offset,
-                                      nullptr, nullptr, nullPerTokenScale ? nullptr : perTokenScale, groupList,
-                                      nullSharedInput ? nullptr : sharedInput, nullLogits ? nullptr : logits,
-                                      nullRowIndex ? nullptr : rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, tuningConfigPtr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            auto run = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg, auto sharedInputArg, auto logitsArg,
+                           auto rowIndexArg) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                    INPUT(x1, x2, scale, biasArg, offsetArg, nullptr, nullptr, perTokenScaleArg, groupList,
+                                          sharedInputArg, logitsArg, rowIndexArg, dtype, sharedInputWeight, sharedInputOffset,
+                                          transposeX, transposeW, groupListType, tuningConfigPtr),
+                                    OUTPUT(out));
+                return ut.TestGetWorkspaceSize(&workspaceSize);
+            };
+            auto runWithRowIndex = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg, auto sharedInputArg,
+                                       auto logitsArg) {
+                return nullRowIndex ? run(biasArg, offsetArg, perTokenScaleArg, sharedInputArg, logitsArg, nullptr)
+                                    : run(biasArg, offsetArg, perTokenScaleArg, sharedInputArg, logitsArg, rowIndex);
+            };
+            auto runWithLogits = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg, auto sharedInputArg) {
+                return nullLogits ? runWithRowIndex(biasArg, offsetArg, perTokenScaleArg, sharedInputArg, nullptr)
+                                  : runWithRowIndex(biasArg, offsetArg, perTokenScaleArg, sharedInputArg, logits);
+            };
+            auto runWithSharedInput = [&](auto biasArg, auto offsetArg, auto perTokenScaleArg) {
+                return nullSharedInput ? runWithLogits(biasArg, offsetArg, perTokenScaleArg, nullptr)
+                                       : runWithLogits(biasArg, offsetArg, perTokenScaleArg, sharedInput);
+            };
+            auto runWithPerTokenScale = [&](auto biasArg, auto offsetArg) {
+                return nullPerTokenScale ? runWithSharedInput(biasArg, offsetArg, nullptr)
+                                         : runWithSharedInput(biasArg, offsetArg, perTokenScale);
+            };
+            auto runWithOffset = [&](auto biasArg) {
+                return nullOffset ? runWithPerTokenScale(biasArg, nullptr) : runWithPerTokenScale(biasArg, offset);
+            };
+            ret = nullBias ? runWithOffset(nullptr) : runWithOffset(bias);
         }
 
         if (ParseBool(checkRet)) {
