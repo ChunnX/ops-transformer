@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -17,10 +17,13 @@
 #define BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
 
 #if defined(__DAV_C310__)
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "gmmsq_base.h"
 #include "hccl_shmem.h"
-// #include "hccl_shmem.h"
 
 namespace Gmmsg {
 enum class QuantMode : uint32_t {
@@ -94,7 +97,7 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 class BlockEpilogueSwigluQuant {
 public:
-    CATLASS_DEVICE BlockEpilogueSwigluQuant()
+    __aicore__ inline BlockEpilogueSwigluQuant()
     {
     }
 
@@ -125,44 +128,44 @@ public:
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 public:
-    CATLASS_DEVICE void Init(Params const &params);
-    CATLASS_DEVICE auto GetFirstL0c2UbTensor();
-    CATLASS_DEVICE auto GetSecondL0c2UbTensor();
-    CATLASS_DEVICE void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
-    CATLASS_DEVICE void UpdateGlobalAddr(const BlockCoord &baseOffset);
-    CATLASS_DEVICE void UpdateNextProblem(const ProblemShape &problemShape);
+    __aicore__ inline void Init(Params const &params);
+    __aicore__ inline auto GetFirstL0c2UbTensor();
+    __aicore__ inline auto GetSecondL0c2UbTensor();
+    __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
+    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
+    __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
-    CATLASS_DEVICE void VFDoSwigluForMX(uint16_t mSize);
-    CATLASS_DEVICE void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN);
+    __aicore__ inline void VFDoSwigluForMX(uint16_t mSize);
+    __aicore__ inline void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN);
 
     template <Gmmsg::QuantMode quantMode>
-    CATLASS_DEVICE void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
+    __aicore__ inline void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
                                                    uint16_t mSize, uint16_t nSize);
 
-    CATLASS_DEVICE void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
+    __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
                                         uint16_t loopNumScale);
 
-    CATLASS_DEVICE void ComputeMaxExp(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr,
+    __aicore__ inline void ComputeMaxExp(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr,
                                          uint32_t totalCountInUB, uint16_t loopNum);
 
-    CATLASS_DEVICE void ComputeDataForQuantTargetFp8(__ubuf__ bfloat16_t *srcAddr,
+    __aicore__ inline void ComputeDataForQuantTargetFp8(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
                                                         __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB,
                                                         uint16_t loopNum);
 
-    CATLASS_DEVICE void ComputeDataForQuantTargetFp4(__ubuf__ bfloat16_t *srcAddr,
+    __aicore__ inline void ComputeDataForQuantTargetFp4(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
                                                         __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB,
                                                         uint16_t loopNum);
 
-    CATLASS_DEVICE void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
+    __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
-    CATLASS_DEVICE void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
+    __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
-    CATLASS_DEVICE void AddFlagFromUb2Gm(AscendC::GlobalTensor<uint32_t> &dst, uint32_t flag);
+    __aicore__ inline void AddFlagFromUb2Gm(AscendC::GlobalTensor<uint32_t> &dst, uint32_t flag);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
@@ -205,7 +208,7 @@ private:
 };
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
 {
     if constexpr(g_coreType == AscendC::AIC) {
@@ -238,7 +241,7 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Par
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if constexpr(g_coreType == AscendC::AIV) {
@@ -252,15 +255,15 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGl
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
     const ProblemShape &problemShape)
 {
-    n_ = Get<MNK_N>(problemShape);
+    n_ = Get<MNK_N>(problemShape); // n/2
     scaleN_ = CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputFromUb2Gm(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputFromUb2Gm(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
@@ -277,7 +280,7 @@ CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOC
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
@@ -290,14 +293,14 @@ CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOC
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::AddFlagFromUb2Gm(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::AddFlagFromUb2Gm(
     AscendC::GlobalTensor<uint32_t> &dst, uint32_t flag)
 {
     AscendC::AtomicAdd((__gm__ uint32_t*)dst.GetPhyAddr(), flag);
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExp(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExp(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr, uint32_t totalCountInUB, uint16_t loopNum)
 {
     __VEC_SCOPE__
@@ -352,7 +355,7 @@ CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOC
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScale(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScale(
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
     uint32_t totalScaleInUB, uint16_t loopNumScale) // 128*8  8
 {
@@ -415,7 +418,7 @@ CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOC
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp8(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr, __ubuf__ int8_t *outLocalAddr, // gluRes halfScale quantOut
     uint32_t totalCountInUB, uint16_t loopNum) // 128*256  128
@@ -495,7 +498,7 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeD
 
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp4(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr, __ubuf__ int8_t *outLocalAddr,
     uint32_t totalCountInUB, uint16_t loopNum)
@@ -553,7 +556,7 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeD
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 template <Gmmsg::QuantMode quantMode>
-CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMX(
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMX(
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
     __ubuf__ DataTypeIn *secondSrc, uint16_t mSize, uint16_t nSize) // mSize=128 nSize=256
 {
@@ -636,7 +639,7 @@ CATLASS_DEVICE void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOC
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize)
 {
     __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr();
@@ -648,7 +651,7 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwig
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxScaleLayout(uint16_t mSize,
                                                                                            uint16_t scaleBlockN)
 {
@@ -672,19 +675,19 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxS
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
+__aicore__ inline auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
 {
     return l0cOutUbFirst_;
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetSecondL0c2UbTensor()
+__aicore__ inline auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetSecondL0c2UbTensor()
 {
     return l0cOutUbSecond_;
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void
+__aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(const BlockShape &blockShape,
                                                                                    const BlockCoord &blockCoord)
 {
@@ -715,17 +718,7 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     AtomicAddFlag(groupFlagListGmAddr_, INT_CACHELINE * MAX_AICORE_NUM);
-    //AddFlagFromUb2Gm(groupFlagListGmAddr_, FLAG_VALUE_ONE);
 
-//    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-//    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-//    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-//    ub2GmParams.blockCount = singleM_; // 128
-//    ub2GmParams.blockLen = singleN_ * sizeof(bfloat16_t); // 256
-//    ub2GmParams.dstStride = (n_ - singleN_) * sizeof(bfloat16_t);
-//    AscendC::DataCopyPad(quantOutput[yOffset], gluRes_, ub2GmParams);
-//    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-//    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     return;
 }
 
