@@ -12,7 +12,6 @@
 #define INCLUDE_MEM_H
 
 #include "mla_hardware.h"
-#include "kernel_event.h"
 #include "kernel_tensor.h"
 
 namespace MlaPreprocess {

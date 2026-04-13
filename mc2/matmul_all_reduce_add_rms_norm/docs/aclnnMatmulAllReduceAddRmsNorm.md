@@ -1,5 +1,7 @@
 # aclnnMatmulAllReduceAddRmsNorm
 
+**须知：该接口后续版本会废弃，请使用aclnnMatmulAllReduce和aclnnAddRmsNorm替代本接口。**
+
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce_add_rms_norm)
 
 ## 产品支持情况
@@ -36,9 +38,9 @@
 
 - aclnnMatmulAllReduceAddRmsNorm和aclnnInplaceMatmulAllReduceAddRmsNorm实现相同的功能，使用区别如下，请根据自身实际场景选择合适的算子。
 
- - aclnnMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
- - aclnnInplaceMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，原非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
-每个算子分为两段式接口，必须先调用“aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduceAddRmsNorm”接口执行计算。
+  - aclnnMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
+  - aclnnInplaceMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，原非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduceAddRmsNorm”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -234,7 +236,6 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
       </tbody>
     </table>
 
-
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -278,6 +279,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
     <col style="width: 158px">
     <col style="width: 120px">
     <col style="width: 750px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -338,6 +340,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
 #include <vector>
 #include <thread>
 #include "hccl/hccl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_matmul_all_reduce_add_rms_norm.h"
 
 int ndev = 8;
@@ -436,13 +439,13 @@ int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
     long long gammaShapeSize = GetShapeSize(gammaShape);
     long long yShapeSize = GetShapeSize(yShape);
     long long normOutShapeSize = GetShapeSize(normOutShape);
-    std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-    std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-    std::vector<int16_t> biasHostData(biasShapeSize, 1);
-    std::vector<int16_t> residualHostData(residualShapeSize, 1);
-    std::vector<int16_t> gammaHostData(gammaShapeSize, 1);
-    std::vector<int16_t> yHostData(yShapeSize, 0);
-    std::vector<int16_t> normOutHostData(normOutShapeSize, 0);
+    std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+    std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
+    std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+    std::vector<op::fp16_t> residualHostData(residualShapeSize, 1);
+    std::vector<op::fp16_t> gammaHostData(gammaShapeSize, 1);
+    std::vector<op::fp16_t> yHostData(yShapeSize, 0);
+    std::vector<op::fp16_t> normOutHostData(normOutShapeSize, 0);
     // 创建 tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

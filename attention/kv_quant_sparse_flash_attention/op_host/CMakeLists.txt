@@ -9,6 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(KV_QUANT_SPARSE_FLASH_ATTENTION_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for this operator")
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
     kv_quant_sparse_flash_attention_def.cpp

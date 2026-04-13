@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品 </term>                                                |    ×    |
 | <term>Atlas 训练系列产品</term>                                                 |    ×    |
 
-
 ## 功能说明
 
 - 接口功能：执行单路旋转位置编码计算。本接口相较于[aclnnRotaryPositionEmbedding](aclnnRotaryPositionEmbedding.md)，新增入参rotate，在推荐场景中通过输入旋转编码矩阵获得性能收益，请根据实际情况选择合适的接口。
@@ -77,11 +76,9 @@
       y = x * cos + x\_rotate * sin
       $$
 
-
-   
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingV2”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(
@@ -560,5 +557,5 @@ def main():
     x = torch.rand(2, 2, 5, 128).npu()
     r1 = torch.rand(1, 2, 1, 128).npu()
     r2 = torch.rand(1, 2, 1, 128).npu()
-    out = torch_npu.npu_rotary_mul(x, r1, r2，"interleave", inter_mat_128.npu())
+    out = torch_npu.npu_rotary_mul(x, r1, r2, "interleave", inter_mat_128.npu())
 ```

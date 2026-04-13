@@ -82,7 +82,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_0)
          {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
          },
                 &compileInfo,"Ascend950",64,262144,16384);
-    int64_t expectTilingKey = 1206124801;
+    int64_t expectTilingKey = 132382977;
     // int64_t expectTilingKey = 4294967295;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "");
 }

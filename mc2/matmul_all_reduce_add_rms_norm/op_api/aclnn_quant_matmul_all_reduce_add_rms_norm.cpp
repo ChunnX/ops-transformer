@@ -44,6 +44,12 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     int64_t commTurn, int64_t streamMode, const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
+    DEPRECATED_MM_ARN_API_WARN_ONCE(
+        "aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
+        "aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
+        "December 2026",
+        "aclnnQuantMatmulAllReduceV2GetWorkspaceSize",
+        "aclnnAddRmsNormGetWorkspaceSize");
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
@@ -87,6 +93,12 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
+    DEPRECATED_MM_ARN_API_WARN_ONCE(
+        "aclnnQuantMatmulAllReduceAddRmsNorm",
+        "aclnnInplaceQuantMatmulAllReduceAddRmsNorm",
+        "December 2026",
+        "aclnnQuantMatmulAllReduceV2",
+        "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;

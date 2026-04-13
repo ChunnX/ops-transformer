@@ -16,20 +16,20 @@
 - 算子功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
 
     相较于MoeDistributeCombineV2算子，该算子变更如下：
-    -   新增`context`入参，存入通信域相关信息；
-    -   新增`ccl_buffer_size`入参，指定当前通信域大小；
-    -   减少`group_ep`以及`group_tp`通信域名称入参;
+    - 新增`context`入参，存入通信域相关信息；
+    - 新增`ccl_buffer_size`入参，指定当前通信域大小；
+    - 减少`group_ep`以及`group_tp`通信域名称入参;
     详细说明请参考以下参数说明。
 - 计算公式：
 
-    - 不存在TP域通信时：
+  - 不存在TP域通信时：
 
     $$
     ataOut = AllToAllV(expand_x)\\
     x_out = Sum(expert_scales * ataOut + expert_scales * sharedExpertX)
     $$
 
-    - 存在TP域通信时：
+  - 存在TP域通信时：
 
     $$
     rsOut = ReduceScatterV(expand_x)\\
@@ -37,7 +37,7 @@
     x_out = Sum(expert_scales * ataOut + expert_scales * sharedExpertX)
     $$
 
-    注意该算子必须与MoeDistributeDispatchV3配套使用，相当于按MoeDistributeDispatchV3算子收集数据的路径原路返还。
+  注意该算子必须与MoeDistributeDispatchV3配套使用，相当于按MoeDistributeDispatchV3算子收集数据的路径原路返还。
 
 ## 参数说明
 
@@ -345,10 +345,10 @@
     - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
     - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
     - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
-    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需跟`expand_x`保持一致。
-    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需跟`expand_x`保持一致。
-    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需跟`expand_x`保持一致。
-    - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需跟`expand_x`保持一致。
+    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`Bs`, `H`)，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
+    - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需与`expand_x`保持一致。
 
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：

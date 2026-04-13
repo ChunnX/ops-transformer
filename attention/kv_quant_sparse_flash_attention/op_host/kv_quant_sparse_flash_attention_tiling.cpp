@@ -719,7 +719,8 @@ ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
     if (quantScaleRepoMode_ == 1) {
         OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr || opParamInfo_.valueDequantScale.tensor == nullptr),
             OP_LOGE(opName_,
-            "When quant_scale_repo_mode is 1(combine), key_dequant_scale and value_dequant_scale should be both null."),
+            "When quant_scale_repo_mode is 1(combine), "
+            "key_dequant_scale and value_dequant_scale should be both provided."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

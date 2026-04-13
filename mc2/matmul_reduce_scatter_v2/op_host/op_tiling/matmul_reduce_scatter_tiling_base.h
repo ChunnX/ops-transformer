@@ -62,6 +62,7 @@ protected:
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64) const;
     ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling& rcsCfg);
+    CutResult GetTilingResult();
     uint32_t GetRankSize(const char* group) const;
     void Reset();
     bool ReduceScatterCheckShapeInfo();
@@ -86,6 +87,7 @@ protected:
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;
     NpuArch npuArch_;
+    bool isA2APath_;
     const char* opName_ = nullptr;
     int64_t rankSize_{0};
     uint64_t tileMValue_{0};   // mc2 切块后主块M的大小；

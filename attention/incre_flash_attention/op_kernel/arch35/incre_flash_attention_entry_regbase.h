@@ -19,10 +19,17 @@
 #include "kernel/incre_flash_attention_normal_Bbn2s2_Us2_regbase.h"
 #include "kernel/incre_flash_attention_antiquant_Bbn2s2_Us2_regbase.h"
 namespace optiling {};
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h"
 #include "incre_flash_attention_dummy.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_entry_regbase.h"
+#else
+#include "../../common/arch35/flash_attention_score_antiquant_kernel.h"
+#include "incre_flash_attention_dummy.h"
+#include "../../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../prompt_flash_attention/arch35/prompt_flash_attention_entry_regbase.h"
+#endif
 
 using namespace AscendC;
 

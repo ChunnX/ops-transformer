@@ -13,13 +13,8 @@
  * \brief
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "arch35/grouped_matmul_finalize_routing_tiling_key.h"
 #if ORIG_DTYPE_PERTOKEN_SCALE == DT_FLOAT8_E8M0

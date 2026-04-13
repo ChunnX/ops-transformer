@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
-
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
 ## 功能说明
@@ -47,6 +46,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduce(
     void             *workspace,
@@ -268,6 +268,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -297,9 +298,9 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -317,8 +318,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 - pergroup场景下，x2转置时，antiquantScale和antiquantOffset需要一起转置，保持连续性。
 - 在长序列场景，随着b/s或者m的增大，可能出现OOM或者计算超时。
 - 仅支持hccs链路all mesh组网。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 一个模型中的通算融合MC2算子，仅支持相同通信域。
   - 输入x2的数据格式支持ND（当前版本仅支持二维输入）和`FRACTAL_NZ`格式（当前版本仅支持四维输入）。当x2的数据格式为`FRACTAL_NZ`时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
@@ -328,6 +329,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
   - 仅支持k为0的场景，输出为bias + x3，不支持bs/m/n为0的空tensor输入。
 
 输入和输出支持以下数据类型组合：
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
   <table style="undefined;table-layout: fixed; width: 600px">
@@ -443,9 +445,9 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
@@ -455,6 +457,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
   #include <thread>
   #include <string.h>
   #include "hccl/hccl.h"
+  #include "aclnn/opdev/fp16_t.h"
   #include "aclnnop/aclnn_weight_quant_matmul_all_reduce.h"
 
   int ndev = 2;
@@ -553,13 +556,13 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       long long antiquantOffsetShapeSize = GetShapeSize(antiquantOffsetShape);
       long long x3ShapeSize = GetShapeSize(x3Shape);
       long long outShapeSize = GetShapeSize(outShape);
-      std::vector<int16_t> x1HostData(x1ShapeSize, 1);
+      std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
       std::vector<int8_t> x2HostData(x2ShapeSize, 1);
-      std::vector<int16_t> biasHostData(biasShapeSize, 1);
-      std::vector<int16_t> antiquantScaleHostData(antiquantScaleShapeSize, 1);
-      std::vector<int16_t> antiquantOffsetHostData(antiquantOffsetShapeSize, 1);
-      std::vector<int16_t> x3HostData(x3ShapeSize, 1);
-      std::vector<int16_t> outHostData(outShapeSize, 0);
+      std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+      std::vector<op::fp16_t> antiquantScaleHostData(antiquantScaleShapeSize, 1);
+      std::vector<op::fp16_t> antiquantOffsetHostData(antiquantOffsetShapeSize, 1);
+      std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
+      std::vector<op::fp16_t> outHostData(outShapeSize, 0);
       // 创建 tensor
       ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -683,7 +686,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           args[rankId].stream = stream[rankId];
           args[rankId].context = context[rankId];
           threads[rankId].reset(
-                  new(std::nothrow) std::thread(&launchOneThreadweightQuantmatmulAllReduce, std::ref(args [rankId])));
+                  new(std::nothrow) std::thread(&launchOneThreadweightQuantmatmulAllReduce, std::ref(args[rankId])));
       }
       for (uint32_t rankId = 0; rankId < ndev; rankId++) {
           threads[rankId]->join();

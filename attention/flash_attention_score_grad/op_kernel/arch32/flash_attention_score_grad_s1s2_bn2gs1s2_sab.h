@@ -520,6 +520,7 @@ protected:
 
     DropMaskInfo dropMaskInfo = {0};
     // ping pong flag
+    uint32_t ping_pong_flag_l1_a_ = 0;
     uint32_t ping_pong_flag_l0_a_ = 0;
     uint32_t ping_pong_flag_l0_b_ = 0;
     uint32_t ping_pong_flag_l0_c_ = 0;
@@ -1216,7 +1217,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::LoadData
                                                                                   const int32_t k0,
                                                                                   const int32_t mSize)
 {
-    AscendC::WaitFlag<HardEvent::M_MTE1>(3 + ping_pong_flag_l0_a_);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(3 + ping_pong_flag_l0_a_); // 信号量3，4用于控制L0A搬运
     int32_t mSizeAlign = RoundUp(mSize, (int32_t)C0_SIZE);
     commonLoadData2dParamsNoTranspose.repeatTimes = k0 / C0_SIZE;
     commonLoadData2dParamsNoTranspose.srcStride = mSizeAlign / C0_SIZE;
@@ -1235,7 +1236,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::LoadData
                                                                                   const int32_t k0,
                                                                                   const int32_t nSize)
 {
-    AscendC::WaitFlag<HardEvent::M_MTE1>(3 + ping_pong_flag_l0_b_ + 2);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(3 + ping_pong_flag_l0_b_ + 2); // 信号量5、6用于控制L0B搬运
     int32_t nSizeAlign = RoundUp(nSize, (int32_t)C0_SIZE);
     commonLoadData2dParamsNoTranspose.repeatTimes = nSizeAlign / C0_SIZE;
     commonLoadData2dParamsNoTranspose.srcStride = 1;
@@ -1277,7 +1278,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Cube1Cop
     commonFixpipeParamsV220.mSize = mSize;
     commonFixpipeParamsV220.nSize = nSizeAlign;
     commonFixpipeParamsV220.srcStride = mSizeAlign;
-    commonFixpipeParamsV220.dstStride = dbParam.s1CvExtendAlign * 2; // 修改后
+    commonFixpipeParamsV220.dstStride = dbParam.s1CvExtendAlign * 2;
     commonFixpipeParamsV220.quantPre = QuantMode_t::NoQuant;
     commonFixpipeParamsV220.unitFlag = 3;
     AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(dstTensor, srcTensor, commonFixpipeParamsV220);
@@ -1292,8 +1293,6 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Cube1Com
 {
     event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
     event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
-    event_t eventIdMToFixpipe = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::M_FIX));
-    event_t eventIdFixpipeToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
     int64_t specify_for_v_aTensorOffsetCv = dbParam.aTensorOffsetCv / d * value_d;
     int64_t specify_for_v_bTensorOffsetCv = dbParam.bTensorOffsetCv / d * value_d;
     uint32_t mSplitSize = MMAD_BASE_SIZE;
@@ -2499,6 +2498,16 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL
     uint32_t nTail = dbParam.s2CvExtend - (nLoops - 1) * nSplitSize;
     uint32_t subNSizeAct = nSplitSize;
     uint32_t subNSizeActAlign = CeilDiv(subNSizeAct, MMAD_BASE_SIZE) * MMAD_BASE_SIZE;
+    event_t eventIdMToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::M_MTE1));
+    AscendC::SetFlag<HardEvent::FIX_M>(eventIdFixpipeToM_ID0);
+    AscendC::SetFlag<HardEvent::FIX_M>(eventIdFixpipeToM_ID1);
+    AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID0);
+    AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID1);
+    AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID3);
+    AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID4);
+    AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID5);
+    AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID6);
+
     for (int32_t sliceIdx = 0; sliceIdx < s2SliceNum; ++sliceIdx) {
         // slice s2
         int32_t s2SliceExtend = sliceIdx == (s2SliceNum - 1) ? s2SliceTail : s2SliceSize;
@@ -2520,23 +2529,19 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL
         ///////////////////////////////////////////////////////////////
         // Matmal4 dq
         ///////////////////////////////////////////////////////////////
-        mm4.SetOrgShape(dbParam.actualS1Len, dbParam.s2Stride, s2_size, dbParam.actualS2Len, dqKc);
+        AscendC::WaitFlag<HardEvent::MTE1_MTE2>(ping_pong_flag_l1_a_);
         for (uint32_t m = 0; m < mLoops; m++) {
             subMSizeAct = m == (mLoops - 1) ? mTail : mSplitSize;
             subMSizeActAlign = CeilDiv(subMSizeAct, C0_SIZE) * C0_SIZE;
+            LocalTensor<float> *l0_c_tensor = ping_pong_flag_l0_c_ ? &l0_c_pong_tensor : &l0_c_ping_tensor;
             for (uint32_t n = 0; n < nInnerLoops; n++) {
-                bool atomicAddFlag = !(n == 0);
                 subNSizeAct = n == (nInnerLoops - 1) ? nInnerTail : nSplitSize;
                 subNSizeActAlign = CeilDiv(subNSizeAct, C0_SIZE) * C0_SIZE;
                 uint64_t bL1Offset = n * MMAD_BASE_SIZE * MMAD_BASE_SIZE + sliceIdx * S_SPLITT_SIZE * MMAD_BASE_SIZE;
                 uint64_t aL1Offset = m * MMAD_BASE_SIZE * S_SPLITT_SIZE + MMAD_BASE_SIZE * n * MMAD_BASE_SIZE;
-                // B矩阵
-                if (m == 0) {
-                    CopyGmToL1(kL1Tensor[bL1Offset],
-                        keyGm[dbParam.bTensorOffsetCv + bTensorOffsetBias + n * nSplitSize * dbParam.s2Stride],
-                        subNSizeAct, d, dbParam.s2Stride);
-                }
-                // A矩阵
+                LocalTensor<T1> *l0_a_tensor = ping_pong_flag_l0_a_ ? &l0_a_pong_tensor : &l0_a_ping_tensor;
+                LocalTensor<T1> *l0_b_tensor = ping_pong_flag_l0_b_ ? &l0_b_pong_tensor : &l0_b_ping_tensor;
+                // load gm to L1A
                 uint16_t blockCount = subNSizeActAlign / C0_SIZE; 
                 uint16_t blockLen = subMSizeActAlign * C0_SIZE * sizeof(T1) / 32;
                 uint16_t srcStride = (s1_size - subMSizeActAlign) * C0_SIZE * sizeof(T1) / 32;
@@ -2546,60 +2551,178 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL
                     mulWorkSpaceGm[pingpongIdx * cubeBaseMN * DTYPE_FACTOR + dSOffsetBias + m * mSplitSize * C0_SIZE +
                         n * nSplitSize * dbParam.s1CvExtendAlign * DTYPE_FACTOR],
                     copyParams);
+                AscendC::SetFlag<HardEvent::MTE2_MTE1>(ping_pong_flag_l0_a_);
+                AscendC::WaitFlag<HardEvent::MTE2_MTE1>(ping_pong_flag_l0_a_);
+                AscendC::WaitFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_a_ + 3);
+                // load L1A To L0A
+                commonLoadData2dParamsNoTranspose.repeatTimes = subNSizeActAlign / C0_SIZE;
+                commonLoadData2dParamsNoTranspose.srcStride = subMSizeActAlign / C0_SIZE;
+                for (int32_t i = 0; i < subMSizeActAlign / C0_SIZE; i++) {
+                    AscendC::LoadData((*l0_a_tensor)[i * subNSizeActAlign * C0_SIZE],
+                                        dsL1Tensor[aL1Offset + i * SIZE_256],
+                                        commonLoadData2dParamsNoTranspose);
+                }
+                AscendC::SetFlag<HardEvent::MTE1_M>(eventIdMte1AToM);
+                AscendC::WaitFlag<HardEvent::MTE1_M>(eventIdMte1AToM);
 
-                AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-                AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-                mm4.SetTensorA(dsL1Tensor[aL1Offset]);
-                mm4.SetTensorB(kL1Tensor[bL1Offset]);
-                mm4.SetTail(subMSizeAct, d, subNSizeAct);
-                mm4.template Iterate<false>(atomicAddFlag);
+                // load gm to L1B
+                if (m == 0) {
+                    CopyGmToL1(kL1Tensor[bL1Offset],
+                        keyGm[dbParam.bTensorOffsetCv + bTensorOffsetBias + n * nSplitSize * dbParam.s2Stride],
+                        subNSizeAct, d, dbParam.s2Stride);
+                    AscendC::SetFlag<HardEvent::MTE2_MTE1>(ping_pong_flag_l0_b_ + 2);
+                    AscendC::WaitFlag<HardEvent::MTE2_MTE1>(ping_pong_flag_l0_b_ + 2);
+                }
+                // // load L1B To L0b
+                AscendC::WaitFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_b_ + 3 + 2);
+                commonLoadData2dParamsTranspose.repeatTimes = d / C0_SIZE;
+                commonLoadData2dParamsTranspose.srcStride = subNSizeActAlign / C0_SIZE;
+                for (int32_t i = 0; i < subNSizeActAlign / C0_SIZE; i++) {
+                    AscendC::LoadData((*l0_b_tensor)[i * d * C0_SIZE],
+                                        kL1Tensor[bL1Offset + i * SIZE_256],
+                                        commonLoadData2dParamsTranspose);
+                }
+                AscendC::SetFlag<HardEvent::MTE1_M>(eventIdMte1BToM);
+                AscendC::WaitFlag<HardEvent::MTE1_M>(eventIdMte1BToM);
+                // matmul
+                uint16_t m_modify = (subMSizeAct == 1) ? 2 : subMSizeAct;
+                commonMadParams.m = m_modify;
+                commonMadParams.n = d;
+                commonMadParams.k = subNSizeAct;
+                commonMadParams.unitFlag = n == nInnerLoops - 1 ? 3 : 2;
+                commonMadParams.cmatrixInitVal = n == 0 ? true : false;
+
+                if ( n==0 ) {
+                    AscendC::WaitFlag<HardEvent::FIX_M>(ping_pong_flag_l0_c_);
+                }
+                if (n == nInnerLoops - 1) {
+                    AscendC::PipeBarrier<PIPE_M>();
+                }
+
+                AscendC::Mmad(*l0_c_tensor, *l0_a_tensor, *l0_b_tensor, commonMadParams);
+                AscendC::SetFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_b_ + 3 + 2);
+                AscendC::SetFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_a_ + 3);
+                ping_pong_flag_l0_a_ = 1 - ping_pong_flag_l0_a_;
+                ping_pong_flag_l0_b_ = 1 - ping_pong_flag_l0_b_;
             }
             if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
                 gmBaseBlockOffset = m * mSplitSize * C0_SIZE;
+                commonFixpipeParamsV220.mSize = subMSizeAct;
+                commonFixpipeParamsV220.nSize = d;
+                commonFixpipeParamsV220.srcStride = subMSizeActAlign;
+                commonFixpipeParamsV220.dstStride = s1 * 2;
+                commonFixpipeParamsV220.quantPre = QuantMode_t::NoQuant;
+                commonFixpipeParamsV220.unitFlag = 3;
+                AscendC::SetAtomicType<float>();
+                AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(dqWorkSpaceGm[dqOffset + gmBaseBlockOffset], *l0_c_tensor, commonFixpipeParamsV220);
+                AscendC::SetAtomicNone();
             } else {
                 gmBaseBlockOffset = m * mSplitSize * dbParam.s1Stride;
             }
-            mm4.GetTensorC(dqWorkSpaceGm[dqOffset + gmBaseBlockOffset], 1);
+            AscendC::SetFlag<HardEvent::FIX_M>(ping_pong_flag_l0_c_);
+            ping_pong_flag_l0_c_ = 1 - ping_pong_flag_l0_c_;
         }
+        AscendC::SetFlag<HardEvent::MTE1_MTE2>(ping_pong_flag_l1_a_);
+        ping_pong_flag_l1_a_ = 1 - ping_pong_flag_l1_a_;
 
-        mm4.End();
+        AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
+        AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
         ///////////////////////////////////////////////////////////////
         // Matmal4 dk
         ///////////////////////////////////////////////////////////////
-        mm3.SetOrgShape(dbParam.actualS2Len, dbParam.s1Stride, s1_size, dbParam.actualS1Len, dkvKc);
-        for (uint32_t n = 0; n < nInnerLoops; n++) {
-            subNSizeAct = n == (nInnerLoops - 1) ? nInnerTail : nSplitSize;
+        for (uint32_t n_loop = 0; n_loop < nInnerLoops; n_loop++) {
+            subNSizeAct = n_loop == (nInnerLoops - 1) ? nInnerTail : nSplitSize;
             subNSizeActAlign = CeilDiv(subNSizeAct, C0_SIZE) * C0_SIZE;
-            for (uint32_t m = 0; m < mLoops; m++) {
-                bool atomicAddFlag = m != 0;
-                subMSizeAct = m == (mLoops - 1) ? mTail : mSplitSize;
+            LocalTensor<float> *l0_c_tensor = ping_pong_flag_l0_c_ ? &l0_c_pong_tensor : &l0_c_ping_tensor;
+            for (uint32_t m_loop = 0; m_loop < mLoops; m_loop++) {
+                subMSizeAct = m_loop == (mLoops - 1) ? mTail : mSplitSize;
                 subMSizeActAlign = CeilDiv(subMSizeAct, C0_SIZE) * C0_SIZE;
-                uint64_t bL1Offset = m * MMAD_BASE_SIZE * MMAD_BASE_SIZE;
-                // B矩阵, A矩阵复用
-                if (n == 0 && sliceIdx == 0) {
+                uint64_t bL1Offset = m_loop * MMAD_BASE_SIZE * MMAD_BASE_SIZE;
+                uint64_t aL1Offset = m_loop * MMAD_BASE_SIZE * S_SPLITT_SIZE + n_loop * MMAD_BASE_SIZE * MMAD_BASE_SIZE;
+                LocalTensor<T1> *l0_a_tensor = ping_pong_flag_l0_a_ ? &l0_a_pong_tensor : &l0_a_ping_tensor;
+                LocalTensor<T1> *l0_b_tensor = ping_pong_flag_l0_b_ ? &l0_b_pong_tensor : &l0_b_ping_tensor;
+
+                // load gm to L1B
+                if (n_loop == 0 && sliceIdx == 0) {
                     CopyGmToL1(qL1Tensor[bL1Offset],
-                        queryGm[dbParam.aTensorOffsetCv + m * mSplitSize * dbParam.s1Stride],
+                        queryGm[dbParam.aTensorOffsetCv + m_loop * mSplitSize * dbParam.s1Stride],
                         subMSizeAct, d, dbParam.s1Stride);
+                    AscendC::SetFlag<HardEvent::MTE2_MTE1>(ping_pong_flag_l0_b_ + 2);
+                    AscendC::WaitFlag<HardEvent::MTE2_MTE1>(ping_pong_flag_l0_b_ + 2);
                 }
-                AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-                AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-                mm3.SetTail(subNSizeAct, d, subMSizeAct);
-                mm3.SetTensorA(dsL1Tensor[m * MMAD_BASE_SIZE * S_SPLITT_SIZE + MMAD_BASE_SIZE * n * MMAD_BASE_SIZE], true);
-                mm3.SetTensorB(qL1Tensor[bL1Offset]);
-                mm3.template Iterate<false>(atomicAddFlag);
+                // load L1A To L0A
+                AscendC::WaitFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_a_ + 3);
+                uint32_t s1_L10_count = (subMSizeActAlign + C0_SIZE - 1) / C0_SIZE;
+                uint32_t s2_L10_count = (subNSizeActAlign + C0_SIZE - 1) / C0_SIZE;
+                commonLoadData2dParamsTranspose.repeatTimes = s1_L10_count * s2_L10_count;
+                commonLoadData2dParamsTranspose.srcStride = 1;
+                AscendC::LoadData(
+                    *l0_a_tensor,
+                    dsL1Tensor[m_loop * MMAD_BASE_SIZE * S_SPLITT_SIZE + MMAD_BASE_SIZE * n_loop * MMAD_BASE_SIZE], 
+                    commonLoadData2dParamsTranspose
+                );
+                // load L1B To L0b
+                AscendC::WaitFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_b_ + 3 + 2);
+                commonLoadData2dParamsTranspose.repeatTimes = d / C0_SIZE;
+                commonLoadData2dParamsTranspose.srcStride = subMSizeActAlign / C0_SIZE;
+                for (int32_t i = 0; i < subMSizeActAlign / C0_SIZE; i++) {
+                    AscendC::LoadData((*l0_b_tensor)[i * d * C0_SIZE],
+                                        qL1Tensor[bL1Offset + i * SIZE_256],
+                                        commonLoadData2dParamsTranspose);
+                }
+                AscendC::SetFlag<HardEvent::MTE1_M>(eventIdMte1BToM);
+                AscendC::WaitFlag<HardEvent::MTE1_M>(eventIdMte1BToM);
+                // matmul
+                uint16_t s2_modify = (subNSizeAct == 1) ? 2 : subNSizeAct;
+                commonMadParams.m = s2_modify;
+                commonMadParams.n = d;
+                commonMadParams.k = subMSizeAct;
+                commonMadParams.unitFlag = m_loop == mLoops - 1 ? 3 : 2;
+                commonMadParams.cmatrixInitVal = m_loop == 0 ? true : false;
+
+                if ( m_loop==0 ) {
+                    AscendC::WaitFlag<HardEvent::FIX_M>(ping_pong_flag_l0_c_);
+                }
+
+                if (m_loop == mLoops - 1) {
+                    AscendC::PipeBarrier<PIPE_M>();
+                }
+                AscendC::Mmad(*l0_c_tensor, *l0_a_tensor, *l0_b_tensor, commonMadParams);
+                AscendC::SetFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_b_ + 3 + 2);
+                AscendC::SetFlag<HardEvent::M_MTE1>(ping_pong_flag_l0_a_ + 3);
+                ping_pong_flag_l0_a_ = 1 - ping_pong_flag_l0_a_;
+                ping_pong_flag_l0_b_ = 1 - ping_pong_flag_l0_b_;
             }
             if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                gmBaseBlockOffset = n * nSplitSize * C0_SIZE;
+                gmBaseBlockOffset = n_loop * nSplitSize * C0_SIZE;
+                commonFixpipeParamsV220.mSize = subNSizeAct;
+                commonFixpipeParamsV220.nSize = d;
+                commonFixpipeParamsV220.srcStride = subNSizeActAlign;
+                commonFixpipeParamsV220.dstStride = s2 * 2;
+                commonFixpipeParamsV220.quantPre = QuantMode_t::NoQuant;
+                commonFixpipeParamsV220.unitFlag = 3;
+                AscendC::SetAtomicType<float>();
+                AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(dkWorkSpaceGm[dkvOffset + dkOffsetBias + gmBaseBlockOffset], *l0_c_tensor, commonFixpipeParamsV220);
+                AscendC::SetAtomicNone();
             } else {
-                gmBaseBlockOffset = n * nSplitSize * dbParam.s2Stride;
+                gmBaseBlockOffset = n_loop * nSplitSize * dbParam.s2Stride;
             }
-            mm3.GetTensorC(dkWorkSpaceGm[dkvOffset + dkOffsetBias + gmBaseBlockOffset], 1);
-        }
-        AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-        AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-        mm3.End();
+            AscendC::SetFlag<HardEvent::FIX_M>(ping_pong_flag_l0_c_);
+            ping_pong_flag_l0_c_ = 1 - ping_pong_flag_l0_c_;
+            AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
+            AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
+        }   
     }
-
+    AscendC::WaitFlag<HardEvent::FIX_M>(eventIdFixpipeToM_ID0);
+    AscendC::WaitFlag<HardEvent::FIX_M>(eventIdFixpipeToM_ID1);
+    AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID0);
+    AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID1);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID3);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID4);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID5);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ID6);
+    AscendC::SetFlag<HardEvent::M_MTE1>(eventIdMToMte1);
+    AscendC::WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1);
     ///////////////////////////////////////////////////////////////
     // Matmal5 dv
     ///////////////////////////////////////////////////////////////

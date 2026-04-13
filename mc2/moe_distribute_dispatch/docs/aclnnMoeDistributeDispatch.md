@@ -19,7 +19,7 @@
 
 - 计算公式：
 
-    - 情形1：如果quaneMode=0（非量化场景）：
+    - 情形1：如果quantMode=0（非量化场景）：
 
     $$
     allToAllXOut = AllToAllV(X)\\
@@ -30,7 +30,7 @@
     \end{cases}
     $$
 
-    - 情形2：如果quaneMode=2（pertoken动态量化场景）：
+    - 情形2：如果quantMode=2（pertoken动态量化场景）：
 
     $$
     xFp32 = CastToFp32(X) \times scales \\
@@ -54,7 +54,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeDistributeDispatchGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatch”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeDistributeDispatchGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatch”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(
@@ -372,6 +372,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>-</td>
     <td>-</td>
     </tr>
+    <tr>
     <td>workspaceSize</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
@@ -446,17 +447,14 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td rowspan="2">561002</td>
     <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
-    <tr>
-        <td>参数的取值不在支持的范围。</td>
-    </tr>
+    <tr><td>参数的取值不在支持的范围。</td></tr>
     </tbody>
     </table>
-​    
 
 ## aclnnMoeDistributeDispatch
 
--   **参数说明：**
-    
+- **参数说明：**
+
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 168px">
     <col style="width: 128px">
@@ -493,7 +491,6 @@ aclnnStatus aclnnMoeDistributeDispatch(
     </tbody>
     </table>
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -519,7 +516,6 @@ aclnnStatus aclnnMoeDistributeDispatch(
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
-
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数说明里shape格式说明：
@@ -597,13 +593,28 @@ aclnnStatus aclnnMoeDistributeDispatch(
         ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
         export ENV_DEV_NUM=16
         ```
-    
+
     - 机器数量设置：
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
         ```Cpp
         const uint32_t MACHINE_NUM = 2;
         ```
+
         单机16卡场景则无需修改。
+
+    - 算子编译执行：
+        在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+
+        ```bash
+        bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
+        ```
+
+        在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
+
+        ```bash
+        bash build.sh --run_example --ops=moe_distribute_dispatch eager cust
+        ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   
@@ -618,6 +629,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -1018,9 +1030,12 @@ aclnnStatus aclnnMoeDistributeDispatch(
         }
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
+        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
+        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
 
         args.rankId = rankId;
-        args.epRankId = rankId;
+        args.epRankId = epRankId;
+        args.tpRankId = tpRankId;
         args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
@@ -1137,7 +1152,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         else if (rank_table_file && first_rank_id) {
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
             EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 0;
+            TP_WORLD_SIZE = 1;
             DEV_NUM = EP_WORLD_SIZE;
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
             std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);

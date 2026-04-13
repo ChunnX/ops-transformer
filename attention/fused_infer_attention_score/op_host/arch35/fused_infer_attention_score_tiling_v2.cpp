@@ -464,13 +464,13 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext* context, C
     contextKeyParams.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(KEY_ANTIQUANT_MODE_INDEX);
     contextKeyParams.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(VALUE_ANTIQUANT_MODE_INDEX);
     contextKeyParams.innerPrecisePtr = attrs->GetAttrPointer<int64_t>(ATTR_INNER_PRECISE_INDEX);
-    contextKeyParams.headsNumber = attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX);
+    contextKeyParams.headsNumber = attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
     contextKeyParams.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX);
     contextKeyParams.preToken = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX);
     contextKeyParams.nextToken = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKEN_INDEX);
     contextKeyParams.scaleValue = attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX);
     contextKeyParams.layout = attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX);
-    contextKeyParams.numKeyValueHeads = attrs->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX);
+    contextKeyParams.numKeyValueHeads = attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX);
     contextKeyParams.blockSize = attrs->GetAttrPointer<int32_t>(ATTR_BLOCK_SIZE_INDEX);
     contextKeyParams.workspaceSize = context->GetWorkspaceSizes(1);
     contextKeyParams.isBSNDOut = (string(contextKeyParams.layout) == "BNSD_BSND") ? 1 : 0;
@@ -708,6 +708,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
     auto tempV = context_->GetDynamicInputShape(VALUE_INDEX, 0);
     auto tempOut = context_->GetOutputShape(ATTENTION_OUT_INDEX);
     auto tempLse = context_->GetOutputShape(SOFTMAX_LSE_INDEX);
+    auto tempLseDesc = context_->GetOutputDesc(SOFTMAX_LSE_INDEX);
     bool qOutEmptyTensor = false;
     bool enablePA = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX) != nullptr;
     uint32_t queryD = 1U;
@@ -1001,6 +1002,9 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
             usingIFA = true;
         }
     }
+    OP_CHECK_IF(((s == 1) && (inputLayoutStr == "BNSD_BSND") && (qDType != kDType)),
+        OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "BNSD_BSND layout is not supported when S is 1!"),
+        return ge::GRAPH_FAILED);
 
     if (usingIFA) {
         // IFA tiling path        
@@ -1030,7 +1034,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
         constexpr int64_t D_ALIGN_32 = 32;
         constexpr int64_t D_ALIGN_16 = 16;
 
-        PromptFlashAttentionTilingData pfaTilingData;
+        PromptFlashAttentionTilingDataV2 pfaTilingData;
         PromptFlashAttentionTilingV2 pfa_tiling(context_);
         ContextParamsForPFATiling contextParamsForPFATiling;
         PromptFlashAttentionCompileInfo tempCompileInfoPtr;
@@ -1073,6 +1077,11 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
             OP_CHECK_IF(((tempLse == nullptr)),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "SoftmaxLse shape is null, but SoftmaxLseFlag is true!"),
                 return ge::GRAPH_FAILED);
+            if (tempLseDesc != nullptr) {
+                OP_CHECK_IF((tempLseDesc->GetDataType() != ge::DT_FLOAT),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "SoftmaxLse only support dtype FP32, but got %s!", v2::GetPfaDataTypeStr(tempLseDesc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+            }
 
             if (!qOutEmptyTensor) { // q、out为空时，lse为空则不输出，不为空则输出inf，不做拦截
                 if (inputLayoutStr == "TND" || inputLayoutStr == "TND_NTD") {

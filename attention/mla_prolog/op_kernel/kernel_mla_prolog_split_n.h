@@ -505,77 +505,97 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
-
+    // 暂存已分配UB大小，其余为shareBuffer
+    uint64_t usedBytes = 0;
     if constexpr (std::is_same<mmInputType, int8_t>::value) {
-        pipe_->InitBuffer(dequantScaleWDqBuffer_, baseParams_->headSizeCq * sizeof(float)); // [1, 1536]
+        uint64_t dequantScaleWDqSize = baseParams_->headSizeCq * sizeof(float);
+        pipe_->InitBuffer(dequantScaleWDqBuffer_, dequantScaleWDqSize); // [1, 1536]
         dequantScaleWDqLocal_ = dequantScaleWDqBuffer_.Get<float>();
+        usedBytes += dequantScaleWDqSize;
 
-        pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, (baseParams_->headSizeCkv + baseParams_->dimHeadRope) * sizeof(float)); // [1, 512 + 64]
+        uint64_t dequantScaleWDkvKrSize = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) * sizeof(float);
+        pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, dequantScaleWDkvKrSize); // [1, 512 + 64]
         dequantScaleWDkvKrLocal_ = dequantScaleWDkvKrBuffer_.Get<float>();
+        usedBytes += dequantScaleWDkvKrSize;
     }
-
-    pipe_->InitBuffer(rmsnormGammaCqBuffer_, baseParams_->headSizeCq * sizeof(rmsNormGammaType)); // [1, 1536] bf16
+    uint64_t rmsnormGammaCqSize = baseParams_->headSizeCq * sizeof(rmsNormGammaType);
+    pipe_->InitBuffer(rmsnormGammaCqBuffer_, rmsnormGammaCqSize); // [1, 1536] bf16
     rmsnormGammaCqLocal_ = rmsnormGammaCqBuffer_.Get<rmsNormGammaType>();
+    usedBytes += rmsnormGammaCqSize;
 
-    pipe_->InitBuffer(rmsnormGammaCkvBuffer_, baseParams_->headSizeCkv * sizeof(rmsNormGammaType)); // [1, 512] bf16
+    uint64_t rmsnormGammaCkvSize = baseParams_->headSizeCkv * sizeof(rmsNormGammaType);
+    pipe_->InitBuffer(rmsnormGammaCkvBuffer_, rmsnormGammaCkvSize); // [1, 512] bf16
     rmsnormGammaCkvLocal_ = rmsnormGammaCkvBuffer_.Get<rmsNormGammaType>();
+    usedBytes += rmsnormGammaCkvSize;
 
     if constexpr (std::is_same<mmQcQrInputType, int8_t>::value) {
         if (enableSmoothScalesCq_) {
-            pipe_->InitBuffer(smoothScaleCqBuffer_, baseParams_->headSizeCq * sizeof(float)); // [1, 1536]
+            uint64_t smoothScaleCqSize = baseParams_->headSizeCq * sizeof(float);
+            pipe_->InitBuffer(smoothScaleCqBuffer_, smoothScaleCqSize); // [1, 1536]
             smoothScaleCqLocal_ = smoothScaleCqBuffer_.Get<float>();
+            usedBytes += smoothScaleCqSize;
         }
     }
 
     if constexpr (std::is_same<krCacheType, int8_t>::value) {
+        uint64_t quantScaleCkrSize = baseParams_->dimHeadRope * sizeof(float);
         pipe_->InitBuffer(quantScaleCkrBuffer_, baseParams_->dimHeadRope * sizeof(float)); // [1, 64]
         quantScaleCkrLocal_ = quantScaleCkrBuffer_.Get<float>();
+        usedBytes += quantScaleCkrSize;
     }
 
     if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value || std::is_same<rmsNormCkvOutputType, FP8E4M3>::value) {
+        uint64_t quantScaleCkvSize = 0;
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value) {
-            pipe_->InitBuffer(quantScaleCkvBuffer_, ALIGN_BLOCK_SIZE);
+            quantScaleCkvSize = ALIGN_BLOCK_SIZE;
+            pipe_->InitBuffer(quantScaleCkvBuffer_, quantScaleCkvSize);
         } else {
-            pipe_->InitBuffer(quantScaleCkvBuffer_, baseParams_->headSizeCkv * sizeof(float)); // [1, 512]
+            quantScaleCkvSize = baseParams_->headSizeCkv * sizeof(float);
+            pipe_->InitBuffer(quantScaleCkvBuffer_, quantScaleCkvSize); // [1, 512]
         }
         quantScaleCkvLocal_ = quantScaleCkvBuffer_.Get<float>();
+        usedBytes += quantScaleCkvSize;
     }
 
     // 预留brcb的空间
-    pipe_->InitBuffer(dequantTool_.deQuantScaleCqBuffer_, (baseParams_->stepBatchSize + 7) * ALIGN_BLOCK_SIZE);
+    uint64_t deQuantScaleCqSize = (baseParams_->stepBatchSize + 7) * ALIGN_BLOCK_SIZE;
+    pipe_->InitBuffer(dequantTool_.deQuantScaleCqBuffer_, deQuantScaleCqSize);
     dequantTool_.deQuantScaleCqLocal_ = dequantTool_.deQuantScaleCqBuffer_.template Get<dequantScaleType>();
+    usedBytes += deQuantScaleCqSize;
 
+    uint64_t sincosSize = 0;
     if constexpr (MLAPT::enableDequantOpt) {
         // 在ropeQr进行切N处理后，会复用shareBuffer的内存，不需要额外申请
         // 开启开关后会按照head切分rope qr，此时需要加载一半batchsize数量的sin和cos值
         // 需要2倍的空间分别存储sin和cos
-        pipe_->InitBuffer(sincosBuffer_, 2 * baseParams_->dimHeadRope * sizeof(ropeComputType) * ((baseParams_->stepBatchSize + cvRatio_ - 1) / cvRatio_));
+        sincosSize = 2 * baseParams_->dimHeadRope * sizeof(ropeComputType) * ((baseParams_->stepBatchSize + cvRatio_ - 1) / cvRatio_);
+        pipe_->InitBuffer(sincosBuffer_, sincosSize);
     } else {
         // 需要2倍的空间分别存储sin和cos
-        pipe_->InitBuffer(sincosBuffer_, 2 * baseParams_->dimHeadRope * sizeof(ropeComputType) * curVecTokenMax_); // [2, 64] float
+        sincosSize = 2 * baseParams_->dimHeadRope * sizeof(ropeComputType) * curVecTokenMax_;
+        pipe_->InitBuffer(sincosBuffer_, sincosSize); // [2, 64] float
     }
+    usedBytes += sincosSize;
 
-    uint64_t usedAddr;
     if constexpr (MLAPT::enableDequantOpt) {
         cosLocal_ = sincosBuffer_.Get<ropeComputType>();
         sinLocal_ = cosLocal_[baseParams_->dimHeadRope * ((baseParams_->stepBatchSize + cvRatio_ - 1) / cvRatio_)];
-        usedAddr = reinterpret_cast<uint64_t>(sinLocal_[baseParams_->dimHeadRope * ((baseParams_->stepBatchSize +  cvRatio_ - 1) / cvRatio_)].GetPhyAddr());
-
     } else {
         cosLocal_ = sincosBuffer_.Get<ropeComputType>();
         sinLocal_ = cosLocal_[baseParams_->dimHeadRope * curVecTokenMax_];
-        usedAddr =  reinterpret_cast<uint64_t>(sinLocal_[baseParams_->dimHeadRope * curVecTokenMax_].GetPhyAddr());
     }
 
     if constexpr (MLAPT::actualSeqMode == ACTUAL_SEQ_MODE::EN_Q_LEN) {
-        pipe_->InitBuffer(stepActualSeqBuffer_, baseParams_->stepBatchSize * sizeof(int64_t)); // [1, stepBatchSize]
+        uint64_t stepActualSeqSize = baseParams_->stepBatchSize * sizeof(int64_t);
+        pipe_->InitBuffer(stepActualSeqBuffer_, stepActualSeqSize); // [1, stepBatchSize]
         stepActualSeqLocal_ = stepActualSeqBuffer_.Get<int64_t>();
-        usedAddr += reinterpret_cast<uint64_t>(stepActualSeqLocal_[curVecTokenMax_].GetPhyAddr());
+        usedBytes += stepActualSeqSize;
     }
 
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
-    pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedAddr); // 除 sincos 外的 sharebuffer 共享，不会同时使用
+    pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 }
 
 template<typename MLAPT>
@@ -778,6 +798,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Process() {
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
 
         WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
+        CrossCoreWaitFlag(FINISH_VEC_CKVKR);
     }
 }
 
@@ -799,6 +820,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     // MatmulCkvKr ──> RmsNorm(Ckv)
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
+    CrossCoreWaitFlag(FINISH_VEC_CKVKR);
     if constexpr (std::is_same<mmInputType, FP8E4M3>::value) {
         MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(mmCkvKrResGm_[aicOffset.ckvKrResOffset],
             tokenXGm_[tokenXOffset], weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_,
@@ -866,6 +888,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     CrossCoreWaitFlag(FINISH_MM_CKVKR);
     WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     RmsNormRopeScatterCkvKr(tokenIndex, aivOffset.rmsNormCkvOffset, aivOffset.ropeKrOffset, aivOffset.curVecToken);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 
     // 根据不同分支条件处理
     if constexpr (MLAPT::enableGroupComputeOpt) {
@@ -1173,9 +1196,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMu
     // MatmulQcQr ──> MatmulQn ──> query_out
     // [32, 128] * [128, 512] = [32, 512]
     // [32, 2, 128] * [2, 128, 512] = [32, 2, 512]
+    bool needSparseSync = subLoopTimes > MAX_SYNC_FLAG_COUNT;
     for (int64_t i = 0; i < subLoopTimes; i++) {
         if constexpr (MLAPT::enableDequantOpt) {
-            CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+            if (!needSparseSync || i % 2 == 0 || i == subLoopTimes - 1) { CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N); }
         }
         if (i < 1) {
             MatmulFullLoad<mmQnInputType, mmQnOutputType, true, true>(mmQnResGm_[qnResOffset], mmQcQrResDequantGm_[qcOffset],
@@ -2012,6 +2036,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
     uint32_t deQuantScaleCqOffset = ropeCntDown * subBlockIdx_ * FP32_BLOCK_ELEMENT_NUM;
     // cube一次处理row*colCube，对应的两个vec一次处理row*colQc，两vec之间切colQc
     // 等cube生产足够数据了以后，vec开始消费
+    uint32_t dequantLoopCount = 0;
+    uint32_t totalDequantLoops = CeilDiv(oriCol, (colQc + colQr));
+    bool needSparseSync = totalDequantLoops > MAX_SYNC_FLAG_COUNT;
     while (colOffsetCube < oriCol) {    // 循环CeilDiv(oriCol, colCube)次
         colOffsetCube += colCube;
         if (colOffsetCube > oriCol) {   // 当oriCol不被colCube整除时，mm最后一个base块需要刷新col end
@@ -2027,7 +2054,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
                 CastQcQrSplitN(CastQcQrSplitNParams{mmQnPreDequantOffset, mmQnPreDequantResOffset, 
                                inputOffset, outputOffset, srcStride, dstStride});
             }
-            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+            if (!needSparseSync || dequantLoopCount % 2 == 0 || dequantLoopCount == totalDequantLoops -1) {
+                CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+            }
+            dequantLoopCount++;
             colOffsetVec += (colQc + colQr);
             inputOffset += (colQc + colQr);
             outputOffset += colQc;
@@ -2144,7 +2174,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
     // 如果curStepBatchSize是偶数，则两个核平分；如果curStepBatchSize是奇数，则奇数核比偶数核多分一个
     // >> 1 是将curStepBatchSize分到每个vec核上；
     int64_t curStepBatchSizeVec = (curStepBatchSize + (blockIdx_ % cvRatio_)) / cvRatio_;
-    if (blockIdx_ >= baseParams_->mm4BlockNum * cvRatio_ || curStepBatchSizeVec == 0) {
+    if (blockIdx_ >= baseParams_->mm4BlockNum * cvRatio_) {
         return;
     }
     // 等待前面的Qr部分完成

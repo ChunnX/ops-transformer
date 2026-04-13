@@ -2,7 +2,6 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute_with_routing_map)
 
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -74,7 +73,6 @@
   $$
   unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
-
 
   （3）probs为None，paddedMode为true时：
 
@@ -307,9 +305,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     </tr>
   </tbody></table>
 
-
 ## aclnnMoeTokenUnpermuteWithRoutingMap
-
 
 - **参数说明**
   <table style="undefined;table-layout: fixed; width: 1244px"><colgroup>
@@ -346,7 +342,6 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     </tr>
     </tbody>
   </table>
-
 
 - **返回值**
   
@@ -503,7 +498,7 @@ int main() {
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
     ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapfailed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret); return ret);
     // 4. 固定写法，同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

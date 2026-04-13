@@ -127,7 +127,7 @@ protected:
     __aicore__ inline void SinkValueNoBrc(LocalTensor<COMPUTE_T> tmpSinkResUb,
                                             LocalTensor<COMPUTE_T> tmpSinkResUbBrcb, uint32_t dealRowCount);
     __aicore__ inline void SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-                                            int64_t s1Idx, int64_t row);
+ 	                                             int64_t s1Idx, int64_t row, int64_t dealRowCount);
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
     __aicore__ inline void DealPostQuantOutPerChn(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb,
                                                   uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount);
@@ -1002,7 +1002,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info
 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-    int64_t s1Idx, int64_t row)
+    int64_t s1Idx, int64_t row, int64_t dealRowCount)
 {
     int64_t s1BottomTok = info.actS1Size + info.preTokensPerBatch;
     int64_t s1Tok = -info.nextTokensPerBatch;
@@ -1010,7 +1010,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
 
     if (unlikely(info.nextTokensPerBatch < 0)) { // 上方存在行无效
         if (s1Idx < s1Tok) {
-            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum);
+            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum * dealRowCount);
         }
     }
 
@@ -1020,18 +1020,17 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
 
     if (unlikely(info.preTokensPerBatch < 0)) { // 下方存在行无效
         if (s1Idx >= s1BottomTok && s1Idx < info.actS1Size) {
-            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum);
+            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum * dealRowCount);
         }
     }
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-    uint32_t wsMStart, uint32_t dealRowCount)
+ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info,
+ 	                                                                    LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
+ 	                                                                    uint32_t wsMStart, uint32_t dealRowCount)
 {
     constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
-    int64_t gIdx = 0;
-    int64_t s1Idx = 0;
 
     LocalTensor<COMPUTE_T> sinkBuf = tmpBuff1.GetWithOffset<COMPUTE_T>(BUFFER_SIZE_BYTE_8K, BUFFER_SIZE_BYTE_8K * 2);
     SinkCopyIn(info, sinkBuf);
@@ -1039,18 +1038,48 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo
     bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
         constInfo.sparseMode, constInfo.attenMaskFlag, constInfo.isRowInvalid);
 
-    for (uint32_t row = 0; row < dealRowCount; ++row) {
-        if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { //内存按照S1G排布
-            gIdx = (info.gS1Idx + wsMStart + row) % constInfo.gSize;
-            s1Idx = (info.gS1Idx + wsMStart + row) / constInfo.gSize;
-        } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { //内存按照GS1排布
+    if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) {
+        int64_t s1IdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) / constInfo.gSize;
+        int64_t gIdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) % constInfo.gSize;
+        int64_t s1IdxEnd = (info.gS1Idx + wsMStart + dealRowCount) / constInfo.gSize;
+        int64_t gIdxEnd = (info.gS1Idx + wsMStart + dealRowCount) % constInfo.gSize;
+        int64_t gStartIdx = 0; // 循环当前s1中的g的起点
+        int64_t dealCount = 0;
+        int64_t curDealRows = 0;
+        for (int64_t i = s1IdxStart; i <= s1IdxEnd; i++) {
+            if (i == s1IdxStart && s1IdxEnd == s1IdxStart) {
+                curDealRows = gIdxEnd - gIdxStart;
+            } else if (i == s1IdxStart && s1IdxEnd != s1IdxStart) {
+                curDealRows = constInfo.gSize - gIdxStart;
+            } else if (i == s1IdxEnd) {
+                curDealRows = gIdxEnd;
+            } else {
+                curDealRows = constInfo.gSize;
+            }
+            if (i == s1IdxStart) {
+                gStartIdx = gIdxStart; // 只有第一块的g的起点不是0
+            } else {
+                gStartIdx = 0;
+            }
+            if (curDealRows == 0) {
+                continue;
+            }
+            DataCopy(tmpSinkResUbBrcb[dealCount * brcbNum], sinkBuf[gStartIdx * brcbNum], brcbNum * curDealRows);
+            if (unlikely(isInvalidRows)) { // 行无效处理
+                SinkInvalidRow(info, tmpSinkResUbBrcb, i, dealCount, curDealRows);
+            }
+            dealCount += curDealRows;
+        }
+    } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) {
+        int64_t gIdx = 0;
+        int64_t s1Idx = 0;
+        for (uint32_t row = 0; row < dealRowCount; ++row) {
             gIdx = (info.gS1Idx + wsMStart + row) / info.actS1Size;
             s1Idx = (info.gS1Idx + wsMStart + row) % info.actS1Size;
-        }
-        DataCopy(tmpSinkResUbBrcb[row * brcbNum], sinkBuf[gIdx * brcbNum], brcbNum);
-
-        if (unlikely(isInvalidRows)) { // 行无效处理
-            SinkInvalidRow(info, tmpSinkResUbBrcb, s1Idx, row);
+            DataCopy(tmpSinkResUbBrcb[row * brcbNum], sinkBuf[gIdx * brcbNum], brcbNum);
+            if (unlikely(isInvalidRows)) { // 行无效处理
+                SinkInvalidRow(info, tmpSinkResUbBrcb, s1Idx, row, 1);
+            }
         }
     }
 }

@@ -72,8 +72,8 @@ aclnnStatus aclnnRainFusionAttention(
   - 存储每个Q块实际选择的KV块数量
 
 - **blockShape**: 稀疏块形状 [blockShapeX, blockShapeY]
-  - blockShapeX: Q方向块大小
-  - blockShapeY: KV方向块大小
+  - blockShapeX：Q方向块大小
+  - blockShapeY：KV方向块大小
 
 ### 输出参数
 
@@ -197,4 +197,3 @@ bash build.sh --soc=Ascend910B3
 ## 版本历史
 
 - v1.0.0: 初始版本,从catlass 32_sparse_attention_infer迁移
-

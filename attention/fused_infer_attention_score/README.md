@@ -1,4 +1,4 @@
-#  FusedInferAttentionScore
+# FusedInferAttentionScore
 
 ## 产品支持情况
 
@@ -91,7 +91,7 @@
 - 参数key、value中对应Tensor的shape需要完全一致；非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256。
 
 - 当Q_S大于1时，query，key，value输入，功能使用限制如下：
-    - 支持B轴小于等于65536。
+  - 支持B轴小于等于65536。
 
   - 如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
 
@@ -153,7 +153,7 @@
     </table>
     </div>
 
-  -  D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
+  - D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
 - 当Q_S等于1时：query，key，value输入，功能使用限制如下：
 

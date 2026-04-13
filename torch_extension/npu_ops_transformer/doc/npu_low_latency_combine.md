@@ -89,7 +89,7 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 -   **shared\_expert\_rank\_num** (`int`)：可选参数，表示共享专家卡数量。取值范围\[0, ep\_world\_size\)。取0表示无共享专家，不取0需满足shared\_expert\_rank\_num%shared\_expert\_num=0。
 
--   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
+-   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
 
 ## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
 `Tensor`
@@ -107,7 +107,7 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 -   参数里Shape使用的变量如下：
     -   A：表示本卡接收的最大token数量，取值范围如下
         -   对于共享专家，要满足A=BS\*ep\_world\_size*shared\_expert\_num/shared\_expert\_rank\_num。
-        -   对于MoE专家，当num\_max\_dispatch\_tokens\_per\_rank为0时，要满足A\>=BS\*ep\_world\_size\*min\(local\_expert\_num, K\)；当num\_max\_dispatch\_tokens\_per\_rank不为0时，要满足A\>=num\_max\_dispatch\_tokens\_per\_rank\* min\(local\_expert\_num, K\)。
+        -   对于MoE专家，当num\_max\_dispatch\_tokens\_per\_rank为0时，要满足A \>= BS\*ep\_world\_size \* min\(local\_expert\_num, K\)；当num\_max\_dispatch\_tokens\_per\_rank不为0时，要满足A \> =num\_max\_dispatch\_tokens\_per\_rank \* ep\_world\_size \* min\(local\_expert\_num, K\)。
 
     -   H：表示hidden size隐藏层大小。取值范围\[1024, 8192]。
 
@@ -123,9 +123,10 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 -   HCCL通信域缓存区大小:
 
     调用本接口前需检查通信域缓存区大小取值是否合理，单位MB，不配置时默认为200MB。
-    -   该场景不仅支持通过环境变量HCCL\_BUFFSIZE配置，还支持通过hccl_buffer_size配置（参考《[PyTorch训练模型迁移调优](https://hiascend.com/document/redirect/canncommercial-ptmigr)》中“性能调优>性能调优方法>通信优化>优化方法>hccl_buffer_size”章节）。
+    -   该场景仅支持通过环境变量HCCL\_BUFFSIZE配置，该环境变量按通信域粒度管理，每个通信域独占一组“2*HCCL\_BUFFSIZE”大小的内存。
     -   ep通信域内：设置大小要求 \>= 2且满足\>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* h\) + 64\) + \(k + shared\_expert\_num\) \* max\_bs\* Align512\(2 \* h\)\)。
     -   其中 480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
+    -   通信域内开设大小可通过调用MoeDistributeBuffer.get_low_latency_ccl_buffer_size接口计算。
 
 -   本文公式中的“/”表示整除。
 
@@ -182,12 +183,12 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 
     def gen_const_expert_alpha_1():
-        const_expert_alpha_1 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_1 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_1
 
 
     def gen_const_expert_alpha_2():
-        const_expert_alpha_2 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_2 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_2
 
 
@@ -436,12 +437,12 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 
     def gen_const_expert_alpha_1():
-        const_expert_alpha_1 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_1 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_1
 
 
     def gen_const_expert_alpha_2():
-        const_expert_alpha_2 = torch.empty(size=[const_expert_num], dtype=input_dtype).uniform_(-1, 1)
+        const_expert_alpha_2 = torch.empty(size=[const_expert_num, h], dtype=input_dtype).uniform_(-1, 1)
         return const_expert_alpha_2
 
 

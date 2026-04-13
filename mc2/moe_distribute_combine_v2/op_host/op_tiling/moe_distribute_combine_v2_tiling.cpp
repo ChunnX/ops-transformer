@@ -108,7 +108,6 @@ namespace {
     constexpr int64_t RESIDUAL_X_DIM2_SIZE = 1;
     constexpr uint32_t NUM_PER_REP_FP32 = 64U;
     constexpr uint32_t RANK_NUM_PER_NODE = 16U;
-    constexpr uint32_t AIV_NUM_93 = 48U;
 
     constexpr size_t SYSTEM_NEED_WORKSPACE = 16UL * 1024UL * 1024UL;
     constexpr size_t MASK_CALC_NEED_WORKSPACE = 10UL * 1024UL;
@@ -758,12 +757,8 @@ static bool CheckZeroComputeExpertTensorFormat(const gert::TilingContext *contex
     return true;
 }
 
-static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
-                              const bool hasElasticInfo, const bool isPerformance, const uint32_t tpWorldSize,
-                              const CombineV2Config& config)
+static bool CheckInputTensorFormat(const gert::TilingContext *context, const char *nodeName, const CombineV2Config& config)
 {
-    OP_TILING_CHECK(!CheckZeroComputeExpertTensorFormat(context, nodeName, config),
-                    OP_LOGE(nodeName, "Zero_compute_expert Format is invalid"), return ge::GRAPH_FAILED);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE(nodeName, "expandxDesc is null."), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat())) ==
@@ -784,18 +779,29 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "epSendCountsFormat is invalid"), return false);
 
+    auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
+    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "expertScalesFormat is invalid"), return false);
+    
+    return true;
+}
+
+static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
+                              const bool hasElasticInfo, const bool isPerformance, const uint32_t tpWorldSize,
+                              const CombineV2Config& config)
+{
+    OP_TILING_CHECK(!CheckZeroComputeExpertTensorFormat(context, nodeName, config),
+                    OP_LOGE(nodeName, "Zero_compute_expert Format is invalid"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!CheckInputTensorFormat(context, nodeName, config),
+                    OP_LOGE(nodeName, "Input Tensor Format is invalid"), return ge::GRAPH_FAILED);
+    // 除特殊专家外的可选输入Format check
     if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         auto tpSendCountsDesc = context->GetOptionalInputDesc(config.tpSendCountsIndex);
         OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
         OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
             ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "tpSendCountsFormat is invalid"), return false);
     }
-
-    auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
-        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "expertScalesFormat is invalid"), return false);
-
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
         OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName, "xActiveMaskDesc is null."), return false);
@@ -817,7 +823,7 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
     OP_TILING_CHECK((sharedExpertXDesc != nullptr) &&
         (static_cast<ge::Format>(ge::GetPrimaryFormat(sharedExpertXDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName, "sharedExpertXFormat is invalid."), return false);
-
+    //输出Format check
     auto xDesc = context->GetOutputDesc(config.outputXIndex);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName, "xDesc is null."), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
@@ -1352,14 +1358,10 @@ static ge::graphStatus SetHCommCfg(const gert::TilingContext *context, MoeDistri
 
 static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context, MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config& config)
 {
-    uint32_t axisH = tilingData->moeDistributeCombineV2Info.h;
-    uint32_t axisBS = tilingData->moeDistributeCombineV2Info.bs;
-    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
-    uint32_t zeroExpertNum = tilingData->moeDistributeCombineV2Info.zeroExpertNum;
-    uint32_t copyExpertNum = tilingData->moeDistributeCombineV2Info.copyExpertNum;
-    uint32_t constExpertNum = tilingData->moeDistributeCombineV2Info.constExpertNum;
-    bool isInputExpertMaskFlag = tilingData->moeDistributeCombineV2Info.isExpertMask;
-    bool isInputTokenMaskFlag = tilingData->moeDistributeCombineV2Info.isTokenMask;
+    uint32_t axisH = tilingData->moeDistributeCombineV2Info.h, axisBS = tilingData->moeDistributeCombineV2Info.bs;
+    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k, zeroExpertNum = tilingData->moeDistributeCombineV2Info.zeroExpertNum;
+    uint32_t copyExpertNum = tilingData->moeDistributeCombineV2Info.copyExpertNum, constExpertNum = tilingData->moeDistributeCombineV2Info.constExpertNum;
+    bool isInputExpertMaskFlag = tilingData->moeDistributeCombineV2Info.isExpertMask, isInputTokenMaskFlag = tilingData->moeDistributeCombineV2Info.isTokenMask;
     bool enableSpecialExpert = (constExpertNum + zeroExpertNum + copyExpertNum > 0U);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     auto attrs = context->GetAttrs();
@@ -1370,12 +1372,10 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t hFloatSize = axisH * static_cast<uint32_t>(sizeof(float));
     uint32_t hFloatAlign32Size = (hFloatSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size;
-    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
     uint32_t hFloatAlign256Size = (hFloatSize + ALIGNED_LEN - 1) / ALIGNED_LEN * ALIGNED_LEN;
-    uint32_t bsKNum = axisBS * axisK;
-    uint32_t bsKFloatAlign = (bsKNum * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint32_t bsKFloatAlign = (axisBS * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
+    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum, maxSizeRowTmpFloatBuf = hFloatAlign32Size, totalBufferSize = 0;
 
     if (isInputExpertMaskFlag || enableSpecialExpert) {
         uint32_t activeMaskAlignHalfSize = activeMaskAlignSize * sizeof(DTYPE_SIZE_HALF);
@@ -1384,19 +1384,17 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
     }
 
     // LocalWindowCopy的ub使用总量
-    uint32_t totalBufferSize = 0;
     if (config.hasAddRmsNorm) {
         // NUM_PER_REP_FP32 * sizeof(float) * 2 是为kernel侧ReduceSum操作申请的空间大小
         totalBufferSize = maxSizeTokenBuf + maxSizeRowTmpFloatBuf + mulBufSize + hFloatAlign32Size + hExpandXAlign32Size
-        + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM + hExpandXAlign32Size * BUFFER_NUM + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
+            + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM + hExpandXAlign32Size * BUFFER_NUM + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
     } else {
         totalBufferSize = maxSizeTokenBuf + maxSizeRowTmpFloatBuf + mulBufSize + hFloatAlign32Size + hExpandXAlign32Size * BUFFER_NUM
-        + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
+            + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
     }
     if (*commQuantModePtr == INT8_COMM_QUANT) {
         uint32_t scaleNum = (hExpandXAlign32Size / sizeof(expandXDesc->GetDataType())) / static_cast<uint32_t>(UB_ALIGN / sizeof(float));
-        uint32_t scaleNumAlignSize = (scaleNum * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-        totalBufferSize += scaleNumAlignSize;
+        totalBufferSize += (scaleNum * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
     if (isInputTokenMaskFlag) {
         uint32_t axisBsAlignSize = (axisBS * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
@@ -1410,10 +1408,11 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
         totalBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
     tilingData->moeDistributeCombineV2Info.bufferNum = totalBufferSize > ubSize ? BUFFER_SINGLE : BUFFER_NUM;
+    return;
 }
 
 static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
-    const char *nodeName, const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered)
+    const char *nodeName, const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered, const CombineV2Config& config)
 {
     CheckWinSizeData winSizeData;
     winSizeData.localMoeExpertNum = localMoeExpertNum;
@@ -1428,6 +1427,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, Mo
     winSizeData.tpWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
     winSizeData.isSetFullMeshV2 = false;
     winSizeData.isLayered = isLayered;
+    winSizeData.isMc2Context = config.isMc2Context;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
@@ -1518,16 +1518,8 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext*
         OP_LOGE(nodeName, "CheckCombineOrARN failed."), return ge::GRAPH_FAILED);
     
     // 校验win区大小
-    if (!config.isMc2Context) {
-        OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
-    } else {
-        auto attrs = context->GetAttrs();
-        auto cclBuffSizePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCclBufferSizeIndex));
-        OP_TILING_CHECK(cclBuffSizePtr == nullptr || *cclBuffSizePtr < 0,
-            OP_LOGE(K_INNER_DEBUG, "cclBuffSizePtr is invalid."), return GRAPH_FAILED);
-        tilingData->moeDistributeCombineV2Info.totalWinSizeEp = *cclBuffSizePtr;
-    }
+    OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered,
+        config) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
@@ -1545,7 +1537,10 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext*
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_TILING_CHECK((isLayered && (aivNum != AIV_NUM_93)), OP_LOGE(nodeName, "Layered must be fullCore."), return ge::GRAPH_FAILED);
+    uint32_t epWorldSize = tilingData->moeDistributeCombineV2Info.epWorldSize;
+    uint32_t serverNum = epWorldSize / RANK_NUM_PER_NODE;
+    OP_TILING_CHECK((isLayered && ((aivNum < RANK_NUM_PER_NODE)||(aivNum <= 2 * serverNum))), OP_LOGE(nodeName,
+        "Layered should use aiv num greater than 16 and 2 * serverNum, now is %u", aivNum), return ge::GRAPH_FAILED);
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
@@ -1582,15 +1577,15 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(const gert::T
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
 
     auto groupEpPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
-    auto epWorldSizePtr = attrs->GetAttrPointer<int>(ATTR_EP_WORLD_SIZE_INDEX);
-    auto epRankIdPtr = attrs->GetAttrPointer<int>(ATTR_EP_RANK_ID_INDEX);
-    auto moeExpertNumPtr = attrs->GetAttrPointer<int>(ATTR_MOE_EXPERT_NUM_INDEX);
-    auto tpWorldSizePtr = attrs->GetAttrPointer<int>(ATTR_TP_WORLD_SIZE_INDEX);
-    auto tpRankIdPtr = attrs->GetAttrPointer<int>(ATTR_TP_RANK_ID_INDEX);
-    auto expertSharedTypePtr = attrs->GetAttrPointer<int>(ATTR_EXPERT_SHARD_TYPE_INDEX);
-    auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
-    auto globalBsPtr = attrs->GetAttrPointer<int>(ATTR_GLOBAL_BS_INDEX);
-    auto commQuantModePtr = attrs->GetAttrPointer<int>(ATTR_COMM_QUANT_MODE_INDEX);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
+    auto tpWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_WORLD_SIZE_INDEX);
+    auto tpRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_RANK_ID_INDEX);
+    auto expertSharedTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
+    auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
+    auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
+    auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_QUANT_MODE_INDEX);
 
     auto zeroExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrZeroExpertNumIndex));
     auto copyExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCopyExpertNumIndex));
@@ -1696,7 +1691,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
 
     uint32_t k = expertIdStorageShape->GetStorageShape().GetDim(1);
     auto attrs = context->GetAttrs();
-    auto moeExpertNumPtr = attrs->GetAttrPointer<int>(ATTR_MOE_EXPERT_NUM_INDEX);
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
     auto zeroExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrZeroExpertNumIndex));
     auto copyExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCopyExpertNumIndex));
     auto constExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrConstExpertNumIndex));
@@ -1831,7 +1826,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         OP_LOGE(K_INNER_DEBUG, "When performanceInfo is not null, it needs to be one-dimensional."), return GRAPH_FAILED);
     attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
-    auto epWorldSizePtr = attrs->GetAttrPointer<int>(ATTR_EP_WORLD_SIZE_INDEX);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(*epWorldSizePtr),
         OP_LOGE(
             K_INNER_DEBUG,
@@ -1880,7 +1875,7 @@ static ge::graphStatus MoeDistributeCombineCheckCommAlg(const gert::TilingContex
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
     auto commAlg = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
-    auto epWorldSizePtr = attrs->GetAttrPointer<int>((config.attrEpWorldSizeIndex));
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     if ((epWorldSizePtr != nullptr) && (*epWorldSizePtr <= RANK_NUM_PER_NODE_A2)) {
         isLayered = false;
         OP_LOGD(K_INNER_DEBUG, "epWorldSize <= 8, use default fullmesh algorithm.");
@@ -1946,8 +1941,8 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
     uint64_t hcclBuffSize = 0ULL;
     auto ret = mc2tiling::GetCclBufferSize(groupEp, &hcclBuffSize, nodeName);
     OP_LOGD(nodeName, "HCCL_BUFFSIZE = %lu Bytes (%lu MB).", hcclBuffSize, ops::CeilDiv(hcclBuffSize, MB_SIZE));
-    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Get Ep hcclBuffSize failed.", hcclBuffSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGW(nodeName, "Get Ep hcclBuffSize failed.", hcclBuffSize),
+                    return ge::GRAPH_SUCCESS);
     uint32_t epWorldSize = info.epWorldSize;
     uint32_t localMoeExpertNum = info.moeExpertNum / epWorldSize;
     uint64_t maxBs = static_cast<uint64_t>(info.globalBs) / epWorldSize;
@@ -1960,17 +1955,15 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
         // 每个token发往k个专家时额外需带上专家索引、topk权重、量化系数、到达标志位共4个信息，这些信息对齐到32字节
         const uint64_t extraTokenInfoSize = 4 * ((info.k + 7) / 8 * 8) * sizeof(uint32_t);
         const uint64_t perTokenSize = info.h * sizeofDtypeX + extraTokenInfoSize;
-        uint64_t maxRecvTokenNum = maxBs * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM);
-        maxRecvTokenNum = (maxRecvTokenNum + BUFFER_ALIGN - 1) / BUFFER_ALIGN * BUFFER_ALIGN;
-        minHcclBuffSize = maxRecvTokenNum * perTokenSize + flagBuffSize;
+        uint64_t maxRecvTokenSize = (maxBs * perTokenSize + BUFFER_ALIGN - 1) / BUFFER_ALIGN * BUFFER_ALIGN;
+        minHcclBuffSize = maxRecvTokenSize * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM) + flagBuffSize;
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE ((moeExpertNum + epWorldSize / 4) * Align512(maxBs "
                     "* (h * 2 + 16 * Align8(k))) / 1MB + 8MB) = %luMB, actual HCCL_BUFFSIZE = %luMB, "
                     "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u. AlignY(x) = (x + Y - 1) / Y * Y.",
                     ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), info.moeExpertNum,
                     maxBs, info.h, info.k);
-            return ge::GRAPH_FAILED;
         }
     } else {
         constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
@@ -1978,13 +1971,12 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
         const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);
         minHcclBuffSize = BUFFER_NUM * (maxRecvTokenNum * perTokenSize + extraBuffSize);
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE (%lu * (maxBs * epWorldSize * "
                     "min(localMoeExpertNum, k) * h * 2 / 1MB + 2MB)) = %luMB, actual HCCL_BUFFSIZE = %luMB, maxBs = "
                     "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u.",
                     BUFFER_NUM, ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), maxBs,
                     epWorldSize, localMoeExpertNum, info.k, info.h);
-            return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -2036,17 +2028,15 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext*
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
-    size_t userWorkspaceSize = info.moeExpertNum * sizeof(uint32_t) * 2U;
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkspaceSize;
+    // SYSTEM_NEED_WORKSPACE + userWorkspaceSize
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(info.moeExpertNum * sizeof(uint32_t) * 2U);
 
     // 3. communication
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
-    auto epWorldSizePtr = attrs->GetAttrPointer<int>(ATTR_EP_WORLD_SIZE_INDEX);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     std::string algConfig = MoeDistributeCombineA2GetAlgConfig(*epWorldSizePtr, isLayered);
-    uint32_t opType = 18; // DispatchCombine
-
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(18), algConfig); // opType=18
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
@@ -2099,82 +2089,95 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context
     return ret;
 }
 
+static void MoeDistributeCombineV2ConfigIndexSet(CombineV2Config& config)
+{
+    config.tpSendCountsIndex = 5;       // 根据combineV2算子原型标志位设置tpSendCounts索引为5
+    config.xActiveMaskIndex = 6;        // 根据combineV2算子原型标志位设置xActiveMask索引为6
+    config.activationScaleIndex = 7;    // 根据combineV2算子原型标志位设置activationScale索引为7
+    config.weightScaleIndex = 8;        // 根据combineV2算子原型标志位设置weightScale索引为8
+    config.groupListIndex = 9;          // 根据combineV2算子原型标志位设置groupList索引为9
+    config.sharedExpertXIndex = 11;     // 根据combineV2算子原型标志位设置sharedExpertX索引为11
+    config.elasticInfoIndex = 12;       // 根据combineV2算子原型标志位设置elasticInfo索引为12
+    config.oriXIndex = 13;              // 根据combineV2算子原型标志位设置oriX索引为13
+    config.constExpertAlpha1Index = 14; // 根据combineV2算子原型标志位设置constExpertAlpha1索引为14
+    config.constExpertAlpha2Index = 15; // 根据combineV2算子原型标志位设置constExpertAlpha2索引为15
+    config.constExpertVIndex = 16;      // 根据combineV2算子原型标志位设置constExpertV索引为16
+    config.performanceInfoIndex = 17;   // 根据combineV2算子原型标志位设置performanceInfo索引为17
+    config.outputXIndex = 0;            // 根据combineV2算子原型标志位设置outputX索引为0
+    config.attrGroupEpIndex = 0;             // 根据combineV2算子原型标志位初始化属性groupEp索引为0
+    config.attrEpWorldSizeIndex = 1;         // 根据combineV2算子原型标志位初始化属性epWorldSize索引为1
+    config.attrEpRankIdIndex = 2;            // 根据combineV2算子原型标志位初始化属性epRankId索引为2
+    config.attrMoeExpertNumIndex = 3;        // 根据combineV2算子原型标志位初始化属性moeExpertNum索引为3
+    config.attrGroupTpIndex = 4;             // 根据combineV2算子原型标志位初始化属性attrGroupTpIndex索引为4
+    config.attrTpWorldSizeIndex = 5;         // 根据combineV2算子原型标志位初始化属性attrTpWorldSizeIndex索引为5
+    config.attrTpRankIdIndex = 6;            // 根据combineV2算子原型标志位初始化属性attrTpRankIdIndex索引为6
+    config.attrExpertSharedTypeIndex = 7;    // 根据combineV2算子原型标志位初始化属性attrExpertSharedTypeIndex索引为7
+    config.attrSharedExpertNumIndex = 8;     // 根据combineV2算子原型标志位初始化属性attrSharedExpertNumIndex索引为8
+    config.attrSharedExpertRankNumIndex = 9; // 根据combineV2算子原型标志位初始化属性attrSharedExpertRankNumIndex索引为9
+    config.attrGlobalBsIndex  = 10;      // 根据combineV2算子原型标志位初始化属性attrGlobalBsIndex索引为10
+    config.attrOutDTypeIndex = 11;       // 根据combineV2算子原型标志位初始化属性attrOutDTypeIndex索引为11
+    config.attrCommQuantModeIndex = 12;  // 根据combineV2算子原型标志位初始化属性attrCommQuantModeIndex索引为12
+    config.attrGroupListTypeIndex = 13;  // 根据combineV2算子原型标志位初始化属性attrGroupListTypeIndex索引为13
+    config.attrCommAlgIndex = 14;        // 根据combineV2算子原型标志位初始化属性attrCommAlgIndex索引为14
+    config.attrZeroExpertNumIndex = 15;  // 根据combineV2算子原型标志位设置属性attrZeroExpertNum索引为15
+    config.attrCopyExpertNumIndex = 16;  // 根据combineV2算子原型标志位设置属性attrCopyExpertNum索引为16
+    config.attrConstExpertNumIndex = 17; // 根据combineV2算子原型标志位设置属性attrConstExpertNum索引为17
+    config.hasAddRmsNorm = false;
+
+    return;
+}
+
+static void MoeDistributeCombineARNConfigIndexSet(CombineV2Config& config)
+{
+    config.residualXIndex = 5;       // 根据combineARN算子原型标志位设置residualX索引为5
+    config.gammaIndex = 6;           // 根据combineARN算子原型标志位设置gamma索引为6
+    config.tpSendCountsIndex = 7;    // 根据combineARN算子原型标志位设置tpSendCounts索引为7
+    config.xActiveMaskIndex = 8;     // 根据combineARN算子原型标志位设置xActiveMask索引为8
+    config.activationScaleIndex = 9; // 根据combineARN算子原型标志位设置activationScale索引为9
+    config.weightScaleIndex = 10;    // 根据combineARN算子原型标志位设置weightScale索引为10
+    config.groupListIndex = 11;      // 根据combineARN算子原型标志位设置groupList索引为11
+    config.sharedExpertXIndex = 13;  // 根据combineARN算子原型标志位设置sharedExpertX索引为13
+    config.elasticInfoIndex = 14;    // 根据combineARN算子原型标志位设置elasticInfo索引为14
+    config.oriXIndex = 15;           // 根据combineARN算子原型标志位设置oriX索引为15
+    config.constExpertAlpha1Index = 16; // 根据combineARN算子原型标志位设置constExpertAlpha1索引为16
+    config.constExpertAlpha2Index = 17; // 根据combineARN算子原型标志位设置constExpertAlpha2索引为17
+    config.constExpertVIndex = 18;      // 根据combineARN算子原型标志位设置constExpertV索引为18
+    config.performanceInfoIndex =19;     // combineARN算子原型没有传入performanceInfoIndex设置虚拟索引为19
+    config.outputYIndex = 0;         // 根据combineARN算子原型标志位设置outputY索引为0
+    config.outputRstdIndex = 1;      // 根据combineARN算子原型标志位设置outputRstd索引为1
+    config.outputXIndex = 2;         // 根据combineARN算子原型标志位设置outputX索引为2
+    config.attrGroupEpIndex = 0;      // 根据combineARN算子原型标志位初始化groupEp属性索引为0
+    config.attrEpWorldSizeIndex = 1;  // 根据combineARN算子原型标志位初始化epWorldSize属性索引为1
+    config.attrEpRankIdIndex = 2;     // 根据combineARN算子原型标志位初始化epRankId属性索引为2
+    config.attrMoeExpertNumIndex = 3; // 根据combineARN算子原型标志位初始化moeExpertNum属性索引为3
+    config.attrGroupTpIndex = 4;      // 根据combineARN算子原型标志位初始化attrGroupTpIndex属性索引为4
+    config.attrTpWorldSizeIndex = 5;  // 根据combineARN算子原型标志位初始化attrTpWorldSizeIndex属性索引为5
+    config.attrTpRankIdIndex = 6;         // 根据combineARN算子原型标志位初始化attrTpRankIdIndex属性索引为6
+    config.attrExpertSharedTypeIndex = 7; // 根据combineARN算子原型标志位初始化attrExpertSharedTypeIndex属性索引为7
+    config.attrSharedExpertNumIndex = 8;  // 根据combineARN算子原型标志位初始化attrSharedExpertNumIndex属性索引为8
+    config.attrSharedExpertRankNumIndex = 9; // 根据combineARN算子原型标志位初始化attrSharedExpertRankNumIndex属性索引为9
+    config.attrGlobalBsIndex  = 10;          // 根据combineARN算子原型标志位初始化attrGlobalBsIndex属性索引为10
+    config.attrOutDTypeIndex = 11;           // 根据combineARN算子原型标志位初始化attrOutDTypeIndex属性索引为11
+    config.attrCommQuantModeIndex = 12; // 根据combineARN算子原型标志位初始化attrCommQuantModeIndex属性索引为12
+    config.attrGroupListTypeIndex = 13; // 根据combineARN算子原型标志位初始化attrGroupListTypeIndex属性索引为13
+    config.attrCommAlgIndex = 14;        // 根据combineARN算子原型标志位初始化attrCommAlgIndex属性索引为14
+    config.attrNormEpsIndex = 15;        // 根据combineARN算子原型标志位设置attrNormEps属性索引为15
+    config.attrZeroExpertNumIndex = 16;  // 根据combineARN算子原型标志位设置attrZeroExpertNum属性索引为16
+    config.attrCopyExpertNumIndex = 17;  // 根据combineARN算子原型标志位设置attrCopyExpertNum属性索引为17
+    config.attrConstExpertNumIndex = 18; // 根据combineARN算子原型标志位设置attrConstExpertNum属性索引为18
+    config.hasAddRmsNorm = true;
+
+    return;
+}
 ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context)
 {
     auto rstdOutDesc = context->GetOutputDesc(HAS_ADD_RMS_NORM);
     CombineV2Config config;
     ge::graphStatus ret;
     if (rstdOutDesc == nullptr) {
-        config.tpSendCountsIndex = 5; // 根据combineV2算子原型标志位设置tpSendCounts索引为5
-        config.xActiveMaskIndex = 6; // 根据combineV2算子原型标志位设置xActiveMask索引为6
-        config.activationScaleIndex = 7; // 根据combineV2算子原型标志位设置activationScale索引为7
-        config.weightScaleIndex = 8; // 根据combineV2算子原型标志位设置weightScale索引为8
-        config.groupListIndex = 9; // 根据combineV2算子原型标志位设置groupList索引为9
-        config.sharedExpertXIndex = 11; // 根据combineV2算子原型标志位设置sharedExpertX索引为11
-        config.elasticInfoIndex = 12; // 根据combineV2算子原型标志位设置elasticInfo索引为12
-        config.oriXIndex = 13; // 根据combineV2算子原型标志位设置oriX索引为13
-        config.constExpertAlpha1Index = 14; // 根据combineV2算子原型标志位设置constExpertAlpha1索引为14
-        config.constExpertAlpha2Index = 15; // 根据combineV2算子原型标志位设置constExpertAlpha2索引为15
-        config.constExpertVIndex = 16; // 根据combineV2算子原型标志位设置constExpertV索引为16
-        config.performanceInfoIndex = 17; // 根据combineV2算子原型标志位设置performanceInfo索引为17
-        config.outputXIndex = 0; // 根据combineV2算子原型标志位设置outputX索引为0
-        config.attrGroupEpIndex = 0;  // 0: 根据combineV2算子原型标志位初始化groupEp索引
-        config.attrEpWorldSizeIndex = 1;  // 1: 根据combineV2算子原型标志位初始化epWorldSize索引
-        config.attrEpRankIdIndex = 2; // 2: 根据combineV2算子原型标志位初始化epRankId索引
-        config.attrMoeExpertNumIndex = 3; // 3: 根据combineV2算子原型标志位初始化moeExpertNum索引
-        config.attrGroupTpIndex = 4; // 4: 根据combineV2算子原型标志位初始化attrGroupTpIndex索引
-        config.attrTpWorldSizeIndex = 5; // 5: 根据combineV2算子原型标志位初始化attrTpWorldSizeIndex索引
-        config.attrTpRankIdIndex = 6; // 6: 根据combineV2算子原型标志位初始化attrTpRankIdIndex索引
-        config.attrExpertSharedTypeIndex = 7; // 7: 根据combineV2算子原型标志位初始化attrExpertSharedTypeIndex索引
-        config.attrSharedExpertNumIndex = 8; // 8: 根据combineV2算子原型标志位初始化attrSharedExpertNumIndex索引
-        config.attrSharedExpertRankNumIndex = 9; // 9: 根据combineV2算子原型标志位初始化attrSharedExpertRankNumIndex索引
-        config.attrGlobalBsIndex  = 10; // 10: 根据combineV2算子原型标志位初始化attrGlobalBsIndex索引
-        config.attrOutDTypeIndex = 11; // 11: 根据combineV2算子原型标志位初始化attrOutDTypeIndex索引
-        config.attrCommQuantModeIndex = 12; // 12: 根据combineV2算子原型标志位初始化attrCommQuantModeIndex索引
-        config.attrGroupListTypeIndex = 13; // 13: 根据combineV2算子原型标志位初始化attrGroupListTypeIndex索引
-        config.attrCommAlgIndex = 14; // 14: 根据combineV2算子原型标志位初始化attrCommAlgIndex索引
-        config.attrZeroExpertNumIndex = 15; // 根据combineV2算子原型标志位设置attrZeroExpertNum索引为15
-        config.attrCopyExpertNumIndex = 16; // 根据combineV2算子原型标志位设置attrCopyExpertNum索引为16
-        config.attrConstExpertNumIndex = 17; // 根据combineV2算子原型标志位设置attrConstExpertNum索引为17
-        config.hasAddRmsNorm = false;
+        MoeDistributeCombineV2ConfigIndexSet(config);
     } else {
-        config.residualXIndex = 5; // 根据combineARN算子原型标志位设置residualX索引为5
-        config.gammaIndex = 6; // 根据combineARN算子原型标志位设置gamma索引为6
-        config.tpSendCountsIndex = 7; // 根据combineARN算子原型标志位设置tpSendCounts索引为7
-        config.xActiveMaskIndex = 8; // 根据combineARN算子原型标志位设置xActiveMask索引为8
-        config.activationScaleIndex = 9; // 根据combineARN算子原型标志位设置activationScale索引为9
-        config.weightScaleIndex = 10; // 根据combineARN算子原型标志位设置weightScale索引为10
-        config.groupListIndex = 11; // 根据combineARN算子原型标志位设置groupList索引为11
-        config.sharedExpertXIndex = 13; // 根据combineARN算子原型标志位设置sharedExpertX索引为13
-        config.elasticInfoIndex = 14; // 根据combineARN算子原型标志位设置elasticInfo索引为14
-        config.oriXIndex = 15; // 根据combineARN算子原型标志位设置oriX索引为15
-        config.constExpertAlpha1Index = 16; // 根据combineARN算子原型标志位设置constExpertAlpha1索引为16
-        config.constExpertAlpha2Index = 17; // 根据combineARN算子原型标志位设置constExpertAlpha2索引为17
-        config.constExpertVIndex = 18; // 根据combineARN算子原型标志位设置constExpertV索引为18
-        config.performanceInfoIndex =19; // combineARN算子原型没有传入performanceInfoIndex设置虚拟索引为19
-        config.outputYIndex = 0; // 根据combineARN算子原型标志位设置outputY索引为0
-        config.outputRstdIndex = 1; // 根据combineARN算子原型标志位设置outputRstd索引为1
-        config.outputXIndex = 2; // 根据combineARN算子原型标志位设置outputX索引为2
-        config.attrGroupEpIndex = 0;  // 0: 根据combineV2算子原型标志位初始化groupEp索引
-        config.attrEpWorldSizeIndex = 1;  // 1: 根据combineV2算子原型标志位初始化epWorldSize索引
-        config.attrEpRankIdIndex = 2; // 2: 根据combineV2算子原型标志位初始化epRankId索引
-        config.attrMoeExpertNumIndex = 3; // 3: 根据combineV2算子原型标志位初始化moeExpertNum索引
-        config.attrGroupTpIndex = 4; // 4: 根据combineV2算子原型标志位初始化attrGroupTpIndex索引
-        config.attrTpWorldSizeIndex = 5; // 5: 根据combineV2算子原型标志位初始化attrTpWorldSizeIndex索引
-        config.attrTpRankIdIndex = 6; // 6: 根据combineV2算子原型标志位初始化attrTpRankIdIndex索引
-        config.attrExpertSharedTypeIndex = 7; // 7: 根据combineV2算子原型标志位初始化attrExpertSharedTypeIndex索引
-        config.attrSharedExpertNumIndex = 8; // 8: 根据combineV2算子原型标志位初始化attrSharedExpertNumIndex索引
-        config.attrSharedExpertRankNumIndex = 9; // 9: 根据combineV2算子原型标志位初始化attrSharedExpertRankNumIndex索引
-        config.attrGlobalBsIndex  = 10; // 10: 根据combineV2算子原型标志位初始化attrGlobalBsIndex索引
-        config.attrOutDTypeIndex = 11; // 11: 根据combineV2算子原型标志位初始化attrOutDTypeIndex索引
-        config.attrCommQuantModeIndex = 12; // 12: 根据combineV2算子原型标志位初始化attrCommQuantModeIndex索引
-        config.attrGroupListTypeIndex = 13; // 13: 根据combineV2算子原型标志位初始化attrGroupListTypeIndex索引
-        config.attrCommAlgIndex = 14; // 14: 根据combineV2算子原型标志位初始化attrCommAlgIndex索引
-        config.attrNormEpsIndex = 15; // 根据combineARN算子原型标志位设置attrNormEps索引为15
-        config.attrZeroExpertNumIndex = 16; // 根据combineARN算子原型标志位设置attrZeroExpertNum索引为16
-        config.attrCopyExpertNumIndex = 17; // 根据combineARN算子原型标志位设置attrCopyExpertNum索引为17
-        config.attrConstExpertNumIndex = 18; // 根据combineARN算子原型标志位设置attrConstExpertNum索引为18
-        config.hasAddRmsNorm = true;
+        MoeDistributeCombineARNConfigIndexSet(config);
     }
     ret = MoeDistributeCombineV2TilingFuncNew(context, config);
     
