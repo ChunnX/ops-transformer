@@ -47,7 +47,8 @@ public:
     __aicore__ inline void ProcessVector3(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
     __aicore__ inline void ProcessVector4(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
     __aicore__ inline void ProcessVector5(SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
-    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
+    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo,
+                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &zeroRowBuffer);
     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
     __aicore__ inline void ReInitBuffers(TPipe *pipe);
     __aicore__ inline void ProcessVector8();
@@ -97,6 +98,7 @@ public:
 
 private:
     static constexpr int64_t UB_ROW_SIZE = 8;
+    static constexpr int64_t N_INDEX_SIZE_12 = 12;
     static constexpr event_t EVENT_ID0 = (event_t)4;
     static constexpr event_t EVENT_ID2 = (event_t)6;
     static constexpr event_t EVENT_ID_DETER_PING = (event_t)8;
@@ -648,7 +650,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector5(SLIGrad
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo)
+__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo,
+                                                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &zeroRowBuffer)
 {
     if (kRunInfo.s2SingleIdx == 0) {
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
@@ -659,6 +662,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
     LocalTensor<INPUT_T> weightInUb = weightInQue.template AllocTensor<INPUT_T>();
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
     auto dwTensor = this->dwQue.template AllocTensor<T>();
+    LocalTensor<INPUT_T> zeroRowTensor = zeroRowBuffer.template GetTensor<INPUT_T>();
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.nIndexSize;
     dataCopyParams.blockLen = VEC_P_BASESIZE * sizeof(T);
@@ -679,8 +683,23 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
         this->reluGradQue.template EnQue(reluGradUb);
         this->reluGradQue.template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        uint16_t dstGap = constInfo.gSizeQueryIndex == G_SIZE_QUERY_INDEX_24 ? 
+                            (static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - runInfo.nIndexSize)) : 
+                            (static_cast<uint16_t>(runInfo.nIndexSize));
         DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.nIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
-            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),  static_cast<uint16_t>(runInfo.nIndexSize), 0, static_cast<uint16_t>(runInfo.nIndexSize)});
+            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),  static_cast<uint16_t>(runInfo.nIndexSize), 0, dstGap});
+        if (runInfo.nIndexSize == N_INDEX_SIZE_12) {    // 空行置零
+            CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_RELUGRAD_TO_L1_FLAG);
+            CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_RELUGRAD_TO_L1_FLAG);
+            if (constInfo.subBlockIdx == 0) {
+                uint16_t zeroRow = static_cast<uint16_t>((AlignTo(runInfo.nIndexSize, 16) - runInfo.nIndexSize) * 2);
+                uint16_t zeroRowGap = static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - zeroRow);
+                Duplicate(zeroRowTensor, static_cast<INPUT_T>(0), zeroRow * constInfo.pKBaseSize);
+                DataCopy(mm3AL1Tensor[2 * runInfo.nIndexSize * BLOCK_SINGLE_LEN], zeroRowTensor,
+                    {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), zeroRow, 0, zeroRowGap});                
+            }
+
+        }
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
     if (kRunInfo.isS2end) {
@@ -1177,7 +1196,8 @@ public:
     __aicore__ inline void CopyInMaxSum(SLIGradKLLossRunInfo &runInfo){};
     __aicore__ inline void ProcessVector4(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
     __aicore__ inline void ProcessVector5(SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
-    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
+    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo,
+                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &zeroRowBuffer){};
     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
     __aicore__ inline void ReInitBuffers(TPipe *pipe){};
     __aicore__ inline void ProcessVector8(){};
