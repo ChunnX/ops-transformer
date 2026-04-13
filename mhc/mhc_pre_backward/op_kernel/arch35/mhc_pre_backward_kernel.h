@@ -33,38 +33,43 @@ public:
     __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
     {
     }
+    // 入口函数
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
 
+    // 初始化函数
+    __aicore__ inline void InitGlobalBuffersAndTiling(InitParams initParams);
+    __aicore__ inline void InitUBAndAIVBuffers(InitParams initParams);
+    __aicore__ inline void InitStage2AndDataCopy();
+
+    // V0 流程 (向量计算)
+    __aicore__ inline void ProcessV0Main();
+    __aicore__ inline void ProcessV0MainLoop(uint32_t vecRunTimes, float alphaPre, float alphaPost, float alphaComb,
+                                             LocalTensor<P> &sumBuf);
+    __aicore__ inline void ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId);
     __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t dealBsNum, uint32_t ubOffset,
                                         uint32_t runBSStart, uint32_t runBSEnd);
-    __aicore__ inline void ProcessV0Main();
     __aicore__ inline void AllocV0V1Buffers(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers);
     __aicore__ inline void ProcessV0(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers, float alphaPre,
                                      float alphaPost, float alphaComb);
-    __aicore__ inline void VFDoV0ProcessHPostGrad(__ubuf__ P *hPostIn, __ubuf__ P *PostGradIn, __ubuf__ P *hPostGradOut,
-                                                  uint32_t stepLen);
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
                                      uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
-    __aicore__ inline void VFDoV1Process(__ubuf__ P *gradHMix, __ubuf__ P *gradInvRmsOut, __ubuf__ P *gradAlphaOut,
-                                         __ubuf__ P *gatherIn, __ubuf__ P *hMixIn, __ubuf__ P *invRmsIn,
-                                         uint32_t dealBSSize);
-    __aicore__ inline void VFDoV1ProcessBiasGradForN4N6(__ubuf__ P *outBufDst, __ubuf__ P *gatherFusion,
-                                                        uint32_t curBSSize);
-    __aicore__ inline void VFDoV1ProcessBiasGradForN8(__ubuf__ P *outBufDst, __ubuf__ P *gatherFusion,
-                                                      uint32_t curBSSize);
     __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &h1GradBuf, uint64_t currentDealBsNum,
                                         float alphaPre, float alphaPost, float alphaComb);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
     __aicore__ inline void AIV22Process(LocalTensor<P> &invRmsUb, LocalTensor<P> &xRsFp32Buf,
                                         LocalTensor<P> &xRsGradInvUb, uint32_t currentChunkSize, uint32_t copySizeND);
+
+    // C0/C1 流程 (矩阵计算)
     __aicore__ inline void ProcessC0C1Pipeline();
-    __aicore__ inline void ProcessV2Pipeline();
     __aicore__ inline void ProcessC0(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
     __aicore__ inline void ProcessC1(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
+
+    // V2 流程 (向量计算)
+    __aicore__ inline void ProcessV2Pipeline();
     __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart, uint32_t bsEnd,
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
@@ -77,28 +82,39 @@ public:
                                                        uint32_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkComputeXRsGrad(uint32_t copySizeND, uint32_t currentChunkSize,
-                                                        uint32_t chunkNDSize);
+                                                         uint32_t chunkNDSize);
     __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
                                                           uint32_t currentChunkSize, uint32_t chunkNDSize,
                                                           uint32_t buffId, LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkProcessGradXPost(uint32_t offsetND, uint32_t bsChunkStart,
-                                                          uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                                          uint32_t copySizeND);
+                                                           uint32_t currentChunkSize, uint32_t chunkNDSize,
+                                                           uint32_t copySizeND);
     __aicore__ inline void ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
-                                                     uint32_t currentChunkSize, uint32_t chunkNDSize);
-    __aicore__ inline void ProcessV3();
-    __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
-    __aicore__ inline void VFDoV3ProcessBiasGrad(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
-    __aicore__ inline void VFDoV3ProcessBiasGradForN8(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
+                                                      uint32_t currentChunkSize, uint32_t chunkNDSize);
 
+    // V3 流程 (向量计算)
+    __aicore__ inline void ProcessV3();
+    __aicore__ inline void ProcessV3AlphaGrad();
+    __aicore__ inline void ProcessV3BiasGrad();
+
+    // 向量化计算函数 (VFDo*)
     __aicore__ inline void VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
                                             __ubuf__ T *hInGradB16InAddr, uint16_t curLenN, uint32_t lenD, uint32_t i,
                                             uint32_t j, uint32_t runBSStart);
     __aicore__ inline void VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr, __ubuf__ P *hInGradAddr,
                                           uint32_t totalElem);
+    __aicore__ inline void VFDoV0ProcessHPostGrad(__ubuf__ P *hPostIn, __ubuf__ P *PostGradIn, __ubuf__ P *hPostGradOut,
+                                                  uint32_t stepLen);
+    __aicore__ inline void VFDoV1Process(__ubuf__ P *gradHMix, __ubuf__ P *gradInvRmsOut, __ubuf__ P *gradAlphaOut,
+                                         __ubuf__ P *gatherIn, __ubuf__ P *hMixIn, __ubuf__ P *invRmsIn,
+                                         uint32_t dealBSSize);
+    __aicore__ inline void VFDoV1ProcessBiasGradForN4N6(__ubuf__ P *outBufDst, __ubuf__ P *gatherFusion,
+                                                        uint32_t curBSSize);
+    __aicore__ inline void VFDoV1ProcessBiasGradForN8(__ubuf__ P *outBufDst, __ubuf__ P *gatherFusion,
+                                                      uint32_t curBSSize);
     __aicore__ inline void VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubuf__ T *hInGradInBufAddr,
-                                            __ubuf__ P *hPreUbAddr, uint32_t currentChunkSize, uint32_t copySizeND,
-                                            uint32_t currentN, uint32_t bsGlobalOffset);
+                                             __ubuf__ P *hPreUbAddr, uint32_t currentChunkSize, uint32_t copySizeND,
+                                             uint32_t currentN, uint32_t bsGlobalOffset);
 
     template <bool hasGamma, bool isFirstChunk>
     __aicore__ inline void VFDoV2XCastAndMulGamma(__ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr,
@@ -111,14 +127,9 @@ public:
                                                    __ubuf__ P *gammaBroadAddr, uint32_t currentChunkSize,
                                                    uint32_t copySizeND);
 
-    __aicore__ inline void InitGlobalBuffersAndTiling(InitParams initParams);
-    __aicore__ inline void InitUBAndAIVBuffers(InitParams initParams);
-    __aicore__ inline void InitStage2AndDataCopy();
-    __aicore__ inline void ProcessV0MainLoop(uint32_t vecRunTimes, float alphaPre, float alphaPost, float alphaComb,
-                                             LocalTensor<P> &sumBuf);
-    __aicore__ inline void ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId);
-    __aicore__ inline void ProcessV3AlphaGrad();
-    __aicore__ inline void ProcessV3BiasGrad();
+    __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
+    __aicore__ inline void VFDoV3ProcessBiasGrad(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
+    __aicore__ inline void VFDoV3ProcessBiasGradForN8(__ubuf__ P *biasGradOut, __ubuf__ P *biasGradIn);
 
 private:
     MT_C0 &mm0;
