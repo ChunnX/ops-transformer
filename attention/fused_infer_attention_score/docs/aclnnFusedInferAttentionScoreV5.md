@@ -1084,15 +1084,16 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 
 |    命名    |                            含义                            |
 | :---------: | :---------------------------------------------------------: |
-|     GQA     |           在资料约束中，泛指不传入ROPE的所有场景           |
-| Prefill MLA | 传入ROPE（包含合并和分离2种模式），且输入Q/K/V headdim为128 |
-| Decode MLA |             传入ROPE，且输入Q/K/V headdim为512             |
+|     GQA     |           在资料约束中，泛指不传入ROPE的所有场景,包含G=1和G>1的场景           |
+| Prefill MLA | 传入ROPE（包含合并和分离2种模式，headdim为64）：分离模式下，输入Q/K/V headdim为128，ROPE单独传入；合并模式下，输入Q/K headdim为192（与ROPE合并），V headdim为128，ROPE不单独传入 |
+| Decode MLA |             输入Q/K/V headdim为512，且ROPE单独传入             |
 |      B      |                Batch, 表示输入样本批量大小                |
 |     Q_N     |        输入query tensor的头数，对应query shape中的N        |
 |    KV_N    |    输入key/value tensor的头数，对应key/value shape中的N    |
 |     Q_S     |      输入query tensor的序列长度，对应query shape中的S      |
 |    KV_S    |  输入key/value tensor的序列长度，对应key/value shape中的S  |
 |     Q_T     |          输入query tensor所有batch序列长度的累加和          |
+|      G     |        Group，表示查询头的分组数，对应Q_N与KV_N的比值         |
 
 ### 参数组约束
 
