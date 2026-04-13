@@ -121,7 +121,6 @@ static ge::DataType StringToDataType(const string& dtype)
 static string FindCsvFile()
 {
     vector<string> searchPaths = {
-        "/home/shirui/opencode_cann_kimi/ops-transformer/gmm/grouped_matmul_finalize_routing/tests/ut/op_host/test_data/weight_quant_test_cases.csv",
         "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/test_data/weight_quant_test_cases.csv",
         "test_data/weight_quant_test_cases.csv",
         "../test_data/weight_quant_test_cases.csv",

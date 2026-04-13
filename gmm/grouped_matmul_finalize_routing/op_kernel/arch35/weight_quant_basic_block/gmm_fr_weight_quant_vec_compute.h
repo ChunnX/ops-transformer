@@ -507,8 +507,10 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Routin
     AscendC::SetAtomicAdd<float>();
     for (uint32_t mIdx = 0; mIdx < mRealSize; mIdx++)
     {
-        uint64_t mGmOffset = static_cast<int64_t>(rowIndex_.GetValue(mIdx));
-        
+        uint64_t mGmOffset = static_cast<int64_t>(rowIndex_[(rlLoopIdx & 1) * UB_BUFFER_INFO.rowIndexSingleBufferSize].GetValue(mIdx));
+        if(mGmOffset < 0){
+            continue;
+        }
         DataCopyPad2D(yFp32Global_[mGmOffset * offsetParam.nSize + offsetParam.nOffset], ubOutputF32Buffer[mIdx * 256],
                   1, offsetParam.nL1Size, offsetParam.nL1Size, offsetParam.nL1Size);
     }
@@ -537,14 +539,10 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyRo
     if (mRealSize == 0) {
         return;
     }
-    DataCopyPad2D(rowIndex_[(rlLoopIdx & 1) *
-                                                  UB_BUFFER_INFO.rowIndexSingleBufferSize],
-                  rowIndexGlobal_[mGmOffset], 1, mRealSize, mRealSize,
-                  mRealSize);
-    DataCopyPad2D(logits_[(rlLoopIdx & 1) *
-                                                  UB_BUFFER_INFO.logitsSingleBufferSize],
-                  logitsGlobal_[mGmOffset], 1, mRealSize, mRealSize,
-                  mRealSize);
+    DataCopyPad2D(rowIndex_[(rlLoopIdx & 1) * UB_BUFFER_INFO.rowIndexSingleBufferSize], rowIndexGlobal_[mGmOffset], 1,
+                  mRealSize, mRealSize, mRealSize);
+    DataCopyPad2D(logits_[(rlLoopIdx & 1) * UB_BUFFER_INFO.logitsSingleBufferSize], logitsGlobal_[mGmOffset], 1,
+                  mRealSize, mRealSize, mRealSize);
 }
 } // namespace WeightQuantBatchMatmulV2::Arch35
 
