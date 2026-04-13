@@ -10,7 +10,8 @@ std::vector<at::Tensor> apply_adam_wv2(at::Tensor &var_ref, at::Tensor &m_ref, a
                                        float lr, float beta1, float beta2,
                                        float weight_decay, float eps, bool amsgrad, bool maximize)
 {
-     EXEC_NPU_CMD(aclnnApplyAdamWV2, var_ref, m_ref, v_ref, grad, step, max_grad_norm_ref,
+     // 与 ops-nn-dev / autogen aclnnApplyAdamWV2GetWorkspaceSize 一致：var, m, v, max_grad_norm, grad, step
+     EXEC_NPU_CMD(aclnnCustomOp, var_ref, m_ref, v_ref, max_grad_norm_ref, grad, step,
                     lr, beta1, beta2, weight_decay, eps, amsgrad, maximize);
 
     std::vector<at::Tensor> result;
