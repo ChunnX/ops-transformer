@@ -16,7 +16,7 @@ bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blit
 ```
 Oneliner smoketest and benchmark
 ```shell
-(cd experimental/attention/blitz_sparse_attention/benchmark && python test.py && python benchmark.py)
+(cd experimental/attention/blitz_sparse_attention/benchmark && python test_attn.py && python benchmark.py)
 ```
 
 ## Parameters

@@ -10,10 +10,10 @@
 """
 Test suite. Has two modes:
 1. Full-blown pytesting:
-pytest test.py 
+pytest test_attn.py 
 
 2. Quick smoke test on a single input scenario:
-python test.py
+python test_attn.py
 """
 
 import itertools

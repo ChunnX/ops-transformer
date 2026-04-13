@@ -27,8 +27,9 @@ bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blit
 test and benchmark run times:
 ```shell
 cd experimental/attention/blitz_sparse_attention/benchmark
-pytest test.py # attention_out correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fusion_attention kernel and our own python implementation
+pytest test_attn.py # attention_out correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fusion_attention kernel and our own python implementation
 pytest test_lse.py # softmax_lse correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fused_infer_attention_score kernel
+pytest test_joint.py # simultaneously check correctness of both kernel outputs
 python benchmark.py # performance benchmarking - check the constant inputs shapes defined in the script
 ```
 

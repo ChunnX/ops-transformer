@@ -53,7 +53,9 @@ Key directories:
 | `op_host/op_api/aclnn_blitz_sparse_attention.h/.cpp` | Public aclnn API |
 | `op_kernel/blitz_sparse_attention_s1s2_bns1_x910_base.h` | Main AICore kernel template |
 | `torch_interface/torch_interface.cpp` | PyTorch / pybind11 entry point |
-| `benchmark/test.py` | pytest correctness suite |
+| `benchmark/test_attn.py` | pytest correctness suite that tests only the 1st output - attention output|
+| `benchmark/test_lse.py` | pytest correctness suite that tests only the 2nd output - lse |
+| `benchmark/test_joint.py` | pytest correctness suite that kointly tests attention and lse outputs |
 | `benchmark/benchmark.py` | Latency benchmark + data generators |
 
 Declared outputs: `attention_out` (index 0), `softmax_lse` (index 1, float32).  
@@ -134,7 +136,7 @@ computed LSE internally; what was missing was the full host-side + interface wir
 | `op_host/op_api/aclnn_blitz_sparse_attention.h/.cpp` | Public API: added same two params, passes through to inner. |
 | `torch_interface/torch_interface.cpp` | Return type `tuple<Tensor,Tensor>`; allocates `lse_out` as `{B,N,S}` float32 when flag=true, `{0}` otherwise; pybind11 updated. |
 | `op_kernel/blitz_sparse_attention.cpp` | Added `__gm__ uint8_t* softmaxLse` between `attentionOut` and `workspace` in the kernel entry function `blitz_sparse_attention`, forwarded to `blitz_sparse_attention_FIAS` (was `nullptr`). |
-| `benchmark/test.py` | Unpack tuple: `out, _ = torch_bsa.blitz_sparse_attention(...)` |
+| `benchmark/test_attn.py` | Unpack tuple: `out, _ = torch_bsa.blitz_sparse_attention(...)` |
 | `benchmark/benchmark.py` | Same tuple unpack in `_make_our_fn`. |
 | `benchmark/test_lse.py` | New file: pytest suite comparing BSA LSE vs FIAS LSE (`rtol=1e-3, atol=1e-3`), dense (sparsity=0) only. |
 
