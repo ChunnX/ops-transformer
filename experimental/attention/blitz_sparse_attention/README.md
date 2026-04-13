@@ -53,25 +53,46 @@ The test should be all green, and the benchmark result on Ascend910B2 should be:
 ```
 more explanation about benchmarking is [here](benchmark/README.md). 
 
-To invoke our block-sparse prompt flash attention kernel from python, use a call identicall to  is compatible with torch_npu, just use our provided torch_bsa python interface:
+To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `torch_npu` conventions:
 ```python
 import torch
 import torch_bsa
-out = torch_bsa.blitz_sparse_attention(
+
+# Returns a tuple (attention_out, softmax_lse).
+# softmax_lse is a [B, N, S] float32 tensor when softmax_lse_flag=True,
+# or an empty tensor ({0}-shaped) when softmax_lse_flag=False (default).
+attention_out, softmax_lse = torch_bsa.blitz_sparse_attention(
     q,
     k,
     v,
-    sabi=sabi,  # our new argument torch.uint16 shape: [batch_size, num_heads, ceil(seq_len/128), ceil(seq_len/512)]
+    sabi=sabi,  # torch.uint16, shape [B, N, ceil(S/128), ceil(S/128)]
+                # Each entry is a KV-block index (128×128 granularity).
+                # Pad unused slots with 0xFFFF (= uint16 sentinel for "skip").
     actual_seq_lengths=actseqlen,
     actual_seq_lengths_kv=actseqlenkv,
     num_heads=h,
     num_key_value_heads=h,
     input_layout='BNSD',
     scale_value=scale,
-    atten_mask=None,
     sparse_mode=0,
-    )
+    softmax_lse_flag=False,   # set True to receive log-sum-exp output
+)
 ```
+
+### softmax_lse output
+
+| Property | Value |
+|---|---|
+| Controlled by | `softmax_lse_flag` (bool attr, default `False`) |
+| Output index | 1 (always returned; empty when flag is `False`) |
+| Shape when enabled | `[B, N, S]` |
+| Dtype | `float32` (regardless of Q/K/V dtype) |
+| Layout | Non-TND layouts only (`BNSD`, `BSH`, `BSND`); TND returns `{0}` |
+| Semantics | Per-query log-sum-exp: `log(Σ exp(q·kᵀ / √d))` over all attended KV tokens |
+
+The LSE is computed during the same kernel pass as the attention output at no additional memory-bandwidth cost.  It is useful for ring attention, speculative decoding rescaling, and any application that needs to merge partial attention results across segments.
+
+When `softmax_lse_flag=False` the kernel skips the LSE write-out path and returns a zero-element placeholder tensor; the caller does not need to allocate memory for it.
 
 ## Example run in C++:
 A plain, pure C++, example is provided in examples subdirectory. Run it sing:
@@ -199,6 +220,20 @@ It is common to select which of the variants to compile by passing --op-variant=
     <td>公式中的输出。</td>
     <td>FLOAT16、BFLOAT16、INT8</td>
     <td>ND</td>
+  </tr>
+  <tr>
+    <td>softmax_lse</td>
+    <td>输出</td>
+    <td>每个query token对应的log-sum-exp值：log(Σ exp(q·kᵀ/√d))，用于ring attention等需要合并partial attention结果的场景。softmax_lse_flag为False时返回空tensor（numel=0）。</td>
+    <td>FLOAT32</td>
+    <td>ND，shape [B, N, S]</td>
+  </tr>
+  <tr>
+    <td>softmax_lse_flag</td>
+    <td>属性（输入）</td>
+    <td>是否输出softmax_lse。不需要LSE时建议传入False（默认）。</td>
+    <td>BOOL</td>
+    <td>-</td>
   </tr>
 </tbody>
 </table>

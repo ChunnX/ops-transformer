@@ -38,7 +38,7 @@ Using the CAPITAL_LETTERS variables at the top of the file you can ru all the th
     * `band`: torch_npu band mode: diagonal band. You can set the width of the diagonal with `BAND_PRE_TOKENS` and `BAND_POST_TOKENS`
     * `custom`: you can create your own custom mask in `make_custom_mask`. Will use the default `dense` pattern for the torch_npu version
 * `SPARSITY_VALS`: how many blocks to activate: randomly chosen, but each Q-block row will have the same number of blocks
-* `BLOCK_SIZE_Q`, `BLOCK_SIZE_KV`: For now, only the default 128x512 are supported for the `blocks_optimized*` version
+* `BLOCK_SIZE_Q`, `BLOCK_SIZE_KV`: Fixed at 128×128 for the `blocks_optimized*` version. Both Q-tiles and KV-tiles are 128 tokens wide.
 * `BLOCK_MASK_SEED`: for reproducibility of random sampling. Can set to any value to change random sampling
 * `USE_FRAME`: Adds a frame on top of the block-sparse mask. If you want to change the frame shape, please modify the method `generate_sparse_blocks_by_row_with_frame`. If `S` (in `S_VALS`) length is too short the mask might be dense. For now, the frame is always:
     * First 8 KV-blocks are active for all rows
@@ -225,6 +225,43 @@ TORCH_REFERENCE = False  # If False, will instead run the torch_npu reference
 ```
 
 The baseline dense `"dense"` mode (standard `torch_npu.npu_fusion_attention`) appears at every sparsity=0.0 row.
+
+## softmax_lse correctness tests (test_lse.py)
+
+`test_lse.py` verifies the `softmax_lse` (log-sum-exp) second output of the kernel.
+
+```shell
+pytest test_lse.py -v
+```
+
+### What is tested (~100 test instances, B=1 only)
+
+| Test | Reference | Shapes | Dtypes | Notes |
+|---|---|---|---|---|
+| `test_bsa_lse_vs_fias` | FIAS dense | 14 shapes, S up to 24 000 | bfloat16, float16 | Dense mode (no sabi) |
+| `test_bsa_lse_vs_fias_sparse` | FIAS sparse_mode=1 | 8 shapes, S up to 24 000 | bfloat16 | H=1, no border frame |
+| `test_bsa_lse_vs_fias_sparse_framed` | FIAS sparse_mode=1 | 2 shapes, S ≥ 16 384 | bfloat16 | H=1, FrameWidths(2,1,3,1) |
+| `test_bsa_lse_sparse_multihead` | Python float32 reference | 4 shapes, S ≤ 1 024 | bfloat16 | H=2,4; Python loops over sabi |
+| `test_bsa_lse_zero_input` | Analytical: log(S) | 5 shapes | bfloat16, float16 | Q=K=V=0 ⟹ uniform softmax |
+| `test_bsa_lse_shape_and_dtype` | — | 3 shapes | bfloat16 | Checks shape=[B,H,S], dtype=float32 |
+| `test_bsa_lse_disabled_returns_empty` | — | 3 shapes | bfloat16 | flag=False ⟹ numel=0 |
+
+### Why FIAS is the LSE reference
+
+FIAS (`npu_fused_infer_attention_score`) already exposes a `softmax_lse` output via its `softmaxLseFlag` bool attr (output index 1, shape `[B, N, S, 1]`, float32).  BSA computes the identical quantity — `log(Σ exp(q·kᵀ/√d))` over attended tokens — so FIAS with a matching token-level attention mask serves as a drop-in reference for H=1 shapes.
+
+For H>1 shapes FIAS cannot be used directly (its `sparse_mode=1` requires a `[B,1,S,S]` broadcast mask; passing `[B,H,S,S]` hangs the NPU), so a Python float32 reference that loops over the sabi indices is used instead.
+
+### Tolerances
+
+| Comparison | atol |
+|---|---|
+| BSA vs FIAS (bfloat16 input) | 0.025 |
+| BSA vs FIAS (float16 input) | 0.025 |
+| BSA vs Python float32 reference | 0.05 |
+| Zero-input invariant | 0.001 |
+
+float16 is excluded from sparse tests: FIAS processes `-inf`-masked tiles through its flash-attention tiling while BSA skips them entirely; the resulting LSE divergence exceeds any reasonable tolerance at high sparsity.
 
 ## Test setup
 ```
