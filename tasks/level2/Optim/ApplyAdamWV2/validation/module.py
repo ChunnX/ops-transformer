@@ -1,11 +1,9 @@
-from typing import List, Optional
+from typing import List
 
 import torch
 import torch_npu
-from torch_npu.contrib import transfer_to_npu
 import torch.nn as nn
-
-import math
+from torch.optim.adamw import _single_tensor_adamw
 
 
 class Model(nn.Module):
@@ -44,55 +42,55 @@ class Model(nn.Module):
         Returns:
             更新后的var_ref, m_ref, v_ref和max_grad_norm_ref列表
         """
-        # 处理不同的数据类型
-        dtype1, dtype2 = var_ref.dtype, grad.dtype
-
-        if dtype1 != dtype2:
+        dtype1 = var_ref.dtype
+        if grad.dtype != dtype1:
             grad = grad.to(dtype1)
+        if max_grad_norm_ref.dtype != dtype1:
             max_grad_norm_ref = max_grad_norm_ref.to(dtype1)
 
-        # 如果maximize为True，则反转梯度
-        if maximize:
-            grad = -grad
-
-        step = step.item() + 1
-
-        # AdamW: 首先应用权重衰减到参数，直接从参数中减去
-        # θ_t ← θ_t-1 - γλθ_t-1
-        if weight_decay != 0:
-            var_ref.mul_(1 - lr * weight_decay)
-
-        # 更新一阶和二阶动量
-        # m_t ← β_1 * m_t - 1 + (1 - β_1) * g_t
-        m_ref.lerp_(grad, 1 - beta1)
-        # v_t ← β_2 * v_t-1 + (1 - β_2) * g_t^2
-        v_ref.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-
-        # 修正偏差
-        beta1_t = beta1 ** step
-        beta2_t = beta2 ** step
-        # 处理AMSGrad变体
+        # 与 kernel 内 float 累加一致：参考在 float32 上算，再写回原 dtype
+        compute_dtype = torch.float32
+        p = var_ref.to(compute_dtype).clone()
+        exp_avg = m_ref.to(compute_dtype).clone()
+        exp_avg_sq = v_ref.to(compute_dtype).clone()
+        g = grad.to(compute_dtype).clone()
         if amsgrad:
-            torch.maximum(v_ref, max_grad_norm_ref, out=max_grad_norm_ref)
-            # v̂_t ← v_t^max/(1 - β_2^t)
-            v_hat = max_grad_norm_ref / (1 - beta2_t)
+            max_exp = max_grad_norm_ref.to(compute_dtype).clone()
+            max_list: List[torch.Tensor] = [max_exp]
         else:
-            # v̂_t ← v_t/(1 - β_2^t)
-            v_hat = v_ref / (1 - beta2_t)
+            max_list = [torch.zeros(1, dtype=compute_dtype, device=p.device)]
+        st = step.clone()
 
-        # 计算参数更新值
-        # m̂_t ← m_t/(1 - β_1^t)
-        # θ_t ← θ_t - γm̂_t/(√v̂_t + ε)
-        step_size = lr / (1 - beta1_t)
-        denom = torch.sqrt(v_hat) + eps
-        # θ_t ← θ_t - m_t * γ/(1 - β_1^t)/(√v̂_t + ε) = θ_t + (-step_size) * m_t / denom
-        var_ref.addcdiv_(m_ref, denom, value=-step_size)
+        _single_tensor_adamw(
+            [p],
+            [g],
+            [exp_avg],
+            [exp_avg_sq],
+            max_list,
+            [st],
+            grad_scale=None,
+            found_inf=None,
+            amsgrad=amsgrad,
+            beta1=beta1,
+            beta2=beta2,
+            lr=lr,
+            weight_decay=weight_decay,
+            eps=eps,
+            maximize=maximize,
+            capturable=False,
+            differentiable=False,
+            has_complex=False,
+        )
 
-        # 返回结果
+        var_ref.copy_(p.to(dtype1))
+        m_ref.copy_(exp_avg.to(dtype1))
+        v_ref.copy_(exp_avg_sq.to(dtype1))
+        if amsgrad:
+            max_grad_norm_ref.copy_(max_list[0].to(dtype1))
+
         if amsgrad:
             return [var_ref, m_ref, v_ref, max_grad_norm_ref]
-        else:
-            return [var_ref, m_ref, v_ref]
+        return [var_ref, m_ref, v_ref]
 
 
 class ModelNew(nn.Module):

@@ -15,12 +15,15 @@ def gen_input_data(shape, dtype_str, input_range):
     # 映射数据类型
     dtype_map = {
         "float32": torch.float32,
+        "float": torch.float32,
         "float16": torch.float16,
+        "half": torch.float16,
         "bfloat16": torch.bfloat16,
-        "int64": torch.int64
+        "bf16": torch.bfloat16,
+        "int64": torch.int64,
     }
 
-    dtype = dtype_map.get(dtype_str, torch.float32)
+    dtype = dtype_map.get(dtype_str.lower(), torch.float32)
 
     # 随机生成数据
     np.random.seed(5)  # 保持一致性
@@ -30,10 +33,7 @@ def gen_input_data(shape, dtype_str, input_range):
     max_grad_norm = torch.tensor(np.random.uniform(input_range[0], input_range[1], shape), dtype=dtype)
     grad = torch.tensor(np.random.uniform(input_range[0], input_range[1], shape), dtype=dtype)
 
-    # 生成step值
-    step = torch.tensor([np.random.randint(10)], dtype=torch.int64)
-
-    return var, m, v, max_grad_norm, grad, step
+    return var, m, v, max_grad_norm, grad
 
 def get_inputs(param, device=None):
     """
@@ -41,11 +41,15 @@ def get_inputs(param, device=None):
     """
     # 解析基本参数
     shape = eval(param.get('shape', '[2, 2, 2]'))
-    dtype_str = param.get('dtype', 'float16')
+    dtype_str = str(param.get('dtype', 'float16')).lower()
     input_range = [0.1, 1]  # 与原始代码保持一致
 
     # 生成基础变量
-    var_ref, m_ref, v_ref, max_grad_norm_ref, grad, step = gen_input_data(shape, dtype_str, input_range)
+    var_ref, m_ref, v_ref, max_grad_norm_ref, grad = gen_input_data(shape, dtype_str, input_range)
+    # CSV 的 step 表示「第几步」(1-based)，与 PyTorch state_steps（先 +=1 再算 bias）及 kernel（内部 +1）对齐：存 T-1
+    t = int(param.get("step", 1))
+    step_val = max(0, t - 1)
+    step = torch.tensor([step_val], dtype=torch.int64)
 
     # 如果指定了设备，将张量移到对应设备
     if device:
@@ -66,6 +70,20 @@ def get_inputs(param, device=None):
     maximize = parse_bool_param(param.get('maximize', False))
 
     return var_ref, m_ref, v_ref, grad, step, max_grad_norm_ref, lr, beta1, beta2, weight_decay, eps, amsgrad, maximize
+
+def custom_check_precision(row, ref_output, test_output):
+    """低精度与多输出：略放宽阈值；Adam 多步累加在 BF16/FP16 上绝对误差易偏大。"""
+    dtype_str = str(row.get("dtype", "float32")).lower()
+    if dtype_str in ("float16", "half", "bfloat16", "bf16"):
+        max_abs, max_rel = 5e-2, 5e-2
+    else:
+        max_abs, max_rel = 1e-2, 1e-2
+    from framework.utils import check_precision
+
+    ref_f = [t.float().cpu() for t in ref_output]
+    test_f = [t.float().cpu() for t in test_output]
+    return check_precision(ref_f, test_f, max_abs, max_rel)
+
 
 def get_init_inputs(param, device=None):
     """

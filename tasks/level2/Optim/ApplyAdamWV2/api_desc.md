@@ -53,7 +53,7 @@ def apply_adam_wv2(var_ref, m_ref, v_ref, grad, step, max_grad_norm_ref,
         m_ref (Tensor): 一阶动量，与var_ref形状和数据类型相同。
         v_ref (Tensor): 二阶动量，与var_ref形状和数据类型相同。
         grad (Tensor): 梯度数据，与var_ref形状和数据类型相同。
-        step (Tensor): 当前迭代次数，Device侧张量，元素个数为1。
+        step (Tensor): 标量 int64，语义与 PyTorch `AdamW.state_steps` 一致（本算子执行前尚未 `+=1` 的计数）。validation 中 CSV 的 `step` 为「第几步」(1-based) 时会写入 `step = max(0, T-1)`。
         max_grad_norm_ref (Tensor): 二阶动量的最大值，当amsgrad为True时必须提供，
                                            形状和数据类型与var_ref相同。
         lr (float): 学习率。
