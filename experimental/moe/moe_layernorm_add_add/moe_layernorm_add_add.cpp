@@ -6,15 +6,13 @@
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 
-namespace ascend_ops
-{
-    namespace MoeLayernormAddAdd
-    {
-        #include <iostream>
-        #include <stdio.h>
-        #include "dtype_convert.h"
-        #include "tiling/platform/platform_ascendc.h"
-        #include "kernel_operator.h"
+namespace ascend_ops{
+    namespace MoeLayernormAddAdd{
+    #include <iostream>
+    #include <stdio.h>
+    #include "dtype_convert.h"
+    #include "tiling/platform/platform_ascendc.h"
+    #include "kernel_operator.h"
         using namespace AscendC;
 
         constexpr int64_t UB_MAX_BYTES = 188*1024;
@@ -28,8 +26,8 @@ namespace ascend_ops
             __aicore__ inline MOE_LAYERNORM_ADDADD2D_SINGLECORE() {}
 
             __aicore__ inline void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
-                    GM_ADDR inOne, GM_ADDR inTwo, GM_ADDR inThr, GM_ADDR gamma, GM_ADDR beta, 
-                    GM_ADDR outLyn, GM_ADDR outAdd, const bool clamp, int64_t clamp_value, int32_t simplified)
+                    GM_ADDR  inOne, GM_ADDR  inTwo, GM_ADDR  inThr, GM_ADDR  gamma, GM_ADDR  beta, 
+                    GM_ADDR  outLyn, GM_ADDR  outAdd, const bool clamp, int64_t clamp_value, int32_t simplified)
             {
                 blockNum_ = GetBlockNum();
                 blockIdx_ = GetBlockIdx();
@@ -45,7 +43,7 @@ namespace ascend_ops
                 bkW_ = gbW_;
                 bkAlignW_ = AlignUp(bkW_, 64);
                 bkLoop_ = (int64_t)(gbH_ / blockNum_);
-                if(gbH_ % blockNum_ != 0){ bkLoop_ += 1; }
+                if (gbH_ % blockNum_ != 0) { bkLoop_ += 1; }
 
                 // tlH_ = 1;
                 // // tlW_ = (bkW_ <= MAX_COUNT_PER_TILE) ? bkW_ : MAX_COUNT_PER_TILE;
@@ -70,11 +68,8 @@ namespace ascend_ops
                 pipe_.InitBuffer(inQueBeta_, 1, bkAlignW_ * sizeof(T) * 2);
                 pipe_.InitBuffer(outQueOutLyn_, BUFFER_NUM, bkH_ * bkAlignW_ * sizeof(T) * 2);
                 pipe_.InitBuffer(outQueOutAdd_, BUFFER_NUM, bkH_ * bkAlignW_ * sizeof(T) * 2);
-
                 pipe_.InitBuffer(bufQueWork_, WORK_LOCAL_SIZE * sizeof(float));
                 pipe_.InitBuffer(bufQueSum_, 16*sizeof(float));
-
-
             }
 
             __aicore__ inline void Process()
@@ -103,15 +98,14 @@ namespace ascend_ops
                 Cast(gammaFloatLm_, gammaLm_[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
                 Cast(betaFloatLm_, betaLm_[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
 
-                if(bkAlignW_ - AlignUp(bkW_,16) != 0)
-                {
-                    Duplicate(in_two_local[bkAlignW_ + AlignUp(bkW_,16)], (T)0.0, bkAlignW_-AlignUp(bkW_, 16));
+                if (bkAlignW_ - AlignUp(bkW_, 16) != 0){
+                    Duplicate(in_two_local[bkAlignW_ + AlignUp(bkW_, 16)], (T)0.0, bkAlignW_ - AlignUp(bkW_, 16));
                 }
                 inTwoLmfp32_ = inTwoLm_.template ReinterpretCast<float>();
                 Cast(inTwoLmfp32_, inTwoLm_[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
 
-                for(int64_t i = 0; i < bkLoop_; i++){
-                    if(i * blockNum_ + blockIdx_ < gbH_){
+                for (int64_t i = 0; i < bkLoop_; i++) {
+                    if (i * blockNum_ + blockIdx_ < gbH_) {
                         CopyIn(i);
                         Compute(i);
                         CopyOut(i);
@@ -146,12 +140,10 @@ namespace ascend_ops
                 LocalTensor<T> in_one_local   = in_onethr_local[0];
                 LocalTensor<T> in_thr_local   = in_onethr_local[bkAlignW_];
                 LocalTensor<float> infloat_local = in_onethr_local.template ReinterpretCast<float>();
-
                 
-                if(bkAlignW_-AlignUp(bkW_,16) != 0)
-                {
-                    Duplicate<T>(in_one_local[AlignUp(bkW_,16)], (T)0.0, bkAlignW_-AlignUp(bkW_,16));
-                    Duplicate<T>(in_thr_local[AlignUp(bkW_,16)], (T)0.0, bkAlignW_-AlignUp(bkW_,16));
+                if (bkAlignW_ - AlignUp(bkW_, 16) != 0){
+                    Duplicate<T>(in_one_local[AlignUp(bkW_, 16)], (T)0.0, bkAlignW_ - AlignUp(bkW_, 16));
+                    Duplicate<T>(in_thr_local[AlignUp(bkW_, 16)], (T)0.0, bkAlignW_ - AlignUp(bkW_, 16));
                 }
                 
                 LocalTensor<T> out_lyn_local = outQueOutLyn_.AllocTensor<T>();
@@ -166,7 +158,6 @@ namespace ascend_ops
                 LocalTensor<float> sum_local     = bufQueSum_.Get<float>();
                 LocalTensor<float> work_local    = bufQueWork_.Get<float>();
 
-
                 Add(in_one_fp32_local, in_one_fp32_local, inTwoLmfp32_, bkAlignW_);  //  + fc2 bias
                 Add(in_one_fp32_local, in_one_fp32_local, in_thr_fp32_local, bkAlignW_); // + attn out
                 
@@ -175,33 +166,30 @@ namespace ascend_ops
                 //     ClampMax(in_one_fp32_local, in_one_fp32_local,  (float)(clamp_value_), bkW_);
                 //     ClampMin(in_one_fp32_local, in_one_fp32_local, (float)(-1 * clamp_value_), bkW_);
                 // }
-                Cast(out_add_local, in_one_fp32_local, RoundMode::CAST_ROUND, bkAlignW_);  // +fc2 + attn out 
+                Cast(out_add_local, in_one_fp32_local, RoundMode::CAST_ROUND, bkAlignW_);  //  +fc2 + attn out 
                 // Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkAlignW_);
 
                 float cur_mean = 0.0f;
-                if(!simplified_)
-                {
+                if (!simplified_){
                     Duplicate<float>(work_local, (float)0.0, 64);
-                    BinaryRepeatParams byrt_pas = {1,1,1,0,8,0};
+                    BinaryRepeatParams byrt_pas = {1, 1, 1, 0, 8, 0};
                     Add(work_local, in_one_fp32_local, work_local, 64, bkAlignW_/64, byrt_pas) ;
                     WholeReduceSum(sum_local, work_local, 64, 1, 1, 1, 8);
                     Muls(sum_local, sum_local, (float)invert_, 1);
                     Muls(sum_local, sum_local, (float)(-1.0), 1);
                     cur_mean = sum_local.GetValue(0);
                 }
-                
-                
+                              
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkAlignW_);
                 // (x - mean)
-                if(!simplified_)
-                {
+                if (!simplified_){
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) ^ 2
                 Mul(infloat_local, infloat_local, infloat_local, bkW_);
                 {
                     Duplicate<float>(work_local, (float)0.0, 64);
-                    BinaryRepeatParams byrt_pas = {1,1,1,0,8,0};
+                    BinaryRepeatParams byrt_pas = {1, 1, 1, 0, 8, 0};
                     Add(work_local, infloat_local, work_local, 64, bkAlignW_/64, byrt_pas);
                     WholeReduceSum(sum_local, work_local, 64, 1, 1, 1, 8);
                 }
@@ -213,17 +201,14 @@ namespace ascend_ops
 
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkW_);
                 // (x - mean)
-                if(!simplified_)
-                {
+                if (!simplified_){
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) / rsqrt(var)
                 Muls(infloat_local, infloat_local, cur_var, bkW_);
-                
-                
                 Mul(infloat_local, infloat_local, gammaFloatLm_, bkW_);
                 Add(infloat_local, infloat_local, betaFloatLm_, bkW_);
-                if(clamp_)
+                if (clamp_)
                 {
                     ClampMax(infloat_local, infloat_local,  (float)(clamp_value_), bkW_);
                     ClampMin(infloat_local, infloat_local, (float)(-1 * clamp_value_), bkW_);
@@ -272,9 +257,9 @@ namespace ascend_ops
             int64_t bkW_, bkAlignW_;
             int64_t bkLoop_;
 
-            //int64_t tlH_;
-            //int64_t tlW_, tlTailW_, tlAlignTailW_;
-            //int64_t tlLoop_;
+            // int64_t tlH_;
+            // int64_t tlW_, tlTailW_, tlAlignTailW_;
+            // int64_t tlLoop_;
 
             float epsilon_ = (float)0.0f;
             float invert_ = (float)0.0f;
@@ -289,7 +274,7 @@ namespace ascend_ops
         public:
             __aicore__ inline MOE_LAYERNORM_ADDADD2D_SINGLECORE_SH() {}
 
-            __aicore__ inline void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
+            __aicore__  inline void Init(const int64_t gbH, const int64_t gbW, const float epsilon, 
                     GM_ADDR inOne, GM_ADDR inTwo, GM_ADDR inThr, GM_ADDR gamma, GM_ADDR beta, 
                     GM_ADDR outLyn, GM_ADDR outAdd, const bool clamp, int64_t clamp_value, int32_t simplified)
             {
@@ -308,7 +293,8 @@ namespace ascend_ops
                 bkW_ = gbW_;
                 bkAlignW_ = AlignUp(bkW_, 64);
                 bkLoop_ = (int64_t)(gbH_ / blockNum_);
-                if(gbH_ % blockNum_ != 0){ bkLoop_ += 1; }
+                if(gbH_ % blockNum_ != 0){ bkLoop_ += 1; 
+                }
 
                 // tlH_ = 1;
                 // // tlW_ = (bkW_ <= MAX_COUNT_PER_TILE) ? bkW_ : MAX_COUNT_PER_TILE;
@@ -336,8 +322,6 @@ namespace ascend_ops
 
                 pipe_.InitBuffer(bufQueWork_, WORK_LOCAL_SIZE * sizeof(float));
                 pipe_.InitBuffer(bufQueSum_, 16*sizeof(float));
-
-
             }
 
             __aicore__ inline void Process()
@@ -429,8 +413,7 @@ namespace ascend_ops
                 Cast(out_add_local, in_one_fp32_local, RoundMode::CAST_ROUND, bkAlignW_);  // +fc2 + attn out 
 
                 float cur_mean = 0.0f;
-                if(!simplified_)
-                {
+                if(!simplified_){
                     Duplicate<float>(work_local, (float)0.0, 64);
                     BinaryRepeatParams byrt_pas = {1,1,1,0,8,0};
                     Add(work_local, in_one_fp32_local, work_local, 64, bkAlignW_/64, byrt_pas) ;
@@ -442,8 +425,7 @@ namespace ascend_ops
 
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkAlignW_);
                 // (x - mean)
-                if(!simplified_)
-                {
+                if(!simplified_){
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) ^ 2
@@ -462,14 +444,11 @@ namespace ascend_ops
 
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkW_);
                 // (x - mean)
-                if(!simplified_)
-                {
+                if(!simplified_){
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) / rsqrt(var)
-                Muls(infloat_local, infloat_local, cur_var, bkW_);
-                
-                
+                Muls(infloat_local, infloat_local, cur_var, bkW_);               
                 LocalTensor<T> gamma_local = inQueGamma_.DeQue<T>();
                 LocalTensor<float> gammaFloatLm = gamma_local.template ReinterpretCast<float>();
                 Cast(gammaFloatLm, gamma_local[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
@@ -531,9 +510,9 @@ namespace ascend_ops
             int64_t bkW_, bkAlignW_;
             int64_t bkLoop_;
 
-            //int64_t tlH_;
-            //int64_t tlW_, tlTailW_, tlAlignTailW_;
-            //int64_t tlLoop_;
+            // int64_t tlH_;
+            // int64_t tlW_, tlTailW_, tlAlignTailW_;
+            // int64_t tlLoop_;
 
             float epsilon_ = (float)0.0f;
             float invert_ = (float)0.0f;
@@ -544,19 +523,22 @@ namespace ascend_ops
 
         extern "C" __global__ __aicore__ void moeLayerNormAddAdd2dSingleCore_kernel(int64_t gbH, int64_t gbW, 
                 float epsilon, GM_ADDR inOne, GM_ADDR inTwo, GM_ADDR inThr,
-                GM_ADDR gamma, GM_ADDR beta, GM_ADDR outLyn, GM_ADDR outAdd, bool clamp, int64_t clamp_value, int32_t simplified, int32_t dtype)
+                GM_ADDR gamma, GM_ADDR beta, GM_ADDR outLyn, GM_ADDR outAdd, 
+                bool clamp, int64_t clamp_value, int32_t simplified, int32_t dtype)
         {
             if(gbH > GetBlockNum()){
                 TYPE_SWITCH(dtype, T, {
                 MOE_LAYERNORM_ADDADD2D_SINGLECORE<T> op;
-                op.Init(gbH, gbW, epsilon, inOne, inTwo, inThr, gamma, beta, outLyn, outAdd, clamp, clamp_value, simplified);
+                op.Init(gbH, gbW, epsilon, inOne, inTwo, inThr, gamma, beta, outLyn, outAdd, 
+                        clamp, clamp_value, simplified);
                 op.Process();
                 });
             }
             else{
                 TYPE_SWITCH(dtype, T, {
                 MOE_LAYERNORM_ADDADD2D_SINGLECORE_SH<T> op;
-                op.Init(gbH, gbW, epsilon, inOne, inTwo, inThr, gamma, beta, outLyn, outAdd, clamp, clamp_value, simplified);
+                op.Init(gbH, gbW, epsilon, inOne, inTwo, inThr, gamma, beta, outLyn, outAdd, 
+                        clamp, clamp_value, simplified);
                 op.Process();
                 });
             }
@@ -566,9 +548,10 @@ namespace ascend_ops
         void moeLayerNormAddAdd2dSingleCore_lanuch(int64_t blockDim, void* stream,
                 const int64_t gbH, const int64_t gbW, const float epsilon, 
                 uint8_t* inOne, uint8_t* inTwo, uint8_t* inThr,
-                uint8_t* gamma, uint8_t* beta, uint8_t* outLyn, uint8_t* outAdd, const bool clamp, int64_t clamp_value, int32_t simplified, int32_t dtype)
+                uint8_t* gamma, uint8_t* beta, uint8_t* outLyn, uint8_t* outAdd, const bool clamp, 
+                int64_t clamp_value, int32_t simplified, int32_t dtype)
         {
-            //NOTE_STDOUT_FILE();
+            // NOTE_STDOUT_FILE();
             
             if(gbH < blockDim){ blockDim = gbH; }
 
@@ -594,7 +577,8 @@ namespace ascend_ops
             int64_t gbW_;
             
             int64_t bkH_;
-            int64_t bkW_, bkAlignW_;
+            int64_t bkW_; 
+            int64_t bkAlignW_;
             
             gbW_ = gbW;
 
@@ -630,12 +614,14 @@ namespace ascend_ops
                 return 0;
             }
             
-            //NOTE_UB_LIMIT_ERROR();
+            // NOTE_UB_LIMIT_ERROR();
             std::cout << __FUNCTION__ << ": " << "UB size is limited, please check!" << std::endl;
             return 1;
         }
 
-        int64_t moe_layernorm_add_add_npu(int64_t blockDim, const int64_t gbH, const int64_t gbW, const double epsilon, torch::Tensor &inOne, torch::Tensor &inTwo, torch::Tensor &inThr, torch::Tensor &gamma, torch::Tensor &beta, torch::Tensor &outLyn, torch::Tensor &outAdd, const bool clamp, int64_t clamp_value, int64_t simplified, int64_t dtype) {
+        int64_t moe_layernorm_add_add_npu(int64_t blockDim, const int64_t gbH, const int64_t gbW, const double epsilon, torch::Tensor &inOne, torch::Tensor &inTwo, torch::Tensor &inThr, 
+                                          torch::Tensor &gamma, torch::Tensor &beta, torch::Tensor &outLyn, torch::Tensor &outAdd, 
+                                          const bool clamp, int64_t clamp_value, int64_t simplified, int64_t dtype) {
             TORCH_CHECK(torch_npu::utils::is_npu(inOne), "input one tensor must be on NPU device");
             TORCH_CHECK(torch_npu::utils::is_npu(inTwo), "input two tensor must be on NPU device");
             TORCH_CHECK(torch_npu::utils::is_npu(inThr), "input three tensor must be on NPU device");
@@ -648,7 +634,9 @@ namespace ascend_ops
             int launchStatus = 0;
             auto acl_call = [=, &launchStatus]() -> int
             {
-                launchStatus = moeLayerNormAddAdd2d_lanuch(blockDim, stream, gbH, gbW, epsilon, (uint8_t *)inOne.data_ptr(), (uint8_t *)inTwo.data_ptr(), (uint8_t *)inThr.data_ptr(), (uint8_t *)gamma.data_ptr(), (uint8_t *)beta.data_ptr(), (uint8_t *)outLyn.data_ptr(), (uint8_t *)outAdd.data_ptr(), clamp, clamp_value, simplified, dtype);
+                launchStatus = moeLayerNormAddAdd2d_lanuch(blockDim, stream, gbH, gbW, epsilon, (uint8_t *)inOne.data_ptr(), (uint8_t *)inTwo.data_ptr(), (uint8_t *)inThr.data_ptr(), 
+                                                           (uint8_t *)gamma.data_ptr(), (uint8_t *)beta.data_ptr(), (uint8_t *)outLyn.data_ptr(), (uint8_t *)outAdd.data_ptr(), 
+                                                           clamp, clamp_value, simplified, dtype);
                 return 0;
             };
             at_npu::native::OpCommand::RunOpApi("MoeLayernormAddAdd", acl_call);
