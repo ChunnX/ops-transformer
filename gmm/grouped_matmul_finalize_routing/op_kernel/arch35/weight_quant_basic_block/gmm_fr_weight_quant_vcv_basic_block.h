@@ -341,7 +341,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const Basi
 
             vecCompute_.WaitMte2ToS(rlLoopIdx_ - 1);
             vecCompute_.RoutingYToGm(lastBasicBlockMSize,ubOutputF32Buffer_,
-                                    lastOffsetParam);
+                                    lastOffsetParam, rlLoopIdx_ - 1);
             vecCompute_.SetSToMTE2(rlLoopIdx_ - 1);
 
         }
