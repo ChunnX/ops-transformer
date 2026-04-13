@@ -219,21 +219,26 @@ gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
 struct GroupedMatmulFinalizeRoutingInfershapeCase {
     void Run() const
     {
+        vector<gert::InfershapeContextPara::TensorDescription> inputDescs = {
+            {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
+            {MakeStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
+            {MakeStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ParseFormat(scaleFormat)},
+            {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
+            {MakeStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
+             ParseFormat(pertokenScaleFormat)},
+            {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
+            {MakeStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype), ParseFormat(sharedInputFormat)},
+            {MakeStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype), ParseFormat(logitFormat)},
+            {MakeStorageShape(ParseDims(rowIndexShape)), ParseDtype(rowIndexDtype), ParseFormat(rowIndexFormat)},
+        };
+        if (Trim(offsetShape) != "NONE") {
+            inputDescs.emplace_back(
+                MakeStorageShape(ParseDims(offsetShape)), ParseDtype(offsetDtype), ParseFormat(offsetFormat));
+        }
+
         gert::InfershapeContextPara infershapeContextPara(
             "GroupedMatmulFinalizeRouting",
-            {
-                {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {MakeStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
-                {MakeStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ParseFormat(scaleFormat)},
-                {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {MakeStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
-                 ParseFormat(pertokenScaleFormat)},
-                {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
-                {MakeStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype),
-                 ParseFormat(sharedInputFormat)},
-                {MakeStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype), ParseFormat(logitFormat)},
-                {MakeStorageShape(ParseDims(rowIndexShape)), ParseDtype(rowIndexDtype), ParseFormat(rowIndexFormat)},
-            },
+            inputDescs,
             {
                 {MakeStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
             },
@@ -267,6 +272,7 @@ struct GroupedMatmulFinalizeRoutingInfershapeCase {
     string sharedInputShape;
     string logitShape;
     string rowIndexShape;
+    string offsetShape;
 
     string xDtype;
     string wDtype;
@@ -277,6 +283,7 @@ struct GroupedMatmulFinalizeRoutingInfershapeCase {
     string sharedInputDtype;
     string logitDtype;
     string rowIndexDtype;
+    string offsetDtype;
     string yDtype;
 
     string xFormat;
@@ -288,6 +295,7 @@ struct GroupedMatmulFinalizeRoutingInfershapeCase {
     string sharedInputFormat;
     string logitFormat;
     string rowIndexFormat;
+    string offsetFormat;
     string yFormat;
 
     int64_t dtype = 0;
@@ -316,7 +324,7 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
         }
         vector<string> items;
         SplitStr2Vec(line, ",", items);
-        if (items.empty() || items[0] == "caseName" || items.size() < 42U) {
+        if (items.empty() || items[0] == "caseName" || items.size() < 45U) {
             continue;
         }
 
@@ -341,6 +349,7 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
         tc.sharedInputShape = Trim(items[idx++]);
         tc.logitShape = Trim(items[idx++]);
         tc.rowIndexShape = Trim(items[idx++]);
+        tc.offsetShape = Trim(items[idx++]);
 
         tc.xDtype = Trim(items[idx++]);
         tc.wDtype = Trim(items[idx++]);
@@ -351,6 +360,7 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
         tc.sharedInputDtype = Trim(items[idx++]);
         tc.logitDtype = Trim(items[idx++]);
         tc.rowIndexDtype = Trim(items[idx++]);
+        tc.offsetDtype = Trim(items[idx++]);
         tc.yDtype = Trim(items[idx++]);
 
         tc.xFormat = Trim(items[idx++]);
@@ -362,6 +372,7 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
         tc.sharedInputFormat = Trim(items[idx++]);
         tc.logitFormat = Trim(items[idx++]);
         tc.rowIndexFormat = Trim(items[idx++]);
+        tc.offsetFormat = Trim(items[idx++]);
         tc.yFormat = Trim(items[idx++]);
 
         tc.dtype = stoll(Trim(items[idx++]));
