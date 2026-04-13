@@ -104,7 +104,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>输入</td>
           <td>公式中的输入<code>x</code>。</td>
           <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-          <td>FLOAT<sup>1</sup>、FLOAT16、INT16<sup>1</sup>、INT8、INT4<sup>1</sup>、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup></td>
+          <td>FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4<sup>1</sup>、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup></td>
           <td>ND</td>
           <td>2-6</td>
           <td>√</td>
@@ -114,7 +114,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>输入</td>
           <td>公式中的<code>weight</code>。</td>
           <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-          <td>FLOAT<sup>1</sup>、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup></td>
+          <td>FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup></td>
           <td>ND</td>
           <td>2-3</td>
           <td>√</td>
