@@ -27,6 +27,9 @@ static constexpr uint32_t MAX_EP_RANK_SIZE = 8U;
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
 static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
+static constexpr uint32_t SCALE_COMM_BATCH_THRESHOLD = 32U;
+static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
+static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
@@ -51,6 +54,9 @@ struct TaskTilingInfo {
     uint64_t epWorldSize;   // expert parallel world size (EP并行域大小)
     uint64_t e;             // 单卡上的专家数量
     
+    // 平台信息
+    uint64_t ubSize;        // UB大小
+
     // 循环调度参数
     uint32_t mainLoopExpertNum;  // 主循环每次处理的expert数量
     uint32_t tailLoopExpertNum;  // 尾循环处理的expert数量
