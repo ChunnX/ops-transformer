@@ -469,7 +469,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         OP_CHECK_IF(fiaInfo.s1Size < 1,
                 OP_LOGE(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
-                    "input query's sequence length is %u, it should be >=1"
+                    "input query's sequence length is %u, it should be >=1",
                     QuantModeToSerialString(fiaInfo.quantMode).c_str(),
                     SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.s1Size),
                 return ge::GRAPH_FAILED);
