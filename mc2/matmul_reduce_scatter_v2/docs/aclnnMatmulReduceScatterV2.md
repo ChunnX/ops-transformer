@@ -15,14 +15,14 @@
 
 ## 功能说明
 
-- **接口功能**:
+- 接口功能:
     aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上,
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - 新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
-- **计算公式**：
+- 计算公式：
     - 情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，对入参x1、x2、bias进行matmul计算后，进行ReduceScatter通信。
 
         $$
@@ -106,7 +106,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     </tr></thead>
     <tbody>
     <tr>
-        <td>x1</td>
+        <td>x1(aclTensor*)</td>
         <td>输入</td>
         <td>MM左矩阵，即计算公式中的x1。</td>
         <td>当前版本仅支持两维输入，shape为[m, k]，且仅支持不转置场景。</td>
@@ -116,7 +116,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>×</td>
     </tr>
     <tr>
-        <td>x2</td>
+        <td>x2(aclTensor*)</td>
         <td>输入</td>
         <td>MM右矩阵，即计算公式中的x2。</td>
         <td><ul><li>当前版本仅支持二维输入, shape为[m, k]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
@@ -126,7 +126,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>√（仅适用转置场景）</td>
     </tr>
     <tr>
-        <td>bias</td>
+        <td>bias(aclTensor*)</td>
         <td>输入</td>
         <td>即计算公式中的bias。</td>
         <td><ul><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></ul></td>
@@ -136,7 +136,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>×</td>
     </tr>
     <tr>
-        <td>x1Scale</td>
+        <td>x1Scale(aclTensor*)</td>
         <td>输入</td>
         <td>mm左矩阵反量化参数。</td>
         <td><ul><li>支持传入空指针场景。</li></ul></td>
@@ -146,7 +146,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>×</td>
     </tr>
     <tr>
-        <td>x2Scale</td>
+        <td>x2Scale(aclTensor*)</td>
         <td>输入</td>
         <td>mm右矩阵反量化参数。</td>
         <td>支持传入空指针场景。</td>
@@ -156,7 +156,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>√（仅适用转置场景）</td>
     </tr>
     <tr>
-        <td>quantScale</td>
+        <td>quantScale(aclTensor*)</td>
         <td>输入</td>
         <td>输出矩阵量化scale。</td>
         <td>当前仅支持传入空指针场景。</td>
@@ -166,7 +166,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>×</td>
     </tr>
     <tr>
-        <td>blockSize</td>
+        <td>blockSize（int64_t）</td>
         <td>输入</td>
         <td>用于表示mm输出矩阵在M轴方向上和N轴方向上可以用于对应方向上的多少个数的量化。</td>
         <td>blockSize由blockSizeM、blockSizeN、blockSizeK三个值拼接而成，每个值占16位，计算公式为blockSize = blockSizeK | blockSizeN << 16 | blockSizeM << 32，mm输出矩阵不涉及K轴，blockSizeK固定为0, 当前版本只支持blockSizeM=blockSizeN=0。</td>
@@ -176,7 +176,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>group</td>
+        <td>group(char*)</td>
         <td>输入</td>
         <td>通信域名称。</td>
         <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>reduceOp</td>
+        <td>reduceOp(char*)</td>
         <td>输入</td>
         <td>reduce操作类型。</td>
         <td>当前版本仅支持“sum”。</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>commTurn</td>
+        <td>commTurn（int64_t）</td>
         <td>输入</td>
         <td>通信数据切分数，即总数据量/单次通信量。</td>
         <td>当前版本仅支持输入0。</td>
@@ -206,7 +206,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>streamMode</td>
+        <td>streamMode（int64_t）</td>
         <td>输入</td>
         <td>流模式的枚举。</td>
         <td>当前只支持枚举值1。</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>groupSize</td>
+        <td>groupSize（int64_t）</td>
         <td>输入</td>
         <td>用于表示反量化中x1Scale/x2Scale输入的一个数在其所在的对应维度方向上可以用于该方向x1/x2输入的多少个数的反量化。</td>
         <td>groupSize输入由3个方向的groupSizeM、groupSizeN、groupSizeK三个值拼接组成，每个值占16位，计算公式为groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>commMode</td>
+        <td>commMode(char*)</td>
         <td>输入</td>
         <td>通信模式。</td>
         <td>-</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>output</td>
+        <td>output(aclTensor*)</td>
         <td>输出</td>
         <td>AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
         <td>仅当输出类型为FLOAT16、BFLOAT16时支持空Tensor。</td>
@@ -246,7 +246,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>×</td>
     </tr>
     <tr>
-        <td>amaxOutOptional</td>
+        <td>amaxOutOptional(aclTensor*)</td>
         <td>输出</td>
         <td>MM计算的最大值结果，即公式中的amaxOut。</td>
         <td>当前版本仅支持nullptr或空tensor。</td>
@@ -256,7 +256,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>×</td>
     </tr>
     <tr>
-        <td>workspaceSize</td>
+        <td>workspaceSize（uint64_t*）</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
@@ -266,7 +266,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>-</td>
     </tr>
     <tr>
-        <td>executor</td>
+        <td>executor(aclOpExecutor**)</td>
         <td>输出</td>
         <td>返回op执行器，包含了算子计算流程。</td>
         <td>-</td>
