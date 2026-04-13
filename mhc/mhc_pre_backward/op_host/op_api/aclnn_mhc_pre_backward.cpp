@@ -78,7 +78,7 @@ public:
     }
 
     AclnnMhcPreBackward &SetInput(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                    const aclTensor *gamma)
+                                  const aclTensor *gamma)
     {
         obj_.x = x;
         obj_.phi = phi;
@@ -89,7 +89,7 @@ public:
     }
 
     AclnnMhcPreBackward &SetForwardInput(const aclTensor *invRms, const aclTensor *mmRes, const aclTensor *hPre,
-                                           const aclTensor *hPost)
+                                         const aclTensor *hPost)
     {
         obj_.invRms = invRms;
         obj_.mmRes = mmRes;
@@ -99,8 +99,7 @@ public:
         return *this;
     }
 
-    AclnnMhcPreBackward &SetGradInput(const aclTensor *hInGrad, const aclTensor *hPostGrad,
-                                        const aclTensor *hResGrad)
+    AclnnMhcPreBackward &SetGradInput(const aclTensor *hInGrad, const aclTensor *hPostGrad, const aclTensor *hResGrad)
     {
         obj_.hInGrad = hInGrad;
         obj_.hPostGrad = hPostGrad;
@@ -121,9 +120,8 @@ public:
         return *this;
     }
 
-    AclnnMhcPreBackward &SetOutput(const aclTensor *xGrad, const aclTensor *hcWeightGrad,
-                                     const aclTensor *alphaGrad, const aclTensor *biasPostGrad,
-                                     const aclTensor *gammaGrad)
+    AclnnMhcPreBackward &SetOutput(const aclTensor *xGrad, const aclTensor *hcWeightGrad, const aclTensor *alphaGrad,
+                                   const aclTensor *biasPostGrad, const aclTensor *gammaGrad)
     {
         obj_.xGrad = xGrad;
         obj_.hcWeightGrad = hcWeightGrad;
@@ -153,15 +151,13 @@ bool MhcGradCheckInputNotNullImpl(const aclTensor *tensor, const char *name)
 
 bool MhcGradCheckInputNotNull(const AclnnMhcPreBackwardParams &params)
 {
-    return MhcGradCheckInputNotNullImpl(params.x, "x") &&
-           MhcGradCheckInputNotNullImpl(params.phi, "phi") &&
+    return MhcGradCheckInputNotNullImpl(params.x, "x") && MhcGradCheckInputNotNullImpl(params.phi, "phi") &&
            MhcGradCheckInputNotNullImpl(params.alpha, "alpha") &&
            MhcGradCheckInputNotNullImpl(params.hInGrad, "hInGrad") &&
            MhcGradCheckInputNotNullImpl(params.hPostGrad, "hPostGrad") &&
            MhcGradCheckInputNotNullImpl(params.hResGrad, "hResGrad") &&
            MhcGradCheckInputNotNullImpl(params.invRms, "invRms") &&
-           MhcGradCheckInputNotNullImpl(params.mmRes, "mmRes") &&
-           MhcGradCheckInputNotNullImpl(params.hPre, "hPre") &&
+           MhcGradCheckInputNotNullImpl(params.mmRes, "mmRes") && MhcGradCheckInputNotNullImpl(params.hPre, "hPre") &&
            MhcGradCheckInputNotNullImpl(params.hPost, "hPost");
 }
 
@@ -190,16 +186,13 @@ bool MhcGradCheckEmptyTensorImpl(const aclTensor *tensor, const char *name)
 
 bool MhcGradCheckEmptyTensor(const AclnnMhcPreBackwardParams &params)
 {
-    return MhcGradCheckEmptyTensorImpl(params.x, "x") &&
-           MhcGradCheckEmptyTensorImpl(params.phi, "phi") &&
+    return MhcGradCheckEmptyTensorImpl(params.x, "x") && MhcGradCheckEmptyTensorImpl(params.phi, "phi") &&
            MhcGradCheckEmptyTensorImpl(params.alpha, "alpha") &&
            MhcGradCheckEmptyTensorImpl(params.hInGrad, "hInGrad") &&
            MhcGradCheckEmptyTensorImpl(params.hPostGrad, "hPostGrad") &&
            MhcGradCheckEmptyTensorImpl(params.hResGrad, "hResGrad") &&
-           MhcGradCheckEmptyTensorImpl(params.invRms, "invRms") &&
-           MhcGradCheckEmptyTensorImpl(params.mmRes, "mmRes") &&
-           MhcGradCheckEmptyTensorImpl(params.hPre, "hPre") &&
-           MhcGradCheckEmptyTensorImpl(params.hPost, "hPost") &&
+           MhcGradCheckEmptyTensorImpl(params.invRms, "invRms") && MhcGradCheckEmptyTensorImpl(params.mmRes, "mmRes") &&
+           MhcGradCheckEmptyTensorImpl(params.hPre, "hPre") && MhcGradCheckEmptyTensorImpl(params.hPost, "hPost") &&
            (params.gradXPost == nullptr || MhcGradCheckEmptyTensorImpl(params.gradXPost, "gradXPost"));
 }
 
@@ -209,7 +202,9 @@ bool CheckDimNum(const aclTensor *tensor, size_t expected, const char *name, boo
     bool valid = isRange ? (dimNum == expected || dimNum == expected2) : (dimNum == expected);
     if (!valid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dim num must be %s, but got %zu", name,
-                isRange ? (std::to_string(expected) + " or " + std::to_string(expected2)).c_str() : std::to_string(expected).c_str(), dimNum);
+                isRange ? (std::to_string(expected) + " or " + std::to_string(expected2)).c_str() :
+                          std::to_string(expected).c_str(),
+                dimNum);
         return false;
     }
     return true;
@@ -217,16 +212,13 @@ bool CheckDimNum(const aclTensor *tensor, size_t expected, const char *name, boo
 
 bool MhcGradCheckInputDims(const AclnnMhcPreBackwardParams &params)
 {
-    return CheckDimNum(params.x, 3, "x", true, 4) &&
-           CheckDimNum(params.phi, 2, "phi") &&
+    return CheckDimNum(params.x, 3, "x", true, 4) && CheckDimNum(params.phi, 2, "phi") &&
            CheckDimNum(params.alpha, 1, "alpha") &&
            (params.gamma == nullptr || CheckDimNum(params.gamma, 2, "gamma")) &&
            CheckDimNum(params.hInGrad, 2, "hInGrad", true, 3) &&
            CheckDimNum(params.hPostGrad, 2, "hPostGrad", true, 3) &&
-           CheckDimNum(params.hResGrad, 3, "hResGrad", true, 4) &&
-           CheckDimNum(params.invRms, 1, "invRms", true, 2) &&
-           CheckDimNum(params.mmRes, 2, "mmRes", true, 3) &&
-           CheckDimNum(params.hPre, 2, "hPre", true, 3) &&
+           CheckDimNum(params.hResGrad, 3, "hResGrad", true, 4) && CheckDimNum(params.invRms, 1, "invRms", true, 2) &&
+           CheckDimNum(params.mmRes, 2, "mmRes", true, 3) && CheckDimNum(params.hPre, 2, "hPre", true, 3) &&
            CheckDimNum(params.hPost, 2, "hPost", true, 3) &&
            (params.gradXPost == nullptr || CheckDimNum(params.gradXPost, 3, "gradXPost", true, 4));
 }
@@ -237,7 +229,8 @@ bool MhcGradCheckOutputDims(const AclnnMhcPreBackwardParams &params)
     auto xGradDimNum = params.xGrad->GetViewShape().GetDimNum();
     if (hInGradDimNum == 3) {
         if (xGradDimNum != 4) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "xGrad tensor dim num must be 4 for BSND format, but got %zu", xGradDimNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "xGrad tensor dim num must be 4 for BSND format, but got %zu",
+                    xGradDimNum);
             return false;
         }
     } else {
@@ -246,10 +239,8 @@ bool MhcGradCheckOutputDims(const AclnnMhcPreBackwardParams &params)
             return false;
         }
     }
-    return CheckDimNum(params.hcWeightGrad, 2, "hcWeightGrad") &&
-           CheckDimNum(params.alphaGrad, 1, "alphaGrad") &&
-           CheckDimNum(params.biasPostGrad, 1, "biasPostGrad") &&
-           CheckDimNum(params.gammaGrad, 2, "gammaGrad");
+    return CheckDimNum(params.hcWeightGrad, 2, "hcWeightGrad") && CheckDimNum(params.alphaGrad, 1, "alphaGrad") &&
+           CheckDimNum(params.biasPostGrad, 1, "biasPostGrad") && CheckDimNum(params.gammaGrad, 2, "gammaGrad");
 }
 
 bool MhcGradCheckInputOutDims(const AclnnMhcPreBackwardParams &params)
@@ -457,7 +448,11 @@ bool MhcGradCheckInputOutShape(const AclnnMhcPreBackwardParams &params)
     auto xDimNum = params.x->GetViewShape().GetDimNum();
     auto hInGradDimNum = hInGradShape.GetDimNum();
 
-    uint64_t batch = 0, sequence = 0, t = 0, dimen = 0, numsResidual = 0;
+    uint64_t batch = 0;
+    uint64_t sequence = 0;
+    uint64_t t = 0;
+    uint64_t dimen = 0;
+    uint64_t numsResidual = 0;
 
     if (hInGradDimNum == 3) {
         batch = hInGradShape.GetDim(0);
@@ -499,8 +494,7 @@ bool CheckDtype(const aclTensor *tensor, DataType expected, const char *name, bo
     auto dtype = tensor->GetDataType();
     bool valid = isValidX ? (dtype == DataType::DT_BF16 || dtype == DataType::DT_FLOAT16) : (dtype == expected);
     if (!valid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s", name,
-                isValidX ? "BF16 or FP16" : "FP32");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s", name, isValidX ? "BF16 or FP16" : "FP32");
         return false;
     }
     return true;
@@ -508,8 +502,7 @@ bool CheckDtype(const aclTensor *tensor, DataType expected, const char *name, bo
 
 bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
 {
-    return CheckDtype(params.x, DataType::DT_FLOAT, "x", true) &&
-           CheckDtype(params.phi, DataType::DT_FLOAT, "phi") &&
+    return CheckDtype(params.x, DataType::DT_FLOAT, "x", true) && CheckDtype(params.phi, DataType::DT_FLOAT, "phi") &&
            CheckDtype(params.alpha, DataType::DT_FLOAT, "alpha") &&
            (params.gamma == nullptr || CheckDtype(params.gamma, DataType::DT_FLOAT, "gamma")) &&
            CheckDtype(params.hInGrad, DataType::DT_FLOAT, "hInGrad", true) &&
@@ -520,7 +513,7 @@ bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
            CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
            CheckDtype(params.hPost, DataType::DT_FLOAT, "hPost") &&
            (params.gradXPost == nullptr || (CheckDtype(params.gradXPost, DataType::DT_FLOAT, "gradXPost", true) &&
-           params.gradXPost->GetDataType() == params.x->GetDataType()));
+                                            params.gradXPost->GetDataType() == params.x->GetDataType()));
 }
 
 bool MhcGradCheckOutputDtype(const AclnnMhcPreBackwardParams &params)
@@ -562,17 +555,11 @@ static bool CheckFormat(const aclTensor *tensor, const char *name)
 
 bool MhcGradCheckInputFormat(const AclnnMhcPreBackwardParams &params)
 {
-    return CheckFormat(params.x, "x") &&
-           CheckFormat(params.phi, "phi") &&
-           CheckFormat(params.alpha, "alpha") &&
-           (params.gamma == nullptr || CheckFormat(params.gamma, "gamma")) &&
-           CheckFormat(params.hInGrad, "hInGrad") &&
-           CheckFormat(params.hPostGrad, "hPostGrad") &&
-           CheckFormat(params.hResGrad, "hResGrad") &&
-           CheckFormat(params.invRms, "invRms") &&
-           CheckFormat(params.mmRes, "mmRes") &&
-           CheckFormat(params.hPre, "hPre") &&
-           CheckFormat(params.hPost, "hPost") &&
+    return CheckFormat(params.x, "x") && CheckFormat(params.phi, "phi") && CheckFormat(params.alpha, "alpha") &&
+           (params.gamma == nullptr || CheckFormat(params.gamma, "gamma")) && CheckFormat(params.hInGrad, "hInGrad") &&
+           CheckFormat(params.hPostGrad, "hPostGrad") && CheckFormat(params.hResGrad, "hResGrad") &&
+           CheckFormat(params.invRms, "invRms") && CheckFormat(params.mmRes, "mmRes") &&
+           CheckFormat(params.hPre, "hPre") && CheckFormat(params.hPost, "hPost") &&
            (params.gradXPost == nullptr || CheckFormat(params.gradXPost, "gradXPost"));
 }
 
@@ -602,7 +589,7 @@ aclnnStatus MhcGradCheckParams(const AclnnMhcPreBackwardParams &params)
     return ACLNN_SUCCESS;
 }
 
-const aclTensor* ConvertToContiguous(const aclTensor* tensor, aclOpExecutor* executor)
+const aclTensor *ConvertToContiguous(const aclTensor *tensor, aclOpExecutor *executor)
 {
     auto result = l0op::Contiguous(tensor, executor);
     if (result == nullptr) {
@@ -633,7 +620,7 @@ aclnnStatus MhcGradCovertDataContiguous(AclnnMhcPreBackwardParams &params, aclOp
     return ACLNN_SUCCESS;
 }
 
-bool CopyOutput(const aclTensor* out, const aclTensor* dst, aclOpExecutor* executor)
+bool CopyOutput(const aclTensor *out, const aclTensor *dst, aclOpExecutor *executor)
 {
     auto ret = l0op::ViewCopy(out, dst, executor);
     return ret != nullptr;
@@ -647,11 +634,11 @@ static aclnnStatus mhcPreBackwardCommonProcess(AclnnMhcPreBackwardParams &params
     ret = MhcGradCovertDataContiguous(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto outParams = l0op::MhcPreBackward(
-        params.xContiguous, params.phiContiguous, params.alphaContiguous, params.hInGradContiguous,
-        params.hPostGradContiguous, params.hResGradContiguous, params.invRmsContiguous,
-        params.mmResContiguous, params.hPreContiguous, params.hPostContiguous, params.gammaContiguous,
-        params.gradXPostContiguous, params.hcEps, executor);
+    auto outParams =
+        l0op::MhcPreBackward(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.hInGradContiguous,
+                             params.hPostGradContiguous, params.hResGradContiguous, params.invRmsContiguous,
+                             params.mmResContiguous, params.hPreContiguous, params.hPostContiguous,
+                             params.gammaContiguous, params.gradXPostContiguous, params.hcEps, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
     CHECK_RET(CopyOutput(std::get<0>(outParams), params.xGrad, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -666,24 +653,23 @@ static aclnnStatus mhcPreBackwardCommonProcess(AclnnMhcPreBackwardParams &params
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *hInGrad,
     const aclTensor *hPostGrad, const aclTensor *hResGrad, const aclTensor *invRms, const aclTensor *mmRes,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPost,
-    double hcEps, const aclTensor *xGrad, const aclTensor *hcWeightGrad, const aclTensor *alphaGrad,
-    const aclTensor *biasPostGrad, const aclTensor *gammaGrad, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPost, double hcEps,
+    const aclTensor *xGrad, const aclTensor *hcWeightGrad, const aclTensor *alphaGrad, const aclTensor *biasPostGrad,
+    const aclTensor *gammaGrad, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(
-        aclnnMhcPreBackward,
-        DFX_IN(x, phi, alpha, hInGrad, hPostGrad, hResGrad, invRms, mmRes, hPre, hPost, gamma, gradXPost),
-        DFX_OUT(xGrad, hcWeightGrad, alphaGrad, biasPostGrad, gammaGrad));
+    L2_DFX_PHASE_1(aclnnMhcPreBackward,
+                   DFX_IN(x, phi, alpha, hInGrad, hPostGrad, hResGrad, invRms, mmRes, hPre, hPost, gamma, gradXPost),
+                   DFX_OUT(xGrad, hcWeightGrad, alphaGrad, biasPostGrad, gammaGrad));
     auto uniqueExecutor = CREATE_EXECUTOR();
 
     AclnnMhcPreBackwardParams params = AclnnMhcPreBackward::Create()
-                                          .SetInput(x, phi, alpha, gamma)
-                                          .SetGradInput(hInGrad, hPostGrad, hResGrad)
-                                          .SetXPostGradInput(gradXPost)
-                                          .SetForwardInput(invRms, mmRes, hPre, hPost)
-                                          .SetAttr(hcEps)
-                                          .SetOutput(xGrad, hcWeightGrad, alphaGrad, biasPostGrad, gammaGrad)
-                                          .Build();
+                                           .SetInput(x, phi, alpha, gamma)
+                                           .SetGradInput(hInGrad, hPostGrad, hResGrad)
+                                           .SetXPostGradInput(gradXPost)
+                                           .SetForwardInput(invRms, mmRes, hPre, hPost)
+                                           .SetAttr(hcEps)
+                                           .SetOutput(xGrad, hcWeightGrad, alphaGrad, biasPostGrad, gammaGrad)
+                                           .Build();
 
     auto ret = mhcPreBackwardCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

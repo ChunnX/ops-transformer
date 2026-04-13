@@ -55,7 +55,7 @@ const constexpr int64_t INDEX_N = 1;
 const constexpr int64_t INDEX_D_TND = 1;
 
 ge::graphStatus GetInputShapes(InferShapeContext *context, const gert::Shape *&hInGradShape,
-    const gert::Shape *&hPostGradShape, const gert::Shape *&hCombBeforeGradShape)
+                               const gert::Shape *&hPostGradShape, const gert::Shape *&hCombBeforeGradShape)
 {
     hInGradShape = context->GetDynamicInputShape(H_IN_GRAD_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, hInGradShape);
@@ -80,7 +80,7 @@ ge::graphStatus ValidateInputDims(int64_t hInGradDimNum, int64_t hPostGradDimNum
 }
 
 ge::graphStatus InferBSDFormat(const gert::Shape *hInGradShape, const gert::Shape *hPostGradShape,
-    gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
+                               gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
 {
     uint64_t batch = hInGradShape->GetDim(INDEX_B);
     uint64_t sequence = hInGradShape->GetDim(INDEX_S);
@@ -96,7 +96,7 @@ ge::graphStatus InferBSDFormat(const gert::Shape *hInGradShape, const gert::Shap
 }
 
 ge::graphStatus InferTNDFormat(const gert::Shape *hInGradShape, const gert::Shape *hPostGradShape,
-    gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
+                               gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
 {
     uint64_t t = hInGradShape->GetDim(INDEX_T);
     dimen = hInGradShape->GetDim(INDEX_D_TND);
@@ -109,9 +109,9 @@ ge::graphStatus InferTNDFormat(const gert::Shape *hInGradShape, const gert::Shap
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferOutputShapes(gert::Shape *xGradShape, gert::Shape *hcWeightGradShape,
-    gert::Shape *alphaGradShape, gert::Shape *biasPostGradShape, gert::Shape *gammaGradShape,
-    uint64_t numsResidual, uint64_t dimen)
+ge::graphStatus InferOutputShapes(gert::Shape *xGradShape, gert::Shape *hcWeightGradShape, gert::Shape *alphaGradShape,
+                                  gert::Shape *biasPostGradShape, gert::Shape *gammaGradShape, uint64_t numsResidual,
+                                  uint64_t dimen)
 {
     uint64_t n2Plus2n = (2 * numsResidual) + (numsResidual * numsResidual);
 
@@ -175,7 +175,7 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
     }
 
     ret = InferOutputShapes(xGradShape, hcWeightGradShape, alphaGradShape, biasPostGradShape, gammaGradShape,
-                           numsResidual, dimen);
+                            numsResidual, dimen);
     if (ret != GRAPH_SUCCESS) {
         return ret;
     }
