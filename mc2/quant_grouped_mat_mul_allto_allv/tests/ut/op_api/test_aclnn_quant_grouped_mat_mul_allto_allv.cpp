@@ -43,10 +43,10 @@ protected:
 // gmmXQuantMode=0 但 gmmXScale 非空 → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode0_with_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gmmXScale_({1}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -82,10 +82,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode0_with_sca
 // gmmXQuantMode=1 但 gmmXScale=nullptr → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode1_without_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -120,10 +120,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode1_without_
 // gmmWeightQuantMode=0 但 gmmWeightScale 非空 → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quantmode0_with_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gmmWeightScale_({1}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -159,10 +159,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quantmode0_wit
 // gmmWeightQuantMode=1 但 gmmWeightScale=nullptr → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quantmode1_without_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -197,10 +197,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quantmode1_wit
 // mmXQuantMode=0 但 mmXScale 非空（mm组全非空） → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode0_with_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({1024, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({7168, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({1024, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({7168, 1024}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({1024, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmXScale_({1}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -236,10 +236,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode0_with_scal
 // mmXQuantMode=1 但 mmXScale=nullptr（mm组全非空） → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode1_without_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({1024, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({7168, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({1024, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({7168, 1024}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({1024, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -274,10 +274,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode1_without_s
 // mmWeightQuantMode=0 但 mmWeightScale 非空 → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantmode0_with_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({1024, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({7168, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({1024, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({7168, 1024}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({1024, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmWeightScale_({1}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -313,10 +313,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantmode0_with
 // mmWeightQuantMode=1 但 mmWeightScale=nullptr → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantmode1_without_scale)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({1024, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({7168, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({1024, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({7168, 1024}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({1024, 1024}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -355,10 +355,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantmode1_with
 // sendCountsTensorOptional 非空 → PARAM_NULLPTR
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCountsTensor_not_null)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc sendCountsTensor_({32}, ACL_INT64, ACL_FORMAT_ND);
@@ -394,10 +394,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCountsTensor_not_nul
 // recvCountsTensorOptional 非空 → PARAM_NULLPTR
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCountsTensor_not_null)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc recvCountsTensor_({32}, ACL_INT64, ACL_FORMAT_ND);
@@ -437,10 +437,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCountsTensor_not_nul
 // sendCounts size=0 → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCounts_empty_array)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -474,10 +474,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCounts_empty_array)
 // recvCounts size=0 → PARAM_INVALID
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCounts_empty_array)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -514,10 +514,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCounts_empty_array)
 // group=nullptr → PARAM_NULLPTR
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_group_nullptr)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -556,10 +556,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_group_nullptr)
 // commQuantMode=1 → PARAM_INVALID（API 层新增校验，仅支持 0）
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_nonzero)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -594,10 +594,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_nonzero)
 // TT 量化异常：gmmXQM=1, gmmWQM=1, mmXQM=0, mmWQM=0
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_quant_normal)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gmmXScale_({1}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -634,10 +634,10 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_quant_normal)
 // commQuantMode=1 → PARAM_INVALID（新增校验专用用例）
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_reject)
 {
-    TensorDesc gmmX_({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmX_({}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc mmWeight_({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX_({4096, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc gmmWeight_({4, 7168, 4096}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmX_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc mmWeight_({}, ACL_HIFLOAT8, ACL_FORMAT_ND);
     TensorDesc y_({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc mmY_({}, ACL_FLOAT16, ACL_FORMAT_ND);
 
