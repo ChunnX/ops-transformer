@@ -155,8 +155,6 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
             outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
-            
-            
     }
     SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;

@@ -60,6 +60,11 @@ Mc2Context &Mc2Context::GetInstance()
     return instance;
 }
 
+Mc2Context::Mc2Context()
+{
+    OP_LOGI("Init Mc2Context Success!");
+}
+
 Mc2Context::~Mc2Context()
 {
     if (hcclLibHandle_ != nullptr) {

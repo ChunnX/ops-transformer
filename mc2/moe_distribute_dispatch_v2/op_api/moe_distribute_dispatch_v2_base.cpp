@@ -153,8 +153,6 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum, 
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, 
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
-            
-            
     }  
     SetCommArgs(is950, is910B, commAlg, executor);
     return getWorkspaceSizesRes;
