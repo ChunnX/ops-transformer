@@ -44,14 +44,22 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0,65504]],
         "cmp_ratio":[1] #1/2/4/8/16/32/64/128
     },
+    "li_default_a3": {},
+    "li_default_a5": {},
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
 properties = torch.npu.get_device_properties()
-print('properties:', properties)
-if "Ascend910_93" in properties.name:
-    ENABLED_PARAMS = [TEST_PARAMS["li_default_a3"]]
-elif "Ascend950" in properties.name:
-    ENABLED_PARAMS = [TEST_PARAMS["li_default_a5"]]
-elif "Ascend910B" in properties.name:
+# 定义设备映射
+device_configs = {
+    "Ascend910_93": "li_default_a3",
+    "Ascend950": "li_default_a5",
+    "Ascend910B": "li_default_a2"
+}
+# 选择配置 key
+config_key = device_configs.get(properties.name)
+if config_key:
+    ENABLED_PARAMS = [TEST_PARAMS[config_key]]
+else:
+    print(f"未知设备: {properties.name}, 使用默认配置（li_default_a2）")
     ENABLED_PARAMS = [TEST_PARAMS["li_default_a2"]]
