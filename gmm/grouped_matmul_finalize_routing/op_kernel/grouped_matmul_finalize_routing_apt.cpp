@@ -15,13 +15,7 @@
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-    #include "kernel_utils.h"
-    #include "kernel_tiling/kernel_tiling.h"
-#if ASC_DEVKIT_MAJOR >= 9
-    #include "kernel_basic_intf.h"
-#else
-    #include "kernel_operator.h"
-#endif
+#include "kernel_utils.h"
 #include "lib/matmul_intf.h"
 #include "arch35/grouped_matmul_finalize_routing_tiling_key.h"
 #if ORIG_DTYPE_X != DT_FLOAT8_E4M3FN && ORIG_DTYPE_X != DT_FLOAT8_E5M2 && ORIG_DTYPE_X != DT_FLOAT4_E1M2 && ORIG_DTYPE_X != DT_FLOAT4_E2M1
