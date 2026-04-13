@@ -56,9 +56,15 @@ def test_compressor_process(filepath, device_id=0):
     coff = test_data['coff']
     norm_eps = test_data['norm_eps']
     rotary_mode = test_data['rotary_mode']
+    cache_mode = test_data['cache_mode']
 
-    npu_kv_state = kv_state.npu()
-    npu_score_state = score_state.npu()
+    if cache_mode == 1:  # 连续buffer
+        state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
+        # state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+
+    state_cache = state_cache.npu()
     if cu_seqlens is not None: 
         cu_seqlens = cu_seqlens.npu()
     if seqused is not None: 
@@ -73,12 +79,12 @@ def test_compressor_process(filepath, device_id=0):
                 x.npu(),
                 wkv.npu(),
                 wgate.npu(),
-                torch.cat((npu_kv_state, npu_score_state), dim=-1),
+                state_cache,
                 ape.npu(),
                 norm_weight.npu(), 
                 rope_sin.npu(),
                 rope_cos.npu(),
-                block_table,
+                state_block_table = block_table,
                 cu_seqlens = cu_seqlens,
                 seqused = seqused,
                 start_pos = start_pos,
@@ -87,6 +93,6 @@ def test_compressor_process(filepath, device_id=0):
                 coff = coff,
                 norm_eps = norm_eps,
                 rotary_mode = rotary_mode,
-                cache_mode = 1,
+                cache_mode = cache_mode,
             )
-    return cpu_result, kv_mask_result, npu_result ,cpu_kv_state, npu_kv_state, update_kv, cpu_score_state, npu_score_state, update_score, params
+    return cpu_result, kv_mask_result, npu_result ,cpu_kv_state, update_kv, cpu_score_state, update_score, state_cache, params
