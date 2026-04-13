@@ -27,7 +27,8 @@ bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blit
 test and benchmark run times:
 ```shell
 cd experimental/attention/blitz_sparse_attention/benchmark
-pytest test.py # correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fusion_attention kernel and our own python implementation
+pytest test.py # attention_out correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fusion_attention kernel and our own python implementation
+pytest test_lse.py # softmax_lse correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fused_infer_attention_score kernel
 python benchmark.py # performance benchmarking - check the constant inputs shapes defined in the script
 ```
 
@@ -35,20 +36,22 @@ The test should be all green, and the benchmark result on Ascend910B2 should be:
 ```shell
 ==========================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  ATTENTION_MATRIX='blocks_optimized_batched'
+  BLOCK_SIZE_Q=128  BLOCK_SIZE_KV=128
+  FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1)
 ==========================================================================================
   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
 ------------------------------------------------------------------------------------------
-  3   1 118806 118806  128      0.00             yes          157663.17          169537.33
-  3   1 118806 118806  128      0.05             N/A                N/A          155995.83
-  3   1 118806 118806  128      0.10             N/A                N/A          148569.81
-  3   1 118806 118806  128      0.20             N/A                N/A          132693.53
-  3   1 118806 118806  128      0.30             N/A                N/A          116889.01
-  3   1 118806 118806  128      0.40             N/A                N/A          101534.06
-  3   1 118806 118806  128      0.50             N/A                N/A           84899.79
-  3   1 118806 118806  128      0.60             N/A                N/A           69480.71
-  3   1 118806 118806  128      0.70             N/A                N/A           53176.09
-  3   1 118806 118806  128      0.80             N/A                N/A           38088.18
-  3   1 118806 118806  128      0.90             N/A                N/A           21708.31
+  3   1 118806 118806  128      0.00             yes          157990.21          475726.71
+  3   1 118806 118806  128      0.05             N/A                N/A          451883.35
+  3   1 118806 118806  128      0.10             N/A                N/A          428125.59
+  3   1 118806 118806  128      0.20             N/A                N/A          380658.91
+  3   1 118806 118806  128      0.30             N/A                N/A          333105.37
+  3   1 118806 118806  128      0.40             N/A                N/A          285596.70
+  3   1 118806 118806  128      0.50             N/A                N/A          237938.16
+  3   1 118806 118806  128      0.60             N/A                N/A          190422.56
+  3   1 118806 118806  128      0.70             N/A                N/A          142887.07
+  3   1 118806 118806  128      0.80             N/A                N/A           95399.43
+  3   1 118806 118806  128      0.90             N/A                N/A           48623.37
 ==========================================================================================
 ```
 more explanation about benchmarking is [here](benchmark/README.md). 
@@ -95,7 +98,7 @@ The LSE is computed during the same kernel pass as the attention output at no ad
 When `softmax_lse_flag=False` the kernel skips the LSE write-out path and returns a zero-element placeholder tensor; the caller does not need to allocate memory for it.
 
 ## Example run in C++:
-A plain, pure C++, example is provided in examples subdirectory. Run it sing:
+A plain, pure C++, example is provided in examples subdirectory. Run it using:
 ```shell
 bash build.sh --experimental --run_example blitz_sparse_attention eager cust --soc=ascend910b --vendor_name=custom
 ```
