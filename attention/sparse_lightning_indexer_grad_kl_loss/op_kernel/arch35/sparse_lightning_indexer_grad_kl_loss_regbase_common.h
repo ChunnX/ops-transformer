@@ -39,6 +39,7 @@ constexpr uint32_t MODE_NUM_3 = 3;
 constexpr uint32_t ALIGN_NUM_2 = 2;
 constexpr uint32_t BLOCK_SINGLE_LEN = 16;
 constexpr uint32_t FP32_ALIGN_NUM = 8;
+constexpr uint32_t G_SIZE_QUERY_INDEX_24 = 24;
 
 struct GatherParams {
     int32_t s2ProcessSize;
