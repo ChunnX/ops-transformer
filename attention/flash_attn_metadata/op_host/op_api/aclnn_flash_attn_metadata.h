@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_KV_QUANT_SPARSE_ATTN_SHAREDKV_METADATA_AICPU_H
-#define ACLNN_KV_QUANT_SPARSE_ATTN_SHAREDKV_METADATA_AICPU_H
+#ifndef ACLNN_FLASH_ATTN_METADATA_H
+#define ACLNN_FLASH_ATTN_METADATA_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -30,4 +30,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFlashAttnMetadata(void *
 }
 #endif
 
-#endif // ACLNN_SPARSE_FLASH_ATTENTION_ANTIQUANT_METADATA_AICPU_H
+#endif // ACLNN_FLASH_ATTN_METADATA_H

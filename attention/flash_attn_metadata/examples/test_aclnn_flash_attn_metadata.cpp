@@ -65,11 +65,10 @@ static void DumpMeta(void* data) {
         // FA Metadata Generate
         printf("sectionIdx:%d\n",sectionId);
         for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
-            // printf("bn2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 1U));
             // FA start
-            // printf("bn2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
-            // printf("m start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
-            // printf("s2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
+            printf("bn2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
+            printf("m start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
+            printf("s2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
             // FA end
             printf("bn2 end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
             printf("m end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
@@ -80,7 +79,6 @@ static void DumpMeta(void* data) {
 
         // FD Metadata Generate
         for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
-            // printf("bn2 start: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 1U));
             printf("bn2 idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
             printf("m idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
             printf("fd workspace idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));

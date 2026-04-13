@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file kv_quant_sparse_attn_sharedkv_metadata_aicpu.h
+ * \file flash_attn_metadata_aicpu.h
  * \brief
  */
 
@@ -25,6 +25,7 @@
 #include "cpu_tensor.h"
 #include "flash_attn_metadata.h"
 #include "../../common/op_kernel/load_balance/section_stream_k/section_stream_k.h"
+#include "../../common/op_kernel/aicpu_common.h"
 
 using namespace optiling;
 using namespace std;

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_FLASH_ATTN_METADATA_AICPU_H
-#define L0_FLASH_ATTN_METADATA_AICPU_H
+#ifndef L0_FLASH_ATTN_METADATA_H
+#define L0_FLASH_ATTN_METADATA_H
 
 #include "opdev/op_executor.h"
 
