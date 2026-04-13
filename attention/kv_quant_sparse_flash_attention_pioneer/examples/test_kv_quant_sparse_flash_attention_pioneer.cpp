@@ -104,13 +104,13 @@ struct TensorResources {
 };
 
 int InitializeTensors(TensorResources& resources) {
-    std::vector<int64_t> queryShape = {1, 1, 4, 576};
-    std::vector<int64_t> keyShape = {1, 1, 4, 656};
-    std::vector<int64_t> valueShape = {1, 1, 4, 656};
-    std::vector<int64_t> sparseIndicesShape = {1, 1, 4, 2048};
-    std::vector<int64_t> keyDequantScaleShape = {1, 1, 4};
-    std::vector<int64_t> valueDequantScaleShape = {1, 1, 4};
-    std::vector<int64_t> attentionOutShape = {1, 1, 4, 512};
+    std::vector<int64_t> queryShape = {1, 1, 64, 576};
+    std::vector<int64_t> keyShape = {1, 1, 1, 656};
+    std::vector<int64_t> valueShape = {1, 1, 1, 656};
+    std::vector<int64_t> sparseIndicesShape = {1, 1, 1, 2048 };
+    std::vector<int64_t> keyDequantScaleShape = {1, 1, 1, 4};
+    std::vector<int64_t> valueDequantScaleShape = {1, 1, 1, 4};
+    std::vector<int64_t> attentionOutShape = {1, 1, 64, 512};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
@@ -120,12 +120,12 @@ int InitializeTensors(TensorResources& resources) {
     int64_t valueDequantScaleShapeSize = GetShapeSize(valueDequantScaleShape);
     int64_t attentionOutShapeSize = GetShapeSize(attentionOutShape);
 
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<aclFloat16> queryHostData(queryShapeSize, aclFloat16(1.0f));
+    std::vector<aclFloat8_e4m3fn> keyHostData(keyShapeSize, aclFloat8_e4m3fn(1.0f));
+    std::vector<aclFloat8_e4m3fn> valueHostData(valueShapeSize, aclFloat8_e4m3fn(1.0f));
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
-    std::vector<int32_t> keyDequantScaleHostData(keyDequantScaleShapeSize, 1);
-    std::vector<int32_t> valueDequantScaleHostData(valueDequantScaleShapeSize, 1);
+    std::vector<aclFloat> keyDequantScaleHostData(keyDequantScaleShapeSize, aclFloat(1.0f));
+    std::vector<aclFloat> valueDequantScaleHostData(valueDequantScaleShapeSize, aclFloat(1.0f));
     std::vector<float> attentionOutHostData(attentionOutShapeSize, 1);
 
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
@@ -175,8 +175,8 @@ int InitializeTensors(TensorResources& resources) {
 
 int ExecuteKvQuantSparseFlashAttentionPioneer(TensorResources& resources, aclrtStream stream,
                               void** workspaceAddr, uint64_t* workspaceSize) {
-    int64_t keyQuantMode = 0;
-    int64_t valueQuantMode = 0;
+    int64_t keyQuantMode = 2;
+    int64_t valueQuantMode = 2;
     int64_t sparseMode = 3;
     int64_t preTokens = 9223372036854775807;
     int64_t nextTokens = 9223372036854775807;
