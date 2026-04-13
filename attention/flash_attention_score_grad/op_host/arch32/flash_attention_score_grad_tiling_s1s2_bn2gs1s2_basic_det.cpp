@@ -195,7 +195,6 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
 
 bool FlashAttentionScoreGraTilingBasicDet::IsCapable()
 {
-    return false;
     /**
      * The basic template does not support the following features:
      * 1. The dtype of float32
