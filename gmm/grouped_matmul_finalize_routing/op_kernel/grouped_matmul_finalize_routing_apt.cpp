@@ -46,6 +46,7 @@
     #include "arch35/grouped_matmul_finalize_routing.h"
     #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #endif
+#endif
 
 static constexpr uint64_t BF16TYPE = 2;
 
