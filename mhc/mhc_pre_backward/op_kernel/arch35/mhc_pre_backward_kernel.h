@@ -302,7 +302,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
             vecDealBSPeCore_ = totalLength_;
             usedVecCoreNum_ = 1;
         } else {
-            vecDealBSPeCore_ = CeilAlign(vecDealBSPeCore_, uint64_t(CEIL_ALIGN_16));
+            vecDealBSPeCore_ = MhcPreBackwardUtils::CeilAlign(vecDealBSPeCore_, uint64_t(CEIL_ALIGN_16));
             usedVecCoreNum_ = CeilDiv(totalLength_, vecDealBSPeCore_) > vecCoreNum_ ?
                                   vecCoreNum_ :
                                   CeilDiv(totalLength_, vecDealBSPeCore_);
@@ -324,7 +324,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
         cubeDealnDPeCore_ = nD_;
         v1UsedCubeCoreNum_ = 1;
     } else {
-        cubeDealnDPeCore_ = CeilAlign(cubeDealnDPeCore_, CEIL_ALIGN_128);
+        cubeDealnDPeCore_ = MhcPreBackwardUtils::CeilAlign(cubeDealnDPeCore_, CEIL_ALIGN_128);
         v1UsedCubeCoreNum_ = CeilDiv(nD_, cubeDealnDPeCore_);
     }
     if ASCEND_IS_AIC {
@@ -426,9 +426,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
     AscendC::LocalTensor<T> bf16InputBuf;
 
     AscendC::LocalTensor<P> xFp32Buf = fp32TBuf_.GetWithOffset<P>(D_ * lenN, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + D_ * lenN * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + D_ * lenN * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
     AscendC::LocalTensor<P> hInGradBuf = fp32TBuf_.GetWithOffset<P>(D_, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + D_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + D_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
     AscendC::LocalTensor<P> tmpBuf = fp32TBuf_.GetWithOffset<P>(D_ / 4, ubOffset);
 
     for (uint32_t i = runBSStart; i < runBSEnd; i++) {
@@ -478,7 +478,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     float alphaPost = alphaGm_.GetValue(1);
     float alphaComb = alphaGm_.GetValue(2);
     LocalTensor<P> sumBuf = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
-    globalUbOffset_ += CeilAlign(uint32_t(fusionSize_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    globalUbOffset_ += MhcPreBackwardUtils::CeilAlign(uint32_t(fusionSize_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
     ProcessV0MainLoop(vecRunTimes, alphaPre, alphaPost, alphaComb, sumBuf);
     ProcessV0MainAlphaReduce(sumBuf, GetBlockIdx());
 }
@@ -540,10 +540,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AllocV0V1Buffers(uint32_t run
     buffers.stepLength = (runBSEnd - runBSStart) * N_;
     uint32_t hMixLength = (runBSEnd - runBSStart) * N_ * N_;
     buffers.gatherLength = buffers.stepLength * 2 + hMixLength;
-    uint32_t stepOffset1 = CeilAlign(uint32_t(buffers.stepLength * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    uint32_t stepOffset1 =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(buffers.stepLength * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     // Allocate hPreGradBuf first
-    uint32_t hpreGradTotlenLen = CeilAlign(buffers.stepLength, uint32_t(CEIL_ALIGN_DEFAULT));
+    uint32_t hpreGradTotlenLen = MhcPreBackwardUtils::CeilAlign(buffers.stepLength, uint32_t(CEIL_ALIGN_DEFAULT));
     buffers.hPreGradBuf = fp32TBuf_.GetWithOffset<P>(hpreGradTotlenLen, globalUbOffset_);
     buffers.preProcessUbOffset = globalUbOffset_ + hpreGradTotlenLen * sizeof(P);
 
@@ -1182,23 +1183,29 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     uint32_t maxChunkNDSize = chunkSize * copySizeND;
     if (withGamma_) {
         gammaBroadCast_ = fp32TBuf_.GetWithOffset<P>(maxChunkNDSize, ubOffset);
-        ubOffset = CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+        ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)),
+                                                  uint32_t(CEIL_ALIGN_DEFAULT));
     }
 
     xRsFp32Buf_ = fp32TBuf_.GetWithOffset<P>(maxChunkNDSize, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     xGradVec3Buf_ = fp32TBuf_.GetWithOffset<P>(maxChunkNDSize, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     xRsGradMmUb_ = fp32TBuf_.GetWithOffset<P>(maxChunkNDSize, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     invRmsUb_ = fp32TBuf_.GetWithOffset<P>(currentBsSize, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + currentBsSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     hPreUb_ = fp32TBuf_.GetWithOffset<P>(currentBsSize * N_, ubOffset);
-    ubOffset = CeilAlign(uint32_t(ubOffset + currentBsSize * N_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * N_ * sizeof(P)),
+                                              uint32_t(CEIL_ALIGN_DEFAULT));
 
     // ==========================================================
     // 参数初始化和hPre预加载
