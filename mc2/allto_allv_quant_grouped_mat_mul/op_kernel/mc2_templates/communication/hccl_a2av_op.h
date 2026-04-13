@@ -74,11 +74,89 @@ public:
             LaunchCommAfterCompute(startExpertIdx, expertNum);
         }
     }
-    
-    __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR recvBuffer)
+
+    // sendBuffer: scale发送缓冲区
+    // permuteOutBuffer: scale重排后的输出缓冲区（按专家排列），用于GMM计算
+    // commOutBuffer: scale AlltoAllV通信输出缓冲区（按rank排列），用于PermuteScale输入
+    __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
     {
         sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
-        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)recvBuffer);
+        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
+        scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
+        // 初始化scale重排用的UB Buffer
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
+    }
+
+    // PermuteScale: 将scaleCommOutBuffer（按rank排列）重排到recvScaleGlobalBuffer（按专家排列）
+    __aicore__ inline void PermuteScale()
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+
+        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
+        uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
+        uint64_t scaleUbSize = taskTilingInfo_->ubSize;
+        uint64_t recvSumCntBefore[MAX_EXPERT_SIZE] = {0UL};
+        uint64_t recvSumCntAfter[MAX_EXPERT_SIZE] = {0UL};
+
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                uint32_t posBefore = rankIndex * e_ + expertIdx;
+                recvSumCntBefore[posBefore] = static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdx]);
+                if (posBefore != 0U) {
+                    recvSumCntBefore[posBefore] += recvSumCntBefore[posBefore - 1U];
+                }
+            }
+        }
+
+        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
+                recvSumCntAfter[posAfter] = static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdx]);
+                if (posAfter != 0U) {
+                    recvSumCntAfter[posAfter] += recvSumCntAfter[posAfter - 1U];
+                }
+            }
+        }
+
+        TPipe *permutePipe = GetTPipePtr();
+        LocalTensor<fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<fp8_e8m0_t>();
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                uint32_t posBefore = rankIndex * e_ + expertIdx;
+                uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
+                uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U];
+                uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U];
+                uint64_t totalCnt = static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdx]) * axis;
+                uint64_t tileNum = CeilDiv(totalCnt, scaleUbSize);
+                for (uint64_t tile = 0UL; tile < tileNum; tile++) {
+                    uint64_t realLength = scaleUbSize;
+                    if (tile == tileNum - 1UL) {
+                        realLength = totalCnt - tile * scaleUbSize;
+                    }
+                    DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
+                    DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+                    // 从commOutBuffer读取（按rank排列）GM->UB
+                    DataCopyPad(scaleUbTensor, recvScaleGlobalBuffer_[srcOffset + tile * scaleUbSize], dataCopyParams,
+                                dataCopyPadParams);
+                    eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                    SetFlag<HardEvent::MTE2_MTE3>(eventID_);
+                    WaitFlag<HardEvent::MTE2_MTE3>(eventID_);
+                    // 写入permuteOutBuffer（按专家排列）UB->GM
+                    DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * scaleUbSize], scaleUbTensor, dataCopyParams);
+                    eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                    SetFlag<HardEvent::MTE3_MTE2>(eventID_);
+                    WaitFlag<HardEvent::MTE3_MTE2>(eventID_);
+                }
+            }
+        }
     }
 
     __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
@@ -286,6 +364,11 @@ private:
 
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
+    GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
+
+    TBuf<QuePosition::VECIN> scaleTBuf_;
+
+    int32_t eventID_ = 0;
 
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};

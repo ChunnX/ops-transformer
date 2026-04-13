@@ -51,6 +51,7 @@ constexpr uint64_t MX_GROUP_SIZE_K = 32;
 constexpr uint64_t MX_GROUP_SIZE_M = 1;
 constexpr uint64_t MX_GROUP_SIZE_N = 1;
 constexpr uint64_t MXFP4_PACK_FACTOR = 2;
+constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
