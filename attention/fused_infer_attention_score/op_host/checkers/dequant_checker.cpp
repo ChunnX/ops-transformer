@@ -269,7 +269,7 @@ ge::graphStatus DequantChecker::CheckExistenceNoquant(const FiaTilingInfo &fiaIn
         return ge::GRAPH_SUCCESS;
     } else {
         OP_LOGE(fiaInfo.opName,
-                "When query,key and value is all float16 or bfloat16, cannot exist quant related param.");
+                "In gqa no quant scenario, quant related param cannot exist.");
         return ge::GRAPH_FAILED;
     }
 }
@@ -2244,9 +2244,7 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 ge::graphStatus DequantChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
-        if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
-            return CheckExistenceNoquant(fiaInfo);
-        }
+        return CheckExistenceNoquant(fiaInfo);
     } else if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckExistencePertensorFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckExistenceMLAFullquant(fiaInfo) ||

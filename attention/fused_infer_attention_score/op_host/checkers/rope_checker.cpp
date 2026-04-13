@@ -314,6 +314,10 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
             OP_LOGE(fiaInfo.opName, "When rope exsists, tensorlist is not supported."),
             return ge::GRAPH_FAILED);
+        // 不支持后量化
+        OP_CHECK_IF(fiaInfo.isOutQuantEnable,
+            OP_LOGE(fiaInfo.opName, "When rope exsists, postQuant is not supported."),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
