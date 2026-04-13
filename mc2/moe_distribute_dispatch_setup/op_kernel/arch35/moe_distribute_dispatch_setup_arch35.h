@@ -1044,7 +1044,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 uint64_t dstStatusAddr = reinterpret_cast<uint64_t>(rankGM);
                 uint32_t lengthStatus = UB_ALIGN;
                 // 组装状态的WQE
-                SetCommWriteSQE(statusSqeU8[WRITE_SQE_SIZE * expertIdx], srcStatusAddr, dstStatusAddr, lengthStatus, 
+                SetCommWriteSQE(statusSqeU8[WRITE_SQE_SIZE * expertIdx], srcStatusAddr, dstStatusAddr, lengthStatus,
                                 expertIdx == moeExpertNumPerRank_ - 1 ? 1 : 0);
             }
             moeStartToken += calCnt;
