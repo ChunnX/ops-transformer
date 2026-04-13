@@ -609,8 +609,11 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
 ## 约束说明
 
-- 确定性计算：
+- **确定性计算**：
   - aclnnMoeDistributeDispatchV4默认确定性实现。
+
+- **驱动约束**：
+  - 算子通信域各节点的驱动版本应当相同。
 
 - **接口配套约束**：
 
