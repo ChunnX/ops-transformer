@@ -26,6 +26,7 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
     uint32_t nValue, uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     constexpr uint32_t SRCDVALUE_LIMIT = 65536;
+    constexpr uint32_t NUM32B = 32;
     Nd2NzParams nd2nzPara;
     if (unlikely(srcDValue < SRCDVALUE_LIMIT)){
         nd2nzPara.ndNum = 1;
@@ -43,24 +44,20 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
         DataCopy(l1Tensor, gmTensor, nd2nzPara);
-    }else{
+    } else {
+        // 一行一行拷贝
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
-        uint32_t srcNdMatrixNum = nValue;
-        uint32_t srcNdMatrixStride = srcDValue;
-        uint32_t dstNzMatrixStride = 16;
-        nValue = 1;
-        srcDValue = dValue;
-        for (uint32_t i = 0; i < srcNdMatrixNum; i++) {
+        for (uint32_t i = 0; i < nValue; i++) {
             nd2nzPara.ndNum = 1;
-            nd2nzPara.nValue = nValue; //nd矩阵的行数
+            nd2nzPara.nValue = 1; //nd矩阵的行数
             if constexpr (IsSameType<T, int4b_t>::value) {
                 constexpr uint32_t HALF_SIZE_DIVISOR = 2;
                 nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-                nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
+                nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
             } else {
                 nd2nzPara.dValue = dValue; //nd矩阵的列数
-                nd2nzPara.srcDValue = srcDValue; //同一nd矩阵相邻行起始地址间的偏移
+                nd2nzPara.srcDValue = dValue; //同一nd矩阵相邻行起始地址间的偏移
             }
             nd2nzPara.dstNzC0Stride = dstNzC0Stride;
             nd2nzPara.dstNzNStride = 1;
@@ -68,8 +65,8 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
             nd2nzPara.dstNzMatrixStride = 0;
             DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
 
-            gmOffset += srcNdMatrixStride;
-            l1Offset += dstNzMatrixStride;
+            gmOffset += dValue;
+            l1Offset += NUM32B / sizeof(T);
         }
     }
 }
