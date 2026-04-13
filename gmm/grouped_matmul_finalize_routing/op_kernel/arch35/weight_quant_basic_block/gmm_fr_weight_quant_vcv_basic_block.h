@@ -253,7 +253,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
         vecCompute_.SetFrToMTE2(rlLoopIdx_);
         vecCompute_.WaitMte2ToS(rlLoopIdx_);
         vecCompute_.RoutingYToGm(lastBasicBlockMSize, ubOutputF32Buffer_,
-                                lastOffsetParam);
+                                lastOffsetParam, rlLoopIdx_);
         vecCompute_.SetSToMTE2(rlLoopIdx_);
     }
     // todo 先不搞preload mte2, 收益有限

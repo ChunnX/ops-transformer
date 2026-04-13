@@ -122,7 +122,7 @@ public:
     __aicore__ inline void SetMte2ToS(uint64_t rlLoopIdx);
     __aicore__ inline void WaitMte2ToS(uint64_t rlLoopIdx);
     __aicore__ inline void End();
-    __aicore__ inline void RoutingYToGm(uint64_t mRealSize, const LocalTensor<float> &ubOutputF32Buffer, const BasicBlockOffsetParam &offsetParam);
+    __aicore__ inline void RoutingYToGm(uint64_t mRealSize, const LocalTensor<float> &ubOutputF32Buffer, const BasicBlockOffsetParam &offsetParam, uint64_t rlLoopIdx);
     __aicore__ inline void CopyRowIndexLogitsGmToUb(uint64_t mGmOffset, uint64_t mRealSize, uint64_t rlLoopIdx);
 
     __aicore__ inline void InitGmToZero(uint64_t yGmOffset,
@@ -500,7 +500,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::MulLog
 }
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::RoutingYToGm(uint64_t mRealSize, const LocalTensor<float> &ubOutputF32Buffer, const BasicBlockOffsetParam &offsetParam)
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::RoutingYToGm(uint64_t mRealSize, const LocalTensor<float> &ubOutputF32Buffer, const BasicBlockOffsetParam &offsetParam, uint64_t rlLoopIdx)
 {
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
