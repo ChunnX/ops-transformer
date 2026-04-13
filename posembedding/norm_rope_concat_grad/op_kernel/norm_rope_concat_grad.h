@@ -319,7 +319,10 @@ __aicore__ inline void NormOperationBackward<normType>::CopyOut(const LocalTenso
 {
     LocalTensor<DTYPE_QUERY> xGrad = inGradQue_.DeQue<DTYPE_QUERY>();
     outParams_.blockCount = heads;
-    DataCopyPad(this->xGradGM_[inOffset], xGrad, outParams_);
+    // 添加边界检查，避免越界访问
+    if (inOffset + heads * this->normDim_ <= this->xGradGM_.GetSize()) {
+        DataCopyPad(this->xGradGM_[inOffset], xGrad, outParams_);
+    }
     inGradQue_.FreeTensor(xGrad);
 
     if constexpr (normType == NormType::LAYER_NORM_AFFINE || normType == NormType::LAYER_NORM_AFFINE_ACROSS_HEADS) {
@@ -421,7 +424,7 @@ public:
         bufPool.InitBuffer(outGradQue_, DOUBLE_BUFFER, ropeNum * alignedRopeDim * sizeof(DTYPE_QUERY));
         outGradParams_.blockLen = ropeDim * sizeof(DTYPE_QUERY);
         padParams_.rightPadding = alignedRopeDim - ropeDim;
-        outGradParams_.srcStride = (totalSeq - 1) * ropeDim * sizeof(DTYPE_QUERY);
+        outGradParams_.srcStride = (totalSeq - 1) * alignedRopeDim * sizeof(DTYPE_QUERY);
     }
     __aicore__ inline void Process(const LocalTensor<float> &outGrad, int64_t outGradOffset, uint32_t heads);
 
@@ -886,7 +889,7 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t outGradOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
+                uint32_t outGradOffset = b * headNum_ * totalSeq * headDim_ + (outputSeq + s) * headNum_ * headDim_;
                 uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
                 uint32_t normOffset = (b * xSeq + s) * headNum_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
@@ -933,7 +936,7 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t outGradOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
+                uint32_t outGradOffset = b * headNum_ * totalSeq * headDim_ + (outputSeq + s) * headNum_ * headDim_;
                 uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
                 uint32_t normOffset = (b * xSeq + s) * headNum_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
@@ -980,7 +983,7 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t outGradOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
+                uint32_t outGradOffset = b * headNum_ * totalSeq * headDim_ + (outputSeq + s) * headNum_ * headDim_;
                 uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
                 uint32_t normOffset = (b * xSeq + s) * headNum_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
