@@ -317,7 +317,7 @@ public:
                                                    uint32_t copySizeND);
 
     __aicore__ inline void InitGlobalBuffersAndTiling(InitParams initParams);
-    __aicore__ inline void InitUBAndAIVBuffers();
+    __aicore__ inline void InitUBAndAIVBuffers(InitParams initParams);
     __aicore__ inline void InitStage2AndDataCopy();
 
 private:
@@ -413,7 +413,7 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::Init(InitParams initParams)
 {
     InitGlobalBuffersAndTiling(initParams);
-    InitUBAndAIVBuffers();
+    InitUBAndAIVBuffers(initParams);
     InitStage2AndDataCopy();
 }
 
@@ -462,7 +462,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers()
+__aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
