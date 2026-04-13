@@ -276,7 +276,7 @@ aclnnStatus aclnnAllGatherMatmul(
 ## 约束说明
 
 - 确定性计算：
-  - <term>Ascend 950PR/Ascend 950DT</term>，aclnnAllGatherMatmul默认确定性实现。
+  - aclnnAllGatherMatmul默认确定性实现。
 
 - 输入x1为2维，其shape为(m, k)。x2必须是2维，其shape为(k, n)，轴满足MatMul算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
 - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
