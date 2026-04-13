@@ -44,5 +44,5 @@ third_party/
 .claude/
 
 # pre-commit log
-# log/
+log/
 oat_reports/
