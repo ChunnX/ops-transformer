@@ -1556,7 +1556,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     </ul>
                 </li>
                 <li>innerPrecise：仅支持0（不带行无效的高精度模式）</li>
-                <li>Page Attention：支持BnBsH格式（H≤65535，blockSize<=128 16对齐）</li>
+                <li>PagedAttention：支持BnBsH格式（H≤65535，blockSize<=128 16对齐）</li>
                 </ul>
             </li>
             <li><strong>MHA场景</strong>：
@@ -1574,7 +1574,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>BFLOAT16：仅支持0</li>
                     </ul>
                 </li>
-                <li>Page Attention：支持BnBsH格式（H≤65535，blockSize支持<=128 16对齐）</li>
+                <li>PagedAttention：支持BnBsH格式（H≤65535，blockSize支持<=128 16对齐）</li>
                 </ul>
             </li>
             </ul>
