@@ -58,8 +58,6 @@ __aicore__ inline constexpr uint16_t GetVRegSize()
 using namespace matmul;
 using namespace AscendC;
 
-constexpr uint32_t BUFFER_NUM = 2;
-constexpr uint64_t SYNC_MAX_NUM = 15;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 16KB
@@ -90,11 +88,7 @@ constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x7;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
-constexpr uint32_t H_PRE_GATHER_INDEX = 1;
-constexpr uint32_t X_RS_TOTAL_SIZE_FACTOR = 64;
 
-constexpr MicroAPI::CastTrait ctFp32To16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-                                            MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                  MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
@@ -280,9 +274,6 @@ public:
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
     __aicore__ inline void AIV22Process(LocalTensor<P> &invRmsUb, LocalTensor<P> &xRsFp32Buf,
                                         LocalTensor<P> &xRsGradInvUb, uint32_t currentChunkSize, uint32_t copySizeND);
-    __aicore__ inline void InitCube();
-    __aicore__ inline void AICProcess(GlobalTensor<P> x, GlobalTensor<P> y, GlobalTensor<P> z, uint64_t m, uint64_t n,
-                                      uint64_t k);
     __aicore__ inline void ProcessC0C1Pipeline();
     __aicore__ inline void ProcessV2Pipeline();
     __aicore__ inline void ProcessC0(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
@@ -357,12 +348,10 @@ private:
     uint32_t D_;
     uint32_t N_;
     uint32_t fusionSize_;
-    uint32_t onceDealMixBSNum_;
     float hcEps_;
 
     uint32_t blockIdx_;
     uint32_t nD_;
-    uint32_t cubeCoreNum_; // AIC CoreNum
     uint32_t v1UsedCubeCoreNum_;
     uint32_t cubeDealnDPeCore_;
     uint32_t dealStartND_;
@@ -390,14 +379,12 @@ private:
     GlobalTensor<P> gammaGradGm_;    // 输出 gamma_grad
 
     LocalTensor<P> gammaUb;      // gamma
-    LocalTensor<T> xRsUb;        // x_rs
     LocalTensor<T> hInGradUb;    // h_in_grad
     LocalTensor<P> hPreUb;       // h_pre
     LocalTensor<P> invRmsGradUb; // inv_rms_grad
     LocalTensor<P> invRmsUb;     // inv_rms
     LocalTensor<P> xRsGradMmUb;  // x_rs_grad_mm
     LocalTensor<T> xGradUb;      // x_grad_bf16
-    LocalTensor<P> xRsFp32Out;   // x_rs_fp32
 
     // ProcessV2 chunk循环使用的buffer
     LocalTensor<P> invRmsInBuf_;
@@ -514,7 +501,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hPostOffset_ = hPreMaxBufLen_ * sizeof(P);
     hCombBeforeGradBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + hCombBeforeGradBufLen_;
-    onceDealMixBSNum_ = INOUT_QUEUE_SIZE / (fusionSize_ * sizeof(P));
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, 1, INOUT_QUEUE_SIZE);
