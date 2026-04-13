@@ -128,8 +128,8 @@ public:
 protected:
     __aicore__ inline void UpdateAddr(uint32_t expertIdx)
     {
-        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(CeilDiv(expertTokenOffset_ * h1_, PACK_FACTOR));
-        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(CeilDiv(expertIdx * h1_ * n1_, PACK_FACTOR));
+        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_);
+        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
 
         // MX 模式：更新 scale 偏移
