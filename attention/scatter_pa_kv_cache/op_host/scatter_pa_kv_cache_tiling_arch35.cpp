@@ -817,43 +817,48 @@ ge::graphStatus ScatterPaKvCacheTiling::PostTiling()
 
 void ScatterPaKvCacheTiling::DumpTilingInfo()
 {
-    std::ostringstream info;
-    info << "totalCoreNum: " << totalCoreNum_ << std::endl;
-    info << "usedCoreNum: " << usedCoreNum_ << std::endl;
-    info << "blockFactor: " << blockFactor_ << std::endl;
-    info << "tailBlockFactor: " << tailBlockFactor_ << std::endl;
-    info << "kHandleNumPerCore: " << kHandleNumPerCore_ << std::endl;
+    std::string info;
+    info = " totalCoreNum: " + std::to_string(totalCoreNum_);
+    info += " usedCoreNum: " + std::to_string(usedCoreNum_);
+    info += " blockFactor: " + std::to_string(blockFactor_);
+    info += " tailBlockFactor: " + std::to_string(tailBlockFactor_);
+    info += " kHandleNumPerCore: " + std::to_string(kHandleNumPerCore_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info << "vHandleNumPerCore: " << vHandleNumPerCore_ << std::endl;
+        info += " vHandleNumPerCore: " + std::to_string(vHandleNumPerCore_);
     }
-    info << "kLoopNum: " << kLoopNum_ << std::endl;
+    info += " kLoopNum: " + std::to_string(kLoopNum_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info << "vLoopNum: " << vLoopNum_ << std::endl;
+        info += " vLoopNum: " + std::to_string(vLoopNum_);
     }
-    info << "kHandleNumPerLoop: " << kHandleNumPerLoop_ << std::endl;
+    info += " kHandleNumPerLoop: " + std::to_string(kHandleNumPerLoop_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info << "vHandleNumPerLoop: " << vHandleNumPerLoop_ << std::endl;
+        info += " vHandleNumPerLoop: " + std::to_string(vHandleNumPerLoop_);
     }
-    info << "kTailHandleNum: " << kTailHandleNum_ << std::endl;
+    info += " kTailHandleNum: " + std::to_string(kTailHandleNum_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info << "vTailHandleNum: " << vTailHandleNum_ << std::endl;
+        info += " vTailHandleNum: " + std::to_string(vTailHandleNum_);
     }
-    info << "keyStride0: " << keyStride0_ << std::endl;
-    info << "keyStride1: " << keyStride1_ << std::endl;
-    info << "keyStride2: " << keyStride2_ << std::endl;
+    info += " keyStride0: " + std::to_string(keyStride0_);
+    info += " keyStride1: " + std::to_string(keyStride1_);
+    info += " keyStride2: " + std::to_string(keyStride2_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info << "valueStride0: " << valueStride0_ << std::endl;
-        info << "valueStride1: " << valueStride1_ << std::endl;
-        info << "valueStride2: " << valueStride2_ << std::endl;
+        info += " valueStride0: " + std::to_string(valueStride0_);
+        info += " valueStride1: " + std::to_string(valueStride1_);
+        info += " valueStride2: " + std::to_string(valueStride2_);
     }
-    info << "kHeadSize: " << kHeadSize_ << std::endl;
+    info += " kHeadSize: " + std::to_string(kHeadSize_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info << "vHeadSize: " << vHeadSize_ << std::endl;
+        info += " vHeadSize: " + std::to_string(vHeadSize_);
     }
-    info << "seqLen: " << seqLen_ << std::endl;
-    info << "numBlocks: " << numBlocks_ << std::endl;
-    info << "blockSize: " << blockSize_ << std::endl;
-    info << "tilingKey: " << tilingKey_ << std::endl;
+    info += " seqLen: " + std::to_string(seqLen_);
+    info += " numBlocks: " + std::to_string(numBlocks_);
+    info += " blockSize: " + std::to_string(blockSize_);
+    info += " tilingKey: " + std::to_string(tilingKey_);
+    info += " kStride: " + std::to_string(kStride_);
+    info += " vStride: " + std::to_string(vStride_);
+    info += " kOffset: " + std::to_string(kOffset_);
+    info += " vOffset: " + std::to_string(vOffset_);
+    printf("tiling data is %s\n", info.c_str());
 }
 
 ge::graphStatus Tiling4ScatterPaKvCache(gert::TilingContext *context_)

@@ -16,7 +16,7 @@
 #define SCATTER_PA_KV_CACHE_NZ_NOT_FULLY_LOAD_H_
 
 #include "kernel_operator.h"
-#include "kernel_tiling/kernel_tiling.h"
+#include "common.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
@@ -37,7 +37,7 @@ private:
 
 private:
     TPipe *pipe_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> inputQueue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> inputQueue_;
     const ScatterPaKvCacheTilingData *tilingData_;
 
     GlobalTensor<T1> keyGm_;
@@ -76,14 +76,15 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
 
     ubSizeK_ = tilingData_->kHandleNumPerCore * sizeof(T1);
     ubSizeV_ = tilingData_->vHandleNumPerCore * sizeof(T2);
-    pipe_->InitBuffer(inputQueue_, BUFFER_NUM, maxUbUsed_);
+    int64_t maxHandleSize = ubSizeK_ > ubSizeV_ ? ubSizeK_ : ubSizeV_;
+    pipe_->InitBuffer(inputQueue_, DOUBLE_BUFFER, maxHandleSize);
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzK(uint32_t start,
                                                                                                 uint32_t cacheStart)
 {
-    DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0};
+    DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), BLOCK_SIZE, 0,
                                           static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)}; // dstStride 需要乘blocksize
     DataCopyPadExtParams<T1> PadParams;
@@ -121,9 +122,9 @@ template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzV(uint32_t start,
                                                                                                 uint32_t cacheStart)
 {
-    DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0};
+    DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), 1, 0,
-                                          static_cast<uint32_t>(tilingData_->blockSize - 1)};
+                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)};
     DataCopyPadExtParams<T2> PadParams;
     PadParams.isPad = 0;
     PadParams.leftPadding = 0;
