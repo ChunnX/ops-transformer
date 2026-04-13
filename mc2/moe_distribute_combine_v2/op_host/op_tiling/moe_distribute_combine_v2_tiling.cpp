@@ -39,12 +39,7 @@
 #include "../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h"
-#include "cann_version.h"
-
-#if CANN_VERSION_NUM >= 90000000
 #include "mc2_exception_dump.h"
-using namespace Mc2Exception;
-#endif
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -2248,7 +2243,7 @@ IMPL_OP_OPTILING(MoeDistributeCombineV2)
     .Tiling(MoeDistributeCombineV2TilingFunc)
     .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
-#if CANN_VERSION_NUM >= 90000000
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 // Register exception func
 inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -2256,11 +2251,33 @@ inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args,
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
+    Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
 }
 
-IMPL_OP(MoeDistributeCombineV2)
-    .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeCombineV2ExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeCombineV2", "Get runtime version failed");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeCombineV2", "Get metadef version failed");
+        return;
+    }
+
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGE("MoeDistributeCombineV2",
+            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
+            runtimeVersionNum, metadefVersionNum);
+        return;
+    }
+
+    IMPL_OP(MoeDistributeCombineV2)
+        .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
+}
 #endif
 
 } // namespace optiling

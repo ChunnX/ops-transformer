@@ -36,12 +36,7 @@
 #include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_tiling_v2.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
-#include "cann_version.h"
-
-#if CANN_VERSION_NUM >= 90000000
 #include "mc2_exception_dump.h"
-using namespace Mc2Exception;
-#endif
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -95,14 +90,36 @@ IMPL_OP_OPTILING(MoeDistributeDispatchV3)
     .Tiling(MoeDistributeDispatchV3TilingFunc)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV3);
 
-#if CANN_VERSION_NUM >= 90000000
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 // Register exception func
 inline void MoeDistributeDispatchV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
-    Mc2ExceptionImpl(args, userdata, "MoeDistributeDispatchV3");
+    Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeDispatchV3");
 }
 
-IMPL_OP(MoeDistributeDispatchV3)
-    .ExceptionDumpParseFunc(MoeDistributeDispatchV3ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeDispatchV3ExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeDispatchV3", "Get runtime version failed");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeDispatchV3", "Get metadef version failed");
+        return;
+    }
+
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGE("MoeDistributeDispatchV3",
+            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
+            runtimeVersionNum, metadefVersionNum);
+        return;
+    }
+
+    IMPL_OP(MoeDistributeDispatchV3)
+        .ExceptionDumpParseFunc(MoeDistributeDispatchV3ExceptionImplWrapper);
+}
 #endif
 } // namespace optiling
