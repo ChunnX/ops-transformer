@@ -542,14 +542,17 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>N1</td>
-            <td>32、64、128</td>
+            <td>
+            A2/A3支持32、64、128<br>
+            950支持32、48、64、128
+            </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
             <td>Nidx1</td>
             <td>
             A2/A3支持8、16、32、64<br>
-            950支持32、64
+            950支持16、24、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -599,13 +602,16 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tbody>
         <tr>
             <td>query</td>
-            <td>N1=128/64; D =512</td>
+            <td>
+            A2/A3支持N1 = 128/64/32; D = 512<br>
+            950支持N1 = 128/64/48/32; D = 512
+            </td>
         </tr>
         <tr>
             <td>queryIndex</td>
             <td>
             A2/A3支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
-            950支持N1 = 64/32;  D = 128 ; S1 = 64k/128k
+            950支持N1 = 64/32/24/16;  D = 128 ; S1 = 64k/128k
             </td>
         </tr>
         <tr>
