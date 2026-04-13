@@ -558,11 +558,11 @@ int main(int argc, char **argv)
     long long outputShapeSize = GetShapeSize(outputShape);
     long long topkIndicesShapeSize = GetShapeSize(topkIndicesShape);
 
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
+    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
+    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> blockTableOptionalHostData(blockTableOptionalShapeSize, 0);
-    std::vector<float> outputHostData(outputShapeSize, 1);
+    std::vector<op::fp16_t> outputHostData(outputShapeSize, 1);
     
     std::vector<int32_t> topkIndicesHostData;
     for (int b = 0; b < batch; ++b) {
