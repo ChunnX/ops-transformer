@@ -14,8 +14,22 @@
  * \brief
  */
 
-#include <iostream>
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <string>
+#include <vector>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "../../../op_host/op_tiling/grouped_matmul_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
@@ -3798,7 +3812,7 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w8o32_transw_1aic_sparse)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
 
-// 非量化场景用例
+// 非量化场景用�?
 TEST_F(GroupedMatmulTiling, test_tiling_fp16_notrans_1aic)
 {
     size_t M = 345;
@@ -4357,251 +4371,296 @@ TEST_F(GroupedMatmulTiling, test_tiling_fp32_transx_1aic1aiv)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces,230);
 }
 
-TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_notrans)
-{
-    size_t M = 512;
-    size_t K = 2048;
-    size_t N = 1024;
-    size_t E = 4;
-    optiling::GMMCompileInfo compileInfo = {
-        24,//aicNum
-        48,//aivNum
-        196608,//ubSize
-        524288,//l1Size
-        196608,//l2Size
-        131072,//l0CSize
-        65536,//l0ASize
-        65536,//l0BSize
-        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
-        NpuArch::DAV_3510,
-    };
-    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
-                                                { // input info
-                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
-                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
-                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
-                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
-                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
-                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
-                                                }, 
-                                                { // output info
-                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-                                                }, 
-                                                { // attr
-                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-                                                }, &compileInfo);
-    int64_t expectTilingKey = 16L;
+namespace {
 
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+string GetExeDirPath()
+{
+#if defined(_WIN32)
+    char path[MAX_PATH] = {0};
+    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    string exePath(path, len);
+    auto pos = exePath.find_last_of("\\/");
+    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
+#else
+    char path[4096] = {0};
+    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (len <= 0) {
+        return "./";
+    }
+    path[len] = '\0';
+    string exePath(path);
+    auto pos = exePath.find_last_of('/');
+    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
+#endif
 }
 
-TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_wtrans)
+void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
 {
-    size_t M = 512;
-    size_t K = 2048;
-    size_t N = 1024;
-    size_t E = 4;
-    optiling::GMMCompileInfo compileInfo = {
-        24,//aicNum
-        48,//aivNum
-        196608,//ubSize
-        524288,//l1Size
-        196608,//l2Size
-        131072,//l0CSize
-        65536,//l0ASize
-        65536,//l0BSize
-        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
-        NpuArch::DAV_3510,
-    };
-    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
-                                                { // input info
-                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
-                                                    {{{E, N, K}, {E, K/32, N/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
-                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
-                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
-                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
-                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
-                                                }, 
-                                                { // output info
-                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-                                                }, 
-                                                { // attr
-                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-                                                }, &compileInfo);
-    int64_t expectTilingKey = 17L;
-
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    const auto delimiterLen = delimiter.size();
+    string::size_type currPos = 0;
+    string::size_type nextPos = input.find(delimiter, currPos);
+    while (nextPos != string::npos) {
+        output.emplace_back(input.substr(currPos, nextPos - currPos));
+        currPos = nextPos + delimiterLen;
+        nextPos = input.find(delimiter, currPos);
+    }
+    if (currPos <= input.size()) {
+        output.emplace_back(input.substr(currPos));
+    }
 }
 
-TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_pertensor)
+string Trim(string value)
 {
-    size_t M = 512;
-    size_t K = 2048;
-    size_t N = 1024;
-    size_t E = 4;
-    optiling::GMMCompileInfo compileInfo = {
-        24,//aicNum
-        48,//aivNum
-        196608,//ubSize
-        524288,//l1Size
-        196608,//l2Size
-        131072,//l0CSize
-        65536,//l0ASize
-        65536,//l0BSize
-        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
-        NpuArch::DAV_3510,
-    };
-    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
-                                                { // input info
-                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
-                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
-                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
-                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
-                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
-                                                }, 
-                                                { // output info
-                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-                                                }, 
-                                                { // attr
-                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-                                                }, &compileInfo);
-    int64_t expectTilingKey = 16L;
-
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
+    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
+    return value;
 }
 
-TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_illegal_dtype)
+bool ParseBool(const string &value)
 {
-    size_t M = 512;
-    size_t K = 2048;
-    size_t N = 1024;
-    size_t E = 4;
-    optiling::GMMCompileInfo compileInfo = {
-        24,//aicNum
-        48,//aivNum
-        196608,//ubSize
-        524288,//l1Size
-        196608,//l2Size
-        131072,//l0CSize
-        65536,//l0ASize
-        65536,//l0BSize
-        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
-        NpuArch::DAV_3510,
-    };
-    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
-                                                { // input info
-                                                    {{{M, K}, {M, K}}, ge::DT_FLOAT, ge::FORMAT_ND},              //x
-                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
-                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
-                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
-                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
-                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
-                                                }, 
-                                                { // output info
-                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-                                                }, 
-                                                { // attr
-                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-                                                }, &compileInfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    string lower = value;
+    transform(lower.begin(), lower.end(), lower.begin(),
+              [](unsigned char c) { return static_cast<char>(tolower(c)); });
+    return lower == "true" || lower == "1" || lower == "yes";
 }
 
-TEST_F(GroupedMatmulTiling, test_tiling_a8w8ofp16_weightnz_illegal_wshape)
+ge::DataType ParseDtype(const string &dtype)
 {
-    size_t M = 512;
-    size_t K = 2048;
-    size_t N = 1024;
-    size_t E = 4;
-    optiling::GMMCompileInfo compileInfo = {
-        24,//aicNum
-        48,//aivNum
-        196608,//ubSize
-        524288,//l1Size
-        196608,//l2Size
-        131072,//l0CSize
-        65536,//l0ASize
-        65536,//l0BSize
-        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
-        NpuArch::DAV_3510,
+    static const std::map<string, ge::DataType> dtypeMap = {
+        {"FLOAT", ge::DT_FLOAT},
+        {"FLOAT16", ge::DT_FLOAT16},
+        {"BF16", ge::DT_BF16},
+        {"INT8", ge::DT_INT8},
+        {"INT32", ge::DT_INT32},
+        {"INT64", ge::DT_INT64},
+        {"UINT64", ge::DT_UINT64},
+        {"INT4", ge::DT_INT4},
+        {"UNDEFINED", ge::DT_UNDEFINED},
     };
-    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
-                                                { // input info
-                                                    {{{M, K}, {M, K}}, ge::DT_FLOAT, ge::FORMAT_ND},              //x
-                                                    {{{E, K, N}, {E, K, N}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
-                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
-                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
-                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
-                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
-                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
-                                                }, 
-                                                { // output info
-                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-                                                }, 
-                                                { // attr
-                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-                                                }, &compileInfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    auto it = dtypeMap.find(dtype);
+    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
 }
 
-//其余ut（历史出过问题的补充ut）
+ge::Format ParseFormat(const string &format)
+{
+    static const std::map<string, ge::Format> formatMap = {
+        {"ND", ge::FORMAT_ND},
+        {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
+    };
+    auto it = formatMap.find(format);
+    return it == formatMap.end() ? ge::FORMAT_ND : it->second;
+}
+
+vector<int64_t> ParseDims(const string &value)
+{
+    const string trimmed = Trim(value);
+    if (trimmed.empty() || trimmed == "NONE") {
+        return {};
+    }
+    vector<string> dimTokens;
+    SplitStr2Vec(trimmed, ":", dimTokens);
+    vector<int64_t> dims;
+    for (const auto &token : dimTokens) {
+        dims.emplace_back(stoll(Trim(token)));
+    }
+    return dims;
+}
+
+gert::Shape BuildShape(const vector<int64_t> &dims)
+{
+    gert::Shape shape;
+    shape.SetDimNum(dims.size());
+    for (size_t i = 0; i < dims.size(); ++i) {
+        shape.SetDim(i, dims[i]);
+    }
+    return shape;
+}
+
+gert::StorageShape MakeStorageShape(const vector<int64_t> &originDims, const vector<int64_t> &storageDims)
+{
+    gert::StorageShape shape;
+    shape.MutableOriginShape() = BuildShape(originDims);
+    shape.MutableStorageShape() = BuildShape(storageDims);
+    return shape;
+}
+
+struct GroupedMatmulAscend950TensorDesc {
+    vector<int64_t> originDims;
+    vector<int64_t> storageDims;
+    ge::DataType dtype = ge::DT_UNDEFINED;
+    ge::Format format = ge::FORMAT_ND;
+};
+
+enum class GroupedMatmulAscend950ExpectType {
+    TILING_KEY,
+    GRAPH_FAILED,
+};
+
+struct GroupedMatmulAscend950Case {
+    string caseName;
+    bool enable = true;
+    string prefix;
+    GroupedMatmulAscend950ExpectType expectType = GroupedMatmulAscend950ExpectType::TILING_KEY;
+    int64_t expectTilingKey = 0;
+    uint32_t aicNum = 24;
+    uint32_t aivNum = 48;
+    uint64_t ubSize = 196608;
+    uint64_t l1Size = 524288;
+    uint64_t l2Size = 196608;
+    uint64_t l0CSize = 131072;
+    uint64_t l0ASize = 65536;
+    uint64_t l0BSize = 65536;
+    int64_t splitItem = 2;
+    int64_t dtypeAttr = 0;
+    bool transposeWeight = false;
+    bool transposeX = false;
+    int64_t groupType = 0;
+    int64_t groupListType = 0;
+    int64_t actType = 0;
+    int64_t tuningConfig = 0;
+    vector<GroupedMatmulAscend950TensorDesc> inputs;
+    GroupedMatmulAscend950TensorDesc output;
+
+    void Run() const
+    {
+        optiling::GMMCompileInfo compileInfo = {
+            aicNum,
+            aivNum,
+            ubSize,
+            l1Size,
+            l2Size,
+            l0CSize,
+            l0ASize,
+            l0BSize,
+            platform_ascendc::SocVersion::ASCEND950,
+            NpuArch::DAV_3510,
+        };
+        gert::TilingContextPara tilingContextPara(
+            "GroupedMatmul", BuildTensorDescs(inputs), {BuildTensorDesc(output)},
+            {
+                {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
+                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtypeAttr)},
+                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
+                {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
+                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+                {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({tuningConfig})},
+            },
+            &compileInfo);
+
+        if (expectType == GroupedMatmulAscend950ExpectType::GRAPH_FAILED) {
+            ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+            return;
+        }
+
+        TilingInfo tilingInfo;
+        ExecuteTiling(tilingContextPara, tilingInfo);
+        EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    }
+
+private:
+    static gert::TilingContextPara::TensorDescription BuildTensorDesc(const GroupedMatmulAscend950TensorDesc &tensor)
+    {
+        return {MakeStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype, tensor.format};
+    }
+
+    static vector<gert::TilingContextPara::TensorDescription> BuildTensorDescs(
+        const vector<GroupedMatmulAscend950TensorDesc> &tensors)
+    {
+        vector<gert::TilingContextPara::TensorDescription> descs;
+        descs.reserve(tensors.size());
+        for (const auto &tensor : tensors) {
+            descs.emplace_back(BuildTensorDesc(tensor));
+        }
+        return descs;
+    }
+};
+
+vector<GroupedMatmulAscend950Case> LoadGroupedMatmulAscend950Cases()
+{
+    vector<GroupedMatmulAscend950Case> cases;
+    string rootPath(GetExeDirPath() + "../../../../../");
+    string csvPath(rootPath + "gmm/grouped_matmul/tests/ut/op_host/test_grouped_matmu_tiling.csv");
+    ifstream csvData(csvPath, ios::in);
+    if (!csvData.is_open()) {
+        cout << "cannot open case file " << csvPath << endl;
+        return cases;
+    }
+
+    string line;
+    while (getline(csvData, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        vector<string> items;
+        SplitStr2Vec(line, ",", items);
+        if (items.empty() || items[0] == "caseName" || items.size() < 61U) {
+            continue;
+        }
+
+        size_t idx = 0;
+        GroupedMatmulAscend950Case tc;
+        tc.caseName = Trim(items[idx++]);
+        tc.enable = ParseBool(Trim(items[idx++]));
+        if (!tc.enable) {
+            continue;
+        }
+        tc.prefix = Trim(items[idx++]);
+        tc.expectType = ParseBool(Trim(items[idx++])) ? GroupedMatmulAscend950ExpectType::TILING_KEY
+                                                      : GroupedMatmulAscend950ExpectType::GRAPH_FAILED;
+        tc.expectTilingKey = stoll(Trim(items[idx++]));
+        tc.aicNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+        tc.aivNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+        tc.ubSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+        tc.l1Size = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+        tc.l2Size = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+        tc.l0CSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+        tc.l0ASize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+        tc.l0BSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+        tc.splitItem = stoll(Trim(items[idx++]));
+        tc.dtypeAttr = stoll(Trim(items[idx++]));
+        tc.transposeWeight = ParseBool(Trim(items[idx++]));
+        tc.transposeX = ParseBool(Trim(items[idx++]));
+        tc.groupType = stoll(Trim(items[idx++]));
+        tc.groupListType = stoll(Trim(items[idx++]));
+        tc.actType = stoll(Trim(items[idx++]));
+        tc.tuningConfig = stoll(Trim(items[idx++]));
+
+        for (int tensorIdx = 0; tensorIdx < 9; ++tensorIdx) {
+            tc.inputs.push_back({ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
+                                 ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))});
+        }
+        tc.output = {ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
+                     ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))};
+        cases.push_back(tc);
+    }
+    return cases;
+}
+
+string MakeGroupedMatmulAscend950CaseName(const testing::TestParamInfo<GroupedMatmulAscend950Case> &info)
+{
+    string name = info.param.prefix;
+    transform(name.begin(), name.end(), name.begin(),
+              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
+    return name;
+}
+
+} // namespace
+
+class GroupedMatmulAscend950Tiling : public testing::TestWithParam<GroupedMatmulAscend950Case> {
+};
+
+TEST_P(GroupedMatmulAscend950Tiling, generalTest)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(GROUPED_MATMUL_ASCEND950, GroupedMatmulAscend950Tiling,
+                         testing::ValuesIn(LoadGroupedMatmulAscend950Cases()),
+                         MakeGroupedMatmulAscend950CaseName);
+//其余ut（历史出过问题的补充ut�?
 
 TEST_F(GroupedMatmulTiling, test_tiling_A8W8O8)
 {
@@ -5806,3 +5865,5 @@ TEST_F(GroupedMatmulTiling, test_tiling_a8w4_950_aic_aiv_invalid_ratio)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+
