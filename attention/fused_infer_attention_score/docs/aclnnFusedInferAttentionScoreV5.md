@@ -155,7 +155,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>输入</td>
         <td>公式中的输入K。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4（INT32）、FLOAT4_E2M1</td>
+        <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
         <td>×</td>
@@ -165,7 +165,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>输入</td>
         <td>公式中的输入V。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4（INT32）、FLOAT4_E2M1</td>
+        <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
         <td>×</td>
@@ -394,7 +394,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>keyAntiquantScaleOptional</td>
         <td>输入</td>
-        <td>表示key的反量化因子，用于kv伪量化参数分离和FP8 per-block全量化场景。</td>
+        <td>表示key的反量化因子，用于KV伪量化参数分离和FP8 per-block全量化场景。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -411,7 +411,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>keyAntiquantOffsetOptional</td>
         <td>输入</td>
-        <td>kv伪量化参数分离时表示key的反量化偏移。</td>
+        <td>KV伪量化参数分离时表示key的反量化偏移。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -429,7 +429,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>valueAntiquantScaleOptional</td>
         <td>输入</td>
-        <td>表示value的反量化因子，用于kv伪量化参数分离和FP8 per-block全量化场景。</td>
+        <td>表示value的反量化因子，用于KV伪量化参数分离和FP8 per-block全量化场景。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -446,7 +446,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>valueAntiquantOffsetOptional</td>
         <td>输入</td>
-        <td>kv伪量化参数分离时表示value的反量化因子。</td>
+        <td>KV伪量化参数分离时表示value的反量化因子。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -696,7 +696,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>inputLayout=BNSD_BSND仅支持Q_D=K_D=V_D都16对齐(output dtype为int8时为32对齐)，或Q_D=K_D等于192，V_D等于128<br></li>
         </ul>
         </td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -940,7 +940,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <tr>
             <td>ACLNN_ERR_PARAM_INVALID</td>
             <td>161002</td>
-            <td>query、key、value、pseShift、attenMaskOptional、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+            <td>query、key、value、pseShiftOptional、attenMaskOptional、attentionOut的数据类型和数据格式不在支持的范围内。</td>
         </tr>
         <tr>
             <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -2136,7 +2136,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
       int64_t preTokens = 65535;
       int64_t nextTokens = 65535;
       string sLayerOut = "BNSD";
-      char layerOut[sLayerOut.length()];
+      char layerOut[sLayerOut.length()+1];
       strcpy(layerOut, sLayerOut.c_str());
       int64_t sparseMode = 0;
       int64_t innerPrecise = 1;
