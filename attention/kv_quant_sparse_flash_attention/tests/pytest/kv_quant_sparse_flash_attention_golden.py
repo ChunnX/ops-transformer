@@ -31,61 +31,61 @@ UNSUPPORTED_GOLDEN_MSG = (
 )
 
 
-def _resolve_actual_seq(actual_seq, default_value, batch_size, name):
+def _resolve_actual_seq(actual_seq, default_value, B, name):
     # 将可选的 actual_seq 统一整理成按 batch 对齐的长度列表。
     if actual_seq is None:
-        return [default_value] * batch_size
-    if len(actual_seq) != batch_size:
-        raise ValueError(f"{name} length should equal B={batch_size}, but got {len(actual_seq)}")
+        return [default_value] * B
+    if len(actual_seq) != B:
+        raise ValueError(f"{name} length should equal B={B}, but got {len(actual_seq)}")
     return [int(value) for value in actual_seq]
 
 
-def _build_query_tensors(batch_size, seq_q, head_num_q, head_dim, rope_head_dim, q_type):
+def _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type):
     # 构造 query 的 base 和 rope 部分，并在最后一维拼接。
     query_base = torch.tensor(
         np.random.uniform(DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT,
-                          (batch_size, seq_q, head_num_q, head_dim)),
+                          (B, S1, N1, D)),
         dtype=q_type,
     )
     query_rope = torch.tensor(
         np.random.uniform(DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT,
-                          (batch_size, seq_q, head_num_q, rope_head_dim)),
+                          (B, S1, N1, rope_head_dim)),
         dtype=q_type,
     )
     return torch.cat((query_base, query_rope), dim=3)
 
 
-def _build_kv_tensors(kv_dtype, kv_dim0, seq_kv, head_num_kv, head_dim, rope_head_dim, num_tiles, q_type):
+def _build_kv_tensors(kv_dtype, kv_dim0, S2, N2, D, rope_head_dim, num_tiles, q_type):
     # 构造 K/V 存储张量，以及与 key 一起存放的 antiquant_scale。
     key_rope = torch.tensor(
         np.random.uniform(DATA_RANGE_ROPE_LEFT, DATA_RANGE_ROPE_RIGHT,
-                          (kv_dim0, seq_kv, head_num_kv, rope_head_dim)),
+                          (kv_dim0, S2, N2, rope_head_dim)),
         dtype=q_type,
     )
     antiquant_scale = torch.tensor(
         np.random.uniform(DATA_RANGE_SCALE_LEFT, DATA_RANGE_SCALE_RIGHT,
-                          (kv_dim0, seq_kv, head_num_kv, num_tiles)),
+                          (kv_dim0, S2, N2, num_tiles)),
         dtype=torch.float32,
     )
 
     if kv_dtype == "hifloat8":
         key_base = torch.tensor(
             np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
-                              (kv_dim0, seq_kv, head_num_kv, head_dim)),
+                              (kv_dim0, S2, N2, D)),
             dtype=torch.uint8,
         )
         value = torch.tensor(
             np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
-                              (kv_dim0, seq_kv, head_num_kv, head_dim)),
+                              (kv_dim0, S2, N2, D)),
             dtype=torch.uint8,
         )
         storage_dtype = torch.uint8
     elif kv_dtype in (None, "float8_e4m3fn"):
         key_base = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, seq_kv, head_num_kv, head_dim))
+            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
         ).to(torch.float8_e4m3fn)
         value = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, seq_kv, head_num_kv, head_dim))
+            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
         ).to(torch.float8_e4m3fn)
         storage_dtype = torch.float8_e4m3fn
     else:
@@ -102,10 +102,10 @@ def _build_kv_tensors(kv_dtype, kv_dim0, seq_kv, head_num_kv, head_dim, rope_hea
     return value, antiquant_scale, key_cat
 
 
-def _build_pa_block_table(batch_size, block_num, block_size, seq_kv, actual_seq_kv_list):
+def _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list):
     # PA 场景下为每个 batch 分配可用的缓存块索引。
     max_blocks_per_batch = max(
-        math.ceil(seq_kv / block_size),
+        math.ceil(S2 / block_size),
         math.ceil(max(actual_seq_kv_list) / block_size),
     )
     required_blocks = sum(math.ceil(seq / block_size) for seq in actual_seq_kv_list)
@@ -115,29 +115,29 @@ def _build_pa_block_table(batch_size, block_num, block_size, seq_kv, actual_seq_
         )
 
     all_indices = np.random.permutation(np.arange(block_num, dtype=np.int32))
-    block_table_np = np.full((batch_size, max_blocks_per_batch), -1, dtype=np.int32)
+    block_table_np = np.full((B, max_blocks_per_batch), -1, dtype=np.int32)
     offset = 0
-    for batch_index in range(batch_size):
-        needed_blocks = math.ceil(actual_seq_kv_list[batch_index] / block_size)
-        block_table_np[batch_index, :needed_blocks] = all_indices[offset:offset + needed_blocks]
+    for b in range(B):
+        needed_blocks = math.ceil(actual_seq_kv_list[b] / block_size)
+        block_table_np[b, :needed_blocks] = all_indices[offset:offset + needed_blocks]
         offset += needed_blocks
     return torch.tensor(block_table_np, dtype=torch.int32)
 
 
-def _build_sparse_indices(batch_size, seq_q, head_num_kv, sparse_count, sparse_block_size,
+def _build_sparse_indices(B, S1, N2, K, sparse_block_size,
                           sparse_mode, actual_seq_q_list, actual_seq_kv_list):
     # 根据 sparse_mode 和实际长度生成每个 query 位置的稀疏 block 索引。
-    sparse_indices_np = np.full((batch_size, seq_q, head_num_kv, sparse_count), -1, dtype=np.int32)
+    sparse_indices_np = np.full((B, S1, N2, K), -1, dtype=np.int32)
 
-    for batch_index in range(batch_size):
-        actual_seq_q = actual_seq_q_list[batch_index]
-        actual_seq_kv = actual_seq_kv_list[batch_index]
-        valid_seq_q = min(seq_q, actual_seq_q)
-        for query_index in range(valid_seq_q):
+    for b in range(B):
+        actual_seq_q = actual_seq_q_list[b]
+        actual_seq_kv = actual_seq_kv_list[b]
+        valid_seq_q = min(S1, actual_seq_q)
+        for s1_idx in range(valid_seq_q):
             if sparse_mode == 0:
                 threshold = actual_seq_kv
             elif sparse_mode == 3:
-                threshold = actual_seq_kv - actual_seq_q + query_index + 1
+                threshold = actual_seq_kv - actual_seq_q + s1_idx + 1
             else:
                 threshold = actual_seq_kv
 
@@ -145,14 +145,14 @@ def _build_sparse_indices(batch_size, seq_q, head_num_kv, sparse_count, sparse_b
                 continue
 
             valid_blocks_max = math.ceil(max(0, threshold) / sparse_block_size)
-            valid_blocks_topk = min(valid_blocks_max, sparse_count)
+            valid_blocks_topk = min(valid_blocks_max, K)
             if valid_blocks_topk <= 0:
                 continue
 
             if valid_blocks_topk > 1:
                 block_indices = np.random.permutation(valid_blocks_max - 1).astype(np.int32)
-                sparse_indices_np[batch_index, query_index, :, :valid_blocks_topk - 1] = block_indices[:valid_blocks_topk - 1]
-            sparse_indices_np[batch_index, query_index, :, valid_blocks_topk - 1] = valid_blocks_max - 1
+                sparse_indices_np[b, s1_idx, :, :valid_blocks_topk - 1] = block_indices[:valid_blocks_topk - 1]
+            sparse_indices_np[b, s1_idx, :, valid_blocks_topk - 1] = valid_blocks_max - 1
 
     return torch.tensor(sparse_indices_np, dtype=torch.int32)
 
@@ -198,37 +198,37 @@ def _save_test_case(input_data, output_dir):
 def generate_and_save_testdata(params, save_pt=False, save_path="", compute_golden=True):
     # 该接口负责把参数组装成 qsfa 直调所需的完整输入字典。
     (testcase_name, layout_query, layout_kv, q_type, kv_dtype,
-     batch_size, seq_q, seq_kv, head_num_q, head_num_kv, head_dim, sparse_count,
+     B, S1, S2, N1, N2, D, K,
      scale_value, key_quant_mode, value_quant_mode, sparse_block_size,
      tile_size, rope_head_dim, sparse_mode, attention_mode, quant_scale_repo_mode,
      block_size, block_num, actual_seq_q, actual_seq_kv) = params
 
-    num_tiles = head_dim // tile_size
+    num_tiles = D // tile_size
     pa_mode = layout_kv == "PA_BSND"
-    actual_seq_q_list = _resolve_actual_seq(actual_seq_q, seq_q, batch_size, "actual_seq_q")
-    actual_seq_kv_list = _resolve_actual_seq(actual_seq_kv, seq_kv, batch_size, "actual_seq_kv")
+    actual_seq_q_list = _resolve_actual_seq(actual_seq_q, S1, B, "actual_seq_q")
+    actual_seq_kv_list = _resolve_actual_seq(actual_seq_kv, S2, B, "actual_seq_kv")
 
     if pa_mode:
         # PA_BSND 下 key/value 采用 block 形式存储。
         if block_num is None:
             raise ValueError("PA mode requires block_num")
         kv_dim0 = block_num
-        seq_kv_storage = block_size
+        S2_storage = block_size
     else:
-        kv_dim0 = batch_size
-        seq_kv_storage = seq_kv
+        kv_dim0 = B
+        S2_storage = S2
 
-    query_bsnd = _build_query_tensors(batch_size, seq_q, head_num_q, head_dim, rope_head_dim, q_type)
+    query_bsnd = _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type)
     value, antiquant_scale, key_cat = _build_kv_tensors(
-        kv_dtype, kv_dim0, seq_kv_storage, head_num_kv, head_dim, rope_head_dim, num_tiles, q_type
+        kv_dtype, kv_dim0, S2_storage, N2, D, rope_head_dim, num_tiles, q_type
     )
 
-    final_key_dim = head_dim + 2 * rope_head_dim + 4 * num_tiles
+    final_key_dim = D + 2 * rope_head_dim + 4 * num_tiles
     key = torch.as_strided(
         key_cat,
-        size=(kv_dim0, seq_kv_storage, head_num_kv, final_key_dim),
-        stride=(head_num_kv * final_key_dim * seq_kv_storage,
-                head_num_kv * final_key_dim,
+        size=(kv_dim0, S2_storage, N2, final_key_dim),
+        stride=(N2 * final_key_dim * S2_storage,
+                N2 * final_key_dim,
                 final_key_dim,
                 1),
     )
@@ -237,12 +237,12 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
     value_dequant_scale = antiquant_scale
 
     sparse_indices_bsnd = _build_sparse_indices(
-        batch_size, seq_q, head_num_kv, sparse_count, sparse_block_size,
+        B, S1, N2, K, sparse_block_size,
         sparse_mode, actual_seq_q_list, actual_seq_kv_list,
     )
 
     if pa_mode:
-        block_table = _build_pa_block_table(batch_size, block_num, block_size, seq_kv, actual_seq_kv_list)
+        block_table = _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list)
         key_input = key
         value_input = value
         actual_seq_kv_tensor = torch.tensor(actual_seq_kv_list, dtype=torch.int32)
