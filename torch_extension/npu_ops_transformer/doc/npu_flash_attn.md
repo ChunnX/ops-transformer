@@ -58,7 +58,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND"，layout_out="BSND", return_softmax_lse=0, deterministic=0) -> attn_out(Tensor), softmax_lse(Tensor)
+npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> attn_out(Tensor), softmax_lse(Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -95,7 +95,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>ND</td>
         <td>
             <ul>
-                <li>可为(B, S_Q, N_Q, D)、(B, N_Q, S_Q, D)和(Q, N_Q, D)其中一种</li>
+                <li>可为(B, S_Q, N_Q, D)、(B, N_Q, S_Q, D)和(T_Q, N_Q, D)其中一种</li>
                 <li>具体shape需满足后续layout匹配规则</li>
             </ul>      
         </td>
@@ -110,7 +110,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>ND</td>
         <td>
             <ul>
-                <li>可为(B, S_KV, N_KV, D)、(B, N_KV, S_KV, D)、(KV, N_KV, D)、(number_blocks, B, N_KV, D)、(num_blocks, N_KV, block_size, D)和(num_blocks, N_KV, D/16, block_size, 16)其中一种</li>
+                <li>可为(B, S_KV, N_KV, D)、(B, N_KV, S_KV, D)、(T_KV, N_KV, D)、(number_blocks, B, N_KV, D)、(num_blocks, N_KV, block_size, D)和(num_blocks, N_KV, D/16, block_size, 16)其中一种</li>
                 <li>具体shape需满足后续layout匹配规则</li>
             </ul>      
         </td>
@@ -125,7 +125,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>ND</td>
         <td>
             <ul>
-                <li>可为(B, S_KV, N_KV, D)、(B, N_KV, S_KV, D)、(KV, N_KV, D)、(number_blocks, B, N_KV, D)、(num_blocks, N_KV, block_size, D)和(num_blocks, N_KV, D/16, block_size, 16)其中一种</li>
+                <li>可为(B, S_KV, N_KV, D)、(B, N_KV, S_KV, D)、(T_KV, N_KV, D)、(number_blocks, B, N_KV, D)、(num_blocks, N_KV, block_size, D)和(num_blocks, N_KV, D/16, block_size, 16)其中一种</li>
                 <li>具体shape需满足后续layout匹配规则</li>
             </ul>      
         </td>
@@ -346,7 +346,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>layout_out</td>
         <td>可选输入</td>
-        <td>定义输入k和v张量的布局格式</td>
+        <td>定义输出张量的布局格式</td>
         <td>
             <ul>
                 <li>layout可以为BSND、TND或者BNSD</li>
@@ -437,7 +437,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>ND</td>
         <td>
             <ul>
-                <li>可为(B, N_Q, S_Q)和(N_Q, Q)</li>
+                <li>可为(B, N_Q, S_Q)和(N_Q, T_Q)</li>
                 <li>shape取决于layout_q和layout_out，可见后续layout匹配规则</li>
             </ul>      
         </td>
@@ -446,8 +446,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 </tbody>
 </table>
 
-## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a?>
-## 约束说明
+## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
 ### 一、约束类型说明
 
@@ -478,7 +477,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 |                      |      layout_kv      | ATTR(OPTIONAL) |    string    |
 |                      |      layout_out      | ATTR(OPTIONAL) |    string    |
 |                      |     attentionOut     |     OUTPUT     |   Tensor   |
-|      Mask参数组      |      sparseMode      | ATTR(OPTIONAL) |   int64   |
+|      Mask参数组      |      mask_mode      | ATTR(OPTIONAL) |   int64   |
 |                      |       win_left       | ATTR(OPTIONAL) |   int64   |
 |                      |      win_right      | ATTR(OPTIONAL) |   int64   |
 |  SeqLengths参数组       |   seqused_q   | INPUT(OPTIONAL) |  Tensor  |
@@ -516,7 +515,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 
 - 单参数约束
 
-  - layout约束
+  - 公共约束
     <table style="undefined;table-layout: fixed; width: 1100px">
         <colgroup>
             <col style="width: 200px">
@@ -576,12 +575,11 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
                     <li>TND</li>
                 </td>
                 <td>
-                    (N_Q, Q)
+                    (N_Q, T_Q)
                 </td>
             </tr>
         </tbody>
     </table>
-  - 公共约束
 
 - 存在性约束
 
@@ -648,7 +646,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
                     D轴小于等于512, 且16对齐
                 </td>
                 <td rowspan="3">
-                    Q_N需可整除KV_N，Q_N与KV_N的比值无限制
+                    N_Q是N_KV的整数倍
                 </td>
             </tr>
             <tr>
@@ -666,8 +664,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
                     D轴小于等于512, 且16对齐
                 </td>
             </tr>
-                        <tr>
-                <td>q</td>
+                <td>v</td>
                 <td>
                     支持B轴小于等于65536
                 </td>
@@ -703,7 +700,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
                 <td>npu_flash_attn</td>
                 <td>
                     <ul>
-                        <li>Key/Value排布支持BnBsH（blockNum, blockSize, H）、BnNBsD（blockNum, KV_N,
+                        <li>Key/Value排布支持BnBsND（blockNum, blockSize, KV_N, D）、BnNBsD（blockNum, KV_N,
                             blockSize, D）和NZ（blockNum，KV_N，D/16，blockSize，16）三种格式</li>
                     </ul>
                 </td>
@@ -722,13 +719,12 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
       | mask_mode |                                                                               含义                                                                                     |
       | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: |
       |     1     |                                                全计算模式，忽略win_left和win_right                                                 |
-      |     3     |                                           rightDownCausal模式，忽略win_left和win_right                                           |
+      |     3     |                                           Causal模式，忽略win_left和win_right                                           |
       |     4     |                                           band模式，计算win_left和win_right之间的部分                                            |
 - 存在性约束
   - 无
 - 一致性约束
-  - 公共
-    - Q_S 大于1时，win_left 与 win_right 应满足 win_left * (-1) <= win_right，以确保具有有效数据
+  - 无
 - 特性交叉约束
   - 无
 #### SeqLengths参数组
@@ -750,19 +746,19 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
         - 当 layout_q 为 TND 时，其值应递增(大于等于前一个值)排列
-        - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T
+        - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T_Q
         - 其值应为非负数
     - 入参 cu_seqlens_kv应满足以下条件:
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
         - 当 layout_kv 为 TND 时，其值应递增(大于等于前一个值)排列
-        - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T
+        - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T_KV
         - 其值应为非负数
 - 存在性约束
   - 公共
     - 入参 seqused_kv 应满足以下条件:
-      - PagedAttention场景，必须传入 cu_seqlens_kv
+      - PagedAttention场景，必须传入 seqused_kv
     - 入参 cu_seqlens_q 应满足以下条件:
       - 当 layout_q 为 TND 时，必须传入 cu_seqlens_q
     - 入参 cu_seqlens_kv 应满足以下条件:
@@ -771,6 +767,49 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
   - 无
 - 特性交叉约束
   - 无
+
+#### Paged Attention参数组
+
+- 单参数约束
+  - 公共
+    - 入参 blockTable 需要满足以下条件：
+      - tensor dtype 为int32类型
+      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）
+- 存在性约束
+  - 公共
+    - PagedAttention 使能情况下，必须传入 seqused_kv
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
+
+#### LearnableSink参数组
+
+- 单参数约束
+  - 公共
+    - 入参 sinks 需要满足以下条件
+      - tensor dtype 为 FP32
+      - tensor shape 为 (Q_N)
+- 存在性约束
+  - 无
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 无
+#### SoftmaxLSE参数组
+
+- 单参数约束
+  - 公共
+    - 输出 lseOut 仅支持数据类型 FP32
+- 存在性约束
+  - 公共
+    - softmaxLSE 场景下，输出 lseOut 不应为空
+- 一致性约束
+  - 无
+- 特性交叉约束
+  - 公共
+    - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 lseOut 输入维度应为 3，且 shape 匹配 [Q_T，Q_N]
+    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 lseOut 输入维度应为 2，且 shape 匹配 [B，Q_N，Q_S，1]
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
