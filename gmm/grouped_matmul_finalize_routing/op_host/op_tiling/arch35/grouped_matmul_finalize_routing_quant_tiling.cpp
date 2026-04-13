@@ -114,6 +114,12 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
     OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleDesc is nullptr."), return false);
     inputParams_.scaleDtype = scaleDesc != nullptr ? scaleDesc->GetDataType() : inputParams_.scaleDtype;
+    if (inputParams_.scaleDtype == ge::DT_FLOAT) {
+        scaleType_ = 1;
+    } else if (inputParams_.scaleDtype == ge::DT_BF16) {
+        scaleType_ = 2; // 2 represents bf16 dtype
+    }
+    
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
@@ -149,6 +155,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                     OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
     } else if (context_->GetOptionalInputDesc(ROW_INDEX_INDEX) != nullptr) {
         auto rowIndexDtype = context_->GetOptionalInputDesc(ROW_INDEX_INDEX)->GetDataType();
+        if (rowIndexDtype == ge::DT_INT32) {
+            rowIndexType_ = 1;
+        }
         OP_CHECK_IF(!(rowIndexDtype == ge::DT_INT64 || rowIndexDtype == ge::DT_INT32),
                     OP_LOGE(context_->GetNodeName(),
                             "When inputs are DT_INT8, rowIndex dtype should be DT_INT64/DT_INT32, but now is %s ",
@@ -452,7 +461,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
 
 uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(inputParams_.transB));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(inputParams_.transB),
+        static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowIndexType_));
 }
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
