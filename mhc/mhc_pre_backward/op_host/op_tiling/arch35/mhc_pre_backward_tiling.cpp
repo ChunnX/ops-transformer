@@ -66,8 +66,9 @@ const constexpr uint32_t C1_SET_SHAPE_K = 1024;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
-ge::graphStatus MhcPreBackwardTiling::GetInputTensors(
-    const gert::Tensor *&hInGradTensor, const gert::Tensor *&hPostGradTensor, const gert::Tensor *&hCombBeforeGradTensor)
+ge::graphStatus MhcPreBackwardTiling::GetInputTensors(const gert::Tensor *&hInGradTensor,
+                                                      const gert::Tensor *&hPostGradTensor,
+                                                      const gert::Tensor *&hCombBeforeGradTensor)
 {
     hInGradTensor = context_->GetDynamicInputTensor(H_IN_GRAD_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hInGradTensor);
@@ -80,8 +81,7 @@ ge::graphStatus MhcPreBackwardTiling::GetInputTensors(
 
 ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t hPostDims, int64_t hCombDims)
 {
-    if ((hInDims != BSD_DIM_NUM && hInDims != TD_DIM_NUM) ||
-        (hPostDims != BSD_DIM_NUM && hPostDims != TN_DIM_NUM) ||
+    if ((hInDims != BSD_DIM_NUM && hInDims != TD_DIM_NUM) || (hPostDims != BSD_DIM_NUM && hPostDims != TN_DIM_NUM) ||
         (hCombDims != BSNN_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
         OP_LOGE(context_->GetNodeName(), "input dims invalid for MhcPreBackward");
         return ge::GRAPH_FAILED;
@@ -94,7 +94,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t
 }
 
 ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *hInGradTensor,
-    const gert::Tensor *hPostGradTensor, const gert::Tensor *hCombBeforeGradTensor)
+                                                     const gert::Tensor *hPostGradTensor,
+                                                     const gert::Tensor *hCombBeforeGradTensor)
 {
     uint64_t batch = hInGradTensor->GetStorageShape().GetDim(INDEX_B);
     uint64_t sequence = hInGradTensor->GetStorageShape().GetDim(INDEX_S);
@@ -118,7 +119,8 @@ ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *hInGrad
 }
 
 ge::graphStatus MhcPreBackwardTiling::ParseTNDFormat(const gert::Tensor *hInGradTensor,
-    const gert::Tensor *hPostGradTensor, const gert::Tensor *hCombBeforeGradTensor)
+                                                     const gert::Tensor *hPostGradTensor,
+                                                     const gert::Tensor *hCombBeforeGradTensor)
 {
     uint64_t t = hInGradTensor->GetStorageShape().GetDim(INDEX_T);
     D_ = hInGradTensor->GetStorageShape().GetDim(INDEX_D_TND);
@@ -219,7 +221,6 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
         return ge::GRAPH_FAILED;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    
 
     blockDim_ = ascendcPlatform.GetCoreNumAic();
     vecCoreNum_ = ascendcPlatform.GetCoreNumAiv();
@@ -324,7 +325,8 @@ ge::graphStatus MhcPreBackwardTiling::GetMatmulTiling(matmul_tiling::MatmulApiTi
     }
     if (mm.GetTiling(isC0 ? tilingData_.matmulTilingC0 : tilingData_.matmulTilingC1) == -1) {
         OP_LOGE(context_->GetNodeName(), "ProcessC%d Get Tiling Failed!, m = %lu, n = %lu, k = %lu", isC0 ? 0 : 1,
-                isC0 ? totalLength_ : N_ * N_ + 2 * N_, isC0 ? N_ * D_ : N_ * D_, isC0 ? N_ * N_ + 2 * N_ : totalLength_);
+                isC0 ? totalLength_ : N_ * N_ + 2 * N_, isC0 ? N_ * D_ : N_ * D_,
+                isC0 ? N_ * N_ + 2 * N_ : totalLength_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -237,12 +237,14 @@ struct WorkspaceBuffer {
 
     __aicore__ inline uint64_t GetXRsGradOffset(uint32_t coreId, uint32_t buffId)
     {
-        return CeilAlign(xRsGradOffset, uint64_t(CEIL_ALIGN_DEFAULT)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+        return CeilAlign(xRsGradOffset, uint64_t(CEIL_ALIGN_DEFAULT)) +
+               (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
     }
 
     __aicore__ inline uint64_t GetXRsOffset(uint32_t coreId, uint32_t buffId)
     {
-        return CeilAlign(xRsOffset, uint64_t(CEIL_ALIGN_DEFAULT)) + (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+        return CeilAlign(xRsOffset, uint64_t(CEIL_ALIGN_DEFAULT)) +
+               (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
     }
 };
 
@@ -360,7 +362,6 @@ private:
     GlobalTensor<P> biasPostGradGm_; // 输出 bias_post_grad
     GlobalTensor<P> gammaGradGm_;    // 输出 gamma_grad
 
-    /*V1 LocalTensor*/
     LocalTensor<P> gammaUb;      // gamma
     LocalTensor<T> xRsUb;        // x_rs
     LocalTensor<T> hInGradUb;    // h_in_grad
@@ -1542,7 +1543,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         fp32ExtCopyParams.dstStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
 
         uint64_t offset = workspaceBuf_.GetXRsOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId); // 在workspace的偏移
-        uint32_t vecIdx = blockIdx_ % 2;                                         // 0 或 1
+        uint32_t vecIdx = blockIdx_ % 2;                                                           // 0 或 1
         offset += (bsChunkStart - bsStart) * ND_BLOCK_SIZE;
         offset += vecIdx * (ND_BLOCK_SIZE / 2); // 在 1024 * 128 内的偏移
 
