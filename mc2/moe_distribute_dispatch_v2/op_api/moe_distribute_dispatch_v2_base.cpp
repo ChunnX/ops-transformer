@@ -135,12 +135,12 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     int64_t ydtype = expandXOut->GetDataType();
     if(!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { //ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
-            x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-            elasticInfoOptional, performanceInfoOptionalDispatchV2Temp, groupEp, epWorldSize, epRankId, moeExpertNum,
-            groupTpDispatchV2Temp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg, zeroExpertNum, copyExpertNum,
-            constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-            epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+            x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+            performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+            const_cast<char*>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+            copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+            expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
         uint64_t hcclBuffSize = 0;
         const char* opName = "moe_distribute_dispatch_v2";
@@ -150,9 +150,11 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
             elasticInfoOptional, performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum,
             hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg, zeroExpertNum, copyExpertNum,
-            constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-            epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum, 
+            copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, 
+            expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+            
+            
     }  
     SetCommArgs(is950, is910B, commAlg, executor);
     return getWorkspaceSizesRes;

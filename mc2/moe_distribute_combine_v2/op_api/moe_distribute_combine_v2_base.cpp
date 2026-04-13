@@ -134,26 +134,29 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     aclnnStatus ret;
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
-            expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
-            xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
-            sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
-            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp, groupEp, epWorldSize,
-            epRankId, moeExpertNum, groupTpCombineV2Temp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum,
-            copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
+            expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
+            tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional,
+            expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
+            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
+            const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char*>(groupTpCombineV2Temp),
+            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
+            commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
+            xOut, workspaceSize, executor);
     } else {
         uint64_t hcclBuffSize = 0;
         const char* opName = "moe_distribute_combine_v2";
         auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
-            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
-            activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
-            elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
+            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, 
+            xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, 
+            sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
             constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize,
             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
-            outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
+            outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
+            
+            
     }
     SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;
