@@ -190,72 +190,43 @@ function(gen_aclnn_with_opdef)
 
   # 将头文件安装到packages/vendors/vendor_name/op_api/include
   if (NOT ENABLE_BUILT_IN)
-    # opbuild_out_headers 安装到 level1（根据列表筛选是否安装到 level2）
-    foreach(header_file IN LISTS opbuild_out_headers)
-      get_filename_component(header_name ${header_file} NAME)
-      install(FILES ${header_file} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-      if(header_name IN_LIST level2_ops_list)
-        install(FILES ${header_file} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-      endif()
-    endforeach()
+    install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-    
-    # mc2_aclnn_master_headers 安装到 level1（根据列表筛选是否安装到 level2）
     if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
-      foreach(header_file IN LISTS mc2_aclnn_master_headers)
-        get_filename_component(header_name ${header_file} NAME)
-        install(FILES ${header_file} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-        if(header_name IN_LIST level2_ops_list)
-          install(FILES ${header_file} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-        endif()
-      endforeach()
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     endif()
   else()
-    # opbuild_out_headers 安装到 level1 和 level2
-    foreach(header_file IN LISTS opbuild_out_headers)
+    # 安装到 aclnnop/（所有头文件都必须安装）
+    install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    endif()
+    # 安装到 level2/（仅限列表中的单个算子头文件）
+    foreach(header_file ${opbuild_out_headers})
       get_filename_component(header_name ${header_file} NAME)
-      install(FILES ${header_file} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
       if(header_name IN_LIST level2_ops_list)
         install(FILES ${header_file} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
       endif()
     endforeach()
-    install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-    
-    # mc2_aclnn_master_headers 安装到 level1 和 level2（根据列表筛选）
-    if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
-      foreach(header_file IN LISTS mc2_aclnn_master_headers)
-        get_filename_component(header_name ${header_file} NAME)
-        install(FILES ${header_file} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-        if(header_name IN_LIST level2_ops_list)
-          install(FILES ${header_file} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
-        endif()
-      endforeach()
-    endif()
   endif()
 
   if (ENABLE_STATIC)
-    # opbuild_out_headers 安装到 level1 和 level2
-    foreach(header_file IN LISTS opbuild_out_headers)
+    # 安装到 aclnnop/（所有头文件都必须安装）
+    install(FILES ${opbuild_out_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
+    install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
+    if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
+    endif()
+    # 安装到 level2/（仅限列表中的单个算子头文件）
+    foreach(header_file ${opbuild_out_headers})
       get_filename_component(header_name ${header_file} NAME)
-      install(FILES ${header_file} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
       if(header_name IN_LIST level2_ops_list)
         install(FILES ${header_file} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
       endif()
     endforeach()
-    install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
-    
-    # mc2_aclnn_master_headers 安装到 level1 和 level2（根据列表筛选）
-    if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
-      foreach(header_file IN LISTS mc2_aclnn_master_headers)
-        get_filename_component(header_name ${header_file} NAME)
-        install(FILES ${header_file} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
-        if(header_name IN_LIST level2_ops_list)
-          install(FILES ${header_file} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
-        endif()
-      endforeach()
-    endif()
   endif()
 
   # ascendc_impl_gen depends opbuild_custom_gen_aclnn_all, for opbuild will generate .ini
