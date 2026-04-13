@@ -844,7 +844,6 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     constexpr uint32_t TOPK_MAX_SIZE = 2048;           // TopK选取个数
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
-    
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         workspaceSize += 4 * ((tilingInfo->s2Size + 128 - 1) / 128) * 128 * sizeof(uint16_t) * 32;
     } else {
