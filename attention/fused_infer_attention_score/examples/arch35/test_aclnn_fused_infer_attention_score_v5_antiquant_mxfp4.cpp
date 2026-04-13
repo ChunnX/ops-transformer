@@ -189,7 +189,7 @@ int main() {
     bool softmaxLseFlag = false;
     int64_t keyAntiquantMode = 6;
     int64_t valueAntiquantMode = 6;
-    int64_t queryQuantMode = 7;
+    int64_t queryQuantMode = 0;
     int64_t pseType = 0;
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
