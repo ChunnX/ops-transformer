@@ -1277,6 +1277,8 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
  	constexpr int32_t EMBEDDING_SIZE_256 = 256;
  	constexpr int64_t GROUP_SIZE_128 = 128;
     constexpr int32_t DECODING_PAGE_BLOCK_SIZE_128 = 128;
+ 	constexpr int32_t EMBEDDING_SIZE_128 = 128;
+ 	constexpr int64_t GROUP_SIZE_128 = 128;
     constexpr int64_t EMBEDDING_SIZE_ALIGN_16 = 16;
 
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
