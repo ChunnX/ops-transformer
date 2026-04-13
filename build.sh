@@ -290,7 +290,7 @@ function help_info() {
                 echo "    --genop_aicpu=op_class/op_name      Create the initial directory for op_name undef op_class"
                 echo $dotted_line
                 echo "Examples:"
-                echo "    bash build.sh --genop_aicpu=examples/add"
+                echo "    bash build.sh --genop_aicpu=examples/add_example"
                 return
                 ;;
         esac
@@ -907,7 +907,7 @@ gen_op() {
 gen_aicpu_op() {
   if [[ -z "$GENOP_NAME" ]] || [[ -z "$GENOP_TYPE" ]]; then
     echo "Error: op_class or op_name is not set."
-    usage "genop"
+    usage "genop_aicpu"
   fi
 
   echo $dotted_line
