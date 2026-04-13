@@ -26,8 +26,12 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <vector>
+#include "version/runtime_version.h"
+#include "version/metadef_version.h"
 
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000
 
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 namespace Mc2Exception {
 
 const std::string OP_NAME = "Mc2Exception";
@@ -226,5 +230,6 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     }
 }
 } // namespace Mc2Exception
+#endif
 
 #endif
