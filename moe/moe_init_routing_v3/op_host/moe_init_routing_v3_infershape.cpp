@@ -309,7 +309,7 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
-        if (scaleShape->GetDimNum() == DIM_ONE) {
+        if (scaleShape->GetDimNum() == DIM_ONE || scaleShape->GetDimNum() == DIM_THREE) {
             OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
                         OP_LOGE(context,
                                 "When quant_mode is %ld and use scale in dynamic shape, The shape of scale should be (-1) or (-2), current shape is (%s).",
@@ -677,7 +677,12 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
 
     //  3.5 Set output expanded_scale shape
     //  When scale_shape=(b*s) and non-quant, or it is dynamic quant mode, the shape of expanded_scale should be (b*s*k)
-    if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
+    if (QuantMode::NON_QUANT == quantMode && scaleShape && scaleShape->GetDimNum() == DIM_THREE) {
+        expandedScaleShape->SetDimNum(DIM_THREE);
+        expandedScaleShape->SetDim(0U, xOutNum);
+        expandedScaleShape->SetDim(1U, scaleShape->GetDim(1));
+        expandedScaleShape->SetDim(2U, scaleShape->GetDim(2));
+    } else if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);
         if (dropPadMode == DropPadMode::NO_DROP_PAD) {
             expandedScaleShape->SetDim(0U, xOutNum);
