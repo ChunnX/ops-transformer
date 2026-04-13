@@ -70,11 +70,8 @@ namespace ascend_ops
                 pipe_.InitBuffer(inQueBeta_, 1, bkAlignW_ * sizeof(T) * 2);
                 pipe_.InitBuffer(outQueOutLyn_, BUFFER_NUM, bkH_ * bkAlignW_ * sizeof(T) * 2);
                 pipe_.InitBuffer(outQueOutAdd_, BUFFER_NUM, bkH_ * bkAlignW_ * sizeof(T) * 2);
-
                 pipe_.InitBuffer(bufQueWork_, WORK_LOCAL_SIZE * sizeof(float));
                 pipe_.InitBuffer(bufQueSum_, 16*sizeof(float));
-
-
             }
 
             __aicore__ inline void Process()
@@ -146,7 +143,6 @@ namespace ascend_ops
                 LocalTensor<T> in_one_local   = in_onethr_local[0];
                 LocalTensor<T> in_thr_local   = in_onethr_local[bkAlignW_];
                 LocalTensor<float> infloat_local = in_onethr_local.template ReinterpretCast<float>();
-
                 
                 if(bkAlignW_-AlignUp(bkW_,16) != 0)
                 {
@@ -165,7 +161,6 @@ namespace ascend_ops
 
                 LocalTensor<float> sum_local     = bufQueSum_.Get<float>();
                 LocalTensor<float> work_local    = bufQueWork_.Get<float>();
-
 
                 Add(in_one_fp32_local, in_one_fp32_local, inTwoLmfp32_, bkAlignW_);  //  + fc2 bias
                 Add(in_one_fp32_local, in_one_fp32_local, in_thr_fp32_local, bkAlignW_); // + attn out
@@ -189,8 +184,7 @@ namespace ascend_ops
                     Muls(sum_local, sum_local, (float)(-1.0), 1);
                     cur_mean = sum_local.GetValue(0);
                 }
-                
-                
+                              
                 Cast(infloat_local, out_add_local, RoundMode::CAST_NONE, bkAlignW_);
                 // (x - mean)
                 if(!simplified_)
@@ -218,9 +212,7 @@ namespace ascend_ops
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) / rsqrt(var)
-                Muls(infloat_local, infloat_local, cur_var, bkW_);
-                
-                
+                Muls(infloat_local, infloat_local, cur_var, bkW_);                
                 Mul(infloat_local, infloat_local, gammaFloatLm_, bkW_);
                 Add(infloat_local, infloat_local, betaFloatLm_, bkW_);
                 if(clamp_)
@@ -336,8 +328,6 @@ namespace ascend_ops
 
                 pipe_.InitBuffer(bufQueWork_, WORK_LOCAL_SIZE * sizeof(float));
                 pipe_.InitBuffer(bufQueSum_, 16*sizeof(float));
-
-
             }
 
             __aicore__ inline void Process()
@@ -467,9 +457,7 @@ namespace ascend_ops
                     Adds(infloat_local, infloat_local, cur_mean, bkW_);
                 }
                 // (x - mean) / rsqrt(var)
-                Muls(infloat_local, infloat_local, cur_var, bkW_);
-                
-                
+                Muls(infloat_local, infloat_local, cur_var, bkW_);               
                 LocalTensor<T> gamma_local = inQueGamma_.DeQue<T>();
                 LocalTensor<float> gammaFloatLm = gamma_local.template ReinterpretCast<float>();
                 Cast(gammaFloatLm, gamma_local[bkAlignW_], RoundMode::CAST_NONE, bkAlignW_);
