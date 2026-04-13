@@ -90,9 +90,10 @@ public:
         uint64_t recvCntPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t sendOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
+        uint64_t countScale = 8UL; // uint64_t = 8 * uint8_t
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            sendCntPerRank[i] = e_ * epWorldSize_;
-            recvCntPerRank[i] = e_ * epWorldSize_;
+            sendCntPerRank[i] = e_ * epWorldSize_ * countScale;
+            recvCntPerRank[i] = e_ * epWorldSize_ * countScale;
         }
         for (uint32_t i = 1U; i < epWorldSize_; i++) {
             sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
@@ -115,6 +116,18 @@ public:
             }
         }
         hccl_.Wait(preRecvCountHandle_);
+
+        AscendC::printf("rank%u recvCnt from all ranks:\n", rankId_);
+        for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+            uint64_t recvSum = 0;
+            AscendC::printf("  rank%u: ", rankIdx);
+            for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
+                uint64_t val = preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i);
+                AscendC::printf("%lu ", val);
+                recvSum += val;
+            }
+            AscendC::printf(" sum=%lu\n", recvSum);
+        }
 
         uint64_t myRecvSum = 0;
         uint64_t maxRecvSum = 0;
