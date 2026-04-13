@@ -14,6 +14,7 @@
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "aclnnInner_ffn_to_attention.h"
 
 using namespace op;
  
@@ -27,12 +28,6 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerFFNToAttentionGetWorkspaceSize(const aclTensor* x, const aclTensor* sessionIds,
-                                                            const aclTensor* microBatchIds, const aclTensor* tokenIds, const aclTensor* expertOffsets,
-                                                            const aclTensor* actualTokenNum, const aclTensor* attnRankTable, const char* group, int64_t worldSize,
-                                                            const aclIntArray *tokenInfoTableShape, const aclIntArray *tokenDataShape,
-                                                            uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerFFNToAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
  
 // check nullptr
@@ -79,8 +74,9 @@ aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(const aclTensor* x, const aclTen
 {
     auto retParam = CheckParams(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
-                                                              group, worldSize, tokenInfoTableShape, tokenDataShape, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets,
+        actualTokenNum, attnRankTable, const_cast<char*>(group), worldSize, tokenInfoTableShape, tokenDataShape,
+        workspaceSize, executor);
     return ret;
 }
  

@@ -292,6 +292,26 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion& inputSocVersion)
     }
 }
 
+CutResult MatmulAllReduceTilingBase::GetTilingResult()
+{
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
+    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+    allReduceTilingHccl.GetTiling();
+    CutResult mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // 低bit通信
+        OP_LOGD(opName_, "TileCnt enter comm quant.");
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        quantAllReduceTilingHccl.GetTiling();
+        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+    }
+
+    return mCutAllreduce;
+}
+
 void MatmulAllReduceTilingBase::DoSplitMTiling()
 {
     auto&& param = MutableRCSTilingData();
@@ -306,20 +326,7 @@ void MatmulAllReduceTilingBase::DoSplitMTiling()
         param.tailM = 0;
     } else {
         OP_LOGD(opName_, "Start formulaic tiling.");
-        SocVersion inputSocVersion = SocVersion::SOC910_B;
-        SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        CutResult mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
-        const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-        const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-        if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // 低bit通信
-            OP_LOGD(opName_, "TileCnt enter comm quant.");
-            MMPlusQuantAllReduce quantAllReduceTilingHccl(
-                args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-            quantAllReduceTilingHccl.GetTiling();
-            mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
-        }
+        CutResult mCutAllreduce = GetTilingResult();
         if (mCutAllreduce.shortTileAtBack || mCutAllreduce.numShortTile == 0) {
             param.tileCnt = mCutAllreduce.numLongTile;
             param.tailM = mCutAllreduce.shortTileLen;

@@ -18,7 +18,7 @@
 
 #include "allto_all_matmul_tiling.h"
 #include "adv_api/hccl/hccl.h"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/numeric_size.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/numeric_size.hpp"
 #include <cstdint>
 
 #define MC2_NON_QUANT 0
@@ -28,6 +28,7 @@
 
 using namespace AscendC;
 
+namespace {
 constexpr static uint32_t BUFFER_NUM = 2U;
 constexpr static uint32_t BLOCK_SIZE = 512U;
 constexpr static int32_t MAX_BLOCK_COUNT = 2;
@@ -40,6 +41,7 @@ constexpr static uint32_t BLOCK_ALIGN_BYTES = 32U;
 constexpr static uint32_t BLOCK_NUM_OF_UB_OFFSET = UB_OFFSET / BLOCK_ALIGN_BYTES;
 constexpr static float MAX_INT8 = 127.0f;
 constexpr static float MAX_INT4 = 7.0f;
+} // namespace
 
 template <typename T, size_t SIZE>
 struct BaseBlock {

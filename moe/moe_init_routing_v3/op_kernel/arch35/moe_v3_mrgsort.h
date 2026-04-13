@@ -91,12 +91,12 @@ __aicore__ inline void MoeMrgsort::SetOutput(GlobalTensor<float> &gmOutput, Loca
 __aicore__ inline void MoeMrgsort::UpdateMrgParam()
 {
     if (this->remainListNum == MERGE_LIST_TWO) {
+        validBitTail = 0b0011;
         elementCountListTail[MERGE_LIST_IDX_TWO] = 0;
         elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
-        validBitTail = 0b0011;
     } else if (this->remainListNum == MERGE_LIST_THREE) {
-        elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
         validBitTail = 0b0111;
+        elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
     } else if (this->remainListNum == MERGE_LIST_FOUR) {
         validBitTail = 0b1111;
     } else {
@@ -150,16 +150,17 @@ __aicore__ inline void MoeMrgsort::UpdateSortInfo()
 {
     curLoopSortedNum = 0;
     for (int64_t i = 0, j = 0; i < listNum; i++) {
-        if (lengths[i] > 0) {
-            // update remain size
-            listRemainElements[i] -= listSortedNums[j];
-            allRemainElements -= listSortedNums[j];
-            // update offset
-            offsets[i] += GetSortOffset<float>(listSortedNums[j]);
-            // update current loop sorted nums
-            curLoopSortedNum += listSortedNums[j];
-            j += 1;
+        if (lengths[i] <= 0) {
+            continue;
         }
+        // update offset
+        offsets[i] += GetSortOffset<float>(listSortedNums[j]);
+        // update remain size
+        listRemainElements[i] -= listSortedNums[j];
+        allRemainElements -= listSortedNums[j];
+        // update current loop sorted nums
+        curLoopSortedNum += listSortedNums[j];
+        j += 1;
     }
 }
 
@@ -181,12 +182,11 @@ __aicore__ inline void MoeMrgsort::Init(MoeMrgsortParam *param)
     this->remainListNum = listNum;
 
     for (int64_t i = 0; i < listNum; i++) {
-        offsets[i] = GetSortOffset<float>(param->perListElements * i);
+        listRemainElements[i] = param->perListElements;
         if (i == listNum - 1) {
             listRemainElements[i] = param->lastListElements;
-        } else {
-            listRemainElements[i] = param->perListElements;
         }
+        offsets[i] = GetSortOffset<float>(param->perListElements * i);
         allRemainElements += listRemainElements[i];
     }
 }

@@ -16,10 +16,12 @@
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2/matmul_all_reduce/op_kernel/matmul_all_reduce_apt_tiling_key.h"
+#include "all_reduce_fit_balance_tiling.h"
 
 using namespace Mc2Tiling;
 namespace optiling {
 constexpr uint64_t STANDARD_CARD_CGMPAD_WORKSPACE_CNT = 3;
+constexpr uint64_t FIVE_ONE_TWO = 512;
 bool MatmulAllReduceTilingA5::IsCapable()
 {
     OP_LOGI(opName_, "Start with MatmulAllReduceTilingA5 tiling.");
@@ -177,7 +179,7 @@ ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSizeInStandardCard4P()
     uint64_t tempTileSize = MutableTCubeTileTilingData().M * MutableTCubeTileTilingData().N;
     uint64_t tempTailSize = MutableTCubeTailTilingData().M * MutableTCubeTailTilingData().N;
 
-    cgmPadLen = (MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt) * args_.rankDim;
+    cgmPadLen = (MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt) * FIVE_ONE_TWO;
     commWorkSpace = (tempTileSize * MutableRCSTilingData().tileCnt +
                         tempTailSize * MutableRCSTilingData().tailCnt +
                         cgmPadLen) * static_cast<uint64_t>(args_.outputDtypeSize);
@@ -393,6 +395,26 @@ MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(
     gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, MatmulAllReduce910TilingDataA5* out)
     : MatmulAllReduceTilingBase(context, mmrCtxInfo), matmulAllReduce910TilingData_(*out)
 {}
+
+CutResult MatmulAllReduceTilingA5::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                        TopoType::STANDARD_CARD);
+        mCutAllreduce = allReduceTilingHccl.GetTiling();
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
+}
 
 //注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, MatmulAllReduceTilingA5, \

@@ -19,6 +19,7 @@
 
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+constexpr float SOFTMAX_SCALE = 0.0416666666666667;
 
 constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
 constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
@@ -61,11 +62,11 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
 }
 
 #define TEMPLATE_INTF \
-    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSFA_LAYOUT LAYOUT_T, \
+    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool hasSink, bool isPa, QSFA_LAYOUT LAYOUT_T, \
     QSFA_LAYOUT KV_LAYOUT_T, QSFATemplateMode TEMPLATE_MODE>
 
 #define TEMPLATE_INTF_ARGS \
-    Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE
+    Q_T, KV_T, T, OUTPUT_T, hasSink, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
@@ -74,7 +75,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
     X(OUTPUT_T) \
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(isFd, bool, false) \
+    X(hasSink, bool, false) \
     X(isPa, bool, true) \
     X(LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::BSND) \
     X(KV_LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::PA_BSND) \
@@ -89,7 +90,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
 template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
 
-/* 2. 生成不带带默认值的模版Template */
+/* 2. 生成不带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
@@ -102,4 +103,4 @@ template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-#endif
+#endif // KV_QUANT_SPARSE_FLASH_ATTENTION_PIONEER_COMMON_H

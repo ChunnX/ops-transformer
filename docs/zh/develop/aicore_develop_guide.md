@@ -8,6 +8,7 @@
 > 2. AI Core算子是使用Ascend C语言开发，运行在AI Core硬件单元算子。
 > 3. 针对基于[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓贡献的算子，请参考[附录 > 算子工程迁移](#算子工程迁移)完成存量算子往本项目工程迁移。
 > 4. build.sh：算子开发过程中涉及的命令可通过`bash build.sh --help`查看，功能参数介绍参考[build参数说明](../install/build.md)。
+> 5. 涉及多平台间算子迁移（如将Atlas A2上已实现算子功能迁移适配至Ascend 950）时，可参考[跨平台迁移指导](./cross_platform_migration_guide.md)。
 
 开发指南以`AddExample`算子开发为例，介绍新算子开发流程以及涉及的交付件，完整样例代码请访问项目`examples`目录。
 
@@ -134,6 +135,7 @@ endif()
 Tiling一共需要三个交付件：```${op_name}_tiling.cpp``` ```${op_name}_tiling_key.h``` ```${op_name}_tiling_data.h```
 
 > 说明：
+
 > 1. `${op_name}_tiling.cpp`放在`${op_name}/op_host`目录下；
 > 2. `${op_name}_tiling_key.h`和`${op_name}_tiling_data.h`放在`${op_name}/op_kernel`目录下；
 > 3. 如果`${op_name}_tiling.cpp`中需要引用`${op_name}_tiling_data.h`，请使用相对路径的方式，例如：`#incldue "../op_kernel/${op_name}_tiling_data.h"`。
@@ -273,6 +275,7 @@ graph LR
 Kernel一共需要两个交付件：```${op_name}.cpp``` ```${op_name}.h```
 
 > 说明：
+
 > 1. `${op_name}.cpp`为kernel的入口函数只能放在`${op_name}/op_kernel`目录下；
 > 2. `${op_name}.h`文件可以按照不同SoC或模板放在对应目录下，例如：`${op_name}/op_kernel/arch32`、`${op_name}/op_kernel/arch35`或`${op_name}/op_kernel/impl`等目录下；
 
@@ -484,7 +487,7 @@ UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_a
 
 **1. 组织结构与命名建议**
 
-- **头文件**：统一包含`iostream`, `gtest/gtest.h`、`infershape_context_faker.h`、`infershape_case_executor.h`。
+- **头文件**：统一包含`iostream`, `gtest/gtest.h`、`infer_shape_context_faker.h`、`infer_shape_case_executor.h`。
 - **测试类**：继承`testing::Test`，实现`SetUpTestCase/TearDownTestCase`统一做数据准备与清理。
 - **命名**：测试类建议`${OpName}InfershapeTest`，用例名建议`test_case_xxx`，可读性更高。
 
@@ -571,6 +574,7 @@ protected:
 ```
 
 **2. 用例基本流程**
+
 1) 调用接口构造用例上下文。需要的参数主要为输入和输出的shape/format/dtype、属性以及compileInfo，可参考`${op_name}_def.cpp`算子信息库。
     - shape/format/dtype和属性可参考`${op_name}_def.cpp`算子信息库。
     - 若某输入在信息库中标记为`ValueDepend`，UT中需同时准备该输入的**真实数据值**。
@@ -624,6 +628,7 @@ Kernel UT用于验证Device侧Kernel逻辑是否正确，在给定输入/Tiling�
 UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_add_example.cpp](../../../examples/add_example/tests/ut/op_kernel/test_add_example.cpp)。
 
 **1. 组织结构与命名建议**
+
 - **头文件**：建议统一包含`gtest/gtest.h`、`tikicpulib.h`、`data_utils.h`与Tiling头文件。
     - 直接引用`op_host/${op_name}_tiling.h`
     - 或在UT目录提供轻量适配头（如`examples/add_example/tests/ut/op_kernel/add_example_tiling.h`）
@@ -632,6 +637,7 @@ UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_a
 - **命名**：测试类建议`${OpName}KernelTest`，用例名建议`test_case_xxx`，可读性更高。
 
 测试类示例：
+
 ```CPP
 class ${OpName}KernelTest : public testing::Test {
 protected:
@@ -648,6 +654,7 @@ protected:
 ```
 
 **2. 用例基本流程**
+
 1) 设定输入shape/format/dtype，初次上手可参考`${op_name}_def.cpp`算子信息库。
     - 若某输入在信息库中标记为`ValueDepend`，UT中需同时准备该输入的**真实数据值**。
 2) 准备输入/输出/Workspace/Tiling缓冲区（`AscendC::GmAlloc`）。
@@ -657,6 +664,7 @@ protected:
 6) 结果校验并释放资源（`AscendC::GmFree`）。
 
 简化示例：
+
 ```CPP
 extern "C" __global__ __aicore__ void ${op_name}(GM_ADDR x, GM_ADDR y, GM_ADDR z,
                                                 GM_ADDR workspace, GM_ADDR tiling);
@@ -693,8 +701,9 @@ TEST_F(${OpName}KernelTest, test_case_basic)
 ```
 
 **3. Tiling数据准备方式**
+
 - **手动构造**：适合字段少、逻辑简单。
-- **调用Tiling函数自动生成**：适合字段多、依赖属性/shape复杂。可复用`tests/ut/common/tiling_context_faker.h`与`tiling_case_executor.h`。示例：
+- **调用Tiling函数自动生成**：适合字段多、依赖属性/shape复杂。可复用`tests/ut/framework_normal/common/tiling_context_faker.h`与`tiling_case_executor.h`。示例：
 
 ```CPP
 gert::TilingContextPara para("OpName",
@@ -712,7 +721,8 @@ uint32_t blockDim = tilingInfo.blockNum;
 ```
 
 **4. 数据生成与结果比对**
-- 可使用`tests/ut/op_kernel/data_utils.h`的`ReadFile/WriteFile`读写二进制。
+
+- 可使用`tests/ut/framework_normal/op_kernel/data_utils.h`的`ReadFile/WriteFile`读写二进制。
 - 结合`gen_data.py`/`compare_data.py`脚本生成与比对数据，可参考`add_example`的`add_example_data`目录：
   [gen_data.py](../../../examples/add_example/tests/ut/op_kernel/add_example_data/gen_data.py)、
   [compare_data.py](../../../examples/add_example/tests/ut/op_kernel/add_example_data/compare_data.py)。
@@ -878,6 +888,7 @@ static graphStatus InferShape(gert::InferShapeContext *context)
 IMPL_OP_INFERSHAPE(AddCustom).InferShape(InferShape);   // 在该文件中完成InferShape注册
 } // namespace ge
 ```
+
 <div id="op_host/{op_name}_tiling.cpp">
 <p style="font-size:18px;"><b>op_host/{op_name}_tiling.cpp</b></p>
 </div>

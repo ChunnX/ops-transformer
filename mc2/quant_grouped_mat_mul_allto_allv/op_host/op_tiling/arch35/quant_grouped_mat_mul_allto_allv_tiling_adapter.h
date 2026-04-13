@@ -19,7 +19,7 @@
 #pragma once
 #include "securec.h"
 #include "mc2_matmul_tiling_cfg.h"
-#include "tt_quant_grouped_mat_mul_allto_allv_tiling.h"
+#include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/grouped_matmul_host_util.h"
@@ -28,11 +28,11 @@
 #include "register/tilingdata_base.h"
 
 
-namespace optiling {
+namespace Mc2Tiling {
 // 引用3rd目录中的定义
-using namespace Mc2GroupedMatmulTiling::GmmConstant;
-using Mc2GroupedMatmulTiling::QuantMode;
-using Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling;
+using namespace optiling::Mc2GroupedMatmulTiling::GmmConstant;
+using optiling::Mc2GroupedMatmulTiling::QuantMode;
+using optiling::Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling;
 
 namespace Mc2GroupedMatmul {
 class QuantGroupedMatmulAllToAllvAdapter : public Mc2GroupedQbmmTiling {
@@ -55,5 +55,5 @@ public:
 };
 
 } // namespace Mc2GroupedMatmul
-} // namespace optiling
+} // namespace Mc2Tiling
 #endif

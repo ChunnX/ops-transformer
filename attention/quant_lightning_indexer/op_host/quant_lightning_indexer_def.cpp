@@ -128,10 +128,7 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("opFile.value", "quant_lightning_indexer")
-            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
+            .PrecisionReduceFlag(true);
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };

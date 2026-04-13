@@ -219,6 +219,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(
     uint64_t            *workspaceSize, 
     aclOpExecutor       **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
     void          *workspace, 
@@ -309,7 +310,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       <tr>
         <td>xScale</td>
         <td rowspan="1">输入</td>
-        <td>表示左矩阵的的量化因子，公式中的xScale。</td>
+        <td>表示左矩阵的量化因子，公式中的xScale。</td>
         <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
@@ -357,10 +358,39 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>-</td>
       </tr>
       <tr>
+        <td>dequantDtype</td>
+        <td rowspan="1">输入</td>
+        <td>表示中间GroupedMatmul的结果数据类型。</td>
+        <td><ul>
+          <li>暂不支持，默认行为28。</li>
+          <li>0表示FLOAT。</li>
+          <li>1表示FLOAT16。</li>
+          <li>27表示BFLOAT16。</li>
+          <li>28表示UNDEFINED。</li>
+        </ul></td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>quantMode</td>
+        <td rowspan="1">输入</td>
+        <td>表示量化计算类型，用于确定swiglu结果的量化模式。</td>
+        <td><ul>
+          <li>暂不支持，默认行为0。</li>
+          <li>0表示per-token。</li></ul>
+        </td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>groupListType</td>
         <td rowspan="1">输入</td>
         <td>表示分组的解释方式，用于确定groupList的语义。</td>
-        <td><ul><li>0表示cumsum模式，groupList中的每个元素代表当前分组的累计长度。</li><li>1表示count模式，groupList中的每个元素代表该分组包含多少元素。</li></td>
+        <td><ul><li>0表示cumsum模式，groupList中的每个元素代表当前分组的累计长度。</li><li>1表示count模式，groupList中的每个元素代表该分组包含多少元素。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -370,8 +400,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
         <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
-        <td>预留输入，暂不支持，需要传空指针。</td>
-        <td>-</td>
+        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时使能，其他输入请传入空指针。</td>
+        <td>INT64</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -421,12 +451,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - <strong>weight强制视为FRACTAL_NZ格式。</strong>
-      - weight仅支持非转置，INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
-      - 支持dequantMode参数：A8W4场景支持取值0和1，A8W8和A4W4场景仅支持取值0。
+      - weight 在A4W4下支持转置，其他输入仅支持非转置，INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
+      - 支持dequantMode参数：A8W4场景和A4W4场景支持取值0和1，A8W8场景仅支持取值0。
       - 不支持dequantDtype和quantMode参数。
       - x和weight不支持空Tensor。
+      - weight NZ转置输入时，仅支持单Tensor模式
       - weight、weightScale和weightAssistMatrix支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
-
 
 - **返回值**
   
@@ -611,10 +641,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td><ul>
               <li>ND格式shape形如{(E, K, N)}</li>
               <li>NZ格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></td>
+              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></ul></td>
               <td><ul>
               <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li></td>
+              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul></td>
               <td>{(E, N)}</td>
               <td>(M,)</td>
               <td>nullptr</td>
@@ -631,10 +661,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <li>NZ非转置格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li>
               <li>NZ转置格式且INT4时原始shape形如{(E, K / 64, N / 16, 16, 64)}，并调用transpose(-1,-2)后传入</li>
               <li>NZ转置格式且INT32时原始shape形如{(E, K / 64, N / 16, 16, 8)}，并调用transpose(-1,-2)后传入</li>
+             <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li></ul>
               </td>
               <td><ul>
               <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li>
+              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul>
               </td>
               <td>nullptr</td>
               <td>(M,)</td>
@@ -655,8 +686,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
     ```cpp
     #include <iostream>
     #include <vector>

@@ -1,14 +1,14 @@
-/**
- * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+/* *
+  * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+  * CANN Open Software License Agreement Version 2.0 (the "License").
+  * Please refer to the License for details. You may not use this file except in compliance with the License.
+  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+  * See LICENSE in the root of the software repository for the full text of the License.
+  */
 
-/*!
+/* !
  * \file allto_allv_quant_grouped_mat_mul_tiling_key.h
  * \brief
  */
@@ -17,15 +17,15 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-#define ADD_TPL_FP16 0 // 输入数据类型
-#define ADD_TPL_BP16 1
+// 输入数据类型
 #define ADD_TPL_HIF8 2
+#define ADD_TPL_FP8_E4M3_E5M2 3
 
 
 ASCENDC_TPL_ARGS_DECL( 
     AlltoAllvQuantGroupedMatMul,
     ASCENDC_TPL_DTYPE_DECL( // 输入数据类型
-        D_T_MM, ADD_TPL_HIF8),
+        D_T_MM, ADD_TPL_HIF8, ADD_TPL_FP8_E4M3_E5M2),
     ASCENDC_TPL_BOOL_DECL(  // 共享专家mm计算
         TILINGKEY_MM, 0, 1),
     ASCENDC_TPL_BOOL_DECL(  // gmm计算转置场景
@@ -68,6 +68,42 @@ ASCENDC_TPL_SEL(
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_HIF8),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 1),
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_FP8_E4M3_E5M2),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 0),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 0),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 0),
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_FP8_E4M3_E5M2),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 0),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 0),
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_FP8_E4M3_E5M2),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 0),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 0),
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_FP8_E4M3_E5M2),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 0),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 1),
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_FP8_E4M3_E5M2),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 1),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 0),
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_DTYPE_SEL(D_T_MM, ADD_TPL_FP8_E4M3_E5M2),
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM, 1),
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANSPOSE, 1),
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_MM_WEIGHT_TRANSPOSE, 1),

@@ -48,8 +48,7 @@ private:
                                        const GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckXWeightYGroupSizeMultiScenario(const gert::InferShapeContext *context,
                                                         const GMMInputParamsInfo &paramsInputInfo) const;
-    ge::graphStatus CheckTensorNDimMultiScenario(const gert::InferShapeContext *context,
-                                                 const GMMInputParamsInfo &paramsInputInfo, const size_t wNDimIdx,
+    ge::graphStatus CheckTensorNDimMultiScenario(const gert::InferShapeContext *context, const size_t wNDimIdx,
                                                  const int64_t weightNDimValue, const size_t index) const;
     ge::graphStatus CheckCaseMultiScenario(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
                                            const GMMInputParamsInfo &paramsInputInfo) const;
@@ -60,7 +59,7 @@ private:
     ge::graphStatus CheckTensorListSizeMultiScenario(const gert::InferShapeContext *context,
                                                      const GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckShapeValid(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs);
-    
+
     ge::graphStatus CheckShapeForWeightQuantParam(const gert::InferShapeContext *context,
                                                   const GMMAttrs &gmmAttrs) const;
     ge::graphStatus CheckShapeForGrouplist(const gert::InferShapeContext *context,

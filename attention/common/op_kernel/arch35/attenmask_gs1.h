@@ -52,7 +52,7 @@ struct MaskInfo {
     // for bss & bs
     uint32_t batchIdx;
     uint32_t attenMaskBatchStride;
-    uint32_t attenMaskStride;
+    uint32_t attenMaskS1Stride;
     uint32_t attenMaskDstStride = 0;
 
     LAYOUT_Q layout;
@@ -67,7 +67,7 @@ struct MaskInfo {
 __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
     uint64_t bOffset = static_cast<uint64_t>(info.batchIdx) * static_cast<uint64_t>(info.attenMaskBatchStride);
-    uint64_t s1Offset = (info.s1LeftPaddingSize + s1StartIdx % info.s1Size) * info.attenMaskStride;
+    uint64_t s1Offset = (info.s1LeftPaddingSize + s1StartIdx % info.s1Size) * info.attenMaskS1Stride;
     uint64_t s2Offset = info.s2LeftPaddingSize + info.s2StartIdx;
     return bOffset + s1Offset + s2Offset;
 }
@@ -86,7 +86,8 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskStride; // min(delta, s2inner)
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta :
+            attenMaskSizeAlign) * info.attenMaskS1Stride; // min(delta, s2inner)
     }
     return offset;
 }
@@ -100,7 +101,8 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uin
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskStride; // min(delta, s2inner)
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta :
+            attenMaskSizeAlign) * info.attenMaskS1Stride; // min(delta, s2inner)
     }
     return offset;
 }
@@ -170,9 +172,9 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
     dataCopyParams.blockLen = info.s2dealNum;
-    dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
+    dataCopyParams.srcStride = info.attenMaskS1Stride - info.s2dealNum;
     dataCopyParams.dstStride = info.attenMaskDstStride;
-    DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};      // TODO，后续确认影响
+    DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
 
     DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
 }
@@ -265,7 +267,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = midS1Count + (tailGSize > 0);
         dataCopyParams.blockLen = info.s2dealNum;
-        dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
+        dataCopyParams.srcStride = info.attenMaskS1Stride - info.s2dealNum;
         dataCopyParams.dstStride = (info.gSize - 1) * attenMaskS2Stride / 32 + info.attenMaskDstStride;
         DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
         DataCopyPad(attenMaskUb[headGCount * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
@@ -305,4 +307,14 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     PipeBarrier<PIPE_V>();
 }
 
+template <typename T>
+__aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                            MaskInfo &info, bool isPre = false)
+{
+    if (info.layout == LAYOUT_Q::GS) {
+        AttentionmaskCopyInForGsLayout(attenMaskUb, srcGmAddr, info, isPre);
+    } else if (info.layout == LAYOUT_Q::SG) {
+        AttentionmaskCopyInForSgLayout(attenMaskUb, srcGmAddr, info, isPre);
+    }
+}
 #endif

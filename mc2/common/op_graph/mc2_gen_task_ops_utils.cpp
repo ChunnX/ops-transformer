@@ -16,7 +16,8 @@
 #include "mc2_gen_task_ops_utils.h"
 #include "platform/platform_info.h"
 #include "graph/ascend_string.h"
-#include "mc2_log.h"
+#include "mc2_common_log.h"
+#include "runtime/runtime/base.h"
 
 namespace {
 constexpr int64_t INVALID_INT_VAL = -1;
@@ -39,39 +40,6 @@ bool Mc2GenTaskOpsUtils::IsComputationOnly()
 {
     const char *env = getenv("ASCEND_MC2_DEBUG_MODE");
     return (env != nullptr && std::atoi(env) == 1);
-}
-
-bool Mc2GenTaskOpsUtils::IsTargetPlatformSocVersion(const char *nodeName, const std::set<std::string> &targetPlatform)
-{
-    fe::PlatFormInfos platform_info;
-    fe::OptionalInfos optional_info;
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info) !=
-        ge::GRAPH_SUCCESS) {
-        OPS_LOG_E(nodeName, "Cannot get platform info!");
-        return false;
-    }
-    std::string short_soc_version;
-    if (!platform_info.GetPlatformRes("version", "Short_SoC_version", short_soc_version) || short_soc_version.empty()) {
-        OPS_LOG_E(nodeName, "Cannot get short soc version!");
-        return false;
-    }
-    OPS_LOG_D(nodeName, "Get soc version: %s", short_soc_version.c_str());
-    return targetPlatform.count(short_soc_version) > 0;
-}
-
-bool Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(const char *nodeName, const std::set<std::string> &targetPlatform)
-{
-    fe::PlatFormInfos platform_info;
-    fe::OptionalInfos optional_info;
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info) !=
-        ge::GRAPH_SUCCESS) {
-        OPS_LOG_E(nodeName, "Cannot get platform info in IsTargetPlatformNpuArch!");
-        return false;
-    }
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(&platform_info);
-    std::string socNpuArch = std::to_string(static_cast<uint32_t>(ascendcPlatform.GetCurNpuArch()));
-    OPS_LOG_D(nodeName, "Current GenTask Platform (NpuArch) %s", socNpuArch.c_str());
-    return targetPlatform.count(socNpuArch) > 0;
 }
 
 int64_t Mc2GenTaskOpsUtils::GetAttachStreamIdByContext(const gert::ExeResGenerationContext *context, size_t idx)

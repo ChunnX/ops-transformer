@@ -55,7 +55,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## aclnnMatmulReduceScatterGetWorkspaceSize
 
--   **参数说明**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
@@ -104,7 +104,7 @@ aclnnStatus aclnnMatmulReduceScatter(
                 <li>支持空Tensor。</li>
                 <li>与x1的数据类型保持一致。</li>
                 <li>当前版本仅支持二维输入，支持转置/不转置场景。</li>
-                <li>仅支持两根轴转置情况下的<a href="../../../docs/zh/context/非连续的Tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
+                <li>仅支持两根轴转置情况下的<a href="../../docs/zh/context/非连续的Tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
             </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
@@ -209,9 +209,9 @@ aclnnStatus aclnnMatmulReduceScatter(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -247,11 +247,12 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## aclnnMatmulReduceScatter
 
--   **参数说明**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1166px"> <colgroup>
     <col style="width: 173px">
     <col style="width: 133px">
     <col style="width: 860px">
+    </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
@@ -281,10 +282,9 @@ aclnnStatus aclnnMatmulReduceScatter(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

@@ -282,6 +282,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_5)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
+// bsngd 32k softcap
 TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_6)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
@@ -532,4 +533,3 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_11)
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
-

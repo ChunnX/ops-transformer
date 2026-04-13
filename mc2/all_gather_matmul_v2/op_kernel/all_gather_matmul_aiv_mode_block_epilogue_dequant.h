@@ -16,15 +16,15 @@
 #ifndef ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/detail/callback.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -166,7 +166,7 @@ CATLASS_DEVICE
 void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
                  __gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
                  __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD, LayoutD layoutD,
-                 GemmCoord problemShape)
+                 GemmCoord problemShape, bool isInt4Type = false)
 {
     // Calculate the offset of the current block
     MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -183,8 +183,12 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
     uint32_t subblockIdx = AscendC::GetSubBlockIdx();
     uint32_t subblockNum = AscendC::GetSubBlockNum();
 
+    // 当 isInt4Type 为 true 时，只有 subblockIdx == 1 的核参与计算，处理所有循环
+    uint32_t loopStart = isInt4Type ? 0 : subblockIdx;
+    uint32_t loopStride = isInt4Type ? 1 : subblockNum;
+
     InitFlag();
-    for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
+    for (uint32_t loopIdx = loopStart; loopIdx < tileLoops; loopIdx += loopStride) {
         auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
         auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
         auto tileOffset = tileCoord * tileShape;
@@ -269,7 +273,7 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
 CATLASS_DEVICE
 void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
                  __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD, LayoutD layoutD,
-                 GemmCoord problemShape)
+                 GemmCoord problemShape, bool isInt4Type = false)
 {
     // Calculate the offset of the current block
     MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -285,8 +289,12 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
     uint32_t subblockIdx = AscendC::GetSubBlockIdx();
     uint32_t subblockNum = AscendC::GetSubBlockNum();
 
+    // 当 isInt4Type 为 true 时，只有 subblockIdx == 1 的核参与计算，处理所有循环
+    uint32_t loopStart = isInt4Type ? 0 : subblockIdx;
+    uint32_t loopStride = isInt4Type ? 1 : subblockNum;
+
     InitFlag();
-    for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
+    for (uint32_t loopIdx = loopStart; loopIdx < tileLoops; loopIdx += loopStride) {
         auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
         auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
         auto tileOffset = tileCoord * tileShape;
@@ -351,7 +359,7 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
 // perToken
 CATLASS_DEVICE
 void operator() (__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
-                 __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape)
+                 __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape, bool isInt4Type = false)
 {
     // Calculate the offset of the current block
     MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -366,8 +374,12 @@ void operator() (__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenSc
     uint32_t subblockIdx = AscendC::GetSubBlockIdx();
     uint32_t subblockNum = AscendC::GetSubBlockNum();
 
+    // 当 isInt4Type 为 true 时，只有 subblockIdx == 1 的核参与计算，处理所有循环
+    uint32_t loopStart = isInt4Type ? 0 : subblockIdx;
+    uint32_t loopStride = isInt4Type ? 1 : subblockNum;
+
     InitFlag();
-    for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
+    for (uint32_t loopIdx = loopStart; loopIdx < tileLoops; loopIdx += loopStride) {
         auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
         auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
         auto tileOffset = tileCoord * tileShape;

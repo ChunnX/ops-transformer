@@ -155,7 +155,7 @@ RainFusionAttention使用新的selectIdx索引格式,不需要传统的sBlockIdx
 Q方向: ceil(256/64)=4块 [0, 1, 2, 3]
 KV方向: ceil(512/64)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 
-每个Q块可以选择任意KV块组合:
+每个Q块可以选择任意KV块组合：
 - Q块0选择的KV块: [0, 2, 5]
 - Q块1选择的KV块: [1, 3, 6]
 - Q块2选择的KV块: [0, 4, 7]
@@ -197,4 +197,3 @@ bash build.sh --soc=Ascend910B3
 ## 版本历史
 
 - v1.0.0: 初始版本,从catlass 32_sparse_attention_infer迁移
-

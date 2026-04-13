@@ -6,7 +6,7 @@
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品 </term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
@@ -84,6 +84,7 @@ maxIndex，sumIndex作为输出传递给算子DenseLightningIndexerGradKlLoss作
       <td>INT64</td>
       <td>ND</td>
      </tr>
+     <tr>
       <td>layout</td>
       <td>输入</td>
       <td>layout格式。</td>

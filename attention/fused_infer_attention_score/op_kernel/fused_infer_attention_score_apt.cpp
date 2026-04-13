@@ -23,8 +23,13 @@
 #define FIA_ENABLE_MLA
 #include "fused_infer_attention_score_template_tiling_key.h"
 #ifdef NOT_DYNAMIC_COMPILE
+#if __has_include("../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_entry_regbase.h")
 #include "../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_entry_regbase.h"
 #include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_entry_regbase.h"
+#else
+#include "../incre_flash_attention/arch35/incre_flash_attention_entry_regbase.h"
+#include "../prompt_flash_attention/arch35/prompt_flash_attention_entry_regbase.h"
+#endif
 #else
 #include "../incre_flash_attention/incre_flash_attention.cpp"
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
@@ -33,7 +38,7 @@
 
 #define FullQuantTiling 15
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope, 
-  bool isPa, bool isFd, bool emptyTensor, uint8_t PFAMask, uint8_t pFAMatMulType, bool enableKVPrefix>
+  bool isPa, bool isFd, bool emptyTensor, uint8_t PFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
 __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
                                                     __gm__ uint8_t* pse_shift, __gm__ uint8_t* attenMask,
                                                     __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKV,
@@ -52,7 +57,7 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
 {
     if (quantMode >= FullQuantTiling) {
         //pfa 模板
-        prompt_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix>(
+        prompt_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
                                     query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,                                    
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,                                    
@@ -60,7 +65,7 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
                                     dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
     } else {
         //ifa 模板
-        incre_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix>(
+        incre_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
                                     query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, keySharedPrefix,

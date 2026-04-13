@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。
@@ -71,53 +70,53 @@ $$
 dSink = reduce(-P * dP * SimpleSoftmax(sink, x\_max, x\_sum))
 $$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV5”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
-	const aclTensor *query, 
-	const aclTensor *queryRope, 
-	const aclTensor *keyIn, 
-	const aclTensor *keyInRope, 
-	const aclTensor *value, 
-	const aclTensor *dy, 
-	const aclTensor *pseShiftOptional, 
-	const aclTensor *dropMaskOptional, 
-	const aclTensor *paddingMaskOptional, 
-	const aclTensor *attenMaskOptional, 
-	const aclTensor *softmaxMaxOptional, 
-	const aclTensor *softmaxSumOptional, 
-	const aclTensor *softmaxInOptional, 
-	const aclTensor *attentionInOptional, 
-	const aclTensor *sinkInOptional, 
+	const aclTensor   *query, 
+	const aclTensor   *queryRope, 
+	const aclTensor   *keyIn, 
+	const aclTensor   *keyInRope, 
+	const aclTensor   *value, 
+	const aclTensor   *dy, 
+	const aclTensor   *pseShiftOptional, 
+	const aclTensor   *dropMaskOptional, 
+	const aclTensor   *paddingMaskOptional, 
+	const aclTensor   *attenMaskOptional, 
+	const aclTensor   *softmaxMaxOptional, 
+	const aclTensor   *softmaxSumOptional, 
+	const aclTensor   *softmaxInOptional, 
+	const aclTensor   *attentionInOptional, 
+	const aclTensor   *sinkInOptional, 
 	const aclIntArray *prefixOptional, 
 	const aclIntArray *actualSeqQLenOptional, 
 	const aclIntArray *actualSeqKvLenOptional, 
 	const aclIntArray *qStartIdxOptional, 
 	const aclIntArray *kvStartIdxOptional, 
-	double scaleValue, 
-	double keepProb, 
-	int64_t preTokens, 
-	int64_t nextTokens, 
-	int64_t headNum, 
-	char *inputLayout, 
-	int64_t innerPrecise, 
-	int64_t sparseMode, 
-	int64_t pseType, 
-	char *softmaxInLayout, 
-	const aclTensor *dqOut, 
-	const aclTensor *dqRopeOut, 
-	const aclTensor *dkOut, 
-	const aclTensor *dkRopeOut, 
-	const aclTensor *dvOut, 
-	const aclTensor *dpseOut, 
-	const aclTensor *dsinkOut, 
-	uint64_t *workspaceSize, 
-	aclOpExecutor **executor);
+	double             scaleValue, 
+	double             keepProb, 
+	int64_t            preTokens, 
+	int64_t            nextTokens, 
+	int64_t            headNum, 
+	char              *inputLayout, 
+	int64_t            innerPrecise, 
+	int64_t            sparseMode, 
+	int64_t            pseType, 
+	char              *softmaxInLayout, 
+	const aclTensor   *dqOut, 
+	const aclTensor   *dqRopeOut, 
+	const aclTensor   *dkOut, 
+	const aclTensor   *dkRopeOut, 
+	const aclTensor   *dvOut, 
+	const aclTensor   *dpseOut, 
+	const aclTensor   *dsinkOut, 
+	uint64_t          *workspaceSize, 
+	aclOpExecutor    **executor);
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   void             *workspace,
@@ -125,7 +124,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize
 
@@ -216,7 +214,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
         <td>pseShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
+        <td>数据类型与query的数据类型一致，该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
@@ -525,7 +523,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
     </tbody>
   </table>
 
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -615,12 +612,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    -   T(B*S)：取值范围为1\~1M。
-    -   B：取值范围为1\~20000。带prefixOptional的时候B最大支持1K。
-    -   N：取值范围为1\~256。
-    -   S：取值范围为1\~1M。
-    -   D：取值范围为1\~768。
-    -   KeepProb: 取值范围为(0, 1]。
+    - T(B*S)：取值范围为1\~1M。
+    - B：取值范围为1\~20000。带prefixOptional的时候B最大支持1K。
+    - N：取值范围为1\~256。
+    - S：取值范围为1\~1M。
+    - D：取值范围为1\~768。
+    - KeepProb: 取值范围为(0, 1]。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
@@ -628,12 +625,14 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，pseShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType 各个取值含义
+
   | pseType | 含义 | 备注 |
   | ----------- | --------------------------------- | ----------|
   | 0 | 外部传入pse 先mul再add | - |
   | 1 | 外部传入pse 先add再mul | 跟[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现一致。 |
   | 2 | 内部生成pse 先mul再add | - |
   | 3 | 内部生成pse 先mul再add再sqrt | - |
+
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
@@ -643,7 +642,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   - 配置为7时，不支持可选输入pseShiftOptional。
   - 配置为8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - 不同数据格式详情请参见[数据格式](../../../docs/zh/context/数据格式.md)。
-- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]，TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。

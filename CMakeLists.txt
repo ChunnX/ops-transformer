@@ -44,8 +44,9 @@ set(VENDOR_NAME                   "custom"                     CACHE   STRING   
 set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
 
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
+set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch35 arch32 arch32)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
+set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 
 # 获取基础 CANN 路径
 if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)

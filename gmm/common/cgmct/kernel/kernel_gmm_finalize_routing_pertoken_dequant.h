@@ -50,15 +50,15 @@ constexpr uint64_t IDX_M_TILEIDXS = 0UL;
 constexpr uint64_t IDX_N_TILEIDXS = 1UL;
 constexpr uint64_t IDX_M_TAIL_SPLIT_TILEIDXS = 2UL;
 constexpr uint64_t IDX_N_TAIL_SPLIT_TILEIDXS = 3UL;
-constexpr uint8_t SYNC_AIC_AIV_MODES = 4;
-constexpr uint16_t FLAG_ID_MAXS = 16;
-constexpr uint16_t AIC_SYNC_AIV_FLAGS = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAGS = 6;
-constexpr uint32_t WEIGHT_TILE_K_SMALL = 16;
-constexpr uint32_t WEIGHT_TILE_N_SMALL = 16;
-constexpr uint32_t WEIGHT_TILE_K_LARGE = 32;
-constexpr uint32_t WEIGHT_TILE_N_LARGE = 32;
-constexpr uint32_t WEIGHT_TILE_CAPACITY = 512;
+constexpr uint8_t SYNC_AIC_AIV_MODES = 4U;
+constexpr uint16_t FLAG_ID_MAXS = 16U;
+constexpr uint16_t AIC_SYNC_AIV_FLAGS = 4U;
+constexpr uint16_t AIV_SYNC_AIC_FLAGS = 6U;
+constexpr uint32_t WEIGHT_TILE_K_SMALL = 16U;
+constexpr uint32_t WEIGHT_TILE_N_SMALL = 16U;
+constexpr uint32_t WEIGHT_TILE_K_LARGE = 32U;
+constexpr uint32_t WEIGHT_TILE_N_LARGE = 32U;
+constexpr uint32_t WEIGHT_TILE_CAPACITY = 512U;
 } // namespace
 
 using namespace AscendC;

@@ -164,64 +164,48 @@ bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* b
 bool IsTransposeLastTwoDims(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
+        OP_LOGD("The view_shape dim is: %ld", tensor->GetViewShape().GetDimNum());
         return false;
     }
+
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
     // BMM 场景下，Batch维度的stride需要等于 N, D 的乘积
     if (tensor->GetViewStrides()[dim2] == 1
-      && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
-        if (tensor->GetViewShape().GetDim(dim1) == 1
-          && tensor->GetViewShape().GetDim(dim2) == 1) {
+        && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
+        if (tensor->GetViewShape().GetDim(dim1) == 1 && tensor->GetViewShape().GetDim(dim2) == 1) {
+            OP_LOGI("The input tensor is contiguous.");
             return false;
-          }
+        }
+        OP_LOGI("The input tensor is not contiguous.");
         return true;
-      }
+    }
     return false;
 }
 
 // 检查x2是否合法
-bool CheckX2Valid(const aclTensor* x2) {
+aclnnStatus CheckX2Valid(const aclTensor* x2) {
     if (x2 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x2 should not be null.");
-        CHECK_RET(x2 == nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        return ACLNN_ERR_PARAM_NULLPTR;
     }
   	if (x2->IsEmpty()) {
     	OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input x2 do not support empty tensor.");
-    	return false;
+    	return ACLNN_ERR_PARAM_INVALID;
   	}
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
-    return true;
+    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
 }
 
 // 检查是否有alltoallout输出
 bool IsAll2AllOut(const aclTensor *alltoAllOut)
 {
-    OP_CHECK_NULL(alltoAllOut, return false);
-    if (alltoAllOut->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "alltoAllOutOptional do not support empty tensor.");
+    if (alltoAllOut == nullptr) {
         return false;
     }
-    return true;
-}
-
-// 检查预留参数是否为合法值，若为预设之外的值会提示Warning
-bool CheckReservedParams(const aclTensor *commScaleOptional, const aclTensor* x1OffsetOptional,
-                         const aclTensor* x2OffsetOptional, int64_t commQuantMode, int64_t commQuantDtype) {
-    if (commScaleOptional != nullptr) {
-        OP_LOGW("commScaleOptional is a reserved param, it should be null.");
-    }
-    if (x1OffsetOptional != nullptr) {
-        OP_LOGW("x1OffsetOptional is a reserved param, it should be null.");
-    }
-    if (x2OffsetOptional != nullptr) {
-        OP_LOGW("x2OffsetOptional is a reserved param, it should be null.");
-    }
-    if (static_cast<QuantModeType>(commQuantMode) != QuantModeType::NO_QUANT) {
-        OP_LOGW("commQuantMode is a reserved param, it should be 0, indicates no quantization mode.");
-    }
-    if (commQuantDtype != ACL_DT_UNDEFINED) {
-        OP_LOGW("commQuantDtype is a reserved param, it should be -1, indicates undefined type.");
+    if (alltoAllOut->IsEmpty() && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "alltoAllOutOptional do not support empty tensor.");
+         return false;
     }
     return true;
 }

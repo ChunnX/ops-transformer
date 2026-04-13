@@ -1,6 +1,7 @@
 # aclnnBlitzSparseAttention
 
 ## 产品支持情况
+
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
@@ -30,7 +31,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnBlitzSparseAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBlitzSparseAttention”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnBlitzSparseAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBlitzSparseAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnBlitzSparseAttentionGetWorkspaceSize(
@@ -163,7 +164,7 @@ aclnnStatus aclnnBlitzSparseAttention(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>TND</td>
         <td>1</td>
@@ -351,8 +352,6 @@ aclnnStatus aclnnBlitzSparseAttention(
     </tbody></table>
     </div>
     
-  
-  
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
@@ -360,7 +359,7 @@ aclnnStatus aclnnBlitzSparseAttention(
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
   
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px">			<colgroup>
+    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
@@ -431,7 +430,6 @@ aclnnStatus aclnnBlitzSparseAttention(
     </tbody>
     </table>
     </div>
-
 
 -   **返回值**
 
@@ -645,6 +643,7 @@ aclnnStatus aclnnBlitzSparseAttention(
    - Shape: `[batch_size, num_heads, num_sabi_rows, num_sabi_cols]` where num_sabi_rows is ceil(sequence_length/128) and num_sabi_cols is ceil(sequence_length/512).
    - Semantis: for a given batch b and head h the sabi[b, h, i, :] specifies a list of 128x512 attention matrix tiles that should be computed. -1 will indicate a "skip" that is "do not compute". 
    - Example of `sabi` of batch_size=1 and 2 heads processing sequence length 4000 (the sabi will have 31 rows and 7 columns):
+
    ```python
     [
       # head 0:

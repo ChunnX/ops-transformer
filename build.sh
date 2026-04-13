@@ -77,6 +77,7 @@ else
     DEFAULT_INSTALL_DIR="/usr/local/Ascend/latest"
 fi
 BISHENG_FLAGS=""
+ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
 
@@ -1083,6 +1084,14 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN=FALSE
         shift
         ;;
+    --aicpu=*)
+        OPTARG=$1
+        shift
+        ;;
+    --aicpu_kernel)
+        ENABLE_AICPU_KERNEL=TRUE
+        shift
+        ;;
     --bisheng_flags=*)
         OPTARG=$1
         BISHENG_FLAGS=${OPTARG#*=}
@@ -1547,6 +1556,10 @@ if [ -n "${BISHENG_FLAGS}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DBISHENG_FLAGS=${BISHENG_FLAGS}"
 fi
 
+if [ -n "${ENABLE_AICPU_KERNEL}" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}"
+fi
+
 if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_STATIC=${ENABLE_STATIC}"
 fi
@@ -1594,19 +1607,37 @@ fi
 
 # 非打包命令调用，打包模式会打进同一个包里
 function set_compute_unit_option() {
-    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组
-    local COMPUTE_UNIT_SHORT=""
-    for soc in "${SOC_ARRAY[@]}"; do
-      for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
-        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')
-        if [[ "$lowercase_word" == *"$support_unit"* ]]; then
-          COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;"
-          break
+    local IS_SUPPORT_SOC_INPUT=false
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
+        lowercase_word=$(echo "$ASCEND_SOC_UNITS" | tr '[:upper:]' '[:lower:]')
+        if [[ "$lowercase_word" == "$support_unit" ]]; then
+            IS_SUPPORT_SOC_INPUT=true
+            break
         fi
-      done
     done
-    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"
+    if [[ "${IS_SUPPORT_SOC_INPUT}" == "true" ]]; then
+        CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$ASCEND_SOC_UNITS"
+    else
+        echo "[ERROR] The input soc $ASCEND_SOC_UNITS is not supported."
+        exit 1
+    fi
 }
+
+# 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
+function set_compute_unit_option_ut() {	 
+    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组	 
+    local COMPUTE_UNIT_SHORT=""	 
+    for soc in "${SOC_ARRAY[@]}"; do	 
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do	 
+        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')	 
+        if [[ "$lowercase_word" == *"$support_unit"* ]]; then	 
+        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;" 
+        break 
+        fi	 
+    done 
+    done	 
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"	 
+ }
 
 CUSTOM_OPTION="${CUSTOM_OPTION} -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH} -DCHECK_COMPATIBLE=${CHECK_COMPATIBLE}"
 
@@ -1794,7 +1825,7 @@ function build_pr_ut_mc2()
             fi
             echo "start to test $element"
             process_soc_input "$element"
-            set_compute_unit_option
+            set_compute_unit_option_ut
             build_ut ${BUILD}
             UT_TEST_CNT=$((UT_TEST_CNT +1))
     done
@@ -1815,7 +1846,7 @@ function build_pr_ut_exclude_mc2()
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_EXCLUDE_MC2}"
     process_soc_input "ascend310p,ascend910b,ascend950"
-    set_compute_unit_option
+    set_compute_unit_option_ut
     build_ut ${BUILD}
 }
 
@@ -1824,7 +1855,7 @@ if [[ "$ENABLE_TEST" == "TRUE" ]]; then
         build_pr_ut_exclude_mc2
         build_pr_ut_mc2
     else
-        set_compute_unit_option
+        set_compute_unit_option_ut
         build_ut ${BUILD}
     fi
     exit 0
