@@ -249,7 +249,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 确定性计算：
   - aclnnMaskedCausalConv1dBackward默认确定性实现。
-- 输入shape限制：
+- 输入限制：
   - grad_output、input、weight、grad_input和grad_weight的数据类型必须一致。
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1\~8。

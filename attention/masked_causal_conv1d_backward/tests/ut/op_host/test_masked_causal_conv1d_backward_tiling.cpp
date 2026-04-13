@@ -57,7 +57,7 @@ TEST_F(MaskedCausalConv1dBackwardTilingArch35, MaskedCausalConv1dBackward_950)
                                               attrs, &compileInfo);
 
     int64_t expectTilingKey = 10000;
-    std::string expectTilingData = "12 0 64 64 1 26 64 64 158 157 14 12 1 26 64 64 158 157 0 4096 4 768 3";
+    std::string expectTilingData = "12 0 64 64 1 26 64 64 158 157 14 12 1 26 64 64 158 157 0 4096 4 768 3 ";
 
     std::vector<size_t> expectWorkspaces = {};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
