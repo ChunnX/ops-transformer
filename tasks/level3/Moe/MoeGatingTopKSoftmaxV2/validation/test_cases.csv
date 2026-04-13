@@ -1,0 +1,16 @@
+case_id;x_shape;k;dtype;has_finished_optional;renorm
+0;[5, 3];3;float32;True;0
+1;[6, 4];4;bfloat16;True;0
+2;[6, 5];5;float16;True;0
+3;[6, 18];18;bfloat16;True;0
+4;[4, 32];32;float32;True;0
+5;[6, 24];24;bfloat16;True;0
+6;[2, 98305];32;float32;True;0
+7;[2, 150000];32;float16;True;0
+8;[2, 250000];32;float32;True;0
+9;[10, 10];10;float32;True;0
+10;[16, 16];16;bfloat16;True;0
+11;[32, 8];8;float16;True;0
+12;[64, 64];32;float32;True;0
+13;[128, 128];64;bfloat16;True;0
+14;[256, 256];128;float16;True;0
