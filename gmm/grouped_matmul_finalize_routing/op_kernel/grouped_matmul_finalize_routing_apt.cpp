@@ -167,5 +167,6 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
                 tilingGM);
         }
     #endif
+#endif
 }
 #endif
