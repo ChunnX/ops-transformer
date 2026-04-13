@@ -861,6 +861,7 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
         }
         return true;
     }
+    return true;
 }
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
@@ -3459,6 +3460,7 @@ protected:
             tilingData->inputParams.set_pseS2Size(pseS2Size);
             return true;
         }
+        return true;
     }
 };
 
@@ -3741,6 +3743,7 @@ protected:
             return true;
         }
 
+        return true;
     }
 };
 
@@ -3926,6 +3929,7 @@ protected:
             tilingData->inputParams.set_pseS2Size(pseS2Size);
             return true;
         }
+        return true;
     }
 
     bool IsCapable() override
