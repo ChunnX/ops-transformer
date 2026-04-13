@@ -118,9 +118,9 @@ REG_OP(CloudKvRmsNormRopeCache)
     .OUTPUT(c_kv, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .ATTR(epsilon, Float, 1e-5)
     .ATTR(cache_mode, String, "Norm")
+    .ATTR(is_output_kv, Bool, false)
     .ATTR(rotary_mode, String, "interleave-half")
     .ATTR(quant_mode, String, "none")
-    .ATTR(is_output_kv, Bool, false)
     .OP_END_FACTORY_REG(CloudKvRmsNormRopeCache)
 } // namespace ge
 
