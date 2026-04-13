@@ -607,6 +607,9 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 - 确定性计算：
   - aclnnMoeDistributeDispatchV2默认确定性实现。
 
+- 驱动约束：
+  - 算子通信域各节点的驱动版本应当相同。
+
 - **接口配套约束**：
   - `aclnnMoeDistributeDispatchV2`接口与CombineV2系列算子接口必须配套使用，具体参考[调用示例](#调用示例)。
   - 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatchV2`的Tensor输出`assistInfoForCombineOut`、`epRecvCountsOut`、`tpRecvCountsOut`、`expandScalesOut`中的元素值可能不同，使用时直接将上述Tensor传给CombineV2系列算子对应参数即可，模型其他业务逻辑不应对其存在依赖。
