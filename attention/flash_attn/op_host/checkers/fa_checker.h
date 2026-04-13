@@ -23,17 +23,11 @@
 
 #include "./actual_seq_len_checker.h"
 #include "./base_checker.h"
-#include "./dequant_checker.h"
 #include "./learnable_sink_checker.h"
-#include "./left_padding_checker.h"
 #include "./mask_checker.h"
 #include "./paged_attention_checker.h"
-#include "./post_quant_checker.h"
-#include "./pse_checker.h"
-#include "./rope_checker.h"
 #include "./shape_checker.h"
 #include "./softmax_lse_checker.h"
-#include "./system_prefix_checker.h"
 
 namespace optiling {
 class FAChecker {
@@ -50,17 +44,11 @@ public:
 
 private:
     std::unique_ptr<ActualSeqLenChecker> actualSeqLenChecker_;
-    std::unique_ptr<DequantChecker> dequantChecker_;
     std::unique_ptr<LearnableSinkChecker> learnableSinkChecker_;
-    std::unique_ptr<LeftPaddingChecker> leftPaddingChecker_;
     std::unique_ptr<MaskChecker> maskChecker_;
     std::unique_ptr<PagedAttentionChecker> pagedAttentionChecker_;
-    std::unique_ptr<PostQuantChecker> postQuantChecker_;
-    std::unique_ptr<PSEChecker> pseChecker_;
-    std::unique_ptr<RopeChecker> ropeChecker_;
     std::unique_ptr<ShapeChecker> shapeChecker_;
     std::unique_ptr<SoftmaxLSEChecker> softmaxLSEChecker_;
-    std::unique_ptr<SystemPrefixChecker> systemPrefixChecker_;
 
     bool enableNonQuant_ = false;
     bool enableFullQuant_ = false;
