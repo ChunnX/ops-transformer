@@ -33,7 +33,7 @@ def save_json_file(output_file: str, content):
         os.makedirs(output_dir, exist_ok=True)
 
     with open(output_file, 'w', encoding='utf-8') as file:
-        json.dump(content, file, ensure_ascii=True, indent=2)
+        json.dump(content, file, ensure_ascii=True, indent=2, sort_keys=True)
 
 
 def update_config(base_content, update_content):
@@ -98,29 +98,63 @@ def _get_merged_field_value(update_op, base_op, field):
     return base_op.get(field)
 
 
+def merge_files(files: List[str], priority: str = "last"):
+    """批量合并多个文件。"""
+    if not files:
+        return {}
+    if len(files) == 1:
+        return load_json_file(files[0])
+    result = load_json_file(files[0])
+    for f in files[1:]:
+        other = load_json_file(f)
+        if priority == "first":
+            result = update_config(other, result)
+        else:
+            result = update_config(result, other)
+    return result
+
+
 def parse_args(argv: List[str]):
     """入参解析。"""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--base-file',
-                        required=True,
-                        help='the basic binary_info_config file')
-    parser.add_argument('--update-file',
-                        required=True,
-                        help='the update binary_info_config file')
-    parser.add_argument('--output-file',
-                        required=True,
-                        type=os.path.realpath,
+    parser.add_argument('--base-file', help='the basic binary_info_config file')
+    parser.add_argument('--update-file', help='the update binary_info_config file')
+    parser.add_argument('--input-files', nargs='+', help='batch merge multiple files')
+    parser.add_argument('--output-file', required=True, type=os.path.realpath,
                         help='the output binary_info_config file')
+    parser.add_argument('--priority', choices=['first', 'last'], default='last',
+                        help='merge priority')
     args = parser.parse_args(argv)
     return args
 
+def sort_op_cfg(result: dict):
+    """算子内部列表进行排序。"""
+    for op_cfg in result.values():
+        if not isinstance(op_cfg, dict):
+            continue
+        for list_key in ["binaryList", "binList"]:
+            items = op_cfg.get(list_key)
+            if not isinstance(items, list):
+                continue
+            # 按照 jsonPath 排序
+            items.sort(
+                key=lambda x: str(x.get("jsonPath", x.get("binPath", "")))
+            )  
 
 def main(argv: List[str]) -> bool:
     """主流程。"""
     args = parse_args(argv)
-    base_content = load_json_file(args.base_file)
-    update_content = load_json_file(args.update_file)
-    result = update_config(base_content, update_content)
+    if args.input_files:
+        result = merge_files(args.input_files, args.priority)
+    else:
+        # 加载基础文件和待合并文件
+        base_content = load_json_file(args.base_file)
+        update_content = load_json_file(args.update_file)
+        # 合并binList
+        result = update_config(base_content, update_content)
+    # 针对每个算子内部列表进行排序 
+    sort_op_cfg(result)
+    # 保存结果           
     save_json_file(args.output_file, result)
     return True
 
