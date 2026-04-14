@@ -510,13 +510,13 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
                       layout == LayOutTypeEnum::LAYOUT_BSH ||
                       layout == LayOutTypeEnum::LAYOUT_SBH) {
-            runParam.goIdx = gS1Index % this->constInfo.gSize;
-            runParam.s1oIdx = gS1Index / this->constInfo.gSize;
+            runParam.goIdx = gS1Index * this->s1BaseSize % this->constInfo.gSize;
+            runParam.s1oIdx = gS1Index * this->s1BaseSize / this->constInfo.gSize;
         } else {
-            runParam.goIdx = gS1Index / runParam.actualS1Size;
-            runParam.s1oIdx = gS1Index % runParam.actualS1Size;
+            runParam.goIdx = gS1Index * this->s1BaseSize / runParam.actualS1Size;
+            runParam.s1oIdx = gS1Index * this->s1BaseSize % runParam.actualS1Size;
         }
-        runParam.gS1Idx = gS1Index;
+        runParam.gS1Idx = gS1Index * this->s1BaseSize;
     } else {
         runParam.goIdx = bnIndex % this->constInfo.headNumRatio;
         runParam.s1oIdx = gS1Index % this->constInfo.s1OuterSize;
