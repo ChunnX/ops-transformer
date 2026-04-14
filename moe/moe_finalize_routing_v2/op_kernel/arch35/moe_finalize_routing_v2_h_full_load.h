@@ -27,10 +27,9 @@ public:
     __aicore__ inline MoeFinalizeRoutingV2HFullLoad()
     {}
 
-    __aicore__ inline void Init(
-        GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales,
-        GM_ADDR expertIdx, GM_ADDR y, GM_ADDR workspace, const MoeFinalizeRoutingV2RegbaseTilingData* tilingDataPtr,
-        TPipe* pipePtr)
+    __aicore__ inline void Init(GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
+                                GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR y, GM_ADDR workspace,
+                                const MoeFinalizeRoutingV2RegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -39,14 +38,14 @@ public:
         hasX2 = x2 != nullptr;
         hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
         hasScales = scales != nullptr;
-        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
-        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
-        biasGm.SetGlobalBuffer((__gm__ T*)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
-        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-        yGm.SetGlobalBuffer((__gm__ T*)y);
+        expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
+        x1Gm.SetGlobalBuffer((__gm__ T *)x1);
+        x2Gm.SetGlobalBuffer((__gm__ T *)x2);
+        biasGm.SetGlobalBuffer((__gm__ T *)bias);
+        scalesGm.SetGlobalBuffer((__gm__ S *)scales);
+        expertIdxGm.SetGlobalBuffer((__gm__ int32_t *)expertIdx);
+        yGm.SetGlobalBuffer((__gm__ T *)y);
 
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->h);
         int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * tilingData->h);
@@ -142,9 +141,8 @@ private:
                     SetFlag<HardEvent::S_V>(eventId);
                     WaitFlag<HardEvent::S_V>(eventId);
                 }
-                ProcessExpandXBiasScaleOptimized<T>(
-                    yLocal[rowInnerIdx * tilingData->h], expandedXLocal, biasLocal, scalesLocal, validK, tilingData->h,
-                    hasBiasAndExpertIdx, hasScales);
+                ProcessExpandXBiasScaleOptimized<T>(yLocal[rowInnerIdx * tilingData->h], expandedXLocal, biasLocal,
+                                                    scalesLocal, validK, tilingData->h, hasBiasAndExpertIdx, hasScales);
                 expandedXQue.FreeTensor(expandedXLocal);
                 if (hasBiasAndExpertIdx) {
                     biasQue.FreeTensor(biasLocal);
@@ -159,8 +157,8 @@ private:
         }
     }
 
-    __aicore__ inline void CopyExpanedXAndBiasScales(
-        int64_t curKFactor, int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kOuterIdx)
+    __aicore__ inline void CopyExpanedXAndBiasScales(int64_t curKFactor, int64_t rowOuterIdx, int64_t rowInnerIdx,
+                                                     int64_t kOuterIdx)
     {
         validK = 0;
         for (int64_t kInnerIdx = 0; kInnerIdx < curKFactor; kInnerIdx += 1) {
@@ -174,24 +172,26 @@ private:
             if (gmValueOfExpandedRowIdx == INVALID_IDX) {
                 continue;
             }
-            CopyIn(
-                expandedXGm[gmValueOfExpandedRowIdx * tilingData->h], expandedXLocal[validK * tilingData->hAligned], 1,
-                tilingData->h);
+            if (hasScales) {
+                S scaleValue = scalesLocal.GetValue(kInnerIdx);
+                if (scaleValue == static_cast<S>(0)) {
+                    continue;
+                }
+            }
+
+            CopyIn(expandedXGm[gmValueOfExpandedRowIdx * tilingData->h], expandedXLocal[validK * tilingData->hAligned],
+                   1, tilingData->h);
             if (hasBiasAndExpertIdx) {
                 SetOffsetForExpertIdx(kOuterIdx, rowOuterIdx, rowInnerIdx, kInnerIdx);
                 int64_t biasGmOffset = expertIdxGm.GetValue(expertIdxOffset) * tilingData->h;
                 CopyIn(biasGm[biasGmOffset], biasLocal[validK * tilingData->hAligned], 1, tilingData->h);
             }
-            if (hasScales) {
-                S scaleValue = scalesLocal.GetValue(kInnerIdx);
-                scalesLocal.SetValue(validK, scaleValue);
-            }
             validK += 1;
         }
     }
 
-    __aicore__ inline void SetExpandedRowIdxOffset(
-        int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kOuterIdx, int64_t kInnerIdx)
+    __aicore__ inline void SetExpandedRowIdxOffset(int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kOuterIdx,
+                                                   int64_t kInnerIdx)
     {
         if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROP_PAD_COLUMN) {
             expandedRowIdxOffset = GetBlockIdx() * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor +
@@ -203,13 +203,13 @@ private:
         }
     }
 
-    __aicore__ inline void SetOffsetForExpertIdx(
-        int64_t kOuterIdx, int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kInnerIdx)
+    __aicore__ inline void SetOffsetForExpertIdx(int64_t kOuterIdx, int64_t rowOuterIdx, int64_t rowInnerIdx,
+                                                 int64_t kInnerIdx)
     {
         if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROP_PAD_COLUMN) {
-            expertIdxOffset = rowInnerIdx * tilingData->k + kOuterIdx * tilingData->kFactor + kInnerIdx + 
-                GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
-                rowOuterIdx * tilingData->rowFactor * tilingData->k;
+            expertIdxOffset = rowInnerIdx * tilingData->k + kOuterIdx * tilingData->kFactor + kInnerIdx +
+                              GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->k +
+                              rowOuterIdx * tilingData->rowFactor * tilingData->k;
             return;
         }
         expertIdxOffset = expandedRowIdxOffset;
@@ -217,8 +217,8 @@ private:
     }
 
 private:
-    TPipe* pipe;
-    const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
+    TPipe *pipe;
+    const MoeFinalizeRoutingV2RegbaseTilingData *tilingData;
 
     int64_t expandedRowIdxOffset{0};
     int64_t expertIdxOffset{0};
