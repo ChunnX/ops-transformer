@@ -182,10 +182,12 @@ public:
         p16BaseBufLen = p16BufLen;
         p32BaseBufLen = p32BufferLen;
 
+        uint64_t sftBufferAlign = sBufferLen + p16BufLen + lBrobBufferLen + lBufferLen * BRCB_BASE_NUM;
+
         for (uint64_t i = 0; i < STAGES; i++) {
             // 第一轮 softmax 计算空间划分
-            // 空间示意图1： S32(P32)(ds) || p16(ds16) || lseBroc || lse
-            // 空间示意图2： S32(P32)(ds) || p16(ds16) || dpFp32  || softmaxgrad
+            // 由于分核关系，所以的输入都能放入ub中
+            // 空间示意图： S32(P32) || p16 || lseBroc || lse (align) || dpFp32(ds) || softmaxgrad || ds16
             sTensor[i] = resource.ubBuf.template GetBufferByByte<float>((sBufferLen / 2) * i);
             pFp32Tensor[i] = sTensor[i]; // 复用s
             p16Tensor[i] = resource.ubBuf.template GetBufferByByte<InputDType>(sBufferLen + (p16BufLen / 2) * i);
@@ -196,11 +198,12 @@ public:
 
             // 第二轮 ds 计算空间划分
             dpFp32Tensor[i] = 
-                resource.ubBuf.template GetBufferByByte<float>(p32BufferLen + p16BufLen + (dpBufLen / 2) * i);
+                resource.ubBuf.template GetBufferByByte<float>(sftBufferAlign + (dpBufLen / 2) * i);
             softmaxGradTensor[i] = 
-                resource.ubBuf.template GetBufferByByte<float>(p32BufferLen + p16BufLen + dpBufLen + (dBufLen / 2) * i);
-            dsTensor[i] = pFp32Tensor[i]; // 复用s
-            ds16Tensor[i] = p16Tensor[i]; // 复用p16
+                resource.ubBuf.template GetBufferByByte<float>(sftBufferAlign + dpBufLen + (dBufLen / 2) * i);
+            dsTensor[i] =  dpFp32Tensor[i];
+            ds16Tensor[i] =
+                resource.ubBuf.template GetBufferByByte<InputDType>(sftBufferAlign + dpBufLen + dBufLen + (p16BufLen / 2) * i);
         }
     }
         
@@ -282,10 +285,10 @@ public:
         uint64_t ping = 0;
 
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
+        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
 
         // 不包含尾行处理
         for (uint64_t i = 0; i < rowLoopTimes; i++) {
-            auto eventId = ping ? EVENT_ID1 : EVENT_ID5;
             uint64_t curS1Idx = curCoreS1Idx + i * bufferRows;
             int32_t gmRowOffset = i * bufferRows * col;
             compute(gmRowOffset, bufferRows, col, curS1Idx, ping);
@@ -295,10 +298,11 @@ public:
         }
 
         wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
+        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
 
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
+        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
         if (tailRowNum > 0) {
-            auto eventId = ping ? EVENT_ID1 : EVENT_ID5;
             uint64_t curS1Idx = curCoreS1Idx + rowLoopTimes * bufferRows;
             int32_t gmOffset =  rowLoopTimes * bufferRows * col;
             uint64_t tempRow = tailRowNum;
@@ -308,6 +312,7 @@ public:
             }
         }
         wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
+        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
     }
 
     __aicore__ inline
@@ -333,8 +338,8 @@ public:
      * col: 需要计算的列数
      * curS1Idx: 当前计算的query的 s 维度的idx
     */
-    __aicore__ inline void CalSimplySoft(
-        struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
+    __aicore__ inline
+    void CalSimplySoft(struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
     {
         // simply softtmax
         LocalTensor<float> &sLocal = runSftInfo.sTensor;
@@ -348,7 +353,6 @@ public:
         GlobalTensor<InputDType> pGm = runSftInfo.pGm;
 
         uint64_t countAlign = row * alignCol;
-        uint64_t count =  row * col;
 
         auto eventId = ping ? EVENT_ID4 : EVENT_ID5;
 
@@ -389,6 +393,7 @@ public:
 
         set_flag(PIPE_V, PIPE_MTE3, eventId);
         wait_flag(PIPE_V, PIPE_MTE3, eventId);
+
         DataCopyPad(
             pGm, p16Local, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
     }
@@ -413,12 +418,8 @@ public:
         GlobalTensor<InputDType> ds = runDsInfo.dsGm;
 
         uint64_t countAlign = row * alignCol;
-        uint64_t count =  row * col;
 
         auto eventId = ping ? EVENT_ID4 : EVENT_ID5;
-
-        set_flag(PIPE_V, PIPE_MTE2, eventId);
-        wait_flag(PIPE_V, PIPE_MTE2, eventId);
 
         if (align32Col * sizeof(InputDType) % BLOCK_BYTE_SIZE == 0) {
             DataCopyPad(dpLocal, dp, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(float)), 0, 0, 0}, 
@@ -438,15 +439,13 @@ public:
         Mul(dpLocal, p32Local, dpLocal, countAlign);
         AscendC::PipeBarrier<PIPE_V>();
 
-        set_flag(PIPE_MTE3, PIPE_V, eventId);
-        wait_flag(PIPE_MTE3, PIPE_V, eventId);
         Cast(ds16Tensor, dpLocal, AscendC::RoundMode::CAST_ROUND, countAlign);
 
         set_flag(PIPE_V, PIPE_MTE3, eventId);
         wait_flag(PIPE_V, PIPE_MTE3, eventId);
+
         DataCopyPad(
             ds, ds16Tensor, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
-
         set_flag(PIPE_MTE3, PIPE_MTE2, eventId);
     }
  
@@ -465,7 +464,7 @@ public:
         if constexpr (INPUT_LAYOUT == TND) {
             uint64_t bOffset = n1 * ((__gm__ int64_t *)actualQSeqlen)[curCoreBatch];
             startOffset = bOffset + curS1Idx * n1 + curCoreN1Idx;
-            // 对于TND 格式来说， 会进行leis (s n) -> (n s) 的transpose转换
+            // 对于TND 格式来说， 会进行类似 (s n) -> (n s) 的transpose转换
             DataCopyPad(lseFp32Brc,
                 LseGm[startOffset],
                 {static_cast<uint16_t>(count),
