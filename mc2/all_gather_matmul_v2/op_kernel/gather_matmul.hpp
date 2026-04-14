@@ -161,7 +161,7 @@ public:
         BlockMmad blockMmad(resource);
 
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
-        int32_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        int64_t dstSt = static_cast<int64_t>(params.rankIdx) * params.problemShape.m() * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -209,7 +209,7 @@ public:
     {
         FixpipeBlockMmad fixpipeBlockMmad(resource);
 
-        int32_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        int64_t dstSt = static_cast<uint64_t>(params.rankIdx) * params.problemShape.m() * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -261,7 +261,7 @@ public:
         int32_t blockM = params.pValue * L1TileShape::M;
         int32_t blockSize = blockM * kAlign;
         int32_t outputBlockSize = blockM * params.problemShape.n();
-        int32_t mnSize = params.problemShape.m() * params.problemShape.n();
+        int64_t mnSize = static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -347,7 +347,7 @@ public:
         int32_t blockM = params.pValue * L1TileShape::M;
         int32_t blockSize = blockM * kAlign;
         int32_t outputBlockSize = blockM * params.problemShape.n();
-        int32_t mnSize = params.problemShape.m() * params.problemShape.n();
+        int64_t mnSize = static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
