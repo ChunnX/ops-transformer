@@ -237,10 +237,12 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
         return ge::GRAPH_FAILED;
     }
 
-    platform_ascendc::PlatformAscendC ascendcPlatform;
-    if (GetPlatformInfo(ascendcPlatform) != ge::GRAPH_SUCCESS) {
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        OP_LOGE(context_->GetNodeName(), "get platform info failed");
         return ge::GRAPH_FAILED;
     }
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     blockDim_ = ascendcPlatform.GetCoreNumAic();
     vecCoreNum_ = ascendcPlatform.GetCoreNumAiv();
 
@@ -360,10 +362,12 @@ ge::graphStatus MhcPreBackwardTiling::TilingProcess()
     size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, fusionSize_, blockDim_, vecCoreNum_, sizeof(float));
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE_SIZE;
 
-    platform_ascendc::PlatformAscendC ascendcPlatform;
-    if (GetPlatformInfo(ascendcPlatform) != ge::GRAPH_SUCCESS) {
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        OP_LOGE(context_->GetNodeName(), "get platform info failed");
         return ge::GRAPH_FAILED;
     }
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
 
     matmul_tiling::MatmulApiTiling mm0_(ascendcPlatform);
     matmul_tiling::MatmulApiTiling mm1_(ascendcPlatform);
