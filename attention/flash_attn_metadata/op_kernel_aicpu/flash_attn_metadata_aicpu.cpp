@@ -72,8 +72,10 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 bool FlashAttnMetadataCpuKernel::ParamsInit()
 {
     // Device info 
-    deviceInfo.aicCoreNum = aicCoreNum_;
-    deviceInfo.aivCoreNum = aivCoreNum_;
+    deviceInfo.aicCoreMaxNum = aicCoreNum_;
+    deviceInfo.aivCoreMaxNum = aivCoreNum_;
+    deviceInfo.aicCoreMinNum = aicCoreNum_;
+    deviceInfo.aivCoreMinNum = aivCoreNum_;
     deviceInfo.socVersion = socVersion_;
     // baseInfo
     baseInfo.batchSize = batchSize_;
@@ -179,7 +181,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
     uint32_t sectionNum = splitRes.sectionNum;
     detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
-        for (size_t i = 0; i < aicCoreNum_; ++i) {
+        for (uint32_t i = 0; i < aicCoreNum_; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
@@ -189,7 +191,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
         }
-        for (size_t i = 0; i < aivCoreNum_; ++i) {
+        for (uint32_t i = 0; i < aivCoreNum_; ++i) {
             // faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, 0U);
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
@@ -200,12 +202,19 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
         }
         // FA Metadata Generate
         auto faSplitRes = splitRes.sectionFaResult[sectionId];
-        for (size_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
+        for (uint32_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 1U);
             // FA start
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, (i == 0) ? 0U : faSplitRes.bN2End[i - 1]);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, (i == 0) ? 0U : faSplitRes.gS1End[i - 1]);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, (i == 0) ? 0U : faSplitRes.s2End[i - 1]);
+            if (i > 0) {
+                faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, faSplitRes.bN2End[i - 1]);
+                faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, faSplitRes.gS1End[i - 1]);
+                faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
+            } else if (sectionId > 0) {
+                auto preFaSplitRes = splitRes.sectionFaResult[sectionId - 1];
+                faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, preFaSplitRes.bN2End[preFaSplitRes.usedCoreNum - 1]);
+                faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, preFaSplitRes.gS1End[preFaSplitRes.usedCoreNum - 1]);
+                faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, preFaSplitRes.s2End[preFaSplitRes.usedCoreNum - 1]);
+            }
             // FA end
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX, faSplitRes.bN2End[i]);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, faSplitRes.gS1End[i]);
@@ -215,7 +224,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
         }
         // FD Metadata Generate
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
-        for (size_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
+        for (uint32_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
             // faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 1U);
             uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, fdSplitRes.bN2Idx[curTaskIdx]);

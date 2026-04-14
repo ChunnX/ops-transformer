@@ -23,7 +23,7 @@
 namespace load_balance {
 
 struct SectionStreamKParam : GeneralBalanceParam {
-    uint32_t l2Kb { 128 * 1024U };              // L2 size in KB
+    uint32_t l2Byte { 128 * 1024U * 1024U };              // L2 size in Byte
     uint32_t v0Cost { 0U };
 };
 
