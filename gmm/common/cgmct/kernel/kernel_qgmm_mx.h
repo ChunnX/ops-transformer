@@ -294,10 +294,18 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset
     int64_t n = Get<MNK_N>(problemShape_);
     int64_t k = Get<MNK_K>(problemShape_);
     // aBaseOffset += m * k
-    Get<IDX_A_OFFSET>(baseOffset_) += m * k;
+    if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+        Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
+    } else {
+        Get<IDX_A_OFFSET>(baseOffset_) += m * k;
+    }
     if (groupType_ == GROUP_TYPE_M) {
         if constexpr (formatB == CubeFormat::ND) {
-            Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
+            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+                Get<IDX_B_OFFSET>(baseOffset_) = (n * k) >> 1 * static_cast<int64_t>(groupIdx);
+            } else {
+                Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
+            }
         } else {
             int64_t nAlign = (n + c0Size - 1) & (~(c0Size - 1));
             int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
