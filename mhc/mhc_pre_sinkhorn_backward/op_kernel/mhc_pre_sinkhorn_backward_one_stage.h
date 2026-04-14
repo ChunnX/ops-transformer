@@ -329,21 +329,25 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradPosHHat2(const 
 
     Add(fusedGradHPreAndGradHPostLocal_, gradHPreLocal_, gradHPostLocal_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
 
-    uint32_t thread_num = min(static_cast<uint32_t>(THREAD_NUM), static_cast<uint32_t>(tileTaskCount * n_ * 2));
-    uint32_t xThreadCount = 2 * n_;
-    uint32_t yThreadCount = thread_num / xThreadCount;
-    LocalTensor<T> tmpLocal = gradHPostLocal_;
-    Simt::VF_CALL<ComputeGradFusedGradH2PreAndGradH2PostSimt<T>>(Simt::Dim3{xThreadCount, yThreadCount},
-        (__ubuf__ T*) gradH2Local_.GetPhyAddr(),
-        (__ubuf__ T*) gradRsqrtLocal_.GetPhyAddr(),
-        (__gm__ T*) gradHcScaleGlobal_.GetPhyAddr(),
-        (__gm__ T*) gradHcBaseGlobal_.GetPhyAddr(),
-        (__ubuf__ T*) fusedGradHPreAndGradHPostLocal_.GetPhyAddr(),
-        (__ubuf__ T*) fusedHPre2AndHPost2Local_.GetPhyAddr(),
-        (__ubuf__ T*) rsqrtLocal_.GetPhyAddr(),
-        (__ubuf__ T*) hcBaseLocal_.GetPhyAddr(),
-        (__ubuf__ T*) tmpLocal.GetPhyAddr(),  // gradHPostLocal_ 用作临时空间
-        hcScalePre_, hcScalePost_, tileTaskCount, n_);
+    
+    Add(xCastLocal_, xCastLocal_, xCastLocal_[128], REPEAT_LENTH, tileTaskBSCount * n_,
+        {1, 1, 1, c0_ / ELEMENTS_SIZE_PER_BLOCK, c0_ / ELEMENTS_SIZE_PER_BLOCK, c0_ / ELEMENTS_SIZE_PER_BLOCK});
+    
+    // uint32_t thread_num = min(static_cast<uint32_t>(THREAD_NUM), static_cast<uint32_t>(tileTaskCount * n_ * 2));
+    // uint32_t xThreadCount = 2 * n_;
+    // uint32_t yThreadCount = thread_num / xThreadCount;
+    // LocalTensor<T> tmpLocal = gradHPostLocal_;
+    // Simt::VF_CALL<ComputeGradFusedGradH2PreAndGradH2PostSimt<T>>(Simt::Dim3{xThreadCount, yThreadCount},
+    //     (__ubuf__ T*) gradH2Local_.GetPhyAddr(),
+    //     (__ubuf__ T*) gradRsqrtLocal_.GetPhyAddr(),
+    //     (__gm__ T*) gradHcScaleGlobal_.GetPhyAddr(),
+    //     (__gm__ T*) gradHcBaseGlobal_.GetPhyAddr(),
+    //     (__ubuf__ T*) fusedGradHPreAndGradHPostLocal_.GetPhyAddr(),
+    //     (__ubuf__ T*) fusedHPre2AndHPost2Local_.GetPhyAddr(),
+    //     (__ubuf__ T*) rsqrtLocal_.GetPhyAddr(),
+    //     (__ubuf__ T*) hcBaseLocal_.GetPhyAddr(),
+    //     (__ubuf__ T*) tmpLocal.GetPhyAddr(),  // gradHPostLocal_ 用作临时空间
+    //     hcScalePre_, hcScalePost_, tileTaskCount, n_);
 }
 
 template<typename TYPE_X, typename T>
@@ -485,7 +489,6 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3BS(const int3
             for (int32_t loopOffsetC0 = 0; loopOffsetC0 < c0_; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 mul(xCastLocal_[loopIdN * c0_ + loopOffsetC0], xCastLocal_[loopIdN * c0_ + loopOffsetC0 + loopOffsetC0], gradYCastLocal_[loopIdN * c0_ + loopOffsetC0],
                     ELEMENTS_SIZE_PER_REPEAT, tileTaskBSCount, { 1, 1, 1, n_ * c0_ / ELEMENTS_SIZE_PER_BLOCK, n_ * c0_ / ELEMENTS_SIZE_PER_BLOCK, c0_ / ELEMENTS_SIZE_PER_BLOCK });
-    
             }
         }
         PipeBarrier<PIPE_V>();
@@ -504,14 +507,12 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3BS(const int3
             {1, 1, 1, 8, 8, c0_ / ELEMENTS_SIZE_PER_BLOCK});
         PipeBarrier<PIPE_V>();
 
-        for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
-            mul(xCastLocal_[loopIdN * c0_ ], gradYCastLocal_, preBrcbLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, c0_ / ELEMENTS_SIZE_PER_REPEAT, { 1, 1, 1, 8, 8, 0 });
-        }
+
     }
     PipeBarrier<PIPE_V>();
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
-        WholeReduceSum(tmpPrePostLocal_[loopIdN], tmpLocal_[loopIdN * c0_], REPEAT_LENTH, tileTaskBSCount, ELEMENTS_SIZE_PER_BLOCK, 1, n_ * 8);
-        
+        WholeReduceSum(tmpPrePostLocal_[loopIdN], tmpLocal_[loopIdN * c0_], REPEAT_LENTH, tileTaskBSCount, ELEMENTS_SIZE_PER_BLOCK, 1, n_ * 8);// dst repeat stride  srcblkstride srcrepstride
+        // dst 间隔 8 2 *n
     }
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         for (int32_t loopOffsetC0 = 0; loopOffsetC0 < c0_; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
