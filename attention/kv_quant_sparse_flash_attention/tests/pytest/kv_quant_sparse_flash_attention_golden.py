@@ -473,7 +473,7 @@ def _reconstruct_bsnd_from_blocks(key_block_np, v_block_np, block_table_np,
 def _attention_bnsd(q_bnsd, k_bnsd, v_bnsd, sparse_indices_bnsd,
                     act_seq_q_list, act_seq_kv_list,
                     scale_value, sparse_blocksize, sparse_blockcount,
-                    sparse_mode, n1, n2, q_dtype_str):
+                    sparse_mode, q_dtype_str):
     """核心 attention 计算，工作在 BNSD 空间。
 
     q_bnsd:               (B, N1, S1, D_q)
@@ -482,8 +482,7 @@ def _attention_bnsd(q_bnsd, k_bnsd, v_bnsd, sparse_indices_bnsd,
     返回: y (B, N1, S1, D_kv) float32
     """
     B, N1, S1, D_q = q_bnsd.shape
-    N2 = k_bnsd.shape[1]
-    D_kv = v_bnsd.shape[-1]
+    N2 = k_bnsd.shape[1]    D_kv = v_bnsd.shape[-1]
     g = N1 // N2  # GQA group factor
     y = np.zeros((B, N1, S1, D_kv), dtype=np.float32)
 
@@ -679,9 +678,6 @@ def _build_fa_param(inp):
         "sparse_blocksize": sparse_block_size,
         "sparse_blockcount": K,
         "sparse_mode": sparse_mode,
-        "N1": N1,
-        "N2": N2,
-        "B": B,
         "q_dtype_str": q_dtype_str,
     }
     return fa_param
@@ -698,7 +694,7 @@ def compute_cpu_golden(inp):
         fa["q_bnsd"], fa["k_bnsd"], fa["v_bnsd"], fa["sp_bnsd"],
         fa["act_seq_q"], fa["act_seq_kv"],
         fa["scale_value"], fa["sparse_blocksize"], fa["sparse_blockcount"],
-        fa["sparse_mode"], fa["N1"], fa["N2"], fa["q_dtype_str"],
+        fa["sparse_mode"], fa["q_dtype_str"],
     )
 
     # y_bnsd 最后一维来自 v_bnsd（D_base 维），不包含 rope，无需裁剪。
