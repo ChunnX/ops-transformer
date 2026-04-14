@@ -1447,8 +1447,6 @@ if [[ "$ENABLE_UT_EXEC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_UT_EXEC=TRUE"
 fi
 
-CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-
 if [ -n "${TEST}" ];then
     if [ -n "${PR_CHANGED_FILES}" ];then
         TEST=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut)
