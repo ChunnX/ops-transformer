@@ -26,6 +26,10 @@ constexpr uint64_t INPUT_WEIGHT_INDEX = 1;
 constexpr uint64_t INPUT_MASK_INDEX = 2;
 
 constexpr uint64_t H_REG = 64;           // VF FP32 register width (elements): min H granularity for tiling
+constexpr int64_t  S_MAX = 1 << 15;      // max S = 32768 (aligned with backward)
+constexpr int64_t  B_MAX = 32;           // max B = 32
+constexpr int64_t  H_MIN = 192 * 2;      // min H = 384 (aligned with backward)
+constexpr int64_t  H_MAX = 192 * 128;    // max H = 24576 (aligned with backward)
 constexpr uint64_t CONV_WINDOW_SIZE = 3; // W: causal conv1d kernel size (fixed)
 constexpr uint64_t PREFIX_ROW_COUNT = CONV_WINDOW_SIZE - 1; // prefix rows in ioQueue slot (W-1)
 constexpr uint64_t MASK_ALIGN_ELEMENTS = 32;                // sUb alignment granularity for mask buffers
@@ -147,6 +151,15 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CheckInputParams()
         OP_LOGE(context_->GetNodeName(), "S=%lu B=%lu H=%lu must all be > 0", S_, B_, H_);
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(static_cast<int64_t>(S_) > S_MAX,
+                OP_LOGE(context_->GetNodeName(), "S=%lu exceeds S_MAX=%ld", S_, S_MAX),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<int64_t>(B_) > B_MAX,
+                OP_LOGE(context_->GetNodeName(), "B=%lu exceeds B_MAX=%ld", B_, B_MAX),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<int64_t>(H_) < H_MIN || static_cast<int64_t>(H_) > H_MAX,
+                OP_LOGE(context_->GetNodeName(), "H=%lu out of range [%ld, %ld]", H_, H_MIN, H_MAX),
+                return ge::GRAPH_FAILED);
     if (H_ % H_REG != 0) {
         OP_LOGE(context_->GetNodeName(), "H=%lu must be multiple of H_REG=%lu", H_, H_REG);
         return ge::GRAPH_FAILED;
@@ -230,8 +243,9 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
 
     uint64_t bestTotal = 0;
     uint64_t bestH = 1, bestB = 1, bestS = 1;
+    bool searchDone = false;
 
-    for (uint64_t hcc = hccStart; hcc >= 1; --hcc) {
+    for (uint64_t hcc = hccStart; hcc >= 1 && !searchDone; --hcc) {
         // 在 hcc 确定后，B×S 方向最多可分配的核数
         uint64_t maxBSByH = coreNum_ / hcc;
         if (maxBSByH == 0) {
@@ -242,7 +256,7 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
         // B 方向搜索上限：不能超过 maxBSByH，也不能超过 B_
         uint64_t bccStart = std::min(B_, maxBSByH);
 
-        for (uint64_t bcc = bccStart; bcc >= 1; --bcc) {
+        for (uint64_t bcc = bccStart; bcc >= 1 && !searchDone; --bcc) {
             // 在 hcc, bcc 确定后，S 方向最多可分配的核数
             uint64_t maxSByHB = maxBSByH / bcc;
             if (maxSByHB == 0)
@@ -270,12 +284,9 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
             }
             // 满核时提前退出
             if (bestTotal == coreNum_)
-                goto done;
+                searchDone = true;
         }
-        if (bestTotal == coreNum_)
-            break;
     }
-done:
     realCoreNum_ = bestTotal;
     hCoreCnt_ = bestH;
     bCoreCnt_ = bestB;
