@@ -1267,11 +1267,11 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
     } else {
         int64_t inputXSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
-        int64_t inputScaleSize = BLOCK_BYTES;
+        int64_t inputScaleSize = 32;
         perLoopParams.perLoopMaxIndicesElements =
                 availUbSize_ / 2 / (inputXSize + inputScaleSize + static_cast<int64_t>(sizeof(int32_t)));
         while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
-            perLoopParams.perLoopCols = CeilDiv(perLoopParams.perLoopCols, 2);
+            perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, 2);
             inputXSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
             perLoopParams.perLoopMaxIndicesElements =
                 availUbSize_ / 2 / (inputXSize + inputScaleSize + static_cast<int64_t>(sizeof(int32_t)));
