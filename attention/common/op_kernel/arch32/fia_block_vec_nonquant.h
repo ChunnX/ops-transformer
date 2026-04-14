@@ -27,6 +27,7 @@
 #include "../fia_public_define.h"
 #include "../memory_copy.h"
 #include "../post_quant.h"
+#include "../const_def.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -170,7 +171,7 @@ protected:
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_2K;
     static constexpr uint32_t LSE_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_8K;
     static constexpr uint32_t DATA_BLOCK_NUM = 8;
-    static constexpr uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
+    static constexpr uint16_t brcbNum = (AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T));
 
     static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
     T scale2Value = 0;
@@ -404,7 +405,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -680,7 +681,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
         mSplitSize = fa_base_vector::MAX_REPEAT_TIMES;
     }
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -808,7 +809,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2FDDataCopyOut(const RunInf
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (AttentionCommon::BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;      
     DataCopyPad(dst, tmp, dataCopyParams);
     outputQue1.FreeTensor(tmp);
@@ -826,7 +827,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidMaskRows(const RunI
     }
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     if constexpr (SOFTMAX_WITH_BRC) {
-        baseOffset = baseOffset * (fa_base_vector::BYTE_BLOCK / sizeof(T));
+        baseOffset = baseOffset * (AttentionCommon::BYTE_BLOCK / sizeof(T));
     }
 
     uint32_t outIdx = info.loop % constInfo.preLoadNum;
@@ -952,14 +953,14 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ComputeLogSumExpAndCopyToGm(co
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    //  src-Shape  { gsizeV, S1, fa_base_vector::FP32_BLOCK_ELEMENT_NUM }
-    //  dst-Shape  { B  N2, splitKV s1, G, fa_base_vector::FP32_BLOCK_ELEMENT_NUM}
+    //  src-Shape  { gsizeV, S1, AttentionCommon::FP32_BLOCK_ELEMENT_NUM }
+    //  dst-Shape  { B  N2, splitKV s1, G, AttentionCommon::FP32_BLOCK_ELEMENT_NUM}
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
     size_t size = mSplitInfo.vecDealM * brcbNum;
     uint64_t offset = (info.accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                      fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                      AttentionCommon::FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if constexpr (SOFTMAX_WITH_BRC) {              
         DataCopy(lseSumFdGm[offset], softmaxSumUb[baseOffset], size);
         DataCopy(lseMaxFdGm[offset], softmaxMaxUb[baseOffset], size);       
@@ -1039,7 +1040,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
         }
     }
 
-    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
         return;
     }
 
