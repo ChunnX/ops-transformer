@@ -842,6 +842,26 @@ ge::graphStatus ShapeChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
             return ge::GRAPH_FAILED);
     }
 
+    OP_CHECK_IF((faInfo.n2Size != 0) && (faInfo.n1Size % faInfo.n2Size != 0),
+        OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "numHeads(%d) should be an integer multiple of numKeyValueHeads(%d)!",
+            faInfo.n1Size, faInfo.n2Size),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+    if (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
+        static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
+        OP_CHECK_IF((SUPPORT_NUM_HEAD_IN_IFAMLA.find(faInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end()),
+            OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Input query's heads num is %u, it should be in range of "
+                "{1, 2, 4, 8, 16, 32, 64, 128} when enable ifa mla", faInfo.n1Size),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((faInfo.n2Size != 1U),
+            OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Input key/value's heads num is %u, it should be 1 when enable "
+                "ifa mla", faInfo.n2Size),
+            return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
