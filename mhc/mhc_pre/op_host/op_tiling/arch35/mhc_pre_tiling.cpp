@@ -128,7 +128,9 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
 
 ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 {
-    for (size_t i = 0; i <= GAMMA_INDEX; i++) {
+    // gamma 是可选输入，根据 hasGamma_ 状态跳过检查
+    size_t maxInputIdx = (hasGamma_ == HAS_GAMMA_TRUE) ? GAMMA_INDEX : BIAS_INDEX;
+    for (size_t i = 0; i <= maxInputIdx; i++) {
         auto desc = context_->GetInputDesc(i);
         OP_CHECK_IF(desc == nullptr, OP_LOGE(context_->GetNodeName(), "Input %zu desc is nullptr", i),
                     return ge::GRAPH_FAILED);
@@ -151,7 +153,9 @@ ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 
 ge::graphStatus MhcPreBaseTiling::CheckShapePositive()
 {
-    for (size_t i = 0; i <= GAMMA_INDEX; i++) {
+    // gamma 是可选输入，根据 hasGamma_ 状态跳过检查
+    size_t maxInputIdx = (hasGamma_ == HAS_GAMMA_TRUE) ? GAMMA_INDEX : BIAS_INDEX;
+    for (size_t i = 0; i <= maxInputIdx; i++) {
         auto shape = context_->GetInputShape(i)->GetStorageShape();
         for (size_t j = 0; j < shape.GetDimNum(); j++) {
             OP_CHECK_IF(
@@ -406,6 +410,12 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
     if (InitPlatformMemory() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // 先获取 gamma 的存在状态，因为后续检查需要根据 hasGamma_ 跳过 gamma
+    if (GetInputShape() != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context_->GetNodeName(), "GetInputShape failed");
+        return ge::GRAPH_FAILED;
+    }
     
     OP_CHECK_IF(CheckDescAndShape() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckDescAndShape failed"),
                 return ge::GRAPH_FAILED);
@@ -413,11 +423,6 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
                 OP_LOGE(context_->GetNodeName(), "CheckShapePositive failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckDataType failed"),
                 return ge::GRAPH_FAILED);
-
-    if (GetInputShape() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "GetInputShape failed");
-        return ge::GRAPH_FAILED;
-    }
 
     OP_CHECK_IF(CheckDataRange() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckDataRange failed"),
                 return ge::GRAPH_FAILED);
