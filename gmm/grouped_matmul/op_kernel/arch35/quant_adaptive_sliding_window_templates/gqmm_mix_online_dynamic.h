@@ -65,7 +65,7 @@ public:
 protected:
     __aicore__ inline void InitAddrAndParams(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                              GM_ADDR perTokenScale, GM_ADDR y, TILING_TYPE *gmmArrayAddrIn);
-    __aicore__ inline void UpdateMMGlobalAddr(uint32_t groupIdx);
+    __aicore__ inline void UpdateMMGlobalAddr(uint32_t groupIdx, uint32_t aScaleIdx);
     __aicore__ inline void SetMNK(uint32_t loopIdx, uint32_t groupIdx, int32_t &mSize, int32_t &nSize, int32_t &kSize);
     __aicore__ inline void CalcTailTile(uint64_t mTail, uint64_t nTail);
     __aicore__ inline bool IsLastGroupAndNeedSplit(uint32_t groupIdx);
@@ -259,7 +259,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Ini
 
 // 更新每个group的dynamic global地址
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::UpdateMMGlobalAddr(uint32_t groupIdx)
+__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::UpdateMMGlobalAddr(uint32_t groupIdx,
+                                                                                                uint32_t aScaleIdx)
 {
     xGlobal_.SetGlobalBuffer(GROUPED_MATMUL::GetTensorAddr<xType>(0, xTensorPtr_) + block_.params_.aGroupAddrOffset);
     wGlobal_.SetGlobalBuffer(GROUPED_MATMUL::GetTensorAddr<wType>(0, weightTensorPtr_) +
@@ -281,7 +282,7 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Upd
                                       block_.params_.wScaleGroupAddrOffset);
     }
     if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTENSOR_MODE)) {
-        perTokenScaleScalar_ = *((__gm__ ptScaleType *)perTokenScalePtr_ + groupIdx);
+        perTokenScaleScalar_ = *((__gm__ ptScaleType *)perTokenScalePtr_ + aScaleIdx);
     }
     yGlobal_.SetGlobalBuffer(GROUPED_MATMUL::GetTensorAddr<yType>(0, yTensorPtr_) + block_.params_.cGroupAddrOffset);
 }
@@ -416,7 +417,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Pro
             block_.UpdateTailTile();
         }
         
-        UpdateMMGlobalAddr(groupIdx);
+        uint32_t aScaleIdx = (groupListType_ == QuantUtils::GROUP_LIST_TYPE_SPARSE) ? loopIdx : groupIdx;
+        UpdateMMGlobalAddr(groupIdx, aScaleIdx);
         ProcessSingleGroup(groupIdx);
     }
     End();

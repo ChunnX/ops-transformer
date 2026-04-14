@@ -988,11 +988,11 @@ void GroupedQmmTiling::SetKernelType()
                            inputParams_.bQuantMode == optiling::QuantMode::PERTENSOR_MODE;
     bool isBiasEpilogue =
         inputParams_.aDtype == ge::DT_INT8 && inputParams_.hasBias && inputParams_.biasDtype != ge::DT_INT32;
+    bool isScaleEpilogue = (inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64);
     // 如果bias bf16/fp16/fp32，需mix模板进行后处理
     if (isPertensorCube && !isBiasEpilogue) {
         return;
     }
-    bool isScaleEpilogue = (inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64);
     // 后处理的bias和（scale非64bits && ！isPertensorCube）需要走dequant vec模板
     if (isBiasEpilogue || isScaleEpilogue) {
         inputParams_.kernelType = 1UL;
