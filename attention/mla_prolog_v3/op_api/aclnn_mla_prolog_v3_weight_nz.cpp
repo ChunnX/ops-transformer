@@ -9,8 +9,8 @@
  */
 #include <cstring>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
+#include <map>
+#include <set>
 #include "graph/types.h"
 #include "aclnn_mla_prolog_v3_weight_nz.h"
 
@@ -119,7 +119,7 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
 
 bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuantMode)
 {
-    std::unordered_map<int64_t, std::unordered_set<int64_t>> supportedKvQuantMode;
+    std::map<int64_t, std::set<int64_t>> supportedKvQuantMode;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         supportedKvQuantMode = {
             {0LL, {0LL}},           {1LL, {0LL, 2LL, 3LL}}, {2LL, {0LL, 1LL, 3LL}},
@@ -155,7 +155,7 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
 
 bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
 {
-    std::unordered_set<int64_t> supportedQueryQuantMode = {0LL, 1LL};
+    std::set<int64_t> supportedQueryQuantMode = {0LL, 1LL};
     if (supportedQueryQuantMode.find(queryQuantMode) == supportedQueryQuantMode.end()) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "QueryQuantMode must be within {0, 1}, actually is %lld.", queryQuantMode);
         return false;
