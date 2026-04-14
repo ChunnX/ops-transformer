@@ -487,6 +487,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<is
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
     if constexpr (isInfer) {
+        if (constInfo.isGqa) {
+            coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx;
+        }
         coordInfo[runInfo.taskIdMod3].s1Coord += runInfo.queryLeftPaddingSize;  // 左padding
         // 推理无效行场景，s1方向起始跳过无效行
         coordInfo[runInfo.taskIdMod3].s1Coord += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
