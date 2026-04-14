@@ -1095,9 +1095,9 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         if (!CheckTNDLayoutCrossover(fiaInfo) || !CheckNTDLayoutCrossover(fiaInfo) || !CheckTransposeLayoutCrossover(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
-        if (CheckMultiDtype(fiaInfo) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
+    }
+    if (CheckMultiDtype(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         if (CheckPAKeyValue(fiaInfo) != ge::GRAPH_SUCCESS) { // PA场景
