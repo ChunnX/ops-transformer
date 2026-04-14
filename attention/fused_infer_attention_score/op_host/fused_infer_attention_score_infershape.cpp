@@ -16,6 +16,8 @@
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 #include "log/error_code.h"
+#include "runtime/rt_external_base.h"
+#include "platform/soc_spec.h"
 
 using namespace ge;
 
@@ -58,6 +60,9 @@ static constexpr uint32_t FIA_INPUT_KV_PADDING_SIZE_INDEX = 16;
 static constexpr uint32_t FIA_INPUT_ACTUAL_SHARED_PREFIX_LEN_INDEX = 23;
 static constexpr uint32_t FIA_QUERY_ROPE_INDEX = 24;
 static constexpr uint32_t FIA_OUT_DTYPE_INDEX = 15;
+static constexpr uint32_t VERSION_SIZE = 32;
+
+const std::set<std::string> NPUARCH5102 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_5102))};
 
 static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP = {
     {5,  ge::DT_FLOAT16}, 
@@ -69,6 +74,17 @@ static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_
 static const std::map<int64_t, std::string> TORCH_DTYOE_NOT_SUPPORT_MAP = {
     {23,  "DT_FLOAT8_E5M2"}, 
 };
+
+static bool IsTargetNpuArchInfershape(const char *nodeName, const std::set<std::string> &targetPlatform) 
+{ 
+    char versionValNpuArch[VERSION_SIZE]; 
+    if (rtGetSocSpec("version", "NpuArch", versionValNpuArch, VERSION_SIZE) != RT_ERROR_NONE) { 
+        OP_LOGE(nodeName, "Cannot get npuArch info in infershape!"); 
+        return false; 
+    } 
+    OP_LOGD(nodeName, "(IsTargetNpuArchInfershape)Get NpuArch %s", versionValNpuArch); 
+    return (targetPlatform.count(versionValNpuArch) > 0); 
+}
 
 static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
                                             std::string& attentionOutLayout,
@@ -355,7 +371,7 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(FIA_ATTR_INPUT_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
-    if (softmaxLseFlag) {
+    if (softmaxLseFlag || IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH5102)) {
         InferLseOutShape(inputLayoutPtr, softmaxLseShape, queryShape, queryLayout, numHeadsPtr);
     } else {
         softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_1);
