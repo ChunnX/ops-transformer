@@ -478,7 +478,7 @@
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
     npu_mode = torch.compile(CompressorNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
-    cmp_kv = npu_mode(                    
+    cmp_kv = npu_mode(
                     x,
                     wkv,
                     wgate,
