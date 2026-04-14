@@ -197,8 +197,8 @@ public:
             softmaxGradTensor[i] = 
                 resource.ubBuf.template GetBufferByByte<float>(sftBufferAlign + dpBufLen + (dBufLen / 2) * i);
             dsTensor[i] =  dpFp32Tensor[i];
-            ds16Tensor[i] =
-                resource.ubBuf.template GetBufferByByte<InputDType>(sftBufferAlign + dpBufLen + dBufLen + (p16BufLen / 2) * i);
+            ds16Tensor[i] = resource.ubBuf.template GetBufferByByte<InputDType>(
+                sftBufferAlign + dpBufLen + dBufLen + (p16BufLen / 2) * i);
         }
     }
         
@@ -334,7 +334,8 @@ public:
      * curS1Idx: 当前计算的query的 s 维度的idx
     */
     __aicore__ inline
-    void CalSimplySoft(struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
+    void CalSimplySoft(
+        struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col, uint64_t curS1Idx, uint64_t ping)
     {
         // simply softtmax
         LocalTensor<float> &sLocal = runSftInfo.sTensor;
