@@ -131,17 +131,17 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>3</td>
-      <td>√</td>
+      <td>x</td>
     </tr>
     <tr>
       <td>grad_weight</td>
-      <td>输入</td>
+      <td>输出</td>
       <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
       <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>2</td>
-      <td>√</td>
+      <td>x</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
