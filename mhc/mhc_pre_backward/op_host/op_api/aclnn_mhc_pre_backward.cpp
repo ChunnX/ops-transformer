@@ -518,7 +518,7 @@ bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
            CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
            CheckDtype(params.hPost, DataType::DT_FLOAT, "hPost") &&
            (params.gradXPost == nullptr || (CheckDtype(params.gradXPost, params.x->GetDataType(), "gradXPost", true) &&
-                                            CheckDtype(params.gradXPost, params.x->GetDataType(), "gradXPost"));
+                                            CheckDtype(params.gradXPost, params.x->GetDataType(), "gradXPost")));
 }
 
 bool MhcGradCheckOutputDtype(const AclnnMhcPreBackwardParams &params)
