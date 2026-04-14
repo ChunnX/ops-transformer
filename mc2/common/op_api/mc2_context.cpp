@@ -383,7 +383,17 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
     uint32_t netLinkNum = 0;
     CommLink *linksList = nullptr;
 
-    for (uint32_t i = 1; i < epRankSize; ++i) {
+    auto hcclRet = HcclGetRankId(hcclHandle, &srcRankId);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "CheckProtocolSupport Get rank ID failed");
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
+
+    for (uint32_t i = 0; i < epRankSize; ++i) {
+        if (i == srcRankId) {
+            continue;
+        }
         dstRankId = i;
         auto hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
         if (hcclRet != HCCL_SUCCESS) {
