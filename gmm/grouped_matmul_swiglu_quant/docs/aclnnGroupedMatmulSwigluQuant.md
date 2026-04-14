@@ -186,8 +186,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px">
-    <col style="width: 190px">
+    <col style="width: 120px">
+    <col style="width: 170px">
     <col style="width: 145px">
     </colgroup>
     <thead>
@@ -400,10 +400,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuant(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
-    <col style="width: 167px">
-    <col style="width: 123px">
-    <col style="width: 860px">
+  <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 186px">
+  <col style="width: 146px">
+  <col style="width: 819px">
     </colgroup>
     <thead>
       <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>

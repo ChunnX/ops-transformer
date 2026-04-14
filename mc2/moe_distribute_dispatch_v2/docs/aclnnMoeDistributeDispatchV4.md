@@ -100,8 +100,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
-    <col style="width: 190px">
+    <col style="width: 120px"> 
+    <col style="width: 170px">
     <col style="width: 145px">
     </colgroup>
     <thead>
@@ -301,7 +301,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-    <td><br> <li> 各卡BS一致时：<code>globalBS = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBS = maxBS * epWorldSize</code>，其中maxBS为单卡BS最大值。</li></td>
+    <td><ul><li> 各卡BS一致时：<code>globalBS = BS * epWorldSize</code> 或 0；</li><li> 各卡BS不一致时：<code>globalBS = maxBS * epWorldSize</code>，其中maxBS为单卡BS最大值。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -320,8 +320,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <tr>
     <td>commAlg</td>
     <td>输入</td>
-        <td>通信亲和内存布局算法。</td>
-        <td>-</td>
+    <td>通信亲和内存布局算法。</td>
+    <td>-</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>

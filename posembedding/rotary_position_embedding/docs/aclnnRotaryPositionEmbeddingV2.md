@@ -311,8 +311,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
   - half模式：
     - B，N < 1000;
     - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B * N <= S * 8
-      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
+      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B \* N <= S * 8
+      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B \* N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
     - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
     - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
   - interleave模式：

@@ -121,17 +121,16 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 ## aclnnMoeInitRoutingQuantV2GetWorkspaceSize
 
 - **参数说明：**
-
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 350px">
-    <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
-    <col style="width: 190px">
-    <col style="width: 145px">
-    </colgroup>
+  <table style="undefined;table-layout: fixed; width: 1575px"><colgroup>
+  <col style="width: 260px">
+  <col style="width: 120px">
+  <col style="width: 242px">
+  <col style="width: 399px">
+  <col style="width: 160px">
+  <col style="width: 115px">
+  <col style="width: 134px">
+  <col style="width: 145px">
+  </colgroup>
   <thead>
     <tr>
       <th>参数名</th>
@@ -325,6 +324,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
       <td>-</td>
     </tr>
   </tbody></table>
+  
   - <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
 
 - **返回值：**

@@ -76,14 +76,14 @@ aclnnStatus aclnnRainFusionAttention(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1565px">
+  <table style="undefined;table-layout: fixed; width: 1584px">
   <colgroup>
     <col style="width: 146px">
     <col style="width: 135px">
     <col style="width: 326px">
     <col style="width: 246px">
     <col style="width: 275px">
-    <col style="width: 101px">
+    <col style="width: 120px">
     <col style="width: 190px">
     <col style="width: 146px">
   </colgroup>
@@ -205,7 +205,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>actualSeqLengthsKvOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的key/value序列长度。</td>
+      <td>描述每个Batch对应的key/value序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -230,7 +230,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>qInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
+      <td>代表输入query的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -240,7 +240,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>kvInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入key、value的数据排布格式。</td>
+      <td>代表输入key、value的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -250,7 +250,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>numKeyValueHeads</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -260,7 +260,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>maskType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Mask类型。</td>
+      <td>Mask类型。</td>
       <td>0表示无mask，其他值表示不同的mask类型。</td>
       <td>INT64</td>
       <td>-</td>
@@ -270,7 +270,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>innerPrecise</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Softmax精度控制。</td>
+      <td>Softmax精度控制。</td>
       <td>0表示float32 softmax，1表示fp16 softmax。</td>
       <td>INT64</td>
       <td>-</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>blockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，PagedAttention的block大小。</td>
+      <td>PagedAttention的block大小。</td>
       <td>用于PagedAttention场景，如不使用可传0。</td>
       <td>INT64</td>
       <td>-</td>
