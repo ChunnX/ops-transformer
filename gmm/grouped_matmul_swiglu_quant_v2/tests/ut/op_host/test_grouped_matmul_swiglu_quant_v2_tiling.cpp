@@ -193,7 +193,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
     string prefix;
     bool expectSuccess = false;
     int64_t expectTilingKey = 0;
-    optiling::GMMSwigluV2CompileInfo compileInfo;
+    mutable optiling::GMMSwigluV2CompileInfo compileInfo;
     vector<TensorDescParam> inputs;
     vector<TensorDescParam> outputs;
     int64_t dequantMode = 0;
