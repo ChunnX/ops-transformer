@@ -574,7 +574,9 @@ static ge::graphStatus MatmulReduceScatterV2CheckShapeAndSetTiling(const gert::T
                 bStorageShape->GetStorageShape().GetDim(0), info.isTransposeB);
         N = bStorageShape->GetStorageShape().GetDim(0);
     }
-
+    if (M >= UINT16_MAX || K >= UINT16_MAX || N > UINT16_MAX / 2) {
+        return ge::GRAPH_FAILED;
+    }
     info.M = M;
     info.N = N;
     info.K = K;
@@ -1111,7 +1113,10 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     const char *opName = context->GetNodeName();
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
-
+    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8,
+                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+                                            "Unsupported rankSize %d. Supported rankSizes are 2, 4 and 8.", rankSize),
+                    return ge::GRAPH_FAILED);
     // 2. set numBlocks
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
