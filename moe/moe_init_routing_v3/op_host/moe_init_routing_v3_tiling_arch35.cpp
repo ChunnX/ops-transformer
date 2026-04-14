@@ -417,7 +417,7 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTilingKey()");
 
     int64_t quantModeFactor = quantMode_ + 1;
-    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN || QUANT_MODE_MXFP4_E2M1) {
+    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN || quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
         // 其余非量化为0，静态量化为1，动态量化为2，即都是quantMode_+1
         // 可以用与最低的UNQUANT的数值的差值来作为quantModeFactor，这里值就为3
@@ -671,7 +671,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
         supportedDtypes = MX_OR_HIF8_QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ == QUANT_MODE_UNQUANT) {
         supportedDtypes = UNQUANT_SUPPORTED_DTYPES;
-    } else if (quantMode_ = QUANT_MODE_MXFP4_E2M1) {
+    } else if (quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         supportedDtypes = MXFP4QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ == QUANT_MODE_STATIC) {
         supportedDtypes = STATIC_QUANT_SUPPORTED_DTYPES;
@@ -949,7 +949,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     } else if (quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         expectedRank = RANK_THREE;
         expectedDim0 = totalLength_;
-        expectedDim1 = cols_ / (UB_BLOCK_SIZE * NUM_TWO);
+        expectedDim1 = Ops::Base::CeilDiv(cols_, UB_BLOCK_SIZE * NUM_TWO);
         expectedDim2 = NUM_TWO;
     }
     auto rank = static_cast<int64_t>(expandedScaleShape_.GetDimNum());
