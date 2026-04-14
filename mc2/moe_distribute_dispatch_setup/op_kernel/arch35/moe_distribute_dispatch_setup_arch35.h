@@ -1009,7 +1009,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         if (rankId < sharedExpertRankNum_) { // 给共享专家卡发数据和状态，每张共享专家卡上只会有一个共享专家
         } else { // 给moe专家卡发数据和状态，每张moe专家卡上有moeExpertNumPerRank_个moe专家
             uint32_t tokenSqeNum = 0;
-            uint8_t cqeFlag = 1;
             uint32_t preExpertNum = sharedExpertRankNum_ + (rankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
             uint32_t calCnt = 0; // 目的卡中当前专家之前其他专家的累计token数
             for (uint32_t expertIdx = 0; expertIdx < moeExpertNumPerRank_; expertIdx++) {
@@ -1027,7 +1026,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                     DataCopy(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], templateSqeU8, WRITE_SQE_SIZE);
                     // 组装数据的WQE
                     SyncFunc<AscendC::HardEvent::V_S>();
-                    SetCommWriteSQE(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], srcAddr, rmtAddr, length, cqeFlag);
+                    SetCommWriteSQE(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], srcAddr, rmtAddr, length, 0);
                     tokenSqeNum += 1;
                 }
                 calCnt += statusTensor_((preExpertNum + expertIdx) * 8 + 1); // moeExpertId = preExpertNum + expertIdx
@@ -1045,7 +1044,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 uint64_t dstStatusAddr = reinterpret_cast<uint64_t>(rankGM);
                 uint32_t lengthStatus = UB_ALIGN;
                 // 组装状态的WQE
-                SetCommWriteSQE(statusSqeU8[WRITE_SQE_SIZE * expertIdx], srcStatusAddr, dstStatusAddr, lengthStatus, cqeFlag);
+                SetCommWriteSQE(statusSqeU8[WRITE_SQE_SIZE * expertIdx], srcStatusAddr, dstStatusAddr, lengthStatus,
+                                expertIdx == moeExpertNumPerRank_ - 1 ? 1 : 0);
             }
             moeStartToken += calCnt;
             SyncFunc<AscendC::HardEvent::S_MTE3>();
