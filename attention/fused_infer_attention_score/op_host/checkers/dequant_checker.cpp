@@ -1996,6 +1996,9 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerChannelPerTensorMode(const
 
 ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.isMaxWorkspace && (fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD)) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
     uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
@@ -2059,6 +2062,9 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTensorHeadMode(const FiaTi
 
 ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenHeadMode(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.isMaxWorkspace && (fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD)) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
     uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
@@ -2141,6 +2147,9 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenHeadPAMode(const FiaT
 
 ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.isMaxWorkspace && (fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD)) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
     uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
@@ -2175,6 +2184,9 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupMode(const FiaTi
 
 ge::graphStatus DequantChecker::CheckVScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.isMaxWorkspace && (fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD)) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
     uint32_t valueAntiquantScaleTensorDimNum = valueAntiquantScaleTensorShape.GetDimNum();
