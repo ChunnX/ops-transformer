@@ -160,6 +160,8 @@ struct TensorDescParam {
     ge::Format format = ge::FORMAT_ND;
 };
 
+constexpr size_t CSV_COL_COUNT = 58U;
+
 struct GroupedMatmulSwigluQuantV2TilingCase {
     void Run() const
     {
@@ -185,6 +187,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
         ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
     }
 
+    string socVersion;
     string caseName;
     bool enable = true;
     string prefix;
@@ -212,7 +215,7 @@ private:
     }
 };
 
-vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases()
+vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulSwigluQuantV2TilingCase> cases;
     string rootPath(GetExeDirPath() + "../../../../../");
@@ -232,12 +235,16 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases()
         }
         vector<string> items;
         SplitStr2Vec(line, ",", items);
-        if (items.empty() || items[0] == "caseName" || items.size() < 57U) {
+        if (items.empty() || items[0] == "socVersion" || items.size() < CSV_COL_COUNT) {
             continue;
         }
 
         size_t idx = 0;
         GroupedMatmulSwigluQuantV2TilingCase tc;
+        tc.socVersion = Trim(items[idx++]);
+        if (tc.socVersion != socVersion) {
+            continue;
+        }
         tc.caseName = Trim(items[idx++]);
         tc.enable = ParseBool(Trim(items[idx++]));
         if (!tc.enable) {
@@ -288,31 +295,58 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2Tili
 
 namespace GroupedMatmulSwigluQuantV2UT {
 
-const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetTilingCsvCases()
+const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetAscend950Cases()
 {
-    static const vector<GroupedMatmulSwigluQuantV2TilingCase> cases = LoadCases();
+    static const vector<GroupedMatmulSwigluQuantV2TilingCase> cases = LoadCases("Ascend950");
     return cases;
 }
 
-class TestGroupedMatmulSwigluQuantV2Tiling : public testing::TestWithParam<GroupedMatmulSwigluQuantV2TilingCase> {
+const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetAscend910BCases()
+{
+    static const vector<GroupedMatmulSwigluQuantV2TilingCase> cases = LoadCases("Ascend910B");
+    return cases;
+}
+
+class TestGroupedMatmulSwigluQuantV2Tiling950 : public testing::TestWithParam<GroupedMatmulSwigluQuantV2TilingCase> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "GroupedMatmulSwigluQuantV2Tiling SetUp" << std::endl;
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling950 SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "GroupedMatmulSwigluQuantV2Tiling TearDown" << std::endl;
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling950 TearDown" << std::endl;
     }
 };
 
-TEST_P(TestGroupedMatmulSwigluQuantV2Tiling, csvDrivenCase)
+TEST_P(TestGroupedMatmulSwigluQuantV2Tiling950, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_CSV, TestGroupedMatmulSwigluQuantV2Tiling,
-                         testing::ValuesIn(GetTilingCsvCases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_950, TestGroupedMatmulSwigluQuantV2Tiling950,
+                         testing::ValuesIn(GetAscend950Cases()), MakeParamName);
+
+class TestGroupedMatmulSwigluQuantV2Tiling910B : public testing::TestWithParam<GroupedMatmulSwigluQuantV2TilingCase> {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling910B SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "GroupedMatmulSwigluQuantV2Tiling910B TearDown" << std::endl;
+    }
+};
+
+TEST_P(TestGroupedMatmulSwigluQuantV2Tiling910B, csvDrivenCase)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_910B, TestGroupedMatmulSwigluQuantV2Tiling910B,
+                         testing::ValuesIn(GetAscend910BCases()), MakeParamName);
 
 } // namespace GroupedMatmulSwigluQuantV2UT
