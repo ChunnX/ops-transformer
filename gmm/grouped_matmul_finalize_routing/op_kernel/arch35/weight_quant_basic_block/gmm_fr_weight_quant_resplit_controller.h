@@ -17,6 +17,7 @@
 
 #include "./gmm_fr_weight_quant_tiling_data.h"
 #include "./gmm_fr_weight_quant_vcv_basic_block.h"
+#include "../common/tool.h"
 
 using AscendC::CeilAlign;
 using AscendC::SyncAll;
@@ -35,6 +36,7 @@ using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 using WeightQuantBatchMatmulV2::Arch35::WQFRVcvMatmulBasicBlock;
+using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
 namespace GROUPED_MATMUL_FINALIZE_ROUTING {
@@ -96,10 +98,9 @@ private:
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale,
-    GM_ADDR antiquantOffset, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR logitsAddr,
-    GM_ADDR rowIndexAddr,
-    GM_ADDR y, GM_ADDR shareInput, const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling)
+    GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR bias,
+    GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR logitsAddr, GM_ADDR rowIndexAddr, GM_ADDR y, GM_ADDR shareInput,
+    const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling)
 {
     tiling_ = baseTiling;
 
@@ -114,8 +115,11 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     shareInputAddr_ = reinterpret_cast<__gm__ sharedInputDType *>(shareInput);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
     basicBlock_.Init(tiling_->groupSize, yGm_, tiling_->sharedInputWeight);
-    mxA8W4L1KDynamicConfigMThreshold_ = tiling_->hasBias ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 :
-                                                                  MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+    if constexpr(hasBias){
+        mxA8W4L1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240;
+    } else {
+        mxA8W4L1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+    }
 }
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -198,26 +202,40 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::SplitNByMul
          ctrlParam.curBasicBlockId += tiling_->coreNum) {
         offsetParam[ctrlParam.processId].mSize = ctrlParam.mSize;
         offsetParam[ctrlParam.processId].mOffset = ctrlParam.mOffset;
-        offsetParam[ctrlParam.processId].mL1Size = ctrlParam.mOffset + ctrlParam.mL1Size > ctrlParam.mSize
-                                                       ? ctrlParam.mSize - ctrlParam.mOffset
-                                                       : ctrlParam.mL1Size;
+        offsetParam[ctrlParam.processId].mL1Size = ctrlParam.mOffset + ctrlParam.mL1Size > ctrlParam.mSize ?
+                                                       ctrlParam.mSize - ctrlParam.mOffset :
+                                                       ctrlParam.mL1Size;
         offsetParam[ctrlParam.processId].nOffset =
             ctrlParam.nOffset +
             ((ctrlParam.curBasicBlockId - ctrlParam.basicBlockLimit) % basicBlockCount) * basicBlockSize;
         offsetParam[ctrlParam.processId].nL1Size =
-            offsetParam[ctrlParam.processId].nOffset + basicBlockSize > tiling_->nSize
-                ? tiling_->nSize - offsetParam[ctrlParam.processId].nOffset
-                : basicBlockSize;
+            offsetParam[ctrlParam.processId].nOffset + basicBlockSize > tiling_->nSize ?
+                tiling_->nSize - offsetParam[ctrlParam.processId].nOffset :
+                basicBlockSize;
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
         // MxA8W4场景，切换低阶api，支持kernel内动态调整k轴切分
         offsetParam[ctrlParam.processId].kbL1Size =
             (offsetParam[ctrlParam.processId].mL1Size <= mxA8W4L1KDynamicConfigMThreshold_ &&
-                offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
+             offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
                 MX_A8W4_L1_K_CONFIG_512 :
                 MX_A8W4_L1_K_CONFIG_256;
-        offsetParam[ctrlParam.processId].kaL1Size =
-            offsetParam[ctrlParam.processId].kbL1Size;  // 当前实现a矩阵切分保持b矩阵一致
-        // todo kaL1优化
+        
+        uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
+        // 实际A矩阵通过ND2NZ搬运实现，B矩阵通过MOVE_ALIGN搬运实现，两者效率不同。为了平衡两者的搬运效率，折算系数2简化计算。
+        uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
+        // L1的空间，在有Bias时，预留124 Kb, 其他场景预留128 Kb
+        uint64_t aL1Size = 0;
+        if constexpr(hasBias){
+            aL1Size = 124 * GetKBUnit<xType>();
+        } else {
+            aL1Size = 128 * GetKBUnit<xType>();
+        }
+        uint64_t maxKaDepth = aL1Size / (mL1Align * offsetParam[ctrlParam.processId].kbL1Size);
+        if (kaDepth > maxKaDepth) {
+            kaDepth = maxKaDepth;
+        }
+        offsetParam[ctrlParam.processId].kaL1Size = kaDepth * offsetParam[ctrlParam.processId].kbL1Size;
+
         basicBlock_.ComputeBasicBlock(offsetParam[ctrlParam.processId], offsetParam[GetSwitchedProcessId(ctrlParam)]);
         ctrlParam.processId = GetSwitchedProcessId(ctrlParam);
     }
