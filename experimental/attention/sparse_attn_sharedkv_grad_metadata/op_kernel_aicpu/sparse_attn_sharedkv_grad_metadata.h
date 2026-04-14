@@ -23,8 +23,8 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t SAS_GRAD_METADATA_SIZE = 1024;
-using SAS_GRAD_METADATA_T = int32_t;
+constexpr uint32_t SASG_METADATA_SIZE = 1024;
+using SASG_METADATA_T = int32_t;
 
 constexpr uint32_t GRAD_METADATA_SIZE = 5;
 
@@ -49,12 +49,12 @@ __aicore__ inline uint32_t GetGradAttrAbsIndex(uint32_t metaIdx)
 #endif
 
 namespace detail {
-struct SasGradMetadata {
+struct SasgMetadata {
     uint32_t gradMetadata[GRAD_METADATA_SIZE];
 };
 } // namespace detail
 
-static_assert(SAS_GRAD_METADATA_SIZE * sizeof(SAS_GRAD_METADATA_T) >= sizeof(detail::SasGradMetadata));
+static_assert(SASG_METADATA_SIZE * sizeof(SASG_METADATA_T) >= sizeof(detail::SasgMetadata));
 } // namespace optiling
 
 #endif

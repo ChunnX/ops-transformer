@@ -22,7 +22,7 @@ static ge::graphStatus InferShapeSparseAttnSharedkvGradMetadata(gert::InferShape
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SAS_GRAD_METADATA_SIZE);
+    oShape->SetDim(0, optiling::SASG_METADATA_SIZE);
     return GRAPH_SUCCESS;
 }
 

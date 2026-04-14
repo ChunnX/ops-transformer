@@ -73,7 +73,110 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
 
-    return ParamsInit();
+    return (ParamsCheck() && ParamsInit());
+}
+
+bool SparseAttnSharedkvGradMetadataCpuKernel::ParamsCheck() 
+{
+    return (CheckTensorData() && CheckTopkLengthSize());
+}
+
+bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTensorData()
+{
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
+    if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
+        return false;
+    }
+    if (isValid(actSeqLenOriKv_) && actSeqLenOriKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cu_seqlens_ori_kv is nullptr!");
+        return false;
+    }
+    if (isValid(actSeqLenCmpKv_) && actSeqLenCmpKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cu_seqlens_cmp_kv is nullptr!");
+        return false;
+    }
+    if (isValid(seqUsedQ_) && seqUsedQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
+        return false;
+    }
+    if (isValid(seqUsedKv_) && seqUsedKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_kv is nullptr!");
+        return false;
+    }
+    if (isValid(oriTopkLength_) && oriTopkLength_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of ori_topk_length is nullptr!");
+        return false;
+    }
+    if (isValid(cmpTopkLength_) && cmpTopkLength_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cmp_topk_length is nullptr!");
+        return false;
+    }
+    return true;
+}
+
+int32_t SparseAttnSharedkvGradMetadataCpuKernel::GetSumOfQuerySeq()
+{
+    int32_t batchSize = GetQueryBatchSize();
+    // 如果seqUsedQ_ 传了，使用seqUsedQ_获取 BsSize
+    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
+        if (seqUsedQ_->GetTensorShape() != nullptr) {
+            const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedQ_->GetData());
+            int32_t queryBsSize = 0;
+            for (int i = 0; i < batchSize; i++) {
+                queryBsSize += seqUsedPtr[i];
+            }
+            return queryBsSize;
+        }
+    }
+    // seqUsedQ_ 没传，判断 Layout
+    if (layoutQuery_ == "TND") {
+        // 如果是 TND，尝试使用 actSeqLenQ_获取 BsSize
+        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
+            if (actSeqLenQ_->GetTensorShape() != nullptr) {
+                const int32_t *s1Ptr =static_cast<const int32_t*>(actSeqLenQ_->GetData());
+                return s1Ptr[batchSize];
+            }
+        }
+    }
+    // 如果不是 TND，或者 actSeqLenQ_ 为空，使用shape信息计算 BsSize
+    return batchSize_ * querySeqSize_;
+}
+
+bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTopkLengthSize()
+{
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
+    if (isValid(oriTopkLength_)) {
+        if (oriTopkLength_->GetData() == nullptr) {
+            KERNEL_LOG_ERROR("The data of ori_topk_length is nullptr!");
+            return false;
+        }
+        int32_t sumOfQuerySeq = GetSumOfQuerySeq();
+        const int32_t *topkPtr =static_cast<const int32_t*>(oriTopkLength_->GetData());
+        auto topkLengthShape = oriTopkLength_->GetTensorShape();
+        int32_t topkLengthSize = layoutQuery_ == "TND" ? topkLengthShape->GetDimSize(0) : topkLengthShape->GetDimSize(0) * topkLengthShape->GetDimSize(1);
+        if (topkLengthSize < sumOfQuerySeq) {
+            KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than the sum of query sequence %d!", topkLengthSize, sumOfQuerySeq);
+            return false;
+        }
+    }
+    if (isValid(cmpTopkLength_)) {
+        if (cmpTopkLength_->GetData() == nullptr) {
+            KERNEL_LOG_ERROR("The data of cmp_topk_length is nullptr!");
+            return false;
+        }
+        int32_t sumOfQuerySeq = GetSumOfQuerySeq();
+        const int32_t *topkPtr =static_cast<const int32_t*>(cmpTopkLength_->GetData());
+        auto topkLengthShape = cmpTopkLength_->GetTensorShape();
+        int32_t topkLengthSize = layoutQuery_ == "TND" ? topkLengthShape->GetDimSize(0) : topkLengthShape->GetDimSize(0) * topkLengthShape->GetDimSize(1);
+        if (topkLengthSize < sumOfQuerySeq) {
+            KERNEL_LOG_ERROR("The size of cmp_topk_length %d should not be smaller than the sum of query sequence %d!", topkLengthSize, sumOfQuerySeq);
+            return false;
+        }
+    }
+    return true;
 }
 
 int32_t SparseAttnSharedkvGradMetadataCpuKernel::GetQueryBatchSize()
@@ -1058,7 +1161,7 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::BalanceSchedule(SplitResult &split
 
 bool SparseAttnSharedkvGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes) 
 {
-    optiling::detail::SasGradMetadata* gradMetadataPtr = (optiling::detail::SasGradMetadata*)metaData_->GetData();
+    optiling::detail::SasgMetadata* gradMetadataPtr = (optiling::detail::SasgMetadata*)metaData_->GetData();
     // Grad Metadata Generate
     uint32_t formerCoreProcessNum = CeilDiv(totalNum, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
