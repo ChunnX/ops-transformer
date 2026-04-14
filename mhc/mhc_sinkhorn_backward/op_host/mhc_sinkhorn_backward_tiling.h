@@ -36,10 +36,37 @@ struct MhcSinkhornBackwardCompileInfo {
     int64_t ubSize{0};
 };
 
-class MhcSinkhornBackwardTiling : public TilingBaseClass
+struct MhcSinkhornSplitCoreInfo {
+    int64_t tNormCore {0};
+    int64_t usedCoreNum {0};
+    int64_t tTailCore {0};
+    int64_t tUbFactor {0};
+    int64_t tNormCoreLoop {0};
+    int64_t tTailCoreLoop {0};
+    int64_t tUbFactorTail {0};
+    int64_t tUbTailTail {0};
+};
+
+
+class MhcSinkhornBaseTiling : public TilingBaseClass {
+public:
+    explicit MhcSinkhornBaseTiling(gert::TilingContext* context) : TilingBaseClass(context)
+    {
+    }
+
+    MhcSinkhornSplitCoreInfo BaseSplitCores(int64_t ubSize, int64_t totalCoreNum, int64_t tSize, int64_t xDtypeSize, 
+                                        MhcSinkhornSplitCoreInfo &backwardInfo, MhcSinkhornSplitCoreInfo &forwardInfo);
+protected:
+    void BackwardSplitCore(int64_t ubSize, int64_t totalCoreNum, int64_t tSize, int64_t xDtypeSize, MhcSinkhornSplitCoreInfo &splitInfo);
+    void ForwardSplitCore(int64_t ubSize, int64_t totalCoreNum, int64_t tSize, int64_t xDtypeSize, MhcSinkhornSplitCoreInfo &splitInfo);
+    virtual int64_t CalOccupySize(int64_t ubFactor, int64_t xDtypeSize) = 0;
+};
+
+
+class MhcSinkhornBackwardTiling : public MhcSinkhornBaseTiling
 {
 public:
-    explicit MhcSinkhornBackwardTiling(gert::TilingContext* context) : TilingBaseClass(context)
+    explicit MhcSinkhornBackwardTiling(gert::TilingContext* context) : MhcSinkhornBaseTiling(context)
     {
     }
     
@@ -66,6 +93,9 @@ protected:
     ge::graphStatus PostTiling() override;
     // 8、Dump Tiling数据
     void DumpTilingInfo() override;
+    // 9、分配UB空间
+    int64_t CalOccupySize(int64_t ubFactor, int64_t xDtypeSize) override;
+
 
 private:
     ge::graphStatus CheckDtype();
