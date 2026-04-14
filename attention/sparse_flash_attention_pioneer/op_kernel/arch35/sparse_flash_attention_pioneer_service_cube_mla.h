@@ -221,12 +221,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>
         LocalTensor<Q_T> inputLeftTensor = inputLeftBuf.GetTensor<Q_T>();
         uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
             coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[gmOffset], runInfo.mRealSize /*64*/ , /*constInfo.dSize*/ 512,
-            /*constInfo.mm1Ka*/ 512);
+        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[gmOffset], runInfo.mRealSize, 512, 512);
         uint64_t gmRopeOffset = this->queryRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
             coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-        CopyToL1Nd2Nz<Q_T>(inputLeftTensor[runInfo.mRealSize * 512], this->queryRopeGm.gmTensor[/*runInfo.queryRopeOffset*/0 /*0*/], runInfo.mRealSize /*64*/ , /*constInfo.dSizeRope*/ 64,   // 到底哪里出错了，导致一直ACL stream synchronize failed在这里。 这是Q，所以你也576肯定卡住。
-            /*constInfo.mm1Ka*/ 64);
+        CopyToL1Nd2Nz<Q_T>(inputLeftTensor[Align16Func(runInfo.mRealSize) * 512], this->queryRopeGm.gmTensor[gmRopeOffset], runInfo.mRealSize, 64, 64);
 
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非S2的第一次循环直接复用Q
