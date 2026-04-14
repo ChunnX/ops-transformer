@@ -4,15 +4,22 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 
 ## Known limitations / TODOs
 
-> **TODO: variable sabi granularity**
+> **TODO 1: 128x128 sabi granularity speedup**
+> the 128x512 sabi granularity has shown great speedups (1.89x at 50% sparsity) 
+> however the current 128x128 was adapted using a simple 
+
+
+> **TODO 2: variable sabi granularity**
 > The sabi tensor currently uses a fixed **128×128** (Q-tile × KV-tile) block
 > granularity (shape `[B, N, ceil(S/128), ceil(S/128)]`).  The original design
-> used 128×512 granularity.  A future task is to add dynamic control so the caller
-> can choose between 128×128 and 128×512 KV-block granularity at runtime, without
-> a kernel rebuild.  This requires changes to the sabi shape convention, kernel
-> tiling, and all Python mask-generation utilities.
+> used 128×512 granularity, which borugh impressive speedups. 
+> If 128x128 granularity doesn't show comparable speedups, the a future task is to develop 
+> dynamic control so the caller can choose between 128×128 and 128×512 KV-block 
+> granularity at runtime, without a kernel rebuild. This requires changes to the 
+> sabi shape convention, kernel tiling, and all Python mask-generation utilities. 
 
-> **TODO: batch size > 1 is broken**
+
+> **TODO 3: batch size > 1 is broken**
 > Only `batch_size=1` (`B=1`) is currently known to produce correct results.
 > Runs with `B>1` produce incorrect outputs.  All tests and benchmarks must be
 > run with `B=1` until the multi-batch issue is diagnosed and fixed.
