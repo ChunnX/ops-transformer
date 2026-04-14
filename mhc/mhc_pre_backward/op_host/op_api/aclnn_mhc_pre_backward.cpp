@@ -215,12 +215,15 @@ bool MhcGradCheckInputDims(const AclnnMhcPreBackwardParams &params)
     return CheckDimNum(params.x, 3, "x", true, 4) && CheckDimNum(params.phi, 2, "phi") &&
            CheckDimNum(params.alpha, 1, "alpha") &&
            (params.gamma == nullptr || CheckDimNum(params.gamma, 2, "gamma")) &&
-           CheckDimNum(params.hInGrad, 2, "hInGrad", true, 3) &&
-           CheckDimNum(params.hPostGrad, 2, "hPostGrad", true, 3) &&
-           CheckDimNum(params.hResGrad, 3, "hResGrad", true, 4) && CheckDimNum(params.invRms, 1, "invRms", true, 2) &&
-           CheckDimNum(params.mmRes, 2, "mmRes", true, 3) && CheckDimNum(params.hPre, 2, "hPre", true, 3) &&
-           CheckDimNum(params.hPost, 2, "hPost", true, 3) &&
-           (params.gradXPost == nullptr || CheckDimNum(params.gradXPost, 3, "gradXPost", true, 4));
+           CheckDimNum(params.hInGrad, (params.x)->GetViewShape().GetDimNum() - 1, "hInGrad") &&
+           CheckDimNum(params.hPostGrad, (params.x)->GetViewShape().GetDimNum() - 1, "hPostGrad") &&
+           CheckDimNum(params.hResGrad, (params.x)->GetViewShape().GetDimNum(), "hResGrad") &&
+           CheckDimNum(params.invRms, (params.x)->GetViewShape().GetDimNum() - 2, "invRms") &&
+           CheckDimNum(params.mmRes, (params.x)->GetViewShape().GetDimNum() - 1, "mmRes") &&
+           CheckDimNum(params.hPre, (params.x)->GetViewShape().GetDimNum() - 1, "hPre") &&
+           CheckDimNum(params.hPost, (params.x)->GetViewShape().GetDimNum() - 1, "hPost") &&
+           (params.gradXPost == nullptr ||
+            CheckDimNum(params.gradXPost, (params.x)->GetViewShape().GetDimNum(), "gradXPost"));
 }
 
 bool MhcGradCheckOutputDims(const AclnnMhcPreBackwardParams &params)
@@ -494,7 +497,8 @@ bool CheckDtype(const aclTensor *tensor, DataType expected, const char *name, bo
     auto dtype = tensor->GetDataType();
     bool valid = isValidX ? (dtype == DataType::DT_BF16 || dtype == DataType::DT_FLOAT16) : (dtype == expected);
     if (!valid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s", name, isValidX ? "BF16 or FP16" : "FP32");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s. actual is [%s].", name,
+            isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
         return false;
     }
     return true;
@@ -506,14 +510,15 @@ bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
            CheckDtype(params.alpha, DataType::DT_FLOAT, "alpha") &&
            (params.gamma == nullptr || CheckDtype(params.gamma, DataType::DT_FLOAT, "gamma")) &&
            CheckDtype(params.hInGrad, DataType::DT_FLOAT, "hInGrad", true) &&
+           CheckDtype(params.hInGrad, params.x->GetDataType(), "hInGrad") &&
            CheckDtype(params.hPostGrad, DataType::DT_FLOAT, "hPostGrad") &&
            CheckDtype(params.hResGrad, DataType::DT_FLOAT, "hResGrad") &&
            CheckDtype(params.invRms, DataType::DT_FLOAT, "invRms") &&
            CheckDtype(params.mmRes, DataType::DT_FLOAT, "mmRes") &&
            CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
            CheckDtype(params.hPost, DataType::DT_FLOAT, "hPost") &&
-           (params.gradXPost == nullptr || (CheckDtype(params.gradXPost, DataType::DT_FLOAT, "gradXPost", true) &&
-                                            params.gradXPost->GetDataType() == params.x->GetDataType()));
+           (params.gradXPost == nullptr || (CheckDtype(params.gradXPost, params.x->GetDataType(), "gradXPost", true) &&
+                                            CheckDtype(params.gradXPost, params.x->GetDataType(), "gradXPost"));
 }
 
 bool MhcGradCheckOutputDtype(const AclnnMhcPreBackwardParams &params)

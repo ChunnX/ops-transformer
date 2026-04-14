@@ -304,10 +304,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
         pipe_->InitBuffer(vecInQueue1_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
-        globalUbOffset_ = hFusionBufLen_ * sizeof(uint32_t);
+        globalUbOffset_ = 0;  // V0V1部分开始分配fp32TBuf_
         alphaBuf_ = fp32TBuf_.GetWithOffset<P>(hFusionBufLen_, globalUbOffset_);
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
-        globalUbOffset_ += fusionSize_ * sizeof(P);
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
             vecDealBSPeCore_ = totalLength_;
@@ -649,12 +648,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     vecInQueue0_.FreeTensor(hPostGrad);
 
     fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    dataCopyParams_.blockLen = hCombBeforeGradBufLen_ * sizeof(P);
+    dataCopyParams_.blockLen = buffers.stepLength * N_ * sizeof(P);
     DataCopyPad(fp32InputBuf, hCombBeforeGradGm_[runBSStart * N_ * N_], dataCopyParams_, dataCopyPadParams_);
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> hCombBeforeGradBuf = vecInQueue1_.DeQue<P>();
 
-    Muls(buffers.hCombBufS1, hCombBeforeGradBuf, ONE, hCombBeforeGradBufLen_);
+    Muls(buffers.hCombBufS1, hCombBeforeGradBuf, ONE, buffers.stepLength * N_);
     PipeBarrier<PIPE_V>();
     vecInQueue1_.FreeTensor(hCombBeforeGradBuf);
 
@@ -1024,7 +1023,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         return;
     }
     hPreGatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(PROCESS_V2_CHUNK_SIZE, 0);
-    globalUbOffset_ = PROCESS_V2_CHUNK_SIZE * sizeof(uint32_t);
+    globalUbOffset_ = PROCESS_V2_CHUNK_SIZE * sizeof(uint32_t); // V2部分开始分配fp32TBuf_
     for (uint32_t i = 0; i < PROCESS_V2_CHUNK_SIZE; i++) {
         hPreGatherOffsetBuf_.SetValue(i, i * N_ * sizeof(P));
     }
