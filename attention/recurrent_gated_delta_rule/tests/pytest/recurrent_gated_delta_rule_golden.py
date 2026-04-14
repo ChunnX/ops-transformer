@@ -295,6 +295,14 @@ def cpu_recurrent_gated_delta_rule(
 def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
     return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(shape, dtype=dtype, device=device)
 
+def adjust_range(datarange):
+    left, right = datarange
+    if right < 0:
+        return [left, right]
+    if left > 0:
+        return [-right, -left]
+    return [left, 0]
+
 def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_lengths=None,
                          ssm_state_indices=None, has_gamma='False', has_gamma_k='False',
                          has_num_accepted_tokens='False', scale_value=None, num_accepted_tokens=None,
@@ -345,8 +353,8 @@ def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_leng
     query = rand_range((T, nk, dk), query_datarange, data_type)
     key = rand_range((T, nk, dk), key_datarange, data_type)
     value = rand_range((T, nv, dv), value_datarange, data_type)
-    g = rand_range((T, nv), gamma_datarange, dtype=torch.float32) if has_gamma == True else None
-    gk = rand_range((T, nv, dk), gamma_k_datarange, dtype=torch.float32) if has_gamma_k == True else None
+    g = rand_range((T, nv), adjust_range(gamma_datarange), dtype=torch.float32) if has_gamma == True else None
+    gk = rand_range((T, nv, dk), adjust_range(gamma_k_datarange), dtype=torch.float32) if has_gamma_k == True else None
     beta = rand_range((T, nv), beta_datarange, data_type)
     num_accepted_tokens = torch.tensor(num_accepted_tokens, dtype=torch.int32) if has_num_accepted_tokens == True else None
     state = rand_range((block_num, nv, dv, dk), state_datarange, data_type)
