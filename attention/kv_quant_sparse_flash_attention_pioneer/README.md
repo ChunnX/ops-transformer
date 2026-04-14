@@ -46,21 +46,21 @@
       <tr>
           <td>query</td>
           <td>输入</td>
-          <td>attention结构的Q输入，不支持非连续。layout_query为BSND时shape为[B,S1,Q_N,D]，当layout_query为TND时shape为[Q_T,Q_N,D]，其中Q_N支持1/2/3/4/8/16/24/32/48/64。query由相同dtype的q_nope和q_rope按D维度拼接得到。</td>
+          <td>attention结构的Q输入，不支持非连续。layout_query为BSND时shape为[B,S1,Q_N,D]，当layout_query为TND时shape为[Q_T,Q_N,D]，其中Q_N支持1/2/3/4/6/8/16/24/32/48/64。query由相同dtype的q_nope和q_rope按D维度拼接得到。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>key</td>
           <td>输入</td>
-          <td>attention结构的K输入，支持非连续。float8_e4m3或hifloat8的k_nope、query相同dtype的k_rope和float32的量化参数按D维度拼接得到。layout_kv为PA_BSND时shape为[block_num, block_size, KV_N, D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。layout_kv为BSND时shape为[B, S2, KV_N, D]，layout_kv为TND时shape为[KV_T, KV_N, D]，其中KV_N只支持1。</td>
+          <td>attention结构的K输入，PA场景支持非连续。float8_e4m3或hifloat8的k_nope、query相同dtype的k_rope和float32的量化参数按D维度拼接得到。layout_kv为PA_BSND时shape为[block_num, block_size, KV_N, D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。layout_kv为BSND时shape为[B, S2, KV_N, D]，layout_kv为TND时shape为[KV_T, KV_N, D]，其中KV_N只支持1。</td>
           <td>FLOAT8_E4M3、HIFLOAT8</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>value</td>
           <td>输入</td>
-          <td>attention结构的V输入，支持非连续。value的N仅支持1。</td>
+          <td>attention结构的V输入，PA场景支持非连续。value的N仅支持1。</td>
           <td>FLOAT8_E4M3、HIFLOAT8</td>
           <td>ND</td>
       </tr>
@@ -230,3 +230,8 @@
 - 支持sparse_block_size整除block_size。
 - 非PageAttention场景layout_query和layout_kv需要保持一致。
 
+## 调用说明
+
+| 调用方式  | 样例代码                                                     | 说明                                                         |
+| --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| aclnn接口 | [test_kv_quant_sparse_flash_attention_pioneer](./examples/test_kv_quant_sparse_flash_attention_pioneer.cpp) | 通过[aclnnKvQuantSparseFlashAttentionPioneer](./docs/aclnnKvQuantSparseFlashAttentionPioneer.md)调用KvQuantSparseFlashAttentionPioneer算子。 |
