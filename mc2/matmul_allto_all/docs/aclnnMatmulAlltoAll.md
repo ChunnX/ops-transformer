@@ -182,27 +182,26 @@ aclnnStatus aclnnMatmulAlltoAll(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
-    <col style="width: 282px">
-    <col style="width: 120px">
-    <col style="width: 747px">
+    <table style="undefined;table-layout: fixed; width: 1146px"><colgroup>
+    <col style="width: 280px">
+    <col style="width: 130px">
+    <col style="width: 736px">
     </colgroup>
     <thead>
-     <tr>
-       <th>返回值</th>
-       <th>错误码</th>
-       <th>描述</th>
-     </tr>
-    </thead>
+    <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+    </tr></thead>
     <tbody>
     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>输入和输出的必选参数Tensor是空指针。</td>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>输入和输出的必选参数Tensor是空指针。</td>
     </tr>
     <tr>
-        <td rowspan="6">ACLNN_ERR_PARAM_INVALID</td>
-        <td rowspan="6">161002</td>
+        <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="7">161002</td>
         <td>输入和输出的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
@@ -223,8 +222,8 @@ aclnnStatus aclnnMatmulAlltoAll(
     <tr>
         <td>输入输出format为私有格式。</td>
     </tr>
-      </tbody>
-  </table>
+    </tbody>
+    </table>
 
 ## aclnnMatmulAlltoAll
 

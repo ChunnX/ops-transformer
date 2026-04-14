@@ -103,7 +103,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
         <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
@@ -116,7 +116,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>支持的shape为：
         <ul>
           <li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li>
@@ -131,7 +131,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>value</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>
         支持的shape为：
         <ul>
@@ -147,7 +147,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockSparseMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，表示实际的稀疏pattern。</td>
+      <td>表示实际的稀疏pattern。</td>
       <td>
         可选输入（当前版本为必选）
         <ul>
@@ -164,7 +164,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
+      <td>公式中的atten_mask。</td>
       <td>atten_mask会与稀疏pattern叠加产生作用。当前不支持，必须传入nullptr。</td>
       <td>INT8</td>
       <td>ND</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockTableOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，Block表用于PagedAttention。</td>
+      <td>Block表用于PagedAttention。</td>
       <td>当前不支持，必须传入nullptr。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -354,7 +354,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>attentionOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，公式中的attentionOut。</td>
+      <td>公式中的attentionOut。</td>
       <td>数据类型和shape与query保持一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -364,7 +364,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>softmaxLseOptional</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，Softmax计算的log-sum-exp中间结果。</td>
+      <td>Softmax计算的log-sum-exp中间结果。</td>
       <td>
         支持的shape随着query的shape改变：
         <ul>

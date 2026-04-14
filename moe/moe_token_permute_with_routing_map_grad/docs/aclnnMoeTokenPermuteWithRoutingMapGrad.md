@@ -27,31 +27,31 @@
     $$
 
     - probs不为None：
-    
-    $$
-    probsGradOutOptional = zeros(tokens_num, numExperts)
-    $$
-    
+
+        $$
+        probsGradOutOptional = zeros(tokens_num, numExperts)
+        $$
+
     - dropPaddedMode为true时
-    
-    $$
-    probsGradOutOptional [sortedIndices[i], i/capacity] = permutedProbsOutputGradOptional[i]
-    $$
-    
+
+        $$
+        probsGradOutOptional [sortedIndices[i], i/capacity] = permutedProbsOutputGradOptional[i]
+        $$
+
     - dropPaddedMode为false时
-    
-    $$
-    probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMapOptional, permutedProbsOutputGradOptional)
-    $$
+
+        $$
+        probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMapOptional, permutedProbsOutputGradOptional)
+        $$
     - probs为None：
-    
-    $$
-    tokensGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
-    $$
-    
-    $$
-    tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
-    $$
+
+        $$
+        tokensGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
+        $$
+
+        $$
+        tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
+        $$
 
 ## 函数原型
 
@@ -83,15 +83,15 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
 ## aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize
 
 - **参数说明:**
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 187px">
-  <col style="width: 121px">
-  <col style="width: 287px">
-  <col style="width: 387px">
-  <col style="width: 187px">
-  <col style="width: 187px">
-  <col style="width: 187px">
-  <col style="width: 146px">
+    <table style="undefined;table-layout: fixed; width: 1580px"><colgroup>
+    <col style="width: 231px">
+    <col style="width: 120px">
+    <col style="width: 242px">
+    <col style="width: 332px">
+    <col style="width: 161px">
+    <col style="width: 121px">
+    <col style="width: 228px">
+    <col style="width: 145px">
   </colgroup>
   <thead>
   <tr>
@@ -112,24 +112,17 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>shape支持2D维度，不支持空tensor，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>
-      • 非dropAndPad模式:（tokens_num * topK_num, hidden_size）<br>
-      • dropAndPad模式: （experts_num * capacity, hidden_size）</td>
+      <td><ul><li>非dropAndPad模式:（tokens_num * topK_num, hidden_size）；</li><li>dropAndPad模式: （experts_num * capacity, hidden_size）。</li></ul></td>
       <td>√</td>
   </tr>
   <tr>
       <td>permutedProbsOutputGradOptional</td>
       <td>可选输入</td>
       <td>正向输出permutedProbs的梯度。</td>
-      <td>
-      •  不传则表示不需要计算probsGradOutOptional；<br>
-      • shape为一个1D维度，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量;<br>
-      • 数据类型与permutedTokensOutputGrad一致或者当permutedTokensOutputGrad是BFLOAT16时支持FLOAT。</td>
+      <td><ul><li>不传则表示不需要计算probsGradOutOptional；</li><li>shape为一个1D维度，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量；</li><li>数据类型与permutedTokensOutputGrad一致或者当permutedTokensOutputGrad是BFLOAT16时支持FLOAT。</li></ul></td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>
-      • 非dropAndPad模式:（tokens_num * topK_num）<br>
-      • dropAndPad模式: （experts_num * capacity）</td>
+      <td><ul><li>非dropAndPad模式:（tokens_num * topK_num）；</li><li>dropAndPad模式: （experts_num * capacity）。</li></ul></td>
       <td>√</td>
   </tr>
   <tr>
@@ -139,9 +132,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>非dropAndPad模式索引取值范围[0, tokens_num * topK_num - 1]， dropAndPad模式索引取值范围[0, experts_num * capacity - 1]，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>
-      • 非dropAndPad模式:（tokens_num * topK_num, ）<br>
-      • dropAndPad模式: （experts_num * capacity）</td>
+      <td><ul><li>非dropAndPad模式:（tokens_num * topK_num, ）；</li><li>dropAndPad模式: （experts_num * capacity）。</li></ul></td>
       <td>√</td>
   </tr>
   <tr>

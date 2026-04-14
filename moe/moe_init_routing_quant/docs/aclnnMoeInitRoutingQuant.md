@@ -62,16 +62,16 @@ aclnnStatus aclnnMoeInitRoutingQuant(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 170px">
-    <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
-    <col style="width: 190px">
-    <col style="width: 145px">
-    </colgroup>
+  <table style="undefined;table-layout: fixed; width: 1538px"><colgroup>
+  <col style="width: 199px">
+  <col style="width: 120px">
+  <col style="width: 285px">
+  <col style="width: 380px">
+  <col style="width: 160px">
+  <col style="width: 115px">
+  <col style="width: 134px">
+  <col style="width: 145px">
+  </colgroup>
   <thead>
     <tr>
       <th>参数名</th>
