@@ -64,6 +64,7 @@ private:
     uint64_t S_ = 0, B_ = 0, H_ = 0;
     ge::DataType xType_;
     uint32_t xDtypeSize_ = 0;
+    uint64_t hReg_ = 64;  // 128 / xDtypeSize_: min H granularity (bf16/fp16→64, fp32→32)
 
     // Mask None flag
     int64_t isMaskNone_ = 0;
@@ -75,17 +76,17 @@ private:
     uint64_t realCoreNum_ = 1;
 
     // UB tile sizes
-    int64_t ubFactorH_ = 64;
+    int64_t ubFactorH_ = 0;
     int64_t ubFactorB_ = 1;
     int64_t ubFactorS_ = 1;
 
     // Loop params — main core
-    int64_t loopNumH_ = 1, ubTailFactorH_ = 64;
+    int64_t loopNumH_ = 1, ubTailFactorH_ = 0;
     int64_t loopNumB_ = 1, ubTailFactorB_ = 1;
     int64_t loopNumS_ = 1, ubTailFactorS_ = 1;
 
     // Loop params — tail core
-    int64_t tailBlockLoopNumH_ = 1, tailBlockUbTailFactorH_ = 64;
+    int64_t tailBlockLoopNumH_ = 1, tailBlockUbTailFactorH_ = 0;
     int64_t tailBlockLoopNumB_ = 1, tailBlockUbTailFactorB_ = 1;
     int64_t tailBlockLoopNumS_ = 1, tailBlockUbTailFactorS_ = 1;
 

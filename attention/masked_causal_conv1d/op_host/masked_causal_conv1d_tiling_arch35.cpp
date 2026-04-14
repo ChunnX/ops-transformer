@@ -25,11 +25,11 @@ constexpr uint64_t INPUT_X_INDEX = 0;
 constexpr uint64_t INPUT_WEIGHT_INDEX = 1;
 constexpr uint64_t INPUT_MASK_INDEX = 2;
 
-constexpr uint64_t H_REG = 64;           // VF FP32 register width (elements): min H granularity for tiling
 constexpr int64_t  S_MAX = 1 << 15;      // max S = 32768 (aligned with backward)
 constexpr int64_t  B_MAX = 32;           // max B = 32
 constexpr int64_t  H_MIN = 192 * 2;      // min H = 384 (aligned with backward)
 constexpr int64_t  H_MAX = 192 * 128;    // max H = 24576 (aligned with backward)
+constexpr int64_t  BS_MAX = 512 * 1024;  // max B*S = 524288
 constexpr uint64_t CONV_WINDOW_SIZE = 3; // W: causal conv1d kernel size (fixed)
 constexpr uint64_t PREFIX_ROW_COUNT = CONV_WINDOW_SIZE - 1; // prefix rows in ioQueue slot (W-1)
 constexpr uint64_t MASK_ALIGN_ELEMENTS = 32;                // sUb alignment granularity for mask buffers
@@ -160,8 +160,11 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CheckInputParams()
     OP_CHECK_IF(static_cast<int64_t>(H_) < H_MIN || static_cast<int64_t>(H_) > H_MAX,
                 OP_LOGE(context_->GetNodeName(), "H=%lu out of range [%ld, %ld]", H_, H_MIN, H_MAX),
                 return ge::GRAPH_FAILED);
-    if (H_ % H_REG != 0) {
-        OP_LOGE(context_->GetNodeName(), "H=%lu must be multiple of H_REG=%lu", H_, H_REG);
+    OP_CHECK_IF(static_cast<int64_t>(B_) * static_cast<int64_t>(S_) > BS_MAX,
+                OP_LOGE(context_->GetNodeName(), "B*S=%lu exceeds BS_MAX=%ld", B_ * S_, BS_MAX),
+                return ge::GRAPH_FAILED);
+    if (H_ % hReg_ != 0) {
+        OP_LOGE(context_->GetNodeName(), "H=%lu must be multiple of hReg=%lu", H_, hReg_);
         return ge::GRAPH_FAILED;
     }
 
@@ -210,6 +213,10 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED;
     if (GetInputDtypes() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
+
+    // Compute hReg_ = 128 / xDtypeSize_ (bf16/fp16→64, fp32→32)
+    hReg_ = 128 / xDtypeSize_;
+
     if (CheckInputParams() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
     return ge::GRAPH_SUCCESS;
@@ -230,12 +237,12 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CalcLoopParams(int64_t len, int6
 
 // ---- SearchBestCoreSplit ----
 // Greedy H > B > S 3D inter-core search.
-// H granularity: H_REG=64 elements per tile.
+// H granularity: hReg_ = 128/dtypeSize elements per tile.
 // 关键约束：hcc * bcc * scc <= coreNum_（硬件核数）
 ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
 {
-    // H 可拆分的最大份数（每个 tile 处理 H_REG=64 个 H 元素）
-    uint64_t hMax = H_ / H_REG;
+    // H 可拆分的最大份数（每个 tile 处理 hReg_ 个 H 元素）
+    uint64_t hMax = H_ / hReg_;
 
     // 关键修正 1：hcc 起始值不能超过硬件核数
     // 当 H 特别大时，hMax 可能远超 coreNum_，从 hMax 开始搜索毫无意义
@@ -292,14 +299,14 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
     bCoreCnt_ = bestB;
     sCoreCnt_ = bestS;
 
-    // H-dim split (unit = H_REG)
+    // H-dim split (unit = hReg_)
     {
-        uint64_t hTileTotal = H_ / H_REG;
+        uint64_t hTileTotal = H_ / hReg_;
         uint64_t hTilesPerMain = (hTileTotal + hCoreCnt_ - 1) / hCoreCnt_;
         uint64_t rem = hTileTotal % hCoreCnt_;
         hMainCnt_ = (rem > 0) ? rem : 0;
-        hBlockFactor_ = hTilesPerMain * H_REG;
-        hBlockTailFactor_ = (rem > 0 ? hTilesPerMain - 1 : hTilesPerMain) * H_REG;
+        hBlockFactor_ = hTilesPerMain * hReg_;
+        hBlockTailFactor_ = (rem > 0 ? hTilesPerMain - 1 : hTilesPerMain) * hReg_;
         if (hMainCnt_ == 0) {
             hBlockTailFactor_ = hBlockFactor_;
         }
@@ -340,11 +347,11 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
 //   where sUbAlign = ⌈sUb/32⌉×32
 //
 // Strategy (§6.2):
-//   Step1: hUb=H_REG=64, bUb=bLen, sUb=sLen, try full load BS.
+//   Step1: hUb=hReg_=128/dtypeSize, bUb=bLen, sUb=sLen, try full load BS.
 //     Situation A (fits): B+S fully loaded → Step2 expand hUb.
 //     Situation B (doesn't fit): → Step3 reduce B, then S.
 //   Step2 (Situation A only): expand hUb (hUb*DTYPE_SIZE must be 128B multiple,
-//     i.e. hUb is H_REG=64 multiple) up to hLen or UB limit.
+//     i.e. hUb is hReg_ multiple) up to hLen or UB limit.
 //   Step3 (Situation B only): reduce bUb from bLen-1 down to 1 trying to fit sLen.
 //     If bUb=1 still can't fit sLen → cut S: find sUb_max with bUb=1.
 ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
@@ -388,11 +395,11 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
         return 0;
     };
 
-    ubFactorH_ = static_cast<int64_t>(H_REG);
+    ubFactorH_ = static_cast<int64_t>(hReg_);
     uint64_t bUb = bBlockFactor_;
     uint64_t sLen = sBlockFactor_;
 
-    // Step1: try full load BS with hUb=H_REG=64
+    // Step1: try full load BS with hUb=hReg_=128/dtypeSize
     if (calcUsedUb(static_cast<uint64_t>(ubFactorH_), bUb, sLen) <= ubSize_) {
         // Situation A: B+S fully loaded → Step2 expand hUb
         uint64_t sUb = sLen;
@@ -400,8 +407,8 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
         // Cap at min(hBlockFactor_, hBlockTailFactor_) so ubFactorH fits all cores
         uint64_t hLenMin = (hMainCnt_ > 0) ? std::min(hBlockFactor_, hBlockTailFactor_) : hBlockFactor_;
 
-        for (uint64_t k = 2; k * H_REG <= hLenMin; ++k) {
-            uint64_t hUbTry = k * H_REG;
+        for (uint64_t k = 2; k * hReg_ <= hLenMin; ++k) {
+            uint64_t hUbTry = k * hReg_;
             if (calcUsedUb(hUbTry, bUb, sLen) <= ubSize_) {
                 ubFactorH_ = static_cast<int64_t>(hUbTry);
             } else {
