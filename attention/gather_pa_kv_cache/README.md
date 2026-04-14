@@ -21,7 +21,7 @@
 
   关于**keyRef**、**valueRef**的一些限制条件如下：
   
-  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型， num_heads * head_size(keyRef/valueRef)取128*576。
+  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型， num_heads \* head_size(keyRef/valueRef)取128*576。
 
 - 示例：
 

@@ -18,7 +18,7 @@
 
   |场景类型|情况概要|
   |:---|:---|
-  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<ul><li>qkv 经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
+  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ \* $S_{qkv}$, $N_{qkv}$ \* $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<ul><li>qkv 经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
 
 - 计算公式：
 

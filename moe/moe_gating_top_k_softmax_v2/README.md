@@ -17,25 +17,25 @@
 
 - 计算公式：
 
-1. renorm = 0,
+  1. renorm = 0,
 
-  $$
-  softmaxResultOutOptional=softmax(x,axis=-1)
-  $$
+      $$
+      softmaxResultOutOptional=softmax(x,axis=-1)
+      $$
 
-  $$
-  yOut,expertIdxOut=topK(softmaxResultOutOptional,k=k)
-  $$
+      $$
+      yOut,expertIdxOut=topK(softmaxResultOutOptional,k=k)
+      $$
 
-2. renorm = 1
+  2. renorm = 1
 
-  $$
-  topkOut,expertIdxOut=topK(x, k=k)
-  $$
+      $$
+      topkOut,expertIdxOut=topK(x, k=k)
+      $$
 
-  $$
-  yOut = softmax(topkOut,axis=-1)
-  $$
+      $$
+      yOut = softmax(topkOut,axis=-1)
+      $$
 
 ## 参数说明
 

@@ -668,8 +668,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
           - commAlg配置为"fullmesh": 要求 >= 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
           - commAlg配置为"hierarchy": 要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：
-        - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
-        - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 * (localExpertNum * maxBS * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
+        - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 \* (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
+        - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 \* (localExpertNum * maxBS * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
         - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。
         - 当commAlg为"hierarchy"时：要求取值满足 (moeExpertNum*maxBS*(H*2+(3* (K+7)/8*8))*4+64) + 404*1024*1024。
 

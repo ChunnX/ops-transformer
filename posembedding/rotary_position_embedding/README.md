@@ -164,36 +164,35 @@
 </tbody>
 </table>
 
-
 ## 约束说明
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>：
 
-    输入张量x共有四维，各参数的shape约束可以描述如下：
+  输入张量x共有四维，各参数的shape约束可以描述如下：
 
-    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+  - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
+  - 输入张量x和输出张量y的shape必须完全相同。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  
+  输入张量x支持BNSD、BSND、SBND排布。
+  输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
+  输入张量x和输出张量y的shape必须完全相同。
+  输入张量cos和sin的shape必须完全相同.
+  - half模式：
+
+    - B，N < 1000;
+    - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
+    - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
+    - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
     
-    输入张量x支持BNSD、BSND、SBND排布。
-    输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
-    输入张量x和输出张量y的shape必须完全相同。
-    输入张量cos和sin的shape必须完全相同.
-    - half模式：
+  - interleave模式：
 
-      - B，N < 1000;
-      - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
-      - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
-      
-    - interleave模式：
-
-      - B * N < 1000
-      - 当x为BNSD时，cos、sin支持11SD
-      - 当x为BSND时，cos、sin支持1S1D
-      - 当x为SBND时，cos、sin支持S11D
+    - B * N < 1000
+    - 当x为BNSD时，cos、sin支持11SD
+    - 当x为BSND时，cos、sin支持1S1D
+    - 当x为SBND时，cos、sin支持S11D
 
 ## 调用说明
 

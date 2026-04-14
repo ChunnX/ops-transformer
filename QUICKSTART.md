@@ -11,18 +11,17 @@
 > 3. [算子开发指南](./docs/zh/develop/aicore_develop_guide.md)：自定义开发标准算子的指南，学习从零创建算子工程、实现Tiling和Kernel。
 > 4. [调试调优指南](./docs/zh/debug/op_debug_prof.md)：不同场景下的系统性调试技巧与性能优化方法。
 
-
 算子开发和贡献的基本流程如下图，欢迎并鼓励您在社区贡献算子，共同丰富项目生态。
 
 ![算子开发贡献流程](./docs/zh/figures/算子开发贡献流程.png "算子开发贡献流程图")
 
 为方便您能快速了解算子开发的全流程，我们将以**AddExample**算子作为实践对象，其源文件位于`ops-transformer/examples/add_example`，具体操作步骤如下：
 
-1.  **[环境安装](#一环境安装二选一)**：搭建算子开发和运行环境。
-2.  **[编译部署](#二编译部署)**：编译自定义算子包并部署安装，实现快速调用算子。
-3.  **[算子开发](#三算子开发)**：通过修改现有算子Kernel，体验开发、编译、验证的完整闭环。
-4.  **[算子调试](#四算子调试)**：掌握算子打印和性能采集方法。
-5.  **[算子验证](#五算子验证)**：学习如何修改算子example样例，以验证算子在不同输入下的功能正确性。
+1. **[环境安装](#一环境安装二选一)**：搭建算子开发和运行环境。
+2. **[编译部署](#二编译部署)**：编译自定义算子包并部署安装，实现快速调用算子。
+3. **[算子开发](#三算子开发)**：通过修改现有算子Kernel，体验开发、编译、验证的完整闭环。
+4. **[算子调试](#四算子调试)**：掌握算子打印和性能采集方法。
+5. **[算子验证](#五算子验证)**：学习如何修改算子example样例，以验证算子在不同输入下的功能正确性。
 
 ## 一、环境安装（二选一）
 
@@ -32,28 +31,28 @@
 
 1. 进入ops-transformer开源项目，单击“`云开发`”按钮，使用已认证过的华为云账号登录。若未注册或认证，请根据页面提示进行注册和认证。
 
-   <img src="docs/zh/figures/cloudIDE.png" alt="云平台"  width="750px" height="90px">
+   <img src="docs/zh/figures/cloudIDE.png"alt="云平台"width="750px" height="90px">
 
-2. 根据页面提示创建并启动云开发环境，单击“`连接 > WebIDE `”进入算子一站式开发平台，开源项目的资源默认在`/mnt/workspace`目录下。
+2. 根据页面提示创建并启动云开发环境，单击“`连接>WebIDE`”进入算子一站式开发平台，开源项目的资源默认在`/mnt/workspace`目录下。
 
-    <img src="docs/zh/figures/webIDE.png" alt="云平台"  width="1000px" height="150px">
-    
+    <img src="docs/zh/figures/webIDE.png"alt="云平台"width="1000px" height="150px">
+
 3. 检查环境是否完备。
 
     在云平台终端窗口，执行如下命令验证环境和驱动是否正常。
 
-    -   **检查NPU设备**
+    - **检查NPU设备**
 
-        执行如下命令，若返回驱动相关信息说明已成功挂载。    
-        
-        ```bash    
+        执行如下命令，若返回驱动相关信息说明已成功挂载。
+
+        ```bash
         npu-smi info
         ```
 
-    -   **检查CANN版本**
+    - **检查CANN版本**
 
         执行如下命令查看CANN Toolkit版本信息。
-        
+
         ```bash
         cat /home/developer/Ascend/ascend-toolkit/latest/opp/version.info
         ```
@@ -109,7 +108,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 进入容器后，验证环境和驱动是否正常。
 
--   **检查NPU设备**
+- **检查NPU设备**
 
     执行如下命令，若返回驱动相关信息说明已成功挂载。
 
@@ -117,7 +116,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
     npu-smi info
     ```
 
--   **检查CANN版本**
+- **检查CANN版本**
 
     执行如下命令查看CANN Toolkit版本信息。
 
@@ -311,7 +310,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 
 当算子功能验证正确后，可通过`msprof`工具采集算子性能数据。
 
--  **生成可执行文件**
+- **生成可执行文件**
 
     调用AddExample算子的example样例，生成可执行文件（test_aclnn_add_example），该文件位于项目`ops-transformer/build`目录。
 
@@ -319,7 +318,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
     bash build.sh --run_example add_example eager cust --vendor_name=custom
     ```
 
--  **采集性能数据**
+- **采集性能数据**
 
     进入AddExample算子可执行文件目录`ops-transformer/build/`，执行如下命令：
 

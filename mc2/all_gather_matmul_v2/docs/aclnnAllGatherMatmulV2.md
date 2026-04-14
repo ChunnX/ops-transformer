@@ -424,7 +424,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
   - 当x1、x2数据类型为FLOAT16/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2时，x2矩阵支持转置/不转置场景，x1矩阵只支持不转置场景。
   - 当groupSize取值为549764202624，bias必须为空。
   - 支持2、4、8、16、32、64卡。
-  - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - allgather(x1)集合通信数据总量不能超过16\*256MB，集合通信数据总量计算方式为：m \* k \* sizeof(x1_dtype) \* 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
@@ -444,6 +444,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
+
     ```c++
     #include <iostream>
     #include <vector>

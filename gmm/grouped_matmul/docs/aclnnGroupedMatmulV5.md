@@ -665,6 +665,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |:---------:|:-------:| :-------|
         | 伪量化perchannel | weight单 | $[E, N]$|
         | 伪量化perchannel | weight多 | $[N_i]$|
+        
     </details>
 
     <a id="a4w4场景约束"></a>
