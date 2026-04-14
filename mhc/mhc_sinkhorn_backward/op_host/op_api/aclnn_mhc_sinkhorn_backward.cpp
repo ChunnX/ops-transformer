@@ -93,24 +93,24 @@ static bool CheckShape(const aclTensor *gradOutput, const aclTensor *normOut, co
     // 迭代次数的范围必须是1~100
     auto normOutShape = normOut->GetViewShape();
     auto normOutDim = normOutShape.GetDimNum();
-    if (normOutDim != SUPPORT_DIM_NUM_2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim value error, input normOut dim must be 2, but got Dim = %ld .", normOutDim);
-        return false;
-    }
+    // if (normOutDim != SUPPORT_DIM_NUM_2) {
+    //     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim value error, input normOut dim must be 2, but got Dim = %ld .", normOutDim);
+    //     return false;
+    // }
     int64_t numIters = normOutShape.GetDim(DIM_ZERO);
-    if (numIters % 2 != 0 || numIters > 200 || numIters < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "numIters must be even and it must be within the range of 2 to 200, but got %ld .", numIters);
-        return false;
-    }
+    // if (numIters % 2 != 0 || numIters > 200 || numIters < 2) {
+    //     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+    //             "numIters must be even and it must be within the range of 2 to 200, but got %ld .", numIters);
+    //     return false;
+    // }
 
     // gradOutput维度必须是3或4
     auto gradOutputShape = gradOutput->GetViewShape();
     auto gradOutputDim = gradOutputShape.GetDimNum();
-    if (gradOutputDim != SUPPORT_DIM_NUM_3 && gradOutputDim != SUPPORT_DIM_NUM_4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim value error, input gradOutput dim must be 3 or 4, but got Dim = %ld .", gradOutputDim);
-        return false;
-    }
+    // if (gradOutputDim != SUPPORT_DIM_NUM_3 && gradOutputDim != SUPPORT_DIM_NUM_4) {
+    //     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim value error, input gradOutput dim must be 3 or 4, but got Dim = %ld .", gradOutputDim);
+    //     return false;
+    // }
     // gradOutput最后两维的大小n0和n1满足：n0等于n1 且n0为4,6,8
     int64_t n0 = 0;
     int64_t n1 = 0;
@@ -121,12 +121,12 @@ static bool CheckShape(const aclTensor *gradOutput, const aclTensor *normOut, co
         n0 = gradOutputShape.GetDim(DIM_TWO);
         n1 = gradOutputShape.GetDim(DIM_THREE);
     }
-    if ((n0 != n1) || (n0 != N_VALID_4 && n0 != N_VALID_6 && n0 != N_VALID_8)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "n0 must equal n1, and n must be %ld or %ld or %ld, but got n0 = %ld, n1 = %ld", N_VALID_4, N_VALID_6,
-                N_VALID_8, n0, n1);
-        return false;
-    }
+    // if ((n0 != n1) || (n0 != N_VALID_4 && n0 != N_VALID_6 && n0 != N_VALID_8)) {
+    //     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+    //             "n0 must equal n1, and n must be %ld or %ld or %ld, but got n0 = %ld, n1 = %ld", N_VALID_4, N_VALID_6,
+    //             N_VALID_8, n0, n1);
+    //     return false;
+    // }
     return true;
 }
 

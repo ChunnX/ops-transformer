@@ -26,13 +26,13 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("norm")
+        this->Input("norm")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
            .Format({ge::FORMAT_ND})
            .UnknownShapeFormat({ge::FORMAT_ND})
            .AutoContiguous();
-        this->Output("sum")
+        this->Input("sum")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
            .Format({ge::FORMAT_ND})
@@ -46,7 +46,7 @@ public:
            .AutoContiguous();
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)  // TODO: 为什么文档不支持？
+            .DynamicFormatFlag(false)  // TODO: 为什么文档不支持？
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
