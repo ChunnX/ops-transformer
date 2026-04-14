@@ -47,14 +47,14 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   const aclTensor   *dy,
   const aclTensor   *spareIndices,
   const aclTensor   *weights,
-  const aclTensor   *actucalSeqLengthsQuery,
-  const aclTensor   *actucalSeqLengthsKey,
+  const aclTensor   *actualSeqLengthsQuery,
+  const aclTensor   *actualSeqLengthsKey,
   int64_t           headNum,  
   char              *layout,
   int64_t           sparseMode,
   int64_t           preTokens,
   int64_t           nextTokens,
-  bool              determinstic,
+  bool              deterministic,
   const aclTensor   *dQuery,
   const aclTensor   *dKey,
   const aclTensor   *dWeights,
@@ -149,7 +149,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>actucalSeqLengthsQuery</td>
+      <td>actualSeqLengthsQuery</td>
       <td>输入</td>
       <td>表示query每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>actucalSeqLengthsKey</td>
+      <td>actualSeqLengthsKey</td>
       <td>输入</td>
       <td>表示key每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
@@ -219,7 +219,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>determinstic</td>
+      <td>deterministic</td>
       <td>输入</td>
       <td>表示当前是否支持确定性计算。</td>
       <td>-</td>
@@ -308,7 +308,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="3">161002</td>
-      <td>query、key、weights、sparseIndices、weights的数据类型和数据格式不在支持的范围内。</td>
+      <td>query、key、dy、sparseIndices、weights的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>input_layout输入的类型不在支持的范围内。</td>
