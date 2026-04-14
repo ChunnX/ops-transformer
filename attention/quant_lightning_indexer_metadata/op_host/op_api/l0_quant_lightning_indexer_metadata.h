@@ -34,6 +34,7 @@ const aclTensor* QuantLightningIndexerMetadata(
     int64_t sparseModeOptional,
     int64_t preTokensOptional,
     int64_t nextTokensOptional,
+    int64_t cmpRatioOptional,
     const aclTensor* metaData,
     aclOpExecutor* executor);
 } // namespace l0op

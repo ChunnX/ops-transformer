@@ -63,6 +63,7 @@ bool QuantLightningIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "sparse_mode", sparseMode_);
     GetAttrValueOpt(ctx, "pre_tokens", preToken_);
     GetAttrValueOpt(ctx, "next_tokens", nextToken_);
+    GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
 
     return ParamsInit();
 }
@@ -146,7 +147,7 @@ uint32_t QuantLightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 uint32_t QuantLightningIndexerMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
     if (actSeqLenKey_ == nullptr || actSeqLenKey_->GetData() == nullptr) {
-        return static_cast<uint32_t>(maxSeqlenK_);
+        return static_cast<uint32_t>(maxSeqlenK_ * cmpRatio_);
     }
     const int32_t *s2Ptr = (int32_t*)actSeqLenKey_->GetData();
     if (layoutKey_ == "TND") {
@@ -163,7 +164,7 @@ void QuantLightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitCo
     SplitInfo &splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
-        uint32_t s2Size = GetS2SeqSize(bIdx);
+        uint32_t s2Size = GetS2SeqSize(bIdx) / cmpRatio_;
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -307,7 +308,7 @@ void QuantLightningIndexerMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     s2LastToken = Clip(s2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
 
     // get block start & end
-    uint32_t s2Length = s2LastToken - s2FirstToken + 1;
+    uint32_t s2Length = (s2LastToken - s2FirstToken + 1) / cmpRatio_;
     if (s2Length == 0) {
         s1GCache.s2Start = 0U;
         s1GCache.s2End = 0U;

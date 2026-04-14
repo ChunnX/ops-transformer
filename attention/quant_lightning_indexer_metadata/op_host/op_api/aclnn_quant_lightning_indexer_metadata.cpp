@@ -37,7 +37,7 @@ static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsQueryOptional,
                                const aclTensor* actualSeqLengthsKeyOptional, int64_t numHeadsQ, int64_t numHeadsK,
                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
                                char* layoutQueryOptional, char* layoutKeyOptional, int64_t sparseModeOptional,
-                               int64_t preTokensOptional, int64_t nextTokensOptional) 
+                               int64_t preTokensOptional, int64_t nextTokensOptional, int64_t cmpRatioOptional) 
 {
     if (CheckSingleParamQli(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK, 
                          layoutQueryOptional, layoutKeyOptional, sparseModeOptional, preTokensOptional, 
@@ -46,7 +46,7 @@ static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsQueryOptional,
                        actualSeqLengthsKeyOptional) == ACLNN_SUCCESS && 
         CheckConsistencyQli(layoutQueryOptional, layoutKeyOptional, actualSeqLengthsQueryOptional, 
                          actualSeqLengthsKeyOptional, batchSizeOptional) == ACLNN_SUCCESS && 
-        CheckFeatureQli() == ACLNN_SUCCESS) {
+        CheckFeatureQli(cmpRatioOptional) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
@@ -200,8 +200,19 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckFeatureQli()
+aclnnStatus CheckFeatureQli(int64_t cmpRatioOptional)
 {
+    // 压缩率校验
+    if (cmpRatioOptional < 1 || cmpRatioOptional > 128) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be [1, 128], but got %d", cmpRatioOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 2 的幂次方: 1, 2, 4, ..., 128
+    if ((cmpRatioOptional & (cmpRatioOptional - 1)) != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For Atlas A3, cmp_ratio should be 1/2/4/8/16/32/64/128, but got %d", 
+                cmpRatioOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -210,14 +221,14 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t numHeadsQ,
     int64_t numHeadsK, int64_t headDim, int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSizeOptional,
     int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQueryOptional, char* layoutKeyOptional,
-    int64_t sparseCountOptional, int64_t sparseModeOptional, int64_t preTokensOptional, int64_t nextTokensOptional,
-    const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor) 
+    int64_t sparseCountOptional, int64_t sparseModeOptional, int64_t preTokensOptional, int64_t nextTokensOptional, 
+    int64_t cmpRatioOptional, const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor) 
 {
     L2_DFX_PHASE_1(aclnnQuantLightningIndexerMetadata,
                    DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim, 
                           queryQuantMode, keyQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, 
                           layoutQueryOptional, layoutKeyOptional, sparseCountOptional, sparseModeOptional, 
-                          preTokensOptional, nextTokensOptional),
+                          preTokensOptional, nextTokensOptional, cmpRatioOptional),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -225,7 +236,8 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
 
     auto ret = ParamsCheck(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK,
                            batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQueryOptional, 
-                           layoutKeyOptional, sparseModeOptional, preTokensOptional, nextTokensOptional);
+                           layoutKeyOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, 
+                           cmpRatioOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -245,7 +257,7 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
         actualSeqLengthsQueryOptionalContiguous, actualSeqLengthsKeyOptionalContiguous, aicCoreNum, aivCoreNum, 
         socVersion, numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode, batchSizeOptional, maxSeqlenQOptional, 
         maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional, sparseCountOptional, sparseModeOptional, 
-        preTokensOptional, nextTokensOptional, metaData, uniqueExecutor.get());
+        preTokensOptional, nextTokensOptional, cmpRatioOptional, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

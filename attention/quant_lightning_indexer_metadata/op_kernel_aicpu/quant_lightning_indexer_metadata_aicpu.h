@@ -327,6 +327,7 @@ private:
     // attributes
     std::string socVersion_ = "";
     bool supportFd_ = false;
+    int32_t cmpRatio_ = 1;
     uint32_t aicCoreNum_ = 24U;
     uint32_t aivCoreNum_ = 48U;
     int32_t batchSize_ = 0;

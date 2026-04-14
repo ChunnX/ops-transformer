@@ -40,6 +40,7 @@ REG_OP(QuantLightningIndexerMetadata)
     .ATTR(sparse_mode, Int, 3)
     .ATTR(pre_tokens, Int, 9223372036854775807)
     .ATTR(next_tokens, Int, 9223372036854775807)
+    .ATTR(cmp_ratio, Int, 1)
     .OP_END_FACTORY_REG(QuantLightningIndexerMetadata)
 } // namespace ge
 

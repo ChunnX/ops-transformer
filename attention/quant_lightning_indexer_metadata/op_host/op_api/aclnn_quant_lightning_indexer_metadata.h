@@ -22,8 +22,8 @@ aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t numHeadsQ,
     int64_t numHeadsK, int64_t headDim, int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSizeOptional,
     int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQueryOptional, char* layoutKeyOptional,
-    int64_t sparseCountOptional, int64_t sparseModeOptional, int64_t preTokensOptional, int64_t nextTokensOptional,
-    const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
+    int64_t sparseCountOptional, int64_t sparseModeOptional, int64_t preTokensOptional, int64_t nextTokensOptional, 
+    int64_t cmpRatioOptional, const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamQli(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
@@ -40,7 +40,7 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
                              const aclTensor* actualSeqLengthsKeyOptional, int64_t batchSizeOptional);
 
 __attribute__((visibility("default")))
-aclnnStatus CheckFeatureQli();
+aclnnStatus CheckFeatureQli(int64_t cmpRatioOptional);
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnQuantLightningIndexerMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
