@@ -94,6 +94,15 @@ constexpr static int64_t PA_NZ_CACHE_MODE = 2;
 constexpr static int64_t PA_BLK_BNSD_CACHE_MODE = 3;
 constexpr static int64_t PA_BLK_NZ_CACHE_MODE = 4;
 
+constexpr int64_t CACHE_CONTIGUOUS = 0;
+constexpr int64_t CACHE_SWA = 1;
+constexpr int64_t CACHE_SFA_NO_QUANT = 2;
+constexpr int64_t CACHE_SFA_C8 = 3;
+
+constexpr int64_t NON_QUANT_MODE = 0;
+constexpr int64_t QUANT_MODE = 1;
+constexpr int64_t V_PERTILE_128_QUANT_MODE = 2;
+
 template <typename T_KV, typename T_K_CACHE, typename T_V_CACHE>
 class CloudKvRmsNormRopeCacheRegbase
 {

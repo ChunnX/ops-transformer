@@ -75,6 +75,11 @@ public:
         copyOutVParamsNz.srcStride = 0;
         copyOutVParamsNz.dstStride = (tilingData_->blockSize - 1) * dv0 * sizeof(T_V_CACHE);
 
+        copyOutKVCacheParams.blockCount = 1;
+        copyOutKVCacheParams.blockLen = tilingData_->dk * sizeof(T_K_CACHE) + tilingData_->dv * sizeof(T_V_CACHE);
+        copyOutKVCacheParams.srcStride = 0;
+        copyOutKVCacheParams.dstStride = 0;
+
         // ubLoop: 表示需要多少个子块来覆盖singleA大小的数据
         this->ubLoop = (currentBlockFactor + this->ubFactor - 1) / this->ubFactor;
         // ubLoop：最后一块
@@ -98,6 +103,7 @@ public:
         this->cosGm.SetGlobalBuffer((__gm__ T_KV*)cos);
         this->sinGm.SetGlobalBuffer((__gm__ T_KV*)sin);
         this->indexGm.SetGlobalBuffer((__gm__ int64_t*)index);
+        // if ()
         this->kCacheGm.SetGlobalBuffer((__gm__ T_K_CACHE*)k_cache);
         this->vCacheGm.SetGlobalBuffer((__gm__ T_V_CACHE*)v_cache);
         this->kScaleGm.SetGlobalBuffer((__gm__ float*)k_scale);
@@ -155,6 +161,41 @@ public:
                 } else {
                     DataCopyPad(this->kCacheGm[gmOffset], kOutLocal[i * tilingData_->dkAlign], copyOutParams);
                 }
+            }
+        }
+    }
+
+    template <typename T>
+    __aicore__ inline void ScatterUpdateMergedKVCache(int64_t rows, int64_t startIdx, const LocalTensor<T> outLocal, int64_t headSize, bool isKCache)
+    {
+        DataCopyExtParams copyOutParams = copyOutKVCacheParams;
+        eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+        int64_t seqIndex = 0;
+        int64_t batchId = 0;
+        int64_t gmOffset = 0;
+        int64_t cacheOffset = isKCache ? dv : 0;
+        int64_t vCacheLen = dv + dk;
+        for (int64_t i = 0; i < rows; i++) {
+            seqIndex = this->indexGm(startIdx + i);
+            SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+            WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+            if (seqIndex >= 0) {
+                if (tilingData_->cacheMode == NORM_CACHE_MODE) {
+                    batchId = (startIdx + i) / tilingData_->seqLength;
+                    gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dk;
+                } else if (tilingData_->cacheMode == PA_CACHE_MODE) {
+                    int64_t pageIdx = seqIndex / this->tilingData_->blockSize;
+                    int64_t tokenInPageIdx = seqIndex % this->tilingData_->blockSize;
+                    gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen + cacheOffset;
+                } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
+                    int64_t pageId = seqIndex / tilingData_->blockSize;
+                    int64_t tokenOffsetInCurrentPage = seqIndex % tilingData_->blockSize;
+                    gmOffset = (pageId * dk1 * tilingData_->blockSize + tokenOffsetInCurrentPage) * dk0;
+                } else {
+                    return;
+                }
+                DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+
             }
         }
     }
@@ -779,7 +820,9 @@ public:
             inQueueX.FreeTensor(ropeLocal);
             inQueueCosSin.FreeTensor(realCosLocal);
             // 拷出到kCache
-            if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
+            if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT) {
+                ScatterUpdateMergedKVCache(calcRow, startIdx, kOutLocal, tilingData_->dk, true);
+            } else if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateK(calcRow, startIdx);
             } else {
                 ScatterBlkUpdateK(calcRow, startIdx);
@@ -814,7 +857,9 @@ public:
             outQueue.EnQue(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
             // 拷出到vCache
-            if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
+            if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT) {
+                ScatterUpdateMergedKVCache(calcRow, startIdx, vOutLocal, tilingData_->dv, false);
+            } else if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateV(calcRow, startIdx);
             } else {
                 ScatterBlkUpdateV(calcRow, startIdx);
@@ -827,12 +872,12 @@ public:
             outQueue.FreeTensor(vOutLocal);
         }
         inQueueGamma.FreeTensor(gammaLocal);
-        if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr ((IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
+                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) && tilingData_->quantMode == QUANT_MODE) {
             kScaleOffsetQueue.FreeTensor(realKScaleLocal);
         }
-        if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr ((IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
+                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) && tilingData_->quantMode == QUANT_MODE) {
             vScaleOffsetQueue.FreeTensor(vScaleLocal);
         }
     }
