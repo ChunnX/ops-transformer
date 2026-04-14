@@ -24,6 +24,10 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 > Runs with `B>1` produce incorrect outputs.  All tests and benchmarks must be
 > run with `B=1` until the multi-batch issue is diagnosed and fixed.
 
+> **TODO 4: move `fallback_blitz_sparse_attention.cpp under op_graph subdirectory 
+> as requested by liusixia. This is necessary in order to make it compilable into
+> opgraph library instead of obhost library as it is now.
+
 ## Quick test and benchmark in python:
 build the kernel as a custom experimental package, install it, then install our "torch_bsa" torch interface package
 ```shell
