@@ -237,7 +237,6 @@ public:
                 CopyInSfmg(nBurst, curS, actualSeqQlenAddr, ping);
             }
 
-
             set_flag(PIPE_MTE2, PIPE_V, eventId);
             wait_flag(PIPE_MTE2, PIPE_V, eventId);
 
@@ -252,7 +251,6 @@ public:
 
             // pre copyIn next nBurst
             if (i < singleCoreLoop - 1) {
-
                 set_flag(PIPE_V, PIPE_MTE2, eventId);
                 wait_flag(PIPE_V, PIPE_MTE2, eventId);
 
