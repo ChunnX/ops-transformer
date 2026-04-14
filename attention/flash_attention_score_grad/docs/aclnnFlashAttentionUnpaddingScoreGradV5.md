@@ -128,13 +128,13 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 ## aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize
 
 - **参数说明**
-  <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1543px"><colgroup>
     <col style="width: 198px">
     <col style="width: 120px">
     <col style="width: 289px">
     <col style="width: 302px">
     <col style="width: 238px">
-    <col style="width: 106px">
+    <col style="width: 120px">
     <col style="width: 130px">
     <col style="width: 146px">
     </colgroup>

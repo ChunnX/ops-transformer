@@ -71,15 +71,15 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 187px">
+  <table style="undefined;table-layout: fixed; width: 1586px"><colgroup>
+  <col style="width: 245px">
+  <col style="width: 120px">
+  <col style="width: 242px">
+  <col style="width: 336px">
+  <col style="width: 161px">
   <col style="width: 121px">
-  <col style="width: 287px">
-  <col style="width: 387px">
-  <col style="width: 187px">
-  <col style="width: 187px">
-  <col style="width: 187px">
-  <col style="width: 146px">
+  <col style="width: 216px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
   <tr>
@@ -117,9 +117,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
       <td>permutedProbsOutputGradOptional</td>
       <td>可选输入</td>
       <td>正向输出permutedProbs的梯度。</td>
-      <td>
-      • shape支持1D维度，topK_num为numTopk的值；<br>
-      • 与计算输出probsGradOut对应，传入空则不输出probsGradOut。</td>
+      <td><ul><li>shape支持1D维度，topK_num为numTopk的值；</li><li>与计算输出probsGradOut对应，传入空则不输出probsGradOut。</li></ul></td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>((rangeOptional[1] - rangeOptional[0]) * topK_num)</td>
@@ -149,7 +147,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
       <td>paddedMode</td>
       <td>输入</td>
       <td>-</td>
-      <td>true表示开启paddedMode，false表示关闭paddedMode,目前仅支持false。</td>
+      <td>true表示开启paddedMode。<br>false表示关闭paddedMode。<br>目前仅支持false。</td>
       <td>bool</td>
       <td>-</td>
       <td>-</td>

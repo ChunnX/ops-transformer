@@ -121,14 +121,14 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 170px">
+  <table style="undefined;table-layout: fixed; width: 1549px"><colgroup>
+  <col style="width: 245px">
   <col style="width: 120px">
-  <col style="width: 300px">  
-  <col style="width: 550px">  
-  <col style="width: 212px">  
-  <col style="width: 100px"> 
-  <col style="width: 190px">
+  <col style="width: 242px">
+  <col style="width: 365px">
+  <col style="width: 161px">
+  <col style="width: 121px">
+  <col style="width: 150px">
   <col style="width: 145px">
   </colgroup>
   <thead>

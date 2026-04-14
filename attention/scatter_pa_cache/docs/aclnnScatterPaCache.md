@@ -97,15 +97,15 @@ aclnnStatus aclnnScatterPaCache(
 
 - **参数说明**
 
-  <table class="tg" style="undefined;table-layout: fixed; width: 1548px"><colgroup>
-  <col style="width: 265px">
-  <col style="width: 86px">
-  <col style="width: 269px">
-  <col style="width: 462px">
-  <col style="width: 172px">
-  <col style="width: 111px">
-  <col style="width: 87px">
-  <col style="width: 96px">
+  <table style="undefined;table-layout: fixed; width: 1582px"><colgroup>
+  <col style="width: 231px">
+  <col style="width: 157px">
+  <col style="width: 271px">
+  <col style="width: 365px">
+  <col style="width: 161px">
+  <col style="width: 121px">
+  <col style="width: 131px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
