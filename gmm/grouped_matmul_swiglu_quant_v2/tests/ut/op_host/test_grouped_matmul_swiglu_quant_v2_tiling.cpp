@@ -295,6 +295,8 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2Tili
 
 namespace GroupedMatmulSwigluQuantV2UT {
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulSwigluQuantV2Tiling950);
+
 const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetAscend950Cases()
 {
     static const vector<GroupedMatmulSwigluQuantV2TilingCase> cases = LoadCases("Ascend950");
