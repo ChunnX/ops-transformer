@@ -24,6 +24,7 @@
 #include <set>
 #include <sstream>
 #include <algorithm>
+#include <unordered_set>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/data_copy_transpose_tiling.h"
