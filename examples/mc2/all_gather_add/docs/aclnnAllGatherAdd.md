@@ -60,8 +60,8 @@ aclnnStatus aclnnAllGatherMatmul(
     <col style="width: 120px">
     <col style="width: 300px">
     <col style="width: 330px">
-    <col style="width: 212px">
-    <col style="width: 100px">
+    <col style="width: 192px">
+    <col style="width: 120px">
     <col style="width: 160px">
     <col style="width: 125px">
     </colgroup>
@@ -239,7 +239,7 @@ aclnnStatus aclnnAllGatherMatmul(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考本算子README文件中的[编译与运行样例](../README.md)。
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
