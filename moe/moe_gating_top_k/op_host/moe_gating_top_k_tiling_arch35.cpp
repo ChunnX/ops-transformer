@@ -28,6 +28,7 @@ const static int64_t GROUP_SELECT_MODE_MAX = 0;
 const static int64_t GROUP_SELECT_MODE_SUM = 1;
 const static int64_t RENORM_NO = 0;
 const static int64_t RENORM_L1 = 1;
+const static int64_t RENORM_L2 = 2;
 const static int64_t NORM_TYPE_SOFTMAX = 0;
 const static int64_t NORM_TYPE_SIGMOID = 1;
 const static int64_t OUT_FLAG_FALSE = 0;
@@ -237,8 +238,9 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
             expertCount_ / groupCount_, groupSelectMode_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(renorm_ != RENORM_NO,
-                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld.", renorm_, RENORM_NO),
+    OP_CHECK_IF(renorm_ != RENORM_NO && renorm_ != RENORM_L1 && renorm_ != RENORM_L2,
+                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld, %ld and %ld.",
+                        renorm_, RENORM_NO, RENORM_L1, RENORM_L2),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(normType_ != NORM_TYPE_SOFTMAX && normType_ != NORM_TYPE_SIGMOID,
