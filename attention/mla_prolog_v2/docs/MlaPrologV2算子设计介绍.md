@@ -378,14 +378,19 @@ x_{d-2}
 $$
 
 在整个MlaPrologV2算子中，需要对$q^R$矩阵和$k^R$矩阵执行$ROPE$计算得到最终的$queryRope$和$keyRope$信息，$keyRope$信息最终要更新到$KRCache$中。
+
 $$
 q^R = ROPE(q^R)
 $$
+
 $$
 k^R = ROPE(k^R)
 $$
+
 ### MatmulQn
+
 对$q^C$矩阵乘上Key的上采样矩阵$W^{UK}$得到最终的Query矩阵$q^N$。
+
 $$
 q^N = q^C \cdot W^{UK} \tag{16}
 $$

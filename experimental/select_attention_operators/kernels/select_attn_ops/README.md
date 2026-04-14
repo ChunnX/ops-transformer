@@ -6,9 +6,8 @@ Operator `quest_prefill_metadata` computes initial metadata from the K cache. Ba
 
 __Brief functionality description:__ in every K-cache block - a D-dimentional vector metadata-MAX-vector is computed (maximum along token dimension -> D to 1 reduction), and for BLOCK_SIZE of such blocks (16384 tokens) we obtain BLOCK_SIZE such metadata-MAX-vectors which are packed into a single metadata-MAX-block. This metadata-block is be written into a specially determined region _maxblocks_ in GM. Same procedure, but with minimum instead of maximum reduction, is performed to determine a metadata-MIN-block, which is stored in the _minblocks_ in the same specially predetermined block index. These special predetermined indices are an argument passed to the kernel "metadata_block_tables" - a 2D table with MMBPR indices per request.
 
-
-
 __Operator prototype:__
+
 ```c++
 /**
  * @brief Interface the `quest prefill metadata` kernel.  This is the interface 
@@ -39,17 +38,20 @@ void quest_prefill_metadata(at::Tensor k_cache,
 ```
 
 Operator sizing parameters are:
+
  - `B` - batch size
  - `N` - number of KV heads
  - `BLOCK_SIZE` - number of tokens that fits in one maxblock and one minblock (default: 128)
  - `D` - head dimension (default: 128)
  * `MKBPR` - maximum number of blocks in every entry of the block_tables (num columns)
  * `MMBPR` - maximum number of blocks in every entry of the metadata_block_tables (num columns)
- 
+
 __Kernel Limitations__: BLOCK_SIZE=D=128
 
 ### Usage
+
 Once the operator was built, it can be used in your python code as follows:
+
 ```python
 import torch
 import torch_npu
@@ -82,9 +84,11 @@ quest_prefill_metadata(k_cache, seq_lens, block_tables, metadata_block_tables, m
 ```
 
 ### TODOs
+
 1. Dobule check why bf16 passes even though the whole min/max processing happens in fp16.
 
 ### Good practices
+
 1. If you only modify the operator file `quest_prefill_metadata.cpp`, you need to only re-run compile.sh to start observing the effect.
 2. If you modify the `torch_interface.cpp`, you need to rebuild the select_attn_ops python package using build.sh.
 
@@ -116,7 +120,9 @@ Algorithm steps:
     2.3. selected_values, selected_indices = Find the top-k indices across all relevant blocks
 3. Return selected_indices
 ```
+
 The operator prototype is as follows.  
+
 ```c++
 /** @brief Interface the `quest_block_select_paged` kernel.
  *
@@ -189,6 +195,7 @@ void quest_block_select_paged_in_out_w(at::Tensor query,
 ```
 
 Operator sizing parameters are:
+
  - `B` - batch size
  - `N` - number of KV heads
  - `H` - number of attention (aka query) heads, must be a multiple of N
@@ -199,6 +206,7 @@ Operator sizing parameters are:
  - `k` - number of important block indices to return for each KV head (top-k, default:8)
 
 Implementation Notes
+
  - Performance limitations require *D* = 128 and *BLOCK_SIZE* = 128
  - Requires Grouped Query Attention (GQA) configuration where H % N == 0
  - When for a given request r: `k > seq_lens[r] // BLOCK_SIZE` (i.e. there is not yet k blocks in the kv-cache at all) the kernel will run nevertheless, providing top-k indices, although some of them garbage (computed on the filler part of the metadata block) - it is therefore the user's responsibility to use this kernel with a k that is larger than the number of the KV blocks.
@@ -211,7 +219,9 @@ Implementation Notes
 ```
 
 ### Usage
+
 Once the operator was built, it can be used in your python code as follows:
+
 ```python
 import torch
 import torch_npu
@@ -253,7 +263,7 @@ quest_block_select_paged_in_out_w(query, maxblocks, minblocks, metadata_block_ta
 2. [quest_block_select_paged_in_out_w] check precisely what happens at boundary crossing from 1 metablock to 2nd
 3. [quest_block_select_paged_in_out_w] - avoid summing up metadata vectors that are invalid, even when they are not zeroes - look at the seq_lens - tokens_since_metadata_update to detemine that
 
-
 ## Good practices
+
 1. If you only modify the operator file `quest_block_select_paged.cpp`, you need to only re-run compile.sh to start observing the effect.
 2. If you modify the `torch_interface.cpp`, you need to rebuild the select_attn_ops python package using build.sh.

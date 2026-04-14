@@ -578,7 +578,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <summary><term>Ascend 950PR/Ascend 950DT</term>：</summary>
 
     - commAlg 当前版本不支持，传空指针即可。
-    - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+    - epSendCounts 的shape为 (epWorldSize \* max(tpWorldSize, 1) * localExpertNum, )。
     - 不支持TP通信域。
     - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。

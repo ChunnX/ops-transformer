@@ -201,16 +201,16 @@
 
 ## 约束说明
 
-  * 输入shape限制：
-      * kv为四维张量，shape为[Bkv,N,Skv,D]，Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。 
-      * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
-      * D为输入kv的head dim。rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。
-      * 若cache_mode为PA场景（cache_mode为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），其shape[BlockNum,BlockSize,N,Dk]中BlockSize需32B对齐。
-      * 输入张量均不支持空Tensor。
-  * 其他限制：
-      * 对于index，当cache_mode为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
-      * 当cache_mode为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
-      * 当cache_mode为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
+* 输入shape限制：
+  * kv为四维张量，shape为[Bkv,N,Skv,D]，Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。 
+  * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
+  * D为输入kv的head dim。rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。
+  * 若cache_mode为PA场景（cache_mode为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），其shape[BlockNum,BlockSize,N,Dk]中BlockSize需32B对齐。
+  * 输入张量均不支持空Tensor。
+* 其他限制：
+  * 对于index，当cache_mode为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
+  * 当cache_mode为PA_BNSD、PA_NZ时，shape为1维[Bkv \* Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
+  * 当cache_mode为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv \* ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
 
 ## 调用说明
 

@@ -513,7 +513,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
+        - `epRecvCountsOut`的shape为(epWorldSize \* max(tpWorldSize, 1) * localExpertNum,)。
         - `tpRecvCountsOut`当前版本不支持该输出。
         - `expandScalesOut`当前版本不支持该输出。
         - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mxfp8动态量化）。
@@ -619,9 +619,10 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 6. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 7. 参数说明里shape格式说明：
+
     - **A**：表示本卡可能接收的最大token数量，取值范围如下：
-      - 对于共享专家，需满足 (A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
-      - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS * epWorldSize * min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS * min(localExpertNum, K))。
+      - 对于共享专家，需满足 (A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum)。
+      - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS \* epWorldSize \* min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS \* min(localExpertNum, K))。
     - **H**：表示hidden size（隐藏层大小）：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[1024, 8192]。
