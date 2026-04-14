@@ -63,7 +63,7 @@ const std::string QUERY_PADDING_SIZE_NAME = "query_padding_size";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 const std::string VALUE_SHARED_PREFIX_NAME = "value_shared_prefix";
 const std::string ACTUAL_SHARED_PREFIX_LEN_NAME = "actual_shared_prefix_len";
-const std::string LEARNABLE_SINK_NAME = "learnable_sink";
+const std::string SINKS_NAME = "sinks";
 
 constexpr int32_t MASK_MODE_NO_MASK = 0;
 constexpr int32_t MASK_MODE_ALL_MASK = 1;
@@ -224,6 +224,10 @@ struct FAParaInfo {
 
     FAOptionalParaInfo pseShift = {nullptr, nullptr};
     FAOptionalParaInfo attenMask = {nullptr, nullptr};
+    FAOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
+    FAOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
+    FAOptionalParaInfo sequsedQ = {nullptr, nullptr};
+    FAOptionalParaInfo sequsedKv = {nullptr, nullptr};
     FAOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     FAOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
     FAOptionalParaInfo deqScale1 = {nullptr, nullptr};
@@ -246,6 +250,8 @@ struct FAParaInfo {
     FAOptionalParaInfo keyRope = {nullptr, nullptr};
     FAOptionalParaInfo keyRopeAntiquantScale = {nullptr, nullptr};
     FAOptionalParaInfo dequantScaleQuery = {nullptr, nullptr};
+    FAOptionalParaInfo sinks = {nullptr, nullptr};
+    FAOptionalParaInfo metadata = {nullptr, nullptr};
     FAOptionalParaInfo qStartIdx = {nullptr, nullptr};
     FAOptionalParaInfo kvStartIdx = {nullptr, nullptr};
 

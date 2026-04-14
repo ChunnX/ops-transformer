@@ -23,9 +23,12 @@
 
 #include "./actual_seq_len_checker.h"
 #include "./base_checker.h"
-#include "./learnable_sink_checker.h"
+#include "./empty_tensor_checker.h"
+#include "./layout_checker.h"
 #include "./mask_checker.h"
+#include "./metadata_checker.h"
 #include "./paged_attention_checker.h"
+#include "./sinks_checker.h"
 #include "./shape_checker.h"
 #include "./softmax_lse_checker.h"
 
@@ -44,9 +47,12 @@ public:
 
 private:
     std::unique_ptr<ActualSeqLenChecker> actualSeqLenChecker_;
-    std::unique_ptr<sinkChecker> sinkChecker_;
+    std::unique_ptr<EmptyTensorChecker> emptyTensorChecker_;
+    std::unique_ptr<LayoutChecker> layoutChecker_;
     std::unique_ptr<MaskChecker> maskChecker_;
+    std::unique_ptr<MetadataChecker> metadataChecker_;
     std::unique_ptr<PagedAttentionChecker> pagedAttentionChecker_;
+    std::unique_ptr<SinksChecker> sinksChecker_;
     std::unique_ptr<ShapeChecker> shapeChecker_;
     std::unique_ptr<SoftmaxLSEChecker> softmaxLSEChecker_;
 

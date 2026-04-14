@@ -169,19 +169,34 @@ void FaInfoParser::GetOptionalInputParaInfo()
 {
     GetOptionalInputParaActualSeqLengthInfo();
     GetOptionalInputParaPageAttentionInfo();
+    GetOptionalInputParaPostQuantInfo();
+    GetOptionalInputParaRopeInfo();
+    GetOptionalInputParaPseInfo();
+    GetOptionalInputParaLeftPaddingInfo();
+    GetOptionalInputParaPrefixInfo();
     GetOptionalInputParaSinksInfo();
+    GetOptionalInputParaQuantInfo();
+}
+void FaInfoParser::GetOptionalInputParaMaskInfo()
+{
+    // opParamInfo_.attenMask.tensor = context_->GetOptionalInputTensor(ATTEN_MASK_INDEX); // TOUSE: 获取attention mask tensor
+    // opParamInfo_.attenMask.desc = context_->GetOptionalInputDesc(ATTEN_MASK_INDEX); // TOUSE: 获取attention mask desc
 }
 
 void FaInfoParser::GetOptionalInputParaActualSeqLengthInfo()
 {
-    opParamInfo_.cuSeqLensQ.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
-    opParamInfo_.cuSeqLensQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
-    opParamInfo_.cuSeqLensKV.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
-    opParamInfo_.cuSeqLensKV.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_KV_INDEX);
-    opParamInfo_.sequsedQ.tensor = context_->GetOptionalInputTensor(SEQ_Q_INDEX);
-    opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(SEQ_Q_INDEX);
-    opParamInfo_.sequsedKV.tensor = context_->GetOptionalInputTensor(SEQ_KV_INDEX);
-    opParamInfo_.sequsedKV.desc = context_->GetOptionalInputDesc(SEQ_KV_INDEX);
+    opParamInfo_.cuSeqlensQ.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_Q_INDEX);
+    opParamInfo_.cuSeqlensQ.desc = context_->GetOptionalInputDesc(CU_SEQLENS_Q_INDEX);
+    opParamInfo_.cuSeqlensKv.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_KV_INDEX);
+    opParamInfo_.cuSeqlensKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_KV_INDEX);
+    opParamInfo_.sequsedQ.tensor = context_->GetOptionalInputTensor(SEQUSED_Q_INDEX);
+    opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
+    opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_INDEX);
+    opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(SEQUSED_KV_INDEX);
+    opParamInfo_.actualSeqLengthsQ.tensor = opParamInfo_.cuSeqlensQ.tensor;
+    opParamInfo_.actualSeqLengthsQ.desc = opParamInfo_.cuSeqlensQ.desc;
+    opParamInfo_.actualSeqLengths.tensor = opParamInfo_.cuSeqlensKv.tensor;
+    opParamInfo_.actualSeqLengths.desc = opParamInfo_.cuSeqlensKv.desc;
 }
 
 void FaInfoParser::GetOptionalInputParaPageAttentionInfo()
@@ -192,8 +207,78 @@ void FaInfoParser::GetOptionalInputParaPageAttentionInfo()
 
 void FaInfoParser::GetOptionalInputParaSinksInfo()
 {
-    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX); // TODO sinks 和输入保持一致
+    // opParamInfo_.quantScale2.tensor = context_->GetOptionalInputTensor(QUANT_SCALE2_INDEX); // TOUSE: 后量化scale
+    // opParamInfo_.quantScale2.desc = context_->GetOptionalInputDesc(QUANT_SCALE2_INDEX); // TOUSE
+    // opParamInfo_.quantOffset2.tensor = context_->GetOptionalInputTensor(QUANT_OFFSET2_INDEX); // TOUSE: 后量化offset
+    // opParamInfo_.quantOffset2.desc = context_->GetOptionalInputDesc(QUANT_OFFSET2_INDEX); // TOUSE
+}
+
+void FaInfoParser::GetOptionalInputParaRopeInfo()
+{
+    // opParamInfo_.queryRope.tensor = context_->GetOptionalInputTensor(QUERY_ROPE_INDEX); // TOUSE: query rope tensor
+    // opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INDEX); // TOUSE
+    // opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INDEX); // TOUSE: key rope tensor
+    // opParamInfo_.keyRope.desc = context_->GetOptionalInputDesc(KEY_ROPE_INDEX); // TOUSE
+    // opParamInfo_.keyRopeAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ROPE_ANTIQUANT_SCALE_INDEX); // TOUSE: key rope antiquant scale
+    // opParamInfo_.keyRopeAntiquantScale.desc = context_->GetOptionalInputDesc(KEY_ROPE_ANTIQUANT_SCALE_INDEX); // TOUSE
+}
+
+void FaInfoParser::GetOptionalInputParaPseInfo()
+{
+    // opParamInfo_.pseShift.tensor = context_->GetOptionalInputTensor(PSE_SHIFT_INDEX); // TOUSE: PSE shift tensor
+    // opParamInfo_.pseShift.desc = context_->GetOptionalInputDesc(PSE_SHIFT_INDEX); // TOUSE
+    // opParamInfo_.qStartIdx.tensor = context_->GetOptionalInputTensor(Q_START_IDX_INDEX); // TOUSE: query start index
+    // opParamInfo_.qStartIdx.desc = context_->GetOptionalInputDesc(Q_START_IDX_INDEX); // TOUSE
+    // opParamInfo_.kvStartIdx.tensor = context_->GetOptionalInputTensor(KV_START_IDX_INDEX); // TOUSE: KV start index
+    // opParamInfo_.kvStartIdx.desc = context_->GetOptionalInputDesc(KV_START_IDX_INDEX); // TOUSE
+}
+
+void FaInfoParser::GetOptionalInputParaLeftPaddingInfo()
+{
+    // opParamInfo_.kvPaddingSize.tensor = context_->GetOptionalInputTensor(KV_PADDING_SIZE_INDEX); // TOUSE: KV padding size
+    // opParamInfo_.kvPaddingSize.desc = context_->GetOptionalInputDesc(KV_PADDING_SIZE_INDEX); // TOUSE
+}
+
+void FaInfoParser::GetOptionalInputParaPrefixInfo()
+{
+    // opParamInfo_.keySharedPrefix.tensor = context_->GetOptionalInputTensor(KEY_SHARED_PREFIX_INDEX); // TOUSE: key shared prefix
+    // opParamInfo_.keySharedPrefix.desc = context_->GetOptionalInputDesc(KEY_SHARED_PREFIX_INDEX); // TOUSE
+    // opParamInfo_.valueSharedPrefix.tensor = context_->GetOptionalInputTensor(VALUE_SHARED_PREFIX_INDEX); // TOUSE: value shared prefix
+    // opParamInfo_.valueSharedPrefix.desc = context_->GetOptionalInputDesc(VALUE_SHARED_PREFIX_INDEX); // TOUSE
+    // opParamInfo_.actualSharedPrefixLen.tensor = context_->GetOptionalInputTensor(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE: actual shared prefix length
+    // opParamInfo_.actualSharedPrefixLen.desc = context_->GetOptionalInputDesc(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE
+}
+
+void FaInfoParser::GetOptionalInputParaSinksInfo()
+{
+    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
     opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
+    opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
+    opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
+}
+
+void FaInfoParser::GetOptionalInputParaQuantInfo()
+{
+    // opParamInfo_.deqScale1.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE1_INDEX); // TOUSE: dequant scale1
+    // opParamInfo_.deqScale1.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE1_INDEX); // TOUSE
+    // opParamInfo_.quantScale1.tensor = context_->GetOptionalInputTensor(QUANT_SCALE1_INDEX); // TOUSE: quant scale1
+    // opParamInfo_.quantScale1.desc = context_->GetOptionalInputDesc(QUANT_SCALE1_INDEX); // TOUSE
+    // opParamInfo_.deqScale2.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE2_INDEX); // TOUSE: dequant scale2
+    // opParamInfo_.deqScale2.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE2_INDEX); // TOUSE
+    // opParamInfo_.dequantScaleQuery.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX); // TOUSE: dequant scale query
+    // opParamInfo_.dequantScaleQuery.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE_QUERY_INDEX); // TOUSE
+    // opParamInfo_.antiquantScale.tensor = context_->GetOptionalInputTensor(ANTIQUANT_SCALE_INDEX); // TOUSE: antiquant scale
+    // opParamInfo_.antiquantScale.desc = context_->GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX); // TOUSE
+    // opParamInfo_.antiquantOffset.tensor = context_->GetOptionalInputTensor(ANTIQUANT_OFFSET_INDEX); // TOUSE: antiquant offset
+    // opParamInfo_.antiquantOffset.desc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX); // TOUSE
+    // opParamInfo_.keyAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ANTIQUANT_SCALE_INDEX); // TOUSE: key antiquant scale
+    // opParamInfo_.keyAntiquantScale.desc = context_->GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX); // TOUSE
+    // opParamInfo_.keyAntiquantOffset.tensor = context_->GetOptionalInputTensor(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE: key antiquant offset
+    // opParamInfo_.keyAntiquantOffset.desc = context_->GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE
+    // opParamInfo_.valueAntiquantScale.tensor = context_->GetOptionalInputTensor(VALUE_ANTIQUANT_SCALE_INDEX); // TOUSE: value antiquant scale
+    // opParamInfo_.valueAntiquantScale.desc = context_->GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX); // TOUSE
+    // opParamInfo_.valueAntiquantOffset.tensor = context_->GetOptionalInputTensor(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE: value antiquant offset
+    // opParamInfo_.valueAntiquantOffset.desc = context_->GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE
 }
 
 void FaInfoParser::GetInputParaInfo()
@@ -724,9 +809,14 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是�
     faInfo.totalLseSize =
         (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
     faInfo.isLegacyIfa = isLegacyIfa_;
-    faInfo.preToken = winLeft_;
-    faInfo.nextToken = winRight_;
-    faInfo.sinksFlag = (opParamInfo_.sinks.tensor != nullptr);
+    faInfo.preToken = preToken_;
+    faInfo.nextToken = nextToken_;
+    // faInfo.sinksFlag = (opParamInfo_.sinks.tensor != nullptr);
+    faInfo.antiQuantFlag = antiQuantFlag_;
+    faInfo.antiqSeqSize = antiquantParaSeqSize_;
+    // faInfo.keyAntiquantMode = static_cast<uint32_t>(*opParamInfo_.keyAntiquantMode);
+    // faInfo.valueAntiquantMode = static_cast<uint32_t>(*opParamInfo_.valueAntiquantMode);
+
     faInfo.isQKVDDifferent = (qkHeadDim_ != vHeadDim_) && !(qkHeadDim_ == 192U && vHeadDim_ == 128U);
 
     faInfo.sysPrefixFlag = systemPrefixFlag_;
