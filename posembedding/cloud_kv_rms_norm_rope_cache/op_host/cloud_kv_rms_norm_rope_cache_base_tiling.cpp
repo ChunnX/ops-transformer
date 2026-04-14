@@ -273,13 +273,26 @@ bool CloudKvRmsNormRopeCacheTilingBase::CheckIndexValid(
 
 int64_t CloudKvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingContext* context)
 {
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
+    const char* tmpQuantMode = attrs->GetStr(QUANT_MODE_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, tmpQuantMode);
+
+    std::string quantMode = tmpQuantMode;
+    isStaicQuant = quantMode == "static";
+    isNoneQuant = quantMode == "none";
+    isV128Quant = quantMode == "pertile128";
     auto scale1Shape = context->GetOptionalInputShape(K_ROPE_SCALE_IDX);
     auto scale2Shape = context->GetOptionalInputShape(C_KV_SCALE_IDX);
     bool allNullPtr = (scale1Shape == nullptr) && (scale2Shape == nullptr);
-    if (allNullPtr) {
+    if (allNullPtr && isNoneQuant) {
         return NON_QUANT_MODE;
-    } else {
+    } else if (!allNullPtr && isStaicQuant) {
         return QUANT_MODE;
+    } else if (allNullPtr && isV128Quant) {
+        return V_PERTILE_128_QUANT_MODE;
+    } else {
+        return -1;
     }
 }
 
@@ -313,9 +326,12 @@ ge::graphStatus CloudKvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     isRegbase_ = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     // GetQuantMode
     quantMode_ = GetQuantMode(context_);
+    OP_CHECK_IF(
+        (quantMode_ == -1), OP_LOGE(context_->GetNodeName(), "attr quantMode is invalid."),
+        return ge::GRAPH_FAILED);
     // Basic info
     auto kvShapeTuple = GetShapeTuple(context_, KV_INDEX);
-    auto kCacheShapeTuple = GetShapeTuple(context_, K_CACHE_INDEX);
+    auto vCacheShapeTuple = GetShapeTuple(context_, V_CACHE_INDEX);
     // Dk
     auto cosShapeTuple = GetShapeTuple(context_, COS_INDEX);
     // Dv
@@ -337,8 +353,8 @@ ge::graphStatus CloudKvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     int64_t batchSize = std::get<SHAPE_IDX_B>(kvShapeTuple);
     int64_t numHead = std::get<SHAPE_IDX_N>(kvShapeTuple);
     int64_t seqLen = std::get<SHAPE_IDX_S>(kvShapeTuple);
-    cacheLength_ = std::get<SHAPE_IDX_S>(kCacheShapeTuple);
-    blockSize_ = std::get<SHAPE_IDX_BLOCK_SIZE>(kCacheShapeTuple);
+    cacheLength_ = std::get<SHAPE_IDX_S>(vCacheShapeTuple);
+    blockSize_ = std::get<SHAPE_IDX_BLOCK_SIZE>(vCacheShapeTuple);
     isMTP_ = (seqLen > 1);
     OP_CHECK_IF(batchSize < 1, OP_LOGE(context_->GetNodeName(), "batchSize should >= 1."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(seqLen < 1, OP_LOGE(context_->GetNodeName(), "seqLen should >= 1."), return ge::GRAPH_FAILED);
@@ -393,6 +409,22 @@ ge::graphStatus CloudKvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
         isPagedAttention_ = false;
         currentCacheMode_ = CacheMode::Norm;
     }
+
+    const char* tmpRotaryMode = attrs->GetStr(ROTARY_MODE_IDX);
+    if (tmpRotaryMode != nullptr) {
+        std::string rotaryMode = tmpRotaryMode;
+        std::unordered_map<std::string, RotaryMode> rotaryModeMap = {
+            {"interleave_half", ROTARY_INTERLEAVE_HALF},
+            {"half_half", ROTARY_HALF_HALF}};
+        auto getRotaryMode = [&rotaryModeMap](const std::string& mode) -> RotaryMode {
+            auto it = rotaryModeMap.find(mode);
+            return (it != rotaryModeMap.end()) ? it->second : ROTARY_HALF_HALF;
+        };
+        rotaryMode_ = getRotaryMode(rotaryMode);
+    } else {
+        rotaryMode_ = ROTARY_HALF_HALF;
+    }
+
     const bool* isOutputKv = attrs->GetBool(IS_OUTPUT_KV_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, isOutputKv);
     isOutputKv_ = *isOutputKv;

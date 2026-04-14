@@ -51,11 +51,11 @@ TILING_DATA_FIELD_DEF(int64_t, outUbSize);
 TILING_DATA_FIELD_DEF(int64_t, rmsNormWspSize);
 TILING_DATA_FIELD_DEF(float, epsilon);
 TILING_DATA_FIELD_DEF(float, reciprocal);
-TILING_DATA_FIELD_DEF(int64_t, quantMode);
-TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
-TILING_DATA_FIELD_DEF(int64_t, cacheLayout);
-TILING_DATA_FIELD_DEF(int64_t, vStride);
-TILING_DATA_FIELD_DEF(int64_t, kStride);
+TILING_DATA_FIELD_DEF(int64_t, quantMode);   // 设置quant的类型，支持none、static、pertile128
+TILING_DATA_FIELD_DEF(int64_t, rotaryMode);  // 设置rope计算的旋转类型
+TILING_DATA_FIELD_DEF(int64_t, cacheLayout); // 设置cache具体排布格式
+TILING_DATA_FIELD_DEF(int64_t, vStride);     // 用于非连续的搬出到ckv_cacahe
+TILING_DATA_FIELD_DEF(int64_t, kStride);     // 用于非连续的搬出到k_cacahe
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(CloudKvRmsNormRopeCache_10000, CloudKvRmsNormRopeCacheRegbaseFullLoadTilingData)
@@ -127,6 +127,8 @@ constexpr int64_t C_KV_OFFSET_IDX = 10;
 constexpr int64_t V_IDX = 11;
 constexpr int64_t CACHE_MODE_IDX = 1;
 constexpr int64_t IS_OUTPUT_KV_IDX = 2;
+constexpr int64_t ROTARY_MODE_IDX = 3;
+constexpr int64_t QUANT_MODE_IDX = 4;
 constexpr int64_t SHAPE_IDX_B = 0;
 constexpr int64_t SHAPE_IDX_N = 1;
 constexpr int64_t SHAPE_IDX_S = 2;
@@ -148,6 +150,15 @@ constexpr int64_t BATCHES_FOR_EACH_CORE = 4;
 
 constexpr int64_t NON_QUANT_MODE = 0;
 constexpr int64_t QUANT_MODE = 1;
+constexpr int64_t V_PERTILE_128_QUANT_MODE = 2;
+
+constexpr int64_t ROTARY_INTERLEAVE_HALF = 0;
+constexpr int64_t ROTARY_HALF_HALF = 1;
+
+constexpr int64_t CACHE_CONTIGUOUS = 0;
+constexpr int64_t CACHE_SWA = 1;
+constexpr int64_t CACHE_SFA_NO_QUANT = 2;
+constexpr int64_t CACHE_SFA_C8 = 3;
 
 static constexpr int64_t UB_RESERVED_BYTE = 1024;
 static constexpr int64_t FULL_LOAD_BASE_TILING_KEY = 10000;
@@ -182,6 +193,8 @@ public:
     CacheMode currentCacheMode_ = CacheMode::Norm;
     int64_t quantMode_ = 0;
     int64_t methodMode_ = 0;
+    int64_t rotaryMode_ = 0;
+    int64_t cacheLayoutMode_ = 0;
 
     ge::DataType kvDtype_{ge::DataType::DT_FLOAT};
     int64_t kvDtypeSize_{0};
