@@ -250,7 +250,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(GM_ADDR x, GM_ADDR weight, GM
     // Bind GM — x and y are contiguous [S][B][H]
     xGM_.SetGlobalBuffer((__gm__ T *)x, (uint64_t)S_ * B_ * H_);
     weightGM_.SetGlobalBuffer((__gm__ T *)weight, (uint64_t)3 * H_);
-    maskGM_.SetGlobalBuffer((__gm__ uint8_t *)mask);
+    maskGM_.SetGlobalBuffer((__gm__ uint8_t *)mask, (uint64_t)B_ * S_);
     yGM_.SetGlobalBuffer((__gm__ T *)y, (uint64_t)S_ * B_ * H_);
 
     // ioQueue: [bUb][sUb+2][ubFactorH] T — 2 prefix rows + sCur data rows, each row ubFactorH wide
