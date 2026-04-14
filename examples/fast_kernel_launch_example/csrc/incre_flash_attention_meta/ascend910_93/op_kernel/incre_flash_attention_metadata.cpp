@@ -517,13 +517,13 @@ bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr)
     KERNEL_CHECK_FALSE(arg_ptr->batchSize > 0, false,
         "batchSize(%ld) must be greater than 0 !!", arg_ptr->batchSize);
     KERNEL_CHECK_FALSE((arg_ptr->querySeqSize >= 1 && arg_ptr->querySeqSize <= 16), false,
-        "querySeqSize(%ld) must be greater than 0 !!", arg_ptr->querySeqSize);
+        "querySeqSize(%ld) must be between [1,16] !!", arg_ptr->querySeqSize);
     KERNEL_CHECK_FALSE(arg_ptr->queryHeadNum > 0, false,
         "queryHeadNum(%ld) must be greater than 0 !!", arg_ptr->queryHeadNum);
     KERNEL_CHECK_FALSE(arg_ptr->keyHeadNum > 0, false,
         "keyHeadNum(%ld) must be greater than 0 !!", arg_ptr->keyHeadNum);
-    KERNEL_CHECK_FALSE((arg_ptr->queryHeadNum % arg_ptr.keyHeadNum == 0), false,
-        "queryHeadNum(%ld) should be mutiply of keyHeadNum(%ld) !!", arg_ptr->queryHeadNum, arg_ptr->keyHeadNum);    
+    KERNEL_CHECK_FALSE((arg_ptr->queryHeadNum % arg_ptr->keyHeadNum == 0), false,
+        "queryHeadNum(%ld) should be a multiple of keyHeadNum(%ld) !!", arg_ptr->queryHeadNum, arg_ptr->keyHeadNum);
     KERNEL_CHECK_FALSE(arg_ptr->headDim == 128, false,
         "headDim(%ld) must be 128 !!", arg_ptr->headDim);
     KERNEL_CHECK_FALSE((arg_ptr->blockSize == 128 || arg_ptr->blockSize == 512), false,
