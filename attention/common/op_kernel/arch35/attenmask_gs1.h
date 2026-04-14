@@ -259,7 +259,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
     // ub-head
-    AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
+    AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1StartIdx + 1, isPre);
 
     // ub-remain
     if (remainRowCount > 0) {
@@ -279,28 +279,28 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
 
     LocalTensor<int16_t> attenMaskUbDst = attenMaskUb.template ReinterpretCast<int16_t>();
     LocalTensor<int16_t> mask16 = attenMaskUb.template ReinterpretCast<int16_t>();
-    uint32_t dstMaskOffset = 0;
+    uint32_t dstMaskOffset = attenMaskS2Stride / sizeof(int16_t);
     uint32_t srcMaskBaseOffset = 0;
 
     // head
     SetMaskCount();
     SetVectorMask<int16_t, MaskMode::COUNTER>(attenMaskSizeAlign / 2);
     Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                        headGCount, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
+        headGCount - 1, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
     dstMaskOffset += headGCount * attenMaskS2Stride / sizeof(int16_t);
     srcMaskBaseOffset += headGCount * attenMaskS2Stride / sizeof(int16_t);
 
     // mid
     for (uint32_t midIdx = 0; midIdx < midS1Count; midIdx++) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                            info.gSize, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
+            info.gSize - 1, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
         dstMaskOffset += info.gSize * attenMaskS2Stride / sizeof(int16_t);
         srcMaskBaseOffset += info.gSize * attenMaskS2Stride / sizeof(int16_t);
     }
     // tail
     if (tailGSize > 0) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                            tailGSize, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
+            tailGSize - 1, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
     }
     SetMaskNorm();
     ResetMask();
