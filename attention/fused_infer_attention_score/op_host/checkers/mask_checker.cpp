@@ -277,11 +277,12 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
         }
     } else if (attenMaskDim == MASK_DIM_BSS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        // attenMask的shape应为(B, Q_S, >=KV_S)
-        OP_CHECK_IF((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
+        // attenMask的shape应为(B, Q_S, >=KV_S) 或 (1, Q_S, >=KV_S)
+        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.s1Size ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s2Size),
-                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be [B(%lld), Q_S(%lld), >=KV_S(%lld)], "
+                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be [B(%lld) or 1, Q_S(%lld), >=KV_S(%lld)], "
                     "but got [%lld, %lld, %lld]", fiaInfo.bSize, fiaInfo.s1Size, fiaInfo.s2Size,
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0),
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1),
@@ -289,12 +290,13 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                 return ge::GRAPH_FAILED);
     } else if (attenMaskDim == MASK_DIM_B1SS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        // attenMask的shape应为(B, 1, Q_S, >=KV_S)
-        OP_CHECK_IF((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
+        // attenMask的shape应为(B, 1, Q_S, >=KV_S) 或 (1, 1, Q_S, >=KV_S)
+        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_3) < fiaInfo.s2Size),
-                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be [B(%lld), 1, Q_S(%lld), >=KV_S(%lld)], "
+                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be [B(%lld) or 1, 1, Q_S(%lld), >=KV_S(%lld)], "
                     "but got [%lld, %lld, %lld, %lld]", fiaInfo.bSize, fiaInfo.s1Size, fiaInfo.s2Size,
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0),
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1),
