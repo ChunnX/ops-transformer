@@ -78,6 +78,7 @@ private:
     static constexpr uint64_t L0_BUF_NUM = 2;
     static constexpr uint64_t L0_BUF_OFFSET_B8 = 32 * 1024;
     static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 512;
+    static constexpr uint64_t L0C_BUF_SIZE = 256 * 256;
 
     int8_t aL1DbNum_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
@@ -118,6 +119,8 @@ private:
 
     LocalTensor<fp8_e8m0_t> mxScaleBL1_;
     uint64_t mxScaleBL1DbOffset_;
+
+    uint64_t l0cOffset_ = 0;
 };
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -299,6 +302,13 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
     l0CopyAndCalcParams.scaleKL1Size = MX_SCALE_K_L1_SIZE;
     uint64_t mL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t nL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
+    if (kbOffset == 0) {
+        uint64_t nextL0cBufSize = CeilAlign(l0CopyAndCalcParams.mL0Size, static_cast<int64_t>(BLOCK_CUBE)) *
+                                  CeilAlign(l0CopyAndCalcParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));
+        if (l0cOffset_ + nextL0cBufSize > L0C_BUF_SIZE) {
+            l0cOffset_ = 0;
+        }
+    }
     for (uint64_t l1KOffset = 0; l1KOffset < kbL1RealSize; l1KOffset += l0CopyAndCalcParams.kL0Size) {
         bool isLastL1K = l1KOffset + l0CopyAndCalcParams.kL0Size >= kbL1RealSize;
         l0CopyAndCalcParams.isFirstKLoop = (l1KOffset + kbOffset) == 0;
@@ -327,14 +337,14 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
         WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
         if constexpr (hasBias) {
             if (l0CopyAndCalcParams.isFirstKLoop) {
-                MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
                             biasTable_[loopId * BIAS_TABLE_OFFSET_B32], l0CopyAndCalcParams);
             } else {
-                MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
                             l0CopyAndCalcParams);
             }
         } else {
-            MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+            MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
                         l0CopyAndCalcParams);
         }
         SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
@@ -380,7 +390,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::GetTensorC(LocalT
     fixL0CToDstParams.outNSize = 256;          // 输出N方向的总大小，用于dstStride
     fixL0CToDstParams.splitNSize = 0;          // fixp输出多个矩阵时，N方向切分的大小
     fixL0CToDstParams.dstNdStride = 0;         // fixp输出多个矩阵时，目的相邻DN矩阵起始地址间的偏移
-    FixL0CToDst(yUb, l0c_, fixL0CToDstParams);
+    FixL0CToDst(yUb, l0c_[l0cOffset_], fixL0CToDstParams);
+    l0cOffset_ += Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE)) *
+                  CeilAlign(fixL0CToDstParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));
 }
 }  // namespace WeightQuantBatchMatmulV2::Arch35
 #endif
