@@ -202,7 +202,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>标识输入query、key、value的数据排布格式。</td>
     <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
         <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-    <td>CHAR</td>
+    <td>STRING</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -584,7 +584,7 @@ int main() {
   int64_t preTokens = 65535;
   int64_t nextTokens = 65535;
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;
