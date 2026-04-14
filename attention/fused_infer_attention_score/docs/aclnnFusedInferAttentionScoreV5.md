@@ -196,30 +196,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>BOOL、INT8、UINT8</td>
         <td>ND</td>
-        <td>
-        <ul>
-            <li>sparseMode = 0、1时
-            <ul>
-                <term>Ascend 950PR/Ascend 950DT</term>
-                <ul>
-                    <li>attenMaskOptional的shape输入支持传入:(B, Q_S, KV_S)，(1, Q_S, KV_S)，(B, 1, Q_S, KV_S)，(1, 1, Q_S, KV_S)
-                    </li>
-                </ul>
-            </ul>
-            <ul>
-                <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 和 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
-                <li>仅在Layout为BSH、BSND、BNSD、BNSD_BSND时，且query与key的Dvalue的D，并且不传query_rope和key_rope时：
-                  <ul>
-                      <li>Q_S = 1时，可支持shape传入: (B, KV_S)</li>
-                      <li>Q_S > 1时，可支持shape传入: (Q_S, KV_S)</li>
-                  </ul>
-              </li>
-            </ul>
-            </li>
-            <li>sparseMode = 2、3、4时，attenMaskOptional的shape输入支持传入(2048, 2048)或(1,2048,2048)或(1,1,2048,2048)</li>
-            <li>上述Q_S为query的shape中的S，KV_S为key和value的shape中的S；如果输入attenMask shape中的Q_S、KV_S非32B对齐，可以向上取到对齐的Q_S、KV_S。</li>
-        </ul>
-        </td>
+        <td>见<a href="#MaskChecker">Attention Mask参数组中的综合限制</a></td>
         <td>×</td>
     </tr>
     <tr>
@@ -267,7 +244,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>UINT64、FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
+        <td>见<a href="#DequantChecker">伪量化/全量化参数组中的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
@@ -284,7 +261,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
+        <td>见<a href="#DequantChecker">伪量化/全量化参数组中的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
@@ -302,7 +279,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>UINT64、FLOAT32</td>
         <td>ND</td>
-        <td>见<a href="#伪量化全量化参数组dequantchecker">伪量化/全量化参数组中的综合限制</a>。</td>
+        <td>见<a href="#DequantChecker">伪量化/全量化参数组中的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
@@ -319,7 +296,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32、BFLOAT16</td>
         <td>ND</td>
-        <td>见<a href="#后量化参数组postquantchecker">后量化参数组中的综合限制</a></td>
+        <td>见<a href="#PostQuantChecker">后量化参数组中的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
@@ -1007,7 +984,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
 
 ## 约束说明
 
-### 一、约束类型说明
+### 约束类型说明
 
 FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
 
@@ -1105,7 +1082,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 4. 对于输入各轴缩写，缩写需要具有自解释性，如QueryS、KeyNumHead、PseShiftS2等，禁止出现 S1、B、n2 等字眼；最好在基准信息说明中补充各个变量含义
 -->
 
-#### 公共参数组（ShapeChecker）
+#### 公共参数组（CommonChecker）
 
 - 单参数约束
 
@@ -1268,12 +1245,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
             <tr>
                 <td>Prefill MLA</td>
-                <td>
-                - <term> Ascend 950PR/Ascend 950DT </term> 
-                  - 不支持全量化、伪量化
-                - <term> Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 和 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
-                  - 不支持全量化、伪量化、tensorlist、左padding
-                </td>
+                <td>不支持全量化、伪量化</td>
             </tr>
             <tr>
                 <td>Decode MLA</td>
@@ -1281,6 +1253,10 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
         </tbody>
     </table>
+
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - Prefill MLA 场景下，不支持 tensorlist、左 padding
+        - MLA 场景下，不支持后量化
 
 #### PSE参数组
 
@@ -1331,7 +1307,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持 pse，不能传入 pseShift
     - 伪量化场景下，当 pseType 为 0 且 Q_S 为 1 时，pseShift 的第三维仅支持 1
 
-#### Attention Mask参数组
+#### <span id="MaskChecker">Attention Mask参数组</span>
 
 - 单参数约束
   - 公共
@@ -1339,6 +1315,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 
       - tensor dtype 为 INT8/UINT8/BOOL 类型
       - tensor format 为 ND/NCHW/NHWC/NCDHW 类型
+      - 如果输入attenMask shape中的Q_S、KV_S非32B对齐，可以向上取到对齐的Q_S、KV_S
     - 入参 sparseMode 需要满足以下条件：
 
       - sparseMode 支持输入范围为 0-4，默认值为 0
@@ -1361,15 +1338,16 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 一致性约束
   - 公共
     - 入参 attenMask 的输入维度仅支持 2/3/4
-      - Ascend 950PR/Ascend 950DT
+      - <term>Ascend 950PR/Ascend 950DT</term>：
         - 维度为 2 时，不支持 sparseMode 为 0/1 模式
-      - Atlas A3 训练系列产品/Atlas A3 推理系列产品和 Atlas A2 训练系列产品/Atlas A2 推理系列产品
-        - 维度为 2 时，支持 sparseMode 为 0/1 模式
-    - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S]
-    - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - sparseMode 为 0/1 模式时，若传入 query_rope 和 key_rope，或者 query 与 key 的 D 不等于 value 的 D，不支持 attenMask 输入维度为 2
+        - query 与 key 的 D 等于 value 的 D，并且不传 query_rope 和 key_rope 时,layout 仅支持为 BSH、BSND、BNSD、BNSD_BSND 
+    - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S + actualSharedPrefixLen]
+    - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048，即支持传入(2048,2048)或(1,2048,2048)或(1,1,2048,2048)
     - 非伪量化或 Q_S 大于1时，preTokens 与 nextTokens 应满足 nextTokens * (-1) <= preTokens，以确保具有有效数据
   - 伪量化
-    - Q_S等于1时，attenMask 输入维度仅支持 3/4，且 attenMask 输入的 shape 应满足，第一维等于 batchSize 或 1，最后一维应大于等于 blockTable 的第二维 * blockSize
+    - Q_S等于1时，attenMask 输入维度仅支持 3/4，且 attenMask 输入的 shape 应满足，第一维等于 batchSize 或 1，倒数第二维应大于等于 Q_S，最后一维应大于等于 blockTable 的第二维 * blockSize + actualSharedPrefixLen
     - Q_S大于1时，若 sparseMode 为 4 模式，且 attentionOut 为 int8 类型时，则 preTokens 与 nextTokens 均不能为负数
 - 特性交叉约束
   - 非量化
@@ -1418,7 +1396,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 全量化
     - Decode MLA 场景下，若传入 actualSeqLengths，query 的 layout 必须为 TND/NTD
 
-#### 伪量化/全量化参数组（DequantChecker）
+#### <span id="DequantChecker">伪量化/全量化参数组（DequantChecker）</span>
 
 - 单参数约束
   - 伪量化场景
@@ -1550,7 +1528,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - inputLayout 支持 BSH、BNSD、BSND、BNSD_BSND
       - 不支持PagedAttention场景、不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
 
-#### 后量化参数组（PostQuantChecker）
+#### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 
 - 单参数约束
   - 公共
