@@ -17,26 +17,28 @@
 #include "math.h"
 #include "kernel_basic_intf.h"
 #include "vector_api/vf_anti_quant_softmax_grad_front_cast.h"
+#include "vector_api/vf_softmax_grad_front_cast.h"
 #include "flash_attention_score_grad_common.h"
 using namespace AscendC;
 
 #define PRE_FUNCTION_TEMPLATE                                                                                          \
     template <typename T1, typename T2, typename OUTDTYPE, DTemplateType dTemplateType, const int8_t IS_D_NO_EQUAL,    \
-              const uint8_t DETER_SPARSE_TYPE, const uint32_t IS_TND, const uint8_t SPLIT_AXIS>
+              const uint8_t DETER_SPARSE_TYPE, const uint32_t IS_TND, const uint8_t SPLIT_AXIS,                        \
+              const uint8_t IS_TND_SWIZZLE>
 
-#define PRE_FUNCTION_ARGS_TEMPLATE T1, T2, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS
+#define PRE_FUNCTION_ARGS_TEMPLATE                                                                                     \
+    T1, T2, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE
 
 template <typename T1, typename T2, typename OUTDTYPE, DTemplateType dTemplateType = DTemplateType::Aligned128,
           const int8_t IS_D_NO_EQUAL = 0, const uint8_t DETER_SPARSE_TYPE = 0, const uint32_t IS_TND = 0,
-          const uint8_t SPLIT_AXIS = 0>
+          const uint8_t SPLIT_AXIS = 0, const uint8_t IS_TND_SWIZZLE = 0>
 class FlashAttentionScoreGradPresfmgRegbase {
 public:
     __aicore__ inline FlashAttentionScoreGradPresfmgRegbase(){};
     __aicore__ inline void
     Init(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dx, GM_ADDR y, GM_ADDR deqScaleDy, GM_ADDR actual_seq_qlen,
          GM_ADDR workspace,
-         const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND)>
-             *ordTilingData,
+         FagTilingType ordTilingData,
          TPipe *pipe_in);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
@@ -65,24 +67,23 @@ public:
     GlobalTensor<T1> dxGm;
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm, yGm;
 
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND)>
-        *tilingData;
+    FagTilingType tilingData;
 
     uint32_t vBlockIdx;
     // query
-    uint32_t ubBaseSize;
-    uint32_t qPreBlockFactor;
-    uint32_t qPreBlockTotal;
-    uint32_t qPreBlockTail;
-    uint32_t qPostBlockTotal;
-    uint32_t kPreBlockFactor;
-    uint32_t kPreBlockTotal;
-    uint32_t kPreBlockTail;
-    uint32_t kPostBlockTotal;
-    uint32_t vPreBlockFactor;
-    uint32_t vPreBlockTotal;
-    uint32_t vPreBlockTail;
-    uint32_t vPostBlockTotal;
+    uint64_t ubBaseSize;
+    uint64_t qPreBlockFactor;
+    uint64_t qPreBlockTotal;
+    uint64_t qPreBlockTail;
+    uint64_t qPostBlockTotal;
+    uint64_t kPreBlockFactor;
+    uint64_t kPreBlockTotal;
+    uint64_t kPreBlockTail;
+    uint64_t kPostBlockTotal;
+    uint64_t vPreBlockFactor;
+    uint64_t vPreBlockTotal;
+    uint64_t vPreBlockTail;
+    uint64_t vPostBlockTotal;
 
     uint64_t initdqSize;
     uint64_t dqOffset;
@@ -129,8 +130,7 @@ PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::Init(
     GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dx, GM_ADDR y, GM_ADDR deqScaleDy, GM_ADDR actual_seq_qlen,
     GM_ADDR workspace,
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND)>
-        *orgTilingData,
+    FagTilingType orgTilingData,
     TPipe *pipe_in)
 {
     if (g_coreType == AIV) {
@@ -216,6 +216,10 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             InitOutput<T1>(dqGm[dqOffset], initdqSize, 0);
             InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
             InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
+        } else if constexpr (IsSameType<T1, half>::value || IsSameType<T1, bfloat16_t>::value) {
+            InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
+            InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
+            InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
         } else {
             if (tilingData->s1s2BNGS1S2SplitCoreParams.s2Outer > 1) {
                 InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
@@ -226,6 +230,9 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             // FP8量化方案中，采用不同的数据分块方案
             CalTempDimAlign();
             DoSoftmaxGradFp8();
+        } else {
+            CalTempDimAlign();
+            DoSoftmaxGrad();
         }
     }
 }
@@ -233,9 +240,7 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
 PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::CalTempDimAlign()
 {
-    if (HEAD_DIM_ALIGN <= 256) {
-        tempDimAlign = HEAD_DIM_ALIGN;
-    } 
+    tempDimAlign = HEAD_DIM_ALIGN;
 }
 
 PRE_FUNCTION_TEMPLATE
@@ -360,6 +365,30 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         AscendC::MyAntiQuantSoftmaxGradFrontCast<T1, T2, OUTDTYPE, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
             deqScaleDxValue, static_cast<uint32_t>(curNBurst),
             static_cast<uint32_t>(dAlignToBlockB16));
+    } else {
+        if constexpr (HEAD_DIM_ALIGN <= 256) {
+            AscendC::MySoftmaxGradFrontCast<T1, T2, HEAD_DIM_ALIGN, HEAD_DIM_ALIGN>(
+                output1Buf, yInTensor, dxInTensor, static_cast<uint32_t>(curNBurst),
+                static_cast<uint32_t>(dAlignToBlockB16));
+        } else {
+            if (d <= 384) {
+                AscendC::MySoftmaxGradFrontCast<T1, T2, 384, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
+                                                                             static_cast<uint32_t>(curNBurst),
+                                                                             static_cast<uint32_t>(dAlignToBlockB16));
+            } else if (d <= 512) {
+                AscendC::MySoftmaxGradFrontCast<T1, T2, 512, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
+                                                                             static_cast<uint32_t>(curNBurst),
+                                                                             static_cast<uint32_t>(dAlignToBlockB16));
+            } else if (d <= 640) {
+                AscendC::MySoftmaxGradFrontCast<T1, T2, 640, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
+                                                                             static_cast<uint32_t>(curNBurst),
+                                                                             static_cast<uint32_t>(dAlignToBlockB16));
+            } else {
+                AscendC::MySoftmaxGradFrontCast<T1, T2, HEAD_DIM_ALIGN, HEAD_DIM_ALIGN>(
+                    output1Buf, yInTensor, dxInTensor, static_cast<uint32_t>(curNBurst),
+                    static_cast<uint32_t>(dAlignToBlockB16));
+            }
+        }
     }
     out1Que.EnQue(output1Buf);
     out1Que.DeQue<T2>();
