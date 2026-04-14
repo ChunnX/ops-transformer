@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_SPARSE_FLASH_ATTENTION_H
-#define ACLNN_SPARSE_FLASH_ATTENTION_H
+#ifndef ACLNN_SPARSE_FLASH_ATTENTION_PIONEER_H
+#define ACLNN_SPARSE_FLASH_ATTENTION_PIONEER_H
 
 #include "aclnn/acl_meta.h"
 #include "aclnn/aclnn_base.h"
@@ -30,6 +30,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionPion
     const aclTensor *blockTableOptional,
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,
+    const aclTensor *keySinkOptional,
+    const aclTensor *valueSinkOptional,
     const aclTensor *queryRopeOptional,
     const aclTensor *keyRopeOptional,
     double           scaleValue,
@@ -60,4 +62,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionPion
 }
 #endif
 
-#endif // ACLNN_SPARSE_FLASH_ATTENTION_H
+#endif // ACLNN_SPARSE_FLASH_ATTENTION_PIONEER_H

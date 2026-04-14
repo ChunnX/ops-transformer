@@ -9,7 +9,7 @@
  */
 
  /*!
- * \file sparse_flash_attention.cpp
+ * \file sparse_flash_attention_pioneer.cpp
  * \brief
  */
 
@@ -26,9 +26,9 @@ using namespace AscendC;
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
     do {                                                                                          \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,               \
-            BaseApi::QSFAMatmulService<__VA_ARGS__>, BaseApi::QSFAMatmulServiceDummy<__VA_ARGS__>>::type; \
+            BaseApi::SFAPMatmulService<__VA_ARGS__>, BaseApi::SFAPMatmulServiceDummy<__VA_ARGS__>>::type; \
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                \
-            BaseApi::QSFAVectorServiceDummy<__VA_ARGS__>, BaseApi::QSFAVectorService<__VA_ARGS__>>::type;   \
+            BaseApi::SFAPVectorServiceDummy<__VA_ARGS__>, BaseApi::SFAPVectorService<__VA_ARGS__>>::type;   \
         templateClass<CubeBlockType, VecBlockType> op;                                            \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                       \
         op.Init(query, key, value, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,      \
@@ -39,9 +39,9 @@ using namespace AscendC;
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
     do {                                                                                          \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,               \
-            BaseApi::QSFAMatmulService<__VA_ARGS__>, BaseApi::QSFAMatmulServiceDummy<__VA_ARGS__>>::type; \
+            BaseApi::SFAPMatmulService<__VA_ARGS__>, BaseApi::SFAPMatmulServiceDummy<__VA_ARGS__>>::type; \
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                \
-            BaseApi::QSFAVectorServiceDummy<__VA_ARGS__>, BaseApi::QSFAVectorService<__VA_ARGS__>>::type;   \
+            BaseApi::SFAPVectorServiceDummy<__VA_ARGS__>, BaseApi::SFAPVectorService<__VA_ARGS__>>::type;   \
         templateClass<CubeBlockType, VecBlockType> op;                                            \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                       \
         const tilingdataClass *__restrict tilingData = &tiling_data_in;                                     \
@@ -57,6 +57,7 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE>
 sparse_flash_attention_pioneer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                        __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blocktable,
                        __gm__ uint8_t *actualSeqLengthsQuery, __gm__ uint8_t *actualSeqLengthsKV,
+                       __gm__ uint8_t* keySink, __gm__ uint8_t* valueSink,
                        __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
                        __gm__ uint8_t *attentionOut, __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum,
                        __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
@@ -69,11 +70,11 @@ sparse_flash_attention_pioneer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm_
 #if (__CCE_AICORE__ == 310)
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
-        QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionPioneerMla, SparseFlashAttentionPioneerTilingDataMla, bfloat16_t, bfloat16_t,
+        QSFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, bfloat16_t, bfloat16_t,
                 float, bfloat16_t, FLASH_DECODE, true, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
                 static_cast<QSFATemplateMode>(TEMPLATE_MODE));
     } else {
-        QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionPioneerMla, SparseFlashAttentionPioneerTilingDataMla, half, half,
+        QSFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, half, half,
                 float, half, FLASH_DECODE, true, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
                 static_cast<QSFATemplateMode>(TEMPLATE_MODE));
     }

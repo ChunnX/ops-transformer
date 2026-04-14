@@ -412,9 +412,9 @@ void SFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
         accumOutSize = FDParamNums * headDimAlign_;
         logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / sfaInfo_->blockTypeSize);  // log和sum的存储空间一致，共需要2份内存
         workspaceSize_ += (accumOutSize + logSumExpSize) * sfaInfo_->blockTypeSize;
-        // if (sfaInfo_->socVersion == platform_ascendc::SocVersion::ASCEND310P) {
-        //     workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
-        // }
+        if (sfaInfo_->npuArch == NpuArch::DAV_2002) {
+            workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
+        }
     }
 }
 
@@ -1401,7 +1401,6 @@ void SFATilingCheck::Init()
     opName_ = sfaInfo_.opName;
     platformInfo_ = sfaInfo_.platformInfo;
     opParamInfo_ = sfaInfo_.opParamInfo;
-    // socVersion_ = sfaInfo_.socVersion;
     npuArch_ = sfaInfo_.npuArch;
 
     bSize_ = sfaInfo_.bSize;
@@ -1589,7 +1588,7 @@ ge::graphStatus SFAInfoParser::GetNpuInfo()
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != NpuArch::DAV_3510) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -1940,7 +1939,6 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.opName = opName_;
     sfaInfo.platformInfo = platformInfo_;
     sfaInfo.opParamInfo = opParamInfo_;
-    // sfaInfo.socVersion = socVersion_;
     sfaInfo.npuArch = npuArch_;
 
     sfaInfo.bSize = bSize_;

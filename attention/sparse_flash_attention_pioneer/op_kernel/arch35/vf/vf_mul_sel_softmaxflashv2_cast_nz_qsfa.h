@@ -9,20 +9,20 @@
  */
 
 /*!
- * \file vf_mul_sel_softmaxflashv2_cast_nz_qsfa.h
+ * \file vf_mul_sel_softmaxflashv2_cast_nz_sfap.h
  * \brief
  */
-#ifndef MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_QSFA_INTERFACE_H
-#define MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_QSFA_INTERFACE_H
+#ifndef MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_SFAP_H
+#define MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_SFAP_H
 
 #include "../util_regbase.h"
 #include "../sparse_flash_attention_pioneer_common_arch35.h"
-#include "vf_basic_block_aligned128_no_update_qsfa.h"
-#include "vf_basic_block_aligned128_update_qsfa.h"
-#include "vf_basic_block_unaligned64_update_qsfa.h"
-#include "vf_basic_block_unaligned64_no_update_qsfa.h"
-#include "vf_basic_block_unaligned128_no_update_qsfa.h"
-#include "vf_basic_block_unaligned128_update_qsfa.h"
+#include "vf_basic_block_aligned128_no_update_sfap.h"
+#include "vf_basic_block_aligned128_update_sfap.h"
+#include "vf_basic_block_unaligned64_update_sfap.h"
+#include "vf_basic_block_unaligned64_no_update_sfap.h"
+#include "vf_basic_block_unaligned128_no_update_sfap.h"
+#include "vf_basic_block_unaligned128_update_sfap.h"
 
 using namespace regbaseutil;
 
@@ -33,48 +33,48 @@ namespace QSFaVectorApi {
 using AscendC::LocalTensor;
 
 enum class OriginNRange {
-    EQ_128_QSFA = 0,         // originN == 128, better performance than GT_64_AND_LTE_128 (s2BaseSize=128)
-    GT_0_AND_LTE_64_QSFA,    // 0 < originN <= 64 (s2BaseSize <= 64 or tail s2)
-    GT_64_AND_LTE_128_QSFA,  // 64 < originN <= 128, support for non-alignment (s2BaseSize=128)
-    N_INVALID_QSFA
+    EQ_128_SFAP = 0,         // originN == 128, better performance than GT_64_AND_LTE_128 (s2BaseSize=128)
+    GT_0_AND_LTE_64_SFAP,    // 0 < originN <= 64 (s2BaseSize <= 64 or tail s2)
+    GT_64_AND_LTE_128_SFAP,  // 64 < originN <= 128, support for non-alignment (s2BaseSize=128)
+    N_INVALID_SFAP
 };
-template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
+template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_SFAP>
 __aicore__ inline void ProcessVec1NoUpdate(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
-    if constexpr (oriNRange == OriginNRange::EQ_128_QSFA) {
+    if constexpr (oriNRange == OriginNRange::EQ_128_SFAP) {
         ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_QSFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SFAP){
         ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_QSFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SFAP){
         ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
     }
 }
 
-template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
+template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_SFAP>
 __aicore__ inline void ProcessVec1Update(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
-    if constexpr (oriNRange == OriginNRange::EQ_128_QSFA) {
+    if constexpr (oriNRange == OriginNRange::EQ_128_SFAP) {
         ProcessVec1UpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_QSFA) {
+    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SFAP) {
         ProcessVec1UpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_QSFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SFAP){
         ProcessVec1UpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
     }
 }
 
-template <typename T, typename T2, bool isUpdate = false, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_QSFA>
+template <typename T, typename T2, bool isUpdate = false, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_SFAP>
 __aicore__ inline void ProcessVec1Vf(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
@@ -159,4 +159,4 @@ __aicore__ inline void DuplicateSumWithR0(const LocalTensor<T>& sumTensor, const
     DuplicateSumWithR0VF<T>(sumUb, R0, m);
 }
 } // namespace
-#endif // MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_QSFA_INTERFACE_H
+#endif // MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_SFAP_H

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file vf_basic_block_unaligned128_update_qsfa.h
+ * \file vf_basic_block_unaligned128_update_sfap.h
  * \brief
  */
-#ifndef VF_BASIC_BLOCK_UNALIGNED128_UPDATE_QSFA_H
-#define VF_BASIC_BLOCK_UNALIGNED128_UPDATE_QSFA_H
+#ifndef VF_BASIC_BLOCK_UNALIGNED128_UPDATE_SFAP_H
+#define VF_BASIC_BLOCK_UNALIGNED128_UPDATE_SFAP_H
 
 #include "vf_basic_block_utils.h"
 #include "../util_regbase.h"
@@ -154,4 +154,4 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl128(
 }
 } // namespace
 
-#endif // VF_BASIC_BLOCK_UNALIGNED128_UPDATE_QSFA_H
+#endif // VF_BASIC_BLOCK_UNALIGNED128_UPDATE_SFAP_H

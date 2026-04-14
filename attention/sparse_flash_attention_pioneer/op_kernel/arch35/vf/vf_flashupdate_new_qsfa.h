@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file vf_flashupdate_new_qsfa.h
+ * \file vf_flashupdate_new_sfap.h
  * \brief
  */
-#ifndef FLASH_UPDATE_NEW_INTERFACE_QSFA_H
-#define FLASH_UPDATE_NEW_INTERFACE_QSFA_H
+#ifndef FLASH_UPDATE_NEW_INTERFACE_SFAP_H
+#define FLASH_UPDATE_NEW_INTERFACE_SFAP_H
 
 #include "vf_basic_block_utils.h"
 #include "../util_regbase.h"
@@ -165,4 +165,4 @@ __aicore__ inline void LastDivNew(const LocalTensor<T>& dstTensor, const LocalTe
 }
 } // namespace
 
-#endif // FLASH_UPDATE_NEW_INTERFACE_QSFA_H
+#endif // FLASH_UPDATE_NEW_INTERFACE_SFAP_H

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_flash_attention_template_tiling_key.h
+ * \file sparse_flash_attention_pioneer_template_tiling_key.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_TEMPLATE_TILING_KEY_H
-#define SPARSE_FLASH_ATTENTION_TEMPLATE_TILING_KEY_H
+#ifndef SPARSE_FLASH_ATTENTION_PIONEER_TEMPLATE_TILING_KEY_H
+#define SPARSE_FLASH_ATTENTION_PIONEER_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -68,4 +68,4 @@ ASCENDC_TPL_SEL(
     ),
 );
 
-#endif // TEMPLATE_TILING_KEY
+#endif // SPARSE_FLASH_ATTENTION_PIONEER_TEMPLATE_TILING_KEY_H

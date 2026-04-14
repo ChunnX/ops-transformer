@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file vf_basic_block_aligned128_no_update_qsfa.h
+ * \file vf_basic_block_aligned128_no_update_sfap.h
  * \brief
  */
-#ifndef VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_QSFA_H
-#define VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_QSFA_H
+#ifndef VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_SFAP_H
+#define VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_SFAP_H
 
 #include "vf_basic_block_utils.h"
 #include "../util_regbase.h"
@@ -134,4 +134,4 @@ __aicore__ inline void ProcessVec1NoUpdateImpl128(
 }
 } // namespace
 
-#endif // VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_QSFA_H
+#endif // VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_SFAP_H
