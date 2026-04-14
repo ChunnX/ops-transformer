@@ -15,7 +15,7 @@
 
 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 
-- 情形1：如果quaneMode=0（非量化场景）：
+- 情形1：如果quant_mode=0（非量化场景）：
 
 $$
 allToAllXOut = AllToAllV(X)\\
@@ -26,7 +26,7 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形2：如果quaneMode=2（pertoken动态量化场景）：
+- 情形2：如果quant_mode=2（pertoken动态量化场景）：
 
 $$
 xFp32 = CastToFp32(X) \times scales \\
@@ -206,7 +206,7 @@ $$
   <tr>
    <td>global_bs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank Bs一致时，global_bs = Bs * ep_world_size 或 0；各rank Bs不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size 或 0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡BS最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -248,7 +248,7 @@ $$
   <tr>
    <td>expand_x_out</td>
    <td>输出</td>
-   <td>根据expand_ids进行扩展过的token特征。</td>
+   <td>根据expert_ids进行扩展过的token特征。</td>
    <td>FLOAT16、BFLOAT16、INT8</td>
    <td>ND</td>
   </tr>
@@ -310,8 +310,8 @@ $$
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `Bs` * `ep_world_size` * `shared_expert_num` / `shared_expert_rank_num`。
-        - 对于MoE专家，当`global_bs`为0时，要满足`A` >= `Bs` * `ep_world_size` * min(`local_expert_num`, `K`)；当`global_bs`非0时，要满足`A` >= `global_bs` * min(`local_expert_num`, `K`)。
+        - 对于共享专家，要满足`A` = `BS` * `ep_world_size` * `shared_expert_num` / `shared_expert_rank_num`。
+        - 对于MoE专家，当`global_bs`为0时，要满足`A` >= `BS` * `ep_world_size` * min(`local_expert_num`, `K`)；当`global_bs`非0时，要满足`A` >= `global_bs` * min(`local_expert_num`, `K`)。
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`。
     - `local_expert_num`：表示本卡专家数量。
         - 对于共享专家卡，`local_expert_num` = 1
@@ -330,20 +330,20 @@ $$
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数约束：
-        - `elasticInfoOptional`：当前版本不支持，传空指针即可。
+        - `elastic_info_optional`：当前版本不支持，传空指针即可。
         - `ep_world_size`：取值范围[2, 768]。
         - `moe_expert_num`：取值范围(0, 1024]。
         - `shared_expert_num`：取值支持[0, 4]。
         - `comm_alg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。
             - ""：默认值，使能fullmesh_v1模板。
             - "fullmesh_v1"：使能fullmesh_v1模板。
-            - "fullmesh_v2"：使能fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`Bs`不一致、输入xActiveMask和特殊专家场景下使能。
+            - "fullmesh_v2"：使能fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下使能。
         - `ep_recv_count_out`：要求shape为 (`ep_world_size` * max(`tp_world_size`, 1) * `local_expert_num`, )。
         - `performance_Info_optional`：预留参数，当前版本不支持，传空指针即可。
-        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_opstransformer/ops/deep_ep.py)。
+        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `Bs`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
+        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
 
 ## 调用说明
 
