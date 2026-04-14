@@ -35,7 +35,7 @@ m = max(sink, max(S))
 $$
 
 $$
-Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + S^{sink - m}}
+Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
 $$
 
 ## 函数原型
@@ -183,7 +183,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的query的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的key/value的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -383,7 +383,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>softmaxOutOut</td>
-        <td>输入</td>
+        <td>输出</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
