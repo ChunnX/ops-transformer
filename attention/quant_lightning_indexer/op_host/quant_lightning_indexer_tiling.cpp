@@ -845,8 +845,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        uint32_t s1BaseSize = 4;
-        uint32_t s2BaseSize = 128;
+        constexpr uint32_t s1BaseSize = 4;
+        constexpr uint32_t s2BaseSize = 128;
         workspaceSize +=
             s1BaseSize * ((tilingInfo->s2Size + s2BaseSize - 1) / s2BaseSize) * s2BaseSize * sizeof(uint16_t) * aicNum;
     } else {
