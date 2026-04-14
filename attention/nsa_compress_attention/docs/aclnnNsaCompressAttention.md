@@ -153,7 +153,7 @@ aclnnStatus aclnnNsaCompressAttention(
         <td>
           <ul>
             <li>输入shape需为[S,S]。</li>
-            <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmqSkv)。</li>
+            <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmpSkv)。</li>
           </ul>
         </td>
         <td>BOOL</td>
