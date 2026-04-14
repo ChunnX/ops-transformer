@@ -10,7 +10,7 @@
 
 /*!
  * \file section_stream_k_def.h
- * \brief
+ * \brief SectionStreamK结构体定义
  */
 
 #ifndef SECTION_STREAM_K_DEF_H
@@ -22,8 +22,8 @@
 
 namespace load_balance {
 
-struct SectionStreamKParam : GeneralSplitParam {
-    uint32_t l2Kb { 128 * 1024U * 1024U };              // L2 size in KB
+struct SectionStreamKParam : GeneralBalanceParam {
+    uint32_t l2Kb { 128 * 1024U };              // L2 size in KB
     uint32_t v0Cost { 0U };
 };
 

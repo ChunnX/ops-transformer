@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file load_balance_common.h
+ * \file stream_k.h
  * \brief 
  */
 
@@ -18,27 +18,39 @@
 
 #include <cstdint>
 #include <array>
+#include <functional>
 #include <unordered_map>
 
-using namespace aicpu;
-
 namespace load_balance {
+
 /******************************** ERROR CODE ********************************/
 #define LOAD_BALANCE_SUCCESS                0
 #define LOAD_BALANCE_ERROR_INVALID_INPUT    1
 
 /******************************** CLASS DEF  ********************************/
+
+template<class T>
+using Range = std::pair<T, T>;
+
+template<class T, size_t ROW, size_t COL>
+using Table = std::array<std::array<T, COL>, ROW>;
+
+using CostFunc = std::function<uint32_t(uint32_t, uint32_t)>;       // The cost function of the algo
+
 struct DeviceInfo {
-    uint32_t aicCoreNum { 0U };
-    uint32_t aivCoreNum { 0U };
+    uint32_t aicCoreMaxNum { 0U };      // At most amount of aic core would be turned on, this is not final used number
+    uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
+    uint32_t aivCoreMaxNum { 0U };      // At most amount of aiv core would be turned on, this is not final used number
+    uint32_t aivCoreMinNum { 0U };      // At least amount of aiv core would be turned on, this is not final used number
     std::string socVersion {};
 };
 
-struct GeneralSplitParam {
-    uint32_t mBaseSize { 1U };
-    uint32_t s2BaseSize { 1U };
-    int64_t faToleranceRatio { 2 };
-    int64_t fdTolerance { 0U };                         // no fd + tolerance < fd, then choose no fd
+struct GeneralBalanceParam {
+    uint32_t mBaseSize { 1U };              // At least one
+    uint32_t s2BaseSize { 1U };             // At least one
+    int64_t faToleranceRatio { 2U };
+    int64_t fdTolerance { 0U };             // no fd + tolerance < fd, then choose no fd
+    CostFunc costFunc { nullptr };          // algo would use its own default cost func if nullptr is passed
 };
 
 enum class SparseMode : uint8_t {
@@ -70,18 +82,12 @@ enum class DataType : uint8_t {
     BUTT
 };
 
-template<class T>
-using Range = std::pair<T, T>;
-
-template<class T, size_t N>
-using SquareTable = std::array<std::array<T, N>, N>;
-
 /******************************** UTIL FUNC ********************************/
 template<class T>
 inline T CeilDiv(T a, T b)
 {
-    if (b == 0) {                                                                                                                                                                
-        return 0;                                                                                                                                                                
+    if (b == 0) {
+        return 0;
     }
     return a / b + (a % b != 0);        // avoid overflow
 }
@@ -89,10 +95,20 @@ inline T CeilDiv(T a, T b)
 template<class T>
 inline T FloorDiv(T a, T b)
 {
-    if (b == 0) {                                                                                                                                                                
-        return 0;                                                                                                                                                                
+    if (b == 0) {
+        return 0;
     }
-    return a / b;        // avoid overflow
+    return a / b;
+}
+
+template<class T>
+inline T SafeFloorDiv(T a, T b, T val)
+{
+    static_assert(std::is_integral_v<T>, "must be integer type");
+    if (b == 0) {
+        return val;
+    }
+    return a / b;
 }
 
 template<typename T>
