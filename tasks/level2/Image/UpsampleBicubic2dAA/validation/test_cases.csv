@@ -1,0 +1,9 @@
+case_id;dtype;n;c;h_in;w_in;out_h;out_w;align_corners
+0;float32;1;3;8;8;16;16;false
+1;float16;1;3;8;8;16;16;false
+2;bfloat16;1;3;8;8;16;16;false
+3;float32;1;3;16;16;8;8;false
+4;float32;2;4;32;32;64;64;false
+5;float32;1;3;8;8;16;16;true
+6;float16;1;3;32;32;48;48;false
+7;float32;1;1;4;4;8;8;true
