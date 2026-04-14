@@ -190,6 +190,9 @@ function(gen_aclnn_with_opdef)
       list(APPEND mc2_level2_headers ${header_file})
     endif()
   endforeach()
+  message(STATUS "DEBUG: level2_ops_list count = ${level2_ops_list}")
+  message(STATUS "DEBUG: mc2_aclnn_master_headers count = ${mc2_aclnn_master_headers}")
+  message(STATUS "DEBUG: mc2_level2_headers count = ${mc2_level2_headers}")
 
   # 将头文件安装到packages/vendors/vendor_name/op_api/include
   if (NOT ENABLE_BUILT_IN)
