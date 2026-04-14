@@ -454,7 +454,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     }
 
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
-    uint32_t statusBufCntAlign = Ceil(Ceil(totalExpertNum_, aivNum_), 8) * 8;   // 8 = UB_ALIGN / sizeof(int32_t)
+    // uint32_t statusBufCntAlign = Ceil(Ceil(totalExpertNum_, aivNum_), 8) * 8;   // 8 = UB_ALIGN / sizeof(int32_t)
+    uint32_t statusBufCntAlign = Ceil(moeExpertNumPerRank_, 8) * 8; 
     uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     totalUsedUB_ += statusBufSize;
@@ -985,11 +986,29 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allt
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetStatus()
 {
-    SplitToCore(totalExpertNum_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
+    uint32_t aivPerRank = aivNum_ / epWorldSize_;
+    uint32_t expertNumPerCore = moeExpertNumPerRank_ / aivPerRank;                // 每个aiv需要负责的expert数目
+    uint32_t remainderExpertNum = moeExpertNumPerRank_ % aivPerRank;  // 余数
+    uint32_t newAivId = aivId_ % aivPerRank;
+    uint32_t startExpertOffset = expertNumPerCore * newAivId;  // 每个aiv发送时的起始expertid的偏移
+    if (newAivId < remainderExpertNum) {      // 前remainderRankNum个aiv需要多发1个卡的数据
+        expertNumPerCore += 1;
+        startExpertOffset += newAivId;
+    } else {
+        startExpertOffset += remainderExpertNum;
+    }
+    uint32_t endExpertOffset = startExpertOffset + expertNumPerCore;
+    uint32_t startRankId= aivId_ / aivPerRank;
+    if (startRankId >= epWorldSize_) {
+        SyncAll<true>();
+        return;
+    }
+    startExpertId_ = startRankId * moeExpertNumPerRank_ + startExpertOffset;
+    sendExpertNum_ = expertNumPerCore;
+    endExpertId_ = startExpertId_ + expertNumPerCore;
 
     for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
         int32_t curExpertCnt = 0;
-        // 一个block有8个int32的元素，第一个元素为flag位，第二个为发送token数
         int32_t cntPosIndex = (curExpertId - startExpertId_) * 8 + 1;
         if ((curExpertId < sharedExpertRankNum_) && (activeMaskBsCnt_ > 0)) {  // 当前处理专家为共享专家 shared:Cnt -> win -> LocalCopy(moe+share)
             if (curExpertId % rankNumPerSharedExpert_ == epRankId_ % rankNumPerSharedExpert_) {
@@ -1003,24 +1022,18 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
-    if (startExpertId_ >= totalExpertNum_) {return;}
     GlobalTensor<int32_t> rankGMTensor;
 
-    for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
-        uint32_t dstRankId = expertIndex;
-        uint32_t offset = stateOffset_ * epRankId_;
-        if (expertIndex >= sharedExpertRankNum_) {
-            dstRankId = ((expertIndex - sharedExpertRankNum_) / moeExpertNumPerRank_ + sharedExpertRankNum_);
-            offset += ((expertIndex - sharedExpertRankNum_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
-        }
-        if (isScalingDownFlag_) {
-            dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
-        }
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset);  // 计算地址偏移
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
-        // 按32对齐拷贝，8是32字节包含的元素个数, 本卡数据需要去掉起始index偏移
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_)* 8], 8UL);
+    uint32_t dstRankId = startRankId;
+    if (isScalingDownFlag_) {
+        dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
     }
+    uint32_t offset = stateOffset_ * epRankId_ + startExpertOffset * stateOffset_ * epWorldSize_;
+    GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset);  // 计算地址偏移
+    rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
+    DataCopyParams StatusCopyParams{static_cast<uint16_t>(endExpertId_ - startExpertId_), 1,
+                        static_cast<uint16_t>(0), static_cast<uint16_t>(epWorldSize_ - 1)};
+    DataCopy<int32_t>(rankGMTensor, statusTensor_, StatusCopyParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
