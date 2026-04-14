@@ -23,8 +23,8 @@
 #include "vector_api/vf_broadcast_sub_mul.h"
 #include "vector_api/vf_cast_transdata_deconflict.h"
 #include "vector_api/vf_cal_sink.h"
+#include "vector_api/vf_ds_abs_reduce_max.h"
 namespace FagBaseApi {
-constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t SYNC_V0_V1_DS_A_MAX_DONE_FLAG = 10;
 constexpr uint32_t BIT_MASK_NUM = 8;
 constexpr uint32_t BIT32_ALIGN_NUM = 8;
@@ -136,7 +136,7 @@ public:
     GlobalTensor<INPUT_TYPE> valueGm;
     GlobalTensor<OUTDTYPE> yGm, pseGm, dyGm;
     GlobalTensor<uint8_t> dropMaskGm, attenMaskU8Gm;
-    GlobalTensor<float> softmaxMaxGm, softmaxSumGm, pseFloatGm;
+    GlobalTensor<float> softmaxMaxGm, softmaxSumGm, pseFloatGm, sfmgWorkSpaceGm;
     GlobalTensor<float> deqScaleQGm, deqScaleKGm, deqScaleVGm, deqScaleDyGm;
     GM_ADDR pseSlope;
     GlobalTensor<uint8_t> dropMaskWorkspaceGm;
@@ -237,6 +237,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
             dropMaskWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + tilingData->postTilingData.dropMaskGmOffset);
         }
     }
+    if (tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg) {
+        sfmgWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.sfmgWorkSpaceOffset / sizeof(float));
+    }
     if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
         sinkGm.SetGlobalBuffer((__gm__ float *)sink);
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
@@ -272,9 +275,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer()
      **/
     pipe->InitBuffer(attenMaskOrYInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(pseOrDyInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(OUTDTYPE));
-    pipe->InitBuffer(softmaxGradResBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
-    pipe->InitBuffer(maxSumQue[0], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
-    pipe->InitBuffer(maxSumQue[1], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
+    if (tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg) {
+        pipe->InitBuffer(maxSumQue[0], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO + VECTOR_BASEM * sizeof(float));
+        pipe->InitBuffer(maxSumQue[1], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO + VECTOR_BASEM * sizeof(float));
+    } else {
+        pipe->InitBuffer(softmaxGradResBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
+        pipe->InitBuffer(maxSumQue[0], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
+        pipe->InitBuffer(maxSumQue[1], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
+    }
     if constexpr (IS_DROP) {
         pipe->InitBuffer(dropMaskBuf, VECTOR_BASEM * VECTOR_BASEN * sizeof(uint8_t) / BIT_MASK_NUM);          // 1k
         pipe->InitBuffer(dropmaskIndexVecBuf, VECTOR_BASEM * VECTOR_BASEN / (NUM_TWO * BIT_MASK_NUM) * sizeof(int32_t)); // 2k
@@ -319,10 +327,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec1(FagConstInfo &con
     }
     LocalTensor<CALC_TYPE> softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
     if constexpr (HEAD_DIM_ALIGN <= VECTOR_BASEN) {
-        CopyInSoftmaxGrad<OUTDTYPE, CALC_TYPE, VECTOR_BASEM, HEAD_DIM_ALIGN, IS_D_NO_EQUAL>(
+        CopyInSoftmaxGrad<TEMPLATE_ARGS>(
             constInfo, runInfo, 0, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.halfS1RealSize,
             attenMaskOrYInQue, pseOrDyInQue, dyGm, yGm);
-        CalculateCastSoftmaxGrad<OUTDTYPE, CALC_TYPE, VECTOR_BASEM, HEAD_DIM_ALIGN>(
+        CalculateCastSoftmaxGrad<TEMPLATE_ARGS>(
             constInfo, runInfo.commonRunInfo.halfS1RealSize, attenMaskOrYInQue, pseOrDyInQue, softmaxGradResTensor);
     } else {
         uint32_t loopNum = Ceil<uint32_t>(runInfo.commonRunInfo.halfS1RealSize, constInfo.sfmgMaxLoopSize);
@@ -333,9 +341,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec1(FagConstInfo &con
             if (loopIdx == loopNum - 1) {
                 curLoopSize = tailLoopSize;
             }
-            CopyInSoftmaxGrad<OUTDTYPE, CALC_TYPE, VECTOR_BASEM, HEAD_DIM_ALIGN, IS_D_NO_EQUAL>(
+            CopyInSoftmaxGrad<TEMPLATE_ARGS>(
                 constInfo, runInfo, loopIdx, curLoopSize, loopSize, attenMaskOrYInQue, pseOrDyInQue, dyGm, yGm);
-            CalculateCastSoftmaxGrad<OUTDTYPE, CALC_TYPE, VECTOR_BASEM, HEAD_DIM_ALIGN>(
+            CalculateCastSoftmaxGrad<TEMPLATE_ARGS>(
                 constInfo, curLoopSize, attenMaskOrYInQue, pseOrDyInQue, softmaxGradResTensor[loopSize * loopIdx]);
         }
     }
@@ -345,7 +353,12 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                               int64_t taskId)
 {
-    CopyInMaxSum<float, VECTOR_BASEM>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm, softmaxSumGm);
+    if (constInfo.enablePreSfmg) {
+        CopyInMaxSumWithSfmg<TEMPLATE_ARGS>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm, softmaxSumGm, sfmgWorkSpaceGm);
+    } else {
+        CopyInMaxSum<TEMPLATE_ARGS>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm, softmaxSumGm);
+    }
+    
 }
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -462,11 +475,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
         Muls(mm2ResTensor, mm2ResTensor, runInfo.quantScaleInfo.deqScaleQValue * runInfo.quantScaleInfo.deqScaleKValue,
              VECTOR_BASEM * VECTOR_BASEN);
     }
-    CopyInAttenMask<IS_ATTEN_MASK, VECTOR_BASEM, VECTOR_BASEN>(constInfo, runInfo, *attenMaskInfoPtr, attenMaskOrYInQue,
+    CopyInAttenMask<TEMPLATE_ARGS>(constInfo, runInfo, *attenMaskInfoPtr, attenMaskOrYInQue,
                                                                pseOrDyInQue, attenMaskU8Gm);
-    CopyInPse<OUTDTYPE, CALC_TYPE, IS_PSE>(constInfo, runInfo, *pseInfoPtr, pseOrDyInQue, pseGm);
-    CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, CALC_TYPE, IS_FP8_INPUT, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD(DETER_SPARSE_TYPE),
-                                     VECTOR_BASEM, VECTOR_BASEN>(
+    CopyInPse<TEMPLATE_ARGS>(constInfo, runInfo, *pseInfoPtr, pseOrDyInQue, pseGm);
+    CalculatePseMulsSelSimpleSoftMax<TEMPLATE_ARGS>(
         constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, maxSumQue[runInfo.commonRunInfo.taskIdMod2],
         attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, pseSlope);
 }
@@ -485,13 +497,13 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVecSink(LocalTensor<CA
                                                                FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     eventIDSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    LocalTensor<CALC_TYPE> dsinkOutTensor = dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].AllocTensor<CALC_TYPE>();
-    LocalTensor<CALC_TYPE> sumTensor = maxSumQue[runInfo.commonRunInfo.taskIdMod2].AllocTensor<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> dsinkOutTensor = dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].template AllocTensor<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> sumTensor = maxSumQue[runInfo.commonRunInfo.taskIdMod2].template AllocTensor<CALC_TYPE>();
     float sinkScale = sinkGm.GetValue(runInfo.sinkN1Idx);
     SetFlag<HardEvent::S_V>(eventIDSToV);
     WaitFlag<HardEvent::S_V>(eventIDSToV);
     maxSumQue[runInfo.commonRunInfo.taskIdMod2].EnQue(sumTensor);
-    maxSumQue[runInfo.commonRunInfo.taskIdMod2].DeQue<CALC_TYPE>();
+    maxSumQue[runInfo.commonRunInfo.taskIdMod2].template DeQue<CALC_TYPE>();
     LocalTensor<CALC_TYPE> maxTensor = sumTensor[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE / sizeof(CALC_TYPE)];
 
     if constexpr (IS_DROP) {
@@ -509,7 +521,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVecSink(LocalTensor<CA
     }
     maxSumQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(sumTensor);
     dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].EnQue(dsinkOutTensor);
-    dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].DeQue<CALC_TYPE>();
+    dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].template DeQue<CALC_TYPE>();
     DataCopyPad(dsinkWorkSpaceGm[runInfo.dsinkWorkSpaceOffset], dsinkOutTensor,
                 {1, static_cast<uint32_t>(sizeof(CALC_TYPE)), 0, 0, 0});
     dsinkResOutQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(dsinkOutTensor);
@@ -562,13 +574,21 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
         GenDropMask<IS_DROP>(dropMaskBuf, dropmaskIndexVecBuf, runInfo.commonRunInfo, constInfo.commonConstInfo,
                              *dropInfoPtr);
     }
-    CalculateDropout<CALC_TYPE, IS_DROP, VECTOR_BASEN>(constInfo, runInfo, *dropInfoPtr, mm1ResTensor, mm1ResTensor,
+    CalculateDropout<TEMPLATE_ARGS>(constInfo, runInfo, *dropInfoPtr, mm1ResTensor, mm1ResTensor,
                                                        dropMaskBuf);
     if (unlikely(constInfo.isSink && IS_DROP)) {
         CopyDpToTmpBuf(mm1ResTensor);
     }
  
-    LocalTensor<CALC_TYPE> softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> softmaxGradResTensor;
+    if (constInfo.enablePreSfmg) {
+        softmaxGradResTensor = maxSumQue[runInfo.commonRunInfo.taskMod2]
+                                   .template AllocTensor<CALC_TYPE>()[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE /
+                                                                      sizeof(CALC_TYPE) * NUM_TWO];
+    } else {
+        softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
+    }
+
     LocalTensor<INPUT_TYPE> vecOutBuffer = dSOutQue.AllocTensor<INPUT_TYPE>();
     if constexpr (IS_FP8_INPUT) {
         BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(VECTOR_BASEN), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
@@ -578,15 +598,25 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
             BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned128), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
                 softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
         } else {
-            if (constInfo.deterConstInfo.noNeedDeter) {
-                BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
-                    softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
-            } else { // 64~128的脏数据需要清零，避免后面的mm有脏数据参与计算
+            if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
+                if (constInfo.deterConstInfo.noNeedDeter) {
+                    BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
+                        softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
+                } else { // 64~128的脏数据需要清零，避免后面的mm有脏数据参与计算
+                    BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), IS_DETER_OLD(DETER_SPARSE_TYPE), IS_FP8_INPUT>(
+                        mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize,
+                        runInfo.commonRunInfo.s2RealSize);
+                }
+            } else {
                 BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), IS_DETER_OLD(DETER_SPARSE_TYPE), IS_FP8_INPUT>(
-                    mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize,
-                    runInfo.commonRunInfo.s2RealSize);
+                        mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize,
+                        runInfo.commonRunInfo.s2RealSize);
             }
         }
+    }
+
+    if (constInfo.enablePreSfmg) {
+        maxSumQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(softmaxGradResTensor);
     }
  
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) { // 确定性计算尾块脏数据补零
@@ -667,7 +697,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3Quant(Buffer<Buffe
         GenDropMask<IS_DROP>(dropMaskBuf, dropmaskIndexVecBuf, runInfo.commonRunInfo, constInfo.commonConstInfo,
                              *dropInfoPtr);
     }
-    CalculateDropout<CALC_TYPE, IS_DROP, VECTOR_BASEN>(constInfo, runInfo, *dropInfoPtr, mm1ResTensor, mm1ResTensor,
+    CalculateDropout<TEMPLATE_ARGS>(constInfo, runInfo, *dropInfoPtr, mm1ResTensor, mm1ResTensor,
                                                        dropMaskBuf);
  
     LocalTensor<CALC_TYPE> softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
@@ -733,7 +763,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec4(Buffer<BufferType
     ///////////////////////////////////////////////////////////////
     LocalTensor<uint8_t> selrIndexesTensor;
     LocalTensor<OUTDTYPE> vecOutBuffer1 = pOutQue.AllocTensor<OUTDTYPE>();
-    CalculateDropout<CALC_TYPE, IS_DROP, VECTOR_BASEN>(constInfo, runInfo, *dropInfoPtr, mm2ResTensor, mm2ResTensor,
+    CalculateDropout<TEMPLATE_ARGS>(constInfo, runInfo, *dropInfoPtr, mm2ResTensor, mm2ResTensor,
                                                        dropMaskBuf);
     CastTransdataDeconflict<OUTDTYPE, CALC_TYPE, VECTOR_BASEN>(vecOutBuffer1, mm2ResTensor, selrIndexesTensor,
                                                                  VECTOR_BASEM);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_entry_regbase.h
@@ -16,10 +16,12 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_ENTRY_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_ENTRY_REGBASE_H_
 
-#include "common.h"
-
-#include "flash_attention_score_grad_s1s2_bn2s2_regbase.h"
-#include "flash_attention_score_grad_s1s2_bn2gs1s2_regbase.h"
+#include "flash_attention_score_grad_common.h"
+#include "flash_attention_score_grad_tiling_data_regbase.h"
+using namespace commondef;
+using namespace optiling::fag;
+using namespace AscendC;
+using namespace AscendC::MicroAPI;
 #include "flash_attention_score_grad_s1s2_bn2gs1s2_post_regbase.h"
 #include "flash_attention_score_grad_s1s2_bn2gs1s2_pre_regbase.h"
 #include "flash_attention_score_grad_presfmg_regbase.h"
@@ -36,16 +38,22 @@
 #include "flash_attention_score_grad_kernel.h"
 #include "flash_attention_score_grad_kernel_deter.h"
 #include "flash_attention_score_grad_kernel_quant.h"
- 
- 
+
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(                                                                 \
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,           \
     FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)                                \
     do {                                                                                                               \
-        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE, IS_ATTEN_MASK> opPre;  \
-        opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
-        opPre.Process();                                                                                               \
-        opPre.SyncALLCores();                                                                                          \
+        if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) {                                               \
+            FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
+            opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_kvlen, user, tilingData, &pipeIn);             \
+            opPre.Process();                                                                                               \
+            opPre.SyncALLCores();                                                                                          \
+        } else {                                                                                                           \
+            FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
+            opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
+            opPre.Process();                                                                                               \
+            opPre.SyncALLCores();                                                                                          \
+        }                                                                                                              \
         pipeIn.Destroy();                                                                                              \
         TPipe pipeBase;                                                                                                \
         using CubeBlockType =                                                                                          \
@@ -78,7 +86,7 @@
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,           \
     FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)                                \
     do {                                                                                                               \
-        FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS> opPre;  \
+        FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
         opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_kvlen, user, tilingData, &pipeIn);                        \
         opPre.Process();                                                                                               \
         opPre.SyncALLCores();                                                                                          \
@@ -105,112 +113,6 @@
         opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
         opPost.Process();                                                                                          \
     } while (0)
- 
-#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL(INPUT_TYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK,    \
-                                                    IS_DETER, IS_D_NO_EQUAL, IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType,      \
-                                                    s2TemplateType, dTemplateType, OUTDTYPE)                           \
-    do {                                                                                                               \
-        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, IS_DETER, IS_TND, SPLIT_AXIS> opPre;           \
-        opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
-        opPre.Process();                                                                                               \
-        opPre.SyncALLCores();                                                                                          \
-        pipeIn.Destroy();                                                                                              \
-                                                                                                                       \
-        TPipe pipeBase;                                                                                                \
-        FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<INPUT_TYPE, float, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND,  \
-                                                         IS_BN2_MULTIBLK, IS_DETER, 0, IS_D_NO_EQUAL, IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS,       \
-                                                         s1TemplateType, s2TemplateType, dTemplateType, OUTDTYPE>      \
-            op;                                                                                                        \
-                                                                                                                       \
-        TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> dsScm;                                                            \
-        TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> pScm;                                                             \
-        if constexpr (IsSameType<INPUT_TYPE, fp8_e5m2_t>::value || IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ||      \
-                      (IS_DETER) == DETER_OLD) {                                                                       \
-            pipeBase.InitBuffer(dsScm, 1,                                                                              \
-                                (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE) * 2);          \
-        } else {                                                                                                       \
-            pipeBase.InitBuffer(dsScm, 1, (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE));    \
-        }                                                                                                              \
-        pipeBase.InitBuffer(pScm, 1, (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE));         \
-        GlobalTscmArrayStatic tscmArray[TSCM_BUF_NUM];                                                                 \
-        gTscmArray = tscmArray;                                                                                        \
-        GlobalL0CArrayStatic                                                                                           \
-            l0cArray[GET_L0C_BUF_NUM((uint32_t)s1TemplateType, (uint32_t)s2TemplateType, (uint32_t)dTemplateType)];    \
-        gL0cArray = l0cArray;                                                                                          \
-        InitTSCMBuffer<INPUT_TYPE, s1TemplateType, s2TemplateType, dTemplateType, SPLIT_AXIS,                          \
-                        (IS_DETER) == DETER_OLD, IS_TND, IS_ROPE, FP8_OPEN_TSCM>(&pipeBase, gTscmArray);                              \
-        InitL0CBuffer<INPUT_TYPE, s1TemplateType, s2TemplateType, dTemplateType, (IS_DETER) == DETER_OLD, IS_TND>(&pipeBase,          \
-                                                                                                   gL0cArray);         \
-        REGIST_MATMUL_OBJ(&pipeBase, GetSysWorkSpacePtr(), op.mm1, (TCubeTiling *)nullptr, op.mm2,                     \
-                          (TCubeTiling *)nullptr, op.mm3, (TCubeTiling *)nullptr);                                     \
-        op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
-                prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy,                \
-                queryRope, keyRope, dq, dk, dv, dpse, dqRope, dkRope, user, tilingData, &pipeBase, dsScm, pScm);       \
-        op.Process();                                                                                                  \
-        if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
-            op.SyncALLCores();                                                                                         \
-            pipeBase.Destroy();                                                                                        \
-            TPipe pipePost;                                                                                            \
-            FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE, IS_DETER, IS_TND> opPost;    \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
-            opPost.Process();                                                                                          \
-        } else {                                                                                                       \
-            pipeBase.Destroy();                                                                                        \
-        }                                                                                                              \
-    } while (0)
-
-#define INVOKE_FAG_GENERAL_FP8_OLD_REGBASE_IMPL(INPUT_TYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK,    \
-                                                    IS_DETER, IS_D_NO_EQUAL, IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType,      \
-                                                    s2TemplateType, dTemplateType, OUTDTYPE)                           \
-    do {                                                                                                               \
-        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, IS_DETER, IS_TND, SPLIT_AXIS> opPre;           \
-        opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
-        opPre.Process();                                                                                               \
-        opPre.SyncALLCores();                                                                                          \
-        pipeIn.Destroy();                                                                                              \
-                                                                                                                       \
-        TPipe pipeBase;                                                                                                \
-        FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<INPUT_TYPE, float, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND,  \
-                                                         IS_BN2_MULTIBLK, IS_DETER, 0, IS_D_NO_EQUAL, IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS,       \
-                                                         s1TemplateType, s2TemplateType, dTemplateType, OUTDTYPE>      \
-            op;                                                                                                        \
-                                                                                                                       \
-        TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> dsScm;                                                            \
-        TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> pScm;                                                             \
-        if constexpr (IsSameType<INPUT_TYPE, fp8_e5m2_t>::value || IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ||      \
-                      (IS_DETER) == DETER_OLD) {                                                                       \
-            pipeBase.InitBuffer(dsScm, 1,                                                                              \
-                                (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE) * 2);          \
-        } else {                                                                                                       \
-            pipeBase.InitBuffer(dsScm, 1, (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE));    \
-        }                                                                                                              \
-        pipeBase.InitBuffer(pScm, 1, (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE));         \
-        GlobalTscmArrayStatic tscmArray[TSCM_BUF_NUM];                                                                 \
-        gTscmArray = tscmArray;                                                                                        \
-        GlobalL0CArrayStatic                                                                                           \
-            l0cArray[GET_L0C_BUF_NUM((uint32_t)s1TemplateType, (uint32_t)s2TemplateType, (uint32_t)dTemplateType)];    \
-        gL0cArray = l0cArray;                                                                                          \
-        InitTSCMBuffer<INPUT_TYPE, s1TemplateType, s2TemplateType, dTemplateType, SPLIT_AXIS,                          \
-                        (IS_DETER) == DETER_OLD, IS_TND, IS_ROPE, FP8_OPEN_TSCM>(&pipeBase, gTscmArray);                              \
-        InitL0CBuffer<INPUT_TYPE, s1TemplateType, s2TemplateType, dTemplateType, (IS_DETER) == DETER_OLD, IS_TND>(&pipeBase,          \
-                                                                                                   gL0cArray);         \
-        REGIST_MATMUL_OBJ(&pipeBase, GetSysWorkSpacePtr(), op.mm1, (TCubeTiling *)nullptr, op.mm2,                     \
-                          (TCubeTiling *)nullptr, op.mm3, (TCubeTiling *)nullptr);                                     \
-        op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
-                prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy,                \
-                queryRope, keyRope, dq, dk, dv, dpse, dqRope, dkRope, user, tilingData, &pipeBase, dsScm, pScm);       \
-        op.Process();                                                                                                  \
-        if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
-            op.SyncALLCores();                                                                                         \
-            pipeBase.Destroy();                                                                                        \
-            TPipe pipePost;                                                                                            \
-            FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE, IS_DETER, IS_TND> opPost;    \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
-            opPost.Process();                                                                                          \
-        } else {                                                                                                       \
-            pipeBase.Destroy();                                                                                        \
-        }                                                                                                              \
-    } while (0)
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_HIFP8(...)                                                         \
     if (ORIG_DTYPE_QUERY == DT_HIFLOAT8)         \
@@ -227,79 +129,6 @@
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP32(...)                                                        \
     if (ORIG_DTYPE_QUERY == DT_FLOAT)                                                                                  \
     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(__VA_ARGS__)
-
-#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_FP16(...)                                                        \
-    if (ORIG_DTYPE_QUERY == DT_FLOAT16)                                                                                \
-    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL(__VA_ARGS__)
- 
-#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_BF16(...)                                                        \
-    if (ORIG_DTYPE_QUERY == DT_BF16)                                                                                   \
-    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL(__VA_ARGS__)
- 
-#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL_FP32(...)                                                        \
-    if (ORIG_DTYPE_QUERY == DT_FLOAT)                                                                                  \
-    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_OLD_DETER_REGBASE_IMPL(__VA_ARGS__)
- 
-#define INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL(                                                                    \
-    INPUT_TYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,           \
-    FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType, OUTDTYPE)                                \
-    do {                                                                                                               \
-        FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE, IS_ATTEN_MASK> opPre;  \
-        opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
-        opPre.Process();                                                                                               \
-        opPre.SyncALLCores();                                                                                          \
-        pipeIn.Destroy();                                                                                              \
-                                                                                                                       \
-        TPipe pipeBase;                                                                                                \
-        FlashAttentionScoreGradUs1s2Bbn2s2StaticRegbase<                                                               \
-            INPUT_TYPE, float, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL,     \
-            IS_ROPE, FP8_OPEN_TSCM, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType>                         \
-            op;                                                                                                        \
-        TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> dsScm;                                                            \
-        TSCM<QuePosition::VECIN, 1, GROUP_TSCM_MASK> pScm;                                                             \
-        pipeBase.InitBuffer(dsScm, 1, (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE));        \
-        pipeBase.InitBuffer(pScm, 1, (uint32_t)s1TemplateType *(uint32_t)s2TemplateType * sizeof(INPUT_TYPE));         \
-        GlobalTscmArrayStatic tscmArray[TSCM_BUF_NUM];                                                                 \
-        gTscmArray = tscmArray;                                                                                        \
-        GlobalL0CArrayStatic                                                                                           \
-            l0cArray[GET_L0C_BUF_NUM((uint32_t)s1TemplateType, (uint32_t)s2TemplateType, (uint32_t)dTemplateType)];    \
-        gL0cArray = l0cArray;                                                                                          \
-        InitTSCMBuffer<INPUT_TYPE, s1TemplateType, s2TemplateType, dTemplateType, SPLIT_AXIS,                          \
-                       (DETER_SPARSE_TYPE) == DETER_OLD>(&pipeBase, gTscmArray);                                       \
-        InitL0CBuffer<INPUT_TYPE, s1TemplateType, s2TemplateType, dTemplateType, (DETER_SPARSE_TYPE) == DETER_OLD,     \
-                      IS_TND>(&pipeBase, gL0cArray);                                                                   \
-        REGIST_MATMUL_OBJ(&pipeBase, GetSysWorkSpacePtr(), op.mm1, (TCubeTiling *)nullptr, op.mm2,                     \
-                          (TCubeTiling *)nullptr, op.mm3, (TCubeTiling *)nullptr);                                     \
-        op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
-                prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase, dsScm, pScm);     \
-        op.Process();                                                                                                  \
-        if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
-            op.SyncALLCores();                                                                                         \
-            pipeBase.Destroy();                                                                                        \
-            TPipe pipePost;                                                                                            \
-            FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
-                                                          DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                                   \
-                opPost;                                                                                                \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
-            opPost.Process();                                                                                          \
-            pipePost.Destroy();                                                                                        \
-        } else {                                                                                                       \
-            pipeBase.Destroy();                                                                                        \
-        }                                                                                                              \
-    } while (0)
-
-#define INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL_FP16(...)                                                           \
-    if (ORIG_DTYPE_QUERY == DT_FLOAT16)                                                                                \
-    INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL(__VA_ARGS__)
-
-#define INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL_BF16(...)                                                           \
-    if (ORIG_DTYPE_QUERY == DT_BF16)                                                                                   \
-    INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL(__VA_ARGS__)
-
-#define INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL_FP32(...)                                                           \
-    if (ORIG_DTYPE_QUERY == DT_FLOAT)                                                                                  \
-    INVOKE_FAG_GENERAL_S1S2_BN2S2_REGBASE_IMPL(__VA_ARGS__)
 
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2_REGBASE_IMPL(                                                                      \

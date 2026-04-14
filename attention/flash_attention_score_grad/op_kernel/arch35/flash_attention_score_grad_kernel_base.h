@@ -73,6 +73,7 @@ public:
     __aicore__ inline void CheckS1RangeInBn2(int64_t taskId);
     template <const bool IS_DENSE = false>
     __aicore__ inline bool GetLocalS1S2Idx(int64_t loppIdx, int64_t m, int64_t n, int64_t &localS1Idx, int64_t &localS2Idx);
+    __aicore__ inline void UpdateMNPQ(int64_t &m, int64_t &n, int64_t &p, int64_t &q, int64_t &mGap, int64_t &nGap);
     __aicore__ inline ChildClass *GetDerived()
     {
         return static_cast<ChildClass *>(this);
@@ -141,7 +142,6 @@ protected:
     int64_t lastS2oCvDimIdx = -1; // 上一次的s2方向基本块idx
     int64_t lastBdimIdx = -1;     // 上一次的b方向基本块idx
     int64_t lastN2dimIdx = -1;    // 上一次的n2方向基本块idx
-    uint8_t kvPingPong = 1;
     bool isLastLoop = false;
     int64_t s2CvBegin = 0;
     int64_t s2CvEnd = 0;
@@ -462,6 +462,31 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             (constInfo.leftUpTotalRound + constInfo.rightUpTotalRound) * constInfo.mSwizzleBlockNum +
             (constInfo.mSwizzleBlockNum - 1) * (constInfo.mSwizzleBlockNum >> 1) * constInfo.leftDownTotalRound;
         constInfo.batchTotalRound = constInfo.leftTotalRound + constInfo.rightDownTotalRound;
+    } else if (tilingData->s1s2BNGS1S2BaseParams.sparseType == static_cast<uint8_t>(SparseType::BAND)) {
+        int64_t m = 0;
+        int64_t n = 0;
+        int64_t p = 0; // 第一列有效基本块的数量
+        int64_t q = 0; // 第一行有效基本块的数量
+        int64_t mGap = 0;  // 无效行数
+        int64_t nGap = 0;  // 无效列数
+        UpdateMNPQ(m, n, p, q, mGap, nGap);
+        constInfo.actualS1Outer = m;
+        constInfo.actualS2Outer = n;
+        constInfo.firstValidColBlockNum = p;
+        constInfo.firstValidRowBlockNum = q;
+        constInfo.mGap = mGap;
+        constInfo.nGap = nGap;
+        if (p + q > m) {
+            constInfo.s2FirstWidth = m - p;
+            constInfo.s2SecondWidth = p + q - m - 1;
+            constInfo.s2FirstBlockNum = (p + m - 1) * constInfo.s2FirstWidth >> 1; // 梯形
+            constInfo.s2SecondBlockNum = m * constInfo.s2SecondWidth; // 长方形
+        } else {
+            constInfo.s2FirstWidth = q - 1;
+            constInfo.s2SecondWidth = Min(n - q + 1, m + NUM_TWO - p - q);
+            constInfo.s2FirstBlockNum = (((p - 1) << 1) + q) * (q - 1) >> 1;
+            constInfo.s2SecondBlockNum = (p + q - 1) * constInfo.s2SecondWidth;
+        }
     }
 }
 
@@ -679,7 +704,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     }
     constInfo.commonConstInfo.subBlockIdx = vSubBlockIdx;
     constInfo.aicCoreNum = tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1;
- 
+    constInfo.enablePreSfmg = tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
     uint32_t tmp = 0xFF7FFFFF;
     if ASCEND_IS_AIV {
         constInfo.attenMaskMinValue = *((float *)&tmp);
@@ -1841,27 +1866,54 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
                     s1Idx = gDimTail - ((((constInfo.s1Outer << 1) - 1 - s2Idx) * s2Idx) >> 1);
                 }
             } else {
-                int64_t cum = 0;
-                int64_t p = Ceil<int64_t>(constInfo.s1Token, CUBE_BASEM);
-                int64_t q = Ceil<int64_t>(constInfo.s2Token, CUBE_BASEN);
-                // Band分支，需要靠for循环去获取s1Idx与s2Idx
-                for (int64_t s2oIdx = 0; s2oIdx < constInfo.s2Outer; s2oIdx++) {
-                    int64_t xMin = (s2oIdx - q) > 0 ? (s2oIdx - q) : 0;
-                    int64_t xMax = (constInfo.s1Outer - 1) > (s2oIdx + p) ? (s2oIdx + p) : (constInfo.s1Outer - 1);
-                    int64_t length = xMax - xMin + 1;
-                    if (length < 0) {
-                        continue;
+                int64_t tmp = 0;
+                if (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum > constInfo.actualS1Outer) {
+                    if (gDimTail < constInfo.s2FirstBlockNum) {
+                        tmp = (constInfo.firstValidColBlockNum << 1) - 1;
+                        s2Idx = (sqrt(tmp * tmp + (gDimTail << 3)) - tmp) >> 1;
+                        s1Idx = gDimTail - ((tmp + s2Idx) * s2Idx >> 1);
+                    } else if (constInfo.s2FirstBlockNum <= gDimTail &&
+                               gDimTail < constInfo.s2FirstBlockNum + constInfo.s2SecondBlockNum) {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum;
+                        s2Idx = gDimTail / constInfo.actualS1Outer + constInfo.s2FirstWidth;
+                        s1Idx = gDimTail % constInfo.actualS1Outer;
+                    } else {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum - constInfo.s2SecondBlockNum;
+                        tmp = (constInfo.actualS1Outer << 1) - 1;
+                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((constInfo.actualS1Outer - 1 - gDimTail) << 3))),
+                                              NUM_TWO);
+                        s1Idx = gDimTail - ((tmp - s2Idx) * s2Idx >> 1);
+                        s2Idx = s2Idx + constInfo.firstValidRowBlockNum - 1;
                     }
-                    if (cum + length > gDimTail) {
-                        s1Idx = xMin + (gDimTail - cum);
-                        s2Idx = s2oIdx;
-                        break;
+                } else {
+                    if (gDimTail < constInfo.s2FirstBlockNum) {
+                        tmp = (constInfo.firstValidColBlockNum << 1) - 1;
+                        s2Idx = (sqrt(tmp * tmp + (gDimTail << 3)) - tmp) >> 1;
+                        s1Idx = gDimTail - ((tmp + s2Idx) * s2Idx >> 1);
+                    } else if (constInfo.s2FirstBlockNum <= gDimTail &&
+                               gDimTail < constInfo.s2FirstBlockNum + constInfo.s2SecondBlockNum) {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum;
+                        s2Idx = gDimTail / (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - 1);
+                        s1Idx =
+                            gDimTail % (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - 1) + s2Idx;
+                        s2Idx = s2Idx + constInfo.s2FirstWidth;
+                    } else {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum - constInfo.s2SecondBlockNum;
+                        int64_t s1OuterTmp =
+                            constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - NUM_TWO;
+                        tmp = (s1OuterTmp << 1) - 1;
+                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((s1OuterTmp - 1 - gDimTail) << 3))), NUM_TWO);
+                        s1Idx = gDimTail - ((tmp - s2Idx) * s2Idx >> 1) + constInfo.s2SecondWidth;
+                        s2Idx = s2Idx + constInfo.s2FirstWidth + constInfo.s2SecondWidth;
                     }
-                    cum += length;
+                }
+                s1Idx += constInfo.mGap;
+                s2Idx += constInfo.nGap;
+                if (s1Idx >= constInfo.s1Outer || s2Idx >= constInfo.s2Outer) {
+                    return -1;
                 }
             }
         }
-
         runInfo.s2CvBegin = s2Idx * CUBE_BASEN;
         runInfo.s2CvEnd = runInfo.s2CvBegin + CUBE_BASEN; // 非尾块s2按照+CUBE_BASEN处理
         if (s2Idx == constInfo.s2Outer - 1) {             // 默认s2 cv tail相等
@@ -1894,7 +1946,10 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQ
     int64_t gS1D = constInfo.commonConstInfo.gS1D;
     int64_t s1D = constInfo.commonConstInfo.s1D;
     int64_t bN2GD = constInfo.commonConstInfo.bN2GD;
-    int64_t bOffsetTmp = runInfo.lastBatchTotalS1BOffset;
+    int64_t bOffsetTmp = 0;
+    if constexpr (IS_TND) {
+        bOffsetTmp = runInfo.lastBatchTotalS1BOffset;
+    }
     if constexpr (IS_ROPE) {
         if constexpr (IS_MM1_MM2) {
             n2GD = (constInfo.commonConstInfo.n2GD / ROPE_D_RATIO) << 1;
@@ -2024,7 +2079,10 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetK
     int64_t s2D = constInfo.commonConstInfo.s2D;
     int64_t s1D = constInfo.commonConstInfo.s1D;
     int64_t bN2GD = constInfo.commonConstInfo.bN2GD;
-    int64_t bOffsetTmp = runInfo.lastBatchTotalS2BOffset;
+    int64_t bOffsetTmp = 0;
+    if constexpr (IS_TND) {
+        bOffsetTmp = runInfo.lastBatchTotalS2BOffset;
+    }
     if constexpr (IS_ROPE) {
         if (IS_MM1_MM2) {
             n2D = (constInfo.commonConstInfo.n2D / ROPE_D_RATIO) << 1;
@@ -2386,6 +2444,47 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Chec
         isFirstS1Outer[taskId & 1] = (multiBlkInfo.s2oDimIdx == 0);
     }
     return;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::UpdateMNPQ(
+    int64_t &m, int64_t &n, int64_t &p, int64_t &q, int64_t &mGap, int64_t &nGap)
+{
+    // 注意：与tiling中GetTotalPerBatchNum函数的有效块计算逻辑要保持一致
+    m = constInfo.s1Outer;
+    n = constInfo.s2Outer;
+    p = Ceil<int64_t>(constInfo.s1Token, CUBE_BASEM) + 1;
+    q = Ceil<int64_t>(constInfo.s2Token, CUBE_BASEN) + 1;
+    p = p > constInfo.s1Outer ? constInfo.s1Outer : p;
+    q = q > constInfo.s2Outer ? constInfo.s2Outer : q;
+ 
+    int64_t actualM, actualN, actualP, actualQ;
+    if (p < 0) {
+        actualM = m;
+        actualN = n + p - 1;
+        actualP = 1;
+        actualQ = p + q - 1;
+        mGap = 0;
+        nGap = -p + 1;
+    } else if (q < 0) {
+        actualM = m + q - 1;
+        actualN = n;
+        actualP = p + q - 1;
+        actualQ = 1;
+        mGap = -q + 1;
+        nGap = 0;
+    } else {
+        actualM = m;
+        actualN = n;
+        actualP = p;
+        actualQ = q;
+        mGap = 0;
+        nGap = 0;
+    }
+    m = actualM;
+    n = actualN;
+    p = actualP;
+    q = actualQ;
 }
 
 } // namespace FagBaseApi

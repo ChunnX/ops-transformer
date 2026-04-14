@@ -485,6 +485,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     uint64_t s1SinkOuter = 0;
     uint64_t s2SinkOuter = 0;
     uint32_t tndMaxSumLayout = 0; // 0: BNS8, 1: TND
+    bool enablePreSfmg = 0;
 };
 
 inline int64_t CeilCommon(int64_t num1, int64_t num2)
