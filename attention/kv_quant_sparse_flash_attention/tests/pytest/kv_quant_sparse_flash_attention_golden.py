@@ -595,7 +595,9 @@ def _build_fa_param(inp):
     #   [D + rope_head_dim*2 : end]            antiquant_scale (num_tiles 个 float32，各 4 字节)
     # 即 key_packed_D = D + 2*rope_head_dim + 4*num_tiles
     key_packed = inp["key"]  # torch tensor, storage_dtype (uint8 or float8_e4m3fn)
-    kv_dim0, S2_blk, N2, key_packed_D = key_packed.shape
+    # TND layout 下 key shape 是 (T, N, D_packed)，其他 layout 是 (..., S, N, D_packed)
+    key_packed_D = key_packed.shape[-1]
+    N2 = key_packed.shape[-2]
     # rope 区占用 slot 数
     rope_slots = rope_head_dim * 2   # q_type (fp16/bf16) 各 2 字节，共 2*rope_head_dim slots
     # scale 区占用 slot 数
@@ -624,14 +626,14 @@ def _build_fa_param(inp):
         key_rope_np = np.frombuffer(key_rope_bytes, dtype=np.float16).astype(np.float32)
     else:
         key_rope_np = torch.frombuffer(bytearray(key_rope_bytes), dtype=torch.bfloat16).float().numpy()
-    key_rope_np = key_rope_np.reshape(kv_dim0, S2_blk, N2, rope_head_dim)
+    key_rope_np = key_rope_np.reshape(*key_packed.shape[:-1], rope_head_dim)
 
     # 恢复 antiquant_scale 为 float32
     scale_bytes = antiquant_scale_slots_np.reshape(-1).tobytes()
-    antiquant_scale_np = np.frombuffer(scale_bytes, dtype=np.float32).reshape(kv_dim0, S2_blk, N2, num_tiles).copy()
+    antiquant_scale_np = np.frombuffer(scale_bytes, dtype=np.float32).reshape(*key_packed.shape[:-1], num_tiles).copy()
 
     # ---------- Value ----------
-    # value shape: (kv_dim0, S2_blk, N2, D) storage_dtype
+    # value shape: (..., S, N, D) storage_dtype
     if kv_dtype == "hifloat8":
         value_np = inp["value"].contiguous().numpy()  # uint8
     else:
@@ -639,8 +641,8 @@ def _build_fa_param(inp):
 
     # ---------- 反量化 K/V ----------
     k_fp32, v_fp32 = _dequantize_kv(
-        key_base_np.reshape(kv_dim0, S2_blk, N2, D_base),
-        value_np.reshape(kv_dim0, S2_blk, N2, D_base),
+        key_base_np.reshape(*key_packed.shape[:-1], D_base),
+        value_np.reshape(*inp["value"].shape[:-1], D_base),
         antiquant_scale_np, tile_size, kv_dtype
     )
 
@@ -651,7 +653,8 @@ def _build_fa_param(inp):
     # ---------- PA_BSND: 从 block cache 重建 BSND ----------
     if layout_kv == "PA_BSND":
         block_table_np = inp["block_table"].numpy()  # (B, max_blk)
-        block_size = S2_blk
+        # PA_BSND 下 key_packed shape: (block_num, block_size, N2, D_packed)
+        block_size = key_packed.shape[-3]
         S2_max = max(act_seq_kv_list)
         k_bsnd_np, v_bsnd_np = _reconstruct_bsnd_from_blocks(
             k_full, v_fp32, block_table_np, block_size, B, S2_max, N2
