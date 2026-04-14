@@ -15,7 +15,7 @@
 #ifndef DROPOUT_H 
 #define DROPOUT_H
 
-#include "../common.h"
+#include "../flash_attention_score_grad_common.h"
 #include "../../../../common/op_kernel/arch35/dropmask.h"
  
 using namespace AscendC;
@@ -81,15 +81,15 @@ __simd_vf__ inline void CalculateDropoutVF(uint64_t srcLocalInt, uint64_t dstLoc
     }
 }
 
-template <typename T2, const uint32_t IS_DROP = 0, uint32_t srcN>
+TEMPLATES_DEF
 __aicore__ inline void CalculateDropout(FagConstInfo &constInfo, FagRunInfo &runInfo, DropMaskInfo &dropInfo,
-                                        LocalTensor<T2> &srcTensor, LocalTensor<T2> &dstTensor, TBuf<> &dropMaskBuf)
+                                        LocalTensor<CALC_TYPE> &srcTensor, LocalTensor<CALC_TYPE> &dstTensor, TBuf<> &dropMaskBuf)
 {
     if constexpr (IS_DROP) {
-        static_assert(std::is_same<T2, float>::value, "DropOutVf API only support float type.");
+        static_assert(std::is_same<CALC_TYPE, float>::value, "DropOutVf API only support float type.");
         float divValue = 1.0;
         divValue = divValue / constInfo.commonConstInfo.keepProb;
-        const uint32_t dataSize = runInfo.commonRunInfo.halfS1RealSize * srcN;
+        const uint32_t dataSize = runInfo.commonRunInfo.halfS1RealSize * (uint32_t)s2TemplateType;
         LocalTensor<uint8_t> dropTensor = dropMaskBuf.template Get<uint8_t>();
  
         uint64_t srcLocalInt = srcTensor.GetPhyAddr();
@@ -101,9 +101,9 @@ __aicore__ inline void CalculateDropout(FagConstInfo &constInfo, FagRunInfo &run
 }
 
 #else
-template <typename T2, const uint32_t IS_DROP = 0, uint32_t srcN>
+TEMPLATES_DEF
 __aicore__ inline void CalculateDropout(FagConstInfo &constInfo, FagRunInfo &runInfo, DropMaskInfo &dropInfo,
-                                        LocalTensor<T2> &srcTensor, LocalTensor<T2> &dstTensor, TBuf<> &dropMaskBuf)
+                                        LocalTensor<CALC_TYPE> &srcTensor, LocalTensor<CALC_TYPE> &dstTensor, TBuf<> &dropMaskBuf)
 {
 }
 #endif
