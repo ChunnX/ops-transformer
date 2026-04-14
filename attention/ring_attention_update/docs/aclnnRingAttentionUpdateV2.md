@@ -499,7 +499,7 @@ int main() {
   ret = CreateAclTensor(curSoftmaxSumHostData, curSoftmaxSumShape, &curSoftmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &curSoftmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建actualSeqQlenOptional aclTensor
-  ret = CreateAclTensor(actualSeqQlenOptionalHostData, actualSeqQlenOptionalShape, &actualSeqQlenOptionalDeviceAddr, aclDataType::ACL_INT64, &actualSeqQlenOptional);
+  ret = CreateAclTensor(actualSeqQlenOptionalHostData, actualSeqQlenOptionalShape, &actualSeqQlenOptionalDeviceAddr, aclDataType::ACL_FLOAT, &actualSeqQlenOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   // 创建attnOut aclTensor

@@ -105,7 +105,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>queryRope</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的queryRope。</td>
         <td>数据类型与key/value的数据类型一致。</td>
         <td>BFLOAT16</td>
@@ -125,7 +125,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>keyRope</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的keyRope。</td>
         <td>数据类型与query/value的数据类型一致。</td>
         <td>BFLOAT16</td>
@@ -145,7 +145,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>realShiftOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的pse。</td>
         <td>必须为nullptr。</td>
         <td>-</td>
@@ -155,7 +155,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>dropMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的Dropout。</td>
         <td>必须为nullptr。</td>
         <td>-</td>
@@ -165,7 +165,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -185,7 +185,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>prefixOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表prefix稀疏计算场景每个Batch的N值。</td>
         <td>-</td>
         <td>INT64</td>
@@ -195,7 +195,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的query的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的key/value的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>qStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -225,7 +225,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>kvStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>scaleValue</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的scale，代表缩放系数。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>keepProb</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表dropMaskOptional中1的比例。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>preTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于稀疏计算，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -265,7 +265,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>nextTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -295,7 +295,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>innerPrecise</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于提升精度。</td>
         <td>默认配置为0即可。</td>
         <td>INT64</td>
@@ -305,7 +305,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>sparseMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示sparse的模式。</td>
         <td>支持配置值为0、1、2、3、4、6、7、8。</td>
         <td>INT64</td>
@@ -315,7 +315,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>pseType</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>控制mul与add计算顺序，仅支持配置值为1。</td>
         <td>-</td>
         <td>INT64</td>
@@ -345,7 +345,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       </tr>
       <tr>
         <td>softmaxOutOut</td>
-        <td>输入</td>
+        <td>输出</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
