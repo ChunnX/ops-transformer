@@ -7,35 +7,105 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import test
+import itertools
 import torch
 import torch_npu
+import os
 
-from recurrent_gated_delta_rule_golden import run_recurrent_gated_delta_rule_eager, cpu_recurrent_gated_delta_rule
+# ******入参调用
+from test_recurrent_gated_delta_rule_paramset import ENABLED_PARAMS
+from test_recurrent_gated_delta_rule_paramset_rdv import ENABLED_PARAMS_RDV
 
-class Generalized_operator():
-    def forward(self,
-                q, k, v, state, beta, scale_value, act_seq_len, ssm_state_indices,
-                num_accepted_tokens=None, g=None, gk=None):
+# 获取测试模式参数，默认为 single
+TEST_MODE = os.environ.get('TEST_MODE', 'single')
 
-        return cpu_recurrent_gated_delta_rule(
-            q, k, v, state, beta, scale_value, act_seq_len, ssm_state_indices,
-        num_accepted_tokens=num_accepted_tokens, g=g, gk=gk)
+# 根据模式选择参数集
+if TEST_MODE == 'rdv':
+    PARAM_SET = ENABLED_PARAMS_RDV
+else:
+    PARAM_SET = ENABLED_PARAMS
 
-def output_operator(params):
-    #构造输入
-    batch_size, mtp, nk, nv, dk, dv, actual_seq_lengths, ssm_state_indices, has_gamma, \
-    has_gamma_k, has_num_accepted_tokens, scale_value, num_accepted_tokens, block_num, data_type, \
-    query_datarange, key_datarange, value_datarange, gamma_datarange, gamma_k_datarange, \
-    beta_datarange, state_datarange = params
+# ******CPU侧算子逻辑实现获取golden与npu算子直调结果
+import recurrent_gated_delta_rule_operator_single
+import pytest
 
-    print(f"params = {params}")
+locals()["param_combinations"] = []
 
-    run_recurrent_gated_delta_rule_eager(batch_size, mtp, nk, nv, dk, dv, actual_seq_lengths, ssm_state_indices, \
-                                         has_gamma=has_gamma, has_gamma_k=has_gamma_k, \
-                                         has_num_accepted_tokens=has_num_accepted_tokens, scale_value=scale_value, \
-                                         num_accepted_tokens=num_accepted_tokens, block_num=block_num, \
-                                         data_type=data_type, query_datarange=query_datarange, \
-                                         key_datarange=key_datarange, value_datarange=value_datarange, \
-                                         gamma_datarange=gamma_datarange, gamma_k_datarange=gamma_k_datarange, \
-                                         beta_datarange=beta_datarange, state_datarange=state_datarange)
+for _, params in enumerate(PARAM_SET):
+    # 将params的所有字段注册为局部变量
+    for key, value in params.items():
+        locals()[f"param_{key}"] = value
+
+    # 生成所有参数组合
+    param_names = [
+        "batch_size", "mtp", "nk", "nv", "dk", "dv", "actual_seq_lengths", "ssm_state_indices", "has_gamma",
+        "has_gamma_k", "has_num_accepted_tokens", "scale_value", "num_accepted_tokens", "block_num", "data_type",
+        "query_datarange","key_datarange","value_datarange","gamma_datarange","gamma_k_datarange",
+        "beta_datarange", "state_datarange"
+    ]
+
+    param_values = [
+        locals()["param_batch_size"],
+        locals()["param_mtp"],
+        locals()["param_nk"],
+        locals()["param_nv"],
+        locals()["param_dk"],
+        locals()["param_dv"],
+        locals()["param_actual_seq_lengths"],
+        locals()["param_ssm_state_indices"],
+        locals()["param_has_gamma"],
+        locals()["param_has_gamma_k"],
+        locals()["param_has_num_accepted_tokens"],
+        locals()["param_scale_value"],
+        locals()["param_num_accepted_tokens"],
+        locals()["param_block_num"],
+        locals()["param_data_type"],
+        locals()["param_query_datarange"],
+        locals()["param_key_datarange"],
+        locals()["param_value_datarange"],
+        locals()["param_gamma_datarange"],
+        locals()["param_gamma_k_datarange"],
+        locals()["param_beta_datarange"],
+        locals()["param_state_datarange"],
+    ]
+
+    # 生成所有的组合，并转换为字典列表
+    for combo in itertools.product(*param_values):
+        param_dict = dict(zip(param_names, combo))
+        locals()["param_combinations"].append(param_dict)
+
+    @pytest.mark.ci
+    @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
+    def test_recurrent_gated_delta_rule(param_combinations):   # 初始化参数和tensor
+        batch_size = param_combinations['batch_size']
+        mtp = param_combinations['mtp']
+        nk = param_combinations['nk']
+        nv = param_combinations['nv']
+        dk = param_combinations['dk']
+        dv = param_combinations['dv']
+        actual_seq_lengths = param_combinations['actual_seq_lengths']
+        ssm_state_indices = param_combinations['ssm_state_indices']
+        has_gamma = param_combinations['has_gamma']
+        has_gamma_k = param_combinations['has_gamma_k']
+        has_num_accepted_tokens = param_combinations['has_num_accepted_tokens']
+        scale_value = param_combinations['scale_value']
+        num_accepted_tokens = param_combinations['num_accepted_tokens']
+        block_num = param_combinations['block_num']
+        data_type = param_combinations['data_type']
+        query_datarange = param_combinations['query_datarange']
+        key_datarange = param_combinations['key_datarange']
+        value_datarange = param_combinations['value_datarange']
+        gamma_datarange = param_combinations['gamma_datarange']
+        gamma_k_datarange = param_combinations['gamma_k_datarange']
+        beta_datarange = param_combinations['beta_datarange']
+        state_datarange = param_combinations['state_datarange']
+
+        test_data = batch_size, mtp, nk, nv, dk, dv, actual_seq_lengths, ssm_state_indices, has_gamma, \
+                    has_gamma_k, has_num_accepted_tokens, scale_value, num_accepted_tokens, block_num, data_type, \
+                    query_datarange, key_datarange, value_datarange, gamma_datarange, gamma_k_datarange, \
+                    beta_datarange, state_datarange
+
+        torch_npu.npu.set_device(0)
+
+        # 获得cpu结果(真值)和算子结果（测试值）
+        recurrent_gated_delta_rule_operator_single.output_operator(test_data)
