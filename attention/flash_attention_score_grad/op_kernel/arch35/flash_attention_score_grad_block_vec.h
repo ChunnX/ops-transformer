@@ -23,8 +23,8 @@
 #include "vector_api/vf_broadcast_sub_mul.h"
 #include "vector_api/vf_cast_transdata_deconflict.h"
 #include "vector_api/vf_cal_sink.h"
+#include "vector_api/vf_ds_abs_reduce_max.h"
 namespace FagBaseApi {
-constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t SYNC_V0_V1_DS_A_MAX_DONE_FLAG = 10;
 constexpr uint32_t BIT_MASK_NUM = 8;
 constexpr uint32_t BIT32_ALIGN_NUM = 8;
@@ -136,7 +136,7 @@ public:
     GlobalTensor<INPUT_TYPE> valueGm;
     GlobalTensor<OUTDTYPE> yGm, pseGm, dyGm;
     GlobalTensor<uint8_t> dropMaskGm, attenMaskU8Gm;
-    GlobalTensor<float> softmaxMaxGm, softmaxSumGm, pseFloatGm;
+    GlobalTensor<float> softmaxMaxGm, softmaxSumGm, pseFloatGm, sfmgWorkSpaceGm;
     GlobalTensor<float> deqScaleQGm, deqScaleKGm, deqScaleVGm, deqScaleDyGm;
     GM_ADDR pseSlope;
     GlobalTensor<uint8_t> dropMaskWorkspaceGm;
@@ -237,6 +237,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
             dropMaskWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + tilingData->postTilingData.dropMaskGmOffset);
         }
     }
+    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) {
+        sfmgWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                        tilingData->postTilingData.sfmgWorkSpaceOffset / sizeof(float));
+    }
     if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
         sinkGm.SetGlobalBuffer((__gm__ float *)sink);
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
@@ -272,9 +276,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer()
      **/
     pipe->InitBuffer(attenMaskOrYInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(pseOrDyInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(OUTDTYPE));
-    pipe->InitBuffer(softmaxGradResBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
-    pipe->InitBuffer(maxSumQue[0], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
-    pipe->InitBuffer(maxSumQue[1], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
+    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) {
+        pipe->InitBuffer(maxSumQue[0], 1,
+                         VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO + VECTOR_BASEM * sizeof(float));
+        pipe->InitBuffer(maxSumQue[1], 1,
+                         VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO + VECTOR_BASEM * sizeof(float));
+    } else {
+        pipe->InitBuffer(softmaxGradResBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
+        pipe->InitBuffer(maxSumQue[0], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
+        pipe->InitBuffer(maxSumQue[1], 1, VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE * NUM_TWO);
+    }
     if constexpr (IS_DROP) {
         pipe->InitBuffer(dropMaskBuf, VECTOR_BASEM * VECTOR_BASEN * sizeof(uint8_t) / BIT_MASK_NUM);          // 1k
         pipe->InitBuffer(dropmaskIndexVecBuf, VECTOR_BASEM * VECTOR_BASEN / (NUM_TWO * BIT_MASK_NUM) * sizeof(int32_t)); // 2k
@@ -345,7 +356,14 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                               int64_t taskId)
 {
-    CopyInMaxSum<float, VECTOR_BASEM>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm, softmaxSumGm);
+    if (unlikely(constInfo.enablePreSfmg)) {
+        if constexpr (DETER_SPARSE_TYPE == NO_DETER) {
+            CopyInMaxSumWithSfmg<float, VECTOR_BASEM>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm,
+                                                      softmaxSumGm, sfmgWorkSpaceGm);
+        }
+    } else {
+        CopyInMaxSum<float, VECTOR_BASEM>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm, softmaxSumGm);
+    }
 }
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -568,7 +586,15 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
         CopyDpToTmpBuf(mm1ResTensor);
     }
  
-    LocalTensor<CALC_TYPE> softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> softmaxGradResTensor;
+    if (unlikely(constInfo.enablePreSfmg)) {
+        softmaxGradResTensor = maxSumQue[runInfo.commonRunInfo.taskIdMod2]
+                                   .template AllocTensor<CALC_TYPE>()[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE /
+                                                                      sizeof(CALC_TYPE) * NUM_TWO];
+    } else {
+        softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
+    }
+
     LocalTensor<INPUT_TYPE> vecOutBuffer = dSOutQue.AllocTensor<INPUT_TYPE>();
     if constexpr (IS_FP8_INPUT) {
         BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(VECTOR_BASEN), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
@@ -578,15 +604,28 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
             BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned128), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
                 softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
         } else {
-            if (constInfo.deterConstInfo.noNeedDeter) {
-                BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), 0, IS_FP8_INPUT>(mm1ResTensor, mm1ResTensor,
-                    softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
-            } else { // 64~128的脏数据需要清零，避免后面的mm有脏数据参与计算
-                BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), IS_DETER_OLD(DETER_SPARSE_TYPE), IS_FP8_INPUT>(
-                    mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize,
-                    runInfo.commonRunInfo.s2RealSize);
+            if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
+                if (constInfo.deterConstInfo.noNeedDeter) {
+                    BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64), 0, IS_FP8_INPUT>(
+                        mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor,
+                        runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
+                } else { // 64~128的脏数据需要清零，避免后面的mm有脏数据参与计算
+                    BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64),
+                                    IS_DETER_OLD(DETER_SPARSE_TYPE), IS_FP8_INPUT>(
+                        mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor,
+                        runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
+                }
+            } else {
+                BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned64),
+                                IS_DETER_OLD(DETER_SPARSE_TYPE), IS_FP8_INPUT>(
+                    mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor,
+                    runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.s2RealSize);
             }
         }
+    }
+
+    if (unlikely(constInfo.enablePreSfmg)) {
+        maxSumQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(softmaxGradResTensor);
     }
  
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) { // 确定性计算尾块脏数据补零
@@ -1486,5 +1525,5 @@ public:
 };
  
 } // namespace FagBaseApi
- 
+
 #endif
