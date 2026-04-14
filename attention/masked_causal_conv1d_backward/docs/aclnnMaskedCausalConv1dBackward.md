@@ -42,7 +42,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
   const aclTensor   *grad_output,
   const aclTensor   *input,
   const aclTensor   *weight,
-  const aclTensor   *maskOptional,
+  const aclTensor   *mask,
   const aclTensor   *grad_input,
   const aclTensor   *grad_weight,
   uint64_t          *workspaceSize,
@@ -114,7 +114,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
       <td>√</td>
     </tr>
     <tr>
-      <td>maskOptional</td>
+      <td>mask</td>
       <td>输入</td>
       <td>Device侧的aclTensor，表示卷积操作的输出掩码，对应公式中的mask。</td>
       <td><ul><li>shape为[B, S]。<li>可选输入，默认值是None。</ul></td>
