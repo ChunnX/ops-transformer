@@ -366,7 +366,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>标识输入query、key、value的数据排布格式。</td>
         <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
             <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -540,7 +540,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedInferAttentionScoreGetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -856,7 +856,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - query、key、value输入类型均为INT8的场景暂不支持。
   - page attention场景:
     - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
     - page attention场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 KV_N * D 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为（blocknum, KV_N, blocksize, D）解决。
@@ -1018,7 +1018,7 @@ int main()
     int64_t preTokens = 65535;
     int64_t nextTokens = 65535;
     string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()];
+    char layerOut[sLayerOut.length()+1];
     strcpy(layerOut, sLayerOut.c_str());
     int64_t sparseMode = 0;
     int64_t innerPrecise = 0;

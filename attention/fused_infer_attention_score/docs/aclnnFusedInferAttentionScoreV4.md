@@ -155,7 +155,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
         </ul>
         </td>
-        <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）</td>
+        <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
         <td>×</td>
@@ -170,7 +170,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
             <li>由于tensorlist限制, 非连续场景下B不能大于256。</li></ul>
         </td>
-        <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）</td>
+        <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
         <td>×</td>
@@ -305,7 +305,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
     <tr>
         <td>quantOffset2Optional</td>
         <td>可选输入</td>
-        <td>表示对输出结果进行量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
+        <td>表示对输出结果进行量化的偏移，配置此项为非对称量化，反之为对称量化</td>
         <td><ul><li>不支持空Tensor。</li>
         <li>支持per-tensor、per-channel类型与shape与quantScale2Optional保持一致。</li></ul></td>
         <td>FLOAT32、BFLOAT16</td>
@@ -329,9 +329,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
     <tr>
         <td>antiquantOffsetOptional</td>
         <td>可选输入</td>
-        <td>表示对key/value进行伪量化的偏移，配置此项为非对称量化，反之为非对称量化</td>
+        <td>表示对key/value进行伪量化的偏移，配置此项为非对称量化，反之为对称量化</td>
         <td><ul><li>不支持空Tensor。</li>
-        <li>支持per-tensor、per-channel、per-tokenshape与antiquantScaleOptional保持一致。</li><li>建议使用KV伪量化参数分离模式。</li></ul></td>
+        <li>支持per-tensor、per-channel、per-token shape与antiquantScaleOptional保持一致。</li><li>建议使用KV伪量化参数分离模式。</li></ul></td>
         <td>与antiquantScaleOptional保持一致</td>
         <td>ND</td>
         <td>与antiquantScaleOptional保持一致</td>
@@ -376,7 +376,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。</li>
             <li>kv左padding场景kvPaddingSize小于0时将被置为0。</li>
             <li>kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。</li>
-            <li>不支持Q为BF16/FP16、KV为INT4（INT32）的场景。</li>
+            <li>不支持Q为BF16/FP16、KV为INT4(INT32)的场景。</li>
         </ul>
         </td>
         <td>INT64</td>
@@ -411,7 +411,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>。</li>
         </ul>
         </td>
-        <td>与keyAntiquantOffsetOptional保持一致</td>
+        <td>与keyAntiquantScaleOptional保持一致</td>
         <td>ND</td>
         <td>见<a href="#AntiQuant">伪量化参数</a></td>
         <td>×</td>
@@ -443,7 +443,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>其余约束见<a href="#AntiQuant">伪量化参数约束</a>。</li>
         </ul>
         </td>
-        <td>与valueAntiquantOffsetOptional保持一致</td>
+        <td>与valueAntiquantScaleOptional保持一致</td>
         <td>ND</td>
         <td>见<a href="#AntiQuant">伪量化参数</a></td>
         <td>×</td>
@@ -629,7 +629,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>inputLayout=BSH_BNSD、BSND_BNSD仅支持Q_D=K_D=V_D都等于64或128，或Q_D=K_D等于192，V_D等于128<br></li>
         </ul>
         </td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -900,7 +900,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
   - innerPrecise为0；
   - pseShiftOptional不为空，shape为[B, N, maxQ, maxKV];
   - attenMaskOptional为空；
-  - spareMode为0。
+  - sparseMode为0。
 
 <details>
 
@@ -1742,7 +1742,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tr>
         <tr>
             <td>blockSize</td>
-            <td>blockSize16对齐，且<=1024</td>
+            <td>blockSize 16对齐，且<=1024</td>
             <td>-</td>
         </tr>
         <tr>
@@ -2064,11 +2064,11 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <ul>
                 <li>支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。</li>
                 <li>query、key、value输入类型均为INT8的场景暂不支持。</li>
-                <li>在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。</li>
-                <li>在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。</li>
-                <li>key、value在特定数据数据类型下存在对于D轴的限制
+                <li>在INT4(INT32)伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。</li>
+                <li>在INT4(INT32)伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。</li>
+                <li>key、value在特定数据类型下存在对于D轴的限制
                     <ul>
-                    <li>key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。</li>
+                    <li>key、value输入类型为INT4(INT32)时，D轴需要64对齐（INT32仅支持D 8对齐）。</li>
                     </ul>
                 </li>
                 </ul>
@@ -2103,7 +2103,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>query、key、value</td>
-                <td>不支持Q为BF16/FP16、KV为INT4（INT32）的场景。</td>
+                <td>不支持Q为BF16/FP16、KV为INT4(INT32)的场景。</td>
             </tr>
             <tr>
                 <td>blockTable</td>
@@ -2316,7 +2316,7 @@ int main() {
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
     string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()];
+    char layerOut[sLayerOut.length()+1];
     strcpy(layerOut, sLayerOut.c_str());
     int64_t sparseMode = 0;
     int64_t innerPrecise = 1;

@@ -27,7 +27,7 @@
 
 - 计算公式：
 
-  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n$d的矩阵。
+  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*$d的矩阵。
 
     self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。
 
@@ -222,7 +222,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
       <tr>
         <td>antiquantScale</td>
         <td>输入</td>
-        <td>量化因子。</td>
+        <td>伪量化因子。</td>
         <td><ul><li>支持空Tensor。</li><li>支持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>-</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
         <tr>
         <td>antiquantOffset</td>
         <td>输入</td>
-        <td>输出量化的量化因子。</td>
+        <td>伪量化因子。</td>
         <td><ul><li>支持空Tensor。</li><li>支持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
@@ -274,7 +274,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
         <td>输入</td>
         <td>标识输入query、key、value的数据排布格式。</td>
         <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -596,7 +596,7 @@ int main() {
   int64_t innerPrecise = 1;
   double scaleValue = 1 / sqrt(headDims); // 1/sqrt(d)
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;
