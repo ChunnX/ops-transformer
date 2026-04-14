@@ -133,7 +133,7 @@ __aicore__ inline void LoadL1B(const GlobalTensor<T> &tensorBGm, const uint32_t 
 
 template <typename T, typename S, bool preload = false, bool scaleSrcPadFlag = false>
 __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const GlobalTensor<S> &tensorAScaleGm,
-    const uint32_t mInput, const uint32_t kL1StepSize, const uint32_t kInput, const uint32_t nInput,
+    const uint32_t mInput, const uint32_t kL1StepSize, const uint32_t kInput, const uint32_t nInput, const uint32_t actualNInput,
     const uint64_t scaleAInL1BOffset, MMBufParams &bufParam)
 {
 #if __CCE_AICORE__ == 310
@@ -147,9 +147,9 @@ __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const G
 
     LocalTensor<bfloat16_t> bL1Tensor;
     bL1Tensor.SetAddr(bufParam.bL1BufAddr);
-    uint32_t srcDValue = nInput / FP8_TWO;
+    uint32_t srcDValue = actualNInput / FP8_TWO;
     if constexpr (scaleSrcPadFlag) {
-        srcDValue = Align(nInput / FP8_TWO, BLOCK_CUBE_SIZE);
+        srcDValue = Align(srcDValue, BLOCK_CUBE_SIZE);
     }
     GlobalTensor<bfloat16_t> tensorScaleGmCast;
     tensorScaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(tensorAScaleGm.GetPhyAddr())));
@@ -163,10 +163,10 @@ __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const G
     dn2Nzparam.nValue = nInput / FP8_TWO;         // 单个DN矩阵的列数N, 单位为元素个数
     dn2Nzparam.dValue = mInput;         // 单个DN矩阵的实际行数D, 单位为元素个数
     dn2Nzparam.srcDnMatrixStride = 0;   // 相邻DN矩阵起始地址之间的偏移, 单位为元素个数
-    dn2Nzparam.srcDValue = srcDValue ;  // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
+    dn2Nzparam.srcDValue = srcDValue;  // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
     dn2Nzparam.dstNzC0Stride = nInput / FP8_TWO;  // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
     dn2Nzparam.dstNzNStride = 1;        // 转换为NZ矩阵后，DN中相邻两行在NZ矩阵中起始地址之间的偏移，单位为元素个数
-    dn2Nzparam.dstNzMatrixStride = dn2Nzparam.nValue;   // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
+    dn2Nzparam.dstNzMatrixStride = nInput / FP8_TWO;   // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
     DataCopy(bL1Tensor[scaleAInL1BOffset / FP8_TWO], tensorScaleGmCast, dn2Nzparam);
 
     SetFlag<HardEvent::MTE2_MTE1>(A_EVENT0 + (bufIter & 1u));
@@ -176,7 +176,7 @@ __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const G
 #if __CCE_AICORE__ == 310
 template <typename T, typename S, DataFormat loadFormat = DataFormat::NZ, bool preload = false>
 __aicore__ inline void LoadL1BAndScale(const GlobalTensor<T> &tensorBGm, const GlobalTensor<S> &tensorBScaleGm,
-    const uint32_t nL1Size, const uint32_t kL1StepSize, const uint32_t kInput, const uint32_t nInput,
+    const uint32_t nL1Size, const uint32_t kL1StepSize, const uint32_t kInput, const uint32_t nInput, const uint32_t actualNInput,
     const uint64_t scaleBInL1BOffset, MMBufParams &bufParam)
 {
     uint32_t bufIter = bufParam.bL1BufIter;
@@ -204,10 +204,10 @@ __aicore__ inline void LoadL1BAndScale(const GlobalTensor<T> &tensorBGm, const G
     dn2Nzparam.nValue = nInput / FP8_TWO;         // 单个DN矩阵的列数N, 单位为元素个数
     dn2Nzparam.dValue = nL1Size;         // 单个DN矩阵的实际行数D, 单位为元素个数
     dn2Nzparam.srcDnMatrixStride = 0;   // 相邻DN矩阵起始地址之间的偏移, 单位为元素个数
-    dn2Nzparam.srcDValue = nInput / FP8_TWO;  // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
-    dn2Nzparam.dstNzC0Stride = dn2Nzparam.srcDValue;  // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
+    dn2Nzparam.srcDValue = actualNInput / FP8_TWO;  // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
+    dn2Nzparam.dstNzC0Stride = nInput / FP8_TWO;  // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
     dn2Nzparam.dstNzNStride = 1;        // 转换为NZ矩阵后，DN中相邻两行在NZ矩阵中起始地址之间的偏移，单位为元素个数
-    dn2Nzparam.dstNzMatrixStride = dn2Nzparam.dstNzC0Stride;   // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
+    dn2Nzparam.dstNzMatrixStride = nInput / FP8_TWO;   // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
     DataCopy(bL1ScaleTensor[scaleBInL1BOffset / FP8_TWO], tensorScaleGmCast, dn2Nzparam);
 
     SetFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufIter & 1u));
@@ -474,10 +474,10 @@ __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTe
 {
     if (kL1 == 0) {
         if constexpr (!hasL1ALoaded) {
-            LoadL1A(tensorAGm[kL1 * para.kL1StepSize], para.m, para.kL1StepSize, para.orgKa, bufParam);
+            LoadL1A(tensorAGm, para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
         if constexpr (bLoadFormat == DataFormat::NZ) {
-            LoadL1B(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>() + kL1 * kOffesetUnit], nL1Size, para.n, para.kL1StepSize, para.orgKb, bufParam);
+            LoadL1B(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], nL1Size, para.n, para.kL1StepSize, para.orgKb, bufParam);
         } else {
             LoadL1B<T, DataFormat::ND, false>(tensorBGm[kL1 * para.kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
                                        para.kL1StepSize, para.kL1StepSize, bufParam);
@@ -527,19 +527,19 @@ __aicore__ inline void LoadL1ABAndScale(const GlobalTensor<T> &tensorAGm, const 
     if (kL1 == 0) {
         if constexpr (!hasL1ALoaded) {
             LoadL1AAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorAScaleGm, para.m, para.kL1StepSize,
-                para.k, para.kScale, offsetL1B, bufParam);
+                para.orgKa, para.kScale, para.orgKa / 32, offsetL1B, bufParam);
         }
         uint64_t scaleOffsetL1B = offsetL1B + para.kScale * Align(para.m, BLOCK_CUBE_SIZE);
-        LoadL1BAndScale(tensorBGm[para.k * nL1Offset], tensorBScaleGm[para.kScale * nL1Offset], nL1Size,
-            para.kL1StepSize, para.k, para.kScale, scaleOffsetL1B, bufParam);
+        LoadL1BAndScale(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], tensorBScaleGm[nL1Offset * para.orgKb / 32], nL1Size,
+            para.kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1B, bufParam);
     }
 
     if (kL1 + 1 < kL1Loops) {
         if constexpr (!hasL1ALoaded) {
-            LoadL1A<T, true>(tensorAGm[(kL1 + 1) * para.kL1StepSize], para.m, para.kL1StepSize, para.k, bufParam);
+            LoadL1A<T, true>(tensorAGm[(kL1 + 1) * para.kL1StepSize], para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
-        LoadL1B<T, DataFormat::NZ, true>(tensorBGm[para.k * nL1Offset + (kL1 + 1) * kOffesetUnit], nL1Size, para.n,
-            para.kL1StepSize, para.k, bufParam);
+        LoadL1B<T, DataFormat::NZ, true>(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>() + (kL1 + 1) * kOffesetUnit], nL1Size, para.n,
+            para.kL1StepSize, para.orgKb, bufParam);
     }
 #endif
 }

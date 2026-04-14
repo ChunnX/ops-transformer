@@ -49,6 +49,20 @@ struct PerTileQuantParams {
     uint32_t col;
 };
 
+struct SplitKnAccumParams {
+    uint32_t kGroups = 0;                // Number of K groups
+    uint64_t partialStride = 0;          // Stride between K groups (usually nTotal)
+
+    __aicore__ inline bool NeedAccumulate() const {
+        return kGroups > 0;
+    }
+};
+
+__aicore__ inline const SplitKnAccumParams& DefaultSplitKnAccumParams() {
+    static SplitKnAccumParams defaultSplitKnAccumParams = {0, 0};
+    return defaultSplitKnAccumParams;
+}
+
 /**
  * @brief vec mul by row;  dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
  * @param dstUb 输出tensor [row, columnStride]

@@ -20,6 +20,11 @@
 #include "mla_prolog_vector_comm.h"
 #include "service_rope.h"
 
+
+#if __CCE_AICORE__ == 310
+#include "service_split_kn_accum.h"
+#endif
+
 namespace MlaProlog {
 /**
  * @brief RotaryPosEmbPerTensor 对一个tensor进行RotartPosEmb，tensor的维度为[row * col]
@@ -37,11 +42,11 @@ namespace MlaProlog {
  * @param channelDeqScaleGm 量化参数；该tensor的每个元素不同
  * @param scale 量化参数；该tensor共用
  */
-template <typename T, typename C, typename O, bool enableDequant = false>
+template <typename T, typename C, typename O, typename I = T, bool enableDequant = false>
 __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const GlobalTensor<T>& inputGm, const LocalTensor<C>& cosLocal,
                                     const LocalTensor<C>& sinLocal, LocalTensor<uint8_t>& shareTmpUb,
                                     Rectangle ropeParams,
-                                    LocalTensor<float> channelDeqScaleLocal = LocalTensor<float>(), LocalTensor<float> scale = LocalTensor<float>()) {
+                                    LocalTensor<float> channelDeqScaleLocal = LocalTensor<float>(), LocalTensor<float> scale = LocalTensor<float>(), const SplitKnAccumParams& splitKnParams = DefaultSplitKnAccumParams()) {
 
     int64_t cnt = ropeParams.row * ropeParams.col;
     LocalTensor<T> kLocal = shareTmpUb.ReinterpretCast<T>();
@@ -60,10 +65,37 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const 
         static_cast<uint32_t>((ropeParams.stride - ropeParams.col) * sizeof(T)),
         0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-    if constexpr (std::is_same<T, float>::value) {
-        DataCopyPad(kFp32Local, inputGm, copyParams, padParams);
+    
+    if (splitKnParams.NeedAccumulate()) {
+        if constexpr (std::is_same<I, float>::value) {
+            LocalTensor<T> tempLocal = kFp32Local[cnt];
+            AccumulateKnPartials(
+                kFp32Local,
+                inputGm,
+                0, 
+                ropeParams.row,
+                ropeParams.col,
+                splitKnParams.kGroups,
+                splitKnParams.partialStride,
+                tempLocal);
+        } else {
+            LocalTensor<T> tempLocal = kLocal[cnt];
+            AccumulateKnPartials(
+                kLocal,
+                inputGm,
+                0, 
+                ropeParams.row,
+                ropeParams.col,
+                splitKnParams.kGroups,
+                splitKnParams.partialStride,
+                tempLocal);
+        }
     } else {
-        DataCopyPad(kLocal, inputGm, copyParams, padParams);
+        if constexpr (std::is_same<I, float>::value) {
+            DataCopyPad(kFp32Local, inputGm, copyParams, padParams);
+        } else {
+            DataCopyPad(kLocal, inputGm, copyParams, padParams);
+        }
     }
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -72,21 +104,26 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const 
     LocalTensor<C> kFp32OutputLocal = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt * 3];
     uint64_t rsvdCnt = 0;
 
-    if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
+    if constexpr (std::is_same<I, int32_t>::value || enableDequant) { // 反量化
         Rectangle rectangleParams {
             (uint32_t)1,   // row
             (uint32_t)cnt, // col
             (uint32_t)cnt  // columnStride
         };
-        if constexpr (std::is_same<T, float>::value) {
+        if constexpr (std::is_same<I, float>::value) {
             Dequant(kFp32Local, kFp32Local, channelDeqScaleLocal, scale, rectangleParams);
         } else {
             Dequant(kFp32Local, kLocal, channelDeqScaleLocal, scale, rectangleParams);
         }
         AscendC::PipeBarrier<PIPE_V>();
-    } else if constexpr (std::is_same<T, bfloat16_t>::value) {
-        Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
+    } else if constexpr (std::is_same<I, bfloat16_t>::value) {
+        if constexpr (std::is_same<I, T>::value) {
+            DataCopy(kFp32Local, kLocal, cnt);
+            AscendC::PipeBarrier<PIPE_V>();
+        } else {
+            Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
     }
     if constexpr (std::is_same<O, C>::value) {
         RotaryPosEmb(outputLocal, kFp32Local, cosLocal, sinLocal, ropeShareUB.template ReinterpretCast<uint8_t>(), ropeParams.row, ropeParams.col, 0);

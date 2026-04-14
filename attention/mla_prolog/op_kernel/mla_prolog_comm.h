@@ -41,6 +41,13 @@ __aicore__ inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
+template <HardEvent EVENT_TYPE>
+__aicore__ inline void SetWitFlag(event_t eventId)
+{
+    SetFlag<EVENT_TYPE>(eventId);
+    WaitFlag<EVENT_TYPE>(eventId);
+}
+
 enum class CACHE_MODE : std::uint8_t {
     ND = static_cast<std::uint8_t>(0), // BSND or TND
     PA_BSND = static_cast<std::uint8_t>(1),
@@ -506,5 +513,6 @@ __aicore__ inline void WaitAllCore(uint16_t flagId) {
   CrossCoreSetFlag<modeId, pipe>(flagId);
   CrossCoreWaitFlag(flagId);
 }
+
 }
 #endif
