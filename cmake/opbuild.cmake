@@ -174,7 +174,7 @@ function(gen_aclnn_with_opdef)
   endif()
 
   # 读取 level2_ops_list 文件
-  set(level2_ops_list_file "${CMAKE_CURRENT_LIST_DIR}/level2_ops_list")
+  set(level2_ops_list_file "${CMAKE_CURRENT_LIST_DIR}/cmake/level2_ops_list")
   if(EXISTS ${level2_ops_list_file})
     file(STRINGS ${level2_ops_list_file} level2_ops_list)
   else()
