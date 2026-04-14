@@ -86,12 +86,13 @@ __aicore__ constexpr GmmFrUbBufferInfo GetGmmFRMxA8W4BufferInfo()
 }
 
 #define GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM                                                     \
-    template <typename xType, typename wType, typename biasType, typename yType,          \
-              typename sharedInputDType, typename logitsType,  typename rowIndexType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
+    template <typename xType, typename wType, typename biasType, typename yType, typename sharedInputDType,            \
+              typename logitsType, typename rowIndexType, bool hasBias, const WqmmConfig &wqmmConfig,              \
+              const VecAntiQuantConfig &vecConfig>
 
 #define GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS                                                              \
-    GmmFrVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType,           \
-                                        wqmmConfig, vecConfig>
+    GmmFrVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,    \
+                    vecConfig>
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 class GmmFrVecCompute {
@@ -99,7 +100,7 @@ public:
     __aicore__ inline GmmFrVecCompute(){};
 
     __aicore__ inline void UpdateGlobalAddr(__gm__ wType *weight, __gm__ biasType *bias, __gm__ logitsType *logits, __gm__ rowIndexType *rowIndex, const bool weightL2Cacheable);
-    __aicore__ inline void Init(bool hasBias, float sharedInputWeight, __gm__ yType* yFp32Addr);
+    __aicore__ inline void Init(float sharedInputWeight, __gm__ yType* yFp32Addr);
     __aicore__ inline void WaitVToMTE2();
     __aicore__ inline void SetVToMTE2();
     __aicore__ inline void CopyShareInputGmToUb(uint64_t sharedInputGmOffset,
@@ -169,7 +170,6 @@ private:
     LocalTensor<rowIndexType> rowIndex_;
     LocalTensor<logitsType> logits_;
 
-    bool hasBias_;
 
     constexpr static uint32_t C0_SIZE =
         (IsSameType<xType, int8_t>::value || IsSameType<xType, fp8_e4m3fn_t>::value) ? C0_SIZE_B8 : BLOCK_CUBE;
@@ -193,7 +193,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Update
     if (!weightL2Cacheable) {
         wGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     }
-    if (hasBias_) {
+    if constexpr (hasBias) {
         biasGlobal_.SetGlobalBuffer(bias);
     }
 }
@@ -202,9 +202,8 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Update
  * 初始化buffer和同步所需的EventID
  */
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(bool hasBias, float sharedInputWeight, __gm__ yType* yFp32Addr)
+__aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(float sharedInputWeight, __gm__ yType* yFp32Addr)
 {
-    hasBias_ = hasBias;
     sharedInputWeight_ = sharedInputWeight;
     yFp32Global_.SetGlobalBuffer(yFp32Addr);
     // MxA8W4
@@ -377,14 +376,16 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyGm
     const BasicBlockOffsetParam &offsetParam)
 {
     // Inline CopyBiasGmToUb logic
-    if (hasBias_ && kGmOffset == 0 && biasRealSize != 0) {
-        DataCopyPad2D(
-            bias_[(weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize],
-            biasGlobal_[biasGmOffset], 1, biasRealSize, biasRealSize, biasRealSize);
+    if constexpr (hasBias) {
+        if (kGmOffset == 0 && biasRealSize != 0) {
+            DataCopyPad2D(bias_[(weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize],
+                          biasGlobal_[biasGmOffset], 1, biasRealSize, biasRealSize, biasRealSize);
 
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
+            SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
+        }
     }
+
 
     // ubMte2NSize和ubMte2KSize为实际MTE2搬运到UB的有效数据，
     // 其按照ubMte2InnerSize进行跳写，垃圾数据无需操作，搬出的时搬运有效数据即可。
@@ -422,11 +423,13 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Weight
         CopyWeightHighBitForAligned(offsetParam.nL1Size,
                                     kRealSize, weightHighBitL1);
     }
-    if (hasBias_ && kGmOffset == 0 && biasRealSize != 0) {
-        DataCopy(biasL1,
-             biasRescale_[(ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
-             biasRealSize);
+    if constexpr (hasBias) {
+        if (kGmOffset == 0 && biasRealSize != 0) {
+            DataCopy(biasL1, biasRescale_[(ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
+                     biasRealSize);
+        }
     }
+
     SetFlag<HardEvent::MTE3_V>(
         EVENT_ID_MTE3_TO_V + (ubComputeLoopIdx_ & (UB_BUFFER_INFO.weightHighBitBufferNum - 1)));
     ubComputeLoopIdx_++;
@@ -456,13 +459,17 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQu
     mxA8W4NzParams.innerDstStride = VECTOR_REG_WIDTH * UB_BUFFER_INFO.weightHighBitBufferNum;
     mxA8W4NzParams.loopKDstStride = mxA8W4NzParams.innerLoopNum * mxA8W4NzParams.innerDstStride;
 
-    if (hasBias_ && kGmOffset == 0 && biasRealSize != 0) {
-        mxA8W4NzParams.biasInUbAddr = (__ubuf__ biasType *)bias_.GetPhyAddr(
-            (weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize);
-        mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
-            (ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
-        mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
-        FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
+    if constexpr (hasBias) {
+        if (kGmOffset == 0 && biasRealSize != 0) {
+            mxA8W4NzParams.biasInUbAddr =
+                (__ubuf__ biasType *)bias_.GetPhyAddr((weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize);
+            mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
+                (ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
+            mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
+            FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
+        } else {
+            FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
+        }
     } else {
         FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
     }
