@@ -86,6 +86,7 @@
         $Q_{i} = \left \lfloor \frac{S_{i}}{ Q\_scale_{i} } + Q\_offset_{i}\right \rceil $
 
 ## 参数说明
+
 <table style="table-layout: auto; width: 100%">
 <thead>
 <tr>
@@ -171,6 +172,7 @@
 </table>
 
 ## 约束说明
+
  - N轴长度不能超过10240。
  - K轴长度不能超过65536。
 

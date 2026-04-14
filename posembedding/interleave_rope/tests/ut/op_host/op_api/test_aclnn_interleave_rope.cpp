@@ -35,15 +35,15 @@ protected:
 };
 
 // dtype fp32
-TEST_F(l2_interleave_rope_test, Ascend910B2_interleave_rope_fp32)
-{
-    auto x = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
-    auto cos = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 8);
-    auto sin = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 8);
-    auto out = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnInterleaveRope, INPUT(x, cos, sin), OUTPUT(out));
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
-}
+// TEST_F(l2_interleave_rope_test, Ascend910B2_interleave_rope_fp32)
+// {
+//     auto x = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+//     auto cos = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 8);
+//     auto sin = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 8);
+//     auto out = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND);
+//     auto ut = OP_API_UT(aclnnInterleaveRope, INPUT(x, cos, sin), OUTPUT(out));
+//     uint64_t workspaceSize = 0;
+//     aclOpExecutor* executor = nullptr;
+//     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+//     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+// }

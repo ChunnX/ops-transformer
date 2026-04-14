@@ -380,8 +380,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::ExpertAct
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     Cast(xActiveMaskHalfTensor_, xActiveMaskTensor_, RoundMode::CAST_NONE, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
-    CompareScalar(xActiveMaskTensor_, xActiveMaskHalfTensor_, static_cast<half>(1), AscendC::CMPMODE::EQ,
-                  RoundUp(expertIdsCnt_, BITS16_PER_REPEAT));
+    CompareScalar(xActiveMaskTensor_.template ReinterpretCast<uint8_t>(), xActiveMaskHalfTensor_,
+                  static_cast<half>(1), AscendC::CMPMODE::EQ, RoundUp(expertIdsCnt_, BITS16_PER_REPEAT));
 }
 
 template <TemplateMC2TypeA2Class>

@@ -12,7 +12,7 @@
 
 #include "../utils/device_utils.h"
 #include "../utils/math_utils.h"
-#include "kernel_event.h"
+#include "kernel_operator.h"
 #include "pipeline_state.h"
 #include "utils.h"
 

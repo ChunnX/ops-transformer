@@ -722,7 +722,7 @@ constexpr uint32_t NZ_D1_IDX = 2;
 constexpr uint32_t NZ_D0_IDX = 4;
 constexpr uint32_t TND_NTD_D_IDX = 2;
 constexpr int64_t HEAD_DIM_192 = 192;
-
+constexpr int64_t HEAD_DIM_64 = 64;
 
 FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext *context)
 {
@@ -1013,7 +1013,7 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     if (isLearnableSink && isLayoutSupported) {
         int64_t tempQHeadDim = tempQ->GetStorageShape().GetDim(DIM_2);
         auto sinkDataType = context->GetOptionalInputDesc(LEARNABLE_SINK_INDEX)->GetDataType();
-        if (tempQHeadDim == 64 && sinkDataType == ge::DT_BF16) { // 64: qD need 64, condition to set sinkflag to disable
+        if (tempQHeadDim == HEAD_DIM_64 && sinkDataType == ge::DT_BF16) {
             isLearnableSinkFlag = false;
         }
     }
@@ -1026,9 +1026,8 @@ bool CheckSpecConditions(const gert::TilingContext *context)
         !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
     bool specConditionFlag = false;
-    bool quantScale2Flag = context->GetOptionalInputTensor(QUANT_SCALE2_INDEX) != nullptr ? true : false;
     if (isLayoutSupported && isLearnableSinkFlag && !isRopeSplitMla && sparseModeSupported &&
-        (nonMhaConditions || mhaConditions) && !quantScale2Flag) {
+        (nonMhaConditions || mhaConditions)) {
         int64_t tempQD = tempQ->GetStorageShape().GetDim(DIM_2);
         if (!isPageAttention) {
             int64_t tempKD = tempK->GetStorageShape().GetDim(DIM_2);

@@ -75,11 +75,11 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret: %d\n", ret); return -1);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p, context = %p\n", args.rankId, hcomName,
-        args.stream, args.context);
+    args.stream, args.context);
     std::vector<int64_t> x1Shape = {32, 256};
     std::vector<int64_t> x2Shape = {256, 128};
-    std::vector<int64_t> x1ScaleShape = {1};
-    std::vector<int64_t> x2ScaleShape = {1};
+    std::vector<int64_t> x1ScaleShape = {32, 1};
+    std::vector<int64_t> x2ScaleShape = {1, 128};
     std::vector<int64_t> biasShape = {128};
     std::vector<int64_t> outShape = {32 * DEV_NUM, 128};
     std::vector<int64_t> gatherOutShape = {32 * DEV_NUM, 256};
@@ -125,9 +125,9 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     std::vector<int16_t> outHostData(outShapeSize, 0);
     std::vector<int8_t> gatherOutHostData(gatherOutShapeSize, 0);
 
-    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
+    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2);
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x1Scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -136,12 +136,12 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gatherOutHostData, gatherOutShape, &gatherOutDeviceAddr,
-                          aclDataType::ACL_FLOAT8_E4M3FN, &gatherOut);
+                          aclDataType::ACL_INT8, &gatherOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 调用第一阶段接口
     ret = aclnnAllGatherMatmulV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "ccu",
+        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "aiv",
         out, gatherOut, amax, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);

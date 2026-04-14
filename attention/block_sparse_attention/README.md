@@ -38,8 +38,8 @@ aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
     int64_t preTokens,                              // 滑窗参数 (当前不支持)
     int64_t nextTokens,                             // 滑窗参数 (当前不支持)
     int64_t softmaxLseFlag,                         // 是否输出LSE
-    const aclTensor *attentionOut,                  // 输出tensor
-    const aclTensor *softmaxLse,                    // Softmax LSE输出 (可选)
+    aclTensor *attentionOut,                        // 输出tensor
+    aclTensor *softmaxLseOptional,                  // Softmax LSE输出 (可选)
     uint64_t *workspaceSize,                        // 返回workspace大小
     aclOpExecutor **executor);                      // 返回executor
 ```
@@ -74,8 +74,8 @@ aclnnStatus aclnnBlockSparseAttention(
   - 稀疏Mask: [batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY)]
 
 - **blockShapeOptional**: 
-  - blockShapeX: Q方向块大小
-  - blockShapeY: KV方向块大小
+  - blockShapeX：Q方向块大小
+  - blockShapeY：KV方向块大小
 
 ### 输出参数
 

@@ -111,13 +111,13 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_s1s2_bns1_mla.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_s1s2_bns1_x910_base.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_tail.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/kernel_data_copy_transpose.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/kernel_data_copy_transpose.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/mla_custom_matmul_policy_d192.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_split_n_s_no_tail.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_var_len_score_sab.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/mla_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_tailWBNSD.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/kernel_operator_softmax_compute_nz.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/kernel_operator_softmax_compute_nz.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_s1s2_bns1_mla_baseapi.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/mla_custom_matmul_policy_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_no_tailWBNSD.h
@@ -127,7 +127,7 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_var_len_score_sab_baseapi.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_bnstilling_n_s_no_tail.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/pfa_service_matmul_kv_nd.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_tilingkey.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_tilingkey.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/
                 - ops/ops-transformer/attention/prompt_flash_attention/tests/
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
@@ -231,13 +231,11 @@ ifa@ops-transformer:
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_def.cpp
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_infershape.cpp
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_base.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_context.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_mla.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_register.cpp
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
                 - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch20  
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch32/paged_attention_antiquantkv.h  
@@ -272,20 +270,31 @@ pfa@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_obp.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_310p.h  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_attention_prefill.h  
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/unpad_flash_attention_common.h  
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_api.h  
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_common.h  
-                - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention.cpp  
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host  
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel  
-                - ops/ops-transformer/attention/fused_infer_attention_score/examples/test_aclnn_fused_infer_attention_score.cpp  
             kernel_style: null  
         unrelease:
-            test_code:  
+            test_code:
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/prompt_flash_attention.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention_v3.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_compile_info.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention_v2.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention_v2.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_common.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.h
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention_v3.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/prompt_flash_attention_base_aclnn.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch32/prompt_flash_attention_base_api.h
+                - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/unpad_flash_attention_common.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/examples/test_aclnn_fused_infer_attention_score.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/op_api/aclnn_prompt_flash_attention_inner.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch38
                 - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
-                - ops/ops-transformer/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/attn_infra/
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v2.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v2.h

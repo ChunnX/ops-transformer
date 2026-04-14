@@ -38,13 +38,10 @@
 - 算子规格：
   <table>
   <tr><td rowspan="1" align="center">算子类型(OpType)</td><td colspan="4" align="center">FusedInferAttentionScore</td></tr>
-  </tr>
   <tr><td rowspan="4" align="center">算子输入</td><td align="center">name</td><td align="center">layout</td><td align="center">data type</td><td align="center">format</td></tr>
   <tr><td align="center">query</td><td align="center">bnsd、bsnd</td><td align="center">float16、bfloat16</td><td align="center">ND</td></tr>
   <tr><td align="center">key</td><td align="center">bnsd、bsnd</td><td align="center">float16、bfloat16</td><td align="center">ND</td></tr>
   <tr><td align="center">value</td><td align="center">bnsd、bsnd</td><td align="center">float16、bfloat16</td><td align="center">ND</td></tr>
-  </tr>
-  </tr>
   <tr><td rowspan="1" align="center">算子输出</td><td align="center">atten_out</td><td align="center">bnsd、bsnd</td><td align="center">float16、bfloat16</td><td align="center">ND</td></tr>
   </table>
 
@@ -68,7 +65,7 @@ source /usr/local/Ascend/cann/set_env.sh
 # source ${install_path}/cann/set_env.sh
 ```
 ## 编译运行
-**注意：首先确认自己的机器是哪种npu型号, 工程默认使用910b(A2)机器，如果是910c(A3)的机器,则需要修改编译命令，将编译命令中的-soc=ascend910b改成-soc=ascend910_93**
+**注意：首先确认自己的机器是哪种npu型号, 工程默认使用910b(A2)机器，如果是910c(A3)的机器，则需要修改编译命令，将编译命令中的-soc=ascend910b改成-soc=ascend910_93**
 
 提供两种方式运行本Demo
 - 一键式安装运行(run.sh脚本默认使用A2命令编译，若在A3上运行需要自行修改脚本内的编译命令)

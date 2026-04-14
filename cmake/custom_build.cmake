@@ -87,6 +87,7 @@ if (BUILD_OPEN_PROJECT)
             -Wl,--no-whole-archive
         #     -lopapi
             nnopbase
+            -Wl,-Bsymbolic
             profapi
             ge_common_base
             ascend_dump
@@ -141,7 +142,10 @@ if (BUILD_OPEN_PROJECT)
     endif()
 
     # op tiling
-    add_library(cust_opmaster SHARED)
+    add_library(cust_opmaster SHARED
+        $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+        $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
+    )
     target_include_directories(cust_opmaster PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/inc
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
@@ -289,9 +293,9 @@ if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
 endif()
 
 # 编译AICPU算子
-if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler")	 
-     add_subdirectory(examples/add_example)	 
-     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})	 
+if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler")
+     add_subdirectory(examples/add_example)
+     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})
 endif()
 
 # 编译examples目录下算子
@@ -626,7 +630,7 @@ if (BUILD_OPEN_PROJECT)
 
         set(generate_proto_srcs ${generate_proto_srcs_filtered})
     endif()
-    
+
     set_source_files_properties(${generate_proto_srcs}
             PROPERTIES GENERATED TRUE
     )
@@ -703,7 +707,6 @@ target_sources(cust_opapi PRIVATE
 target_link_libraries(
     cust_opapi
     PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
-    $<$<TARGET_EXISTS:opsbase>:opsbase>
 )
 
 target_link_libraries(
@@ -712,15 +715,56 @@ target_link_libraries(
     PUBLIC $<$<TARGET_EXISTS:${OPHOST_NAME}_opmaster_ct_gentask_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opmaster_ct_gentask_obj>>
     PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
     PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
-    $<$<TARGET_EXISTS:opsbase>:opsbase>
 )
 
 target_link_libraries(
     cust_proto
     PUBLIC ${OPHOST_NAME}_infer_obj
-    PRIVATE $<$<TARGET_EXISTS:opsbase>:opsbase>
 )
+
+function(filter_aclnn_headers_by_skip_flag input_headers output_headers)
+    set(filtered_headers)
+    foreach(header_file ${input_headers})
+        set(skip_this_header FALSE)
+
+        get_filename_component(header_name ${header_file} NAME)
+
+        if(header_name MATCHES "aclnn_([^.]+)\\.h$")
+            set(op_name ${CMAKE_MATCH_1})
+            string(TOUPPER ${op_name} op_name_upper)
+            string(REPLACE "-" "_" op_name_upper ${op_name_upper})
+
+            set(skip_var_name "${op_name_upper}_SKIP_HEADER")
+            if(DEFINED ${skip_var_name} AND ${skip_var_name})
+                message(STATUS "Skipping header packaging for operator: ${op_name}")
+                set(skip_this_header TRUE)
+            endif()
+        endif()
+
+        if(NOT skip_this_header AND header_name MATCHES "aclnn_([^_]+)_v[0-9]+\\.h$")
+            set(op_name ${CMAKE_MATCH_1})
+            string(TOUPPER ${op_name} op_name_upper)
+            string(REPLACE "-" "_" op_name_upper ${op_name_upper})
+
+            set(skip_var_name "${op_name_upper}_SKIP_HEADER")
+            if(DEFINED ${skip_var_name} AND ${skip_var_name})
+                message(STATUS "Skipping header packaging for operator: ${op_name}")
+                set(skip_this_header TRUE)
+            endif()
+        endif()
+
+        if(NOT skip_this_header)
+            list(APPEND filtered_headers ${header_file})
+        endif()
+    endforeach()
+
+    set(${output_headers} ${filtered_headers} PARENT_SCOPE)
+endfunction()
+
 if (generate_aclnn_headers)
+    filter_aclnn_headers_by_skip_flag("${generate_aclnn_headers}" filtered_generate_aclnn_headers)
+    set(generate_aclnn_headers ${filtered_generate_aclnn_headers})
+
     install(FILES ${generate_aclnn_headers}
             DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL
     )
@@ -861,7 +905,14 @@ install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/inc/kernel
 install(DIRECTORY ${OPS_ADV_DIR}/mc2/3rd/
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd
 )
-        
+
+install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
+        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+)
+install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel
+        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+)
+
 foreach (op_dir ${OP_DIR_LIST})
     get_filename_component(_op_name "${op_dir}" NAME)
     set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
@@ -917,7 +968,7 @@ if (ENABLE_OPS_KERNEL)
     add_custom_target(ops_transformer_kernel ALL)
     add_custom_target(ops_transformer_config ALL)
     add_dependencies(ops_transformer_kernel ops_transformer_config)
-    add_dependencies(ops_transformer_kernel generate_compile_cmd)
+    add_dependencies(ops_transformer_kernel generate_transformer_adapt_py generate_compile_cmd)
 
     foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
         add_bin_compile_target(

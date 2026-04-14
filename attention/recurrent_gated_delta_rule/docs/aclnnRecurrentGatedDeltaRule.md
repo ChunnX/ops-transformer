@@ -33,7 +33,6 @@
 
   其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\alpha_k \in R^{d_k}$，$\beta_t \in R$，$o \in R^{d_v}$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
@@ -50,7 +49,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(
     const aclTensor *g,
     const aclTensor *gk,
     const aclTensor *numAcceptedTokens,
-    float           scaleValue,
+    float            scaleValue,
     aclTensor       *out,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
@@ -59,14 +58,14 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(
 ```cpp
 aclnnStatus aclnnRecurrentGatedDeltaRule(
     void          *workspace,
-    uint64_t      workspaceSize,
+    uint64_t       workspaceSize,
     aclOpExecutor *executor,
-    aclrtStream   stream)
+    aclrtStream    stream)
 ```
 
 ## aclnnRecurrentGatedDeltaRuleGetWorkspaceSize
 
-- 参数说明
+- **参数说明**
 
   <table style="undefined; table-layout: fixed; width: 1450px"><colgroup>
   <col style="width: 170px">
@@ -95,7 +94,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>query</td>
       <td>输入</td>
       <td>公式中的q。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -105,7 +104,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>key</td>
       <td>输入</td>
       <td>公式中的k。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -115,7 +114,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>value</td>
       <td>输入</td>
       <td>公式中的v。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv, Dv)</td>
@@ -125,7 +124,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>beta</td>
       <td>输入</td>
       <td>公式中的β。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -135,7 +134,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>stateRef</td>
       <td>输入&输出</td>
       <td>状态矩阵，公式中的S。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(BlockNum, Nv, Dv, Dk)</td>
@@ -145,7 +144,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>actualSeqLengths</td>
       <td>输入</td>
       <td>不同batch的有效序列长度。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -155,7 +154,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>ssmStateIndices</td>
       <td>输入</td>
       <td>输入序列到状态矩阵的映射索引。</td>
-      <td><ul><li>不支持空Tensor。</li><li>state[ssmStateIndices[i]]表示第i个token的状态矩阵。</li></td>
+      <td><ul><li>不支持空Tensor。</li><li>state[ssmStateIndices[i]]表示第i个token的状态矩阵。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(T,)</td>
@@ -165,7 +164,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>g</td>
       <td>输入</td>
       <td>衰减系数，公式中的α=e^g。</td>
-      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></td>
+      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -175,7 +174,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>gk</td>
       <td>输入</td>
       <td>衰减系数，公式中的αk=e^gk</td>
-      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></td>
+      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(T, Nv, Dk)</td>
@@ -185,7 +184,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>numAcceptedTokens</td>
       <td>输入</td>
       <td>每个序列接受的token数量。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -226,7 +225,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   
   其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key向量的维度，$D_v$ 表示value向量的维度。
 
-- 返回值
+- **返回值**
 
   aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
@@ -263,10 +262,9 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </tbody>
   </table>
 
-
 ## aclnnRecurrentGatedDeltaRule
 
-- 参数说明
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
@@ -281,37 +279,37 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </thead>
   <tbody>
     <tr>
-      <td>workspace (void*)</td>
+      <td>workspace</td>
       <td>输入</td>
       <td>在Device侧申请的workspace内存地址。</td>
     </tr>
     <tr>
-      <td>workspaceSize (uint64_t)</td>
+      <td>workspaceSize</td>
       <td>输入</td>
       <td>在Device侧申请的workspace大小，由第一段接口aclnnRecurrentGatedDeltaRuleGetWorkspaceSize获取。</td>
     </tr>
     <tr>
-      <td>workspace (void*)</td>
+      <td>executor</td>
       <td>输入</td>
       <td>op执行器，包含算子计算流程。</td>
     </tr>
     <tr>
-      <td>workspace (void*)</td>
+      <td>stream</td>
       <td>输入</td>
       <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
 
-- 返回值
+- **返回值**
+
   aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
+
 - 确定性计算：
   - aclnnRecurrentGatedDeltaRule默认确定性实现。
 - 输入shape大小需满足约束：$L_i \le 8$，$N_k \le 256$，$N_v \le 256$，$D_k \le 256$，$D_v \le 256$。
-
 
 ## 调用示例
 

@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。
@@ -24,7 +23,6 @@ $$
 \tilde{K}_t^{\text{cmp}} = f_K^{\text{cmp}}(k_{:t}) = \left\{ \varphi(k_{id+1:id+l}) \bigg| 0 \leq i \leq \left\lfloor \frac{t-l}{d} \right\rfloor \right\}
 $$
 
-  
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaCompressGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompress”接口执行计算。
@@ -253,7 +251,6 @@ aclnnStatus aclnnNsaCompress(
   </tbody>
   </table>
 
-
 ## aclnnNsaCompress
 
 - **参数说明**
@@ -310,7 +307,6 @@ aclnnStatus aclnnNsaCompress(
 - input.shape[2]必须是16的倍数，上限256。
 - weight.shape[0]=compressBlockSize，必须是16的倍数，上限128。
 - compressStride必须是16的整数倍，并且compressBlockSize>=compressStride。
-
 
 ## 调用示例
 

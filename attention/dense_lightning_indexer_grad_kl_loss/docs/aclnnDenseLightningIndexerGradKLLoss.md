@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：DenseLightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，从而减少长序列场景下Attention的计算量，加速长序列的网络的推理和训练的性能。稠密场景下的LightningIndexerGrad的输入query、key、query_index、key_index不用做稀疏化处理。
+- 接口功能：DenseLightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，从而减少长序列场景下Attention的计算量，加速长序列的网络的推理和训练的性能。稠密场景下的LightningIndexerGrad的输入query、key、query_index、key_index不用做稀疏化处理。
 
 - 计算公式：
 
@@ -78,7 +78,7 @@
 
 ## 函数原型
 
-算子执行接口为两段式接口，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
@@ -93,16 +93,16 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor     *softmaxSumIndex,
     const aclTensor     *queryRope,
     const aclTensor     *keyRope,
-    const aclIntArray   *actualSeqLengthsQuery,
-    const aclIntArray   *actualSeqLengthsKey,
+    const aclTensor     *actualSeqLengthsQuery,
+    const aclTensor     *actualSeqLengthsKey,
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
-    int64_t              pre_tokens,
-    int64_t              next_tokens,
+    int64_t              preTokens,
+    int64_t              nextTokens,
     const aclTensor     *dQueryIndex,
-    const aclTensor     *dKeyKndex,
-    const aclTensor     *dWeights
+    const aclTensor     *dKeyIndex,
+    const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
     aclOpExecutor       *executor)
@@ -113,7 +113,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    const aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnDenseLightningIndexerGradKLLoss
@@ -122,9 +122,9 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
 
   <table style="undefined;table-layout: fixed; width: 1550px">
       <colgroup>
-          <col style="width: 220px">
+          <col style="width: 320px">
           <col style="width: 120px">
-          <col style="width: 300px">  
+          <col style="width: 200px">  
           <col style="width: 400px">  
           <col style="width: 212px">  
           <col style="width: 100px">
@@ -248,7 +248,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>keyRope（aclTensor*）</td>
        <td>输入</td>
-       <td>MLA rope部分：Key位置编码的输出</<td>
+       <td>MLA rope部分：Key位置编码的输出</td>
        <td><ul><li>与key的layout维度保持一致。</li><li>B: 支持泛化与query的B保持一致。</li><li>S2: 支持泛化且与key的S1保持一致。</li><li>N2: 等于N1。</li><li>Dr: 64。</li><li>T2: 多个Batch的S2累加。</li></ul></td>
        <td>FLOAT16、BFLOAT16</td>
        <td>ND</td>
@@ -284,6 +284,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>-</td>
        <td>-</td>
        <td>-</td>
+      </tr>
       <tr>
        <td>layout（char*）</td>
        <td>输入</td>
@@ -308,7 +309,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1</a>。</li></ul></td>
+       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -318,7 +319,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1</a>。</li></ul></td>
+       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</li></ul></td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -358,7 +359,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>loss（aclTensor*）</td>
        <td>输出</td>
        <td>损失函数值</td>
-       <td>-</ul></td>
+       <td>-</td>
        <td>FLOAT32</td>
        <td>ND</td>
        <td>(1,)</td>
@@ -426,10 +427,10 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
   </colgroup>
   <thead>
       <tr>
@@ -616,7 +617,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tbody>
       <tr>
        <td>query</td>
-       <td>N1=128/64/32; D=128<td>
+       <td>N1=128/64/32; D=128</td>
       </tr>
       <tr>
        <td>queryIndex</td>

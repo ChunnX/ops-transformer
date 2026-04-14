@@ -22,8 +22,8 @@ extern "C" {
  * 算子功能：实现allGather + mm 融合计算
  * @brief aclnnAllGatherMatmulV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
- * @param [in] x1: matmul左矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8。
- * @param [in] x2: matmul右矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8。
+ * @param [in] x1: matmul左矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8, int4。
+ * @param [in] x2: matmul右矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8, int4。
  * @param [in] bias: 偏置，数据类型支持：float16, bfloat16, float32。
  * @param [in] x1Scale: matmul左矩阵量化参数，数据类型支持：float16, bfloat16, float32。
  * @param [in] x2Scale: matmul右矩阵量化参数，数据类型支持：float16, bfloat16, float32。

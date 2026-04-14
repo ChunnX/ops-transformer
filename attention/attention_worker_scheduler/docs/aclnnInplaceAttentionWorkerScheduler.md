@@ -17,7 +17,7 @@
 
   **该算子不建议单独使用，建议与FFNToAttention和AttentionWorkerCombine算子配合使用，形成完整的工作流。**
 
-    1. 接收FFNToAttention算子发送的数据。该数据以ScheduleContext结构体存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，AttentionArea域(负责管理算子计算过程中所需的核心数据缓冲区与状态信息，其中token_info_buf存储了与输入相关的数据信息)。
+    1. 接收FFNToAttention算子发送的数据。该数据以ScheduleContext结构体存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea（用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num），ControlArea（用于上层控制进程是否退出），AttentionArea域(负责管理算子计算过程中所需的核心数据缓冲区与状态信息，其中token_info_buf存储了与输入相关的数据信息)。
 
     2. 读取ScheduleContext.AttentionArea域中token_info_buf存储的flag信息，查看通信数据是否准备就绪。
 

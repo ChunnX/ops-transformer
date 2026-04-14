@@ -18,6 +18,7 @@
     4. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前，因此最后需要将ub中的ub_attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
 
 ## 2 每个计算阶段的入口
+
 以S1模板为例
 1. 得到每个核处理的任务块数后，调用函数：`Process`
 2. Cube1阶段，上图中Cube1，计算入口：`IterateBmm1`

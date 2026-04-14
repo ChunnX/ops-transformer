@@ -101,7 +101,7 @@ int main() {
     int64_t compressStride = 16;
     double scaleValue = 0.088388;
 	string sLayerOut = "TND";
-	char layOut[sLayerOut.length()];
+	char layOut[sLayerOut.length()+1];
 	strcpy(layOut, sLayerOut.c_str());
     int64_t pageBlockSize = 128;
     int64_t sparseMod = 0;

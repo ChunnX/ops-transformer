@@ -32,6 +32,7 @@
       - 支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，仅支持perchannel模式。
 
 **说明：**
+
   - 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
   - tensor转置：指若tensor shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景，即非连续tensor。
 
@@ -142,7 +143,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -152,7 +153,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight</td>
+      <td>weight（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -162,7 +163,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional</td>
+      <td>biasOptional（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -172,7 +173,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional</td>
+      <td>scaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -182,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -192,7 +193,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional</td>
+      <td>antiquantScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -202,7 +203,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional</td>
+      <td>antiquantOffsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -212,7 +213,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>perTokenScaleOptional</td>
+      <td>perTokenScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的由x量化引入的缩放因子。</td>
       <td>仅支持x、weight、out均为单tensor。</td>
@@ -222,7 +223,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional</td>
+      <td>groupListOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>-</td>
@@ -232,7 +233,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationInputOptional</td>
+      <td>activationInputOptional（aclTensorList）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -242,7 +243,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantScaleOptional</td>
+      <td>activationQuantScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -252,7 +253,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantOffsetOptional</td>
+      <td>activationQuantOffsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -262,7 +263,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>splitItem</td>
+      <td>splitItem（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，代表输出是否要做tensor切分。</td>
       <td>0/1代表输出为多tensor；2/3代表输出为单tensor。</td>
@@ -272,7 +273,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupType</td>
+      <td>groupType（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，代表需要分组的轴。</td>
       <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</td>
@@ -282,17 +283,17 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListType</td>
+      <td>groupListType（int64_t）</td>
       <td>输入</td>
       <td>-</td>
-      <td>枚举值0、1、2。综合约束请参见<a href="#约束说明">约束说明。</td>
+      <td>枚举值0、1、2。综合约束请参见<a href="#约束说明">约束说明。</a></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>actType</td>
+      <td>actType（int64_t）</td>
       <td>输入</td>
       <td>代表激活函数类型。</td>
       <td>取值范围为0-5。<br>
@@ -308,7 +309,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>out</td>
+      <td>out（aclTensorList）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -318,7 +319,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationFeatureOutOptional</td>
+      <td>activationFeatureOutOptional（aclTensorList）</td>
       <td>输出</td>
       <td>激活函数的输入数据。</td>
       <td>当前只支持传入nullptr。</td>
@@ -328,7 +329,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>dynQuantScaleOutOptional</td>
+      <td>dynQuantScaleOutOptional（aclTensorList）</td>
       <td>输出</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -338,7 +339,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -348,7 +349,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -667,6 +668,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         | 伪量化perchannel | weight多 | $[N_i]$|
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
+        
     </details>
 
     <a id="a16w8场景约束"></a>
@@ -694,6 +696,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         |:---------:|:-------:| :-------|
         | 伪量化perchannel | weight单 | $[E, N]$|
         | 伪量化perchannel | weight多 | $[N_i]$|
+
     </details>
 
     <a id="a4w4场景约束"></a>
@@ -756,6 +759,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       | 0 | 多个|多个|单个 | 2/3 | 1）groupListOptional可选；<br> 2）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应；当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应；当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应；<br> 3）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一|1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
       | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维；<br> 3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
       | 2 | 单个|多个|多个 | 0/1 | groupListOptional必须传空 | 1）x必须转置；<br> 2）weight不能转置| 1）x，weight，y中tensor需为2维。<br> 2）weight长度最大支持128，即最多支持128个group；<br> 3）原始shape中weight每个tensor的第一维之和不应超过x第一维；<br> 4）bias必须传空 |
+
     </details>
 
     <a id="grouplistoptional配置示例"></a>
@@ -854,7 +858,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         <a id="动态量化（mx量化）场景约束"></a>
 
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、 activationInputOptional
-    - 计算公式中量化block size为：gsM = gsN = 1，gsK = 32。mx量化是特殊的pergroup量 化。
+    - 计算公式中量化block size为：gsM = gsN = 1，gsK = 32。mx量化是特殊的pergroup量化。
     - 不为空的参数支持的数据类型组合要满足下表：
 
         |groupType| x       | weight  | biasOptional | scaleOptional |  perTokenScaleOptional |out     |
@@ -876,7 +880,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
         |2|x单tensor|每个tensor 3维，shape为((K / 64) + g, M, 2), 起始地址偏移与scale 同理|
 
-    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight 非转置时还需满足N为偶数。
+    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight非转置时还需满足N为偶数。
     </details>
 
     <details>
@@ -963,7 +967,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         <a id="不同groupType约束"></a>
 
     - 不同groupType支持场景:
-      - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，out，例如单多单表示支持x为单tensor，weight多 tensor，out单tensor的场景。
+      - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，out，例如单多单表示支持x为单tensor，weight多tensor，out单tensor的场景。
 
           | groupType | 支持场景 | 场景限制 |
           |:---------:|:-------:| :------ |
@@ -971,7 +975,7 @@ aclnnStatus aclnnGroupedMatmulV4(
           | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（g, N, K）或（g, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（g, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持<br>6）仅支持ND进ND出<br>|
           | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大1024<br>3）x，out中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出<br> |
           | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出<br> |
-          | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；out中tensor需为3维, shape为（g, M, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置，weight不能转置<br>6）仅支持非量化和量化<br>7）仅支持ND进ND出|
+          | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；out中tensor需为3维，shape为（g, M, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置，weight不能转置<br>6）仅支持非量化和量化<br>7）仅支持ND进ND出|
 
     </details>
 </details>

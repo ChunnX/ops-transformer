@@ -335,6 +335,10 @@ bool FlashAttentionScoreGraTilingBasicDet::IsShapeCapable()
     if (fBaseParams.d != fBaseParams.dv || fBaseParams.d > SPECIAL_HEADDIM_128 || fBaseParams.d % C0_SIZE != 0) {
         return false;
     }
+    if (strcmp(fBaseParams.inputLayout, TND_STR) != 0 && fBaseParams.s1 != fBaseParams.s2) {
+        return false;
+    }
+    
     return true;
 }
 
@@ -444,7 +448,7 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::GetWorkspaceSize()
     constexpr size_t matmulSize = 16 * 128 * 128;
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    size_t workspaceOffset = WORKSPACE_RSV_BYTE;
+    size_t workspaceOffset = 0;
 
     // matmal3 q
     tilingData->basicDetTensorTilingData.set_dqWorkSpaceOffset(workspaceOffset);

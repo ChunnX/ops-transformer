@@ -18,7 +18,6 @@
 #include "register/op_def_registry.h"
 
 namespace optiling {
-
 // BlockSparseAttention Tiling数据定义
 BEGIN_TILING_DATA_DEF(BlockSparseAttentionTilingData)
 // 基础参数
@@ -110,61 +109,51 @@ enum RFAQInputLayout : uint32_t {
     BNSD_Q = 1  // [B, N, S, D] format
 };
 
+// inner prec 枚举
+enum BsaInnerCalcPrec : uint32_t {
+    ALL_HIGH = 0,
+    ALL_LOW = 1,
+    LOW_HIGH_MIXED = 4
+};
+
 // Tiling类
 class BSATiling {
 public:
     BSATiling() = default;
     ~BSATiling() = default;
     
-    ge::graphStatus GetRFATiling(gert::TilingContext *rfaContext,
+    ge::graphStatus GetBsaTiling(gert::TilingContext *bsaContext,
                                   BlockSparseAttentionTilingData &tilingData);
-    ge::graphStatus RFASetTilingData(gert::TilingContext *context,
+    ge::graphStatus BsaSetTilingData(gert::TilingContext *context,
                                       BlockSparseAttentionTilingData &tilingData);
 
 private:
-    ge::graphStatus GetNpuInfo(gert::TilingContext *rfaContext);
-    ge::graphStatus ProcessInput(gert::TilingContext *rfaContext);
-    ge::graphStatus CheckAttr(gert::TilingContext *rfaContext);
-    ge::graphStatus CheckKvCacheLayout(gert::TilingContext *rfaContext);
-    ge::graphStatus CalculateTaskSplit(gert::TilingContext *rfaContext);
-    ge::graphStatus CalculateWorkSpace(gert::TilingContext *rfaContext);
-    ge::graphStatus FillTilingData(gert::TilingContext *rfaContext);
-    uint64_t GenerateTilingKey(gert::TilingContext *rfaContext);
-    
-    ge::graphStatus ParseQInputLayout(gert::TilingContext *rfaContext);
-    ge::graphStatus ParseKvInputLayout(gert::TilingContext *rfaContext);
-    ge::graphStatus ValidateTNDFormat(gert::TilingContext *rfaContext);
-    ge::graphStatus ValidateBNSDFormat(gert::TilingContext *rfaContext);
-
-    //新增校验blockSparseMask合法
-    ge::graphStatus ValidateBlockSparseMask(gert::TilingContext *rfaContext);
-
-    ge::graphStatus ProcessQueryShape(gert::TilingContext *rfaContext);
-    ge::graphStatus ProcessActualSeqLengths(gert::TilingContext *rfaContext);
-    ge::graphStatus ProcessBlockShape(gert::TilingContext *rfaContext);
-    ge::graphStatus ProcessSoftmaxLse(gert::TilingContext *rfaContext);
-    ge::graphStatus ValidateConfiguration(gert::TilingContext *rfaContext);
-    ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *rfaContext);
-    
-    ge::graphStatus ProcessQSeqLengths(gert::TilingContext *rfaContext, 
-                                       const gert::Tensor *actualSeqLengths);
-    ge::graphStatus ProcessKvSeqLengths(gert::TilingContext *rfaContext, 
-                                       const gert::Tensor *actualSeqLengthsKv);
-    ge::graphStatus ValidateBNSDQSeqlen(gert::TilingContext *rfaContext);
-    ge::graphStatus ValidateBNSDKvSeqlen(gert::TilingContext *rfaContext);
-    ge::graphStatus GetKvSeqlenFromShape(gert::TilingContext *rfaContext, uint32_t &kvSeqlen);
-    
-    bool CheckShouldUseUniformKvSeqlen(const gert::Tensor *actualSeqLengthsKv);
-    ge::graphStatus SetupUniformKvSeqlen(gert::TilingContext *rfaContext);
-    ge::graphStatus ProcessKvSeqLengthsBNSD(gert::TilingContext *rfaContext, 
-                                            const gert::Tensor *actualSeqLengthsKv);
-    ge::graphStatus ProcessKvSeqLengthsTND(gert::TilingContext *rfaContext, 
-                                           const gert::Tensor *actualSeqLengthsKv);
-    ge::graphStatus ProcessKvSeqLengthsWithArray(gert::TilingContext *rfaContext, 
-                                                  const gert::Tensor *actualSeqLengthsKv);
-    
-    void CalculateBatchTaskSplit(uint32_t batchIdx, int64_t qSeqlen, uint32_t groupSize,
-                                 uint32_t &curTaskNum, uint32_t &curQBlockNum);
+    ge::graphStatus GetNpuInfo(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseAttrs(gert::TilingContext *bsaContext);
+    ge::graphStatus GetInputLayout(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseRequiredTensors(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseOptionalTensors(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckQKVDtype(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckQKVDimVal(gert::TilingContext *bsaContext,
+        uint32_t kHeads, uint32_t vHeads, uint32_t kHeadDim, uint32_t vHeadDim);
+    ge::graphStatus ParseQKVInTND(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseQKVInBNSD(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseSeqlensInTND(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseSeqlensInBNSD(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseSeqlens(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseSparsePattern(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseAttenMask(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
+    ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
+    // 910 exclusive
+    ge::graphStatus CalculateTaskSplit(gert::TilingContext *bsaContext);
+    ge::graphStatus CalculateWorkSpace(gert::TilingContext *bsaContext);
+    // shared
+    void CalculateBatchTaskSplit(int64_t qSeqlen, uint32_t groupSize,
+        uint32_t &curTaskNum, uint32_t &curQBlockNum);
+    ge::graphStatus FillTilingData(gert::TilingContext *bsaContext);
+    uint64_t GenerateTilingKey(gert::TilingContext *bsaContext);
     
 private:
     uint32_t batch_ = 0;
@@ -190,8 +179,8 @@ private:
     uint32_t firstBatchTaskNum_ = 0;
     uint32_t totalTaskNum_ = 0;
     uint32_t maxNumBlocksPerBatch_ = 0;
-    const int64_t *qSeqLenList = nullptr;
-    const int64_t *kvSeqLenList = nullptr;
+    const int64_t *qSeqLenList_ = nullptr;
+    const int64_t *kvSeqLenList_ = nullptr;
     const int64_t *blockShapeList = nullptr;
     bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
     bool useUniformKvSeqlen_ = false;  // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
@@ -209,6 +198,7 @@ private:
     uint32_t blockDim_ = 20;
     uint32_t aivNum_ = 0;
     uint32_t aicNum_ = 0;
+    uint32_t socVer_ = 0;
     uint64_t ubSize_ = 0;
     uint64_t workSpaceSize_ = 0;
     uint64_t libapiSize_ = 0;
@@ -216,8 +206,7 @@ private:
     uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
     uint32_t maxKvSeqlen_ = 0;  // BNSD格式KV的第三维（S维度）
     int64_t totalTokensT_ = 0;  // TND格式Q的第一维（T维度，总token数）
-    int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数）
-    
+    int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数)
     ge::DataType dataType_ = ge::DT_FLOAT16;
 
     BlockSparseAttentionTilingData *tilingData_ = nullptr;
