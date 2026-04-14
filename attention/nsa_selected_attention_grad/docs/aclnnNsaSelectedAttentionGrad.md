@@ -27,15 +27,15 @@
   接着，进行注意力机制的反向计算，计算公式为：
 
   $$
-  V=P^TdY
+  dV=P^TdY
   $$
 
   $$
-  Q=\frac{((dS)*K)}{\sqrt{d}}
+  dQ=\frac{((dS)*K)}{\sqrt{d}}
   $$
 
   $$
-  K=\frac{((dS)^T*Q)}{\sqrt{d}}
+  dK=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
   
 ## 函数原型
@@ -269,10 +269,40 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>输入</td>
       <td>sparse模式。</td>
       <td>支持0或2。</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
+    </tr>
+    <tr>
+      <td>dqOut</td>
+      <td>输出</td>
+      <td>公式中的dQ，表示query的梯度。</td>
+      <td>-</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>dkOut</td>
+      <td>输出</td>
+      <td>公式中的dK，表示keyIn的梯度。</td>
+      <td>-</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>dvOut</td>
+      <td>输出</td>
+      <td>公式中的dV，表示value的梯度。</td>
+      <td>-</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -324,10 +354,10 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
     <tr>
       <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="3">161002</td>
-      <td>query、key、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
+      <td>query、key、value、attentionOut、attentionOutGrad、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>query、key、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
+      <td>query、key、value、attentionOut、attentionOutGrad、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -628,12 +658,12 @@ int main() {
     }
 
     auto dvSize = GetShapeSize(dvOutShape);
-    std::vector<aclFloat16> dvResultData(dkSize, 0);
-    ret = aclrtMemcpy(dvResultData.data(), dvResultData.size() * sizeof(dvResultData[0]), dkOutDeviceAddr,
+    std::vector<aclFloat16> dvResultData(dvSize, 0);
+    ret = aclrtMemcpy(dvResultData.data(), dvResultData.size() * sizeof(dvResultData[0]), dvOutDeviceAddr,
                       dvSize * sizeof(dvResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy out result dv from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < dvSize; i++) {
-        LOG_PRINT("result dv[%ld] is: %f\n", i, dkResultData[i]);
+        LOG_PRINT("result dv[%ld] is: %f\n", i, dvResultData[i]);
     }
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
