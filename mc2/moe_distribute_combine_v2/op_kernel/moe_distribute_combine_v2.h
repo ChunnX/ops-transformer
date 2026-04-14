@@ -39,6 +39,7 @@
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_elastic.h"
 #endif
 
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeCombineV2Impl {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
@@ -552,6 +553,10 @@ template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
 {
     tpipe_->Reset();
+    #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // reset后 ctrl寄存器会复位为默认值
+        // 单指令饱和模式
+        AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
+    #endif
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
     if constexpr (IsNeedReduceScatter) {
         tpipe_->InitBuffer(gmTpSendCountInQueue_, BUFFER_NUM, hExpandXAlign32Size_);   // 28K 存储输入拷过来的token
@@ -916,7 +921,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     uint32_t tokenWinOffset = tkIndex * hAlignWinCnt_;
     GM_ADDR rankGM = GetWinAddrByRankId(toRankId, EP_DOMAIN) + epOffset * hAlignWinSize_;
     rankWindow_.SetGlobalBuffer((__gm__ XType*)rankGM);
-    DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
+    DataCopyPadExtParams<ExpandXType> copyPadExtParams{true, 0U, 0U, 0U};
     DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
     DataCopyExtParams xScaleCopyParams{1U, static_cast<uint32_t>(tokenScaleCnt_ * sizeof(ExpandXType)), 0U, 0U, 0U};
     if constexpr (IsNeedReduceScatter) {

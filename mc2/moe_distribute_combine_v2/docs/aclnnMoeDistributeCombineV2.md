@@ -17,12 +17,20 @@
 
 - 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
 - 计算公式：
+    - 不存在TP域通信时：
 
-$$
-rsOut = ReduceScatterV(expandX)\\
-ataOut = AllToAllV(rsOut)\\
-xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-$$
+    $$
+    ataOut = AllToAllV(expandX)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
+
+    - 存在TP域通信时：
+
+    $$
+    rsOut = ReduceScatterV(expandX)\\
+    ataOut = AllToAllV(rsOut)\\
+    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+    $$
 
 >注意该接口必须与`aclnnMoeDistributeDispatchV2`配套使用，相当于按`MoeDistributeDispatchV2`算子收集数据的路径原路返还。
 
@@ -62,7 +70,7 @@ aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(
     int64_t          expertShardType,
     int64_t          sharedExpertNum,
     int64_t          sharedExpertRankNum,
-    int64_t          globalBs,
+    int64_t          globalBS,
     int64_t          outDtype,
     int64_t          commQuantMode,
     int64_t          groupListType,
@@ -328,10 +336,10 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>-</td>
     </tr>
     <tr>
-    <td>globalBs</td>
+    <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-    <td><ul><li>各rank BS一致时，<code>globalBs = BS * epWorldSize</code> 或 0。</li><li>各rank BS不一致时，<code>globalBs = maxBs * epWorldSize</code>（maxBs为单卡BS最大值）。</li></ul></td>
+    <td><ul><li>各rank BS一致时，<code>globalBS = BS * epWorldSize</code> 或 0。</li><li>各rank BS不一致时，<code>globalBS = maxBS * epWorldSize</code>（maxBS为单卡BS最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -413,7 +421,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - `commAlg`支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经机内、跨机两次发送减少跨机数据量。
         - 不支持共享专家场景。
-        - `epSendCounts`的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBs=0时按BS * epWorldSize计算。
+        - `epSendCounts`的shape为 (moeExpertNum + 2 * globalBS * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBS * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBS=0时按BS * epWorldSize计算。
         - 当前不支持TP域通信。
         - `xActiveMaskOptional` 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(BS, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
         - `expandScalesOptional` 要求为1D Tensor，shape为 (A, )。
@@ -547,14 +555,17 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 ## 约束说明
 
-- 确定性计算：
+- **确定性计算**：
   - aclnnMoeDistributeCombineV2默认确定性实现。
+
+- **驱动约束**：
+  - 算子通信域各节点的驱动版本应当相同。
 
 - **接口配套约束**：
   - `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineV2`接口必须配套使用，具体参考[调用示例](#调用示例)。在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatchV2`的Tensor输出`assistInfoForCombineOut`、`epRecvCountsOut`、`tpRecvCountsOut`、`expandScalesOut`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombineV2`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
 - **参数一致性约束**：
-  - 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commAlg`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchV2`对应参数也保持一致。
+  - 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBS`、`commAlg`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchV2`对应参数也保持一致。
 
 - **产品特定约束**：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
@@ -563,7 +574,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
-  | A            | 本卡需分发的最大token数，取值范围如下: <ul><li>对于共享专家，要满足<code>A = BS * epWorldSize \* sharedExpertNum / sharedExpertRankNum</code>。</li><li>对于MoE专家，当globalBs为0时，要满足<code>A >= BS * epWorldSize * min(localExpertNum, K)</code>；当globalBs非0时，要满足<code>A >= globalBs * min(localExpertNum, K)</code>。</li></ul>|
+  | A            | 本卡需分发的最大token数，取值范围如下: <ul><li>对于共享专家，要满足<code>A = BS * epWorldSize \* sharedExpertNum / sharedExpertRankNum</code>。</li><li>对于MoE专家，当globalBS为0时，要满足<code>A >= BS * epWorldSize * min(localExpertNum, K)</code>；当globalBS非0时，要满足<code>A >= globalBS * min(localExpertNum, K)</code>。</li></ul>|
   | H            |表示hidden size隐藏层大小:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：[1024, 8192]。 </li></ul>|
   | BS           | 表示batch sequence size（本卡最终输出的token数量）:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 256]；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 512]；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：0 < BS ≤512。</li></ul> |
   | K            |表示选取topK个专家，取值范围为 (0 < K ≤ 16) 且满足 (0 < K ≤ moeExpertNum)。 |
@@ -576,11 +587,11 @@ aclnnStatus aclnnMoeDistributeCombineV2(
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
      - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
      - commAlg为"fullmesh"：设置大小要求 (≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
-     - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBs` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
+     - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-     - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
+     - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
      - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
-    - <term>Ascend 950PR/Ascend 950DT</term>：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
+    - <term>Ascend 950PR/Ascend 950DT</term>：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
 
   - **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
@@ -664,6 +675,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     #include <string>
     #include <cstring>
     #include <vector>
+    #include <memory>
+    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
@@ -1016,7 +1029,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
                     context = %p\n", args.rankId, hcomEpName, args.dispatchV2Stream, args.combineV2Stream,                 \
                     args.context);
 
-        int64_t Bs = 32;
+        int64_t BS = 32;
         int64_t H = 7168;
         int64_t K = 8;
         int64_t expertShardType = 0;
@@ -1024,7 +1037,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         int64_t sharedExpertRankNum = 0;
         int64_t moeExpertNum = 256;
         int64_t quantMode = 0;
-        int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+        int64_t globalBS = BS * EP_WORLD_SIZE_A2;
         int64_t expertTokenNumsType = 1;
         int64_t outDtype = 0;
         int64_t commQuantMode = 0;
@@ -1037,10 +1050,10 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         std::string commAlg = "fullmesh";
         if (args.epRankId < sharedExpertRankNum) {
             localExpertNum = 1;
-            A = globalBs / sharedExpertRankNum;
+            A = globalBS / sharedExpertRankNum;
         } else {
             localExpertNum = moeExpertNum / (EP_WORLD_SIZE_A2 - sharedExpertRankNum);
-            A = globalBs * (localExpertNum < K ? localExpertNum : K);
+            A = globalBS * (localExpertNum < K ? localExpertNum : K);
         }
 
         void *xDeviceAddr = nullptr;
@@ -1083,10 +1096,10 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         aclTensor *xOut = nullptr;
 
         //定义当前场景下各变量维度
-        std::vector<int64_t> xShape{Bs, H};
-        std::vector<int64_t> expertIdsShape{Bs, K};
+        std::vector<int64_t> xShape{BS, H};
+        std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-        std::vector<int64_t> expertScalesShape{Bs, K};
+        std::vector<int64_t> expertScalesShape{BS, K};
 
         std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
         std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
@@ -1096,7 +1109,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
         std::vector<int64_t> expandScalesShape{A};
 
-        std::vector<int64_t> xOutShape{Bs, H};
+        std::vector<int64_t> xOutShape{BS, H};
 
         int64_t xShapeSize = GetShapeSize(xShape);
         int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
@@ -1175,7 +1188,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         // 调用第一阶段接口
         ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), xActiveMask,
                 expertScales, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", TP_WORLD_SIZE_A2,
-                args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
+                args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, commAlg.c_str(), expandX, dynamicScales, assistInfoForCombine, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
@@ -1204,7 +1217,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
                                                             groupList, expandScales, sharedExpertX,
                                                             hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum,
                                                             "", TP_WORLD_SIZE_A2, args.tpRankId, expertShardType,
-                                                            sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
+                                                            sharedExpertNum, sharedExpertRankNum, globalBS, outDtype,
                                                             commQuantMode, groupList_type, commAlg.c_str(), xOut,
                                                             &combineWorkspaceSize, &combineExecutor);
         CHECK_RET(ret == ACL_SUCCESS,

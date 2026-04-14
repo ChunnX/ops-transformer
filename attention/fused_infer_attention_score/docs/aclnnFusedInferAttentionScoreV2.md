@@ -137,7 +137,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>输入</td>
         <td>公式中的输入K。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）、HIFLOAT8、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+        <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>3-4</td>
         <td>×</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>输入</td>
         <td>公式中的输入V。</td>
         <td>-</td>
-        <td>FLOAT16、BFLOAT16、INT8、INT4（INT32）、HIFLOAT8、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+        <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>3-4</td>
         <td>×</td>
@@ -368,7 +368,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
          <tr> 
        <td>valueAntiquantOffsetOptional</td>
         <td>输入</td>
-        <td>kv伪量化参数分离时表示value的反量化因子。</td>
+        <td>kv伪量化参数分离时表示value的反量化偏移。</td>
         <td><ul>
             <li>不支持空Tensor。</li>
             <li>使用时，shape必须与valueAntiquantScaleOptional保持一致。</li>
@@ -466,7 +466,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>标识输入query、key、value的数据排布格式。</td>
         <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
             <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -695,8 +695,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
 - 参数key、value使用限制：
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持FLOAT16、BFLOAT16、INT8、INT4（INT32）。
-  - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4（INT32）、FLOAT4_E2M1。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持FLOAT16、BFLOAT16、INT8、INT4(INT32)。
+  - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1。
 
 - pseShiftOptional使用限制：
 
@@ -1021,7 +1021,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
         - 非量化场景：query，key，value的类型全部为FLOAT16、BFLOAT16，D轴1-512全部支持。
         - 全量化场景：query，key，value的类型全部为INT8，D轴1-512全部支持。
-        - 伪量化场景：query类型为FLOAT16、BFLOAT16，key、value类型为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32），其中当key、value类型为FLOAT4_E2M1/INT4（INT32），query的D轴以及key、value的D轴仅支持64对齐（INT32仅支持key、value的D 8对齐）。
+        - 伪量化场景：query类型为FLOAT16、BFLOAT16，key、value类型为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4(INT32)，其中当key、value类型为FLOAT4_E2M1/INT4(INT32)，query的D轴以及key、value的D轴仅支持64对齐（INT32仅支持key、value的D 8对齐）。
 
   - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
 
@@ -1033,12 +1033,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
     - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16。
-      - <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
+      - <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4(INT32)。
     - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention 伪量化场景
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。
-      - <term>Ascend 950PR/Ascend 950DT</term>：支持query dtype为FLOAT16/BFLOAT16，支持key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
+      - <term>Ascend 950PR/Ascend 950DT</term>：支持query dtype为FLOAT16/BFLOAT16，支持key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4(INT32)。
     - page attention 全量化场景
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持query dtype为INT8。
       - <term>Ascend 950PR/Ascend 950DT</term>：支持query和kv cache全部为INT8。
@@ -1116,28 +1116,28 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         - per-token模式使用page attention管理scale/offset模式：两个参数的shape均为(blocknum, blocksize)，数据类型固定为FLOAT32，当key、value数据类型为INT8时支持。
         - per-token叠加per-head模式并使用page attention管理scale/offset模式：两个参数的shape均为(blocknum, N, blocksize)，数据类型固定为FLOAT32，当key、value数据类型为INT8时支持。
       - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
-      - INT4（INT32）伪量化场景仅支持KV伪量化参数分离，具体包括：
+      - INT4(INT32)伪量化场景仅支持KV伪量化参数分离，具体包括：
         - per-channel模式；
         - per-token模式；
         - per-token叠加per-head模式；
         - key支持per-channel叠加value支持per-token模式。
       - 部分伪量化场景不支持后量化
-        - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：INT4（INT32）伪量化场景不支持后量化。
-        - <term>Ascend 950PR/Ascend 950DT</term>：INT4（INT32）、FLOAT4_E2M1伪量化场景不支持后量化。
+        - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：INT4(INT32)伪量化场景不支持后量化。
+        - <term>Ascend 950PR/Ascend 950DT</term>：INT4(INT32)、FLOAT4_E2M1伪量化场景不支持后量化。
 
 - **当Q_S等于1时**：
 
   - query，key，value输入，功能使用限制如下：
     - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
     - query、key、value输入类型均为INT8的场景暂不支持。
-    - 在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
-    - 在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
+    - 在INT4(INT32)伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
+    - 在INT4(INT32)伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
     - key、value在特定数据类型下存在对于D轴的限制
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
-      - <term>Ascend 950PR/Ascend 950DT</term>：key、value输入类型为FLOAT4_E2M1/INT4（INT32）时，query的D轴以及key、value的D轴需要64对齐（INT32仅支持key、value的D 8对齐）。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：key、value输入类型为INT4(INT32)时，D轴需要64对齐（INT32仅支持D 8对齐）。
+      - <term>Ascend 950PR/Ascend 950DT</term>：key、value输入类型为FLOAT4_E2M1/INT4(INT32)时，query的D轴以及key、value的D轴需要64对齐（INT32仅支持key、value的D 8对齐）。
   - page attention场景：
     - page attention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持BnBsH（blocknum, blocksize, H）和BnNBsD（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
     - page attention使能场景下，当输入kv cache排布格式为BnBsH，且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为BnNBsD解决。
@@ -1151,8 +1151,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
       - 使能per-token叠加per-head模式：两个参数的shape均为\(B, N, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。
       - 使能per-token-group模式：antiquantScale的shape为\(1, B, N, S, D/32\), 数据类型固定为FLOAT8_E8M0，不支持带antiquantOffset。当key、value数据类型为FLOAT4_E2M1时支持。
   - kv左padding场景：  
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持了Q为BF16/FP16、KV为INT4（INT32）的场景，不存在对QKV数据类型的限制。    
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4(INT32)的场景。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持了Q为BF16/FP16、KV为INT4(INT32)的场景，不存在对QKV数据类型的限制。    
     - kvCache的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。kvCache的搬运终点计算公式为：KV_S - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
     - kvPaddingSize小于0时将被置为0。
     - 需要与actualSeqLengthsKv参数一起使能，否则默认为kv右padding场景。
@@ -1181,7 +1181,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
       - per-token模式使用page attention管理scale/offset模式：两个参数的shape均为(blocknum, blocksize)，数据类型固定为FLOAT32，当key、value数据类型为INT8时支持。
       - per-token叠加per-head模式并使用page attention管理scale/offset模式：两个参数的shape均为(blocknum, N, blocksize)，数据类型固定为FLOAT32，当key、value数据类型为INT8时支持。
     - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
-    - INT4（INT32）伪量化场景仅支持KV伪量化参数分离，具体包括：
+    - INT4(INT32)伪量化场景仅支持KV伪量化参数分离，具体包括：
       - per-tensor模式；
       - per-channel模式；
       - per-token模式；
@@ -1189,8 +1189,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
       - per-token叠加per-head模式；
       - key支持per-channel叠加value支持per-token模式。
     - 部分伪量化场景不支持后量化
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：INT4（INT32）伪量化场景不支持后量化。
-      - <term>Ascend 950PR/Ascend 950DT</term>：INT4（INT32）、FLOAT4_E2M1伪量化场景不支持后量化。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：INT4(INT32)伪量化场景不支持后量化。
+      - <term>Ascend 950PR/Ascend 950DT</term>：INT4(INT32)、FLOAT4_E2M1伪量化场景不支持后量化。
   - prefix相关参数约束：
     - keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空。
     - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix、valueSharedPrefix、key、value的维度相同、dtype保持一致。
@@ -1342,7 +1342,7 @@ int main()
   int64_t preTokens = 65535;
   int64_t nextTokens = 65535;
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   int64_t sparseMode = 0;
   int64_t innerPrecise = 0;
