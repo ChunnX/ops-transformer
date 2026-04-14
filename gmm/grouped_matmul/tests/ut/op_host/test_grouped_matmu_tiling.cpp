@@ -16,7 +16,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -30,34 +32,110 @@
 #endif
 
 #include "../../../op_host/op_tiling/grouped_matmul_tiling.h"
-#include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
-#include "test_grouped_matmul_utils.h"
 
 using namespace std;
 using namespace ge;
 
 namespace {
 
+constexpr size_t kInputTensorCount = 9U;
+constexpr size_t kTensorFieldCount = 4U;
+constexpr size_t kScalarFieldCount = 22U;
+constexpr size_t kCsvColumnCount = kScalarFieldCount + kInputTensorCount * kTensorFieldCount + kTensorFieldCount;
+
+struct RawTensorFields {
+    string origin;
+    string storage;
+    string dtype;
+    string format;
+};
+
+struct TensorDescParam {
+    vector<int64_t> originDims;
+    vector<int64_t> storageDims;
+    ge::DataType dtype = ge::DT_UNDEFINED;
+    ge::Format format = ge::FORMAT_ND;
+};
+
+string NormalizePath(string path)
+{
+    replace(path.begin(), path.end(), '\\', '/');
+    return path;
+}
+
+string JoinPath(const string &lhs, const string &rhs)
+{
+    if (lhs.empty()) {
+        return rhs;
+    }
+    if (rhs.empty()) {
+        return lhs;
+    }
+    if (lhs.back() == '/' || lhs.back() == '\\') {
+        return lhs + rhs;
+    }
+    return lhs + "/" + rhs;
+}
+
+bool FileExists(const string &path)
+{
+    ifstream file(path, ios::in);
+    return file.good();
+}
+
+string GetDirName(string path)
+{
+    path = NormalizePath(path);
+    const auto pos = path.find_last_of('/');
+    return pos == string::npos ? "." : path.substr(0, pos);
+}
+
 string GetExeDirPath()
 {
 #if defined(_WIN32)
     char path[MAX_PATH] = {0};
-    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
+    const auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    return GetDirName(string(path, len));
 #else
     char path[4096] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    const ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
     if (len <= 0) {
-        return "./";
+        return ".";
     }
     path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
+    return GetDirName(string(path));
 #endif
+}
+
+string GetCurrentFileDir()
+{
+    return GetDirName(__FILE__);
+}
+
+string ResolveCsvPath(const string &csvName)
+{
+    vector<string> candidates;
+    const string exeDir = GetExeDirPath();
+    const string currentFileDir = GetCurrentFileDir();
+    candidates.emplace_back(JoinPath(exeDir, csvName));
+    candidates.emplace_back(JoinPath(currentFileDir, csvName));
+    candidates.emplace_back(csvName);
+    candidates.emplace_back(JoinPath(".", csvName));
+    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+
+    const char *codePath = std::getenv("CODE_PATH");
+    if (codePath != nullptr) {
+        candidates.emplace_back(JoinPath(codePath, "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    }
+
+    for (const auto &candidate : candidates) {
+        if (FileExists(candidate)) {
+            return candidate;
+        }
+    }
+    return candidates.front();
 }
 
 void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
@@ -83,17 +161,67 @@ string Trim(string value)
     return value;
 }
 
+string ToLower(string value)
+{
+    transform(value.begin(), value.end(), value.begin(),
+              [](unsigned char c) { return static_cast<char>(tolower(c)); });
+    return value;
+}
+
 bool ParseBool(const string &value)
 {
-    string lower = value;
-    transform(lower.begin(), lower.end(), lower.begin(),
-              [](unsigned char c) { return static_cast<char>(tolower(c)); });
+    const string lower = ToLower(Trim(value));
     return lower == "true" || lower == "1" || lower == "yes";
+}
+
+int64_t ParseScalarToken(const string &value, const map<string, int64_t> &symbols)
+{
+    const string trimmed = Trim(value);
+    if (trimmed.empty()) {
+        return 0;
+    }
+
+    const auto it = symbols.find(trimmed);
+    if (it != symbols.end()) {
+        return it->second;
+    }
+
+    const auto divPos = trimmed.find('/');
+    if (divPos != string::npos) {
+        const int64_t lhs = ParseScalarToken(trimmed.substr(0, divPos), symbols);
+        const int64_t rhs = ParseScalarToken(trimmed.substr(divPos + 1), symbols);
+        return rhs == 0 ? 0 : lhs / rhs;
+    }
+
+    return stoll(trimmed);
+}
+
+vector<int64_t> ParseDims(const string &value, const map<string, int64_t> &symbols = {})
+{
+    const string trimmed = Trim(value);
+    if (trimmed.empty() || trimmed == "NONE") {
+        return {};
+    }
+
+    vector<string> dimTokens;
+    SplitStr2Vec(trimmed, ":", dimTokens);
+
+    vector<int64_t> dims;
+    dims.reserve(dimTokens.size());
+    for (const auto &token : dimTokens) {
+        dims.emplace_back(ParseScalarToken(token, symbols));
+    }
+    return dims;
+}
+
+vector<int64_t> ParseIntList(const string &value, const map<string, int64_t> &symbols = {})
+{
+    return ParseDims(value, symbols);
 }
 
 ge::DataType ParseDtype(const string &dtype)
 {
-    static const std::map<string, ge::DataType> dtypeMap = {
+    static const map<string, ge::DataType> dtypeMap = {
         {"FLOAT", ge::DT_FLOAT},
         {"FLOAT16", ge::DT_FLOAT16},
         {"BF16", ge::DT_BF16},
@@ -102,50 +230,31 @@ ge::DataType ParseDtype(const string &dtype)
         {"INT32", ge::DT_INT32},
         {"INT64", ge::DT_INT64},
         {"UINT64", ge::DT_UINT64},
+        {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
+        {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
+        {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
         {"UNDEFINED", ge::DT_UNDEFINED},
     };
-    auto it = dtypeMap.find(dtype);
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
+    const auto it = dtypeMap.find(Trim(dtype));
+    if (it == dtypeMap.end()) {
+        cerr << "Unsupported dtype in csv: " << dtype << endl;
+        return ge::DT_UNDEFINED;
+    }
+    return it->second;
 }
 
 ge::Format ParseFormat(const string &format)
 {
-    static const std::map<string, ge::Format> formatMap = {
+    static const map<string, ge::Format> formatMap = {
         {"ND", ge::FORMAT_ND},
         {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
     };
-    auto it = formatMap.find(format);
-    return it == formatMap.end() ? ge::FORMAT_ND : it->second;
-}
-
-vector<int64_t> ParseDims(const string &value)
-{
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
+    const auto it = formatMap.find(Trim(format));
+    if (it == formatMap.end()) {
+        cerr << "Unsupported format in csv: " << format << endl;
+        return ge::FORMAT_ND;
     }
-    vector<string> dimTokens;
-    SplitStr2Vec(trimmed, ":", dimTokens);
-    vector<int64_t> dims;
-    for (const auto &token : dimTokens) {
-        string t = Trim(token);
-        if (t == "quantGroupNum") {
-            dims.emplace_back(4);
-        } else if (t.find('/') != string::npos) {
-            vector<string> divTokens;
-            SplitStr2Vec(t, "/", divTokens);
-            if (divTokens.size() == 2) {
-                int64_t lhs = stoll(Trim(divTokens[0]));
-                int64_t rhs = stoll(Trim(divTokens[1]));
-                dims.emplace_back(lhs / rhs);
-            } else {
-                dims.emplace_back(stoll(t));
-            }
-        } else {
-            dims.emplace_back(stoll(t));
-        }
-    }
-    return dims;
+    return it->second;
 }
 
 gert::Shape BuildShape(const vector<int64_t> &dims)
@@ -166,14 +275,60 @@ gert::StorageShape MakeStorageShape(const vector<int64_t> &originDims, const vec
     return shape;
 }
 
-struct TensorDescParam {
-    vector<int64_t> originDims;
-    vector<int64_t> storageDims;
-    ge::DataType dtype = ge::DT_UNDEFINED;
-    ge::Format format = ge::FORMAT_ND;
-};
+map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTensorFields &weightFields,
+                                  bool transposeX, bool transposeWeight)
+{
+    map<string, int64_t> symbols;
 
-constexpr size_t CSV_COL_COUNT = 62U;
+    const vector<int64_t> xOriginDims = ParseDims(xFields.origin);
+    if (xOriginDims.size() >= 2U) {
+        const int64_t mValue = transposeX ? xOriginDims[1] : xOriginDims[0];
+        const int64_t kValue = transposeX ? xOriginDims[0] : xOriginDims[1];
+        symbols["M"] = mValue;
+        symbols["m"] = mValue;
+        symbols["K"] = kValue;
+        symbols["k"] = kValue;
+    }
+
+    const vector<int64_t> weightOriginDims = ParseDims(weightFields.origin);
+    if (weightOriginDims.size() >= 3U) {
+        const int64_t groupNum = weightOriginDims[0];
+        const int64_t kValue = transposeWeight ? weightOriginDims[2] : weightOriginDims[1];
+        const int64_t nValue = transposeWeight ? weightOriginDims[1] : weightOriginDims[2];
+        symbols["E"] = groupNum;
+        symbols["e"] = groupNum;
+        symbols["groupNum"] = groupNum;
+        symbols["K"] = kValue;
+        symbols["k"] = kValue;
+        symbols["N"] = nValue;
+        symbols["n"] = nValue;
+        if (kValue > 0) {
+            symbols["quantGroupNum"] = kValue / 256;
+        }
+    }
+
+    return symbols;
+}
+
+TensorDescParam ParseTensorDesc(const RawTensorFields &rawFields, const map<string, int64_t> &symbols)
+{
+    return {ParseDims(rawFields.origin, symbols), ParseDims(rawFields.storage, symbols), ParseDtype(rawFields.dtype),
+            ParseFormat(rawFields.format)};
+}
+
+platform_ascendc::SocVersion ParseSocVersion(const string &socVersion)
+{
+    const string trimmed = Trim(socVersion);
+    if (trimmed == "Ascend950") {
+        return platform_ascendc::SocVersion::ASCEND950;
+    }
+    return platform_ascendc::SocVersion::ASCEND910B;
+}
+
+NpuArch ParseNpuArch(const string &socVersion)
+{
+    return Trim(socVersion) == "Ascend950" ? NpuArch::DAV_3510 : NpuArch::DAV_2201;
+}
 
 struct GroupedMatmulTilingCase {
     string socVersion;
@@ -181,7 +336,7 @@ struct GroupedMatmulTilingCase {
     bool enable = true;
     string prefix;
     bool expectSuccess = false;
-    int64_t expectTilingKey = 0;
+    uint64_t expectTilingKey = 0;
     uint32_t aicNum = 24;
     uint32_t aivNum = 48;
     uint64_t ubSize = 196608;
@@ -197,18 +352,13 @@ struct GroupedMatmulTilingCase {
     int64_t groupType = 0;
     int64_t groupListType = 0;
     int64_t actType = 0;
-    string tuningConfig;
-    vector<TensorDescParam> inputs;
+    vector<int64_t> tuningConfig;
+    array<TensorDescParam, kInputTensorCount> inputs;
     TensorDescParam output;
 
     void Run() const
     {
-        platform_ascendc::SocVersion socVer = platform_ascendc::SocVersion::ASCEND910B;
-        NpuArch npuArch = NpuArch::DAV_2201;
-        if (socVersion == "Ascend950") {
-            socVer = platform_ascendc::SocVersion::ASCEND950;
-            npuArch = NpuArch::DAV_3510;
-        }
+        SCOPED_TRACE("socVersion=" + socVersion + ", prefix=" + prefix + ", caseName=" + caseName);
 
         optiling::GMMCompileInfo compileInfo = {
             aicNum,
@@ -219,23 +369,12 @@ struct GroupedMatmulTilingCase {
             l0CSize,
             l0ASize,
             l0BSize,
-            socVer,
-            npuArch,
+            ParseSocVersion(socVersion),
+            ParseNpuArch(socVersion),
         };
 
-        vector<int64_t> tuningConfigVec;
-        if (!tuningConfig.empty() && tuningConfig != "NONE") {
-            vector<string> tokens;
-            SplitStr2Vec(tuningConfig, ":", tokens);
-            for (const auto &token : tokens) {
-                tuningConfigVec.push_back(stoll(Trim(token)));
-            }
-        } else {
-            tuningConfigVec = {0};
-        }
-
         gert::TilingContextPara tilingContextPara(
-            "GroupedMatmul", BuildTensorDescs(inputs), {BuildTensorDesc(output)},
+            "GroupedMatmul", BuildInputTensorDescs(), {BuildTensorDesc(output)},
             {
                 {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
                 {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtypeAttr)},
@@ -244,18 +383,13 @@ struct GroupedMatmulTilingCase {
                 {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
                 {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
-                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfigVec)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
+                                      tuningConfig.empty() ? vector<int64_t>{0} : tuningConfig)},
             },
             &compileInfo);
 
-        if (!expectSuccess) {
-            ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-            return;
-        }
-
-        TilingInfo tilingInfo;
-        ExecuteTiling(tilingContextPara, tilingInfo);
-        EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+        ExecuteTestCase(tilingContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED,
+                        expectSuccess ? expectTilingKey : 0);
     }
 
 private:
@@ -264,12 +398,11 @@ private:
         return {MakeStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype, tensor.format};
     }
 
-    static vector<gert::TilingContextPara::TensorDescription> BuildTensorDescs(
-        const vector<TensorDescParam> &tensors)
+    vector<gert::TilingContextPara::TensorDescription> BuildInputTensorDescs() const
     {
         vector<gert::TilingContextPara::TensorDescription> descs;
-        descs.reserve(tensors.size());
-        for (const auto &tensor : tensors) {
+        descs.reserve(inputs.size());
+        for (const auto &tensor : inputs) {
             descs.emplace_back(BuildTensorDesc(tensor));
         }
         return descs;
@@ -279,8 +412,8 @@ private:
 vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulTilingCase> cases;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(rootPath + "gmm/grouped_matmul/tests/ut/op_host/test_grouped_matmu_tiling.csv");
+
+    const string csvPath = ResolveCsvPath("test_grouped_matmu_tiling.csv");
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -289,29 +422,38 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
 
     string line;
     while (getline(csvData, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        vector<string> items;
-        SplitStr2Vec(line, ",", items);
-        if (items.empty() || items[0] == "socVersion" || items.size() < CSV_COL_COUNT) {
+        const string trimmedLine = Trim(line);
+        if (trimmedLine.empty() || trimmedLine[0] == '#') {
             continue;
         }
 
-        size_t idx = 0;
+        vector<string> items;
+        SplitStr2Vec(trimmedLine, ",", items);
+        if (items.empty() || items[0] == "socVersion") {
+            continue;
+        }
+        if (items.size() < kCsvColumnCount) {
+            cerr << "Skip invalid csv line with column count " << items.size() << ", expect at least "
+                 << kCsvColumnCount << endl;
+            continue;
+        }
+
+        size_t idx = 0U;
         GroupedMatmulTilingCase tc;
         tc.socVersion = Trim(items[idx++]);
         if (tc.socVersion != socVersion) {
             continue;
         }
+
         tc.caseName = Trim(items[idx++]);
-        tc.enable = ParseBool(Trim(items[idx++]));
+        tc.enable = ParseBool(items[idx++]);
         if (!tc.enable) {
             continue;
         }
+
         tc.prefix = Trim(items[idx++]);
-        tc.expectSuccess = ParseBool(Trim(items[idx++]));
-        tc.expectTilingKey = stoll(Trim(items[idx++]));
+        tc.expectSuccess = ParseBool(items[idx++]);
+        tc.expectTilingKey = static_cast<uint64_t>(stoull(Trim(items[idx++])));
         tc.aicNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
         tc.aivNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
         tc.ubSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
@@ -322,27 +464,36 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
         tc.l0BSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
         tc.splitItem = stoll(Trim(items[idx++]));
         tc.dtypeAttr = stoll(Trim(items[idx++]));
-        tc.transposeWeight = ParseBool(Trim(items[idx++]));
-        tc.transposeX = ParseBool(Trim(items[idx++]));
+        tc.transposeWeight = ParseBool(items[idx++]);
+        tc.transposeX = ParseBool(items[idx++]);
         tc.groupType = stoll(Trim(items[idx++]));
         tc.groupListType = stoll(Trim(items[idx++]));
         tc.actType = stoll(Trim(items[idx++]));
-        tc.tuningConfig = Trim(items[idx++]);
+        const string rawTuningConfig = Trim(items[idx++]);
 
-        for (int tensorIdx = 0; tensorIdx < 9; ++tensorIdx) {
-            tc.inputs.push_back({ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
-                                 ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))});
+        array<RawTensorFields, kInputTensorCount> rawInputs;
+        for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
+            rawInputs[tensorIdx] = {Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++])};
         }
-        tc.output = {ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
-                     ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))};
+        const RawTensorFields rawOutput = {Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++]),
+                                           Trim(items[idx++])};
+
+        const map<string, int64_t> symbols =
+            BuildSymbols(rawInputs[0], rawInputs[1], tc.transposeX, tc.transposeWeight);
+        tc.tuningConfig = ParseIntList(rawTuningConfig, symbols);
+        for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
+            tc.inputs[tensorIdx] = ParseTensorDesc(rawInputs[tensorIdx], symbols);
+        }
+        tc.output = ParseTensorDesc(rawOutput, symbols);
         cases.push_back(tc);
     }
+
     return cases;
 }
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulTilingCase> &info)
 {
-    string name = info.param.prefix;
+    string name = info.param.socVersion + "_" + info.param.prefix;
     transform(name.begin(), name.end(), name.begin(),
               [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
     return name;
@@ -368,9 +519,6 @@ const vector<GroupedMatmulTilingCase> &GetAscend910BCases()
 }
 
 class TestGroupedMatmulAscend950Tiling : public testing::TestWithParam<GroupedMatmulTilingCase> {
-protected:
-    static void SetUpTestCase() {}
-    static void TearDownTestCase() {}
 };
 
 TEST_P(TestGroupedMatmulAscend950Tiling, csvDrivenCase)
@@ -382,9 +530,6 @@ INSTANTIATE_TEST_SUITE_P(GMM_TILING_950, TestGroupedMatmulAscend950Tiling,
                          testing::ValuesIn(GetAscend950Cases()), MakeParamName);
 
 class TestGroupedMatmulAscend910BTiling : public testing::TestWithParam<GroupedMatmulTilingCase> {
-protected:
-    static void SetUpTestCase() {}
-    static void TearDownTestCase() {}
 };
 
 TEST_P(TestGroupedMatmulAscend910BTiling, csvDrivenCase)
@@ -396,3 +541,4 @@ INSTANTIATE_TEST_SUITE_P(GMM_TILING_910B, TestGroupedMatmulAscend910BTiling,
                          testing::ValuesIn(GetAscend910BCases()), MakeParamName);
 
 } // namespace GroupedMatmulTilingUT
+
