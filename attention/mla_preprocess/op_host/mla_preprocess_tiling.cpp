@@ -474,17 +474,16 @@ void MlaPreprocessTiling::SetMlapoWorkSpace(const ge::DataType inDtype, const Op
                                             uint32_t sysWorkSpaceSize, gert::TilingContext *context)
 {
     uint64_t hiddtenState = static_cast<uint64_t>(mlaTilingData.get_hiddtenState());
-    uint64_t headDimMm2 = static_cast<uint64_t>(mlaTilingData.get_headDimMm2());
     uint64_t s1wsFactor =
         static_cast<uint64_t>(param.cacheMode == 2 ? std::max(hiddtenState * sizeof(int8_t),
                                                               param.headNum * AXES_ALIGN_SIZE * sizeof(uint16_t)) :
                                                      hiddtenState * sizeof(int8_t));
     uint64_t workSizeS1 = static_cast<uint64_t>(mlaTilingData.get_n()) * s1wsFactor;
     uint64_t workSizeS2 =
-        static_cast<uint64_t>(mlaTilingData.get_n()) * param.headNum * headDimMm2 * sizeof(uint16_t);
+        static_cast<uint64_t>(mlaTilingData.get_n()) * param.headNum * param.headDimMm2 * sizeof(uint16_t);
     uint64_t workSizeS3 = static_cast<uint64_t>(mlaTilingData.get_n()) * param.hiddenStrateMm * sizeof(uint16_t);
     uint64_t workSizeS4 = static_cast<uint64_t>(mlaTilingData.get_n()) *
-                          std::max(param.headNum * headDimMm2, param.hiddenStrateMm) * sizeof(uint64_t);
+                          std::max(param.headNum * param.headDimMm2, param.hiddenStrateMm) * sizeof(uint64_t);
     uint64_t pertokenWorkspace = static_cast<uint64_t>(mlaTilingData.get_n()) * sizeof(float) * 2;
 
     uint64_t maxWorkspaceSize = 0;
