@@ -15,11 +15,11 @@
 
 ## 功能说明
 
-- **接口功能**：该算子对应MoE（Mixture of Experts，混合专家模型）中的**Routing计算**，以[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)算子的计算结果作为输入，并输出Routing矩阵expandedX等结果供后续计算使用。本接口针对[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)做了如下功能变更，请根据实际情况选择合适的接口：
+- **接口功能**：该算子对应MoE（Mixture of Experts，混合专家模型）中的**Routing计算**，以[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)算子的计算结果作为输入，并输出Routing矩阵expandedXOut等结果供后续计算使用。本接口针对[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)做了如下功能变更，请根据实际情况选择合适的接口：
 
   - 新增Drop模式，在该模式下输出内容会将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。
-  - 新增Dropless模式下expertTokensCountOrCumsum可选输出，输出每个专家需要处理的累积Token个数（Cumsum），或每个专家需要处理的Token数（Count）。
-  - 新增Drop模式下expertTokensBeforeCapacity可选输出，输出每个专家在Drop前应处理的Token个数。
+  - 新增Dropless模式下expertTokensCountOrCumsumOut可选输出，输出每个专家需要处理的累积Token个数（Cumsum），或每个专家需要处理的Token数（Count）。
+  - 新增Drop模式下expertTokensBeforeCapacityOut可选输出，输出每个专家在Drop前应处理的Token个数。
   - 删除rowIdx输入。
 
   **说明：**
@@ -32,28 +32,28 @@
   sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
   $$
 
-  2.以sortedRowIdx做位置映射得出expandedRowIdx：
+  2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
   
   $$
-  expandedRowIdx[sortedRowIdx[i]]=i
+  expandedRowIdxOut[sortedRowIdx[i]]=i
   $$
   
-  3.按照sortedRowIdx将token按专家顺序排列，在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedX：
+  3.按照sortedRowIdx将token按专家顺序排列，在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
   
   $$
-  expandedX[expandedRowIdx[i]]=x[i//k]
+  expandedXOut[expandedRowIdxOut[i]]=x[i//k]
   $$
   
-  4.对sortedExpertIdx的每个专家统计直方图结果，再进行Cumsum，得出expertTokensCountOrCumsum：
+  4.对sortedExpertIdx的每个专家统计直方图结果，再进行Cumsum，得出expertTokensCountOrCumsumOut：
   
   $$
-  expertTokensCountOrCumsum[i]=Cumsum(Histogram(sortedExpertIdx))
+  expertTokensCountOrCumsumOut[i]=Cumsum(Histogram(sortedExpertIdx))
   $$
   
-  5.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacity：
+  5.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacityOut：
   
   $$
-  expertTokensBeforeCapacity[i]=Histogram(sortedExpertIdx)
+  expertTokensBeforeCapacityOut[i]=Histogram(sortedExpertIdx)
   $$
 
 ## 函数原型
@@ -70,10 +70,10 @@ aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
     int64_t           dropPadMode, 
     int64_t           expertTokensCountOrCumsumFlag, 
     bool              expertTokensBeforeCapacityFlag, 
-    const aclTensor  *expandedX, 
-    const aclTensor  *expandedRowIdx, 
-    const aclTensor  *expertTokensCountOrCumsum, 
-    const aclTensor  *expertTokensBeforeCapacity, 
+    const aclTensor  *expandedXOut, 
+    const aclTensor  *expandedRowIdxOut, 
+    const aclTensor  *expertTokensCountOrCumsumOut, 
+    const aclTensor  *expertTokensBeforeCapacityOut, 
     uint64_t         *workspaceSize, 
     aclOpExecutor   **executor)
 ```
@@ -126,7 +126,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>expertIdx</td>
       <td>输入</td>
       <td>为每个Token对应的k个处理专家的序号。</td>
-      <td><ul><li>支持空tensor。</li><li>在Drop/Pad场景下或者非Drop/Pad场景下且需要输出expertTokensCountOrCumsum时，要求值域范围是[0, expertNum - 1]，其他场景要求大于等于0。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>在Drop/Pad场景下或者非Drop/Pad场景下且需要输出expertTokensCountOrCumsumOut时，要求值域范围是[0, expertNum - 1]，其他场景要求大于等于0。</li></ul></td>
       <td>INT32、INT64</td>
       <td>ND</td>
       <td>1或2</td>
@@ -156,7 +156,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>expertNum</td>
       <td>输入</td>
       <td>表示专家总数。</td>
-      <td>值范围大于等于0，Drop/Pad场景下或者expertTokensCountOrCumsumFlag大于0需要输出expertTokensCountOrCumsum时，expertNum需大于0。</td>
+      <td>值范围大于等于0，Drop/Pad场景下或者expertTokensCountOrCumsumFlag大于0需要输出expertTokensCountOrCumsumOut时，expertNum需大于0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -175,8 +175,8 @@ aclnnStatus aclnnMoeInitRoutingV2(
     <tr>
       <td>expertTokensCountOrCumsumFlag</td>
       <td>输入</td>
-      <td>控制是否输出expertTokensCountOrCumsum。</td>
-      <td>取值为0、1和2。<ul><li>0：表示不输出expertTokensCountOrCumsum。</li><li>1：表示输出的值为各个专家处理的token数量的累计值。</li><li>2：表示输出的值为各个专家处理的token数量。</li></ul></td>
+      <td>控制是否输出expertTokensCountOrCumsumOut。</td>
+      <td>取值为0、1和2。<ul><li>0：表示不输出expertTokensCountOrCumsumOut。</li><li>1：表示输出的值为各个专家处理的token数量的累计值。</li><li>2：表示输出的值为各个专家处理的token数量。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -185,15 +185,15 @@ aclnnStatus aclnnMoeInitRoutingV2(
     <tr>
       <td>expertTokensBeforeCapacityFlag</td>
       <td>输入</td>
-      <td>控制是否输出expertTokensBeforeCapacity。</td>
-      <td>取值为false和true<ul><li>false：表示不输出expertTokensBeforeCapacity。</li><li>true：表示输出expertTokensBeforeCapacity，值为在drop之前各个专家处理的token数量。</li></ul></td>
+      <td>控制是否输出expertTokensBeforeCapacityOut。</td>
+      <td>取值为false和true<ul><li>false：表示不输出expertTokensBeforeCapacityOut。</li><li>true：表示输出expertTokensBeforeCapacityOut，值为在drop之前各个专家处理的token数量。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedX</td>
+      <td>expandedXOut</td>
       <td>输出</td>
       <td>根据expertIdx进行扩展过的特征。</td>
       <td><ul><li>支持空tensor。</li><li>数据类型需与x相同。</li><li>在Dropless/Active场景下要求是一个2D的Tensor，Dropless场景shape为[numRows * k, h]，Active场景shape为[min(activeNum, numRows * k), h]<br>在Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, h]。</li></ul>
@@ -204,9 +204,9 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>expandedRowIdx</td>
+      <td>expandedRowIdxOut</td>
       <td>输出</td>
-      <td>expandedX和x的索引映射关系。</td>
+      <td>expandedXOut和x的索引映射关系。</td>
       <td><ul><li>支持空tensor</li><li>要求是一个1D的Tensor，Shape为[numRows*k]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -214,7 +214,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>expertTokensCountOrCumsum</td>
+      <td>expertTokensCountOrCumsumOut</td>
       <td>输出</td>
       <td>输出每个专家处理的token数量的统计结果及累加值。</td>
       <td><ul><li>支持空tensor</li><li>通过expertTokensCountOrCumsumFlag参数控制是否输出，该值仅在非Drop/Pad场景下输出，要求是一个1D的Tensor，Shape为[expertNum]。</li></ul></td>
@@ -224,7 +224,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>expertTokensBeforeCapacity</td>
+      <td>expertTokensBeforeCapacityOut</td>
       <td>输出</td>
       <td>输出drop之前每个专家处理的token数量的统计结果。</td>
       <td><ul><li>支持空tensor</li><li>通过expertTokensBeforeCapacityFlag参数控制是否输出，该值仅在Drop/Pad场景下输出，要求是一个1D的Tensor，Shape为[expertNum]。</li></ul></td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
       <tr>
         <td rowspan="5">ACLNN_ERR_INNER_TILING_ERROR</td>
         <td rowspan="5">561002</td>
-        <td>expertTokensCountOrCumsum需要输出时，expertNum等于0。</td>
+        <td>expertTokensCountOrCumsumOut需要输出时，expertNum等于0。</td>
       </tr>
       <tr>
         <td>x和expertIdx的shape维度不等于2，且第一维不相等。</td>
@@ -422,14 +422,14 @@ int main() {
     // 2. 构造输入与输出，需要根据API的接口定义构造
     std::vector<int64_t> xShape = {3, 4};
     std::vector<int64_t> idxShape = {3, 2};
-    std::vector<int64_t> expandedXShape = {3, 2, 4};
-    std::vector<int64_t> idxShape = {6};
-    std::vector<int64_t> expertTokenShape = {3};
+    std::vector<int64_t> expandedXOutShape = {3, 2, 4};
+    std::vector<int64_t> idxOutShape = {6};
+    std::vector<int64_t> expertTokenOutShape = {3};
     void* xDeviceAddr = nullptr;
     void* expertIdxDeviceAddr = nullptr;
-    void* expandedXDeviceAddr = nullptr;
-    void* expandedRowIdxDeviceAddr = nullptr;
-    void* expertTokenBeforeCapacityDeviceAddr = nullptr;
+    void* expandedXOutDeviceAddr = nullptr;
+    void* expandedRowIdxOutDeviceAddr = nullptr;
+    void* expertTokenBeforeCapacityOutDeviceAddr = nullptr;
     aclTensor* x = nullptr;
     aclTensor* expertIdx = nullptr;
     int64_t activeNum = 0;
@@ -438,31 +438,31 @@ int main() {
     int64_t dropPadMode = 1;
     int64_t expertTokensCountOrCumsumFlag = 0;
     bool expertTokensBeforeCapacityFlag = true;
-    aclTensor* expandedX = nullptr;
-    aclTensor* expandedRowIdx = nullptr;
-    aclTensor* expertTokensBeforeCapacity = nullptr;
+    aclTensor* expandedXOut = nullptr;
+    aclTensor* expandedRowIdxOut = nullptr;
+    aclTensor* expertTokensBeforeCapacityOut = nullptr;
     std::vector<float> xHostData = {0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 0.3, 0.3};
     std::vector<int> expertIdxHostData = {1, 2, 0, 1, 0, 2};
-    std::vector<float> expandedXHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    std::vector<int> expandedRowIdxHostData = {0, 0, 0, 0, 0, 0};
-    std::vector<int> expertTokensBeforeCapacityHostData = {0, 0, 0};
+    std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<int> expandedRowIdxOutHostData = {0, 0, 0, 0, 0, 0};
+    std::vector<int> expertTokensBeforeCapacityOutHostData = {0, 0, 0};
     // 创建self aclTensor
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expertIdxHostData, idxShape, &expertIdxDeviceAddr, aclDataType::ACL_INT32, &expertIdx);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
-    ret = CreateAclTensor(expandedXHostData, expandedXShape, &expandedXDeviceAddr, aclDataType::ACL_FLOAT, &expandedX);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedRowIdxHostData, idxShape, &expandedRowIdxDeviceAddr, aclDataType::ACL_INT32, &expandedRowIdx);
+    ret = CreateAclTensor(expandedRowIdxOutHostData, idxOutShape, &expandedRowIdxOutDeviceAddr, aclDataType::ACL_INT32, &expandedRowIdxOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertTokensBeforeCapacityHostData, expertTokenShape, &expertTokenBeforeCapacityDeviceAddr, aclDataType::ACL_INT32, &expertTokensBeforeCapacity);
+    ret = CreateAclTensor(expertTokensBeforeCapacityOutHostData, expertTokenOutShape, &expertTokenBeforeCapacityOutDeviceAddr, aclDataType::ACL_INT32, &expertTokensBeforeCapacityOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用aclnnMoeInitRoutingV2第一段接口
-    ret = aclnnMoeInitRoutingV2GetWorkspaceSize(x, expertIdx, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag, expandedX, expandedRowIdx, nullptr, expertTokensBeforeCapacity, &workspaceSize, &executor);
+    ret = aclnnMoeInitRoutingV2GetWorkspaceSize(x, expertIdx, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag, expandedXOut, expandedRowIdxOut, nullptr, expertTokensBeforeCapacityOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeInitRoutingV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
@@ -477,42 +477,42 @@ int main() {
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    auto expandedXSize = GetShapeSize(expandedXShape);
-    std::vector<float> expandedXData(expandedXSize, 0);
-    ret = aclrtMemcpy(expandedXData.data(), expandedXData.size() * sizeof(expandedXData[0]), expandedXDeviceAddr, expandedXSize * sizeof(float),
+    auto expandedXOutSize = GetShapeSize(expandedXOutShape);
+    std::vector<float> expandedXOutData(expandedXOutSize, 0);
+    ret = aclrtMemcpy(expandedXOutData.data(), expandedXOutData.size() * sizeof(expandedXOutData[0]), expandedXOutDeviceAddr, expandedXOutSize * sizeof(float),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expandedXSize; i++) {
-        LOG_PRINT("expandedXData[%ld] is: %f\n", i, expandedXData[i]);
+    for (int64_t i = 0; i < expandedXOutSize; i++) {
+        LOG_PRINT("expandedXOutData[%ld] is: %f\n", i, expandedXOutData[i]);
     }
-    auto expandedRowIdxSize = GetShapeSize(idxShape);
-    std::vector<int> expandedRowIdxData(expandedRowIdxSize, 0);
-    ret = aclrtMemcpy(expandedRowIdxData.data(), expandedRowIdxData.size() * sizeof(expandedRowIdxData[0]), expandedRowIdxDeviceAddr, expandedRowIdxSize * sizeof(int32_t),
+    auto expandedRowIdxOutSize = GetShapeSize(idxOutShape);
+    std::vector<int> expandedRowIdxOutData(expandedRowIdxOutSize, 0);
+    ret = aclrtMemcpy(expandedRowIdxOutData.data(), expandedRowIdxOutData.size() * sizeof(expandedRowIdxOutData[0]), expandedRowIdxOutDeviceAddr, expandedRowIdxOutSize * sizeof(int32_t),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expandedRowIdxSize; i++) {
-        LOG_PRINT("expandedRowIdxData[%ld] is: %d\n", i, expandedRowIdxData[i]);
+    for (int64_t i = 0; i < expandedRowIdxOutSize; i++) {
+        LOG_PRINT("expandedRowIdxOutData[%ld] is: %d\n", i, expandedRowIdxOutData[i]);
     }
-    auto expertTokensBeforeCapacitySize = GetShapeSize(expertTokenShape);
-    std::vector<int> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
-    ret = aclrtMemcpy(expertTokenIdxData.data(), expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]), expertTokenBeforeCapacityDeviceAddr, expertTokensBeforeCapacitySize * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto expertTokensBeforeCapacityOutSize = GetShapeSize(expertTokenOutShape);
+    std::vector<int> expertTokenIdxOutData(expertTokensBeforeCapacityOutSize, 0);
+    ret = aclrtMemcpy(expertTokenIdxOutData.data(), expertTokenIdxOutData.size() * sizeof(expertTokenIdxOutData[0]), expertTokenBeforeCapacityOutDeviceAddr, expertTokensBeforeCapacityOutSize * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expertTokensBeforeCapacitySize; i++) {
-        LOG_PRINT("expertTokenIdxData[%ld] is: %d\n", i, expertTokenIdxData[i]);
+    for (int64_t i = 0; i < expertTokensBeforeCapacityOutSize; i++) {
+        LOG_PRINT("expertTokenIdxOutData[%ld] is: %d\n", i, expertTokenIdxOutData[i]);
     }
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(x);
     aclDestroyTensor(expertIdx);
-    aclDestroyTensor(expandedX);
-    aclDestroyTensor(expandedRowIdx);
-    aclDestroyTensor(expertTokensBeforeCapacity);
+    aclDestroyTensor(expandedXOut);
+    aclDestroyTensor(expandedRowIdxOut);
+    aclDestroyTensor(expertTokensBeforeCapacityOut);
 
     // 7. 释放device资源，需要根据具体API的接口定义修改
     aclrtFree(xDeviceAddr);
     aclrtFree(expertIdxDeviceAddr);
-    aclrtFree(expandedXDeviceAddr);
-    aclrtFree(expandedRowIdxDeviceAddr);
-    aclrtFree(expertTokenBeforeCapacityDeviceAddr);
+    aclrtFree(expandedXOutDeviceAddr);
+    aclrtFree(expandedRowIdxOutDeviceAddr);
+    aclrtFree(expertTokenBeforeCapacityOutDeviceAddr);
     if (workspaceSize > 0) {
       aclrtFree(workspaceAddr);
     }
