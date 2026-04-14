@@ -268,8 +268,10 @@ private:
         const vector<TensorDescParam> &tensors)
     {
         vector<gert::TilingContextPara::TensorDescription> descs;
-        descs.reserve(tensors.size());
         for (const auto &tensor : tensors) {
+            if (tensor.originDims.empty() && tensor.storageDims.empty()) {
+                continue;
+            }
             descs.emplace_back(BuildTensorDesc(tensor));
         }
         return descs;
