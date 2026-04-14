@@ -986,15 +986,16 @@ void GroupedQmmTiling::SetKernelType()
     // pertensor-pertensor且没有后处理的bias，都可以走dequant fixp随路
     bool isPertensorCube = inputParams_.aQuantMode <= optiling::QuantMode::PERTENSOR_MODE &&
                            inputParams_.bQuantMode == optiling::QuantMode::PERTENSOR_MODE;
+    bool isSparseGroupList = inputParams_.groupListType == GROUPLIST_TYPE_SPARSE_M;
     bool isBiasEpilogue =
         inputParams_.aDtype == ge::DT_INT8 && inputParams_.hasBias && inputParams_.biasDtype != ge::DT_INT32;
     // 如果bias bf16/fp16/fp32，需mix模板进行后处理
-    if (isPertensorCube && !isBiasEpilogue) {
+    if (isPertensorCube && !isBiasEpilogue && !isSparseGroupList) {
         return;
     }
     bool isScaleEpilogue = (inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64);
     // 后处理的bias和（scale非64bits && ！isPertensorCube）需要走dequant vec模板
-    if (isBiasEpilogue || isScaleEpilogue) {
+    if (isBiasEpilogue || isScaleEpilogue || isSparseGroupList) {
         inputParams_.kernelType = 1UL;
     }
 }
