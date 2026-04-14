@@ -8,8 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ---------------------------------------------------------------------------------------------------------
 
-#add_modules_sources_aicpu(DEPENDENCIES kv_quant_sparse_flash_attention)
-
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 list(REMOVE_ITEM CURRENT_DIRS tests)
 foreach(SUB_DIR ${CURRENT_DIRS})
