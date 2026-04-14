@@ -772,7 +772,7 @@ void ScatterPaKvCacheTiling::GenTilingKey()
 {
     tilingKey_ = static_cast<uint64_t>(templateType_) * HUNDRED + static_cast<uint64_t>(indexDtypeSize_) * TEN +
                  static_cast<uint64_t>(isFullyLoad_);
-    if (templateType_ == TEMPLATE_NZ || templateType_ == TemplateOmni || templateType_ == TEMPLATE_NCT) {
+    if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_OMNI || templateType_ == TEMPLATE_NCT) {
         tilingKey_ = static_cast<uint64_t>(templateType_) * HUNDRED + static_cast<uint64_t>(isFullyLoad_);
     }
 }
