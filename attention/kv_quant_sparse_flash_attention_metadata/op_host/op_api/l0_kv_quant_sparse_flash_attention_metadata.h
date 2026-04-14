@@ -20,12 +20,8 @@ const aclTensor* KvQuantSparseFlashAttentionMetadata(
     int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, int64_t topKOptional, int64_t sparseBlockSizeOptional, 
     char *layoutQueryOptional, char *layoutKvOptional, int64_t sparseModeOptional, int64_t preTokensOptional, 
     int64_t  nextTokensOptional, int64_t  attentionModeOptional, int64_t  quantScaleRepoModeOptional, 
-    int64_t tileSizeOptional, int64_t ropeHeadDimOptional,
-    const char *socVersion,
-    int64_t aicCoreNum,
-    int64_t aivCoreNum,
-    const aclTensor* metaData,
-    aclOpExecutor* executor);
+    int64_t tileSizeOptional, int64_t ropeHeadDimOptional, const char *socVersion, int64_t aicCoreNum, 
+    int64_t aivCoreNum, const aclTensor* metaData, aclOpExecutor* executor);
 } // namespace l0op
 
 #endif
