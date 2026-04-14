@@ -135,6 +135,8 @@ ge::graphStatus KvQuantSASInfoParser::GetAttrParaInfo()
     opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(ATTR_TILE_SIZE_INDEX);
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOTFMAX_SCALE_INDEX);
+    opParamInfo_.oriKvStride = attrs->GetAttrPointer<int64_t>(ATTR_ORIKV_STRIDE_INDEX);
+    opParamInfo_.cmpKvStride = attrs->GetAttrPointer<int64_t>(ATTR_CMPKV_STRIDE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
@@ -500,6 +502,8 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.tileSize = *opParamInfo_.tileSize;
     sasInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     sasInfo.softmaxScale = *opParamInfo_.softmaxScale;
+    sasInfo.oriKvStride = *opParamInfo_.oriKvStride;
+    sasInfo.cmpKvStride = *opParamInfo_.cmpKvStride;
     sasInfo.cmpRatio = *opParamInfo_.cmpRatio;
     sasInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     sasInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
@@ -612,6 +616,8 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     tilingData_.baseParams.set_tileSize(tilingInfo->tileSize);
     tilingData_.baseParams.set_ropeHeadDim(tilingInfo->ropeHeadDim);
     tilingData_.baseParams.set_softmaxScale(tilingInfo->softmaxScale);
+    tilingData_.baseParams.set_oriKvStride(tilingInfo->oriKvStride);
+    tilingData_.baseParams.set_cmpKvStride(tilingInfo->cmpKvStride);
     tilingData_.baseParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.baseParams.set_oriMaskMode(tilingInfo->oriMaskMode);
     tilingData_.baseParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);

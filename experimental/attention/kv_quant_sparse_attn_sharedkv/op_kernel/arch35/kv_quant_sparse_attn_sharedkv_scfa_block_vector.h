@@ -190,9 +190,9 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Id
     if constexpr (isPa) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
+        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
-            static_cast<int64_t>(blockSize) * constInfo.dSizeVInput +
-            blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
+            paBlockStride + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else {
         realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
     }
@@ -509,6 +509,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
         uint64_t dstOffset = 0;
         uint32_t copyFinishElmenCnt = 0;
         uint32_t curSequence = s2Idx;
+        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         while (copyFinishElmenCnt < dealRow) {
             uint64_t blockIdOffset = curSequence / blockSize;
             uint64_t remainElmenCnt = curSequence % blockSize;
@@ -517,7 +518,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
             if (copyElmenCnt + copyFinishElmenCnt > dealRow) {
                 copyElmenCnt = dealRow - copyFinishElmenCnt;
             }
-            uint64_t srcOffset = idInBlockTable * blockSize * constInfo.n2Size * combineBytes +
+            uint64_t srcOffset = idInBlockTable * paBlockStride +
                 remainElmenCnt * constInfo.n2Size * combineBytes + (uint64_t)(runInfo.n2oIdx * combineBytes); // BlockNum, BlockSize, N, D
             intriParams.blockCount = copyElmenCnt; // base s2 size
             DataCopyPad(kvMergUb[dstOffset * combineDimAlign], keyGm[srcOffset], intriParams, padParams);
@@ -904,6 +905,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.tileSize = sparseAttnSharedkvBaseParams.tileSize;
     sharedParams.dSizeRope = sparseAttnSharedkvBaseParams.ropeHeadDim;
     sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.softmaxScale; 
+    sharedParams.oriKvStride = sparseAttnSharedkvBaseParams.oriKvStride;
+    sharedParams.cmpKvStride = sparseAttnSharedkvBaseParams.cmpKvStride;
     sharedParams.dSize = sparseAttnSharedkvBaseParams.dSize;
     sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
 
