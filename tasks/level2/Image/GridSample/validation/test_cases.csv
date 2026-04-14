@@ -1,0 +1,9 @@
+case_id;input_shape;dtype;mode;padding_mode;align_corners
+0;[2, 3, 16, 16, 16];float16;nearest;zeros;False
+1;[1, 3, 4, 4, 4];float32;nearest;zeros;False
+2;[1, 3, 8, 8, 8];bfloat16;nearest;zeros;False
+3;[8, 64, 56, 56];float16;bilinear;zeros;False
+4;[1, 3, 224, 224];float32;bilinear;zeros;False
+5;[2, 32, 32, 32];float16;bilinear;border;True
+6;[1, 3, 4, 4, 4];float16;bilinear;border;False
+7;[1, 3, 4, 4, 4];float32;bilinear;reflection;False

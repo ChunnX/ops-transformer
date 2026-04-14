@@ -1,0 +1,6 @@
+case_id;B;C;N;M;grad_dtype;idx_dtype
+0;1;16;16;8;float32;int32
+1;2;32;32;16;float32;int64
+2;1;16;64;32;float16;int32
+3;2;16;32;64;float16;int64
+4;4;32;128;16;float32;int32

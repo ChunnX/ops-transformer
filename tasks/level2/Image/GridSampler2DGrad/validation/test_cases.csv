@@ -1,0 +1,16 @@
+case_id;x_shape;grid_shape;dtype;interpolation_mode;padding_mode;align_corners
+0;[1, 3, 4, 4];[1, 2, 2, 2];float16;bilinear;zeros;False
+1;[1, 3, 4, 4];[1, 2, 2, 2];float32;bilinear;zeros;False
+2;[2, 16, 8, 8];[2, 4, 4, 2];float16;bilinear;zeros;False
+3;[2, 16, 8, 8];[2, 4, 4, 2];float16;bilinear;border;False
+4;[2, 16, 8, 8];[2, 4, 4, 2];float16;bilinear;reflection;False
+5;[4, 3, 16, 16];[4, 8, 8, 2];float32;nearest;zeros;False
+6;[1, 8, 32, 32];[1, 4, 4, 2];float16;nearest;zeros;True
+7;[2, 4, 8, 8];[2, 4, 4, 2];float16;bilinear;zeros;True
+8;[1, 3, 4, 4];[1, 2, 2, 2];bfloat16;bilinear;zeros;False
+9;[2, 16, 16, 16];[2, 8, 8, 2];bfloat16;bilinear;zeros;False
+10;[4, 3, 16, 16];[4, 8, 8, 2];bfloat16;nearest;zeros;False
+11;[2, 4, 8, 8];[2, 4, 4, 2];float32;nearest;border;True
+12;[1, 3, 4, 4];[1, 2, 2, 2];float16;nearest;reflection;False
+13;[2, 8, 16, 16];[2, 8, 8, 2];float32;bilinear;border;False
+14;[1, 3, 4, 4];[1, 2, 2, 2];bfloat16;nearest;zeros;True
