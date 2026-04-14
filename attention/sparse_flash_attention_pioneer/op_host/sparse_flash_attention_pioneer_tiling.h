@@ -48,8 +48,10 @@ constexpr uint32_t LAYOUT_KV_ATTR_INDEX = 3;
 constexpr uint32_t SPARSE_MODE_ATTR_INDEX = 4;
 constexpr uint32_t PRE_TOKENS_ATTR_INDEX = 5;
 constexpr uint32_t NEXT_TOKENS_ATTR_INDEX = 6;
-constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 7;
-constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 8;
+constexpr uint32_t KEY_SINK_INPUT_INDEX = 7;
+constexpr uint32_t VALUE_SINK_INPUT_INDEX = 8;
+constexpr uint32_t QUERY_ROPE_INPUT_INDEX = 9;
+constexpr uint32_t KEY_ROPE_INPUT_INDEX = 10;
 // Dim Num
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
@@ -125,6 +127,8 @@ struct SFAParaInfo {
     SFAOptionalParaInfo blockTable = {nullptr, nullptr};
     SFAOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     SFAOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
+    SFAOptionalParaInfo keySink = {nullptr, nullptr};
+    SFAOptionalParaInfo valueSink = {nullptr, nullptr};
     SFAOptionalParaInfo queryRope = {nullptr, nullptr};
     SFAOptionalParaInfo keyRope = {nullptr, nullptr};
     SFARequiredParaInfo attenOut = {nullptr, nullptr};
