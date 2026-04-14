@@ -60,8 +60,8 @@
               <td>gmmX</td>
               <td>输入</td>
               <td>公式中的输入 gmmX。</td>
-              <td>支持的 shape 包括 (A, H)。</td>
-              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+              <td>shape (A, H1)。</td>
+              <td>HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
               <td>ND</td>
               <td>2</td>
               <td>x</td>
@@ -71,8 +71,8 @@
               <td>gmmWeight</td>
               <td>输入</td>
               <td>公式中的输入 gmmWeight。</td>
-              <td>支持的 shape 包括 (e, H, N1)。e 为每卡部署的专家数，H 为 hidden size，N1 为 MoE FFN 中间维度。</td>
-              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+              <td>shape (e, H1, N1)。e 为每卡部署的专家数，H1 为 hidden size，N1 为路由专家 FFN 中间维度。</td>
+              <td>HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
               <td>ND</td>
               <td>3</td>
               <td>x</td>
@@ -82,10 +82,10 @@
               <td>gmmXScale</td>
               <td>输入</td>
               <td>gmmX 的量化系数。</td>
-              <td><li>默认为空。支持的 shape 包括 (1, )。</li><li>Mx量化时shape：(M, ceil(K/64), 2)</li></td>
-              <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
+              <td><li>pertensor量化：shape (1)。</li><li>mx量化：shape (A, ceil(H1/64), 2)</li></td>
+              <td>FLOAT32、FLOAT8_E8M0</td>
               <td>ND</td>
-              <td>1</td>
+              <td><li>pertensor量化：1</li><li>mx量化：3</li></td>
               <td>x</td>
           </tr>
           <!-- gmmWeightScale -->
@@ -93,10 +93,10 @@
               <td>gmmWeightScale</td>
               <td>输入</td>
               <td>gmmWeight 的量化系数。</td>
-              <td><li>默认为空。支持的 shape 包括 (1, )。</li><li>Mx量化时shape：(e, ceil(K/64), N, 2)，weight转置时为(e, N, ceil(K/64), 2)</li></td>
-              <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
+              <td><li>pertensor量化：shape (1)。</li><li>mx量化：shape (e, N1, ceil(H1/64), 2)，weight转置时为(e, ceil(H1/64), N1, 2)</li></td>
+              <td>FLOAT32、FLOAT8_E8M0</td>
               <td>ND</td>
-              <td>1</td>
+              <td><li>pertensor量化：1</li><li>mx量化：3</li></td>
               <td>x</td>
           </tr>
           <!-- sendCountsTensorOptional -->
@@ -104,8 +104,8 @@
               <td>sendCountsTensorOptional</td>
               <td>输入</td>
               <td>AlltoAllv 使用的 send count。</td>
-              <td>当前仅支持空。支持的 shape 包括 (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
-              <td>INT32、INT64</td>
+              <td>当前仅支持空。shape (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
+              <td>INT64</td>
               <td>ND</td>
               <td>1</td>
               <td>x</td>
@@ -115,8 +115,8 @@
               <td>recvCountsTensorOptional</td>
               <td>输入</td>
               <td>AlltoAllv 使用的 recv count。</td>
-              <td>默认为空 Tensor。支持的 shape 包括 (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
-              <td>INT32、INT64</td>
+              <td>默认为空 Tensor。shape (e * ep, )。e 为每卡部署的专家个数，ep 为 ep 域大小。</td>
+              <td>INT64</td>
               <td>ND</td>
               <td>1</td>
               <td>x</td>
@@ -126,8 +126,8 @@
               <td>mmXOptional</td>
               <td>输入</td>
               <td>公式中的输入 mmX。</td>
-              <td>支持的 shape 包括 (bs, H)。bs 为每卡部署的专家个数，H 为 hidden size。</td>
-              <td><li>TT量化：BFLOAT16、FLOAT16</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+              <td>shape (bs, H2)。bs 为每卡部署的专家个数，H2 为 hidden size。</td>
+              <td>HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
               <td>ND</td>
               <td>2</td>
               <td>x</td>
@@ -137,8 +137,8 @@
               <td>mmWeightOptional</td>
               <td>输入</td>
               <td>公式中的输入 mmWeight。</td>
-              <td>不支持空。支持的 shape 包括 (H, N1)。H 为 hidden size，N1 为共享专家 FFN 的中间层维度。</td>
-              <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2</li></td>
+              <td>shape (H2, N2)。H2 为 hidden size，N2 为共享专家 FFN 的中间层维度。</td>
+              <td>HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
               <td>ND</td>
               <td>2</td>
               <td>x</td>
@@ -148,10 +148,10 @@
               <td>mmXScaleOptional</td>
               <td>输入</td>
               <td>mmX 的量化系数。</td>
-              <td>支持的 shape 包括 (1, )。</td>
-              <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
+              <td><li>pertensor量化：shape (1)。</li><li>mx量化：shape (BS, ceil(H2/64), 2)</li></td>
+              <td>FLOAT32、FLOAT8_E8M0</td>
               <td>ND</td>
-              <td>1</td>
+              <td><li>pertensor量化：1</li><li>mx量化：3</li></td>
               <td>x</td>
           </tr>
           <!-- mmWeightScaleOptional -->
@@ -159,10 +159,10 @@
               <td>mmWeightScaleOptional</td>
               <td>输入</td>
               <td>mmWeight 的量化系数。</td>
-              <td>支持的 shape 包括 (1, )。</td>
-              <td><li>TT量化：FLOAT32</li><li>Mx量化：FLOAT8_E8M0</li></td>
+              <td><li>pertensor量化：shape(1)。</li><li>mx量化: shape (N2, ceil(H2/64), 2)，weight转置时为(ceil(H2/64), N2, 2)</li></td>
+              <td>FLOAT32、FLOAT8_E8M0</td>
               <td>ND</td>
-              <td>1</td>
+              <td><li>pertensor量化：1</li><li>mx量化：3</li></td>
               <td>x</td>
           </tr>
           <!-- commQuantScaleOptional -->
@@ -181,7 +181,7 @@
               <td>gmmXQuantMode</td>
               <td>输入</td>
               <td>gmmX 的量化模式。</td>
-              <td>必须传入量化模式，当前支持 1 （pertensor量化）和 6（Mx量化）。</td>
+              <td>必须传入量化模式，当前支持 1 （pertensor量化）和 6（mx量化）。</td>
               <td>INT64</td>
               <td>-</td>
               <td>1</td>
@@ -192,7 +192,7 @@
               <td>gmmWeightQuantMode</td>
               <td>输入</td>
               <td>gmmWeight 的量化模式。</td>
-              <td>必须传入量化模式，当前支持 1 （pertensor量化）和 6（Mx量化）。</td>
+              <td>必须传入量化模式，当前支持 1 （pertensor量化）和 6（mx量化）。</td>
               <td>INT64</td>
               <td>-</td>
               <td>1</td>
@@ -203,7 +203,7 @@
               <td>mmXQuantMode</td>
               <td>输入</td>
               <td>mmX 的量化模式。</td>
-              <td>mmX 非空，则必须传入量化模式，当前支持 1 （pertensor量化）和 6（Mx量化）。</td>
+              <td>mmX 非空，则必须传入量化模式，当前支持 1 （pertensor量化）和 6（mx量化）。</td>
               <td>INT64</td>
               <td>-</td>
               <td>1</td>
@@ -214,7 +214,7 @@
               <td>mmWeightQuantMode</td>
               <td>输入</td>
               <td>mmWeight 的量化模式。</td>
-              <td>mmWeight 不为空，则必须传入量化模式，当前支持 1 （pertensor量化）和 6（Mx量化）。</td>
+              <td>mmWeight 不为空，则必须传入量化模式，当前支持 1 （pertensor量化）和 6（mx量化）。</td>
               <td>INT64</td>
               <td>-</td>
               <td>1</td>
@@ -291,7 +291,7 @@
               <td>recvCounts</td>
               <td>输入</td>
               <td>AlltoAllv 使用的 recv count。表示AlltoAllv后本卡需要接收到的token数量。</td>
-              <td>支持的维度为 e * ep。</td>
+              <td>支持的维度为 e * ep。按<code>recvCounts[fromRank][expertId]</code>一维展开, 例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
               <td>aclIntArray*（元素类型 INT64）</td>
               <td>ND</td>
               <td>-</td>
@@ -324,7 +324,7 @@
               <td>y</td>
               <td>输出</td>
               <td>grouped matmul 计算输出。</td>
-              <td>不支持空 Tensor。支持的 shape 包括 (A, N1)。A 为本 rank 处理的 token 数。</td>
+              <td>不支持空 Tensor。shape (BSK, N1)。</td>
               <td>FLOAT16、BFLOAT16</td>
               <td>ND</td>
               <td>2</td>
@@ -335,7 +335,7 @@
               <td>mmYOptional</td>
               <td>输出</td>
               <td>matmul 计算输出。</td>
-              <td>不支持空 Tensor。支持的 shape 包括 (bs, N1)。</td>
+              <td>shape (bs, N2)。</td>
               <td>FLOAT16、BFLOAT16</td>
               <td>ND</td>
               <td>2</td>
@@ -383,9 +383,9 @@
   - aclnnQuantGroupedMatMulAlltoAllv默认确定性实现。
 - e * epWorldSize最大支持256，e表示单卡上的专家数量，最大支持到32，epWorldSize支持2/4/8/16/32/64/128/256;
 - gmmX的shape(A, H1)，A为sendCounts之和，H1取值范围(0, 65536);
-- gmmWeight的shape(e, H1, N1)，H1取值范围(0, 65536)，N1取值范围(0, 65536);
-- y的shape为(BSK, N1)，第一维其中K的范围[2, 8]，BSK为recvCounts之和，N1取值(65536);
-- mmX是共享专家的左矩阵，shape为(BS, H2)，H2的取值范围(0, 65536)；
+- gmmWeight的shape(e, H1, N1)，N1取值范围(0, 65536);
+- y的shape为(BSK, N1)，第一维其中K的范围[2, 8]，BSK为recvCounts之和;
+- mmX是共享专家的左矩阵，shape为(BS, H2)，H2的取值范围(0, 12288]；
 - mmWeight是共享专家的右矩阵，shape为(H2， N2)，N2的取值范围(0, 65536)；
 - sendCounts为发送到其他卡的token数，数组大小为e * epWorldSize;
 - recvCounts从其他卡的token数，数组大小为e * epWorldSize;
@@ -395,9 +395,9 @@
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
   - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
   - H2：表示共享专家hidden size隐藏层大小，取值范围(0, 12288]。
-  - e：表示单卡上专家个数，e<=32，e * epWorldSize最大支持256。
-  - N1：表示路由专家的head_num，取值范围(0, 65536)。
-  - N2：表示共享专家的head_num，取值范围(0, 65536)。
+  - e：表示单卡上专家个数，0<e<=32，e * epWorldSize最大支持256。
+  - N1：表示路由专家 FFN 的中间层维度，取值范围(0, 65536)。
+  - N2：表示共享专家 FFN 的中间层维度，取值范围(0, 65536)。
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡发送的token数，是sendCounts参数累加之和。
