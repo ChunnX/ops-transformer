@@ -21,15 +21,9 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "common.h"
-
+#include "flash_attention_score_grad_common.h"
 
 namespace commondef {
-constexpr uint32_t NUM_TWO = 2;
-constexpr uint32_t NUM_THREE = 3;
-constexpr uint32_t NUM_FOUR = 4;
-constexpr uint32_t NUM_EIGHT = 8;
-
 constexpr int64_t DETER_PREFIX_NUM = 132;
 constexpr int64_t DETER_PREFIX_THRESHOLD = 128;
 constexpr int64_t M_BASE_64 = 64;
