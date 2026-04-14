@@ -1276,6 +1276,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
  	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_0 = 0;
  	constexpr int32_t EMBEDDING_SIZE_128 = 128;
  	constexpr int64_t GROUP_SIZE_128 = 128;
+    constexpr int32_t DECODING_PAGE_BLOCK_SIZE_128 = 128;
 
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
     auto tempQ = context->GetInputShape(QUERY_INDEX);
@@ -1379,7 +1380,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
             faInfo.flashDecodeFlag = true; 
         }
         if (faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
-            (batch >= aicoreNum) &&
+            (batch >= aicoreNum) && (faInfo.blockSize == DECODING_PAGE_BLOCK_SIZE_128) &&
             !faInfo.lseFlag && !faInfo.learnableSinkFlag && (faInfo.innerPrecise == 0) &&
             ((faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128)) {
             faInfo.decodingFlag = true;
