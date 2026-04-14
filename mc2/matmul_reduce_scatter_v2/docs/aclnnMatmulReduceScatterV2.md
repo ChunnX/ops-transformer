@@ -399,8 +399,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
-    - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
-    - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
+    - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍，m轴大小需小于65535。
+    - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，n轴大小需小于32768，k轴相等，且k轴取值范围为\[256, 65535\)。
     - bias为1维，shape为\(n,\)。
     - 输出为2维，其shape为\(m/rank\_size, n\), rank\_size为卡数。
     - 不支持空tensor。
