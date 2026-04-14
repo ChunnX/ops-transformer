@@ -81,11 +81,16 @@ ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t
 {
     if ((hInDims != BSD_DIM_NUM && hInDims != TD_DIM_NUM) || (hPostDims != BSD_DIM_NUM && hPostDims != TN_DIM_NUM) ||
         (hCombDims != BSNN_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
-        OP_LOGE(context_->GetNodeName(), "input dims invalid for MhcPreBackward");
+        OP_LOGE(context_->GetNodeName(),
+                "input dims invalid for MhcPreBackward, hInDims=%ld (expected %d or %d), hPostDims=%ld (expected %d or "
+                "%d), hCombDims=%ld (expected %d or %d)",
+                hInDims, BSD_DIM_NUM, TD_DIM_NUM, hPostDims, BSD_DIM_NUM, TN_DIM_NUM, hCombDims, BSNN_DIM_NUM,
+                TNN_DIM_NUM);
         return ge::GRAPH_FAILED;
     }
     if (hInDims != hPostDims) {
-        OP_LOGE(context_->GetNodeName(), "h_in_grad and h_post_grad must have the same dim num");
+        OP_LOGE(context_->GetNodeName(),
+                "h_in_grad and h_post_grad must have the same dim num, hInDims=%ld, hPostDims=%ld", hInDims, hPostDims);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -102,14 +107,22 @@ ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *hInGrad
 
     if (hPostGradTensor->GetStorageShape().GetDim(INDEX_B) != batch ||
         hPostGradTensor->GetStorageShape().GetDim(INDEX_S) != sequence) {
-        OP_LOGE(context_->GetNodeName(), "h_post_grad shape must align with h_in_grad on B and S dims");
+        OP_LOGE(context_->GetNodeName(),
+                "h_post_grad shape must align with h_in_grad on B and S dims, h_post_grad[B,S]=[%lu,%lu], expected "
+                "[%lu,%lu]",
+                hPostGradTensor->GetStorageShape().GetDim(INDEX_B), hPostGradTensor->GetStorageShape().GetDim(INDEX_S),
+                batch, sequence);
         return ge::GRAPH_FAILED;
     }
     if (hCombBeforeGradTensor->GetStorageShape().GetDim(0) != batch ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(1) != sequence ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(2) != N_ ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(3) != N_) {
-        OP_LOGE(context_->GetNodeName(), "h_comb_before_grad shape must be [B, S, N, N]");
+        OP_LOGE(context_->GetNodeName(),
+                "h_comb_before_grad shape must be [B, S, N, N], actual=[%lu,%lu,%lu,%lu], expected=[%lu,%lu,%lu,%lu]",
+                hCombBeforeGradTensor->GetStorageShape().GetDim(0), hCombBeforeGradTensor->GetStorageShape().GetDim(1),
+                hCombBeforeGradTensor->GetStorageShape().GetDim(2), hCombBeforeGradTensor->GetStorageShape().GetDim(3),
+                batch, sequence, N_, N_);
         return ge::GRAPH_FAILED;
     }
     totalLength_ = batch * sequence;
@@ -125,13 +138,18 @@ ge::graphStatus MhcPreBackwardTiling::ParseTNDFormat(const gert::Tensor *hInGrad
     N_ = hPostGradTensor->GetStorageShape().GetDim(INDEX_N);
 
     if (hPostGradTensor->GetStorageShape().GetDim(INDEX_T) != t) {
-        OP_LOGE(context_->GetNodeName(), "h_post_grad shape must align with h_in_grad on T dim");
+        OP_LOGE(context_->GetNodeName(),
+                "h_post_grad shape must align with h_in_grad on T dim, h_post_grad[T]=%lu, expected %lu",
+                hPostGradTensor->GetStorageShape().GetDim(INDEX_T), t);
         return ge::GRAPH_FAILED;
     }
     if (hCombBeforeGradTensor->GetStorageShape().GetDim(0) != t ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(1) != N_ ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(2) != N_) {
-        OP_LOGE(context_->GetNodeName(), "h_comb_before_grad shape must be [T, N, N]");
+        OP_LOGE(context_->GetNodeName(),
+                "h_comb_before_grad shape must be [T, N, N], actual=[%lu,%lu,%lu], expected=[%lu,%lu,%lu]",
+                hCombBeforeGradTensor->GetStorageShape().GetDim(0), hCombBeforeGradTensor->GetStorageShape().GetDim(1),
+                hCombBeforeGradTensor->GetStorageShape().GetDim(2), t, N_, N_);
         return ge::GRAPH_FAILED;
     }
     totalLength_ = t;
@@ -147,7 +165,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateShapeParams()
     }
     if (D_ > MAX_D_LENTH || D_ % D_ALIGN != 0) {
         OP_LOGE(context_->GetNodeName(),
-                "Invalid input shape D=%lu. Expected to be less than or equal to 16384 and 64-element alignment", D_);
+                "Invalid input shape D=%lu. Expected to be less than or equal to %u and %u-element alignment", D_,
+                MAX_D_LENTH, D_ALIGN);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
