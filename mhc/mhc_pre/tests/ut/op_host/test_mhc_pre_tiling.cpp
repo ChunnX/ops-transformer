@@ -1159,3 +1159,57 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
                     expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
 }
+/*
+* 测试用例22：B=2，S=4096，n=4，d=1536，x的数据类型为bf16，gamma为空（可选输入）
+* alpha的值为[0.2, 0.2, 0.2]，norm_eps值为0.000001，hc_eps值为0.000001
+* 预期结果：成功
+* 说明：gamma为可选输入，此用例测试gamma为空时的正确性
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
+{
+    uint32_t B = 2;
+    uint32_t S = 4096;
+    uint32_t n = 4;
+    uint32_t d = 1536;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 24
+    uint32_t phi_dim1 = n * d;          // 6144
+    uint32_t bias_dim = n * n + 2 * n;  // 24
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.2f, 0.2f, 0.2f};
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    // 不包含gamma输入，只有4个输入：x, phi, alpha, bias（gamma为可选输入，此处不填）
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},              // x
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha (fixed size 3)
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND}                   // bias
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},                    // hin
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_res
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms (optional)
+            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},     // h_mix (optional)
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}                    // h_pre (optional)
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 0;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
