@@ -782,7 +782,7 @@ def gen_data(params, template_mode=None):
     cmp_mask_mode = params.get('cmp_mask_mode')
     ori_win_left = params.get('ori_win_left')
     ori_win_right = params.get('ori_win_right')
-    case_name = params.get('case_name')
+    case_name = params.get('testcase_name')
     S2 = params.get('S2')
     q_datarange = params.get('q_datarange')
     ori_kv_datarange = params.get('ori_kv_datarange')
@@ -970,7 +970,7 @@ def gen_data(params, template_mode=None):
             'max_seqlen_q': max_seqlen_q,
             'max_seqlen_kv': max(seqused_kv) if seqused_kv != None else (T2 if layout_kv == "TND" else S2),
             'K1': K1,
-            'K': K,
+            'K': K if template_idx != 3 else None,
             'cmp_ratio': cmp_ratio,
             'ori_mask_mode': ori_mask_mode,
             'cmp_mask_mode': cmp_mask_mode,

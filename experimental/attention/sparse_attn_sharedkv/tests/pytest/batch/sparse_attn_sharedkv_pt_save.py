@@ -34,6 +34,7 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS_FROM_FILE,
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
+    test_data = utils.generate_case_with_default_param(param_combinations)
     print("data parsed.", test_data)
     print("strat to generate data")
     # 生成测试数据

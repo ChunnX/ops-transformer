@@ -10,6 +10,7 @@
 # ======================================================================================================================
 
 import ast
+import math
 import itertools
 import numpy as np
 import os
@@ -17,6 +18,8 @@ import pandas as pd
 from pathlib import Path
 import pytest
 import torch
+import time
+import random
  	 
 str_map_dict = {
     'True': True,
@@ -24,8 +27,25 @@ str_map_dict = {
     'TRUE': True,
     'FALSE': False,
     'torch.bfloat16': torch.bfloat16,
+    'torch.float16': torch.float16,
     'torch.float8_e4m3fn': torch.float8_e4m3fn,
 }
+
+def to_int_or_na(x):
+    if pd.isna(x) or x == '':
+        return pd.NA
+    v = float(x)
+    if not v.is_integer():
+        raise ValueError(f"not a integer: {x}")
+    return int(v)
+
+def parse_to_list(x):
+    if isinstance(x, str) and x.startswith('[') and x.endswith(']'):
+        try:
+            return ast.literal_eval(x)
+        except (ValueError, SyntaxError):
+            return x  # 转换失败则保留原值
+    return x
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
@@ -50,9 +70,31 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
     try:
         # 读取 Excel 文件的指定 sheet
-        df = pd.read_excel(excel_file_path, sheet_name=sheetname)
+        df = pd.read_excel(excel_file_path,
+            sheet_name=sheetname,
+            converters={
+                'testcase_name': lambda x: pd.NA if pd.isna(x) else str(x),
+                'T1': to_int_or_na,
+                'T2': to_int_or_na,
+                'T3': to_int_or_na,
+                'S1': to_int_or_na,
+                'S2': to_int_or_na,
+                'block_size1': to_int_or_na,
+                'block_size2': to_int_or_na,
+                'kv_quant_mode': to_int_or_na,
+            })
         df = df.replace({np.nan: None, pd.NA: None})
-
+        df = df.applymap(parse_to_list)
+        df = df.astype({
+            'T1': "Int64",
+            'T2': "Int64",
+            'T3': "Int64",
+            'S1': "Int64",
+            'S2': "Int64",
+            'block_size1': "Int64",
+            'block_size2': "Int64",
+            'kv_quant_mode': "Int64",
+        })
         # 处理可能为空的列
         default_None_columns = ["K1", "cu_seqlens_ori_kv","cu_seqlens_cmp_kv"]
         for key in default_None_columns:
@@ -207,3 +249,80 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             combination = dict(zip(param_names, combo))
             param_combinations.append(combination)
     return param_combinations
+
+def fill_random_cu_len(T, SMax, B, qk_equal_len=False):
+    cu_seqlens = [0]
+    S = min(SMax, T // B)
+    S_eq = random.randint(0, S)
+    for i in range(B):
+        length = S_eq if qk_equal_len else random.randint(0, S)
+        cu_seqlens.append(cu_seqlens[-1] + length)
+    cu_seqlens[-1] = T
+    return cu_seqlens
+
+def fill_random_used_len(SMax, B, qk_equal_len=False):
+    used_lens = []
+    S_eq = random.randint(0, SMax)
+    for i in range(B):
+        length = S_eq if qk_equal_len else random.randint(0, SMax)
+        used_lens.append(length)
+    return used_lens
+
+def generate_case_with_default_param(param_combinations):
+    case_param = param_combinations.copy()
+    case_param.setdefault('testcase_name', "case_" + str(int(time.time() * 1000000)))
+    case_param.update({'q_datarange': ast.literal_eval(param_combinations.get('q_datarange')) if param_combinations.get('q_datarange') is not None else [-10, 10]})
+    case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if param_combinations.get('ori_kv_datarange') is not None else [-10, 10]})
+    case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10]})
+
+    # 测试用，数据预填充，TND场景下cu_seqlens如果没有传入，根据T和S自动填充随机值
+    # 常用参数提取
+    layout_q = case_param['layout_q']
+    layout_kv = case_param['layout_kv']
+    T1 = case_param['T1']
+    T2 = case_param['T2']
+    B = case_param['B']
+    S1 = case_param['S1']
+    S2 = case_param['S2']
+    cmp_ratio = case_param['cmp_ratio']
+    # 数据预填充
+    if case_param['cu_seqlens_q'] is None:
+        if layout_q == "TND":
+            case_param['cu_seqlens_q'] = fill_random_cu_len(T1, S1, B, param_combinations['qk_equal_len'])
+            print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
+        elif layout_q == "BSND":
+            case_param['cu_seqlens_q'] = fill_random_cu_len(B * S1, S1, B, True)
+            print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
+
+    if case_param['cu_seqlens_ori_kv'] is None and layout_kv == "TND":
+        case_param['cu_seqlens_ori_kv'] = fill_random_cu_len(T2, S2, B, param_combinations['qk_equal_len'])
+        print("cu_seqlens_ori_kv auto set to: ", case_param['cu_seqlens_ori_kv'])
+
+    if case_param['cu_seqlens_cmp_kv'] is None and layout_kv == "TND" and cmp_ratio is not None:
+        case_param['cu_seqlens_cmp_kv'] = [x // cmp_ratio for x in case_param['cu_seqlens_ori_kv']]
+        print("cu_seqlens_cmp_kv auto set to: ", case_param['cu_seqlens_cmp_kv'])
+        case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
+
+    if case_param['seqused_kv'] is None and layout_kv != "TND":
+        case_param['seqused_kv'] = fill_random_used_len(S2, B, param_combinations['qk_equal_len'])
+        print("seqused_kv auto set to: ", case_param['seqused_kv'])
+
+    # maxSeqLen / block_size向上取整
+    ori_block_num_per_batch = []
+    ori_block_num_sum = 0
+    cmp_block_num_per_batch = []
+    cmp_block_num_sum = 0
+
+    if layout_kv == "PA_BNBD":
+        for cur_ori_act_kv in case_param['seqused_kv']:
+            cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param['block_size1'])
+            ori_block_num_per_batch.append(cur_ori_kv_block_num)
+            ori_block_num_sum += cur_ori_kv_block_num
+            if cmp_ratio is not None and case_param['block_size2'] is not None:
+                cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+                cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / case_param['block_size2'])
+                cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
+                cmp_block_num_sum += cur_cmp_kv_block_num
+    case_param['block_num1'] = ori_block_num_sum
+    case_param['block_num2'] = cmp_block_num_sum
+    return case_param
