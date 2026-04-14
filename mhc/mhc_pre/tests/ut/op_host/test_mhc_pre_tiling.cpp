@@ -1109,7 +1109,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
 
 /*
 * 测试用例21：t = 1024，n=6，d=768，x的数据类型为bf16
-* alpha的值为[0.7, 0.7, 0.7]，norm_eps值为0.001，hc_eps值为600
+* alpha的值为[0.85, 0.85, 0.85]，norm_eps值为0.000001，hc_eps值为0.000001
 * 预期结果：成功
 */
 TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)

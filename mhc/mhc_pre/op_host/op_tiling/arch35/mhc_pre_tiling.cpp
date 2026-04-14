@@ -53,8 +53,7 @@ const constexpr uint32_t CHUNK_T_MAX = 128;
 const constexpr uint32_t V1_CHUNK_D_SIZE = 5120;
 const constexpr uint32_t CHUNK_T_CALC_FACTOR = 32;
 const constexpr uint64_t TOTAL_LENGTH_MIN = 1;
-const constexpr uint64_t TOTAL_LENGTH_MAX = 65536;
-const constexpr uint64_t D_MIN = 1;
+const constexpr uint64_t D_MIN = 1; // 注意：实际最小值受D_ALIGNMENT=16约束，此处仅做基础下限校验
 const constexpr uint64_t D_MAX = 16384;
 const constexpr uint32_t L0_B_SIZE = 8 * 1024;
 const constexpr uint32_t FLOAT_ELE_SIZE = 8;
@@ -329,7 +328,7 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 ge::graphStatus MhcPreBaseTiling::CheckDataRange()
 {
     OP_CHECK_IF(totalLength_ < TOTAL_LENGTH_MIN,
-                OP_LOGE(context_->GetNodeName(), "TotalLength must be greater than %lu, got %lu", TOTAL_LENGTH_MIN,
+                OP_LOGE(context_->GetNodeName(), "TotalLength must be at least %lu, got %lu", TOTAL_LENGTH_MIN,
                         totalLength_),
                 return ge::GRAPH_FAILED);
 
