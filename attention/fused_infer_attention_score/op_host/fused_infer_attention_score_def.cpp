@@ -557,6 +557,7 @@ public:
         this->Attr("query_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("pse_type").AttrType(OPTIONAL).Int(0);
         this->Attr("out_dtype").AttrType(OPTIONAL).Int(0);
+        this->Attr("block_stride").AttrType(OPTIONAL).Int(0);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
