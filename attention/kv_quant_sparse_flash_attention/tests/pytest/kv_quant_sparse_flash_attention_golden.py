@@ -482,7 +482,8 @@ def _attention_bnsd(q_bnsd, k_bnsd, v_bnsd, sparse_indices_bnsd,
     返回: y (B, N1, S1, D_kv) float32
     """
     B, N1, S1, D_q = q_bnsd.shape
-    N2 = k_bnsd.shape[1]    D_kv = v_bnsd.shape[-1]
+    N2 = k_bnsd.shape[1]
+    D_kv = v_bnsd.shape[-1]
     g = N1 // N2  # GQA group factor
     y = np.zeros((B, N1, S1, D_kv), dtype=np.float32)
 
@@ -514,7 +515,7 @@ def _attention_bnsd(q_bnsd, k_bnsd, v_bnsd, sparse_indices_bnsd,
                 if q_dtype_str == "float16":
                     sm_cast = sm.astype(np.float16).astype(np.float32)
                 elif q_dtype_str == "bfloat16":
-                    sm_cast = torch.from_numpy(sm).to(torch.bfloat16).numpy().astype(np.float32)
+                    sm_cast = torch.from_numpy(sm.astype(np.float32)).to(torch.bfloat16).float().numpy()
                 else:
                     sm_cast = sm
 
