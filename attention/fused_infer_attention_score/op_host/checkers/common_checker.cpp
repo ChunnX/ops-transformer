@@ -963,7 +963,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         } else {
             OP_CHECK_IF(fiaInfo.ropeMode == RopeMode::ROPE_COMBINE &&
-                (fiaInfo.qkHeadDim != 192 || fiaInfo.vHeadDim != 128),
+                (fiaInfo.qkHeadDim != NUM_192 || fiaInfo.vHeadDim != NUM_128),
             OP_LOGE(fiaInfo.opName,
                 "In %s %s situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, "
                 "BSH_BNSD, BSND_BNSD, NTD_TND, "
