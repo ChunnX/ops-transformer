@@ -650,7 +650,8 @@ uint8_t FlashAttentionScoreGradTilingNormalRegbase::GetSparseType()
             fBaseParams.s1 <= fBaseParams.s2) ||
             (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
             fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token == 0) ||
-            (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) ||
+            (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
+             fBaseParams.s1 <= fBaseParams.s2) ||
             (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) &&
             fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token == 0);
         
@@ -845,6 +846,8 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
  
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
+    // 计算单loop的计算量及loop次数, hifp8场景按128对齐, quantblock大小为128 * 4, 目前仅支持D <= 256
+    int64_t singleLoopNBurstNum = 128;
     if (fBaseParams.queryType == ge::DT_FLOAT) {
         inputSize = FP32_BYTES;
         outDtypeSize = FP32_BYTES;
@@ -872,9 +875,10 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     int64_t normalCoreSize = CeilCommon(normalAxisSize, sfmgUsedCoreNum);
     sfmgUsedCoreNum = CeilCommon(normalAxisSize, normalCoreSize);
     int64_t tailCoreSize = normalAxisSize - (sfmgUsedCoreNum - 1) * normalCoreSize;
- 
-    // 计算单loop的计算量及loop次数, hifp8场景按128对齐, quantblock大小为128 * 4, 目前仅支持D <= 256
-    int64_t singleLoopNBurstNum = 128;
+    // 非fp8场景按照实际head dim的大小计算
+    if (fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16) {
+        singleLoopNBurstNum = sfmgDyBufferLen / inputSize / valueDAlign;
+    }
     int64_t normalCoreLoopTimes = CeilCommon(normalCoreSize, singleLoopNBurstNum);
     int64_t normalCoreLastLoopNBurstNum = normalCoreSize - (normalCoreLoopTimes - 1) * singleLoopNBurstNum;
     int64_t tailCoreLoopTimes = CeilCommon(tailCoreSize, singleLoopNBurstNum);
@@ -914,12 +918,16 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t singleCoreNum = AlignTo(CeilDivideBy(maskSize, static_cast<uint64_t>(fBaseParams.blockOuter)),
                                      static_cast<uint64_t>(BOOL_BLOCK_NUMS));
     uint64_t maskUsedCoreNum = 0;
-    if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
+    fBaseParams.enablePreSfmg =
+        (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
+        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) && fBaseParams.d >= 192 &&
+         fBaseParams.d <= 768 && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 && !fBaseParams.isDeterministic);
+    if (fBaseParams.enablePreSfmg) {
         maskUsedCoreNum = static_cast<uint64_t>(DoPreSfmgTiling());
     } else {
         maskUsedCoreNum = static_cast<uint64_t>(CeilDivideBy(maskSize, singleCoreNum));
     }
-    OP_LOGI("DoPreTiling", "maskUsedCoreNum = %ld", maskUsedCoreNum);
+    OP_LOGI("DoPreTiling", "enablePreSfmg = %d, maskUsedCoreNum = %ld", fBaseParams.enablePreSfmg, maskUsedCoreNum);
 
     uint64_t tailCoreNum = maskSize - (maskUsedCoreNum - 1) * singleCoreNum;
     tailCoreNum = AlignTo(tailCoreNum, static_cast<uint64_t>(BOOL_BLOCK_NUMS));
@@ -1124,7 +1132,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
             (workspaceSize + static_cast<size_t>(fBaseParams.dropMaskSize) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 
-    if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
+    if (fBaseParams.enablePreSfmg) {
         // softmax grad workspace size
         postTilingData_->set_sfmgWorkSpaceOffset(workspaceSize);
         uint64_t sfmgSize = ((fBaseParams.b * fBaseParams.n2 * fBaseParams.g - 1) * fBaseParams.s1 +
@@ -1565,6 +1573,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         s1s2BNGS1S2BaseParams_->set_totalPerBatchNum(GetTotalPerBatchNum(fBaseParams, fBaseParams.sparseType));
     }
     s1s2BNGS1S2BaseParams_->set_sparseType(fBaseParams.sparseType);
+    s1s2BNGS1S2BaseParams_->set_enablePreSfmg(fBaseParams.enablePreSfmg);
     // s1/s2 split
     s1s2BNGS1S2SplitCoreParams_->set_s1Outer(fBaseParams.s1Outer);
     s1s2BNGS1S2SplitCoreParams_->set_s1Inner(fBaseParams.s1Inner);
