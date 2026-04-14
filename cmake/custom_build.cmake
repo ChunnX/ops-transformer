@@ -292,7 +292,7 @@ else()
 endif()
 
 # 编译AICPU算子
-if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "kv_quant_sparse_flash_attention_metadata")
+if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler")
      add_subdirectory(examples/add_example)
      list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})
 endif()
