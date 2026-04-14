@@ -58,7 +58,7 @@
 ## 约束说明
 
 -   该接口不支持图模式。
--   - grad_output、input、weight、grad_input和grad_weight的数据类型必须一致。
+-   grad_output、input、weight、grad_input和grad_weight的数据类型必须一致。
 -   输入输出的shape数据范围约束如下：
     - B * S（Batchsize * SeqLength）：取值范围为1\~512K。
     - H（hiddenSize）：取值范围192 * 2\~192 * 128，且是64的倍数。
