@@ -371,7 +371,6 @@ public:
                 Muls(input[ping], input[ping], (float)scaleValue, sCount * d);
                 AscendC::PipeBarrier<PIPE_V>();
             }
-            AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::LocalTensor<float> srcLocal = input[ping];
             AscendC::LocalTensor<OutputDtype_> dstLocal = output[ping];
@@ -397,10 +396,8 @@ public:
     {
         // dq
         ProcessOut(computeS1, DQ);
-        AscendC::PipeBarrier<PIPE_ALL>();
         // dk
         ProcessOut(computeS2, DK);
-        AscendC::PipeBarrier<PIPE_ALL>();
         // dv
         // 重新初始化索引
         curS2Idx = 0;
@@ -409,7 +406,6 @@ public:
         struct ShapeBnsd kvShape{b, n2, s2, d};
         InitIndex(dkvOffset, curS2Idx, actualSeqKvlen, curBatch2, curN2Idx, curS2Idx, kvShape);
         ProcessOut(computeS2, DV);
-        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
 };
