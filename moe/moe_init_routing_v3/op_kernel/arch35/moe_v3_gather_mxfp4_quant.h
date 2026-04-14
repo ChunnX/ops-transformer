@@ -195,18 +195,38 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
     // fp16转bf16，不涉及宽度变化，精度截断
     static constexpr CastTrait traitFP16ToBF16 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
                                                   RoundMode::CAST_TRUNC};
-    // bf16转b4
-    static constexpr CastTrait traitB16ToB4 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
+    // fp16转fp32
+    static constexpr CastTrait castTraitF16toFp32Zero = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                         RoundMode::UNKNOWN};
+    static constexpr CastTrait castTraitF16toFp32One = {RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, 
+                                                        RoundMode::UNKNOWN};
+    static constexpr CastTrait castTraitFp32toBF16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, 
                                                       RoundMode::CAST_RINT};
+    // bf16转b4
+    // static constexpr CastTrait traitB16ToB4 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
+    //                                                   RoundMode::CAST_RINT};
+    static constexpr CastTrait traitB16ToB4 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, 
+                                               RoundMode::CAST_RINT};
 
     RegTensor<uint16_t> invScale;
-    RegTensor<float> invScaleFP32;
+    RegTensor<float> invScaleFP32, halfScaleForMulFP32;
+    RegTensor<float> vdExp0ZeroFP32;
+    RegTensor<float> vdExp0OneFP32;
+    RegTensor<float> vdExp1ZeroFP32;
+    RegTensor<float> vdExp1OneFP32;
     RegTensor<T> x0, x1;
     RegTensor<bfloat16_t> x0BF16, x1BF16;
+    RegTensor<bfloat16_t> vdExp0ZeroBF16;
+    RegTensor<bfloat16_t> vdExp0OneBF16;
+    RegTensor<bfloat16_t> vdExp1ZeroBF16;
+    RegTensor<bfloat16_t> vdExp1OneBF16;
+
     RegTensor<U> xQuant0, xQuant1;
 
     MaskReg maskXQuant;
-    MaskReg maskAllB16 = CreateMask<uint16_t, MaskPattern::ALL>();
+    // MaskReg maskAllB16 = CreateMask<uint16_t, MaskPattern::ALL>();
+    MaskReg maskAllB16 = CreateMask<half>();
+    MaskReg maskAllB32 = CreateMask<float>();
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
         maskXQuant = UpdateMask<float>(xElemNum);
@@ -220,24 +240,9 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
         // 拷入invScale，类型为uint16（计算时翻译成bfloat16），其中每个元素广播至32B，这里就是每个元素重复16次，共256B/32B=8个元素，也就是numVRegBlocks的值
         // 应该是加载(256/32=8)B的元素
         DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE, LoadDist::DIST_E2B_B16>(invScale, invScaleInAddr, numVRegBlocks);
-        if constexpr (IsSameType<T, float>::value) {
-            // 对于T为fp32，先转换为bf16，并计算x*invScale，将结果转换为fp4
-            // 1.将x转换为bf16
-            Cast<bfloat16_t, T, traitFP32ToBF16>(x0BF16, x0, maskAllB16);
-            Cast<bfloat16_t, T, traitFP32ToBF16>(x1BF16, x1, maskAllB16);
-
-            // 2.计算x*invSacle
-            Mul(x0BF16, x0BF16, (RegTensor<bfloat16_t> &)invScale, maskAllB16);
-            Mul(x1BF16, x1BF16, (RegTensor<bfloat16_t> &)invScale, maskAllB16);
-            Interleave(x0BF16, x1BF16, x0BF16, x1BF16);
-
-            // 3. 将bf16结果转换为fp4
-            Cast<U, bfloat16_t, traitB16ToB4>(xQuant0, x0BF16, maskAllB16);
-            Cast<U, bfloat16_t, traitB16ToB4>(xQuant1, x1BF16, maskAllB16);
-        } else if constexpr (IsSameType<T, half>::value) {
-            // 对于T为fp16，先把x和invScale转成bf16，再计算x*invScale后转为float4对应类型
-
-            // 1. 将x转换为bf16
+        if constexpr (IsSameType<T, half>::value) {
+            // // 对于T为fp16，先把x和invScale转成bf16，再计算x*invScale后转为float4对应类型
+            // // 1. 将x转换为bf16
             Cast<bfloat16_t, T, traitFP16ToBF16>(x0BF16, x0, maskAllB16);
             Cast<bfloat16_t, T, traitFP16ToBF16>(x1BF16, x1, maskAllB16);
 
@@ -250,16 +255,62 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
             Cast<U, bfloat16_t, traitB16ToB4>(xQuant0, x0BF16, maskAllB16);
             Cast<U, bfloat16_t, traitB16ToB4>(xQuant1, x1BF16, maskAllB16);
 
+
+            // // dynamic_mx_quant
+            // Cast<float, bfloat16_t, castTraitF16toFp32Zero>(halfScaleForMulFP32, 
+            //     (RegTensor<bfloat16_t>&)invScale, maskAllB16);
+
+            // // x0
+            // Cast<float, T, castTraitF16toFp32Zero>(vdExp0ZeroFP32, x0, maskAllB16);
+            // Cast<float, T, castTraitF16toFp32One>(vdExp0OneFP32, x0, maskAllB16);
+
+            // Mul(vdExp0ZeroFP32, vdExp0ZeroFP32, halfScaleForMulFP32, maskAllB32);
+            // Mul(vdExp0OneFP32, vdExp0OneFP32, halfScaleForMulFP32, maskAllB32);
+            // // ComputeFP4FromHalf<RoundMode::CAST_TRUNC, RoundMode::CAST_RINT>(vdExp0ZeroFP32);
+            // // ComputeFP4FromHalf<RoundMode::CAST_TRUNC, RoundMode::CAST_RINT>(vdExp0OneFP32);
+            // Cast<bfloat16_t, float, castTraitFp32toBF16>(
+            //     vdExp0ZeroBF16, vdExp0ZeroFP32, maskAllB32);
+            // Cast<bfloat16_t, float, castTraitFp32toBF16>(
+            //     vdExp0OneBF16, vdExp0OneFP32, maskAllB32);
+            // Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(
+            //     (RegTensor<uint16_t>&)vdExp0ZeroBF16, (RegTensor<uint32_t>&)vdExp0ZeroBF16);
+            // Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(
+            //     (RegTensor<uint16_t>&)vdExp0OneBF16, (RegTensor<uint32_t>&)vdExp0OneBF16);
+            // Interleave(vdExp0ZeroBF16, vdExp0OneBF16, vdExp0ZeroBF16, vdExp0OneBF16);
+
+            // // x1
+            // Cast<float, T, castTraitF16toFp32Zero>(vdExp1ZeroFP32, x1, maskAllB16);
+            // Cast<float, T, castTraitF16toFp32One>(vdExp1OneFP32, x1, maskAllB16);
+
+            // Mul(vdExp1ZeroFP32, vdExp1ZeroFP32, halfScaleForMulFP32, maskAllB32);
+            // Mul(vdExp1OneFP32, vdExp1OneFP32, halfScaleForMulFP32, maskAllB32);
+            // // ComputeFP4FromHalf<RoundMode::CAST_TRUNC, RoundMode::CAST_RINT>(vdExp1ZeroFP32);
+            // // ComputeFP4FromHalf<RoundMode::CAST_TRUNC, RoundMode::CAST_RINT>(vdExp1OneFP32);
+            // Cast<bfloat16_t, float, castTraitFp32toBF16>(
+            //     vdExp1ZeroBF16, vdExp1ZeroFP32, maskAllB32);
+            // Cast<bfloat16_t, float, castTraitFp32toBF16>(
+            //     vdExp1OneBF16, vdExp1OneFP32, maskAllB32);
+            // Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(
+            //     (RegTensor<uint16_t>&)vdExp1ZeroBF16, (RegTensor<uint32_t>&)vdExp1ZeroBF16);
+            // Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(
+            //     (RegTensor<uint16_t>&)vdExp1OneBF16, (RegTensor<uint32_t>&)vdExp1OneBF16);
+            // Interleave(vdExp1ZeroBF16, vdExp1OneBF16, vdExp1ZeroBF16, vdExp1OneBF16);
+
+            // Interleave(vdExp0ZeroBF16, vdExp1ZeroBF16, vdExp0ZeroBF16, vdExp1ZeroBF16);
+            // Cast<U, bfloat16_t, traitB16ToB4>(xQuant0, vdExp0ZeroBF16, maskAllB16);
+            // Cast<U, bfloat16_t, traitB16ToB4>(xQuant1, vdExp1ZeroBF16, maskAllB16);
+
         } else {
           // 对于T为bf16，直接计算x*invScale，将结果转换为fp4
           // 1.乘以invScale
           Mul(x0, x0, (RegTensor<T> &)invScale, maskAllB16);
           Mul(x1, x1, (RegTensor<T> &)invScale, maskAllB16);
-          Interleave(x0BF16, x1BF16, x0BF16, x1BF16);
+          Interleave(x0, x1, x0, x1);
+        //   Interleave(x0BF16, x1BF16, x0BF16, x1BF16);
 
           // 3.将bf16的结果转换为fp4
-          Cast<U, bfloat16_t, traitB16ToB4>(xQuant0, x0BF16, maskAllB16);
-          Cast<U, bfloat16_t, traitB16ToB4>(xQuant1, x1BF16, maskAllB16);
+          Cast<U, bfloat16_t, traitB16ToB4>(xQuant0, x0, maskAllB16);
+          Cast<U, bfloat16_t, traitB16ToB4>(xQuant1, x1, maskAllB16);
 
         }
 
@@ -287,6 +338,8 @@ private:
     __aicore__ inline void CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols);
     __aicore__ inline void Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum);
     __aicore__ inline void CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols, int64_t loopScaleCols);
+    // template <RoundMode toBf16RoundMode, RoundMode roundMode>
+    // __aicore__ inline void ComputeFP4FromHalf(RegTensor<float>& Reg);
 
 private:
     TPipe *pipe_;
@@ -548,6 +601,52 @@ __aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::CopyOut(int64_t dstIdx, int
     xQuantOutQueue_.FreeTensor(outLocal);
     mxScaleOutQueue_.FreeTensor(mxScaleLocal);
 }
+
+// template <typename T, typename U>
+// template <RoundMode toBf16RoundMode, RoundMode roundMode>
+// __aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::ComputeFP4FromHalf(Reg::RegTensor<float>& Reg)
+// {
+//     Reg::MaskReg pregAll32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+//     Reg::MaskReg zeroMask;
+//     Reg::MaskReg specialMask;
+//     Reg::MaskReg negInfMask;
+
+//     Reg::RegTensor<int32_t> negZero;
+//     Reg::RegTensor<int32_t> maxExpFP32;
+//     Reg::RegTensor<int32_t> exp0FP32;
+//     Reg::RegTensor<int32_t> exp1FP32;
+
+//     Reg::Duplicate(negZero, NEG_ZERO);
+//     Reg::Compare<int32_t, CMPMODE::EQ>(negInfMask, (Reg::RegTensor<int32_t>&)Reg, negZero, pregAll32);
+//     if constexpr (IsSameType<U, fp4x2_e1m2_t>::value) {
+//         Reg::Muls(Reg, Reg, FOUR, pregAll32);
+//         Reg::CompareScalar<float, CMPMODE::LT>(specialMask, Reg, 0, pregAll32);
+//         Reg::Truncate<float, roundMode>(Reg, Reg, pregAll32);
+//         Reg::Muls(Reg, Reg, ONE_FOURTH, pregAll32);
+//     } else {
+//         Reg::Duplicate(maxExpFP32, MAX_EXP_FOR_FP32);
+//         Reg::And(exp0FP32, (Reg::RegTensor<int32_t>&)Reg, maxExpFP32, pregAll32);
+//         Reg::ShiftRights(exp0FP32, exp0FP32, SHR_NUM_FOR_FP32, pregAll32);
+//         Reg::Adds(exp0FP32, exp0FP32, FP32_BIAS_NEG, pregAll32);
+//         Reg::Maxs(exp0FP32, exp0FP32, 0, pregAll32);
+//         Reg::Adds(exp0FP32, exp0FP32, NEG_ONE, pregAll32);
+//         Reg::Muls(exp1FP32, exp0FP32, NEG_ONE, pregAll32);
+//         Reg::Adds(exp1FP32, exp1FP32, FP32_BIAS, pregAll32);
+//         Reg::ShiftLefts(exp1FP32, exp1FP32, SHR_NUM_FOR_FP32, pregAll32);
+
+//         Reg::Mul(Reg, Reg, (Reg::RegTensor<float>&)exp1FP32, pregAll32);
+//         Reg::Adds(exp0FP32, exp0FP32, FP32_BIAS, pregAll32);
+//         Reg::ShiftLefts(exp0FP32, exp0FP32, SHR_NUM_FOR_FP32, pregAll32);
+//         Reg::CompareScalar<float, CMPMODE::LT>(specialMask, Reg, 0, pregAll32);
+//         Reg::Truncate<float, roundMode>(Reg, Reg, pregAll32);
+//         Reg::Mul(Reg, Reg, (Reg::RegTensor<float>&)exp0FP32, pregAll32);
+//     }
+//     Reg::CompareScalar<float, CMPMODE::EQ>(zeroMask, Reg, 0, pregAll32);
+//     Reg::MaskAnd(zeroMask, specialMask, zeroMask, pregAll32);
+//     Reg::MaskOr(zeroMask, negInfMask, zeroMask, pregAll32);
+//     Reg::Select<int32_t>(
+//         (Reg::RegTensor<int32_t>&)Reg, negZero, (Reg::RegTensor<int32_t>&)Reg, zeroMask);
+// }
 
 } // namespace MoeInitRoutingV3
 #endif // MOE_V3_GATHER_MXFP4_QUANT_H_REGBASE
