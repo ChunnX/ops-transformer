@@ -25,26 +25,8 @@ at::Tensor npu_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q
                                    const c10::optional<at::Tensor> &seqused_kv, int64_t num_heads_q,
                                    int64_t num_heads_kv, int64_t head_dim, int64_t batch_size, int64_t max_seqlen_q,
                                    int64_t max_seqlen_kv, int64_t mask_mode, int64_t win_left, int64_t win_right,
-                                   std::string layout_q, std::string layout_kv, std::string layout_out)
+                                   std::string layout_q, std::string layout_kv, std::string layout_out, const at::Tensor &output)
 {
-    int64_t batchSize = 0;
-    if (batch_size != 0) {
-        batchSize = batch_size;
-    } else if (cu_seqlens_q.has_value()) {                                                                                                                                           
-         if (cu_seqlens_q->sizes()[0] == 0) {                                                                                                                                         
-             batchSize = 0;                                                                                                                                                           
-         } else {                                                                                                                                                                     
-             batchSize = cu_seqlens_q->sizes()[0] - 1;                                                                                                                                
-         }
-    } else if (seqused_q.has_value()) {
-        batchSize = seqused_q->sizes()[0];
-    }
-    int64_t metadataSize = ((36 + 72) * batchSize * num_heads_kv + 1) * 16;
-    int64_t alignedSize = ((metadataSize + 4095) / 4096) * 4096;
-    at::Tensor output = at::empty({alignedSize}, at::TensorOptions()
-                                                     .dtype(at::kInt)
-                                                     .device(c10::DeviceType::PrivateUse1)
-                                                     .memory_format(c10::MemoryFormat::Contiguous));
     ACLNN_CMD(aclnnFlashAttnMetadata, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size, max_seqlen_q,
               max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, mask_mode, win_left, win_right, layout_q, layout_kv,
               layout_out, output);

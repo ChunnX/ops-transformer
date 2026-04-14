@@ -14,6 +14,18 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from typing import Optional
 
+def _calculate_metadata_size(batch_size, cu_seqlens_q, seqused_q, num_heads_kv):                                                                                                                                                   
+    """计算 metadata tensor 的对齐后大小"""                                                                                                                                                                                        
+    batchSize = 0                                                                                                                                                                                                                  
+    if batch_size is not None:                                                                                                                                                                                                     
+        batchSize = batch_size                                                                                                                                                                                                     
+    elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:                                                                                                                                                                    
+        batchSize = cu_seqlens_q.size(0) - 1                                                                                                                                                                                       
+    elif seqused_q is not None:                                                                                                                                                                                                    
+        batchSize = seqused_q.size(0)                                                                                                                                                                                              
+    metadataSize = ((36 + 72) * batchSize * num_heads_kv + 1) * 16                                                                                                                                                                 
+    alignedSize = ((metadataSize + 4095) // 4096) * 4096                                                                                                                                                                        
+    return alignedSize
 
 class FlashAttnMetadataOpBuilder(OpBuilder):
     def __init__(self):
@@ -44,16 +56,8 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
                                           mask_mode: Optional[int] = None, win_left: Optional[int] = None,
                                           win_right: Optional[int] = None, layout_q: Optional[str] = None,
                                           layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
-            batchSize = 0
-            if batch_size != None:
-                batchSize = batch_size
-            elif cu_seqlens_q != None and cu_seqlens_q.size() > 0:
-                batchSize = cu_seqlens_q.size() - 1
-            elif seqused_q != None:
-                batchSize = seqused_q.size()
-            metadataSize = ((36 + 72) * batchSize * num_heads_kv + 1) * 16
-            alignedSize = ((metadataSize + 4095) // 4096) * 4096
-            return torch.empty((alignedSize,), dtype=torch.int32, device="meta")
+            metadataSize = _calculate_metadata_size(batch_size, cu_seqlens_q, seqused_q, num_heads_kv)
+            return torch.empty((metadataSize,), dtype=torch.int32, device="meta")
 
 # Instantiate the builder
 flash_attn_metadata_op_builder = FlashAttnMetadataOpBuilder()
@@ -81,11 +85,14 @@ def npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
     layout_q = "BSND" if layout_q is None else layout_q
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
+
+    metadataSize = _calculate_metadata_size(batch_size, cu_seqlens_q, seqused_q, num_heads_kv)
+    output = torch.empty((metadataSize,), dtype=torch.int32, device="npu")
  
     return op_module.npu_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                                               num_heads_q, num_heads_kv, head_dim,
                                               batch_size, max_seqlen_q, max_seqlen_kv,
-                                              mask_mode, win_left, win_right, layout_q, layout_kv, layout_out)
+                                              mask_mode, win_left, win_right, layout_q, layout_kv, layout_out, output)
 
 
 @torch.library.register_kernel("npu_ops_transformer::npu_flash_attn_metadata", None)                                                                                          
@@ -96,22 +103,11 @@ def npu_flash_attn_metadata_fallback(num_heads_q, num_heads_kv, head_dim,
                                     mask_mode: Optional[int] = None, win_left: Optional[int] = None,
                                     win_right: Optional[int] = None, layout_q: Optional[str] = None,
                                     layout_kv: Optional[str] = None, layout_out: Optional[str] = None):                                                                                                                                    
-    # 处理所有 tensor 都为 None 的情况                                                                                                                                        
-    # 可以在这里创建一个 NPU tensor 来触发 PrivateUse1 backend                                                                                                              
-    if all(t is None for t in [cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv]):                                                                                          
-             _ = torch.empty(1, dtype=torch.int32, device="npu")                                                                                                            
-    # 调用 NPU 实现                                                                                                                                                           
-    batch_size = 0 if batch_size is None else batch_size
-    max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
-    max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
-    mask_mode = 1 if mask_mode is None else mask_mode
-    win_left = -1 if win_left is None else win_left
-    win_right = -1 if win_right is None else win_right
-    layout_q = "BSND" if layout_q is None else layout_q
-    layout_kv = "BSND" if layout_kv is None else layout_kv
-    layout_out = "BSND" if layout_out is None else layout_out
- 
-    return op_module.npu_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                                              num_heads_q, num_heads_kv, head_dim,
-                                              batch_size, max_seqlen_q, max_seqlen_kv,
-                                              mask_mode, win_left, win_right, layout_q, layout_kv, layout_out)
+    # 处理所有 tensor 都为 None 的情况                                                                                                                                         
+    return npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
+                                    cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                                    batch_size, max_seqlen_q,
+                                    max_seqlen_kv,
+                                    mask_mode, win_left,
+                                    win_right, layout_q,
+                                    layout_kv, layout_out)                                                                                                          

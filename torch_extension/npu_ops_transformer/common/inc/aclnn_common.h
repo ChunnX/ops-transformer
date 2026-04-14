@@ -429,7 +429,7 @@ inline aclDataType ConvertType(const at::ScalarType scalarType)
     return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
 }
 
-inline const char* ConvertType(const string str)
+inline const char* ConvertType(const string& str)
 {
     return str.c_str();
 }
