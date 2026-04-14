@@ -20,16 +20,15 @@
 namespace MoeFinalizeRoutingV2Regbase {
 using namespace AscendC;
 template <typename T, typename S, int32_t dropPadMode>
-class MoeFinalizeRoutingV2HPartialLoad
-{
+class MoeFinalizeRoutingV2HPartialLoad {
 public:
     __aicore__ inline MoeFinalizeRoutingV2HPartialLoad()
-    {}
+    {
+    }
 
-    __aicore__ inline void Init(
-        GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales,
-        GM_ADDR expertIdx, GM_ADDR y, GM_ADDR workspace, const MoeFinalizeRoutingV2RegbaseTilingData* tilingDataPtr,
-        TPipe* pipePtr)
+    __aicore__ inline void Init(GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
+                                GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR y, GM_ADDR workspace,
+                                const MoeFinalizeRoutingV2RegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
     {
         hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
         hasScales = scales != nullptr;
@@ -39,14 +38,14 @@ public:
         hasX1 = x1 != nullptr;
         hasX2 = x2 != nullptr;
 
-        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-        biasGm.SetGlobalBuffer((__gm__ T*)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
-        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
-        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
-        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-        yGm.SetGlobalBuffer((__gm__ T*)y);
+        expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
+        biasGm.SetGlobalBuffer((__gm__ T *)bias);
+        scalesGm.SetGlobalBuffer((__gm__ S *)scales);
+        x1Gm.SetGlobalBuffer((__gm__ T *)x1);
+        x2Gm.SetGlobalBuffer((__gm__ T *)x2);
+        expertIdxGm.SetGlobalBuffer((__gm__ int32_t *)expertIdx);
+        yGm.SetGlobalBuffer((__gm__ T *)y);
 
         int32_t hFactorAlignedT = RoundUp<T>(tilingData->hFactor);
         int32_t hFactorAlignedFloat = RoundUp<float>(tilingData->hFactor);
@@ -119,10 +118,16 @@ private:
             if (expandedRowIdxGmValue >= tilingData->activeNum) {
                 continue;
             }
+            if (hasScales) {
+                SetScaleOffset(rowOuterIdx, kIdx);
+                scale = scalesGm.GetValue(scaleOffset);
+                if (CompareScaleZero(scale)) {
+                    continue;
+                }
+            }
             expandedXLocal = expandedXQue.AllocTensor<T>();
-            CopyIn(
-                expandedXGm[expandedRowIdxGmValue * tilingData->h + hIdx * tilingData->hFactor], expandedXLocal, 1,
-                hFactor);
+            CopyIn(expandedXGm[expandedRowIdxGmValue * tilingData->h + hIdx * tilingData->hFactor], expandedXLocal, 1,
+                   hFactor);
             expandedXQue.EnQue(expandedXLocal);
             if (hasBiasAndExpertIdx) {
                 SetExpertIdxOffset(rowOuterIdx, kIdx);
@@ -132,16 +137,12 @@ private:
                 CopyIn(biasGm[biasGmOffset], biasLocal, 1, hFactor);
                 biasQue.EnQue(biasLocal);
             }
-            if (hasScales) {
-                SetScaleOffset(rowOuterIdx, kIdx);
-                scale = scalesGm.GetValue(scaleOffset);
-            }
             expandedXLocal = expandedXQue.DeQue<T>();
             if (hasBiasAndExpertIdx) {
                 biasLocal = biasQue.DeQue<T>();
             }
-            ProcessExpandXBiasScale<T, S>(
-                yLocal, expandedXLocal, biasLocal, scale, hFactor, hasBiasAndExpertIdx, hasScales);
+            ProcessExpandXBiasScale<T, S>(yLocal, expandedXLocal, biasLocal, scale, hFactor, hasBiasAndExpertIdx,
+                                          hasScales);
             expandedXQue.FreeTensor(expandedXLocal);
             if (hasBiasAndExpertIdx) {
                 biasQue.FreeTensor(biasLocal);
@@ -183,8 +184,8 @@ private:
     }
 
 private:
-    TPipe* pipe;
-    const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
+    TPipe *pipe;
+    const MoeFinalizeRoutingV2RegbaseTilingData *tilingData;
     GlobalTensor<T> expandedXGm;
     GlobalTensor<int32_t> expandedRowIdxGm;
     GlobalTensor<int32_t> expertIdxGm;
