@@ -11,11 +11,14 @@
 #include <iostream>
 #include <vector>
 #include <torch/library.h>
+#include "acl/acl_prof.h"
+#include "acl/acl.h"
 #include <ATen/Operators.h>
 #include "torch_npu/csrc/framework/utils/OpPreparation.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 #include "op_host/incre_flash_attention_tiling_impl.h"
 #include "op_kernel/incre_flash_attention_arch32.h"
+#include "../../common/inc/kernel/mc2_profiling.h"
 
 namespace ascend_ops {
 namespace custom {
@@ -104,6 +107,8 @@ const static int64_t DIM_4 = 4;
 const static int64_t PA_BBH_DIMS = 3;
 const static int64_t PA_BNBD_DIMS = 4;
 const static int64_t PA_NZ_DIMS = 5;
+constexpr uint32_t MIX_AIC = 0;
+
 using namespace at_npu::native;
 using namespace optiling;
 using npu_preparation = at_npu::native::OpPreparation;
@@ -339,6 +344,16 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
     // blockdim
     uint32_t blockDim = tilingData.increFlashAttentionSingleCoreParams.get_usedCoreNum();
 
+    aclProfTensorInfo tensorInfo;
+    INIT_ACL_PROF_TENSOR_INFO("fused_infer_attention_score", "FusedInferAttentionScore", blockDim, MIX_AIC,
+                                tensorInfo, aclstream,
+                                INPUT(query), INPUT(key), INPUT(value), INPUT(atten_mask.value_or(at::empty({}))), 
+                                INPUT(block_table.value_or(at::empty({}))),  INPUT(actual_seq_kvlen.value_or(at::empty({}))), 
+                                INPUT(dequant_scale_key.value_or(at::empty({}))), INPUT(dequant_scale_value.value_or(at::empty({}))),
+                                OUTPUT(output));
+    aclprofEventAttributes attrs = {1, sizeof(aclprofEventAttributes::message), 0, &tensorInfo};
+    aclprofRangePushEx(&attrs);
+
     if (fdFlag == 0 && layoutVal == 0 && antiquantMode == 0) {
         LAUNCH_INCRE_FA(0, 0, 0);
     } else if (fdFlag == 0 && layoutVal == 0 && antiquantMode == 1) {
@@ -360,6 +375,7 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
             fdFlag, layoutVal, antiquantMode);
     }
 
+    aclprofRangePop();
     return std::tuple<at::Tensor, at::Tensor>(output, softmax_lse);
 }
 
