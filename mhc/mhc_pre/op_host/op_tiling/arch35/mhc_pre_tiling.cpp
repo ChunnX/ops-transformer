@@ -233,13 +233,13 @@ ge::graphStatus MhcPreBaseTiling::CheckOutputShapeConsistency()
         uint64_t n = xShape->GetDim(DIM_2);
         uint64_t d = xShape->GetDim(DIM_3);
         OP_CHECK_IF(CheckBsndOutputShape(b, s, n, d) != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_->GetNodeName(), "CheckBsndOutputShape failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "CheckBsndOutputShape failed"), return ge::GRAPH_FAILED);
     } else {
         uint64_t t = xShape->GetDim(DIM_0);
         uint64_t n = xShape->GetDim(DIM_1);
         uint64_t d = xShape->GetDim(DIM_2);
         OP_CHECK_IF(CheckTndOutputShape(t, n, d) != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_->GetNodeName(), "CheckTndOutputShape failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "CheckTndOutputShape failed"), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -249,38 +249,40 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
     auto outHinShapePtr = context_->GetOutputShape(OUT_H_IN_INDEX);
     auto outHinShape = &outHinShapePtr->GetStorageShape();
     OP_CHECK_IF(outHinShape->GetDimNum() != DIM_NUM_3 || outHinShape->GetDim(DIM_0) != b ||
-                outHinShape->GetDim(DIM_1) != s || outHinShape->GetDim(DIM_2) != d,
-        OP_LOGE(context_->GetNodeName(), "OutHin shape (B,S,D) mismatch with X (B,S,N,D)"), return ge::GRAPH_FAILED);
+                    outHinShape->GetDim(DIM_1) != s || outHinShape->GetDim(DIM_2) != d,
+                OP_LOGE(context_->GetNodeName(), "OutHin shape (B,S,D) mismatch with X (B,S,N,D)"),
+                return ge::GRAPH_FAILED);
 
     auto outHpostShapePtr = context_->GetOutputShape(OUT_H_POST_INDEX);
     auto outHpostShape = &outHpostShapePtr->GetStorageShape();
     OP_CHECK_IF(outHpostShape->GetDimNum() != DIM_NUM_3 || outHpostShape->GetDim(DIM_0) != b ||
-                outHpostShape->GetDim(DIM_1) != s || outHpostShape->GetDim(DIM_2) != n,
-        OP_LOGE(context_->GetNodeName(), "OutHpost shape (B,S,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    outHpostShape->GetDim(DIM_1) != s || outHpostShape->GetDim(DIM_2) != n,
+                OP_LOGE(context_->GetNodeName(), "OutHpost shape (B,S,N) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outHresShapePtr = context_->GetOutputShape(OUT_H_RES_INDEX);
     auto outHresShape = &outHresShapePtr->GetStorageShape();
     OP_CHECK_IF(outHresShape->GetDimNum() != DIM_NUM_4 || outHresShape->GetDim(DIM_0) != b ||
-                outHresShape->GetDim(DIM_1) != s || outHresShape->GetDim(DIM_2) != n || outHresShape->GetDim(DIM_3) != n,
-        OP_LOGE(context_->GetNodeName(), "OutHres shape (B,S,N,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    outHresShape->GetDim(DIM_1) != s || outHresShape->GetDim(DIM_2) != n ||
+                    outHresShape->GetDim(DIM_3) != n,
+                OP_LOGE(context_->GetNodeName(), "OutHres shape (B,S,N,N) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outInvRmsShapePtr = context_->GetOutputShape(OUT_INV_RMS_INDEX);
     auto outInvRmsShape = &outInvRmsShapePtr->GetStorageShape();
     OP_CHECK_IF(outInvRmsShape->GetDimNum() != DIM_NUM_2 || outInvRmsShape->GetDim(DIM_0) != b ||
-                outInvRmsShape->GetDim(DIM_1) != s,
-        OP_LOGE(context_->GetNodeName(), "OutInvRms shape (B,S) mismatch with X"), return ge::GRAPH_FAILED);
+                    outInvRmsShape->GetDim(DIM_1) != s,
+                OP_LOGE(context_->GetNodeName(), "OutInvRms shape (B,S) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outMmresShapePtr = context_->GetOutputShape(OUT_MM_RES_INDEX);
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_3 || outMmresShape->GetDim(DIM_0) != b ||
-                outMmresShape->GetDim(DIM_1) != s,
-        OP_LOGE(context_->GetNodeName(), "OutMmRes shape (B,S,matK) mismatch with X"), return ge::GRAPH_FAILED);
+                    outMmresShape->GetDim(DIM_1) != s,
+                OP_LOGE(context_->GetNodeName(), "OutMmRes shape (B,S,matK) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outHpreShapePtr = context_->GetOutputShape(OUT_H_PRE_INDEX);
     auto outHpreShape = &outHpreShapePtr->GetStorageShape();
     OP_CHECK_IF(outHpreShape->GetDimNum() != DIM_NUM_3 || outHpreShape->GetDim(DIM_0) != b ||
-                outHpreShape->GetDim(DIM_1) != s || outHpreShape->GetDim(DIM_2) != n,
-        OP_LOGE(context_->GetNodeName(), "OutHpre shape (B,S,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    outHpreShape->GetDim(DIM_1) != s || outHpreShape->GetDim(DIM_2) != n,
+                OP_LOGE(context_->GetNodeName(), "OutHpre shape (B,S,N) mismatch with X"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -289,37 +291,37 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 {
     auto outHinShapePtr = context_->GetOutputShape(OUT_H_IN_INDEX);
     auto outHinShape = &outHinShapePtr->GetStorageShape();
-    OP_CHECK_IF(outHinShape->GetDimNum() != DIM_NUM_2 || outHinShape->GetDim(DIM_0) != t ||
-                outHinShape->GetDim(DIM_1) != d,
+    OP_CHECK_IF(
+        outHinShape->GetDimNum() != DIM_NUM_2 || outHinShape->GetDim(DIM_0) != t || outHinShape->GetDim(DIM_1) != d,
         OP_LOGE(context_->GetNodeName(), "OutHin shape (T,D) mismatch with X (T,N,D)"), return ge::GRAPH_FAILED);
 
     auto outHpostShapePtr = context_->GetOutputShape(OUT_H_POST_INDEX);
     auto outHpostShape = &outHpostShapePtr->GetStorageShape();
     OP_CHECK_IF(outHpostShape->GetDimNum() != DIM_NUM_2 || outHpostShape->GetDim(DIM_0) != t ||
-                outHpostShape->GetDim(DIM_1) != n,
-        OP_LOGE(context_->GetNodeName(), "OutHpost shape (T,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    outHpostShape->GetDim(DIM_1) != n,
+                OP_LOGE(context_->GetNodeName(), "OutHpost shape (T,N) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outHresShapePtr = context_->GetOutputShape(OUT_H_RES_INDEX);
     auto outHresShape = &outHresShapePtr->GetStorageShape();
     OP_CHECK_IF(outHresShape->GetDimNum() != DIM_NUM_3 || outHresShape->GetDim(DIM_0) != t ||
-                outHresShape->GetDim(DIM_1) != n || outHresShape->GetDim(DIM_2) != n,
-        OP_LOGE(context_->GetNodeName(), "OutHres shape (T,N,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    outHresShape->GetDim(DIM_1) != n || outHresShape->GetDim(DIM_2) != n,
+                OP_LOGE(context_->GetNodeName(), "OutHres shape (T,N,N) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outInvRmsShapePtr = context_->GetOutputShape(OUT_INV_RMS_INDEX);
     auto outInvRmsShape = &outInvRmsShapePtr->GetStorageShape();
     OP_CHECK_IF(outInvRmsShape->GetDimNum() != 1 || outInvRmsShape->GetDim(DIM_0) != t,
-        OP_LOGE(context_->GetNodeName(), "OutInvRms shape (T) mismatch with X"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "OutInvRms shape (T) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outMmresShapePtr = context_->GetOutputShape(OUT_MM_RES_INDEX);
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_2 || outMmresShape->GetDim(DIM_0) != t,
-        OP_LOGE(context_->GetNodeName(), "OutMmRes shape (T,matK) mismatch with X"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "OutMmRes shape (T,matK) mismatch with X"), return ge::GRAPH_FAILED);
 
     auto outHpreShapePtr = context_->GetOutputShape(OUT_H_PRE_INDEX);
     auto outHpreShape = &outHpreShapePtr->GetStorageShape();
     OP_CHECK_IF(outHpreShape->GetDimNum() != DIM_NUM_2 || outHpreShape->GetDim(DIM_0) != t ||
-                outHpreShape->GetDim(DIM_1) != n,
-        OP_LOGE(context_->GetNodeName(), "OutHpre shape (T,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    outHpreShape->GetDim(DIM_1) != n,
+                OP_LOGE(context_->GetNodeName(), "OutHpre shape (T,N) mismatch with X"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -327,11 +329,11 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 ge::graphStatus MhcPreBaseTiling::CheckDataRange()
 {
     OP_CHECK_IF(totalLength_ < TOTAL_LENGTH_MIN,
-                OP_LOGE(context_->GetNodeName(), "TotalLength must be greater than %lu, got %lu", 
-                        TOTAL_LENGTH_MIN, totalLength_),
+                OP_LOGE(context_->GetNodeName(), "TotalLength must be greater than %lu, got %lu", TOTAL_LENGTH_MIN,
+                        totalLength_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(D_ < D_MIN || D_ > D_MAX, 
+    OP_CHECK_IF(D_ < D_MIN || D_ > D_MAX,
                 OP_LOGE(context_->GetNodeName(), "D must be in [%lu, %lu], got %lu", D_MIN, D_MAX, D_),
                 return ge::GRAPH_FAILED);
 
@@ -388,8 +390,7 @@ ge::graphStatus MhcPreBaseTiling::ValidateAndSetTilingParams(const gert::Tensor 
     }
 
     if (D_ % D_ALIGNMENT != 0) {
-        OP_LOGE(context_->GetNodeName(),
-                "D must be aligned to %u elements, but got %lu", D_ALIGNMENT, D_);
+        OP_LOGE(context_->GetNodeName(), "D must be aligned to %u elements, but got %lu", D_ALIGNMENT, D_);
         return ge::GRAPH_FAILED;
     }
 
@@ -416,7 +417,7 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
         OP_LOGE(context_->GetNodeName(), "GetInputShape failed");
         return ge::GRAPH_FAILED;
     }
-    
+
     OP_CHECK_IF(CheckDescAndShape() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckDescAndShape failed"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckShapePositive() != ge::GRAPH_SUCCESS,
@@ -456,7 +457,7 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
     blockDim_ = ascendcPlatform.GetCoreNumAic();
 
-    ubSize_ = ubSize;  // 保存UB大小供后续校验使用
+    ubSize_ = ubSize; // 保存UB大小供后续校验使用
 
     return ge::GRAPH_SUCCESS;
 }
@@ -606,9 +607,8 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     dynamicBufferSize = static_cast<size_t>(matN_) * floatSize * 2;
 
     if (outFlag_) {
-        size_t invRmsSize = (tilingMode_ == TilingMode::SPLIT_BS)
-            ? (chunkTSize_ / 2) * floatSize
-            : ((chunkTSize_ + 1) / 2) * floatSize;
+        size_t invRmsSize =
+            (tilingMode_ == TilingMode::SPLIT_BS) ? (chunkTSize_ / 2) * floatSize : ((chunkTSize_ + 1) / 2) * floatSize;
         dynamicBufferSize += invRmsSize;
     }
 
@@ -618,9 +618,8 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
 
     size_t totalUbRequired = fixedBufferSize + dynamicBufferSize;
     if (totalUbRequired > ubSize_) {
-        OP_LOGE(context_->GetNodeName(),
-                "UB buffer require %zu bytes exceeds ubSize %lu bytes",
-                totalUbRequired, ubSize_);
+        OP_LOGE(context_->GetNodeName(), "UB buffer require %zu bytes exceeds ubSize %lu bytes", totalUbRequired,
+                ubSize_);
         return ge::GRAPH_FAILED;
     }
 
