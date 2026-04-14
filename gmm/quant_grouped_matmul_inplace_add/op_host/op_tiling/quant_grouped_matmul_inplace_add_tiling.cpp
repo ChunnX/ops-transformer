@@ -14,6 +14,7 @@
 #include "tiling_base/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "quant_grouped_matmul_inplace_add_tiling.h"
+#include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
 #include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace QuantGroupedMatmulInplaceAdd;
@@ -477,7 +478,8 @@ uint64_t QuantGroupedInplaceAddTiling::GetTilingKey() const
         static_cast<uint64_t>(inputParams_.kernelType));
 }
 
-REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QuantGroupedInplaceAddTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QGMMInplaceAddBasicApiTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QuantGroupedInplaceAddTiling, 1);
 IMPL_OP_OPTILING(QuantGroupedMatmulInplaceAdd)
     .Tiling(TilingGMMInplaceAdd)
     .TilingParse<GMMCompileInfo>(TilingPrepareForGMMInplaceAdd); // register into the framework
