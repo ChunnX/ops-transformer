@@ -63,9 +63,9 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputShape(
     B_ = static_cast<int64_t>(origin.GetDim(DIM_1));
     H_ = static_cast<int64_t>(origin.GetDim(DIM_2));
 
-    OP_CHECK_IF(B_ * S_ > BS_MAX, OP_LOGE(context_->GetNodeName(), 
-                "invalid B_ * S_ = %ld, which must be <= 512 * 1024", B_ * S_), return ge::GRAPH_FAILED);
-
+    OP_CHECK_IF(B_ * S_ > BS_MAX,
+                OP_LOGE(context_->GetNodeName(), "invalid B_ * S_ = %ld, which must be <= 512 * 1024", B_ * S_),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(H_ < H_MIN || H_ > H_MAX, OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
                 return ge::GRAPH_FAILED);
 
@@ -235,8 +235,8 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ComputeInterCoreSplit()
     int64_t maxCores = static_cast<int64_t>(totalCoreNum_);
     usedCoreNum_ = std::min<int64_t>(tiles, std::max<int64_t>(1, maxCores));
 
-    int64_t q = tiles / usedCoreNum_;  // 每核基础 tile 数
-    int64_t r = tiles % usedCoreNum_;  // 需要多 1 个 tile 的核心数量
+    int64_t q = tiles / usedCoreNum_; // 每核基础 tile 数
+    int64_t r = tiles % usedCoreNum_; // 需要多 1 个 tile 的核心数量
 
     if (r == 0) {
         // 完全均分：只有主核，无尾核；两种块大小相同
