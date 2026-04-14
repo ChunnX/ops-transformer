@@ -407,10 +407,10 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Process()
             // Norm_out、Sum_out的偏移(起始索引)
             uint64_t normOffset = blockIdx_ * nSize_ * nAlignSize_ * 40 * tilingData_.coreTSize +
                                   colOffset * nSize_ * nAlignSize_ * tilingData_.coreTSize +
-                                  i * loopTSize_ * nSize_ * nAlignSize_;
+                                  i * loopTSize_ * nSize_ * nAlignSize_ * 40;
             uint64_t sumOffset = blockIdx_ * nAlignSize_ * 40 * tilingData_.coreTSize +
                                  colOffset * nAlignSize_ * tilingData_.coreTSize +
-                                 i * loopTSize_ * nAlignSize_;
+                                 i * loopTSize_ * nAlignSize_ * 40;
 
             // uint64_t normOffset = colOffset * tilingData_.totalLength * nSize_ * nAlignSize_ +
             //                       blockIdx_ * tilingData_.coreTSize * nSize_ * nAlignSize_ +
