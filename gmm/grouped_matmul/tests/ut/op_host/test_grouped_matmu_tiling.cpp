@@ -173,7 +173,7 @@ struct TensorDescParam {
     ge::Format format = ge::FORMAT_ND;
 };
 
-constexpr size_t CSV_COL_COUNT = 62U;
+constexpr size_t CSV_COL_COUNT = 66U;
 
 struct GroupedMatmulTilingCase {
     string socVersion;
@@ -329,7 +329,7 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
         tc.actType = stoll(Trim(items[idx++]));
         tc.tuningConfig = Trim(items[idx++]);
 
-        for (int tensorIdx = 0; tensorIdx < 9; ++tensorIdx) {
+        for (int tensorIdx = 0; tensorIdx < 10; ++tensorIdx) {
             tc.inputs.push_back({ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
                                  ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))});
         }
