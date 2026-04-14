@@ -118,9 +118,6 @@ private:
     uint32_t blockDim_{0};   // AIC
     uint32_t vecCoreNum_{0}; // AIV
     uint64_t totalLength_{0};
-    uint64_t matM_{0};
-    uint64_t matK_{0};
-    uint64_t matN_{0};
     uint64_t N_{0};
     uint64_t D_{0};
     float hcEps_{0.0f};
