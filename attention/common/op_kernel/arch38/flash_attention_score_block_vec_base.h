@@ -21,6 +21,7 @@
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_regbase_v2.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_regbase_v2.h"
 #include "vf/vf_flashupdate_new_regbase_v2.h"
+#include "vf/vf_flashupdate_new.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
