@@ -443,15 +443,18 @@ def _dequantize_kv(k_uint8_np, v_uint8_np, antiquant_scale_np, tile_size, kv_dty
 
 
 def _reconstruct_bsnd_from_blocks(key_block_np, v_block_np, block_table_np,
-                                  block_size, B, S2_max, N2, D):
+                                  block_size, B, S2_max, N2):
     """PA_BSND 场景：从 block cache 按 block_table 重建逻辑 BSND 布局。
 
-    key_block_np:  (block_num, block_size, N, D) float32
+    key_block_np:  (block_num, block_size, N, D_k) float32，D_k 含 rope 拼接
+    v_block_np:    (block_num, block_size, N, D_v) float32，D_v 为 D_base
     block_table:   (B, max_blocks_per_batch) int32，-1 表示无效
-    返回: k_bsnd (B, S2_max, N, D), v_bsnd (B, S2_max, N, D)
+    返回: k_bsnd (B, S2_max, N, D_k), v_bsnd (B, S2_max, N, D_v)
     """
-    k_bsnd = np.zeros((B, S2_max, N2, D), dtype=np.float32)
-    v_bsnd = np.zeros((B, S2_max, N2, D), dtype=np.float32)
+    D_k = key_block_np.shape[3]
+    D_v = v_block_np.shape[3]
+    k_bsnd = np.zeros((B, S2_max, N2, D_k), dtype=np.float32)
+    v_bsnd = np.zeros((B, S2_max, N2, D_v), dtype=np.float32)
     for b in range(B):
         for blk_i, blk_id in enumerate(block_table_np[b]):
             if blk_id < 0:
@@ -643,7 +646,7 @@ def _build_fa_param(inp):
         block_size = S2_blk
         S2_max = max(act_seq_kv_list)
         k_bsnd_np, v_bsnd_np = _reconstruct_bsnd_from_blocks(
-            k_full, v_fp32, block_table_np, block_size, B, S2_max, N2, k_full.shape[3]
+            k_full, v_fp32, block_table_np, block_size, B, S2_max, N2
         )
         # 转 BNSD
         k_bnsd = k_bsnd_np.transpose(0, 2, 1, 3)
