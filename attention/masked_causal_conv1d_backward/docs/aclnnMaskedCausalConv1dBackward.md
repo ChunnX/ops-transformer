@@ -43,8 +43,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
   const aclTensor   *input,
   const aclTensor   *weight,
   const aclTensor   *mask,
-  const aclTensor   *grad_input,
-  const aclTensor   *grad_weight,
+  aclTensor   *grad_input,
+  aclTensor   *grad_weight,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
