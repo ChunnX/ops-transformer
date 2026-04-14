@@ -50,12 +50,7 @@
 - test_recurrent_gated_delta_rule_single.py                 # 测试单用例运行主程序
 - recurrent_gated_delta_rule_operator_single.py             # CPU侧算子逻辑实现获取golden与npu算子直调
 - test_recurrent_gated_delta_rule_paramset.py               # 单用例入参配置
-
-批量用例测试:
-
-- test_recurrent_gated_delta_rule_batch.py                  # 用例批量测试主程序并生成excel文件保存结果
-- ./batch/recurrent_gated_delta_rule_pt_loadprocess.py      # 读取pt文件并调用算子获取npu输出
-- ./batch/recurrent_gated_delta_rule_pt_save.py             # 读取excel表格批量生成用例pt文件
+- test_recurrent_gated_delta_rule_paramset_rdv.py           # RDV测试入参配置
 
 ## 使用方法
 
@@ -73,14 +68,12 @@
 bash test_run.sh single
 ```
 
-#### 用例的批量生成与测试
+#### RDV测试
 
-1、excel路径下存放用例excel表格
+1、手动配置test_recurrent_gated_delta_rule_paramset_rdv.py的参数
 
-2、test_run.sh中设置读取的用例excel表格路径和pt文件存放路径
-
-3、执行指令：
+2、执行指令：
 
 ``` bash
-bash test_run.sh batch
+bash test_run.sh rdv
 ```

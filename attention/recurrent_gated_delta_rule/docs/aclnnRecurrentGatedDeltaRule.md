@@ -315,8 +315,8 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   - $0 < actualSeqLengths[i] \le 8$，且$actualSeqLengths[i]$累加和等于$T$
   - $1 \le numAcceptedTokens[i] \le actualSeqLengths[i]$
   - $g[i][j] < 0$
-  - $gk[i][j][k] < 0 $
-  - $0 < beta[i][j] < 1 $ 
+  - $gk[i][j][k] < 0$
+  - $0 < beta[i][j] < 1$
 
 ## 调用示例
 
@@ -448,35 +448,35 @@ int main()
     std::vector<int64_t> gamaShape = {batchSize * mtp, headVNum};
     std::vector<int64_t> actSeqLenShape = {batchSize};
     std::vector<int64_t> ssmStaIdShape = {batchSize * mtp};
-    std::vector<int16_t> stateRefHostData(GetShapeSize(stateShape));
-    std::vector<int16_t> queryHostData(GetShapeSize(qkShape));
-    std::vector<int16_t> keyHostData(GetShapeSize(qkShape));
-    std::vector<int16_t> valueHostData(GetShapeSize(vShape));
+    std::vector<float> stateRefHostData(GetShapeSize(stateShape));
+    std::vector<float> queryHostData(GetShapeSize(qkShape));
+    std::vector<float> keyHostData(GetShapeSize(qkShape));
+    std::vector<float> valueHostData(GetShapeSize(vShape));
     std::vector<float> gamaHostData(GetShapeSize(gamaShape));
-    std::vector<int16_t> betaHostData(GetShapeSize(gamaShape));
+    std::vector<float> betaHostData(GetShapeSize(gamaShape));
     std::vector<int32_t> actSeqLenHostData(batchSize, mtp);
     std::vector<int32_t> ssmStaIdHostData(batchSize * mtp);
     std::vector<int32_t> numAccTokHostData(batchSize, 1);
     for (int i = 0; i < stateRefHostData.size(); i++) {
-        stateRefHostData[i] = 1;
+        stateRefHostData[i] = 0.5;
     }
     for (int i = 0; i < queryHostData.size(); i++) {
-        queryHostData[i] = 1;
+        queryHostData[i] = 0.5;
     }
     for (int i = 0; i < keyHostData.size(); i++) {
-        keyHostData[i] = 1;
+        keyHostData[i] = 0.5;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = 0;
+        valueHostData[i] = 0.5;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = 0;
+        betaHostData[i] = 0.5;
     }
     for (int i = 0; i < ssmStaIdHostData.size(); i++) {
         ssmStaIdHostData[i] = i;
     }
 
-    std::vector<int16_t> attnOutHostData(valueHostData);
+    std::vector<float> attnOutHostData(valueHostData);
 
     ret = CreateAclTensor(stateRefHostData, stateShape, &stateRefDeviceAddr, aclDataType::ACL_BF16, &stateRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
