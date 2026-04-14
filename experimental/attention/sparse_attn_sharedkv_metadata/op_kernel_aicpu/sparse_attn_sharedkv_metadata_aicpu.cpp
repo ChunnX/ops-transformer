@@ -146,11 +146,9 @@ int32_t SparseAttnSharedkvMetadataCpuKernel::GetSumOfQuerySeq()
 
 bool SparseAttnSharedkvMetadataCpuKernel::CheckTopkLengthSize()
 {
-    KERNEL_LOG_ERROR("here in 149");
     auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
                                           t->GetTensorShape()->GetDimSize(0) != 0; };
     if (isValid(oriTopkLength_)) {
-        KERNEL_LOG_ERROR("here in 153");
         if (oriTopkLength_->GetData() == nullptr) {
             KERNEL_LOG_ERROR("The data of ori_topk_length is nullptr!");
             return false;
@@ -159,13 +157,6 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckTopkLengthSize()
         const int32_t *topkPtr =static_cast<const int32_t*>(oriTopkLength_->GetData());
         auto topkLengthShape = oriTopkLength_->GetTensorShape();
         int32_t topkLengthSize = layoutQuery_ == "TND" ? topkLengthShape->GetDimSize(0) : topkLengthShape->GetDimSize(0) * topkLengthShape->GetDimSize(1);
-        int64_t totalDims = topkLengthShape->GetDims();
-        for (int i = 0; i < totalDims; i++) {
-            KERNEL_LOG_ERROR("dim[%d] size = %d", i, topkLengthShape->GetDimSize(i));
-        }
-        for (int i = 0; i < topkLengthShape->GetDimSize(1); i++) {
-            KERNEL_LOG_ERROR("dim1 num[%d] = %d", i, topkPtr[i]);
-        }
         if (topkLengthSize < sumOfQuerySeq) {
             KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than the sum of query sequence %d!", topkLengthSize, sumOfQuerySeq);
             return false;
