@@ -34,7 +34,6 @@ constexpr int32_t BMM3SPLIT = 8;
 constexpr uint32_t OFFSET_WORKSPACE_NO_QUANT = 3;  // the offset of workspace is 3
 
 constexpr float SCALE_FACTOR_NO_QUANT = 1536.0f;
-constexpr uint32_t ROPE_SPLIT_SIZE_ONE = 64;
 
 template <typename QkDtype, typename CosDtype, typename QOutDtype, int8_t CacheMode> class RopeBf16_no_quant {
 public:

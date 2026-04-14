@@ -159,6 +159,7 @@ public:
             (num_col_ - input_stride_ + REPEAT_TIME_128 - 1) / REPEAT_TIME_128 * REPEAT_TIME_128;
         num_col_align_withStride_fp32 =
             (num_col_ - input_stride_ + REPEAT_TIME_64 - 1) / REPEAT_TIME_64 * REPEAT_TIME_64;
+        this->mm1_out_size_ = mlaParams_.rmsNumCol2;
     }
 
     __aicore__ inline void Launch(const AscendC::LocalTensor<int8_t> &dstTensor,
@@ -368,6 +369,7 @@ private:
     uint32_t num_slice_{0};
     uint32_t tail_size_{0};
     uint32_t tail_copy_{0};
+    uint32_t mm1_out_size_{0};
 };
 
 template <typename QkDtype, typename CosDtype, typename QOutDtype, int8_t CacheMode> class RopeFp16 {
@@ -653,6 +655,7 @@ public:
         this->quantOffsetGmTensor = quantOffsetGmTensor;
         this->perTokenDescaleGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(perTokenDescaleGm));
         this->perChannelDescaleGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(perChannelDescaleGm));
+        this->mm1_out_size_ = mlaParams_.rmsNumCol2;
         if constexpr (!NEED_DEQUANT) {
             inputGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gmInput));
         } else {
@@ -696,6 +699,7 @@ public:
         this->quantOffsetGmTensor = quantOffsetGmTensor;
         this->perTokenDescaleGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(perTokenDescaleGm));
         this->perChannelDescaleGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(perChannelDescaleGm));
+        this->mm1_out_size_ = mlaParams_.rmsNumCol2;
         if constexpr (!NEED_DEQUANT) {
             inputGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gmInput));
         } else {
@@ -995,6 +999,7 @@ private:
     uint32_t num_slice_{0};
     uint32_t tail_size_{0};
     uint32_t tail_copy_{0};
+    uint32_t mm1_out_size_{0};
 };
 
 template <typename InDtype, typename ScaleDtype> class EinSumQuant {
