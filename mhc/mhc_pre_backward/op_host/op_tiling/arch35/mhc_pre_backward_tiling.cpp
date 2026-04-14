@@ -47,7 +47,7 @@ const constexpr uint32_t D_ALIGN = 64;
 const constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000;
 const constexpr uint32_t LEGAL_N_VALUES[] = {4, 6, 8};
 const constexpr uint32_t LEGAL_N_COUNT = 3;
-const constexpr float DEFAULT_HC_EPS = 1e-6;
+const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
@@ -82,8 +82,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t
     if ((hInDims != BSD_DIM_NUM && hInDims != TD_DIM_NUM) || (hPostDims != BSD_DIM_NUM && hPostDims != TN_DIM_NUM) ||
         (hCombDims != BSNN_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
         OP_LOGE(context_->GetNodeName(),
-                "input dims invalid for MhcPreBackward, hInDims=%ld (expected %d or %d), hPostDims=%ld (expected %d or "
-                "%d), hCombDims=%ld (expected %d or %d)",
+                "input dims invalid for MhcPreBackward, hInDims=%ld (expected %ld or %ld), hPostDims=%ld (expected %ld "
+                "or %ld), hCombDims=%ld (expected %ld or %ld)",
                 hInDims, BSD_DIM_NUM, TD_DIM_NUM, hPostDims, BSD_DIM_NUM, TN_DIM_NUM, hCombDims, BSNN_DIM_NUM,
                 TNN_DIM_NUM);
         return ge::GRAPH_FAILED;
@@ -97,7 +97,7 @@ ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t
     if ((hInDims == BSD_DIM_NUM && hCombDims != BSNN_DIM_NUM) ||
         (hInDims == TD_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
         OP_LOGE(context_->GetNodeName(),
-                "hInDims and hCombDims mismatch, hInDims=%ld requires hCombDims=%d, but got %ld", hInDims,
+                "hInDims and hCombDims mismatch, hInDims=%ld requires hCombDims=%ld, but got %ld", hInDims,
                 hInDims == BSD_DIM_NUM ? BSNN_DIM_NUM : TNN_DIM_NUM, hCombDims);
         return ge::GRAPH_FAILED;
     }
@@ -116,7 +116,7 @@ ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *hInGrad
     if (hPostGradTensor->GetStorageShape().GetDim(INDEX_B) != batch ||
         hPostGradTensor->GetStorageShape().GetDim(INDEX_S) != sequence) {
         OP_LOGE(context_->GetNodeName(),
-                "h_post_grad shape must align with h_in_grad on B and S dims, h_post_grad[B,S]=[%lu,%lu], expected "
+                "h_post_grad shape must align with h_in_grad on B and S dims, h_post_grad[B,S]=[%ld,%ld], expected "
                 "[%lu,%lu]",
                 hPostGradTensor->GetStorageShape().GetDim(INDEX_B), hPostGradTensor->GetStorageShape().GetDim(INDEX_S),
                 batch, sequence);
@@ -127,7 +127,7 @@ ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *hInGrad
         hCombBeforeGradTensor->GetStorageShape().GetDim(2) != N_ ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(3) != N_) {
         OP_LOGE(context_->GetNodeName(),
-                "h_comb_before_grad shape must be [B, S, N, N], actual=[%lu,%lu,%lu,%lu], expected=[%lu,%lu,%lu,%lu]",
+                "h_comb_before_grad shape must be [B, S, N, N], actual=[%ld,%ld,%ld,%ld], expected=[%lu,%lu,%lu,%lu]",
                 hCombBeforeGradTensor->GetStorageShape().GetDim(0), hCombBeforeGradTensor->GetStorageShape().GetDim(1),
                 hCombBeforeGradTensor->GetStorageShape().GetDim(2), hCombBeforeGradTensor->GetStorageShape().GetDim(3),
                 batch, sequence, N_, N_);
@@ -147,7 +147,7 @@ ge::graphStatus MhcPreBackwardTiling::ParseTNDFormat(const gert::Tensor *hInGrad
 
     if (hPostGradTensor->GetStorageShape().GetDim(INDEX_T) != t) {
         OP_LOGE(context_->GetNodeName(),
-                "h_post_grad shape must align with h_in_grad on T dim, h_post_grad[T]=%lu, expected %lu",
+                "h_post_grad shape must align with h_in_grad on T dim, h_post_grad[T]=%ld, expected %lu",
                 hPostGradTensor->GetStorageShape().GetDim(INDEX_T), t);
         return ge::GRAPH_FAILED;
     }
@@ -155,7 +155,7 @@ ge::graphStatus MhcPreBackwardTiling::ParseTNDFormat(const gert::Tensor *hInGrad
         hCombBeforeGradTensor->GetStorageShape().GetDim(1) != N_ ||
         hCombBeforeGradTensor->GetStorageShape().GetDim(2) != N_) {
         OP_LOGE(context_->GetNodeName(),
-                "h_comb_before_grad shape must be [T, N, N], actual=[%lu,%lu,%lu], expected=[%lu,%lu,%lu]",
+                "h_comb_before_grad shape must be [T, N, N], actual=[%ld,%ld,%ld], expected=[%lu,%lu,%lu]",
                 hCombBeforeGradTensor->GetStorageShape().GetDim(0), hCombBeforeGradTensor->GetStorageShape().GetDim(1),
                 hCombBeforeGradTensor->GetStorageShape().GetDim(2), t, N_, N_);
         return ge::GRAPH_FAILED;
@@ -412,7 +412,7 @@ ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
 
 void MhcPreBackwardTiling::PrintTilingData()
 {
-    OP_LOGD(context_->GetNodeName(), "blockDim: [%d]", tilingData_.get_coreNum());
+    OP_LOGD(context_->GetNodeName(), "blockDim: [%u]", tilingData_.get_coreNum());
     OP_LOGD(context_->GetNodeName(), "totalLength: [%lu]", tilingData_.get_totalLength());
     OP_LOGD(context_->GetNodeName(), "nD: [%lu]", tilingData_.get_nD());
     OP_LOGD(context_->GetNodeName(), "fusionSize: [%lu]", tilingData_.get_fusionSize());

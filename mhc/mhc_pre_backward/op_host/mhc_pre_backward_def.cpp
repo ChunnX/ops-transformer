@@ -113,7 +113,7 @@ public:
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "mhc_pre_backward_apt");
         this->AICore().AddConfig("ascend950", aicConfig);
-        this->Attr("hc_eps").AttrType(OPTIONAL).Float(0.0);
+        this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
     }
 };
 
