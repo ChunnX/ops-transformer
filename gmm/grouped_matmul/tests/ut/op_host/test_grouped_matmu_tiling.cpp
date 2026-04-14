@@ -322,12 +322,16 @@ platform_ascendc::SocVersion ParseSocVersion(const string &socVersion)
     if (trimmed == "Ascend950") {
         return platform_ascendc::SocVersion::ASCEND950;
     }
+    if (trimmed == "Ascend910_93") {
+        return platform_ascendc::SocVersion::ASCEND910_93;
+    }
     return platform_ascendc::SocVersion::ASCEND910B;
 }
 
 NpuArch ParseNpuArch(const string &socVersion)
 {
-    return Trim(socVersion) == "Ascend950" ? NpuArch::DAV_3510 : NpuArch::DAV_2201;
+    const string trimmed = Trim(socVersion);
+    return trimmed == "Ascend950" ? NpuArch::DAV_3510 : NpuArch::DAV_2201;
 }
 
 struct GroupedMatmulTilingCase {
@@ -386,7 +390,7 @@ struct GroupedMatmulTilingCase {
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
                                       tuningConfig.empty() ? vector<int64_t>{0} : tuningConfig)},
             },
-            &compileInfo);
+            &compileInfo, socVersion, aicNum, ubSize);
 
         ExecuteTestCase(tilingContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED,
                         expectSuccess ? expectTilingKey : 0);
@@ -541,4 +545,3 @@ INSTANTIATE_TEST_SUITE_P(GMM_TILING_910B, TestGroupedMatmulAscend910BTiling,
                          testing::ValuesIn(GetAscend910BCases()), MakeParamName);
 
 } // namespace GroupedMatmulTilingUT
-
