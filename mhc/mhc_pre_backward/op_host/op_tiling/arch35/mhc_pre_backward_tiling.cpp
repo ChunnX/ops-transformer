@@ -50,7 +50,7 @@ const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
-const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 3;
+const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
 const constexpr uint32_t WORKSPACE_ALIGN_SIZE = 32;
@@ -300,17 +300,17 @@ void MhcPreBackwardTiling::FillTilingData()
     SetCommonTilingParams();
 }
 
-uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
-                                                      uint64_t elementSize)
+uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t cubeCoreNum,
+                                                      uint64_t vecCoreNum, uint64_t elementSize)
 {
-    uint64_t v1Elements = totalLength * fusionSize +         // h_mix_grad
-                          ALPHA_GRAD_CORE_FACTOR * coreNum + // alpha_grad
-                          coreNum * fusionSize +             // bias_grad
-                          totalLength;                       // inv_rms_grad
+    uint64_t v1Elements = totalLength * fusionSize +          // h_mix_grad
+                          ALPHA_GRAD_CORE_FACTOR * vecCoreNum + // alpha_grad
+                          vecCoreNum * fusionSize +             // bias_grad
+                          totalLength;                         // inv_rms_grad
 
     uint64_t v2Elements =
-        C0_SET_SHAPE_M * C0_SET_SHAPE_N * coreNum * BUFFER_NUM + // x_rs_grad_mm
-        C0_SET_SHAPE_M * C0_SET_SHAPE_N * coreNum * BUFFER_NUM + // x_rs
+        C0_SET_SHAPE_M * C0_SET_SHAPE_N * cubeCoreNum * BUFFER_NUM + // x_rs_grad_mm
+        C0_SET_SHAPE_M * C0_SET_SHAPE_N * cubeCoreNum * BUFFER_NUM + // x_rs
         EXTRA_BUFFER_SIZE;
     uint64_t totalElements =
         ((v1Elements + WORKSPACE_ALIGN_SIZE - 1) / WORKSPACE_ALIGN_SIZE * WORKSPACE_ALIGN_SIZE) + v2Elements;
@@ -357,7 +357,7 @@ ge::graphStatus MhcPreBackwardTiling::GetMatmulTiling(matmul_tiling::MatmulApiTi
 
 ge::graphStatus MhcPreBackwardTiling::TilingProcess()
 {
-    size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, fusionSize_, blockDim_, sizeof(float));
+    size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, fusionSize_, blockDim_, vecCoreNum_, sizeof(float));
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE_SIZE;
 
     platform_ascendc::PlatformAscendC ascendcPlatform;

@@ -110,8 +110,8 @@ protected:
     ge::graphStatus GetMatmulTiling(matmul_tiling::MatmulApiTiling &mm, bool isC0);
     ge::graphStatus TilingProcess();
 
-    static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t coreNum,
-                                           uint64_t elementSize);
+    static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t cubeCoreNum,
+                                           uint64_t vecCoreNum, uint64_t elementSize);
 
 private:
     MhcPreBackwardTilingData tilingData_;
