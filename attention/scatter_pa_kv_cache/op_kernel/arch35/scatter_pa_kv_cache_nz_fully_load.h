@@ -21,7 +21,6 @@
 namespace ScatterPaKvCache {
 
 using namespace AscendC;
-static constexpr uint32_t BLOCK_SIZE = = Ops::Base::GetUbBlockSize();
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheNzFullyLoad {
@@ -85,10 +84,10 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
 
     DataCopyExtParams copyParamsInK{1, static_cast<uint32_t>(tokenSizeK_ * sizeof(T1)), 0, 0, 0};
     DataCopyExtParams copyParamsOutK{static_cast<uint16_t>(tokenSizeK_ / lastDimK_), BLOCK_SIZE, 0,
-                                  static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)};
+                                  static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyExtParams copyParamsInV{1, static_cast<uint32_t>(tokenSizeV_ * sizeof(T2)), 0, 0, 0};
     DataCopyExtParams copyParamsOutV{static_cast<uint16_t>(tokenSizeV_ / lastDimV_), BLOCK_SIZE, 0,
-                                  static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)};
+                                  static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyPadExtParams<T1> kPadParams;
     kPadParams.isPad = 0;
     kPadParams.leftPadding = 0;
@@ -125,7 +124,7 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
         inputKeyQueue_.FreeTensor(inputKey);
         if constexpr (InOutMode == DUAL_IN_OUT) {
             uint64_t cacheStartV = blocksIdx * tilingData_->blockSize * tokenSizeV_ + blocksOffset * lastDimV_;
-            inputValue = inputValueQueue_.DeQue<T2>();
+            LocalTensor<T2> inputValue = inputValueQueue_.DeQue<T2>();
             DataCopyPad(outputValueCacheGm_[cacheStartV], inputValue, copyParamsOutV);
             inputValueQueue_.FreeTensor(inputValue);
         }

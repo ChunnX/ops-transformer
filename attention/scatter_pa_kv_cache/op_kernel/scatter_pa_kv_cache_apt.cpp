@@ -43,11 +43,11 @@
 #define ALIBI_INT64_FULLY_LOAD 381
 #define ALIBI_INT64_NOT_FULLY_LOAD 380
 
-#define OMNI_FULLY_LOAD 481
-#define OMNI_NOT_FULLY_LOAD 480
+#define OMNI_FULLY_LOAD 401
+#define OMNI_NOT_FULLY_LOAD 400
 
-#define NZ_FULLY_LOAD 581
-#define NZ_NOT_FULLY_LOAD 580
+#define NZ_FULLY_LOAD 501
+#define NZ_NOT_FULLY_LOAD 500
 
 using namespace ScatterPaKvCache;
 
@@ -149,6 +149,16 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
         op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset, seq_lens,
                 key_cache_out, value_cache_out);
         op.Process();
+    } else if TILING_KEY_IS (OMNI_FULLY_LOAD) {
+        ScatterPaKvCache::ScatterPaKvCacheOmniFullyLoad<DTYPE_KEY, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
+        op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset, seq_lens,
+                key_cache_out, value_cache_out);
+        op.Process();
+    } else if TILING_KEY_IS (OMNI_NOT_FULLY_LOAD) {
+        ScatterPaKvCache::ScatterPaKvCacheOmniNotFullyLoad<DTYPE_KEY, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
+        op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset, seq_lens,
+                key_cache_out, value_cache_out);
+        op.Process();
     } else if TILING_KEY_IS (ALIBI_INT32_FULLY_LOAD) {
         if constexpr (sizeof(DTYPE_KEY) == sizeof(int8_t)) {
             ScatterPaKvCache::ScatterPaKvCacheAlibiFullyLoad<int8_t, int32_t, DUAL_IN_OUT> op(&pipe, &tilingData);
@@ -220,29 +230,29 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
     } else if TILING_KEY_IS(NZ_FULLY_LOAD) {
         if constexpr (sizeof(DTYPE_KEY) == sizeof(int8_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNzFullyLoad<int8_t, int8_t, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
-            op.Init(key, slot_mapping, value, compress_lens, compress_seq_offset, key_cache_out, value_cache_out);
+            op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
             op.Process();
         } else if constexpr (sizeof(DTYPE_KEY) == sizeof(int16_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNzFullyLoad<int16_t, int16_t, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
-            op.Init(key, slot_mapping, value, compress_lens, compress_seq_offset, key_cache_out, value_cache_out);
+            op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
             op.Process();
         } else if constexpr (sizeof(DTYPE_KEY) == sizeof(int32_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNzFullyLoad<int32_t, int32_t, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
-            op.Init(key, slot_mapping, value, compress_lens, compress_seq_offset, key_cache_out, value_cache_out);
+            op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
             op.Process();
         }
     } else if TILING_KEY_IS(NZ_NOT_FULLY_LOAD) {
         if constexpr (sizeof(DTYPE_KEY) == sizeof(int8_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNzNotFullyLoad<int8_t, int8_t, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
-            op.Init(key, slot_mapping, value, compress_lens, compress_seq_offset, key_cache_out, value_cache_out);
+            op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
             op.Process();
         } else if constexpr (sizeof(DTYPE_KEY) == sizeof(int16_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNzNotFullyLoad<int16_t, int16_t, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
-            op.Init(key, slot_mapping, value, compress_lens, compress_seq_offset, key_cache_out, value_cache_out);
+            op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
             op.Process();
         } else if constexpr (sizeof(DTYPE_KEY) == sizeof(int32_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNzNotFullyLoad<int32_t, int32_t, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(&pipe, &tilingData);
-            op.Init(key, slot_mapping, value, compress_lens, compress_seq_offset, key_cache_out, value_cache_out);
+            op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
             op.Process();
         }
     }

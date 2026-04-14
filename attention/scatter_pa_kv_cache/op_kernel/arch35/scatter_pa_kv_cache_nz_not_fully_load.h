@@ -86,7 +86,7 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), BLOCK_SIZE, 0,
-                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)}; // dstStride 需要乘blocksize
+                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0}; // dstStride 需要乘blocksize
     DataCopyPadExtParams<T1> PadParams;
     PadParams.isPad = 0;
     PadParams.leftPadding = 0;
@@ -124,7 +124,7 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), 1, 0,
-                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE)};
+                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyPadExtParams<T2> PadParams;
     PadParams.isPad = 0;
     PadParams.leftPadding = 0;
