@@ -188,7 +188,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckAttrs() const
 ge::graphStatus MlaPrologTilingCheck::CheckDims() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        const std::unordered_set<uint32_t> supportedQuantModes {
+        const std::set<uint32_t> supportedQuantModes {
             static_cast<uint32_t>(QUANT_MODE::NO_QUANT),
             static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT),
             static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL),
@@ -215,13 +215,13 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
             MAX_B_SIZE, baseShapeInfo_.bSize),
         return ge::GRAPH_FAILED);
-    const std::unordered_set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
+    const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
     OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
         OP_LOGE(context_.opName, "He allows only %s, got %u.",
             ConvertContainerToString(supportedHeSize).c_str(), baseShapeInfo_.heSize),
         return ge::GRAPH_FAILED);
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        const std::unordered_set<uint32_t> supportedHcqSize {1536U, 2048U};
+        const std::set<uint32_t> supportedHcqSize {1536U, 2048U};
         OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
             OP_LOGE(context_.opName, "Hcq allows %s, got %u.",
                 ConvertContainerToString(supportedHcqSize).c_str(), baseShapeInfo_.hcqSize),
@@ -232,7 +232,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 HCQ_SIZE, baseShapeInfo_.hcqSize),
             return ge::GRAPH_FAILED);
     }
-    const std::unordered_set<uint32_t> supportedNSize {1, 2, 4, 8, 16, 32, 64, 128};
+    const std::set<uint32_t> supportedNSize {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
     OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
         OP_LOGE(context_.opName, "N allows only %s, but got %u.",
             ConvertContainerToString(supportedNSize).c_str(), baseShapeInfo_.nSize),
@@ -242,7 +242,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
             HCKV_SIZE, baseShapeInfo_.hckvSize),
         return ge::GRAPH_FAILED);
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        const std::unordered_set<uint32_t> supportedDSize {128U, 192U};
+        const std::set<uint32_t> supportedDSize {128U, 192U};
         OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
             OP_LOGE(context_.opName, "D allows %s, got %u.",
                 ConvertContainerToString(supportedDSize).c_str(), baseShapeInfo_.dSize),
