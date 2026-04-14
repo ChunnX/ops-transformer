@@ -121,12 +121,12 @@ int InitializeTensors(TensorResources& resources) {
     int64_t attentionOutShapeSize = GetShapeSize(attentionOutShape);
 
     std::vector<aclFloat16> queryHostData(queryShapeSize, aclFloat16(1.0f));
-    std::vector<uint8_t> keyHostData(keyShapeSize, aclFloat8_e4m3fn(1.0f));
-    std::vector<uint8_t> valueHostData(valueShapeSize, aclFloat8_e4m3fn(1.0f));
+    std::vector<uint8_t> keyHostData(keyShapeSize, 1);
+    std::vector<uint8_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
-    std::vector<float> keyDequantScaleHostData(keyDequantScaleShapeSize, aclFloat(1.0f));
-    std::vector<float> valueDequantScaleHostData(valueDequantScaleShapeSize, aclFloat(1.0f));
-    std::vector<float> attentionOutHostData(attentionOutShapeSize, 1);
+    std::vector<float> keyDequantScaleHostData(keyDequantScaleShapeSize, 1.0f);
+    std::vector<float> valueDequantScaleHostData(valueDequantScaleShapeSize, 1.0f);
+    std::vector<aclFloat16> attentionOutHostData(attentionOutShapeSize, aclFloat16(1.0f));
 
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
                               aclDataType::ACL_FLOAT16, &resources.queryTensor);
@@ -308,7 +308,7 @@ int main() {
     TensorResources resources = {};
     void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
-    std::vector<int64_t> attentionOutShape = {1, 1, 4, 512};
+    std::vector<int64_t> attentionOutShape = {1, 1, 64, 512};
     int ret = ACL_SUCCESS;
 
     // 1. Initialize device and stream

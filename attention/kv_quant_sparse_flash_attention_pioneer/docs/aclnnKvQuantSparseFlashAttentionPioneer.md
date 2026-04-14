@@ -540,7 +540,7 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionPioneer(
 
 ## 约束说明
 
-- 参数query中的N值为64/48/32/8/6/4/3/2，key、value的N支持1。
+- 参数query中的N值为1/2/3/4/6/8/16/24/32/48/64，key、value的N支持1。
 - 参数query中的D值为576，即nope+rope=512+64。
 - 参数key、value中的D值为656，即nope+rope*2+dequant_scale*4=512+64*2+4*4。
 - 支持sparse_block_size整除block_size。
