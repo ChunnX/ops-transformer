@@ -36,7 +36,7 @@ public:
 private:
     // 公共校验函数
     struct MaskInfo {
-        int64_t attenMaskN = 1U;
+        uint32_t attenMaskN = 1U;
         uint32_t attenMaskBatch = 1;
         uint32_t attenMaskQSize = 0;
         uint32_t attenMaskSize = 0;
