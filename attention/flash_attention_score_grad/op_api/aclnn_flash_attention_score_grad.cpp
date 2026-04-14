@@ -28,11 +28,8 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/fast_vector.h"
-#if __has_include("runtime/context.h")
 #include "runtime/context.h"
-#else
 #include "acl/acl_rt.h"
-#endif
 
 using namespace op;
 #ifdef __cplusplus
@@ -203,8 +200,8 @@ static bool CheckTndIsNeedPad(const FagInShapeInfo &fagShape, const aclIntArray 
     int64_t sKvLenMax = 0;
     int64_t sQLenSum = 0;
     int64_t deterministicValue = 0;
-    rtError_t retRts = rtCtxGetSysParamOpt(SYS_OPT_DETERMINISTIC, &deterministicValue);
-    if (retRts != RT_ERROR_NONE) {
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
+    if (aclRet != ACL_SUCCESS) {
         OP_LOGW("Fag aclnn unable to get system param determinstic.");
         // 如果determinstic参数获取失败，则不主动去除pad
         return true;
@@ -434,8 +431,8 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
     int64_t deterministicValue = 0;
 
     if (StrideLimited()) {
-        rtError_t retRts = rtCtxGetSysParamOpt(SYS_OPT_DETERMINISTIC, &deterministicValue);
-        if (retRts != RT_ERROR_NONE) {
+        aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
+        if (aclRet != ACL_SUCCESS) {
             OP_LOGW("Fag aclnn unable to get system param determinstic.");
             // 如果determinstic参数获取失败，则不主动去除pad
             deterministicValue = DIM_NUM_3;
@@ -510,6 +507,16 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Query T(%d) and key T(%d) need larger than respectively sum of seqQLen(%d) and seqKvLen(%d).", 
                                             fagShape.t1, fagShape.t2, sumSeqQLen, sumSeqKvLen);
                 return ACLNN_ERR_PARAM_INVALID;
+            }
+            // 校验EOD场景尾部是否补0
+            if (fagShape.t1 > sumSeqQLen && fagShape.t2 > sumSeqKvLen) {
+                int64_t actSeqQLenEnd = static_cast<int64_t>((*actualSeqQLenOptional)[actualSeqQLenOptional->Size() - 1]);
+                int64_t actSeqKvLenEnd = static_cast<int64_t>((*actualSeqKvLenOptional)[actualSeqKvLenOptional->Size() - 1]);
+                if (actSeqQLenEnd != 0 || actSeqKvLenEnd !=0) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
+                                            actSeqQLenEnd, actSeqKvLenEnd);
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
         }
     } else {

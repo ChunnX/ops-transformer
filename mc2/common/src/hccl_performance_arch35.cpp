@@ -18,7 +18,11 @@ const static string DEFAULT_KEY_FOR_ARCH35 = "0_0_0_0";
 const static map<string, HCCLFittingParameters> ARCH35_FITTING_PARAMETER_MAP = {
     {DEFAULT_KEY_FOR_ARCH35, HCCLFittingParameters{0.032, 1.371, 2.59568, 5.8887, 0, 2.86702,
                                   5.608, 5.6997, 9.448, 0, 0, 0}},
-    {"4_1_0_4", HCCLFittingParameters{0, 0, 3.3586, 24.9879, 0, 0,  // 950 allgather STANDARD_CARD_4p
+    {"4_1_0_4", HCCLFittingParameters{0, 0, 5.841842, 8.590666, 0, 0,  // 950 allGather standard_card 4p
+                                  0, 0, 0, 0, 0, 0}},
+    {"4_4_0_4", HCCLFittingParameters{0, 0, 5.8087, 5.6810, 0, 0,  // 950 reduceScatter(alltoAll) standard_card 4p
+                                  0, 0, 0, 0, 0, 0}},
+    {"4_5_0_4", HCCLFittingParameters{0, 0, 13.3265, 36.1964, 0, 0,  // 950 allreduce(two shot) standard_card 4p
                                   0, 0, 0, 0, 0, 0}},
 };
 
@@ -43,8 +47,9 @@ void HCCLPerformanceArch35::GetCommArch35Parameters(SocVersion socVersion)
 
 void HCCLPerformanceArch35::InitArch35Parameters()
 {
-    if (commTypeInfo_.kernelType == KernelType::ALL_GATHER) {
-        lookUpTileNum_ = commTypeInfo_.rankDim - 1;
+    if ((commTypeInfo_.kernelType == KernelType::ALL_GATHER) ||
+        (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
+        lookUpTileNum_ = commTypeInfo_.rankDim;
         commTimeFactor_ = 1;
     }
 }

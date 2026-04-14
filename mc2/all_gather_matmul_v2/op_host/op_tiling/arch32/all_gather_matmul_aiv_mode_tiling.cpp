@@ -151,6 +151,22 @@ void AllGatherV2MatmulNPU910BTwoRankINT8Tiling(CoCTiling &cocTilingData)
     DealTilingParamByBuffSize(cocTilingData);
 }
 
+void AllGatherV2MatmulNPU910BEightRankINT4Tiling(CoCTiling &cocTilingData)
+{
+    int32_t code = ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_INT4_CODE_DEFAULT;
+    std::map<int*, TilingValue> TilingParamMap = {
+        {&code,
+         {ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_INT4_CODE_DEFAULT,
+          g_allGatherV2MatmulNPU910BEightRankINT4CodeMap}}
+    };
+    SetTilingParam(cocTilingData, TilingParamMap);
+
+    AllGatherV2DecodeTilingData(code, cocTilingData);
+
+    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    DealTilingParamByBuffSize(cocTilingData);
+}
+
 void AllGatherV2MatmulNPU910BFourRankINT8Tiling(CoCTiling &cocTilingData)
 {
     int32_t code = ALLGATHERV2_MATMUL_NPU910B_FOUR_RANK_INT8_CODE_DEFAULT;
@@ -313,6 +329,18 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
     uint32_t K = aShape->GetStorageShape().GetDim(1);
     uint32_t N = bShape->GetStorageShape().GetDim(1);
 
+    const auto aType = context->GetInputTensor(A_INDEX)->GetDataType();
+    const auto bType = context->GetInputTensor(B_INDEX)->GetDataType();
+    OP_TILING_CHECK(aType != bType, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        "x1 and x2 must have the same data type."),
+        return GRAPH_FAILED);
+
+    if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
+        OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+            "When the data types of inputs x1 and x2 are int4, the contiguous dimension of x1 and x2 "
+            "must be divisible by 2."), return GRAPH_FAILED);
+    }
+
     if (aShape->GetStorageShape().GetDim(1) != bShape->GetStorageShape().GetDim(0)) {
         OP_LOGD(nodeName, "A.shape(1) %lu, B.shape(0) %lu, istransB = %d",
                 aShape->GetStorageShape().GetDim(1), bShape->GetStorageShape().GetDim(0), info.isTransposeX2);
@@ -324,6 +352,10 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
         const auto cShape = context->GetOutputShape(0);
         N = cShape->GetOriginShape().GetDim(1);
     }
+
+    const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
+    OP_TILING_CHECK(matrixBias != nullptr,
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "AivMode, bias must be nullptr."), return GRAPH_FAILED);
 
     // shape相关校验与约束写在这里
     info.M = M;
@@ -459,7 +491,7 @@ bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
     return false;
 }
 
-bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize) 
+bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type) 
 {
     if (rankSize == RANKSIZE_TWO && info.quantFlag) {
         AllGatherV2MatmulNPU910BTwoRankINT8Tiling(cocTilingData);
@@ -469,6 +501,9 @@ bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
         return true;
     } else if (rankSize == RANKSIZE_FOUR && !info.quantFlag) {
         AllGatherV2MatmulNPU910BFourRankFP16Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_EIGHT && isInt4Type) {
+        AllGatherV2MatmulNPU910BEightRankINT4Tiling(cocTilingData);
         return true;
     } else if (rankSize == RANKSIZE_EIGHT && info.quantFlag) {
         AllGatherV2MatmulNPU910BEightRankINT8Tiling(cocTilingData);
@@ -480,12 +515,12 @@ bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
     return false;
 }
 
-void SetTilingData(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
+void SetTilingData(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type)
 {
     cocTilingData.rankSize = rankSize;
     if (info.is910C && SetTilingDataA3(cocTilingData, info, rankSize)) {
         return;
-    } else if (SetTilingDataA2(cocTilingData, info, rankSize)){
+    } else if (SetTilingDataA2(cocTilingData, info, rankSize, isInt4Type)){
         return;
     }
     // Default Tiling Func
@@ -576,7 +611,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     }
 
     // Tiling
-    SetTilingData(tilingData->cocTiling, info, rankSize);
+    SetTilingData(tilingData->cocTiling, info, rankSize, isA4W4);
 
     // workspace
     uint32_t elementSize = 0;

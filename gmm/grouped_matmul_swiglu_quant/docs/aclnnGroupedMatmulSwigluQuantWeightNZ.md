@@ -167,6 +167,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(
   uint64_t        *workspaceSize, 
   aclOpExecutor  **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
   void          *workspace, 
@@ -225,12 +226,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
       <tr>
         <td>bias</td>
         <td rowspan="1">输入</td>
-        <td>矩阵乘计算的偏移值，对应公式中的bias。</td>
-        <td>预留输入，暂不支持，需要传空指针。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>计算矩阵乘时的辅助矩阵，对应公式中的weightAssistMatrix。</td>
+        <td>仅A8W4场景生效，A8W8场景需传空指针。</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
       </tr>
       <tr>
         <td>offset</td>
@@ -412,7 +413,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
 
   - 1.x的尾轴长度不能大于等于65536。
   - 2.N轴长度不能超过10240。
-
 
 - A8W4场景（`A`指激活矩阵（左矩阵），`W`指权重矩阵（右矩阵），`4`指数据类型为`INT4`）
 

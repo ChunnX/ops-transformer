@@ -31,7 +31,7 @@ extern "C" {
  * @param [in] xScale:
  * 表示perToken量化参数，数据类型支持FLOAT8_E8M0、FLOAT32数据类型，数据格式支持ND。
  * @param [in] smoothScale:
- * 左矩阵的的量化因子，数据类型支持FLOAT32数据类型，数据格式支持ND。 
+ * 左矩阵的量化因子，数据类型支持FLOAT32数据类型，数据格式支持ND。 
  * @param [in] groupList: 必选参数，表示每个分组参与计算的Token个数，数据类型支持INT64。
  * @param [in] dequantMode: 表示反量化计算类型，用于确定激活矩阵与权重矩阵的反量化方式。
  * @param [in] dequantDtype: 表示中间GroupedMatmul的结果数据类型。

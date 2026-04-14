@@ -30,7 +30,6 @@
     mmY = mmX \times mmWeight
     $$
 
-
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
@@ -163,8 +162,6 @@
   </tr>
  </tbody></table>
 
-
-
 ## 约束说明
 
 - 参数说明里shape使用的变量：
@@ -186,4 +183,3 @@
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 | aclnn接口 | [test_aclnn_allto_allv_grouped_mat_mul.cpp](./examples/test_aclnn_allto_allv_grouped_mat_mul.cpp) | 通过[aclnnAlltoAllvGroupedMatMul](./docs/aclnnAlltoAllvGroupedMatMul.md)接口方式调用allto_allv_grouped_mat_mul算子。 |
-

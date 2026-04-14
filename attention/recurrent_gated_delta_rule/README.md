@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：完成变步长的Recurrent Gated Delta Rule计算。
@@ -31,7 +30,6 @@
   $$
 
   其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\alpha_k \in R^{d_k}$，$\beta_t \in R$，$o \in R^{d_v}$。
-
 
 ## 参数说明
 
@@ -111,8 +109,8 @@
 </table>
 
 ## 约束说明
-- 输入tensor的shape大小需满足一定约束，具体见[aclnnRecurrentGatedDeltaRule](./docs/aclnnRecurrentGatedDeltaRule.md)。
 
+- 输入tensor的shape大小需满足一定约束，具体见[aclnnRecurrentGatedDeltaRule](./docs/aclnnRecurrentGatedDeltaRule.md)。
 
 ## 调用说明
 

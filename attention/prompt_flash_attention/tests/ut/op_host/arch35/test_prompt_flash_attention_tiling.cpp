@@ -282,6 +282,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_5)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
+// bsngd 32k softcap
 TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_6)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
@@ -486,7 +487,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_10)
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
-    int64_t expectTilingKey = 1206124800;
+    int64_t expectTilingKey = 132382976;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
@@ -528,8 +529,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_11)
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
-    int64_t expectTilingKey = 1206124800;
+    int64_t expectTilingKey = 132382976;
     std::string expectTilingData = "";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
-

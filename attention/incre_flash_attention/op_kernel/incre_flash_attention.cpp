@@ -20,15 +20,7 @@
 #include "kernel_operator.h"
 #endif
 
-#if (__NPU_ARCH__ == 5102)
-#ifdef NOT_DYNAMIC_COMPILE
-#include "../../prompt_flash_attention/op_kernel/arch38/prompt_flash_attention_entry_regbase.h"
-#else
-#include "../prompt_flash_attention/arch38/prompt_flash_attention_entry_regbase.h"
-#endif
-#else
 #include "incre_flash_attention_arch32.h"
-#endif
 
 using namespace AscendC;
 
@@ -43,13 +35,11 @@ incre_flash_attention_FIAS(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ ui
                         __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *attentionOut,
                         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if (__NPU_ARCH__ != 5102)
     incre_flash_attention_FIAS_arch32(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, deqScale1, quantScale1,
                                     deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, keySharedPrefix,
                                     valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, keyRopeAntiquantScale, dequantScaleQuery,
                                     attentionOut, softmaxLse, workspace, tiling);
-#endif
 }
 extern "C" __global__ __aicore__ void
 incre_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
@@ -59,15 +49,8 @@ incre_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       __gm__ uint8_t *blocktable, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *attentionOut,
                       __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if (__NPU_ARCH__ == 5102)
-    prompt_flash_attention_FIAS_regbase(query, key, value, pseShift, attenMask, nullptr, actualSeqLengths, deqScale1,
-                                        quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, blocktable, nullptr,
-                                        kvPaddingSize, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                        attentionOut, nullptr, workspace, tiling);
-#else
     incre_flash_attention_FIAS(query, key, value, pseShift, attenMask, nullptr, actualSeqLengths, deqScale1, quantScale1,
                             deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, blocktable, nullptr,
                             kvPaddingSize, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
                             attentionOut, nullptr, workspace, tiling);
-#endif
 }

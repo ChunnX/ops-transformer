@@ -23,7 +23,7 @@ extern "C" {
  * @param [in] weight:
  * 表示公式中的weight，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] biasOptional:
- * 表示公式中的bias，数据类型支持BLOAT16、FLOAT16、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
+ * 表示公式中的bias，数据类型支持BFLOAT16、FLOAT16、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] scaleOptional: 表示量化参数，数据类型支持UINT64数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] offsetOptional: 表示量化参数，数据类型支持FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] antiquantScaleOptional:

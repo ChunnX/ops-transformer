@@ -62,6 +62,7 @@ protected:
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64) const;
     ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling& rcsCfg);
+    CutResult GetTilingResult();
     uint32_t GetRankSize(const char* group) const;
     void Reset();
     bool ReduceScatterCheckShapeInfo();

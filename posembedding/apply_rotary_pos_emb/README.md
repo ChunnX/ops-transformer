@@ -148,8 +148,6 @@
 
 - <term>Atlas 推理系列产品</term>：不支持BFLOAT16
 
-
-
 ## 约束说明
 
 - <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：

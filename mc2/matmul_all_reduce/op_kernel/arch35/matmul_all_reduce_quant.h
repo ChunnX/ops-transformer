@@ -24,19 +24,20 @@
 #include "lib/matmul_intf.h"
 #include "../common.h"
 
-#include "matmul_all_reduce_base.h"
+#include "matmul_all_reduce_based_a2a_rs_ag.h"
+#include "matmul_all_reduce_based_all_reduce.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
-template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
-class MatmulAllReduceQuant : public MatmulAllReduceBase<XType, YType, CoreType>
+template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, bool basedA2aRsAg>
+class MatmulAllReduceQuant : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg>
 {
 public:
     __aicore__ inline MatmulAllReduceQuant(
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe,
         bool isMX)
-        : MatmulAllReduceBase<XType, YType, CoreType>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+        : MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
         mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingDataA5*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
@@ -52,7 +53,9 @@ public:
             MmType opTail;
             InnerProcess(opTail, true, this->paramInTiling_->tailCnt, this->tailInfo_);
         }
-
+        if constexpr(basedA2aRsAg) {
+            this->ReduceSumAndAllGather();
+        }
         this->HcclFinalize();
     }
 
@@ -62,12 +65,13 @@ protected:
         const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tiling =
             (tailFlag ? &mc2TilingData_->tailmatmulTiling : &mc2TilingData_->tilematmulTiling);
         uint64_t pertokenOffset = 0UL;
-        uint64_t MX_GROUP_SIZE = 64UL;
+        uint32_t MX_GROUP_SIZE = 64U;
         uint64_t NUM_TWO = 2;
         if (isMXScene_) {
+            uint64_t matmulKa = static_cast<uint64_t>(tiling->matmulTiling.Ka);
             pertokenOffset =
                 sizeof(AscendC::fp8_e8m0_t) * tiling->matmulTiling.M *
-                CeilDiv(tiling->matmulTiling.Ka, MX_GROUP_SIZE) * NUM_TWO;
+                CeilDiv(matmulKa, MX_GROUP_SIZE) * NUM_TWO;
         } else {
             pertokenOffset = sizeof(float) * tiling->matmulTiling.M;
         }
@@ -79,8 +83,12 @@ protected:
                 this->quantAddrs_->pertokenGM, this->addrs_->cGM, this->addrs_->workspaceGM, tiling, this->tPipe_);
 
             mmOp.Process();
-            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset);
+            const uint64_t index = tailFlag ? i+this->paramInTiling_->tileCnt : i;
+            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset, index);
             this->quantAddrs_->pertokenGM += pertokenOffset;
+        }
+        if constexpr(basedA2aRsAg) {
+            this->WaitAlltoAllEachTurn(tailFlag, turnCnt);
         }
     }
 
@@ -89,20 +97,20 @@ private:
     bool isMXScene_ = false;
 };
 
-#define INVOKE_MC2_QUANT_910_OP_IMPL(templateClass, coreType, scaleType, ...)                                           \
+#define INVOKE_MC2_QUANT_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, scaleType, ...)                     \
     do {                                                                                                     \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);      \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                 \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                        \
         using OpType = templateClass<                                                                        \
             DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, __VA_ARGS__>; \
-        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType> op(                              \
+        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg> op(                   \
             &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe, false);                     \
         op.Init();                                                                                           \
         op.Process();                                                                                        \
     } while (0)
 
-#define INVOKE_MC2_QUANT_MXFP_910_OP_IMPL(templateClass, coreType, ...)                                   \
+#define INVOKE_MC2_QUANT_MXFP_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, ...)                        \
     do {                                                                                                  \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);    \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                              \
@@ -110,7 +118,7 @@ private:
         using OpType = templateClass<                                                                     \
             DTYPE_X1, DTYPE_X2, AscendC::fp8_e8m0_t, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, \
             __VA_ARGS__>;                                                                                 \
-        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType> op(                           \
+        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg> op(                \
             &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe, true);                   \
         op.Init();                                                                                        \
         op.Process();                                                                                     \

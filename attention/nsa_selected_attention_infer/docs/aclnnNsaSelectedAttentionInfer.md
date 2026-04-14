@@ -189,16 +189,14 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>actualQSeqLenOptional</td>
           <td>输入</td>
           <td>表示query的S轴实际长度。</td>
-          <td>
-  		如不使用该功能时可传入nullptr。
-          </td>
+          <td>如不使用该功能时可传入nullptr。</td>
           <td>INT64</td>
           <td>ND</td>
           <td>-</td>
           <td>-</td>
         </tr>
         <tr>
-          <td>actualSelKvSeqLenOptional</td>
+          <td>actualKvSeqLenOptional</td>
           <td>输入</td>
           <td>表示算子处理的key和value的S轴实际长度。</td>
           <td>-
@@ -209,7 +207,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>-</td>
         </tr>
         <tr>
-          <td style="white-space: nowrap;">inputLayoutOptional</td>
+          <td style="white-space: nowrap;">layoutOptional</td>
           <td>输入</td>
           <td>用于标识输入query、key、value的数据排布格式。</td>
           <td>
@@ -267,9 +265,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">selectBlockCount</td>
           <td>输入</td>
           <td>代表topK阶段需要保留的block数量。</td>
-          <td>
-  		selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualSelKvSeqLenOptional)。
-          </td>
+          <td>selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualKvSeqLenOptional)。</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -279,9 +275,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">pageBlockSize</td>
           <td>输入</td>
           <td>代表paged attention的block大小。</td>
-          <td>
-  		在kv cache取数时使用。
-          </td>
+          <td>在kv cache取数时使用。</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -291,9 +285,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">scaleValue</td>
           <td>输入</td>
           <td>公式中d开根号的倒数，代表缩放系数。</td>
-          <td>
-  		作为计算流中Muls的scalar值。
-          </td>
+          <td>作为计算流中Muls的scalar值。</td>
           <td>DOUBLE</td>
           <td>-</td>
           <td>-</td>
@@ -303,9 +295,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">sparseMode</td>
           <td>输入</td>
           <td>表示sparse的模式，控制有attentionMask输入时的稀疏计算。</td>
-          <td>
-  		预留参数，暂未使用。
-          </td>
+          <td>预留参数，暂未使用。</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -315,9 +305,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td style="white-space: nowrap;">output</td>
           <td>输出</td>
           <td>公式中attention的输出。</td>
-          <td>
-  		预留参数，暂未使用。
-          </td>
+          <td>预留参数，暂未使用。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>-</td>
@@ -376,10 +364,10 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
         <!-- 合并单元格添加 merged-cell 类实现上下居中 -->
         <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
         <td class="merged-cell" rowspan="2">161002</td>
-        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualSelKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
+        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
       </tr>
       <tr>
-        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualSelKvSeqLenOptional、output的数据格式不在支持的范围内。</td>
+        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据格式不在支持的范围内。</td>
       </tr>
     </tbody>
   </table>
@@ -390,13 +378,11 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 - **参数说明**
   
   <div style="overflow-x: auto;">
-      <table style="undefined;table-layout: fixed; width: 1030px">
-    	<colgroup>
+      <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
           <col style="width: 250px">
           <col style="width: 130px">
           <col style="width: 650px">
-      </colgroup>
-      <thead>
+      </colgroup><thead>
         <tr>
           <th>参数名</th>
           <th>输入/输出</th>
@@ -572,11 +558,11 @@ int main(int argc, char **argv)
     long long outputShapeSize = GetShapeSize(outputShape);
     long long topkIndicesShapeSize = GetShapeSize(topkIndicesShape);
 
-    std::vector<int16_t> queryHostData(queryShapeSize, 1);
-    std::vector<int16_t> keyHostData(keyShapeSize, 1);
-    std::vector<int16_t> valueHostData(valueShapeSize, 1);
+    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
+    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
+    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> blockTableOptionalHostData(blockTableOptionalShapeSize, 0);
-    std::vector<int16_t> outputHostData(outputShapeSize, 1);
+    std::vector<op::fp16_t> outputHostData(outputShapeSize, 1);
     
     std::vector<int32_t> topkIndicesHostData;
     for (int b = 0; b < batch; ++b) {
@@ -597,7 +583,7 @@ int main(int argc, char **argv)
     int64_t sparseMod = 0;
     int64_t numHeads= static_cast<int64_t>(n2 * g);
     std::string sLayerOut = "BSND";
-    char layOut[sLayerOut.length()];
+    char layOut[sLayerOut.length()+1];
     std::strcpy(layOut, sLayerOut.c_str());
 
     void *queryDeviceAddr = nullptr;

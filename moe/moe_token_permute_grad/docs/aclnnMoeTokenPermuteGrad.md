@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
-
 ## 接口说明
 
 - **算子功能**：[aclnnMoeTokenPermute](../../moe_token_permute/docs/aclnnMoeTokenPermute.md)的反向传播计算。
@@ -41,7 +40,7 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
     const aclTensor *sortedIndices,
     int64_t          numTopk,
     bool             paddedMode,
-    const aclTensor *out,
+    aclTensor       *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```

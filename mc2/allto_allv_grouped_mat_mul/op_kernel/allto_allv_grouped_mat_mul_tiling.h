@@ -19,7 +19,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "mc2_templates/common/a2av_common_tiling.h"
 
-constexpr uint32_t MAX_EXPERT_SIZE = 256U;
+constexpr uint32_t MAX_EXPERT_SIZE = 384U;
 
 struct AlltoAllvGmmCommonTilingInfo {
     uint64_t BSK;

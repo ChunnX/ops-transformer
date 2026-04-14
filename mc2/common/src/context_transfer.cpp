@@ -31,7 +31,7 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMRNCtx(const gert::Tiling
     mmrCtxInfo.reduceOp = context->GetAttrs()->GetAttrPointer<char>(index++);
     mmrCtxInfo.isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     mmrCtxInfo.isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);
-    mmrCtxInfo.commTurn = *context->GetAttrs()->GetAttrPointer<int>(index++);
+    mmrCtxInfo.commTurn = *context->GetAttrs()->GetAttrPointer<int64_t>(index++);
     if (context->GetAttrs()->GetAttrNum() > index) {
         mmrCtxInfo.antiquantGroupSizePtr = context->GetAttrs()->GetAttrPointer<int64_t>(index++);
     }
@@ -192,7 +192,7 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMMRCtx(const gert::Tiling
     mmrCtxInfo.reduceOp = context->GetAttrs()->GetAttrPointer<char>(index++);
     mmrCtxInfo.isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     mmrCtxInfo.isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);
-    mmrCtxInfo.commTurn = *context->GetAttrs()->GetAttrPointer<int>(index++);
+    mmrCtxInfo.commTurn = *context->GetAttrs()->GetAttrPointer<int64_t>(index++);
     if (context->GetAttrs()->GetAttrNum() > index) {
         mmrCtxInfo.antiquantGroupSizePtr = context->GetAttrs()->GetAttrPointer<int64_t>(index++);
         mmrCtxInfo.groupSizePtr = context->GetAttrs()->GetAttrPointer<int64_t>(index++);

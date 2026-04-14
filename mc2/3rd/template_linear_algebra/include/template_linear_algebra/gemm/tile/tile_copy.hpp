@@ -12,8 +12,6 @@
 #define CATLASS_GEMM_TILE_TILE_COPY_HPP
 
 #include "../../catlass.hpp"
-#include "../../detail/tag_to_layout.hpp"
-#include "../../../tla/tensor.hpp"
 namespace Catlass::Gemm::Tile {
 
 template <
@@ -46,8 +44,6 @@ struct TileCopyTlaExt {
 #include "copy_l1_to_l0a.hpp"
 #include "copy_l1_to_l0b.hpp"
 #include "copy_l1_to_bt.hpp"
-#include "copy_gm_to_ub.hpp"
-#include "copy_ub_to_gm.hpp"
 #include "../helper.hpp"
 
 
@@ -91,109 +87,6 @@ struct TileCopy {
             typename BiasTypeSelector::L0BiasType>>;
 };
 
-template <
-    /// Tag indicating architecture
-    class ArchTag,
-    class TensorA,
-    class LayoutTagA,
-    class TensorB,
-    class LayoutTagB,
-    class TensorC,
-    class LayoutTagC,
-    class TensorBias = void,
-    class LayoutTagBias = void
->
-struct PackedTileCopyTla {
-    using ElementA = typename TensorA::Element;
-    using ElementB = typename TensorB::Element;
-    using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
-
-    using LayoutL1A = detail::TagToLayout_t<ElementA,
-        typename helper::L1ATypeSelector<Gemm::GemmType<ElementA, LayoutTagA>>::L1AType::Layout>;
-    using LayoutL1B = detail::TagToLayout_t<ElementB,
-        typename helper::L1BTypeSelector<Gemm::GemmType<ElementB, LayoutTagB>>::L1BType::Layout>;
-    using LayoutL0A = detail::TagToLayout_t<ElementA, layout::zZ>;
-    using LayoutL0B = detail::TagToLayout_t<ElementB, layout::nZ>;
-    using LayoutL0C = typename detail::LayoutL0C;
-
-    using TensorL1A = tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL1A, AscendC::TPosition::A1>;
-    using TensorL1B = tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL1B, AscendC::TPosition::A1>;
-    using TensorL0A = tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL0A, AscendC::TPosition::A2>;
-    using TensorL0B = tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL0B, AscendC::TPosition::B2>;
-    using TensorL0C = tla::Tensor<AscendC::LocalTensor<ElementAccumulator>, LayoutL0C, AscendC::TPosition::CO1>;
-
-    using L1AAlignHelper = Gemm::helper::L1AlignHelper<ElementA, LayoutTagA>;
-    using L1BAlignHelper = Gemm::helper::L1AlignHelper<ElementB, LayoutTagB>;
-
-    using CopyGmToL1A = Gemm::Tile::TileCopyTla<ArchTag, TensorA, TensorL1A>;
-    using CopyGmToL1B = Gemm::Tile::TileCopyTla<ArchTag, TensorB, TensorL1B>;
-    using CopyL1ToL0A = Gemm::Tile::TileCopyTla<ArchTag, TensorL1A, TensorL0A>;
-    using CopyL1ToL0B = Gemm::Tile::TileCopyTla<ArchTag, TensorL1B, TensorL0B>;
-    using CopyL0CToGm = Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC>;
-};
-
-template <
-    /// Tag indicating architecture
-    class ArchTag,
-    class TensorA,
-    class LayoutTagA,
-    class TensorB,
-    class LayoutTagB,
-    class TensorC,
-    class LayoutTagC,
-    class TensorBias = void,
-    class LayoutTagBias = void,
-    bool IS_PADDING_A = false,
-    bool IS_PADDING_B = false
->
-struct PaddingPackedTileCopyTla {
-    static_assert(std::is_same_v<LayoutTagA, layout::RowMajor> || std::is_same_v<LayoutTagA, layout::ColumnMajor>,
-        "Unsupported layout, only can be RowMajor and ColumnMajor");
-    static_assert(std::is_same_v<LayoutTagB, layout::RowMajor> || std::is_same_v<LayoutTagB, layout::ColumnMajor>,
-        "Unsupported layout, only can be RowMajor and ColumnMajor");
-    using ElementA = typename TensorA::Element;
-    using ElementB = typename TensorB::Element;
-    using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
-
-    using LayoutTagL1A = typename helper::L1ATypeSelector<Gemm::GemmType<ElementA, LayoutTagA>>::L1AType::Layout;
-    using LayoutTagL1B = typename helper::L1BTypeSelector<Gemm::GemmType<ElementB, LayoutTagB>>::L1BType::Layout;
-    using LayoutL1A = detail::TagToLayout_t<ElementA, LayoutTagL1A>;
-    using LayoutL1B = detail::TagToLayout_t<ElementB, LayoutTagL1B>;
-    using LayoutL0A = detail::TagToLayout_t<ElementA, layout::zZ>;
-    using LayoutL0B = detail::TagToLayout_t<ElementB, layout::nZ>;
-    using LayoutL0C = typename detail::LayoutL0C;
-
-    using TensorL1A = tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL1A, AscendC::TPosition::A1>;
-    using TensorL1B = tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL1B, AscendC::TPosition::A1>;
-    using TensorL0A = tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL0A, AscendC::TPosition::A2>;
-    using TensorL0B = tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL0B, AscendC::TPosition::B2>;
-    using TensorL0C = tla::Tensor<AscendC::LocalTensor<ElementAccumulator>, LayoutL0C, AscendC::TPosition::CO1>;
-
-    using L1AAlignHelper = Gemm::helper::L1AlignHelper<ElementA, LayoutTagA>;
-    using L1BAlignHelper = Gemm::helper::L1AlignHelper<ElementB, LayoutTagB>;
-
-    using LayoutPaddingTagA = std::conditional_t<std::is_same_v<LayoutTagA, layout::RowMajor>,
-        layout::PaddingRowMajor, layout::PaddingColumnMajor>;
-    using LayoutPaddingTagB = std::conditional_t<std::is_same_v<LayoutTagB, layout::RowMajor>,
-        layout::PaddingRowMajor, layout::PaddingColumnMajor>;
-
-    using CopyGmToL1A = std::conditional_t<
-        IS_PADDING_A,
-        Gemm::Tile::TileCopyTlaExt<ArchTag, TensorA, TensorL1A, LayoutPaddingTagA, LayoutTagL1A>,
-        Gemm::Tile::TileCopyTlaExt<ArchTag, TensorA, TensorL1A, LayoutTagA, LayoutTagL1A>
-    >;
-    using CopyGmToL1B = std::conditional_t<
-        IS_PADDING_B,
-        Gemm::Tile::TileCopyTlaExt<ArchTag, TensorB, TensorL1B, LayoutPaddingTagB, LayoutTagL1B>,
-        Gemm::Tile::TileCopyTlaExt<ArchTag, TensorB, TensorL1B, LayoutTagB, LayoutTagL1B>
-    >;
-
-    using CopyL1ToL0A = Gemm::Tile::TileCopyTla<ArchTag, TensorL1A, TensorL0A>;
-    using CopyL1ToL0B = Gemm::Tile::TileCopyTla<ArchTag, TensorL1B, TensorL0B>;
-    using CopyL0CToGm = Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC>;
-};
 ///////////////////////////////////
 /// new add 
 template <

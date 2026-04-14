@@ -34,8 +34,6 @@
 
     其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个n\*d的矩阵。
 
-
-
 ## 函数原型
 
 算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnPromptFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPromptFlashAttention”接口执行计算。
@@ -182,7 +180,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>输入</td>
     <td>表示attention需要和前几个Token计算关联。</td>
     <td><ul><li>不特意指定时建议传入2147483647。</li></ul>
-      	<ul><li>支持负数。</li></ul></td>
+       <ul><li>支持负数。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -192,8 +190,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>nextTokens</td>
     <td>输入</td>
     <td>表示attention需要和后几个Token计算关联。</td>
-    <td><ul><li>不特意指定时建议传入0。</li></ul>
-      	<ul><li>支持负数。</li></ul></td>
+    <td><ul><li>不特意指定时建议传入0。</li><li>支持负数。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -205,7 +202,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>标识输入query、key、value的数据排布格式。</td>
     <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
         <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-    <td>CHAR</td>
+    <td>STRING</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -254,12 +251,11 @@ aclnnStatus aclnnPromptFlashAttention(
   </tbody></table>
   </div>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
-  第一段接口完成入参校验，若出现以下错误码，则对应原因为：
+   第一段接口会完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
   <col style="width: 302px">
@@ -332,9 +328,9 @@ aclnnStatus aclnnPromptFlashAttention(
     </table>
     </div>
     
--   **返回值**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -588,7 +584,7 @@ int main() {
   int64_t preTokens = 65535;
   int64_t nextTokens = 65535;
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()];
+  char layerOut[sLayerOut.length()+1];
   strcpy(layerOut, sLayerOut.c_str());
   // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;

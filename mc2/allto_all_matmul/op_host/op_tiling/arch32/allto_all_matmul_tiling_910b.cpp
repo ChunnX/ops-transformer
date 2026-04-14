@@ -601,7 +601,7 @@ static std::map<int, std::vector<std::vector<int>>> g_alltoAllMatmulNPU910BEight
 bool AlltoAllMatmulTiling910b::IsCapable()
 {
     fe::PlatFormInfos *platformInfoPtr = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(opName_, "fail to get platfoem info"), return false);
+    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(opName_, "fail to get platform info"), return false);
     fe::PlatFormInfos &platformInfo = *platformInfoPtr;
     std::string socVersionStr;
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersionStr);
@@ -1244,7 +1244,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
  */
 uint64_t AlltoAllMatmulTiling910b::GetTilingKey() const
 {
-    uint64_t tilingKey = GET_TPL_TILING_KEY(hasBias, x2Transpose, quantType, biasDtype_);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(hasBias, x2Transpose, quantType, biasDtype_, SOC_ASCEND910B);
     OP_LOGD(opName_, "TilingKey is [%lu] in AllToAllMatmul.", tilingKey);
     return tilingKey;
 }
