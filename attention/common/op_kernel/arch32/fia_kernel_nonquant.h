@@ -34,6 +34,7 @@
 #include "fia_block_cube_nonquant_gqa.h"
 #include "fia_block_vec_nonquant.h"
 #include "fia_block_vec_flashdecode.h"
+#include "../const_def.h"
 
 using namespace matmul;
 using namespace AttentionCommon;
@@ -263,7 +264,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 
     constInfo.headDim = tilingData->baseParams.headDim;
     constInfo.headDimRope = tilingData->baseParams.headDimRope;
-    constInfo.headDimAlign = Align(constInfo.headDim, (uint64_t)fa_base_vector::BYTE_BLOCK);
+    constInfo.headDimAlign = Align(constInfo.headDim, (uint64_t)AttentionCommon::BYTE_BLOCK);
 
     constInfo.mmResUbSize = tilingData->workspaceParams.mm1ResSize;
     constInfo.bmm2ResUbSize = tilingData->workspaceParams.mm2ResSize;
@@ -618,7 +619,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         info.actualSingleProcessSInnerSize = info.actS2Size - s2Cur * constInfo.s2BaseSize;
     }
     info.actualSingleProcessSInnerSizeAlign =
-        Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)fa_base_vector::BYTE_BLOCK);
+        Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)AttentionCommon::BYTE_BLOCK);
 
     if (constInfo.isQHasLeftPadding) {
         info.qPaddingBeginOffset = constInfo.qSeqSize - actSeqLensQ - constInfo.qLeftPaddingSize;
