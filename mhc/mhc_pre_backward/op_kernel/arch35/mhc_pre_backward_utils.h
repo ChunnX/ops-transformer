@@ -33,6 +33,9 @@ __aicore__ auto CeilAlign(T a, T b) -> T
 template <typename T>
 __aicore__ auto CeilDiv(T a, T b) -> T
 {
+    if (b == 0) {
+        return 0;
+    }
     return (a + b - 1) / b;
 }
 
@@ -59,7 +62,7 @@ using namespace AscendC;
 
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
-constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 16KB
+constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
 constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024; // 151KB
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 1024;

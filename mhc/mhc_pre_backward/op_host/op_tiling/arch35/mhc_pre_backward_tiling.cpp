@@ -51,9 +51,7 @@ const constexpr float DEFAULT_HC_EPS = 1e-6;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 3;
-const constexpr uint32_t XR_SGRAD_BUFFER_FACTOR = 1024;
-const constexpr uint32_t XR_S_BUFFER_FACTOR = 128;
-const constexpr uint32_t XR_S_BUFFER_CORE_FACTOR = 2;
+const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
 const constexpr uint32_t WORKSPACE_ALIGN_SIZE = 32;
 const constexpr uint64_t SYSTEM_WORKSPACE_SIZE = 40 * 1024 * 1024;
@@ -285,8 +283,8 @@ uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint
                           totalLength;                       // inv_rms_grad
 
     uint64_t v2Elements =
-        XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs_grad_mm
-        XR_SGRAD_BUFFER_FACTOR * XR_S_BUFFER_FACTOR * coreNum * XR_S_BUFFER_CORE_FACTOR + // x_rs
+        C0_SET_SHAPE_M * C0_SET_SHAPE_N * coreNum * BUFFER_NUM + // x_rs_grad_mm
+        C0_SET_SHAPE_M * C0_SET_SHAPE_N * coreNum * BUFFER_NUM + // x_rs
         EXTRA_BUFFER_SIZE;
     uint64_t totalElements =
         ((v1Elements + WORKSPACE_ALIGN_SIZE - 1) / WORKSPACE_ALIGN_SIZE * WORKSPACE_ALIGN_SIZE) + v2Elements;
