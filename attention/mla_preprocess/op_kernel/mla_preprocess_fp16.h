@@ -265,7 +265,7 @@ public:
         headDim = ropeConcatParams.headDim;
         headNumQ = ropeConcatParams.headNumQ;
         nopeDim_ = static_cast<uint32_t>(ropeConcatParams.nopeDim);
-        headDimMm2_ = static_cast<uint32_t>(ropeConcatParams.headDimMm2);
+        headDimMm2_ = nopeDim_ + ROPE_SPLIT_SIZE_ONE;
         rotaryCoeff = ropeConcatParams.rotaryCoeff;
         ntokens = ropeConcatParams.ntokens;
         realCore = ropeConcatParams.realCore;
@@ -2158,9 +2158,9 @@ public:
         this->hiddten_state = mlaParams_.hiddtenState;
         this->q_down_out_flag = mlaParams_.qDownOutFlag;
         this->mlaParams = mlaParams_;
-        this->scale_factor_ = static_cast<float>(mlaParams_.qLoraRank);
-        this->split_size_two_ = static_cast<uint32_t>(mlaParams_.qLoraRank);
-        this->mm1_out_size_ = static_cast<uint32_t>(mlaParams_.hiddenStateMm);
+        this->scale_factor_ = static_cast<float>(mlaParams_.mm2.k);
+        this->split_size_two_ = mlaParams_.mm2.k;
+        this->mm1_out_size_ = mlaParams_.rmsNumCol2;
     }
 
     __aicore__ inline void Init(GM_ADDR hiddenStateGm, GM_ADDR gamma1Gm, GM_ADDR beta1Gm, GM_ADDR quantScale1Gm,

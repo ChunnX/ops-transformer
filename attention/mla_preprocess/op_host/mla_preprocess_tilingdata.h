@@ -96,10 +96,7 @@ TILING_DATA_FIELD_DEF(float, epsilon);
 TILING_DATA_FIELD_DEF(bool, doRmsNorm);
 TILING_DATA_FIELD_DEF(bool, qDownOutFlag);
 // generalize q_lora_rank and nope_dim 
-TILING_DATA_FIELD_DEF(int64_t, qLoraRank);        // q_lora_rank (支持范围: 0-4096) 
 TILING_DATA_FIELD_DEF(int64_t, nopeDim);          // nope维度 (支持范围: 0-256) 
-TILING_DATA_FIELD_DEF(int64_t, hiddenStateMm);   // hiddenStateMm = qLoraRank + 576 
-TILING_DATA_FIELD_DEF(int64_t, headDimMm2);       // mm2输出每个head的维度 = nopeDim + ropeDim(64)
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MlaPreprocess, MlaTilingData)
 REGISTER_TILING_DATA_CLASS(MlaPreprocessV2, MlaTilingData)
