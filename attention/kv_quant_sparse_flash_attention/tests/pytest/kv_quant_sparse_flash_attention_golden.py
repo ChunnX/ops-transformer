@@ -416,12 +416,12 @@ def _gather_kv(k_bnsd, v_bnsd, sparse_indices, sparse_blocksize, sparse_blockcou
 def _dequantize_kv(k_uint8_np, v_uint8_np, antiquant_scale_np, tile_size, kv_dtype):
     """将 float8 格式的 K/V（以 uint8 字节存储）按 tile 粒度反量化到 float32。
 
-    k_uint8_np:       (kv_dim0, S, N, D) uint8 字节
-    v_uint8_np:       (kv_dim0, S, N, D) uint8 字节
-    antiquant_scale:  (kv_dim0, S, N, num_tiles) float32
+    k_uint8_np / v_uint8_np:  (..., D) uint8 字节，前缀维度任意（支持 3D TND 和 4D BSND）
+    antiquant_scale_np:       (..., num_tiles) float32
     返回: k_fp32, v_fp32，形状同输入但 dtype=float32
     """
-    kv_dim0, S, N, D = k_uint8_np.shape
+    D = k_uint8_np.shape[-1]
+    prefix_shape = k_uint8_np.shape[:-1]
     num_tiles = D // tile_size
 
     if kv_dtype == "hifloat8":
@@ -435,9 +435,9 @@ def _dequantize_kv(k_uint8_np, v_uint8_np, antiquant_scale_np, tile_size, kv_dty
         k_raw = k_t.numpy()
         v_raw = v_t.numpy()
 
-    # antiquant_scale: (kv_dim0, S, N, num_tiles) -> 广播到 (kv_dim0, S, N, D)
-    scale = antiquant_scale_np.reshape(kv_dim0, S, N, num_tiles, 1)
-    scale = np.broadcast_to(scale, (kv_dim0, S, N, num_tiles, tile_size)).reshape(kv_dim0, S, N, D)
+    # antiquant_scale: (..., num_tiles) -> 广播到 (..., D)
+    scale = antiquant_scale_np.reshape(*prefix_shape, num_tiles, 1)
+    scale = np.broadcast_to(scale, (*prefix_shape, num_tiles, tile_size)).reshape(*prefix_shape, D)
 
     return k_raw * scale, v_raw * scale
 
@@ -648,7 +648,7 @@ def _build_fa_param(inp):
 
     # 将 key_rope 拼回 k（与 preprocessing 逻辑一致）
     # k_full: (kv_dim0, S2_blk, N2, D_base + rope_head_dim)
-    k_full = np.concatenate((k_fp32, key_rope_np.astype(np.float32)), axis=3)
+    k_full = np.concatenate((k_fp32, key_rope_np.astype(np.float32)), axis=-1)
 
     # ---------- PA_BSND: 从 block cache 重建 BSND ----------
     if layout_kv == "PA_BSND":
