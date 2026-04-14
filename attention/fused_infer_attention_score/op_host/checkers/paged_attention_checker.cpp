@@ -106,12 +106,12 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
         OP_LOGE(fiaInfo.opName,
             "When page attention enable, system prefix is not supported."),
         return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, the head dim of query and key should be equal."),
-        return ge::GRAPH_FAILED);
-
+    if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF(fiaInfo.isQKVDDifferent,
+            OP_LOGE(fiaInfo.opName,
+                "When page attention enable, the head dim of query and key should be equal."),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
