@@ -48,6 +48,29 @@ enum class QuantModeType : int64_t {
     DYN_PERTOKEN_QUANT = 7
 };
 
+// 带场景标识的校验宏，用于区分不同量化场景下的校验错误
+#define OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(tensor, expectedDimNum, scenario, retExpr) \
+  if (tensor->GetViewShape().GetDimNum() != expectedDimNum) { \
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In [%s] scenario, dimension check failed: Expected %zu dimension input, but got %s with sizes %s.", \
+            scenario, static_cast<size_t>(expectedDimNum), #tensor, op::ToString(tensor->GetViewShape()).GetString()); \
+    retExpr; \
+  }
+
+#define OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(tensor, supportList, scenario, retExpr) \
+  if (!CheckType(tensor->GetDataType(), supportList)) { \
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In [%s] scenario, dtype check failed: Tensor %s not implemented for %s, should be in dtype support list %s.", \
+            scenario, #tensor, op::ToString(tensor->GetDataType()).GetString(), op::ToString(supportList).GetString()); \
+    retExpr; \
+  }
+
+#define OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO(tensor1, tensor2, scenario, retExpr) \
+  if (tensor1->GetDataType() != tensor2->GetDataType()) { \
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In [%s] scenario, dtype consistency check failed: Expected both tensors to have same dtype, but found %s %s and %s %s.", \
+            scenario, #tensor1, op::ToString(tensor1->GetDataType()).GetString(), \
+            #tensor2, op::ToString(tensor2->GetDataType()).GetString()); \
+    retExpr; \
+  }
+
 // 校验AlltoAll和Permute数据交换的方向参数, 在alltoallmatmul中可以为空和{-1,-2}, 在matmulalltoall中可以为空和{-2,-1}, 不允许为其他值
 bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional, bool isMatmulAlltoAll);
 
