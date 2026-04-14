@@ -30,11 +30,12 @@ aclnnStatus aclnnKvQuantSparseAttnSharedkvMetadataGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-aclnnStatus ParamsCheckQsasN128(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
-                                const aclTensor* cuSeqLensOriKvOptional, const aclTensor* sequsedKvOptional, 
-                                const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
-                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
-                                int64_t maxSeqlenQOptional, char* layoutQOptional, char* layoutKvOptional);
+aclnnStatus ParamsCheckQsasN128(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
+                                const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, 
+                                const aclTensor* sequsedKvOptional, const aclTensor* oriTopkLengthOptional, 
+                                const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
+                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional, char* layoutQOptional, 
+                                char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamQsasN128(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
@@ -45,10 +46,10 @@ aclnnStatus CheckExistenceQsas(char* layoutQOptional, char* layoutKvOptional, co
                                const aclTensor* sequsedKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQsas(const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
-                                 const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                                 char* layoutQOptional, const aclTensor* sequsedKvOptional, 
-                                 const aclTensor* cuSeqLensOriKvOptional, char* layoutKvOptional, 
+aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
+                                 const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional,  
+                                 const aclTensor* sequsedKvOptional, const aclTensor* oriTopkLengthOptional, 
+                                 const aclTensor* cmpTopkLengthOptional, char* layoutQOptional, char* layoutKvOptional, 
                                  int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
@@ -56,11 +57,11 @@ aclnnStatus CheckFeatureQsas();
 
 __attribute__((visibility("default"))) 
 aclnnStatus ParamsCheckQsasN64(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, 
-                               const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
-                               int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, 
-                               int64_t maxSeqlenQOptional, int64_t oriMaskModeOptional, int64_t oriWinLeftOptional, 
-                               char* layoutQOptional, char* layoutKvOptional);
+                               const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, 
+                               const aclTensor* sequsedKvOptional, const aclTensor* oriTopkLengthOptional, 
+                               const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
+                               int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t oriMaskModeOptional, 
+                               int64_t oriWinLeftOptional, char* layoutQOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamQsasN64(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
