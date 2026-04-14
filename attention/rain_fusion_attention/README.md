@@ -188,12 +188,6 @@ KV方向: ceil(512/64)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 bash build.sh --soc=Ascend910B3
 ```
 
-## 相关文档
-
-- [CATLASS模板库文档](../../catlass/README.md)
-- [32_sparse_attention_infer原始实现](../../catlass/examples/32_sparse_attention_infer/)
-- [Fused Infer Attention Score算子](../fused_infer_attention_score/)
-
 ## 版本历史
 
 - v1.0.0: 初始版本,从catlass 32_sparse_attention_infer迁移
