@@ -17,6 +17,9 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+# opname_${soc}_arch_list 
+set(incre_flash_attention_mc62cm12a_arch_list arch38 CACHE INTERNAL "kernel arch for incre_flash_attention")
+
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(

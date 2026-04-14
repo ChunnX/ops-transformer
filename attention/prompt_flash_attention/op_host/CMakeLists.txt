@@ -33,6 +33,8 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 endif()
 
+set(prompt_flash_attention_mc62cm12a_arch_list arch38 CACHE INTERNAL "kernel arch for prompt_flash_attention")
+
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         set(prompt_flash_attention_apt_depends attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
