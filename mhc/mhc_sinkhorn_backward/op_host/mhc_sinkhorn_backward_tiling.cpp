@@ -47,6 +47,7 @@ constexpr int64_t SIMD_RESERVED_SIZE = static_cast<uint64_t>(8) * 1024;
 constexpr int64_t ASCENDC_TOOLS_WORKSPACE = 0;
 constexpr int64_t MASK_BUFFER = 64;
 constexpr int64_t MAX_BUFFER = 256;
+constexpr int64_t VL_SIZE = 256;
 
 
 ge::graphStatus MhcSinkhornBackwardTiling::GetShapeAttrsInfo()
@@ -266,38 +267,45 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcSinkhornBackwardTiling::SplitCores()
+int64_t MhcSinkhornBackwardTiling::CalOccupySize(int64_t ubFactor, int64_t xDtypeSize)
 {
-    // 为了极致性能优化，UB分配以及tiling分核参数需要和正向一致
     // UB分配计算：[(2tnn + 2ntalign_n + 2talign_n) * 4B] + 256 + 64 < 可用UB大小
-    // gradInQueue(1): t n n
+    // gradInQueue(2): t n n
     // normInQueue(4): 2 n t align_n
     // sumInQueue(4): 2 t align_n
-    // gradOutQueue(1): t n n
+    // gradOutQueue(2): t n n
     // maxBuff: 256B
     // maskBuff: 64B
 
-    int64_t ubAvailableSize = ubSize_ - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER;
-    int64_t corePerLoopMaxTSize = ubAvailableSize / (inputDTypeSize_ * (2 * nSize_ * nSize_ + 2 * nSize_ * nAlignSize_ + 2 * nAlignSize_));
+    int64_t ubBlock = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
+    int64_t dataBlockNum = Ops::Base::FloorDiv(ubBlock, xDtypeSize);
+    // 分配UB
+    int64_t inQueSize = Ops::Base::CeilAlign(ubFactor * nSize_ * nSize_, dataBlockNum);
+    int64_t outQueSize = Ops::Base::CeilAlign(ubFactor * nSize_ * nSize_, dataBlockNum);
+    int64_t normOutSize = Ops::Base::CeilAlign(2 * ubFactor * nSize_ * nAlignSize_, dataBlockNum);
+    int64_t sumOutSize = Ops::Base::CeilAlign(2 * ubFactor * nAlignSize_, dataBlockNum);
+    int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumOutSize) * xDtypeSize;
+    return occupySize; 
+}
 
-    // 核间切分：在 T 维度上进行核间切分
-    int64_t aivNum = static_cast<int64_t>(totalCoreNum_);
-    // 初始按所有核平均分配
-    coreTSize_ = Ops::Base::CeilDiv(totalLength_, aivNum);
-    // 限核策略：当 coreTSize_ 较小时（< 32），通过提高 coreTSize_ 下限来减少使用的核数
-    if (coreTSize_ < MIN_PER_CORE_ELEMENTS && totalLength_ >= MIN_PER_CORE_ELEMENTS) {
-        coreTSize_ = MIN_PER_CORE_ELEMENTS;
-    }
-    needCoreNum_ = Ops::Base::CeilDiv(totalLength_, coreTSize_);
+ge::graphStatus MhcSinkhornBackwardTiling::SplitCores()
+{
+    // 为极致性能优化，tiling分核参数和正向对齐取最小值
+    MhcSinkhornSplitCoreInfo backwardInfo;
+    MhcSinkhornSplitCoreInfo forwardInfo;
+    auto splitInfo = BaseSplitCores(ubSize_, totalCoreNum_, totalLength_, inputDTypeSize_, backwardInfo, forwardInfo);
+
+    needCoreNum_ = splitInfo.usedCoreNum;
     // 核内切分：普通核
-    normCoreTLoops_ = Ops::Base::CeilDiv(coreTSize_, corePerLoopMaxTSize);
-    normCorePerLoopTSize_ = coreTSize_ < corePerLoopMaxTSize ? coreTSize_ : corePerLoopMaxTSize;
-    normCoreLastLoopTSize_ = coreTSize_ - (normCoreTLoops_ - 1) * normCorePerLoopTSize_;
+    coreTSize_ = splitInfo.tNormCore;
+    normCoreTLoops_ = splitInfo.tNormCoreLoop;
+    normCorePerLoopTSize_ = splitInfo.tUbFactor;
+    normCoreLastLoopTSize_ = splitInfo.tUbFactorTail;
     // 核内切分：尾核
-    tailCoreTSize_ = totalLength_ - coreTSize_ * (needCoreNum_ - 1);
-    tailCoreLoops_ = Ops::Base::CeilDiv(tailCoreTSize_, corePerLoopMaxTSize);
-    tailCorePerLoopTSize_ = tailCoreTSize_ < corePerLoopMaxTSize ? tailCoreTSize_ : corePerLoopMaxTSize;
-    tailCoreLastLoopTSize_ = tailCoreTSize_ - (tailCoreLoops_ - 1) * tailCorePerLoopTSize_;
+    tailCoreTSize_ = splitInfo.tTailCore;
+    tailCoreLoops_ = splitInfo.tTailCoreLoop;
+    tailCorePerLoopTSize_ = splitInfo.tUbFactor;
+    tailCoreLastLoopTSize_ = splitInfo.tUbTailTail;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -410,7 +418,82 @@ static ge::graphStatus TilingPrepareForMhcSinkhornBackward([[maybe_unused]] gert
     return ge::GRAPH_SUCCESS;
 }
 
+
+MhcSinkhornSplitCoreInfo MhcSinkhornBaseTiling::BaseSplitCores(int64_t ubSize, int64_t totalCoreNum, int64_t tSize, int64_t xDtypeSize, 
+                                       MhcSinkhornSplitCoreInfo &backwardInfo, MhcSinkhornSplitCoreInfo &forwardInfo)
+{
+    BackwardSplitCore(ubSize, totalCoreNum, tSize, xDtypeSize, backwardInfo);
+    ForwardSplitCore(ubSize, totalCoreNum, tSize, xDtypeSize, forwardInfo);
+    return forwardInfo.tUbFactor <= backwardInfo.tUbFactor ? forwardInfo : backwardInfo;    
+}
+
+void MhcSinkhornBaseTiling::BackwardSplitCore(int64_t ubSize, int64_t totalCoreNum, int64_t tSize, int64_t xDtypeSize, 
+                                              MhcSinkhornSplitCoreInfo &splitInfo)
+{
+    splitInfo.tNormCore = Ops::Base::CeilDiv(tSize, totalCoreNum);
+    splitInfo.usedCoreNum = Ops::Base::CeilDiv(tSize, splitInfo.tNormCore);
+    splitInfo.tTailCore = tSize - splitInfo.tNormCore * (splitInfo.usedCoreNum - 1);
+
+    int64_t availableUbSize = ubSize - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER;
+    // 所有buffer都开启double buffer
+    int64_t singleUbSize = availableUbSize / 2;
+    int64_t occupySize = CalOccupySize(splitInfo.tNormCore, xDtypeSize);
+
+    if (occupySize * xDtypeSize <= availableUbSize) {
+        splitInfo.tUbFactor = splitInfo.tNormCore;
+    } else {
+        int64_t onePiceSize = CalOccupySize(1, xDtypeSize);
+        // TODO: 修改成搜索的方法
+        splitInfo.tUbFactor = availableUbSize / onePiceSize;
+    }
+    // kernel约束: tUbFactor向下跟8对齐, 8=nAlignSize
+    int64_t tVlFactor = Ops::Base::FloorDiv(VL_SIZE, (8 * xDtypeSize));
+    splitInfo.tUbFactor = Ops::Base::FloorDiv(splitInfo.tUbFactor, tVlFactor);
+
+    splitInfo.tNormCoreLoop = Ops::Base::CeilDiv(splitInfo.tNormCore, splitInfo.tUbFactor);
+    splitInfo.tTailCoreLoop = Ops::Base::CeilDiv(splitInfo.tTailCore, splitInfo.tUbFactor);
+
+    splitInfo.tUbFactorTail = splitInfo.tNormCore - (splitInfo.tNormCoreLoop - 1) * splitInfo.tUbFactor;
+    splitInfo.tUbTailTail = splitInfo.tTailCore - (splitInfo.tTailCoreLoop - 1) * splitInfo.tUbFactor;
+}
+
+void MhcSinkhornBaseTiling::ForwardSplitCore(int64_t ubSize, int64_t totalCoreNum, int64_t tSize, int64_t xDtypeSize, 
+                                             MhcSinkhornSplitCoreInfo &splitInfo)
+{
+    // TODO
+    splitInfo.tNormCore = Ops::Base::CeilDiv(tSize, totalCoreNum);
+    splitInfo.usedCoreNum = Ops::Base::CeilDiv(tSize, splitInfo.tNormCore);
+    splitInfo.tTailCore = tSize - splitInfo.tNormCore * (splitInfo.usedCoreNum - 1);
+
+    int64_t availableUbSize = ubSize - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER;
+    // 所有buffer都开启double buffer
+    int64_t singleUbSize = availableUbSize / 2;
+    int64_t occupySize = CalOccupySize(splitInfo.tNormCore, xDtypeSize);
+
+    if (occupySize * xDtypeSize <= availableUbSize) {
+        splitInfo.tUbFactor = splitInfo.tNormCore;
+    } else {
+        int64_t onePiceSize = CalOccupySize(1, xDtypeSize);
+        // TODO: 修改成搜索的方法
+        splitInfo.tUbFactor = availableUbSize / onePiceSize;
+    }
+    // kernel约束: tUbFactor向下跟8对齐, 8=nAlignSize
+    int64_t tVlFactor = Ops::Base::FloorDiv(VL_SIZE, (8 * xDtypeSize));
+    splitInfo.tUbFactor = Ops::Base::FloorDiv(splitInfo.tUbFactor, tVlFactor);
+    
+    splitInfo.tNormCoreLoop = Ops::Base::CeilDiv(splitInfo.tNormCore, splitInfo.tUbFactor);
+    splitInfo.tTailCoreLoop = Ops::Base::CeilDiv(splitInfo.tTailCore, splitInfo.tUbFactor);
+
+    splitInfo.tUbFactorTail = splitInfo.tNormCore - (splitInfo.tNormCoreLoop - 1) * splitInfo.tUbFactor;
+    splitInfo.tUbTailTail = splitInfo.tTailCore - (splitInfo.tTailCoreLoop - 1) * splitInfo.tUbFactor;
+}
+
+
+
 IMPL_OP_OPTILING(MhcSinkhornBackward)
     .Tiling(TilingForMhcSinkhornBackward)
     .TilingParse<MhcSinkhornBackwardCompileInfo>(TilingPrepareForMhcSinkhornBackward);
 } // namespace optiling
+
+
+
