@@ -29,18 +29,18 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnAllGatherAddGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAllGatherAdd”接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAllGatherAddGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAllGatherAdd”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAllGatherAddGetWorkspaceSize(
     const aclTensor *a,
     const aclTensor *b,
-    char *group,
-    int64_t rankSize,
+    char            *group,
+    int64_t         rankSize,
     const aclTensor *cOut,
     const aclTensor *gatherOutOut,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    uint64_t        *workspaceSize,
+    aclOpExecutor   **executor)
 ```
 
 ```cpp
@@ -78,27 +78,27 @@ aclnnStatus aclnnAllGatherMatmul(
     </tr></thead>
     <tbody>
     <tr>
-        <td>a</td>
+        <td>a (aclTensor*)</td>
         <td>输入</td>
         <td>计算公式中的a0或a1。</td>
-        <td>当前版本仅支持二维shape输入，且仅支持不转置场景</td>
+        <td>当前版本仅支持二维shape输入，且仅支持不转置场景。</td>
         <td>FLOAT16</td>
         <td>ND</td>
         <td>2</td>
         <td>×</td>
     </tr>
     <tr>
-        <td>b</td>
+        <td>b (aclTensor*)</td>
         <td>输入</td>
         <td>计算公式中的b。</td>
-        <td>当前版本仅支持二维shape输入，且仅支持不转置场景</td>
+        <td>当前版本仅支持二维shape输入，且仅支持不转置场景。</td>
         <td>FLOAT16</td>
         <td>ND</td>
         <td>2</td>
         <td>×</td>
     </tr>
     <tr>
-        <td>group</td>
+        <td>group (char*)</td>
         <td>输入</td>
         <td>通信域名称。</td>
         <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <td>-</td>
     </tr>
     <tr>
-        <td>rankSize</td>
+        <td>rankSize (int64_t)</td>
         <td>输入</td>
         <td>标识通信域内参与AllGather通信的npu卡数。</td>
         <td>当前版本仅支持输入2。</td>
@@ -118,7 +118,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <td>-</td>
     </tr>
     <tr>
-        <td>cOut</td>
+        <td>cOut (aclTensor*)</td>
         <td>输出</td>
         <td>AllGather通信与Add计算的结果，即计算公式中的c。</td>
         <td>与输入的数据类型保持一致。</td>
@@ -128,7 +128,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <td>×</td>
     </tr>
     <tr>
-        <td>gatherOutOut</td>
+        <td>gatherOutOut (aclTensor*)</td>
         <td>输出</td>
         <td>仅输出AllGather通信后的结果，即计算公式中的gatherOut。</td>
         <td>与输入的数据类型保持一致。</td>
@@ -138,7 +138,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <td>×</td>
     </tr>
     <tr>
-        <td>workspaceSize</td>
+        <td>workspaceSize (uint64_t*)</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
@@ -148,7 +148,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <td>-</td>
     </tr>
     <tr>
-        <td>executor</td>
+        <td>executor (aclOpExecutor**)</td>
         <td>输出</td>
         <td>返回op执行器，包含了算子计算流程。</td>
         <td>-</td>
