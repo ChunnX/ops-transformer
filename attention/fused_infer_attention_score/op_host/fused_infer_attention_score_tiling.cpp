@@ -1194,10 +1194,7 @@ ge::graphStatus CheckPseShiftDataType(gert::TilingContext *context)
         OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 0.1");
     }
     OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 0.2");
-    if (context->GetOptionalInputDesc(PSE_SHIFT_INDEX)->GetDataType() == nullptr){
-        OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 0.3");
-    }
-
+    
     if (context->GetOptionalInputShape(PSE_SHIFT_INDEX) == nullptr){
         OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftShape 0.4");
     }
