@@ -128,7 +128,22 @@ vector<int64_t> ParseDims(const string &value)
     SplitStr2Vec(trimmed, ":", dimTokens);
     vector<int64_t> dims;
     for (const auto &token : dimTokens) {
-        dims.emplace_back(stoll(Trim(token)));
+        string t = Trim(token);
+        if (t == "quantGroupNum") {
+            dims.emplace_back(4);
+        } else if (t.find('/') != string::npos) {
+            vector<string> divTokens;
+            SplitStr2Vec(t, "/", divTokens);
+            if (divTokens.size() == 2) {
+                int64_t lhs = stoll(Trim(divTokens[0]));
+                int64_t rhs = stoll(Trim(divTokens[1]));
+                dims.emplace_back(lhs / rhs);
+            } else {
+                dims.emplace_back(stoll(t));
+            }
+        } else {
+            dims.emplace_back(stoll(t));
+        }
     }
     return dims;
 }
