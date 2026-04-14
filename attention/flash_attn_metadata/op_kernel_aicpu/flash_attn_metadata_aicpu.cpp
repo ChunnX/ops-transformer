@@ -102,7 +102,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         }
     } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         auto cuSeqlensQ = (int32_t *)cuSeqlensQ_->GetData();
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        baseInfo.actualQuerySeqSize.resize(batchSize_ + 1, maxSeqlenQ_);
         for (uint32_t i = 0; i <= batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i];
         }
@@ -115,7 +115,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         }
     } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         auto cuSeqlensKv = (int32_t *)cuSeqlensKv_->GetData();
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        baseInfo.actualKvSeqSize.resize(batchSize_ + 1, maxSeqlenKv_);
         for (uint32_t i = 0; i <= batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i];
         }
@@ -128,43 +128,41 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    if (layoutQ_ == "TND" || layoutQ_ == "NTD") {
-        mBaseSize_ = NUM_512;
-    } else {
-        uint32_t sInnerSizeAlign_ = AlignUp(s2BaseSize_, 16U);
-        if (maxSeqlenQ_ <= 16) {
-            if (sInnerSizeAlign_ <= NUM_512) {
-                mBaseSize_ = NUM_512;
-            } else if (sInnerSizeAlign_ <= NUM_1024) {
-                mBaseSize_ = NUM_256;
-            } else if (sInnerSizeAlign_ <= NUM_2048) {
-                mBaseSize_ = NUM_128;
-            } else if (sInnerSizeAlign_ <= NUM_4096) {
-                mBaseSize_ = NUM_64;
-            } else { // sInnerSizeAlign_最大值为8192
-                mBaseSize_ = NUM_32;
-            }
-        } else {
-            mBaseSize_ = NUM_512;
+    bool isTransposeLayout = (layoutQ_ != layoutOut_ || layoutQ_ == "NTD");
+    bool pfaMergeFlag = !(baseInfo.attenMaskFlag || isTransposeLayout);
+    if (baseInfo.headDim <= NUM_128) {
+        bool checkQueryAndValueS = baseInfo.querySeqSize <= NUM_64 && baseInfo.kvSeqSize > NUM_128;
+        uint32_t sparseMode = baseInfo.sparseMode;
+        int32_t preTokens = baseInfo.preToken;
+        int32_t nextTokens = baseInfo.nextToken;
+        if (sparseMode == 0) {
+            preTokens = (preTokens > 0) ? 0 : preTokens;
+        } else if (sparseMode == 4) {
+            nextTokens = (nextTokens > 0) ? 0 : nextTokens;
         }
-    }
-    if (layoutQ_ == "TND" || layoutQ_ == "NTD") {
-        s2BaseSize_ = NUM_512;
-    } else {
-        if (maxSeqlenQ_ <= 16) {
-            s2BaseSize_ = NUM_8192; // 8192
-            uint32_t sInnerSize[3U] = {8192U, 4096U, 2048U};
-            uint32_t idx = std::min(groupSize_ / 5U, 2U);
-            s2BaseSize_ = sInnerSize[idx];
-        } else {
-            s2BaseSize_ = NUM_512;
+        bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
+        if (checkQueryAndValueS && checkSparseMode) {
+            mBaseSize_ = NUM_32;
+            s2BaseSize_ = NUM_256;
+        } else if (((baseInfo.layoutQuery == Layout::BSH) || (baseInfo.layoutQuery == Layout::BSND) ||
+                    (baseInfo.layoutQuery == Layout::TND)) &&
+                   pfaMergeFlag) {
+            mBaseSize_ = NUM_32;
+            s2BaseSize_ = NUM_256;
         }
-    }
-    if (maskMode_ == 2 || maskMode_ == 3 || maskMode_ == 4) {
-        s2BaseSize_ = std::min(static_cast<int64_t>(s2BaseSize_), NUM_1024); // attention mask压缩场景，基本块最大支持1024*1024
-    }
-    if (s2BaseSize_ > maxSeqlenKv_) {
-        s2BaseSize_ = maxSeqlenKv_;
+    } else if (baseInfo.headDim > NUM_128 && baseInfo.querySeqSize != 1) {
+        if (((baseInfo.layoutQuery == Layout::BSH) || (baseInfo.layoutQuery == Layout::BSND) ||
+                    (baseInfo.layoutQuery == Layout::TND)) &&
+                   pfaMergeFlag && baseInfo.headDim <= NUM_256) { // 256 : D size
+            mBaseSize_ = NUM_32;
+            s2BaseSize_ = NUM_256;
+        } else {
+            mBaseSize_ = NUM_64;
+            s2BaseSize_ = NUM_128;
+        }
+    } else if (baseInfo.querySeqSize == 1 && baseInfo.headDim > NUM_128) { // IFA VD > 128
+        mBaseSize_ = NUM_64;
+        s2BaseSize_ = NUM_128;
     }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
@@ -180,7 +178,6 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
 {
     uint32_t sectionNum = splitRes.sectionNum;
     detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
-    uint32_t* metadataPtr = static_cast<uint32_t*>(metaData_->GetData());
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         for (size_t i = 0; i < aicCoreNum_; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);

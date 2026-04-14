@@ -84,8 +84,8 @@ private:
 
     // SplitParams
     uint32_t groupSize_ = 0;
-    uint32_t mBaseSize_ = 0;
-    uint32_t s2BaseSize_ = 0;
+    uint32_t mBaseSize_ = NUM_64;
+    uint32_t s2BaseSize_ = NUM_128;
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;
