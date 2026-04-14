@@ -49,8 +49,8 @@ static constexpr size_t DIM_2 = 2;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
 
-static graphStatus CheckDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
-    const gert::Shape *gmmWeightShape, bool transGmmWeight)
+static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
+                                     const gert::Shape *gmmWeightShape)
 {
     auto result = ge::GRAPH_SUCCESS;
 
@@ -68,13 +68,13 @@ static graphStatus CheckDims(const gert::InferShapeContext *context, const gert:
 }
 
 static graphStatus CheckDimsOptional(const gert::InferShapeContext *context, const gert::Shape *mmXShape,
-    const gert::Shape *mmWeightShape, bool transMmWeight)
+                                     const gert::Shape *mmWeightShape)
 {
     auto result = ge::GRAPH_SUCCESS;
-    auto xDimNum = mmXShape->GetDimNum();
+    auto mmXDimNum = mmXShape->GetDimNum();
     auto mmWeightDimNum = mmWeightShape->GetDimNum();
-    if (xDimNum != DIM_NUM_2) {
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only x with dim 2 is supported.");
+    if (mmXDimNum != DIM_NUM_2) {
+        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only mmX with dim 2 is supported.");
         result = ge::GRAPH_FAILED;
     }
     if (mmWeightDimNum != DIM_NUM_2) {
@@ -177,14 +177,8 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmYShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSizePtr);
 
-    OPS_ERR_IF(CheckDims(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr) != ge::GRAPH_SUCCESS,
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDims failed."), return ge::GRAPH_FAILED);
-    if ((mmXShape != nullptr) && (mmWeightShape != nullptr)) {
-        OPS_CHECK_NULL_WITH_CONTEXT(context, transMmWeightPtr);
-        OPS_ERR_IF(CheckDimsOptional(context, mmXShape, mmWeightShape,
-            *transMmWeightPtr) != ge::GRAPH_SUCCESS, VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-            "CheckDimsOptional failed."), return ge::GRAPH_FAILED);
-    }
+    OPS_ERR_IF(CheckRequiredDims(context, gmmXShape, gmmWeightShape) != ge::GRAPH_SUCCESS,
+        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckRequiredDims failed."), return ge::GRAPH_FAILED);
 
     int64_t e = gmmWeightShape->GetDim(DIM_0);
     int64_t a = 0;
@@ -194,9 +188,17 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     if (InferGMMOutputShape(context, gmmYShape, epWorldSizePtr, recvCountsPtr, sendCountsPtr, e, a, n1) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+
+    if ((mmXShape != nullptr) && (mmWeightShape != nullptr)) {
+        OPS_CHECK_NULL_WITH_CONTEXT(context, transMmWeightPtr);
+        OPS_ERR_IF(CheckDimsOptional(context, mmXShape, mmWeightShape) != ge::GRAPH_SUCCESS,
+                   VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
+                   "CheckDimsOptional failed."), return ge::GRAPH_FAILED);
+        if (InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
+
     if (InferPermuteOutputShape(context, permuteOutFlagPtr, e, a, h, permuteOutShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
