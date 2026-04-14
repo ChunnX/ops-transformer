@@ -71,7 +71,8 @@ bool QuantLightningIndexerMetadataCpuKernel::ParamsCheck()
 
 bool QuantLightningIndexerMetadataCpuKernel::CheckTensorData()
 {
-    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr; };
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
     if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("The data of actual_seq_lengths_query is nullptr!");
         return false;

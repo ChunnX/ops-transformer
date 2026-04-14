@@ -83,7 +83,8 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::ParamsCheck()
 
 bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckTensorData()
 {
-    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr; };
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
     if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
         return false;
@@ -145,7 +146,8 @@ int32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetSumOfQuerySeq()
 
 bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckTopkLengthSize()
 {
-    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr; };
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
     if (isValid(oriTopkLength_)) {
         if (oriTopkLength_->GetData() == nullptr) {
             KERNEL_LOG_ERROR("The data of ori_topk_length is nullptr!");
@@ -156,7 +158,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckTopkLengthSize()
         auto topkLengthShape = oriTopkLength_->GetTensorShape();
         int32_t topkLengthSize = layoutQuery_ == "TND" ? topkLengthShape->GetDimSize(0) : topkLengthShape->GetDimSize(0) * topkLengthShape->GetDimSize(1);
         if (topkLengthSize < sumOfQuerySeq) {
-            KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than the sum of query sequence %d!");
+            KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than the sum of query sequence %d!", topkLengthSize, sumOfQuerySeq);
             return false;
         }
     }
@@ -170,7 +172,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckTopkLengthSize()
         auto topkLengthShape = cmpTopkLength_->GetTensorShape();
         int32_t topkLengthSize = layoutQuery_ == "TND" ? topkLengthShape->GetDimSize(0) : topkLengthShape->GetDimSize(0) * topkLengthShape->GetDimSize(1);
         if (topkLengthSize < sumOfQuerySeq) {
-            KERNEL_LOG_ERROR("The size of cmp_topk_length %d should not be smaller than the sum of query sequence %d!");
+            KERNEL_LOG_ERROR("The size of cmp_topk_length %d should not be smaller than the sum of query sequence %d!", topkLengthSize, sumOfQuerySeq);
             return false;
         }
     }
