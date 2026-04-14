@@ -16,8 +16,8 @@
 #define VF_BASIC_BLOCK_ALIGNED64_UPDATE_QSFA_H
 
 #include "vf_basic_block_utils.h"
-#include "../util_regbase.h"
-#include "../kv_quant_sparse_flash_attention_common_arch35.h"
+// #include "../util_regbase.h"
+// #include "../kv_quant_sparse_flash_attention_common_arch35.h"
 
 using namespace regbaseutil;
 
