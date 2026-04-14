@@ -220,8 +220,7 @@ aclnnStatus aclnnMaskedCausalConv1d(
 - 确定性计算：
   - aclnnMaskedCausalConv1d默认确定性实现。
 - 输入shape限制：
-  - B（Batchsize）：取值范围为1~8。
-  - S（SeqLength）：取值范围为1~32K。
+  - B * S：取值范围为1~512K。
   - H（hiddenSize）：取值范围384~24576（64的整数倍）。
   - W：W当前只支持3。
 
