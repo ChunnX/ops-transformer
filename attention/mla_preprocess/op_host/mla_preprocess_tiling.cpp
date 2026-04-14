@@ -644,10 +644,7 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
         deqOnTheFly = true;
     }
 
-    mlaTilingData.set_qLoraRank(param.qLoraRank);
     mlaTilingData.set_nopeDim(param.nopeDim);
-    mlaTilingData.set_hiddenStateMm(param.hiddenStateMm);
-    mlaTilingData.set_headDimMm2(param.headDimMm2);
 
     RmsNormQuantTiling(param.N, aivNum, hiddtenState, param.hiddenStateMm);
     RopeConcatTiling(param, aicNum);
