@@ -482,6 +482,7 @@ def _attention_bnsd(q_bnsd, k_bnsd, v_bnsd, sparse_indices_bnsd,
     返回: y (B, N1, S1, D_kv) float32
     """
     B, N1, S1, D_q = q_bnsd.shape
+    N2 = k_bnsd.shape[1]
     D_kv = v_bnsd.shape[-1]
     g = N1 // N2  # GQA group factor
     y = np.zeros((B, N1, S1, D_kv), dtype=np.float32)
