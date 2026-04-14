@@ -574,11 +574,7 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantMmScaleShapes()
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstraints()
 {
-    bool isMxfp4_ = false;
-    if (localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1 || localParams_.gmmWeightDtype == ge::DT_FLOAT4_E2M1) {
-        isMxfp4_ = true;
-    }
-    if (!isMxfp4_) {
+    if (localParams_.gmmXDtype != ge::DT_FLOAT4_E2M1 && localParams_.gmmWeightDtype != ge::DT_FLOAT4_E2M1) {
         return ge::GRAPH_SUCCESS;
     }
     // In MXFP4 mode，the data types of x and weight must be consistent

@@ -351,9 +351,6 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
                                bool transMmWeight, const aclTensor *y, const aclTensor *mmYOptional,
                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    (void)epWorldSize;
-    (void)sendCounts;
-    (void)recvCounts;
     CHECK_RET(CheckNotNull(gmmX, gmmWeight, y), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
                               mmWeightOptional, group, y, mmYOptional),
