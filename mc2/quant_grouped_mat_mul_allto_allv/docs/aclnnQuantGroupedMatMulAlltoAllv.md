@@ -120,7 +120,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>gmmWeight</td>
                 <td>输入</td>
                 <td>公式中的输入 gmmWeight。</td>
-                <td>shape (e, H1, N1)。e 为每卡部署的专家数，H1 为 hidden size，N1 为 MoE FFN 中间维度。</td>
+                <td>shape (e, H1, N1)。e 为每卡部署的专家数，H1 为 hidden size，N1 为路由专家 FFN 中间维度。</td>
                 <td><li>TT量化：HIFLOAT8</li><li>Mx量化：FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</li></td>
                 <td>ND</td>
                 <td>3</td>
@@ -516,8 +516,8 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
   - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
   - H2：表示共享专家hidden size隐藏层大小，取值范围(0, 12288]。
   - e：表示单卡上专家个数，0<e<=32，e * epWorldSize最大支持256。
-  - N1：表示路由专家的head_num，取值范围(0, 65536)。
-  - N2：表示共享专家的head_num，取值范围(0, 65536)。
+  - N1：表示路由专家 FFN 的中间层维度，取值范围(0, 65536)。
+  - N2：表示共享专家 FFN 的中间层维度，取值范围(0, 65536)。
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡发送的token数，是sendCounts参数累加之和。
