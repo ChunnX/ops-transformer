@@ -440,8 +440,8 @@ aclnnStatus aclnnMhcPreBackward(
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
-            <td>(B,S,2N+N*N)、(T,2N+N*N)<br>
-            B：与x的B保持一致；S:与x的S保持一致；T：B*S；N:与x的N保持一致。
+            <td>(2N+N*N,N*D)<br>
+            N:与x的N保持一致；D：与x的D保持一致。
             </td>
             <td>√</td>
         </tr>
