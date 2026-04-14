@@ -548,6 +548,16 @@ static const aclTensor *SetTensorToNDFormat(const aclTensor *input)
     return formatTensor;
 }
 
+static const aclTensor *SetTensorToNZFormat(const aclTensor *input, const op::Shape &storageShape, aclOpExecutor *executor)
+{
+    auto formatTensor = executor->CreateView(input, input->GetViewShape(), input->GetViewOffset());
+    CHECK_RET(formatTensor != nullptr, nullptr);
+    formatTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    formatTensor->SetStorageShape(storageShape);
+    formatTensor->SetOriginalShape(formatTensor->GetViewShape());
+    return formatTensor;
+}
+
 static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
@@ -571,6 +581,19 @@ static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
         return true;
     }
     return false;
+}
+
+static bool CheckSpecialTranspose(const aclTensor *tensor)
+{
+    bool transpose = IsLastTwoDimsTranspose(tensor);
+    auto shape = tensor->GetViewShape();
+    int64_t dimNum = shape.GetDimNum();
+    int64_t checkedAxisNum = dimNum > 1 ? 2 : 1;
+    int64_t lastAxisSize = 1;
+    for (int64_t i = 1; i <= checkedAxisNum; ++i) {
+        lastAxisSize *= shape.GetDim(dimNum - i);
+    }
+    return transpose && (lastAxisSize != 1);
 }
 
 static bool IsTransposeForMxScale(const aclTensor *tensor) {
@@ -640,7 +663,7 @@ static inline bool TransposeTensorContiguousProcess(const aclTensor *&contiguous
         return true;
     }
 
-    auto transposeFlag = IsLastTwoDimsTranspose(contiguousTensor);
+    auto transposeFlag = CheckSpecialTranspose(contiguousTensor);
     // swap tensor if its viewshape not satisfy request shape without adding a transpose node
     if (transposeFlag) {
         contiguousTensor = executor->CreateView(contiguousTensor, SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
@@ -660,7 +683,7 @@ static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&conti
         return true;
     }
 
-    auto transposeFlag = IsLastTwoDimsTranspose(contiguousTensor);
+    auto transposeFlag = CheckSpecialTranspose(contiguousTensor);
     // swap tensor if its viewshape not satisfy request shape without adding a transpose node
     if (transposeFlag) {
         contiguousTensor = executor->CreateView(contiguousTensor, SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
@@ -736,13 +759,20 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
 
 static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
 {
-    // if weight is already in nz format, no need to set contiguous
+    // Align with gmm weight-nz path:
+    // 1) handle transpose view by CreateView(viewShape swap), without data movement;
+    // 2) preserve NZ storage metadata explicitly (storageFormat/storageShape), especially on 3510.
     if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
-            }
+        auto nzStorageShape = x2->GetStorageShape();
+        auto transposeFlag = CheckSpecialTranspose(x2);
+        if (transposeFlag) {
+            x2 = executor->CreateView(x2, SwapLastTwoDimValue(x2->GetViewShape()), x2->GetViewOffset());
+            CHECK_RET(x2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+            transposeX2 = !transposeX2;
         } 
+        x2 = SetTensorToNZFormat(x2, nzStorageShape, executor);
+        CHECK_RET(x2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        return ACLNN_SUCCESS;
     } else {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             if (transposeX2 == false) {
