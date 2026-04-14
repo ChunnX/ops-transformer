@@ -255,6 +255,7 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
+      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_register.cpp
     test:
       examples: False
     options:
