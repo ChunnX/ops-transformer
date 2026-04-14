@@ -1932,7 +1932,7 @@ public:
         this->mlaParams = mlaParams_;
         this->scale_factor_ = static_cast<float>(mlaParams_.qLoraRank);
         this->split_size_two_ = static_cast<uint32_t>(mlaParams_.qLoraRank);
-        this->mm1_out_size_ = static_cast<uint32_t>(mlaParams_.hiddenStrateMm);
+        this->mm1_out_size_ = static_cast<uint32_t>(mlaParams_.hiddenStateMm);
     }
 
     __aicore__ inline void Init(GM_ADDR hiddenStateGm, GM_ADDR gamma1Gm, GM_ADDR beta1Gm, GM_ADDR quantScale1Gm,
