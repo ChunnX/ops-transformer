@@ -434,12 +434,14 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
         return ACLNN_ERR_INNER;
     }
 
+    OP_LOGD("start CheckProtocolSupport, layerNum is %d", layerNum);
     uint32_t netLayer = layerList[HCCL_COMM_LAYERS_UB_MEM];
     auto aclnnRet = CheckProtocolSupport(hcclHandle, epRankSize, netLayer);
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
-
+    
+    OP_LOGD("CheckProtocolSupport success!");
     protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     return ACLNN_SUCCESS;
 }
