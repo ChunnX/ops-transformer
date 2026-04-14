@@ -90,10 +90,13 @@ public:
         uint64_t recvCntPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t sendOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
-        uint64_t countScale = 8UL; // uint64_t = 8 * uint8_t
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            sendCntPerRank[i] = e_ * epWorldSize_ * countScale;
-            recvCntPerRank[i] = e_ * epWorldSize_ * countScale;
+            sendCntPerRank[i] = e_ * epWorldSize_;
+            recvCntPerRank[i] = e_ * epWorldSize_;
+        }
+        for (uint32_t i = 1U; i < epWorldSize_; i++) {
+            sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
+            recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
         }
         for (uint32_t i = 1U; i < epWorldSize_; i++) {
             sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];

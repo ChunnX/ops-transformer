@@ -73,7 +73,7 @@ public:
             computeScaleGm_ = gmmxScaleGm_;
         }
         GM_ADDR preCommBuffer = workspaceGM_ + workspaceOffset;
-        workspaceOffset += Align((epWorldSize_ + 1) * epWorldSize_ * e_ * sizeof(uint64_t), TENSOR_LIST_SIZE);
+        workspaceOffset += Align(2U * epWorldSize_ * epWorldSize_ * e_ * sizeof(uint64_t), TENSOR_LIST_SIZE);
         // AscendC::printf("\n=== Scheduler Workspace Layout ===\n");
         // AscendC::printf("workspace base=%p\n", workspaceGM_);
         // AscendC::printf("commOutGm=%p (offset=%lu)\n", commOutGm_, 0UL);
