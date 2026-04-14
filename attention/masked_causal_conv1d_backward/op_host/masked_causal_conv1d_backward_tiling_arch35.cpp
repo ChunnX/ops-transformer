@@ -65,6 +65,9 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputShape(
 
     OP_CHECK_IF(S_ <= 0 || S_ > S_MAX, OP_LOGE(context_->GetNodeName(), "invalid S=%ld", S_), return ge::GRAPH_FAILED);
     OP_CHECK_IF(B_ <= 0 || B_ > B_MAX, OP_LOGE(context_->GetNodeName(), "invalid B=%ld", B_), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(B_ * S_ > BS_MAX, OP_LOGE(context_->GetNodeName(), 
+                "invalid B_ * S_ = %ld, which must be <= 512 * 1024", B_ * S_), return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(H_ < H_MIN || H_ > H_MAX, OP_LOGE(context_->GetNodeName(), "invalid H=%ld", H_),
                 return ge::GRAPH_FAILED);
 
