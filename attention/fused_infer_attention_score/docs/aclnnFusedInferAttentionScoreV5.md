@@ -1523,7 +1523,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - query、key、value 的dtype为 FLOAT8_E4M3FN/INT8/HIFLOAT8
       - attenOut 的dtype为 BFLOAT16
       - queryRope、keyRope 的dtype为BFLOAT16
-      - 当query/key/value是 FLOAT8_E4M3FN/HIFLOAT8 时, inputLayout 仅支持 BSH、BSND、BNSD、TND；当 query/key/value 类型为 INT8 时, inputLayout 仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
+      - 当query/key/value是 FLOAT8_E4M3FN/HIFLOAT8 时, inputLayout 仅支持 BSH、BSND、BNSD、TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND_NTD；当 query/key/value 类型为 INT8 时, inputLayout 仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
       - Q_N 支持1、2、4、8、16、32、64、128
       - KV_N必须为1；G 支持 [1, 128]；Q_S 支持[1,16]
       - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery 的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
@@ -1537,7 +1537,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当inputLayout 为NTD_TND时, keyAntiquantScale、valueAntiquantScale的shape为(KV_N, floor(KV_T, 256) + B, ceil(D, 256))，其他场景shape为(B, KV_N, ceil(KV_S, 256), 1)
       - 当inputLayout 为NTD_TND时，dequantScaleQuery 的shape为(Q_N, floor(Q_T, 128) + B, ceil(D, 256))，其他场景shape为(B, Q_N, ceil(Q_S, 128), 1)
       - innerPrecise 仅支持0、1
-      - 不支持tensorlist场景、不支持左padding场景、不支持pse场景、不支持alibi场景、不支持Rope存在、不支持Mask场景、不支持PagedAttention场景、不支持SoftmaxLSE场景、不支持公共前缀场景
+      - 不支持tensorlist场景、不支持左padding场景、不支持pse场景、不支持alibi场景、不支持Rope存在、不支持Mask场景、不支持PagedAttention场景、不支持SoftmaxLSE场景、不支持公共前缀场景、不支持D不等长场景
       - query、key、value 的dtype为FLOAT8_E4M3FN时，quantScale1的取值范围满足值[1,448]；query、key、value 的dtype为HIFLOAT8时，quantScale1的取值范围满足值[1,32768]
     - per-tensor 全量化
       - query、key、value 的dtype为INT8
@@ -1606,8 +1606,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - PagedAttention场景下，kv cache 的 layout 为 4 维时，inputLayout 必须为 BNSD、BNSD_BSND 或 TND
   - 全量化
     - Decode MLA场景下：
-      - 当query的数据类型为FP8_E4M3FN，且inputLayout为BSH、BSND时，kv cache排布只支持BnBsH（blocknum, blocksize, H）和NZ (blocknum，KV_N，D/D0，blocksize，D0) 两种格式
-      - 当query的数据类型为FP8_E4M3FN，且inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/D0，blocksize，D0）三种格式
+      - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BSH、BSND、BSH_NBSD、BSND_NBSD时，kv cache排布只支持BnBsH（blocknum, blocksize, H）和NZ (blocknum，KV_N，D/D0，blocksize，D0) 两种格式
+      - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BNSD、TND、BNSD_NBSD、TND_NTD时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/D0，blocksize，D0）三种格式
       - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为 (blocknum，KV_N，D/D0，blocksize，D0)
       - 当kv cache排布为NZ时，最后一维D0是32, keyRope 最后一维D0是16
     - GQA全量化场景不支持PagedAttention
