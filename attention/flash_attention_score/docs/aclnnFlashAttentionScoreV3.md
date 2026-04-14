@@ -39,7 +39,7 @@
   $$
   
   $$
-  Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + S^{sink - m}}
+  Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
   $$
 
 ## 函数原型
@@ -162,7 +162,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>0、1</td>
+        <td>[headNum]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -207,7 +207,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       </tr>
       <tr>
         <td>qStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -217,7 +217,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       </tr>
       <tr>
         <td>kvStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -337,7 +337,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       </tr>
       <tr>
         <td>softmaxOutOut</td>
-        <td>输入</td>
+        <td>输出</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
