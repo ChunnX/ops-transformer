@@ -248,15 +248,15 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
         // TND 场景
         if ((strcmp(layoutQOptional, "TND") == 0)) {
             // 校验 ori_topk_length 的维度数量
-            if (viewDimsNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of ori_topk_length must be 1, "
+            if (viewDimsNum != 2) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of ori_topk_length must be 2, "
                         "but got %ld", viewDimsNum);
                 delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else { // BSND 场景
-            if (viewDimsNum != 2) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of ori_topk_length must be 2, "
+            if (viewDimsNum != 3) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of ori_topk_length must be 3, "
                         "but got %ld", viewDimsNum);
                 delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
@@ -269,15 +269,15 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
         // TND 场景
         if ((strcmp(layoutQOptional, "TND") == 0)) {
             // 校验 cmp_topk_length 的维度数量
-            if (viewDimsNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of cmp_topk_length must be 1, "
+            if (viewDimsNum != 2) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of cmp_topk_length must be 2, "
                         "but got %ld", viewDimsNum);
                 delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else { // BSND 场景
-            if (viewDimsNum != 2) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of cmp_topk_length must be 2, "
+            if (viewDimsNum != 3) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of cmp_topk_length must be 3, "
                         "but got %ld", viewDimsNum);
                 delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
