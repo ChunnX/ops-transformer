@@ -548,8 +548,7 @@ if (BUILD_OPEN_PROJECT)
         foreach(OP_DIR ${OP_DIR_LIST})
             # copy updated proto cpps to autogen
             file(GLOB OP_PROTO_HEADER ${OP_DIR}/op_graph/*_proto.h)
-            if(OP_PROTO_HEADER)
-                list(GET OP_PROTO_HEADER 0 proto_header)
+            foreach(proto_header ${OP_PROTO_HEADER})
                 message(STATUS "Update proto header path: ${proto_header}")
                 set(TARGET_PROTO_DIR ${generate_proto_dir}/updateproto/)
                 file(MAKE_DIRECTORY ${TARGET_PROTO_DIR})
@@ -570,7 +569,7 @@ if (BUILD_OPEN_PROJECT)
 
                 # append updated proto cpps to list
                 list(APPEND update_proto_srcs ${proto_cpp})
-            endif()
+            endforeach()
         endforeach()
 
         # filter same src filename, remove those in generate_proto_srcs, then replace them with updated ones
@@ -898,22 +897,28 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
         if(GRAPH_SOURCE)
             message(STATUS "custom Graph Plugin Source to add es to obj")
             add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+                build_es_math
                 build_es_transformer_cust
             )
             target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
-                PRIVATE es_transformer_cust
+                PRIVATE
+                es_math
+                es_transformer_cust
             )
         endif()
-    else()
-        # proto -> es transformer -> cust proto
-        message(STATUS "custom cust proto to es")
-        add_dependencies(cust_proto
-            build_es_transformer_cust
-        )
-        target_link_libraries(cust_proto
-            PRIVATE es_transformer_cust
-        )
     endif()
+    # directly link es to opsproto
+    add_dependencies(cust_proto
+        build_es_math
+        build_es_transformer_cust
+    )
+    target_link_libraries(cust_proto
+        PRIVATE
+        -Wl,--no-as-needed
+        es_math
+        es_transformer_cust
+        -Wl,--as-needed
+    )
     target_link_directories(
         cust_proto PRIVATE
         ${CMAKE_BINARY_DIR}/es_packages/lib64

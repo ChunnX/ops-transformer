@@ -18,12 +18,14 @@
 #include <vector>
 #include <torch/all.h>
 
+#include "acl/acl_prof.h"
 #include "acl/acl.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "kernel_operator.h"
 #include "moe_distribute_dispatch_v2_entry.h"
 #include "op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_torch.h"
+#include "../../common/inc/kernel/mc2_profiling.h"
 
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
@@ -50,6 +52,7 @@ constexpr uint32_t TILINGKEY_XTYPE = 10;
 constexpr uint32_t TILINGKEY_SCALES = 100;
 constexpr uint32_t TILINGKEY_COMM_ALG = 1000;
 constexpr uint32_t WORKSPACESIZE = 16 * 1024 *1024;
+constexpr uint32_t MIX_AIV = 5;
 
 static void calculate_tilingkey(int32_t &tilingKey, at::ScalarType xType, const bool isScales, const uint32_t quantMode,
     const bool isSetCommAlg)
@@ -115,12 +118,23 @@ void moe_distribute_dispatch_v2_api(
         get_first_tensor_address<at::Tensor>(assist_info_forcombine.scalar_type(), assist_info_forcombine, false);
     int32_t tilingKey = 10000;
     calculate_tilingkey(tilingKey, x.scalar_type(), scales.has_value(), tilingData.quantMode, is_fullmesh_v2);
+
+    aclProfTensorInfo tensorInfo;
+    INIT_ACL_PROF_TENSOR_INFO("moe_distribute_dispatch_v2", "MoeDistributeDispatchV2", tilingData.aivNum, MIX_AIV, tensorInfo, stream,
+        INPUT(x), INPUT(expert_ids),
+        OUTPUT(expand_x), OUTPUT(dynamic_scales), OUTPUT(assist_info_forcombine),
+        OUTPUT(expert_token_nums), OUTPUT(ep_recv_counts), OUTPUT(expand_scales));
+    aclprofEventAttributes attrs = {1, sizeof(aclprofEventAttributes::message), 0, &tensorInfo};
+    aclprofRangePushEx(&attrs);
+
     moe_distribute_dispatch_v2_entry(tilingKey, tilingData.aivNum, (void*)stream, (GM_ADDR)x_ptr,
         (GM_ADDR)expertIds_ptr, (GM_ADDR)scales_ptr, (GM_ADDR)xActiveMask_ptr,
         (GM_ADDR)expertScales_ptr, (GM_ADDR)performanceInfo_ptr,
         (GM_ADDR)expandXOut_ptr, (GM_ADDR)dynamicScalesOut_ptr, (GM_ADDR)assistInfoOut_ptr,
         (GM_ADDR)expertTokenNumsOut_ptr, (GM_ADDR)epSendCountsOut_ptr,
         (GM_ADDR)expandScalesOut_ptr, (GM_ADDR)workspace_ptr, (GM_ADDR)mc2Context_ptr, tilingData);
+    
+    aclprofRangePop();
 }
 
 void calculate_tilingdata(MoeDistributeDispatchV2Info &tilingData, int64_t ep_world_size, int64_t ep_rank_id,
