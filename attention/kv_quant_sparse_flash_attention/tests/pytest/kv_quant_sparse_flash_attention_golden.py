@@ -263,11 +263,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
 
     actual_seq_q_tensor = _build_actual_seq_tensor(layout_query, actual_seq_q_list)
 
-    if compute_golden:
-        cpu_result = compute_cpu_golden(input_data["input"])
-    else:
-        cpu_result = None
-
     input_data = {
         "Testcase_Name": testcase_name,
         "params": params,
@@ -296,8 +291,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
             "rope_head_dim": rope_head_dim,
             "kv_dtype": kv_dtype,
         },
-        "cpu_output": cpu_result,
+        "cpu_output": None,
     }
+
+    if compute_golden:
+        input_data["cpu_output"] = compute_cpu_golden(input_data["input"])
 
     if save_pt:
         _save_test_case(input_data, save_path)
