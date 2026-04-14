@@ -407,7 +407,6 @@ public:
         InitIndex(dkvOffset, curS2Idx, actualSeqKvlen, curBatch2, curN2Idx, curS2Idx, kvShape);
         ProcessOut(computeS2, DV);
     }
-
 };
 
 }
