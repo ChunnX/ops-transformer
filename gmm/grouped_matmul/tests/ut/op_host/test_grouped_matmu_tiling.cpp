@@ -337,6 +337,9 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulTilingCase> &info
 
 namespace GroupedMatmulTilingUT {
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulAscend950Tiling);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulAscend910BTiling);
+
 const vector<GroupedMatmulTilingCase> &GetAscend950Cases()
 {
     static const vector<GroupedMatmulTilingCase> cases = LoadCases("Ascend950");
