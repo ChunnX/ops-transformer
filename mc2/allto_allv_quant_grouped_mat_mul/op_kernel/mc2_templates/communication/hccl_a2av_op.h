@@ -98,10 +98,6 @@ public:
             sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
             recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
         }
-        for (uint32_t i = 1U; i < epWorldSize_; i++) {
-            sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
-            recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
-        }
         preRecvCountHandle_ = hccl_.AlltoAllV<true>((__gm__ uint8_t *)preCommSendGlobalBuffer_.GetPhyAddr(),
                                                     sendCntPerRank, sendOffsetPerRank, HCCL_DATA_TYPE_UINT64,
                                                     (__gm__ uint8_t *)preCommRecvGlobalBuffer_.GetPhyAddr(),
