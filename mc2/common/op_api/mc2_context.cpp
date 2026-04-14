@@ -94,22 +94,22 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
     };
 
     SymbolInfo symbols[] = {
-        {reinterpret_cast<void**>(&HcomGetCommHandleByGroup), "HcomGetCommHandleByGroup"},
-        {reinterpret_cast<void**>(&HcclRankGraphGetLinks), "HcclRankGraphGetLinks"},
-        {reinterpret_cast<void**>(&HcclRankGraphGetLayers), "HcclRankGraphGetLayers"},
-        {reinterpret_cast<void**>(&HcclRankGraphGetRankSizeByLayer), "HcclRankGraphGetRankSizeByLayer"},
-        {reinterpret_cast<void**>(&HcclChannelAcquire), "HcclChannelAcquire"},
-        {reinterpret_cast<void**>(&HcclGetHcclBuffer), "HcclGetHcclBuffer"},
-        {reinterpret_cast<void**>(&HcclChannelGetHcclBuffer), "HcclChannelGetHcclBuffer"},
-        {reinterpret_cast<void**>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
-        {reinterpret_cast<void**>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
-        {reinterpret_cast<void**>(&HcclEngineCtxCopy), "HcclEngineCtxCopy"},
-        {reinterpret_cast<void**>(&HcclGetRankId), "HcclGetRankId"},
-        {reinterpret_cast<void**>(&HcclGetRankSize), "HcclGetRankSize"},
+        {reinterpret_cast<void **>(&HcomGetCommHandleByGroup), "HcomGetCommHandleByGroup"},
+        {reinterpret_cast<void **>(&HcclRankGraphGetLinks), "HcclRankGraphGetLinks"},
+        {reinterpret_cast<void **>(&HcclRankGraphGetLayers), "HcclRankGraphGetLayers"},
+        {reinterpret_cast<void **>(&HcclRankGraphGetRankSizeByLayer), "HcclRankGraphGetRankSizeByLayer"},
+        {reinterpret_cast<void **>(&HcclChannelAcquire), "HcclChannelAcquire"},
+        {reinterpret_cast<void **>(&HcclGetHcclBuffer), "HcclGetHcclBuffer"},
+        {reinterpret_cast<void **>(&HcclChannelGetHcclBuffer), "HcclChannelGetHcclBuffer"},
+        {reinterpret_cast<void **>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
+        {reinterpret_cast<void **>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
+        {reinterpret_cast<void **>(&HcclEngineCtxCopy), "HcclEngineCtxCopy"},
+        {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
+        {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
     };
 
-    for (auto& sym : symbols) {
-        *(sym.ptr) = GetHcclLibFunc<void*>(hcclLibHandle_, sym.name);
+    for (auto &sym : symbols) {
+        *(sym.ptr) = GetHcclLibFunc<void *>(hcclLibHandle_, sym.name);
         if (*(sym.ptr) == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER, "Failed to load %s symbol", sym.name);
             dlclose(hcclLibHandle_);
@@ -440,7 +440,7 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
-    
+
     OP_LOGD("CheckProtocolSupport success!");
     protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     return ACLNN_SUCCESS;

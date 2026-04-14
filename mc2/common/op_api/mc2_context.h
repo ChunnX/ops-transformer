@@ -70,18 +70,18 @@ private:
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
 
-    HcclResult (*HcomGetCommHandleByGroup)(const char*, HcclComm*) = nullptr;
-    HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*) = nullptr;
-    HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t**, uint32_t*) = nullptr;
-    HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t*) = nullptr;
-    HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc*, uint32_t, ChannelHandle*) = nullptr;
-    HcclResult (*HcclGetHcclBuffer)(HcclComm, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char*, CommEngine, uint64_t, void**) = nullptr;
-    HcclResult (*HcclEngineCtxGet)(HcclComm, const char*, CommEngine, void**, uint64_t*) = nullptr;
-    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char*, void*, uint64_t, uint64_t) = nullptr;
-    HcclResult (*HcclGetRankId)(HcclComm, uint32_t*) = nullptr;
-    HcclResult (*HcclGetRankSize)(HcclComm, uint32_t*) = nullptr;
+    HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;
+    HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink **, uint32_t *) = nullptr;
+    HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t **, uint32_t *) = nullptr;
+    HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t *) = nullptr;
+    HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc *, uint32_t, ChannelHandle *) = nullptr;
+    HcclResult (*HcclGetHcclBuffer)(HcclComm, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char *, CommEngine, uint64_t, void **) = nullptr;
+    HcclResult (*HcclEngineCtxGet)(HcclComm, const char *, CommEngine, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char *, void *, uint64_t, uint64_t) = nullptr;
+    HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
+    HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
 };
 } // namespace Mc2Aclnn
 
