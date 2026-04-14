@@ -395,7 +395,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
             continue;
         }
         dstRankId = i;
-        auto hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
+        hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE(ACLNN_ERR_INNER, "Get HCCL links failed when checking protocol support");
             return ACLNN_ERR_INNER;
