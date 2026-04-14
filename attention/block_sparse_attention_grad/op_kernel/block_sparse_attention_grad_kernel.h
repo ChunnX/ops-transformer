@@ -519,21 +519,16 @@ namespace BSA {
             __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
             // pre
             VecPre(params);
-            // PipeBarrier<PIPE_ALL>();
 
             // simply softmax
             VecOp(params);
-            // PipeBarrier<PIPE_ALL>();
 
             AscendC::WaitEvent(CUBE2POST);
             AscendC::SyncAll();
 
             // post
             VecPost(params);
-            // PipeBarrier<PIPE_ALL>();
         }
-
-
 
         __aicore__ inline
         void VecOp(Params const &params)
@@ -650,7 +645,6 @@ namespace BSA {
                             GM_ADDR s = params.workspace + vector32Soffset;
                             GM_ADDR softmaxLse = params.softmaxLse;
                             GM_ADDR dp = params.workspace + sOutSize + vector32Soffset;
-                            GM_ADDR blockSparseMask = softmaxLse;
                             GM_ADDR actualSeqQlen = params.actualQseqlen;
                             GM_ADDR actualSeqKvlen = params.actualKvseqlen;
                             GM_ADDR sftmgGm = params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize;
@@ -663,7 +657,6 @@ namespace BSA {
                             SfmParams sfmParams(s,
                                 softmaxLse,
                                 dp,
-                                blockSparseMask,
                                 actualSeqQlen,
                                 actualSeqKvlen,
                                 sftmgGm,
