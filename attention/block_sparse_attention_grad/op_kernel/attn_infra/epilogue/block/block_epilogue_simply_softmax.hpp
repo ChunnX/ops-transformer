@@ -64,7 +64,6 @@ public:
         GM_ADDR s; // 连续
         GM_ADDR softmaxLse; //需要跳着搬运
         GM_ADDR dp; // 连续
-        GM_ADDR blockSparseMask;
         GM_ADDR actualQSeqlen;
         GM_ADDR actualKvSeqlen;
         GM_ADDR softGradworkspace; // 需要跳着搬运
@@ -83,19 +82,15 @@ public:
         __aicore__ inline
         Params() {}
 
-        __aicore__ inline
-        Params(
-            GM_ADDR s_, GM_ADDR softmaxLse_,  GM_ADDR dp_, GM_ADDR blockSparseMask_,
-            GM_ADDR actualQSeqlen_, GM_ADDR actualKvSeqlen_, GM_ADDR softGradworkspace_, GM_ADDR pWorkspace_, GM_ADDR dsWorkspace_, GM_ADDR tilingData_,
-            uint64_t acutualRow_, uint64_t actualCol_, uint64_t processNums_, uint64_t curBatch_, uint64_t curN1_, uint64_t curS1_, uint64_t curT1_
-        ) : s(s_), softmaxLse(softmaxLse_), dp(dp_), blockSparseMask(blockSparseMask_),
-            actualQSeqlen(actualQSeqlen_), actualKvSeqlen(actualKvSeqlen_),
-            softGradworkspace(softGradworkspace_), pWorkspace(pWorkspace_), dsWorkspace(dsWorkspace_), tilingData(tilingData_),
-            actualRow(acutualRow_), actualCol(actualCol_), processNums(processNums_),
-            curCoreBatch(curBatch_), curCoreN1Idx(curN1_), curCoreS1Idx(curS1_), curT1Idx(curT1_)
-        {
-            
-        }    
+        __aicore__ inline Params(GM_ADDR s_, GM_ADDR softmaxLse_, GM_ADDR dp_, GM_ADDR actualQSeqlen_,
+            GM_ADDR actualKvSeqlen_, GM_ADDR softGradworkspace_, GM_ADDR pWorkspace_, GM_ADDR dsWorkspace_,
+            GM_ADDR tilingData_, uint64_t acutualRow_, uint64_t actualCol_, uint64_t processNums_, uint64_t curBatch_,
+            uint64_t curN1_, uint64_t curS1_, uint64_t curT1_)
+            : s(s_), softmaxLse(softmaxLse_), dp(dp_), actualQSeqlen(actualQSeqlen_), actualKvSeqlen(actualKvSeqlen_),
+              softGradworkspace(softGradworkspace_), pWorkspace(pWorkspace_), dsWorkspace(dsWorkspace_),
+              tilingData(tilingData_), actualRow(acutualRow_), actualCol(actualCol_), processNums(processNums_),
+              curCoreBatch(curBatch_), curCoreN1Idx(curN1_), curCoreS1Idx(curS1_), curT1Idx(curT1_)
+        {}
     };
 
     NpuArch::Arch::Resource<ArchTag> resource;
