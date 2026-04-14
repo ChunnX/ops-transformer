@@ -34,26 +34,25 @@ using AscendC::TPipe;
 using AscendC::TPosition;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
-#define GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                              \
-    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,             \
-              typename perTokenScaleType, typename biasType, typename yType, typename sharedInputDType, \
-              typename logitsType, typename rowIndexType, const WqmmConfig &wqmmConfig, \
+#define GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                             \
+    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,                         \
+              typename perTokenScaleType, typename biasType, typename yType, typename sharedInputDType,                \
+              typename logitsType, typename rowIndexType, bool hasBias, const WqmmConfig &wqmmConfig,              \
               const VecAntiQuantConfig &vecConfig>
 
-#define GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS                                                                                \
-    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType,\
-                                    logitsType, rowIndexType, wqmmConfig, vecConfig>                
+#define GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS                                                                      \
+    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,           \
+                            sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 class WQFRVcvMatmulBasicBlock {
 public:
     __aicore__ inline WQFRVcvMatmulBasicBlock(){};
-    __aicore__ inline void Init(bool hasBias, uint64_t antiQuantGroupSize, __gm__ yType *y, float sharedInputWeight);
+    __aicore__ inline void Init(uint64_t antiQuantGroupSize, __gm__ yType *y, float sharedInputWeight);
     __aicore__ inline void InitAtomicGm(uint64_t initSize, uint64_t sharedInputStartSize, uint64_t sharedInputSize, __gm__ sharedInputDType *shareInputAddr);
     __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ wType *weight,
                                             __gm__ antiQuantScaleType *antiquantScale, __gm__ xType *antiquantOffset,
-                                            __gm__ perTokenScaleType *perTokenScale,
-                                            __gm__ biasType *bias, __gm__ yType *y, __gm__ logitsType *logits,
-                                            __gm__ rowIndexType *rowIndex, const bool hasBias,
+                                            __gm__ perTokenScaleType *perTokenScale, __gm__ biasType *bias,
+                                            __gm__ yType *y, __gm__ logitsType *logits, __gm__ rowIndexType *rowIndex,
                                             const bool weightL2Cacheable);
     __aicore__ inline void ComputeBasicBlock(const BasicBlockOffsetParam &curOffsetParam,
                                              const BasicBlockOffsetParam &lastOffsetParam);
@@ -101,16 +100,16 @@ protected:
 #endif
     };
 
-    GmmFrVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, wqmmConfig, vecConfig>
+    GmmFrVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,
+                    vecConfig>
         vecCompute_;
-    GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, float, wqmmConfig>
+    GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, float, hasBias, wqmmConfig>
         cubeCompute_;
 
     uint64_t cvLoopIdx_ = 0;
     uint64_t weightL1DbOffset_ = 0;
     uint64_t biasL1DbOffset_ = 0;
     uint64_t rlLoopIdx_ = 0;
-    bool hasBias_ = false;
 
     LocalTensor<xType> weightL1_;
     LocalTensor<biasType> biasL1_;
@@ -118,9 +117,8 @@ protected:
 };
 
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t antiQuantGroupSize, __gm__ yType *y, float sharedInputWeight)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGroupSize, __gm__ yType *y, float sharedInputWeight)
 {
-    hasBias_ = hasBias;
     biasL1DbOffset_ = 0;
     weightL1_ = LocalTensor<xType>(TPosition::TSCM, 0, L1_SIZE_BYTE / sizeof(xType));
 
@@ -130,7 +128,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::Init(bool hasB
     uint64_t l1RemainSize = L1_SIZE_BYTE - MXA8W4_WEIGHT_SIZE * DOUBLE_BUFFER_NUM;
     uint64_t l1StartSize = MXA8W4_WEIGHT_SIZE;
     biasL1_ = LocalTensor<biasType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(biasType));
-    if (hasBias_) {
+    if constexpr (hasBias) {
         biasL1DbOffset_ = (l1RemainSize - MX_BIAS_L1_SIZE) / sizeof(biasType);
         l1RemainSize -= DOUBLE_BUFFER_NUM * MX_BIAS_L1_SIZE;
         l1StartSize += MX_BIAS_L1_SIZE;
@@ -147,7 +145,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::Init(bool hasB
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
     } else {
-        vecCompute_.Init(hasBias_, sharedInputWeight, y);
+        vecCompute_.Init(sharedInputWeight, y);
     }
     cvLoopIdx_ = 0;
 }
@@ -199,14 +197,14 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(
     __gm__ xType *x, __gm__ wType *weight, __gm__ antiQuantScaleType *antiquantScale, __gm__ xType *antiquantOffset,
     __gm__ perTokenScaleType *perTokenScale, __gm__ biasType *bias, __gm__ yType *y, __gm__ logitsType *logits, __gm__ rowIndexType *rowIndex,
-    const bool hasBias, const bool weightL2Cacheable)
+    const bool weightL2Cacheable)
 {
     if ASCEND_IS_AIC {
-        cubeCompute_.UpdateGlobalAddr(x, y, reinterpret_cast<__gm__ biasType*>(bias), antiquantScale, nullptr, perTokenScale, hasBias);
+        cubeCompute_.UpdateGlobalAddr(x, y, reinterpret_cast<__gm__ biasType *>(bias), antiquantScale, nullptr,
+                                      perTokenScale);
     } else {
         // For MX A8W4: scale is perChannelScale (float*), perTokenScale is also float*
-        vecCompute_.UpdateGlobalAddr(weight,
-                                     bias, logits, rowIndex, weightL2Cacheable);
+        vecCompute_.UpdateGlobalAddr(weight, bias, logits, rowIndex, weightL2Cacheable);
     }
 }
 

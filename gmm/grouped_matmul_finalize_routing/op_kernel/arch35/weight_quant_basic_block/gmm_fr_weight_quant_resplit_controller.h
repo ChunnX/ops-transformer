@@ -38,15 +38,15 @@ using WeightQuantBatchMatmulV2::Arch35::WQFRVcvMatmulBasicBlock;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
 namespace GROUPED_MATMUL_FINALIZE_ROUTING {
-#define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                               \
-    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType, \
-              typename perTokenScaleType, typename biasType, typename yType, typename sharedInputDType,                  \
-               typename logitsType,  typename rowIndexType, const WqmmConfig &wqmmConfig,      \
+#define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                                          \
+    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,                         \
+              typename perTokenScaleType, typename biasType, typename yType, typename sharedInputDType,                \
+              typename logitsType, typename rowIndexType, bool hasBias, const WqmmConfig &wqmmConfig,              \
               const VecAntiQuantConfig &vecConfig>
 
-#define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS                                                                              \
-    GMMFRWeightQuantResplitController<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType, \
-                                    logitsType,  rowIndexType, wqmmConfig, vecConfig>
+#define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS                                                                   \
+    GMMFRWeightQuantResplitController<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, \
+                                      sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMFRWeightQuantResplitController {
@@ -79,7 +79,8 @@ private:
     __gm__ logitsType *logitsAddr_;
     __gm__ rowIndexType *rowIndexAddr_;
     GlobalTensor<int64_t> groupListGm_;
-    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, sharedInputDType, logitsType, rowIndexType, wqmmConfig, vecConfig>
+    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,
+                            sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
         basicBlock_;
 
     uint64_t preOffset_ = 0;
@@ -112,7 +113,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     shareInputAddr_ = reinterpret_cast<__gm__ sharedInputDType *>(shareInput);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
-    basicBlock_.Init(tiling_->hasBias, tiling_->groupSize, yGm_, tiling_->sharedInputWeight);
+    basicBlock_.Init(tiling_->groupSize, yGm_, tiling_->sharedInputWeight);
     mxA8W4L1KDynamicConfigMThreshold_ = tiling_->hasBias ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 :
                                                                   MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
 }
@@ -147,9 +148,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
             // 划分M轴在L1上的大小
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
-            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, nullptr,
-                                         perTokenScaleGm_, biasGm_, yGm_, logitsAddr_,
-                                         rowIndexAddr_, tiling_->hasBias,
+            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, nullptr, perTokenScaleGm_, biasGm_, yGm_,
+                                         logitsAddr_, rowIndexAddr_,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
             // 因为是32个核心分配一次，所以第二轮循环后就会出现，cubeBlockIdx在[0,31]内但是startBasicBlockId大于32
             // 此时需要更新curBasicBlockId，当前的索引需要增加一个corenumber

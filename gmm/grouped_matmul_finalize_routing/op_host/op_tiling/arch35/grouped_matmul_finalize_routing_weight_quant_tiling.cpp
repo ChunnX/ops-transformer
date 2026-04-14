@@ -124,8 +124,7 @@ ge::graphStatus GMMFRWeightQuantTiling::DoLibApiTiling()
 
 uint64_t GMMFRWeightQuantTiling::GetTilingKey() const
 {
-    std::cout<<"FFFFFFFFFFFFFFFFFFFFF "<<std::endl;
-    return GET_TPL_TILING_KEY(0, 1);
+    return GET_TPL_TILING_KEY(0, 1, static_cast<bool>(inputParams_.hasBias));
 }
 // 6、计算Workspace 大小
 ge::graphStatus GMMFRWeightQuantTiling::GetWorkspaceSize()

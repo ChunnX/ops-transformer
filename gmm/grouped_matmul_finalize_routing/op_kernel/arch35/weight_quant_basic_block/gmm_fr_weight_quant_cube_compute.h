@@ -42,10 +42,10 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 
 #define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM                                                                \
     template <typename xType, typename biasType, typename antiQuantScaleType, typename perTokenScaleType,              \
-              typename yType, const WqmmConfig &wqmmConfig>
+              typename yType, bool hasBias, const WqmmConfig &wqmmConfig>
 
 #define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS                                                                         \
-    GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, yType, wqmmConfig>
+    GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, yType, hasBias, wqmmConfig>
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
 class GMMFRWeightQuantCubeCompute {
@@ -53,7 +53,7 @@ public:
     __aicore__ inline GMMFRWeightQuantCubeCompute(){};
     __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias,
                                             __gm__ antiQuantScaleType *antiquantScale, __gm__ uint64_t *quantScale,
-                                            __gm__ perTokenScaleType *perTokenScale, const bool isBias);
+                                            __gm__ perTokenScaleType *perTokenScale);
     __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
                                       const LocalTensor<biasType> &biasL1);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
@@ -80,7 +80,6 @@ private:
     static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 512;
 
     int8_t aL1DbNum_;
-    bool isBias_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
     static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
     static constexpr uint32_t EVENT_ID_MTE1_TO_MTE2 = 3;
@@ -163,12 +162,11 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
     __gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias, __gm__ antiQuantScaleType *antiquantScale,
-    __gm__ uint64_t *quantScale, __gm__ perTokenScaleType *perTokenScale, const bool isBias)
+    __gm__ uint64_t *quantScale, __gm__ perTokenScaleType *perTokenScale)
 {
-    isBias_ = isBias;
     xGlobal_.SetGlobalBuffer(x);
     yGlobal_.SetGlobalBuffer(y);
-    if (isBias_) {
+    if constexpr (hasBias) {
         biasGlobal_.SetGlobalBuffer(bias);
     }
 
@@ -291,18 +289,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
 
     aL1Offset = (aL1BufIdx_ & 1) * aL1DbOffset_;
 
-    // BasicApiParamsV1 basicApiParams;
-    // basicApiParams.l1KbSize = kbL1RealSize;
-    // basicApiParams.l1KaSize = param.kaL1Size;
-    // basicApiParams.l0NSize = param.nL1Size;
-    // basicApiParams.l0MSize = param.mL1Size;
-    // basicApiParams.isBias = isBias_;
-    // basicApiParams.gmKOffset = kbOffset;
-    // mmObj_.Iterate(kbOffset + kbL1RealSize >= param.kSize, kbOffset == 0, aL1_[aL1Offset],
-    //                 mxScaleAL1_[(mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_], weightL1,
-    //                 mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_],
-    //                 biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_], basicApiParams);
-
     L0CopyAndCalcParams l0CopyAndCalcParams;
     l0CopyAndCalcParams.mL0Size = param.mL1Size;
     l0CopyAndCalcParams.mL1Size = param.mL1Size;
@@ -331,18 +317,25 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
             mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_ + BLOCK_CUBE * ((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE / MX_GROUPSIZE)],
             l0CopyAndCalcParams);
 
-        if (isBias_ && l0CopyAndCalcParams.isFirstKLoop) {
-            LoadBiasToBt(biasTable_[loopId * BIAS_TABLE_OFFSET_B32], biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_],
-                                    l0CopyAndCalcParams);
+        if constexpr (hasBias) {
+            if (l0CopyAndCalcParams.isFirstKLoop) {
+                LoadBiasToBt(biasTable_[loopId * BIAS_TABLE_OFFSET_B32], biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_],
+                             l0CopyAndCalcParams);
+            }
         }
-SetFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
-WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
-        if(isBias_ && l0CopyAndCalcParams.isFirstKLoop) {
-            MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                    biasTable_[loopId * BIAS_TABLE_OFFSET_B32], l0CopyAndCalcParams);
+        SetFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
+        WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
+        if constexpr (hasBias) {
+            if (l0CopyAndCalcParams.isFirstKLoop) {
+                MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                            biasTable_[loopId * BIAS_TABLE_OFFSET_B32], l0CopyAndCalcParams);
+            } else {
+                MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                            l0CopyAndCalcParams);
+            }
         } else {
             MmadCompute(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                    l0CopyAndCalcParams);
+                        l0CopyAndCalcParams);
         }
         SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
         l0LoopIdx_++;
