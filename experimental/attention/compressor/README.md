@@ -137,6 +137,7 @@
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
   - 支持rotary_mode为2，Rope计算模式为interleave。
+  - 该接口支持aclgraph模式。
 
 ## Atlas A3 推理系列产品 调用说明
 
@@ -288,12 +289,12 @@
             norm_weight, 
             rope_sin,
             rope_cos,
+            rope_head_dim = rope_head_dim,
+            cmp_ratio = cmp_ratio,
             state_block_table = block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos,
-            rope_head_dim = rope_head_dim,
-            cmp_ratio = cmp_ratio,
             coff = coff,
             norm_eps = norm_eps,
             rotary_mode = rotary_mode,
@@ -473,6 +474,7 @@
 
     from torchair.configs.compiler_config import CompilerConfig
     config = CompilerConfig()
+    config.mode = "reduce-overhead"
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
     npu_mode = torch.compile(CompressorNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
@@ -485,12 +487,12 @@
                     norm_weight, 
                     rope_sin,
                     rope_cos,
+                    rope_head_dim = rope_head_dim,
+                    cmp_ratio = cmp_ratio,
                     state_block_table = block_table,
                     cu_seqlens = cu_seqlens,
                     seqused = seqused,
                     start_pos = start_pos,
-                    rope_head_dim = rope_head_dim,
-                    cmp_ratio = cmp_ratio,
                     coff = coff,
                     norm_eps = norm_eps,
                     rotary_mode = rotary_mode,
