@@ -1083,9 +1083,8 @@ ge::graphStatus SASTilingCheck::CheckSingleParaOriBlockTable() const
         ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriBlockTable.tensor->GetShape(), oriBlockTableDimNumList, ORI_BLOCK_TABLE_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF((oriBlockSize_ <= 0 || oriBlockSize_ > BLOCK_SIZE_LIMIT ||
-                (static_cast<uint64_t>(oriBlockSize_) % 16 != 0UL)),
-                OP_LOGE(opName_, "oriBlockSize_ should be in range [1, 1024], and be aligned to 16, but got: %d.",
+    OP_CHECK_IF((oriBlockSize_ <= 0 || oriBlockSize_ > BLOCK_SIZE_LIMIT),
+                OP_LOGE(opName_, "oriBlockSize_ should be in range [1, 1024], but got: %d.",
                 oriBlockSize_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

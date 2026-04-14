@@ -50,7 +50,7 @@ SCRIPT_TYPE=$1
 shift  # 移除第一个参数，剩下的都是选项
 
 # 处理 help 请求
-if [ "$SCRIPT_TYPE" = "-h" ] || [ "$SCRIPT_TYPE" = "--help" ]; then
+if [[ "$SCRIPT_TYPE" == "-h" ]] || [[ "$SCRIPT_TYPE" == "--help" ]]; then
     show_help
     exit 0
 fi
@@ -60,7 +60,7 @@ run_script_single() {
     echo "准备运行 单跑 脚本..."
     
     # 解析 test_sparse_attn_sharedkv_single.py 的参数
-    while [ $# -gt 0 ]; do
+    while [[ $# -gt 0 ]]; do
         case $1 in
             -R)
                 if [ -z "$2" ] || [[ "$2" == -* ]]; then
