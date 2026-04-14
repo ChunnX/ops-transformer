@@ -11,6 +11,7 @@ from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
 from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
+from .bandwidth_test import npu_bandwidth_test
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
