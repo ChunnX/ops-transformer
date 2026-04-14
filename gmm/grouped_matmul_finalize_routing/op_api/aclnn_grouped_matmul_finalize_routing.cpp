@@ -27,6 +27,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "grouped_matmul_finalize_routing_950_checker.h"
+#include "grouped_matmul_finalize_routing_weight_quant_950_checker.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_950_checker.h"
 
 using namespace op;
@@ -552,11 +553,26 @@ static inline bool CheckTuningConfig(const GroupedMatmulParams &params)
     return true;
 }
 
+// MxA8W4场景判断：x1=FP8_E4M3FN, x2=FP4_E2M1
+// Note: 须保证x1，x2先完成判空校验
+static bool IsMxA8W4(const GroupedMatmulParams &params)
+{
+    return params.x1->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
+           params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
+}
+
 static aclnnStatus CheckParams(GroupedMatmulParams &params)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingDAV3510Checker checker;
-        aclnnStatus status = checker.CheckParams(params);
+        aclnnStatus status;
+        if (IsMxA8W4(params)) {
+            // 使用MxA8W4场景专用Checker，与原有Checker解耦
+            GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker checker;
+            status = checker.CheckParams(params);
+        } else {
+            GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingDAV3510Checker checker;
+            status = checker.CheckParams(params);
+        }
         CHECK_RET(status == ACLNN_SUCCESS, status);
     } else {
         // 1. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
@@ -860,7 +876,11 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
         CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposescale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposescale, executor);
-        CHECK_RET(transposeX2 == transposescale, ret);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        // MxA8W4场景：scale按transposeX2对应的shape传入，跳过transpose一致性检查
+        if (!IsMxA8W4(params)) {
+            CHECK_RET(transposeX2 == transposescale, ret);
+        }
     }
 
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
