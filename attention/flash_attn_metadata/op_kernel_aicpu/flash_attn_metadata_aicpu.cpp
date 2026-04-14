@@ -102,8 +102,8 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         }
     } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         auto cuSeqlensQ = (int32_t *)cuSeqlensQ_->GetData();
-        baseInfo.actualQuerySeqSize.resize(batchSize_ + 1, maxSeqlenQ_);
-        for (uint32_t i = 0; i <= batchSize_; ++i) {
+        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        for (uint32_t i = 1; i <= batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i];
         }
     }
@@ -115,8 +115,8 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         }
     } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         auto cuSeqlensKv = (int32_t *)cuSeqlensKv_->GetData();
-        baseInfo.actualKvSeqSize.resize(batchSize_ + 1, maxSeqlenKv_);
-        for (uint32_t i = 0; i <= batchSize_; ++i) {
+        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        for (uint32_t i = 1; i <= batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i];
         }
     }
