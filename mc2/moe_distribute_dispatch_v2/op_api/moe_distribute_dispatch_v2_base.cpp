@@ -36,19 +36,19 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void* NnopbaseGetUserHandle(void *executor);
 
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
- 	     const aclTensor* context, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
- 	     const aclTensor* xActiveMask, const aclTensor* expertScales,  const aclTensor* elasticInfo,
- 	     const aclTensor* performanceInfo, int64_t epWorldSize,
- 	     int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize, int64_t tpWorldSize,
- 	     int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t shareExpertRankNum,
- 	     int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char* commAlg,
- 	     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, int64_t ydtype, aclTensor* expandX,
- 	     aclTensor* dynamicScales, aclTensor* assist_info_for_combine, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
- 	     aclTensor* tpRecvCounts, aclTensor* expandScales,
- 	     uint64_t* workspaceSize, aclOpExecutor** executor);
+ 	const aclTensor* context, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
+ 	const aclTensor* xActiveMask, const aclTensor* expertScales,  const aclTensor* elasticInfo,
+ 	const aclTensor* performanceInfo, int64_t epWorldSize,
+ 	int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize, int64_t tpWorldSize,
+ 	int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t shareExpertRankNum,
+ 	int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char* commAlg,
+ 	int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, int64_t ydtype, aclTensor* expandX,
+ 	aclTensor* dynamicScales, aclTensor* assist_info_for_combine, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
+ 	aclTensor* tpRecvCounts, aclTensor* expandScales,
+ 	uint64_t* workspaceSize, aclOpExecutor** executor);
  	 
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3(void* workspace, uint64_t workspaceSize,
-                                                    aclOpExecutor* executor, aclrtStream stream);
+    aclOpExecutor* executor, aclrtStream stream);
 
 enum class CommType : uint64_t {
     AIV = 0, // AIV通信设置为0
@@ -98,18 +98,18 @@ aclnnStatus DispatchCheckParams(const aclTensor* x, const aclTensor* expertIds, 
 
 static void SetCommArgs(const bool is950, const bool is910B, const char* commAlg, aclOpExecutor** executor)
 {
-    if(is950) {
+    if (is950) {
         void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
-        if(commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
-            arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::CCU)); //ccu为1
+        if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+            arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::CCU)); // ccu为1
         }
         NnopbaseSetUserHandle(*executor, arg);
     }
     
-    if (NnopbaseSetHcclServerType) {  //给ACLnn框架指定通讯方式。
+    if (NnopbaseSetHcclServerType) {  // 给ACLnn框架指定通讯方式。
         if (is910B) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if ( is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+        } else if (is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
         } else {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
@@ -147,7 +147,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
-    if(!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { //ccu暂时不支持新方案
+    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
@@ -164,24 +164,25 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
             elasticInfoOptional, performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum,
             hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum, 
-            copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut, 
+            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+            copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
-    }  
+    }
     SetCommArgs(is950, is910B, commAlg, executor);
     return getWorkspaceSizesRes;
 }
 
-aclnnStatus  aclnnMoeDistributeDispatchBase(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream) 
+aclnnStatus  aclnnMoeDistributeDispatchBase(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+    aclrtStream stream)
 {
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-    if(is950) {
+    if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);
         uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
         CommType commType = static_cast<CommType>(handleVal);
-        if(commType == CommType::AIV) {
+        if (commType == CommType::AIV) {
             OP_LOGD("enter to the  aclnnInnerMoeDistributeDispatchV2Extend");
-            return aclnnInnerMoeDistributeDispatchV3(workspace, workspaceSize, executor, stream); //mte走新模版
+            return aclnnInnerMoeDistributeDispatchV3(workspace, workspaceSize, executor, stream); // mte走新模版
         }
     }
     return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);

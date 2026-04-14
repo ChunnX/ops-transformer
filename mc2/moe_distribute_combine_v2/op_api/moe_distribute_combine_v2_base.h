@@ -39,7 +39,7 @@ ACLNN_API aclnnStatus CombineCheckParams(const aclTensor* expandX, const aclTens
                                          const char* groupTp, aclTensor* x);
                                          
 ACLNN_API aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  aclrtStream stream);
+    aclrtStream stream);
 
 ACLNN_API aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     const aclTensor* expandX, const aclTensor* expertIds,

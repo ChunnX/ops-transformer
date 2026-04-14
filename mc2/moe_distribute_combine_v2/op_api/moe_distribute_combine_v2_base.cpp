@@ -31,7 +31,7 @@ extern "C" {
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);     
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor* context, const aclTensor* expandX, const aclTensor* expertIds,
@@ -41,14 +41,14 @@ extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor* weightScale, const aclTensor* groupList,
     const aclTensor* expandScales, const aclTensor* sharedExpertX,
     const aclTensor* elasticInfo, const aclTensor* oriX,
-    const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2, 
+    const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2,
     const aclTensor* constExpertV, const aclTensor *performanceInfo,
     int64_t epWorldSize,
     int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
     int64_t tpWorldSize, int64_t tpRankId,
     int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
     int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-    int64_t groupListType, const char* commAlg, 
+    int64_t groupListType, const char* commAlg,
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* x, uint64_t* workspaceSize,
     aclOpExecutor** executor);
@@ -100,9 +100,9 @@ enum class CommType : uint64_t {
 
 static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool is950, const char *commAlg)
 {
-    if (is950){
+    if (is950) {
         CommType type = CommType::AIV;
-        if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0){
+        if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
             type = CommType::CCU;
         }
         void* args = reinterpret_cast<void*>(static_cast<uint64_t>(type));
@@ -170,13 +170,13 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
         auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
-            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, 
-            xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, 
-            sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
-            constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize,
-            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
-            outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
-            xOut, workspaceSize, executor);
+            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
+            tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional,
+            expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
+            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
+            moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
+            globalBs, outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum,
+            constExpertNum, xOut, workspaceSize, executor);
     }
     SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;

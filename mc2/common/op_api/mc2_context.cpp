@@ -378,7 +378,9 @@ aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &
 
 aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t epRankSize, uint32_t netLayer)
 {
-    uint32_t srcRankId = 0, dstRankId = 0, netLinkNum = 0;
+    uint32_t srcRankId = 0;
+    uint32_t dstRankId = 0; 
+    uint32_t netLinkNum = 0;
     CommLink *linksList = nullptr;
 
     for (uint32_t i = 1; i < epRankSize; ++i) {
