@@ -14,12 +14,9 @@
  */
 #include "allto_all_tiling_factory.h"
 #include "allto_all_formulaic_tiling.h"
+#include "../arch35/allto_all_fit_balance_tiling.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-
-namespace MC2Tiling {
-class MMAlltoAllFitBalanceTiling;
-}
 
 namespace MC2Tiling {
 
@@ -31,9 +28,9 @@ CutResult AlltoAllTilingFactory::CreateTiling(const mc2tiling::TilingArgs &args,
         OP_LOGD("AlltoAllTilingFactory", "Using fit balance tiling for arch35 standard card 4P");
         MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::STANDARD_CARD, socVersion);
         return fitBalanceTiling.GetTiling();
-    } else if (mc2tiling::Is8P(args_.rankDim, npuArch)) {
+    } else if (mc2tiling::Is8P(args.rankDim, npuArch)) {
         OP_LOGD("AlltoAllTilingFactory", "Using fit balance tiling for arch35 and 8p");
-        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, KernelType, TopoType::EIGHT_P, SocVersion);
+        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::EIGHT_P, socVersion);
         return fitBalanceTiling.GetTiling();
     } else {
         OP_LOGD("AlltoAllTilingFactory", "Using formulaic tiling");

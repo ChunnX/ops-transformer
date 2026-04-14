@@ -83,8 +83,7 @@ CutResult MatmulAllToAllTilingBase::GetTilingResult()
     if (socVersionStr == "Ascend910_93") {
         nowSocVersion = SocVersion::SOC910_93;
     }
-    return AlltoAllTilingFactory::CreateTiling(contextInfo.args_, KernelType::ALL_TO_ALL, TopoType::STANDARD_CARD,
-                                               nowSocVersion, npuArch_);
+    return AlltoAllTilingFactory::CreateTiling(contextInfo.args_, KernelType::ALL_TO_ALL, nowSocVersion, npuArch_);
 }
 
 /**
@@ -94,15 +93,14 @@ CutResult MatmulAllToAllTilingBase::GetTilingResult()
 ge::graphStatus MatmulAllToAllTilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
-    const CutResult &cutResult = GetTilingResult();
+    CutResult mCutMMAlltoAll = GetTilingResult();
+    // 根据 shortTileAtBack 和 numShortTile 确定主块和尾块
+    const bool useLongAsMain = mCutMMAlltoAll.shortTileAtBack || mCutMMAlltoAll.numShortTile == 0;
 
-    // 先算后通: 计算bound长块在前；通信bound短块在前
-    inferredInfo.tileCnt = cutResult.shortTileAtBack ? cutResult.numLongTile : cutResult.numShortTile;
-    inferredInfo.tileM = cutResult.shortTileAtBack ? cutResult.longTileLen : cutResult.shortTileLen;
-
-    // 尾块设置
-    inferredInfo.tailCnt = cutResult.shortTileAtBack ? cutResult.numShortTile : cutResult.numLongTile;
-    inferredInfo.tailM = cutResult.shortTileAtBack ? cutResult.shortTileLen : cutResult.longTileLen;
+    inferredInfo.tileCnt = useLongAsMain ? mCutMMAlltoAll.numLongTile : mCutMMAlltoAll.numShortTile;
+    inferredInfo.tileM = useLongAsMain ? mCutMMAlltoAll.longTileLen : mCutMMAlltoAll.shortTileLen;
+    inferredInfo.tailCnt = useLongAsMain ? mCutMMAlltoAll.numShortTile : mCutMMAlltoAll.numLongTile;
+    inferredInfo.tailM = useLongAsMain ? mCutMMAlltoAll.shortTileLen : mCutMMAlltoAll.longTileLen;
 
     return ge::GRAPH_SUCCESS;
 }

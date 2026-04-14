@@ -15,9 +15,9 @@
 #ifndef __ALLTO_ALL_TILING_FACTORY_H__
 #define __ALLTO_ALL_TILING_FACTORY_H__
 
-#pragma once
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace MC2Tiling {
 
@@ -34,7 +34,7 @@ public:
      * @brief 创建 AllToAll tiling 实例
      *
      * @param args tiling 参数
-     * @param kernelType 算子类型
+     * @param kernelType 算子通信类型
      * @param socVersion SOC 版本
      * @param npuArch NPU 架构
      * @return CutResult tiling 结果

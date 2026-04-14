@@ -19,8 +19,9 @@
 namespace MC2Tiling {
 
 constexpr static uint64_t L2_CACHE_SIZE = 128 * ONE_MBYTE;
-constexpr static uint64_t UNBALANCE_RATIO = 2;
-constexpr static uint64_t SMALL_K_BOUND = 2048;
+constexpr static double CALC_COMM_RATIO_THRESHOLD = 1.2;
+constexpr static uint64_t LONG_TILE_ALIGN_LEN = 256;
+constexpr static uint64_t ALIGN_OFFSET = LONG_TILE_ALIGN_LEN - 1;
 
 void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
 {
@@ -36,18 +37,19 @@ void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
     }
 
     uint64_t sizeOfComm = mmInfo_.mValue * mmInfo_.nValue * commPerf_.GetCommDTypeSize() * rankDim_ / ONE_MBYTE;
-    OP_LOGD("MatmulAlltoAll", "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
-        "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
-        "rankDim_ %lu, rankTile %lu",
-        mmInfo_.mValue, mmInfo_.nValue, mmInfo_.kValue, matmulPerf_.cubeUtil_, sizeOfComm,
-        totalMatmulTime, totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_,
-        rankDim_, rankTileNum_);
+    OP_LOGD("MatmulAlltoAll",
+            "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
+            "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
+            "rankDim_ %lu, rankTile %lu",
+            mmInfo_.mValue, mmInfo_.nValue, mmInfo_.kValue, matmulPerf_.cubeUtil_, sizeOfComm, totalMatmulTime,
+            totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_, rankDim_,
+            rankTileNum_);
 }
 
 void MMAlltoAllFitBalanceTiling::SetShortTileLen()
 {
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
-        mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
+                         mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
     isLargerThanL2Cache_ = l2UseSize > L2_CACHE_SIZE;
     if (isLargerThanL2Cache_) {
         tilingM_.SetMinLenByMax(tilingM_.GetMinLen() * TWO);
@@ -64,27 +66,61 @@ void MMAlltoAllFitBalanceTiling::SetLongTileLen()
 {
     // balancing the pipeline
     if (tilingM_.cutRes.shortTileAtBack) {
-        double targetTime =
-            matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, rankTileNum_);
+        double targetTime = matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, 1);
         tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(targetTime);
     } else {
         double targetTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
-        tilingM_.cutRes.longTileLen =
-            matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
+        tilingM_.cutRes.longTileLen = matmulPerf_.InverseMatmulTime(targetTime, 1);
     }
     OP_LOGD("MMAlltoAllFitBalanceTiling", "longTileLen %lu", tilingM_.cutRes.longTileLen);
+}
+
+void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
+{
+    if (ratioCalcComm_ > CALC_COMM_RATIO_THRESHOLD) {
+        if (tilingM_.cutRes.longTileLen % LONG_TILE_ALIGN_LEN != 0) {
+            uint64_t alignedLongLen =
+                ((tilingM_.cutRes.longTileLen + ALIGN_OFFSET) / LONG_TILE_ALIGN_LEN) * LONG_TILE_ALIGN_LEN;
+
+            // 计算原始总长度
+            uint64_t totalLen = tilingM_.cutRes.shortTileLen * tilingM_.cutRes.numShortTile +
+                                tilingM_.cutRes.longTileLen * tilingM_.cutRes.numLongTile;
+
+            // 重新分配：尽可能多地使用对齐后的长块
+            tilingM_.cutRes.numLongTile = totalLen / alignedLongLen;
+            uint64_t remainLen = totalLen % alignedLongLen;
+
+            // 剩余部分作为短块
+            if (remainLen > 0) {
+                tilingM_.cutRes.shortTileLen = remainLen;
+                tilingM_.cutRes.numShortTile = 1U;
+            } else {
+                tilingM_.cutRes.shortTileLen = 0;
+                tilingM_.cutRes.numShortTile = 0;
+            }
+
+            tilingM_.cutRes.longTileLen = alignedLongLen;
+            tilingM_.cutRes.totalTileCnt = tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile;
+        }
+    }
 }
 
 void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLen()
 {
     bool goodLinearityShape = (mmInfo_.kValue * mmInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
-    tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
+    FitTileLengthDiscrete(false, goodLinearityShape);
+    AdjustLongShortTileLenWhenCalcBound();
+
     // When the long and short tiles are equal, the long and short pieces become one.
     if (tilingM_.cutRes.shortTileLen == tilingM_.cutRes.longTileLen) {
         tilingM_.cutRes.shortTileLen = 0U;
         tilingM_.cutRes.numShortTile = 0U;
         tilingM_.cutRes.numLongTile++;
     }
+    OP_LOGD("MMAlltoAllFitBalanceTiling",
+            "Final cut: longTileLen %lu, shortTileLen %lu, numLongTile %lu, numShortTile %lu",
+            tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numLongTile,
+            tilingM_.cutRes.numShortTile);
 }
 
 } // namespace MC2Tiling
