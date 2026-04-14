@@ -77,7 +77,7 @@ def _build_kv_tensors(kv_dtype, kv_dim0, S2, N2, D, rope_head_dim, num_tiles, q_
             dtype=torch.uint8,
         )
         storage_dtype = torch.uint8
-    elif kv_dtype in (None, "float8_e4m3fn"):
+    elif kv_dtype in (None, "float8_e4m3fn", torch.float8_e4m3fn):
         key_base = torch.tensor(
             np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
         ).to(torch.float8_e4m3fn)
@@ -535,7 +535,14 @@ def _build_fa_param(inp):
     """
     layout_query = inp["layout_query"]
     layout_kv = inp["layout_kv"]
-    kv_dtype = inp["kv_dtype"]
+    # kv_dtype 可能是字符串（"hifloat8"/"float8_e4m3fn"/None）或 torch dtype 对象，统一转为字符串
+    kv_dtype_raw = inp["kv_dtype"]
+    if kv_dtype_raw is None or kv_dtype_raw == torch.float8_e4m3fn:
+        kv_dtype = "float8_e4m3fn"
+    elif kv_dtype_raw == "hifloat8":
+        kv_dtype = "hifloat8"
+    else:
+        kv_dtype = str(kv_dtype_raw)
     tile_size = inp["tile_size"]
     rope_head_dim = inp["rope_head_dim"]
     sparse_block_size = inp["sparse_block_size"]
