@@ -115,7 +115,7 @@ public:
     void operator()(AscendC::GlobalTensor<ElementA> gA,
                     AscendC::GlobalTensor<ElementB> gB,
                     AscendC::GlobalTensor<ElementC> gC,
-                    LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualShape)
+                    LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualShape, uint32_t& pingpongFlag)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
@@ -165,6 +165,8 @@ public:
         }
 
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(pingpongFlag);
+
+        pingpongFlag = 1 - pingpongFlag;
     }
 
 protected:
@@ -182,11 +184,6 @@ protected:
     CopyL1ToL0B copyL1ToL0B;
     CopyL0CToGm copyL0CToGm;
 
-    uint32_t pingpongFlag = 0;
-    uint32_t l1APingPongFlag = 0;
-    uint32_t l1BPingPongFlag = 0;
-    uint32_t l0CPingPongFlag = 0;
-    uint32_t l0ABPingPongFlag = 0;
     uint32_t PINGPONG_FLAG_OFFSET = 0;
     bool isAtomicAdd = false;
 };
