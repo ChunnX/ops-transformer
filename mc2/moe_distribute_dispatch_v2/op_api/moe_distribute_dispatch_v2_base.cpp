@@ -36,7 +36,7 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void* NnopbaseGetUserHandle(void *executor);
 
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
- 	const aclTensor* context, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
+    const aclTensor* context, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
  	const aclTensor* xActiveMask, const aclTensor* expertScales,  const aclTensor* elasticInfo,
  	const aclTensor* performanceInfo, int64_t epWorldSize,
  	int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize, int64_t tpWorldSize,
