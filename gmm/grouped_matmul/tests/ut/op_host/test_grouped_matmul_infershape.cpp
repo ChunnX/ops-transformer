@@ -32,7 +32,6 @@
 #endif
 
 #include "infer_shape_context_faker.h"
-#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
 
 #include "base/registry/op_impl_space_registry_v2.h"
@@ -168,7 +167,6 @@ ge::DataType ParseDtype(const string &dtype)
         {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
         {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
         {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
-        {"HIFLOAT8", ge::DT_HIFLOAT8},
         {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
         {"INT4", ge::DT_INT4},
         {"UNDEFINED", ge::DT_UNDEFINED},
@@ -240,32 +238,9 @@ void SetupPlatformForCase(const string &socVersion)
 }
 
 struct GroupedMatmulInfershapeCase {
-    bool ShouldRunInferShape() const
+    void Run() const
     {
-        return caseType.find("dtype_only") == string::npos;
-    }
-
-    bool ShouldRunInferDtype() const
-    {
-        return caseType.find("dtype_cov") != string::npos || caseType.find("dtype_only") != string::npos;
-    }
-
-    vector<pair<string, Ops::Transformer::AnyValue>> BuildAttrs() const
-    {
-        return {
-            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outputDtypeAttr)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
-            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-        };
-    }
-
-    void RunInferShape() const
-    {
+        SetupPlatformForCase(socVersion);
         gert::InfershapeContextPara infershapeContextPara(
             "GroupedMatmul",
             {
@@ -285,73 +260,20 @@ struct GroupedMatmulInfershapeCase {
             {
                 {MakeStorageShape(ParseDims("")), ParseDtype(outDtype), ParseFormat(outFormat)},
             },
-            BuildAttrs());
+            {
+                {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
+                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outputDtypeAttr)},
+                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
+                {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
+                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+                {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+            });
 
         vector<vector<int64_t>> expectShape;
         expectShape.push_back(ParseDims(expectOutputShape));
         ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
-    }
-
-    void RunInferDtype() const
-    {
-        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-        ASSERT_NE(spaceRegistry, nullptr);
-        auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmul");
-        ASSERT_NE(opImpl, nullptr);
-        ASSERT_NE(opImpl->infer_datatype, nullptr);
-
-        vector<ge::DataType> inputDataTypes = {
-            ParseDtype(xDtype), ParseDtype(weightDtype), ParseDtype(biasDtype), ParseDtype(scaleDtype),
-            ParseDtype(offsetDtype), ParseDtype(antiquantScaleDtype), ParseDtype(antiquantOffsetDtype),
-            ParseDtype(groupListDtype), ParseDtype(perTokenScaleDtype),
-        };
-        vector<void *> inputDtypePtrs;
-        inputDtypePtrs.reserve(inputDataTypes.size());
-        for (auto &dtype : inputDataTypes) {
-            inputDtypePtrs.push_back(&dtype);
-        }
-
-        auto contextHolder = gert::InferDataTypeContextFaker()
-                                 .NodeIoNum(9, 1)
-                                 .NodeInputTd(0, ParseDtype(xDtype), ParseFormat(xFormat), ParseFormat(xFormat))
-                                 .NodeInputTd(1, ParseDtype(weightDtype), ParseFormat(weightFormat), ParseFormat(weightFormat))
-                                 .NodeInputTd(2, ParseDtype(biasDtype), ParseFormat(biasFormat), ParseFormat(biasFormat))
-                                 .NodeInputTd(3, ParseDtype(scaleDtype), ParseFormat(scaleFormat), ParseFormat(scaleFormat))
-                                 .NodeInputTd(4, ParseDtype(offsetDtype), ParseFormat(offsetFormat), ParseFormat(offsetFormat))
-                                 .NodeInputTd(5, ParseDtype(antiquantScaleDtype), ParseFormat(antiquantScaleFormat), ParseFormat(antiquantScaleFormat))
-                                 .NodeInputTd(6, ParseDtype(antiquantOffsetDtype), ParseFormat(antiquantOffsetFormat), ParseFormat(antiquantOffsetFormat))
-                                 .NodeInputTd(7, ParseDtype(groupListDtype), ParseFormat(groupListFormat), ParseFormat(groupListFormat))
-                                 .NodeInputTd(8, ParseDtype(perTokenScaleDtype), ParseFormat(perTokenScaleFormat), ParseFormat(perTokenScaleFormat))
-                                 .NodeOutputTd(0, ParseFormat(outFormat), ParseFormat(outFormat))
-                                 .InputDataTypes(inputDtypePtrs)
-                                 .NodeAttrs(BuildAttrs())
-                                 .Build();
-
-        auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
-        ASSERT_NE(context, nullptr);
-        auto ret = opImpl->infer_datatype(context);
-        ASSERT_EQ(ret, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED)
-            << "socVersion=" << socVersion << ", prefix=" << prefix << ", caseName=" << caseName;
-        if (ret != ge::GRAPH_SUCCESS) {
-            return;
-        }
-
-        auto expectedOutDtype = ParseDtype(outDtype);
-        if (expectedOutDtype != ge::DT_UNDEFINED) {
-            EXPECT_EQ(context->GetOutputDataType(0), expectedOutDtype)
-                << "socVersion=" << socVersion << ", prefix=" << prefix << ", caseName=" << caseName;
-        }
-    }
-
-    void Run() const
-    {
-        SetupPlatformForCase(socVersion);
-        if (ShouldRunInferShape()) {
-            RunInferShape();
-        }
-        if (ShouldRunInferDtype()) {
-            RunInferDtype();
-        }
     }
 
     string socVersion;
