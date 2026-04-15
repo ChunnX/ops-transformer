@@ -1231,13 +1231,13 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch, endQLen);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch, endKvLen);
-            OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
+            OP_CHECK_IF(actualSeqQLen != actualSeqKVLen && (!isMaxWorkspace),
                        OP_LOGE(opName, "VarLen scene, q is not equal kv."), return false);
             bSize = actualSeqQLen;
             accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
             accumS2 = std::accumulate(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0LL);
             OP_CHECK_IF(
-                t1Size < accumS1 || t2Size < accumS2,
+                (t1Size < accumS1 || t2Size < accumS2) && (!isMaxWorkspace),
                 OP_LOGE(
                     opName,
                     "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
@@ -1245,7 +1245,7 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                 return false);
             // 校验EOD场景尾部是否补0
             if (t1Size > accumS1 && t2Size > accumS2) {
-                if (endQLen != 0 || endKvLen != 0) {
+                if ((endQLen != 0 || endKvLen != 0) && (!isMaxWorkspace)) {
                     OP_LOGE(opName, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
                                             endQLen, endKvLen);
                     return false;
@@ -1296,12 +1296,12 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                 maxS2Val = *std::max_element(actualSeqLenKvData.begin(), actualSeqLenKvData.end());
                 s1Size = maxS1Val;
                 s2Size = maxS2Val;
-                OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+                OP_CHECK_IF(n1Size != queryShape.GetDim(1) && (!isMaxWorkspace),
                         OP_LOGE(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size,
                                                     queryShape.GetDim(1)),
                         return false);
                 n2Size = keyShape.GetDim(1);
-                OP_CHECK_IF(n2Size == 0, OP_LOGE(opName, "N2 is zero."), return false);
+                OP_CHECK_IF(n2Size == 0 && (!isMaxWorkspace), OP_LOGE(opName, "N2 is zero."), return false);
                 gSize = queryShape.GetDim(1) / n2Size;
                 dSize = queryShape.GetDim(2);
                 dRopeSize = queryRopeShape ? queryRopeShape->GetDim(2) : 0;
@@ -3758,6 +3758,12 @@ public:
 protected:
     int64_t s2sizeLimitMax = 1024;
 
+    ge::graphStatus GetShapeAttrsInfo() override
+    {
+        GetMaxWorkspaceFlag();
+        return FlashAttentionScoreTilingBase::GetShapeAttrsInfo();
+    }
+
     int64_t GetNRatio() override
     {
         if (l2CacheSize <= B4_L2_CACHESIZE && isSameAB && alignedD == SAMEAB_D_LIMIT_128 && realT1Size >= B4_SEQ_LIMIT) {
@@ -3979,7 +3985,6 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        GetMaxWorkspaceFlag();
         auto &tensorSizeParams = tilingData->tensorSizeParams;
         auto &coreParams = tilingData->coreParams;
         // 走SameAB模板并满足条件S1BaseSize <= 256 && dSize == 192时使能L1自主管理，shareL1Size需设为0
