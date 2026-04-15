@@ -143,10 +143,25 @@ public:
             }
         }
 
-        uint32_t globalBaseA = 2048U;
+        constexpr uint32_t MAX_HANDLE_NUM = 63U;
+        constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
+        constexpr uint32_t DEFAULT_BASE_A = 2048U;
+
+        uint32_t maxHandleNum = MAX_HANDLE_NUM;
+        if constexpr (IsSameType<hcclDataType, fp8_e8m0_t>::value) {
+            maxHandleNum = MX_MAX_HANDLE_NUM;
+        }
+
+        uint32_t minBaseA = static_cast<uint32_t>((maxRecvSum + maxHandleNum - 1) / maxHandleNum);
+        uint32_t globalBaseA = (minBaseA > DEFAULT_BASE_A) ? minBaseA : DEFAULT_BASE_A;
+
         totalRound_ = static_cast<uint32_t>((maxRecvSum + globalBaseA - 1) / globalBaseA);
         if (totalRound_ == 0) {
             totalRound_ = 1;
+        }
+        if (totalRound_ > maxHandleNum) {
+            totalRound_ = maxHandleNum;
+            globalBaseA = static_cast<uint32_t>((maxRecvSum + totalRound_ - 1) / totalRound_);
         }
         localBaseA_ = static_cast<uint32_t>((myRecvSum + totalRound_ - 1) / totalRound_);
     }
@@ -199,80 +214,6 @@ public:
     {
         sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
         recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)recvBuffer);
-    }
-
-    __aicore__ inline void LaunchScaleMultiRound(uint32_t roundIdx, uint32_t slotIdx)
-    {
-        if ASCEND_IS_AIC {
-            return;
-        }
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() != 0) {
-                return;
-            }
-        }
-        uint32_t srcRank = roundIdx % epWorldSize_;
-        for (uint32_t i = 0U; i < rankDim_; i++) {
-            alltoAllvScaleSendCnt[i] = 0UL;
-            alltoAllvScaleRecvCnt[i] = 0UL;
-        }
-
-        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
-        uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
-
-        if (srcRank == rankId_) {
-            for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
-                if (dstRank == rankId_)
-                    continue;
-                uint64_t sendM = 0;
-                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                    int32_t totalNeed = sendCnt[expertIdx + dstRank * e_];
-                    uint32_t alreadySent = roundIdx * localBaseA_;
-                    uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
-                                             static_cast<uint32_t>(totalNeed) - alreadySent :
-                                             0;
-                    sendM += Mc2Min(remaining, localBaseA_);
-                }
-                alltoAllvScaleSendCnt[dstRank] = sendM * axis;
-            }
-        }
-
-        if (srcRank != rankId_) {
-            uint64_t recvM = 0;
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                int32_t totalNeed = recvCnt[expertIdx + srcRank * e_];
-                uint32_t alreadyRecv = roundIdx * localBaseA_;
-                uint32_t remaining =
-                    static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
-                recvM += Mc2Min(remaining, localBaseA_);
-            }
-            alltoAllvScaleRecvCnt[srcRank] = recvM * axis;
-        }
-
-        alltoAllvScaleSendOffset[0] = 0UL;
-        alltoAllvScaleRecvOffset[0] = 0UL;
-        for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U] + alltoAllvScaleSendCnt[i - 1U];
-            alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
-        }
-        alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
-            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
-            HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
-            alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
-    }
-
-    __aicore__ inline void WaitScaleMultiRound(uint32_t slotIdx)
-    {
-        if ASCEND_IS_AIC {
-            return;
-        }
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() != 0) {
-                return;
-            }
-        }
-        hccl_.Wait(alltoAllvScaleHandleQueue_[slotIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
@@ -393,6 +334,7 @@ private:
 
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
+
     GlobalTensor<uint64_t> preCommSendGlobalBuffer_;
     GlobalTensor<uint64_t> preCommRecvGlobalBuffer_;
 
