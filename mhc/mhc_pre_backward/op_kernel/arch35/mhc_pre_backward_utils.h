@@ -138,7 +138,6 @@ struct V0V1Buffers {
     LocalTensor<uint8_t> brcbTmpBuf;
     uint32_t stepLength;
     uint32_t gatherLength;
-    uint32_t preProcessUbOffset; // Offset after hPreGradBuf for PreProcessV0 temporary buffers
 };
 
 using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
