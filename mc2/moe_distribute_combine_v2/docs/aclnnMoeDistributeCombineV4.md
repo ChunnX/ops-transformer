@@ -519,7 +519,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
     - commAlg 支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经机内、跨机两次发送减少跨机数据量。
     - 不支持共享专家场景。
-    - epSendCounts 的shape为 (moeExpertNum + 2 * globalBS * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBS * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBS=0时按BS * epWorldSize计算。
+    - epSendCounts 的shape为 (moeExpertNum + 2 \* globalBS \* K \* serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 \* globalBS \* K \* serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBS=0时按BS \* epWorldSize计算。
     - 当前不支持TP域通信。
     - xActiveMaskOptional 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(BS, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
     - expandScalesOptional 要求为1D Tensor，shape为 (A, )。
@@ -549,7 +549,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</summary>
 
     - commAlg 支持""，"hierarchy"两种输入方式。""：默认值，不使能hierarchy跨超模板；"hierarchy": 使能跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
-    - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+    - epSendCounts 的shape为 (epWorldSize \* max(tpWorldSize, 1) \* localExpertNum, )。
     - 有TP域通信时 tpSendCountsOptional 为1D Tensor，shape为 (tpWorldSize, )。
     - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。
@@ -746,10 +746,10 @@ aclnnStatus aclnnMoeDistributeCombineV4(
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - commAlg配置为""或nullptr：依照HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE环境变量配置，选择"fullmesh"或"hierarchy"公式。
         - commAlg配置为"fullmesh": 要求 <code>= 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)</code>。
-        - commAlg配置为"hierarchy": 要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
+        - commAlg配置为"hierarchy": 要求 >= (`moeExpertNum` + `epWorldSize` / 4) \* Align512(`maxBS` \* (`H` \* 2 + 16 \* Align8(`K`))) \* 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) \* 8，Align512(x) = ((x + 512 - 1) / 512) \* 512。
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - commAlg配置为""或者未配置时：要求 <code>>= 2且满足>= 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H))</code>，<code>localExpertNum</code>需使用MoE专家卡的本卡专家数，其中<code>Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32</code>。
-        - commAlg配置为"hierarchy"时：要求取值满足 <code>(moeExpertNum \* maxBS * (H \* 2 + (3 \* (K + 7) / 8 \* 8)) * 4 + 64) + 404 \* 1024 \* 1024</code>。
+        - commAlg配置为"hierarchy"时：要求取值满足 <code>(moeExpertNum \* maxBS \* (H \* 2 + (3 \* (K + 7) / 8 \* 8)) \* 4 + 64) + 404 \* 1024 \* 1024</code>。
   - **HCCL_INTRA_PCIE_ENABLE/HCCL_INTRA_ROCE_ENABLE**：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。
 
@@ -784,6 +784,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         ```bash
         bash build.sh --run_example --ops=moe_distribute_combine_v2 eager cust
         ```
+        
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>示例代码：
 
         ```Cpp

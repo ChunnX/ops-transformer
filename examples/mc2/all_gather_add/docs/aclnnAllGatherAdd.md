@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品</term>                                                | ×       |
 | <term>Atlas 训练系列产品</term>                                                 | ×       |
 
-
 ## 功能说明
 
 - **接口功能**：完成[AllGather](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。。
@@ -22,7 +21,7 @@
     $$
     gatherOut=AllGather(a0, a1)
     $$
-    
+
     $$
     c[i]=gatherOut[i] + b[i]
     $$
@@ -241,7 +240,7 @@ aclnnStatus aclnnAllGatherMatmul(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考本算子README文件调用说明中的[编译与运行样例](../README.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 

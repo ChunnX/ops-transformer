@@ -159,7 +159,6 @@
 
 通过项目根目录build.sh脚本，可快速调用算子和UT用例，验证项目功能是否正常，build参数介绍参见[build参数说明](../../../docs/zh/context/build.md)。
 
-
 - **执行算子样例**
 
   - 本示例算子目前仅支持基于单算子API执行方式调用算子，即[两段式aclnn接口](../../../docs/zh/context/两段式接口.md)调用，本示例的aclnn接口定义在[op_api](../all_gather_add/op_host/op_api)路径下。

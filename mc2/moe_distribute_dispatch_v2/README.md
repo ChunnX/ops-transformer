@@ -105,11 +105,11 @@ $$
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
 
 > 说明：MoeDistributeCombineV2、MoeDistributeCombineAddRmsNorm算子在后续文档中统称为CombineV2系列算子。
-・
+
 相较于`MoeDistributeDispatch`算子，该算子变更如下：
 
--   输出了更详细的token信息辅助`CombineV2`系列算子高效地进行全卡同步，因此原算子中shape为(`BS` * `K`,)的`expandIdx`出参替换为shape为(`A` * 128,)的`assistInfoForCombineOut`参数；
--   新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
+- 输出了更详细的token信息辅助`CombineV2`系列算子高效地进行全卡同步，因此原算子中shape为(`BS` \* `K`,)的`expandIdx`出参替换为shape为(`A` \* 128,)的`assistInfoForCombineOut`参数；
+- 新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
 
 详细说明请参考以下参数说明。
 

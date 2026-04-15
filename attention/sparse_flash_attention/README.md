@@ -144,6 +144,7 @@ torch_npu.npu_sparse_flash_attention(query, key, value, sparse_indices, scale_va
         layout_query='BSND', layout_kv='BSND', sparse_mode=3, pre_tokens=(1<<63)-1, next_tokens=(1<<63)-1,
         attention_mode = attention_mode, return_softmax_lse = return_softmax_lse)
     ```
+
 - 图模式调用
 
     ```python

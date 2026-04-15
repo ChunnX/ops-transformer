@@ -11,33 +11,33 @@
 
 - 算子功能：完成mm + all_reduce + add + rms_norm计算。
 - 计算公式：
- - 情景一：
+  - 情景一：
 
-    $$
-    mm\_out = allReduce(x1 @ x2 + bias)
-    $$
+      $$
+      mm\_out = allReduce(x1 @ x2 + bias)
+      $$
 
-    $$
-    y = mm\_out + residual
-    $$
+      $$
+      y = mm\_out + residual
+      $$
 
-    $$
-    normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
-    $$
+      $$
+      normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
+      $$
 
- - 情景二：
+  - 情景二：
 
-    $$
-    mm_out = allReduce(dequant_scale * (x1_{int8}@x2_{int8} + bias_{int32}))
-    $$
+      $$
+      mm_out = allReduce(dequant_scale * (x1_{int8}@x2_{int8} + bias_{int32}))
+      $$
 
-    $$
-    y = mm_out + residual
-    $$
+      $$
+      y = mm_out + residual
+      $$
 
-    $$
-    normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
-    $$
+      $$
+      normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
+      $$
 
   - 情景三：
 

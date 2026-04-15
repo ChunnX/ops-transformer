@@ -380,7 +380,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    <details>
+  <details>
     <summary>非量化场景约束</summary>
       <a id="非量化场景约束"></a>
 
@@ -395,7 +395,7 @@ aclnnStatus aclnnGroupedMatmulV2(
         |-1/0/2   |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
         |-1/0/2   |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
-    </details>
+  </details>
 
     <details>
     <summary>伪量化场景约束</summary>
@@ -406,7 +406,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       - 不为空的参数支持的数据类型组合要满足下表：
 
         |groupType| x       | weight  | antiquantScaleOptional | antiquantOffsetOptional | biasOptional | y     |
-        |:-------:|:-------:|:-------:| :------  | :------ | :------     |:------ |
+        |:-------:|:-------:|:-------:| :------  | :------ | :------|:------ |
         |-1/0   |BFLOAT16     |INT8   |BFLOAT16  |BFLOAT16/null  |BFLOAT16/FLOAT32/null   | BFLOAT16|
         |-1/0   |FLOAT16     |INT8  |FLOAT16 |FLOAT16/null   |FLOAT16/null    | FLOAT16|
 

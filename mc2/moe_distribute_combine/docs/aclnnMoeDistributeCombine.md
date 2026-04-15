@@ -530,8 +530,8 @@ aclnnStatus aclnnMoeDistributeCombine(
 
 7. 参数说明里shape格式说明：
     - **A**：表示本卡需要分发的最大token数量，取值范围如下：
-      - 对于共享专家，需满足 (A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
-      - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS * epWorldSize * min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS * min(localExpertNum, K))。
+      - 对于共享专家，需满足 (A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum)。
+      - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS \* epWorldSize \* min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS \* min(localExpertNum, K))。
     - **H**：表示hidden size（隐藏层大小）：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：取值范围(0, 7168]，且需为32的整数倍。
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：取值为7168。
